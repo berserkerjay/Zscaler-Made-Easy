@@ -114,12 +114,19 @@ def _explain(label, code):
 
 def _ls(d):
     if isinstance(d,list): return d
+    if isinstance(d,dict):
+        # Handle paginated responses like {"list": [...]} or {"data": [...]}
+        for key in ("list","data","items","rules"):
+            if key in d and isinstance(d[key],list): return d[key]
+        # If dict has an "error" key, it's not real data
+        if "error" in d or "status" in d: return []
     return [d] if d else []
 
 def _g(cl, path, label):
     d,c = cl.get(path)
     if c not in (200,204): return None, _explain(label, c)
-    return _ls(d), None
+    items = _ls(d)
+    return items, None
 
 HR = ["chatgpt","openai","claude","gemini","copilot","dropbox","wetransfer","drive.google","onedrive","icloud","mega.nz","pastebin","github"]
 
@@ -399,7 +406,8 @@ def c_5_19(cl):
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
     a=[r for r in d if r.get("state","").upper()=="ENABLED"]; ocr=[r for r in a if r.get("ocrEnabled")]
-    return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.") if ocr else R(R.WARN,"OCR not enabled." if a else R.FAIL)
+    if not a: return R(R.WARN,"No active DLP rules — OCR check not applicable.")
+    return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.") if ocr else R(R.WARN,"OCR not enabled on any active rules.")
 def c_5_20(cl):
     d,c=cl.get("/zia/advancedSettings")
     if c==404: d,c=cl.get("/zia/dlpAdvancedSettings")
@@ -478,7 +486,8 @@ def _pilot(cl, kw, ch):
     a=[r for r in d if r.get("state","").upper()=="ENABLED"]
     m=[r for r in a if kw.lower() in json.dumps(r).lower()]
     if m: return R(R.PASS,f"{len(m)} rule(s) cover {ch}. Verify logs via Analytics.")
-    return R(R.WARN,f"No rules specifically target {ch} — may still be covered by generic rules." if a else R.FAIL)
+    if not a: return R(R.WARN,f"No active DLP rules to cover {ch}. Configure Web DLP rules first.")
+    return R(R.WARN,f"No rules specifically target {ch} — may still be covered by generic rules.")
 
 def c_8_1(cl): return _pilot(cl,"removable","USB/Removable")
 def c_8_2(cl): return _pilot(cl,"printer","Printer")
