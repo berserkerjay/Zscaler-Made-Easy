@@ -31,8 +31,13 @@ try:
 except ImportError:
     HAS_RICH = False
 
-CLOUDS = ["zscloud","zscaler","zscalerone","zscalertwo","zscalerthree","zspreview","zscalerbeta"]
-BASE_URL = "https://api.{cloud}.zsapi.net/v1"
+CLOUDS = ["production","zscloud","zscaler","zscalerone","zscalertwo","zscalerthree","zspreview","zscalerbeta"]
+
+def _base_url(cloud):
+    """Build the OneAPI base URL. Production has no cloud prefix."""
+    if not cloud or cloud in ("production", ""):
+        return "https://api.zsapi.net/v1"
+    return f"https://api.{cloud}.zsapi.net/v1"
 
 def _token_url(vd, cloud):
     """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
@@ -41,7 +46,7 @@ def _token_url(vd, cloud):
 class Client:
     def __init__(s, cid, sec, vd, cloud):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
-        s.token = None; s.exp = 0; s.base = BASE_URL.format(cloud=cloud)
+        s.token = None; s.exp = 0; s.base = _base_url(cloud)
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         s._c = {}
     def auth(s):
