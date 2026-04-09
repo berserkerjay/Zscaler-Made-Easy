@@ -31,30 +31,62 @@ try:
 except ImportError:
     HAS_RICH = False
 
-CLOUDS = ["zscloud","zscaler","zscalerone","zscalertwo","zscalerthree","zspreview","zscalerbeta"]
-TOKEN_URL = "https://auth.{vd}.zslogin.net/oauth/token"
-BASE_URL = "https://api.{cloud}.zsapi.net/v1"
+CLOUDS = ["production","zscloud","zscaler","zscalerone","zscalertwo","zscalerthree","zspreview","zscalerbeta"]
+
+def _base_url(cloud):
+    """Build the OneAPI base URL. Production has no cloud prefix."""
+    if not cloud or cloud in ("production", ""):
+        return "https://api.zsapi.net"
+    return f"https://api.{cloud}.zsapi.net"
+
+def _token_url(vd, cloud):
+    """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
+    return f"https://{vd}.zslogin.net/oauth2/v1/token"
+
+# OneAPI service path prefixes (confirmed via SDK + Postman)
+def _resolve_ep(ep, customer_id=""):
+    """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path."""
+    if ep.startswith("/zia/"):
+        return "/zia/api/v1/" + ep[5:]
+    if ep.startswith("/zcc/"):
+        return "/zcc/papi/public/v1/" + ep[5:]
+    if ep.startswith("/zpa/"):
+        if customer_id:
+            return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]
+        return "/zpa/mgmtconfig/v1/" + ep[5:]
+    return ep
 
 class Client:
     def __init__(s, cid, sec, vd, cloud):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
-        s.token = None; s.exp = 0; s.base = BASE_URL.format(cloud=cloud)
-        s.sess = requests.Session(); s.sess.headers.update({"Content-Type":"application/json","Accept":"application/json"})
+        s.token = None; s.exp = 0; s.base = _base_url(cloud)
+        s.customer_id = ""
+        s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         s._c = {}
     def auth(s):
         try:
-            r = s.sess.post(TOKEN_URL.format(vd=s.vd), json={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":f"https://api.{s.cloud}.zsapi.net"}, timeout=30)
+            url = _token_url(s.vd, s.cloud)
+            r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
             r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
-            s.sess.headers["Authorization"] = f"Bearer {s.token}"; return True
+            s.sess.headers["Authorization"] = f"Bearer {s.token}"
+            # Auto-discover customer ID for ZPA paths
+            try:
+                cr = s.sess.get(f"{s.base}/zidentity/api/v1/companyProfile", timeout=15)
+                if cr.status_code == 200:
+                    s.customer_id = str(cr.json().get("id", cr.json().get("customerId", "")))
+            except Exception:
+                pass
+            return True
         except Exception as e: return (False, str(e))
     def get(s, ep, p=None):
-        k = f"{ep}|{json.dumps(p or {},sort_keys=True)}"
+        real_ep = _resolve_ep(ep, s.customer_id)
+        k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         if k in s._c: return s._c[k]
         if not s.token or time.time()>=s.exp:
             a = s.auth()
             if a is not True: raise ConnectionError(str(a))
         try:
-            r = s.sess.get(f"{s.base}{ep}", params=p, timeout=30); time.sleep(0.5)
+            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=30); time.sleep(0.5)
             if r.status_code==200: res=(r.json(),200)
             elif r.status_code==204: res=([],204)
             elif r.status_code==429: time.sleep(int(r.headers.get("Retry-After",5))); return s.get(ep,p)
@@ -63,17 +95,38 @@ class Client:
         s._c[k]=res; return res
 
 class R:
-    PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; ERROR="ERROR"
+    PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; INFO="INFO"; ERROR="ERROR"
     def __init__(s, st, det="", data=None): s.status,s.detail,s.data = st,det,data or {}
+
+# Human-readable explanations for HTTP errors
+_HTTP_EXPLAIN = {
+    0:   "Could not connect to the Zscaler API. Check network connectivity.",
+    401: "API credentials lack permission for this resource. Verify API role scope.",
+    403: "Access denied. The API client role does not include this feature.",
+    404: "This feature is not available on your tenant or is not licensed.",
+    429: "Rate limited. Too many API requests.",
+}
+
+def _explain(label, code):
+    """Return a friendly explanation instead of a raw error."""
+    reason = _HTTP_EXPLAIN.get(code, f"Unexpected response (HTTP {code}).")
+    return R(R.INFO, f"{label}: Not configured or not accessible. {reason}")
 
 def _ls(d):
     if isinstance(d,list): return d
+    if isinstance(d,dict):
+        # Handle paginated responses like {"list": [...]} or {"data": [...]}
+        for key in ("list","data","items","rules"):
+            if key in d and isinstance(d[key],list): return d[key]
+        # If dict has an "error" key, it's not real data
+        if "error" in d or "status" in d: return []
     return [d] if d else []
 
 def _g(cl, path, label):
     d,c = cl.get(path)
-    if c not in (200,204): return None, R(R.ERROR, f"Cannot get {label} (HTTP {c})")
-    return _ls(d), None
+    if c not in (200,204): return None, _explain(label, c)
+    items = _ls(d)
+    return items, None
 
 HR = ["chatgpt","openai","claude","gemini","copilot","dropbox","wetransfer","drive.google","onedrive","icloud","mega.nz","pastebin","github"]
 
@@ -353,7 +406,8 @@ def c_5_19(cl):
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
     a=[r for r in d if r.get("state","").upper()=="ENABLED"]; ocr=[r for r in a if r.get("ocrEnabled")]
-    return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.") if ocr else R(R.WARN,"OCR not enabled." if a else R.FAIL)
+    if not a: return R(R.WARN,"No active DLP rules — OCR check not applicable.")
+    return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.") if ocr else R(R.WARN,"OCR not enabled on any active rules.")
 def c_5_20(cl):
     d,c=cl.get("/zia/advancedSettings")
     if c==404: d,c=cl.get("/zia/dlpAdvancedSettings")
@@ -432,7 +486,8 @@ def _pilot(cl, kw, ch):
     a=[r for r in d if r.get("state","").upper()=="ENABLED"]
     m=[r for r in a if kw.lower() in json.dumps(r).lower()]
     if m: return R(R.PASS,f"{len(m)} rule(s) cover {ch}. Verify logs via Analytics.")
-    return R(R.WARN,f"No rules specifically target {ch} — may still be covered by generic rules." if a else R.FAIL)
+    if not a: return R(R.WARN,f"No active DLP rules to cover {ch}. Configure Web DLP rules first.")
+    return R(R.WARN,f"No rules specifically target {ch} — may still be covered by generic rules.")
 
 def c_8_1(cl): return _pilot(cl,"removable","USB/Removable")
 def c_8_2(cl): return _pilot(cl,"printer","Printer")
@@ -628,21 +683,26 @@ REG = [
 
 # === RUNNER ===
 def run(client, con=None):
+    """Run the DLP checks (backwards compatible)."""
+    return run_checks(client, REG, con)
+
+def run_checks(client, checks, con=None):
+    """Run an arbitrary list of checks."""
     results=[]
     if HAS_RICH and con:
         with Progress(SpinnerColumn(),TextColumn("[progress.description]{task.description}"),BarColumn(),TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),console=con) as prog:
-            task=prog.add_task("Scanning...",total=len(REG))
-            for id,sec,label,fn in REG:
+            task=prog.add_task("Scanning...",total=len(checks))
+            for id,sec,label,fn in checks:
                 prog.update(task,description=f"[cyan]{id}[/] {label}")
                 try: r=fn(client)
-                except Exception as ex: r=R(R.ERROR,str(ex))
+                except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
                 results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
                 prog.advance(task)
     else:
-        for i,(id,sec,label,fn) in enumerate(REG,1):
-            print(f"  [{i}/{len(REG)}] {id}: {label}...",end=" ",flush=True)
+        for i,(id,sec,label,fn) in enumerate(checks,1):
+            print(f"  [{i}/{len(checks)}] {id}: {label}...",end=" ",flush=True)
             try: r=fn(client)
-            except Exception as ex: r=R(R.ERROR,str(ex))
+            except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
             results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
             print(r.status)
     return results
@@ -655,16 +715,19 @@ def maturity(p):
     return "Ad Hoc"
 
 def compute(results):
+    _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
     secs={}
     for r in results:
         s=r["sec"]
-        if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"error":0}
+        if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"info":0}
         secs[s]["total"]+=1
-        {"PASS":"pass","FAIL":"fail","REVIEW":"warn","ERROR":"error"}.get(r["status"],"error")
-        secs[s][{"PASS":"pass","FAIL":"fail","REVIEW":"warn","ERROR":"error"}.get(r["status"],"error")]+=1
-    for s in secs: t=secs[s]["total"]; secs[s]["pct"]=round(secs[s]["pass"]/t*100) if t else 0
-    total=sum(s["total"] for s in secs.values()); passed=sum(s["pass"] for s in secs.values())
-    return secs, round(passed/total*100) if total else 0
+        secs[s][_map.get(r["status"],"info")]+=1
+    for s in secs:
+        scored=secs[s]["total"]-secs[s]["info"]  # INFO checks don't count against score
+        secs[s]["pct"]=round(secs[s]["pass"]/scored*100) if scored else 100
+    scored_total=sum(s["total"]-s["info"] for s in secs.values())
+    passed=sum(s["pass"] for s in secs.values())
+    return secs, round(passed/scored_total*100) if scored_total else 100
 
 def report(results, cfg, con=None):
     secs,overall=compute(results); mat=maturity(overall)
@@ -698,24 +761,23 @@ def save(results, cfg, path):
     with open(path,"w") as f: json.dump(rpt,f,indent=2,default=str)
 
 def main():
-    ap=argparse.ArgumentParser(description="Zscaler DLP Assessment — Full Auto")
+    ap=argparse.ArgumentParser(description="Zscaler Assessment — Full Auto")
     ap.add_argument("--config"); ap.add_argument("--output")
+    ap.add_argument("--scope", default="dlp", choices=["dlp","full","zia","zpa","zcc","all"],
+                    help="Assessment scope: dlp (default), full (dlp+platform), zia, zpa, zcc, or all")
     args=ap.parse_args(); con=Console() if HAS_RICH else None
-    if args.config and Path(args.config).exists():
-        with open(args.config) as f: cfg=json.load(f)
-    else: cfg=prompt_config_rich(con) if HAS_RICH else prompt_config()
     def prompt_config():
-        print("\n"+"="*64+"\n  ZSCALER DLP ASSESSMENT — FULL AUTO\n"+"="*64)
+        print("\n"+"="*64+"\n  ZSCALER ASSESSMENT — FULL AUTO\n"+"="*64)
         c={}; c["org_name"]=input("  Org: ").strip(); c["assessor"]=input("  Assessor: ").strip()
         print("  Clouds: "+", ".join(f"{i+1}.{k}" for i,k in enumerate(CLOUDS)))
         try: c["cloud"]=CLOUDS[int(input("  Select: ").strip())-1]
-        except: c["cloud"]="zscloud"
+        except: c["cloud"]="production"
         c["vanity_domain"]=input("  Vanity domain: ").strip()
         c["client_id"]=input("  Client ID: ").strip(); c["client_secret"]=input("  Client Secret: ").strip()
         if input("  Run? (y/n): ").strip().lower()!="y": sys.exit(0)
         return c
     def prompt_config_rich(con):
-        con.print(Panel.fit("[bold cyan]ZSCALER DLP ASSESSMENT — FULL AUTO[/]\n[dim]Zero manual · {len(REG)} checks[/]",border_style="cyan"))
+        con.print(Panel.fit("[bold cyan]ZSCALER ASSESSMENT — FULL AUTO[/]\n[dim]Zero manual checks[/]",border_style="cyan"))
         c={}; c["org_name"]=Prompt.ask("[bold]Org"); c["assessor"]=Prompt.ask("[bold]Assessor")
         t=Table(show_header=False,box=None)
         for i,k in enumerate(CLOUDS,1): t.add_row(f"  {i}.",k)
@@ -724,16 +786,48 @@ def main():
         c["client_id"]=Prompt.ask("[bold]Client ID"); c["client_secret"]=Prompt.ask("[bold]Secret",password=True)
         if not Confirm.ask("[bold]Run?"): sys.exit(0)
         return c
+    if args.config and Path(args.config).exists():
+        with open(args.config) as f: cfg=json.load(f)
+    else: cfg=prompt_config_rich(con) if HAS_RICH else prompt_config()
+
+    # Build check registry based on scope
+    check_reg = list(REG)
+    if args.scope != "dlp":
+        try:
+            from zscaler_full_checks import PLATFORM_REG
+            if args.scope == "full" or args.scope == "all":
+                check_reg = list(REG) + PLATFORM_REG
+            elif args.scope == "zia":
+                check_reg = list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
+            elif args.scope == "zpa":
+                check_reg = [c for c in PLATFORM_REG if c[1].startswith("ZPA")]
+            elif args.scope == "zcc":
+                check_reg = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
+        except ImportError:
+            print("WARNING: zscaler_full_checks.py not found, running DLP checks only.")
 
     cl=Client(cfg["client_id"],cfg["client_secret"],cfg["vanity_domain"],cfg["cloud"])
     (con.print("[bold]Authenticating...[/]",end=" ") if con else print("  Auth...",end=" ",flush=True))
     a=cl.auth()
     if a is True: (con.print("[green]OK[/]") if con else print("OK"))
     else: print(f"FAIL: {a}"); sys.exit(1)
-    (con.print(f"\n[bold]{len(REG)} automated checks...[/]\n") if con else print(f"\n  {len(REG)} checks...\n"))
-    results=run(cl,con); report(results,cfg,con)
-    out=args.output or f"dlp_{cfg.get('org_name','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    save(results,cfg,out)
-    (con.print(f"\n[green]Report: {out}[/]\n") if con else print(f"\n  Report: {out}\n"))
+    (con.print(f"\n[bold]{len(check_reg)} automated checks ({args.scope} scope)...[/]\n") if con else print(f"\n  {len(check_reg)} checks ({args.scope} scope)...\n"))
+    # Override REG temporarily for run/report
+    orig_reg = REG
+    results=run_checks(cl, check_reg, con); report(results,cfg,con)
+    ts=datetime.now().strftime('%Y%m%d_%H%M%S')
+    base_name=f"zscaler_{cfg.get('org_name','').replace(' ','_')}_{ts}"
+    json_out=args.output or f"{base_name}.json"
+    save(results,cfg,json_out)
+    # Generate Word doc
+    docx_out=json_out.replace(".json",".docx") if json_out.endswith(".json") else f"{base_name}.docx"
+    try:
+        from report_docx import generate_report
+        generate_report(results,cfg,docx_out,compute,maturity)
+        (con.print(f"\n[green]JSON:  {json_out}[/]\n[green]Word:  {docx_out}[/]\n") if con else print(f"\n  JSON: {json_out}\n  Word: {docx_out}\n"))
+    except ImportError:
+        (con.print(f"\n[green]Report: {json_out}[/]\n[dim](pip install python-docx for Word report)[/]\n") if con else print(f"\n  Report: {json_out}\n  (pip install python-docx for Word report)\n"))
+    except Exception as ex:
+        (con.print(f"\n[green]JSON: {json_out}[/]\n[yellow]Word failed: {ex}[/]\n") if con else print(f"\n  JSON: {json_out}\n  Word failed: {ex}\n"))
 
 if __name__=="__main__": main()

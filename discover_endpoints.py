@@ -24,8 +24,11 @@ try:
 except ImportError:
     print("pip install requests"); sys.exit(1)
 
-TOKEN_URL = "https://auth.{vd}.zslogin.net/oauth/token"
 BASE_URL = "https://api.{cloud}.zsapi.net/v1"
+
+def _token_url(vd, cloud):
+    """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
+    return f"https://{vd}.zslogin.net/oauth2/v1/token"
 
 # ── Every plausible endpoint path to probe ─────────────────────────
 # Organized by product and feature area
@@ -82,15 +85,19 @@ PROBE_PATHS = {
 
 
 def authenticate(client_id, client_secret, vanity_domain, cloud):
-    """Get OAuth2 token."""
-    url = TOKEN_URL.format(vd=vanity_domain)
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "audience": f"https://api.{cloud}.zsapi.net",
-    }
-    resp = requests.post(url, json=payload, timeout=30)
+    """Get OAuth2 token via OneAPI OAuth2 endpoint."""
+    url = _token_url(vanity_domain, cloud)
+    resp = requests.post(
+        url,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "audience": "https://api.zscaler.com",
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=30,
+    )
     resp.raise_for_status()
     return resp.json()["access_token"]
 
