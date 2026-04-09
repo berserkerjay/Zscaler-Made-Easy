@@ -27,10 +27,8 @@ except ImportError:
 BASE_URL = "https://api.{cloud}.zsapi.net/v1"
 
 def _token_url(vd, cloud):
-    """Build the OneAPI OAuth2 token URL per Zscaler SDK convention."""
-    if cloud in ("zscloud", "production", ""):
-        return f"https://{vd}.zslogin.net/oauth2/v1/token"
-    return f"https://{vd}.zslogin{cloud}.net/oauth2/v1/token"
+    """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
+    return f"https://{vd}.zslogin.net/oauth2/v1/token"
 
 # ── Every plausible endpoint path to probe ─────────────────────────
 # Organized by product and feature area
