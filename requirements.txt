@@ -4,3 +4,4 @@ uvicorn>=0.22.0
 rich>=13.0.0
 zscaler-sdk-python>=1.9.0
 mcp[cli]>=1.2.0
+python-docx>=1.0.0

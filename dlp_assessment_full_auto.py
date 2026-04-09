@@ -95,8 +95,22 @@ class Client:
         s._c[k]=res; return res
 
 class R:
-    PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; ERROR="ERROR"
+    PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; INFO="INFO"; ERROR="ERROR"
     def __init__(s, st, det="", data=None): s.status,s.detail,s.data = st,det,data or {}
+
+# Human-readable explanations for HTTP errors
+_HTTP_EXPLAIN = {
+    0:   "Could not connect to the Zscaler API. Check network connectivity.",
+    401: "API credentials lack permission for this resource. Verify API role scope.",
+    403: "Access denied. The API client role does not include this feature.",
+    404: "This feature is not available on your tenant or is not licensed.",
+    429: "Rate limited. Too many API requests.",
+}
+
+def _explain(label, code):
+    """Return a friendly explanation instead of a raw error."""
+    reason = _HTTP_EXPLAIN.get(code, f"Unexpected response (HTTP {code}).")
+    return R(R.INFO, f"{label}: Not configured or not accessible. {reason}")
 
 def _ls(d):
     if isinstance(d,list): return d
@@ -104,7 +118,7 @@ def _ls(d):
 
 def _g(cl, path, label):
     d,c = cl.get(path)
-    if c not in (200,204): return None, R(R.ERROR, f"Cannot get {label} (HTTP {c})")
+    if c not in (200,204): return None, _explain(label, c)
     return _ls(d), None
 
 HR = ["chatgpt","openai","claude","gemini","copilot","dropbox","wetransfer","drive.google","onedrive","icloud","mega.nz","pastebin","github"]
@@ -672,14 +686,14 @@ def run_checks(client, checks, con=None):
             for id,sec,label,fn in checks:
                 prog.update(task,description=f"[cyan]{id}[/] {label}")
                 try: r=fn(client)
-                except Exception as ex: r=R(R.ERROR,str(ex))
+                except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
                 results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
                 prog.advance(task)
     else:
         for i,(id,sec,label,fn) in enumerate(checks,1):
             print(f"  [{i}/{len(checks)}] {id}: {label}...",end=" ",flush=True)
             try: r=fn(client)
-            except Exception as ex: r=R(R.ERROR,str(ex))
+            except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
             results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
             print(r.status)
     return results
@@ -692,16 +706,19 @@ def maturity(p):
     return "Ad Hoc"
 
 def compute(results):
+    _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
     secs={}
     for r in results:
         s=r["sec"]
-        if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"error":0}
+        if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"info":0}
         secs[s]["total"]+=1
-        {"PASS":"pass","FAIL":"fail","REVIEW":"warn","ERROR":"error"}.get(r["status"],"error")
-        secs[s][{"PASS":"pass","FAIL":"fail","REVIEW":"warn","ERROR":"error"}.get(r["status"],"error")]+=1
-    for s in secs: t=secs[s]["total"]; secs[s]["pct"]=round(secs[s]["pass"]/t*100) if t else 0
-    total=sum(s["total"] for s in secs.values()); passed=sum(s["pass"] for s in secs.values())
-    return secs, round(passed/total*100) if total else 0
+        secs[s][_map.get(r["status"],"info")]+=1
+    for s in secs:
+        scored=secs[s]["total"]-secs[s]["info"]  # INFO checks don't count against score
+        secs[s]["pct"]=round(secs[s]["pass"]/scored*100) if scored else 100
+    scored_total=sum(s["total"]-s["info"] for s in secs.values())
+    passed=sum(s["pass"] for s in secs.values())
+    return secs, round(passed/scored_total*100) if scored_total else 100
 
 def report(results, cfg, con=None):
     secs,overall=compute(results); mat=maturity(overall)
@@ -789,8 +806,19 @@ def main():
     # Override REG temporarily for run/report
     orig_reg = REG
     results=run_checks(cl, check_reg, con); report(results,cfg,con)
-    out=args.output or f"zscaler_{cfg.get('org_name','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    save(results,cfg,out)
-    (con.print(f"\n[green]Report: {out}[/]\n") if con else print(f"\n  Report: {out}\n"))
+    ts=datetime.now().strftime('%Y%m%d_%H%M%S')
+    base_name=f"zscaler_{cfg.get('org_name','').replace(' ','_')}_{ts}"
+    json_out=args.output or f"{base_name}.json"
+    save(results,cfg,json_out)
+    # Generate Word doc
+    docx_out=json_out.replace(".json",".docx") if json_out.endswith(".json") else f"{base_name}.docx"
+    try:
+        from report_docx import generate_report
+        generate_report(results,cfg,docx_out,compute,maturity)
+        (con.print(f"\n[green]JSON:  {json_out}[/]\n[green]Word:  {docx_out}[/]\n") if con else print(f"\n  JSON: {json_out}\n  Word: {docx_out}\n"))
+    except ImportError:
+        (con.print(f"\n[green]Report: {json_out}[/]\n[dim](pip install python-docx for Word report)[/]\n") if con else print(f"\n  Report: {json_out}\n  (pip install python-docx for Word report)\n"))
+    except Exception as ex:
+        (con.print(f"\n[green]JSON: {json_out}[/]\n[yellow]Word failed: {ex}[/]\n") if con else print(f"\n  JSON: {json_out}\n  Word failed: {ex}\n"))
 
 if __name__=="__main__": main()
