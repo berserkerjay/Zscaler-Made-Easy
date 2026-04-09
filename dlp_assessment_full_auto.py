@@ -36,12 +36,25 @@ CLOUDS = ["production","zscloud","zscaler","zscalerone","zscalertwo","zscalerthr
 def _base_url(cloud):
     """Build the OneAPI base URL. Production has no cloud prefix."""
     if not cloud or cloud in ("production", ""):
-        return "https://api.zsapi.net/v1"
-    return f"https://api.{cloud}.zsapi.net/v1"
+        return "https://api.zsapi.net"
+    return f"https://api.{cloud}.zsapi.net"
 
 def _token_url(vd, cloud):
     """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
     return f"https://{vd}.zslogin.net/oauth2/v1/token"
+
+# OneAPI service path prefixes (from Postman)
+_SVC_PREFIX = {
+    "/zia/": "/zia/api/v1/",
+    "/zcc/": "/zcc/papi/public/",
+}
+
+def _resolve_ep(ep):
+    """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path."""
+    for prefix, replacement in _SVC_PREFIX.items():
+        if ep.startswith(prefix):
+            return replacement + ep[len(prefix):]
+    return ep
 
 class Client:
     def __init__(s, cid, sec, vd, cloud):
@@ -57,13 +70,14 @@ class Client:
             s.sess.headers["Authorization"] = f"Bearer {s.token}"; return True
         except Exception as e: return (False, str(e))
     def get(s, ep, p=None):
-        k = f"{ep}|{json.dumps(p or {},sort_keys=True)}"
+        real_ep = _resolve_ep(ep)
+        k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         if k in s._c: return s._c[k]
         if not s.token or time.time()>=s.exp:
             a = s.auth()
             if a is not True: raise ConnectionError(str(a))
         try:
-            r = s.sess.get(f"{s.base}{ep}", params=p, timeout=30); time.sleep(0.5)
+            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=30); time.sleep(0.5)
             if r.status_code==200: res=(r.json(),200)
             elif r.status_code==204: res=([],204)
             elif r.status_code==429: time.sleep(int(r.headers.get("Retry-After",5))); return s.get(ep,p)
