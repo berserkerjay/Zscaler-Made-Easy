@@ -766,21 +766,18 @@ def main():
     ap.add_argument("--scope", default="dlp", choices=["dlp","full","zia","zpa","zcc","all"],
                     help="Assessment scope: dlp (default), full (dlp+platform), zia, zpa, zcc, or all")
     args=ap.parse_args(); con=Console() if HAS_RICH else None
-    if args.config and Path(args.config).exists():
-        with open(args.config) as f: cfg=json.load(f)
-    else: cfg=prompt_config_rich(con) if HAS_RICH else prompt_config()
     def prompt_config():
-        print("\n"+"="*64+"\n  ZSCALER DLP ASSESSMENT — FULL AUTO\n"+"="*64)
+        print("\n"+"="*64+"\n  ZSCALER ASSESSMENT — FULL AUTO\n"+"="*64)
         c={}; c["org_name"]=input("  Org: ").strip(); c["assessor"]=input("  Assessor: ").strip()
         print("  Clouds: "+", ".join(f"{i+1}.{k}" for i,k in enumerate(CLOUDS)))
         try: c["cloud"]=CLOUDS[int(input("  Select: ").strip())-1]
-        except: c["cloud"]="zscloud"
+        except: c["cloud"]="production"
         c["vanity_domain"]=input("  Vanity domain: ").strip()
         c["client_id"]=input("  Client ID: ").strip(); c["client_secret"]=input("  Client Secret: ").strip()
         if input("  Run? (y/n): ").strip().lower()!="y": sys.exit(0)
         return c
     def prompt_config_rich(con):
-        con.print(Panel.fit("[bold cyan]ZSCALER DLP ASSESSMENT — FULL AUTO[/]\n[dim]Zero manual · {len(REG)} checks[/]",border_style="cyan"))
+        con.print(Panel.fit("[bold cyan]ZSCALER ASSESSMENT — FULL AUTO[/]\n[dim]Zero manual checks[/]",border_style="cyan"))
         c={}; c["org_name"]=Prompt.ask("[bold]Org"); c["assessor"]=Prompt.ask("[bold]Assessor")
         t=Table(show_header=False,box=None)
         for i,k in enumerate(CLOUDS,1): t.add_row(f"  {i}.",k)
@@ -789,6 +786,9 @@ def main():
         c["client_id"]=Prompt.ask("[bold]Client ID"); c["client_secret"]=Prompt.ask("[bold]Secret",password=True)
         if not Confirm.ask("[bold]Run?"): sys.exit(0)
         return c
+    if args.config and Path(args.config).exists():
+        with open(args.config) as f: cfg=json.load(f)
+    else: cfg=prompt_config_rich(con) if HAS_RICH else prompt_config()
 
     # Build check registry based on scope
     check_reg = list(REG)
