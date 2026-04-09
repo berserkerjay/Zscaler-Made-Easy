@@ -32,18 +32,24 @@ except ImportError:
     HAS_RICH = False
 
 CLOUDS = ["zscloud","zscaler","zscalerone","zscalertwo","zscalerthree","zspreview","zscalerbeta"]
-TOKEN_URL = "https://auth.{vd}.zslogin.net/oauth/token"
 BASE_URL = "https://api.{cloud}.zsapi.net/v1"
+
+def _token_url(vd, cloud):
+    """Build the OneAPI OAuth2 token URL per Zscaler SDK convention."""
+    if cloud in ("zscloud", "production", ""):
+        return f"https://{vd}.zslogin.net/oauth2/v1/token"
+    return f"https://{vd}.zslogin{cloud}.net/oauth2/v1/token"
 
 class Client:
     def __init__(s, cid, sec, vd, cloud):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
         s.token = None; s.exp = 0; s.base = BASE_URL.format(cloud=cloud)
-        s.sess = requests.Session(); s.sess.headers.update({"Content-Type":"application/json","Accept":"application/json"})
+        s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         s._c = {}
     def auth(s):
         try:
-            r = s.sess.post(TOKEN_URL.format(vd=s.vd), json={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":f"https://api.{s.cloud}.zsapi.net"}, timeout=30)
+            url = _token_url(s.vd, s.cloud)
+            r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
             r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
             s.sess.headers["Authorization"] = f"Bearer {s.token}"; return True
         except Exception as e: return (False, str(e))
