@@ -43,10 +43,10 @@ def _token_url(vd, cloud):
     """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
     return f"https://{vd}.zslogin.net/oauth2/v1/token"
 
-# OneAPI service path prefixes (from Postman)
+# OneAPI service path prefixes (confirmed via SDK + Postman)
 _SVC_PREFIX = {
     "/zia/": "/zia/api/v1/",
-    "/zcc/": "/zcc/papi/public/",
+    "/zcc/": "/zcc/papi/public/v1/",
 }
 
 def _resolve_ep(ep):
