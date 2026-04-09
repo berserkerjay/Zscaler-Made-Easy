@@ -44,22 +44,23 @@ def _token_url(vd, cloud):
     return f"https://{vd}.zslogin.net/oauth2/v1/token"
 
 # OneAPI service path prefixes (confirmed via SDK + Postman)
-_SVC_PREFIX = {
-    "/zia/": "/zia/api/v1/",
-    "/zcc/": "/zcc/papi/public/v1/",
-}
-
-def _resolve_ep(ep):
+def _resolve_ep(ep, customer_id=""):
     """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path."""
-    for prefix, replacement in _SVC_PREFIX.items():
-        if ep.startswith(prefix):
-            return replacement + ep[len(prefix):]
+    if ep.startswith("/zia/"):
+        return "/zia/api/v1/" + ep[5:]
+    if ep.startswith("/zcc/"):
+        return "/zcc/papi/public/v1/" + ep[5:]
+    if ep.startswith("/zpa/"):
+        if customer_id:
+            return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]
+        return "/zpa/mgmtconfig/v1/" + ep[5:]
     return ep
 
 class Client:
     def __init__(s, cid, sec, vd, cloud):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
         s.token = None; s.exp = 0; s.base = _base_url(cloud)
+        s.customer_id = ""
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         s._c = {}
     def auth(s):
@@ -67,10 +68,18 @@ class Client:
             url = _token_url(s.vd, s.cloud)
             r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
             r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
-            s.sess.headers["Authorization"] = f"Bearer {s.token}"; return True
+            s.sess.headers["Authorization"] = f"Bearer {s.token}"
+            # Auto-discover customer ID for ZPA paths
+            try:
+                cr = s.sess.get(f"{s.base}/zidentity/api/v1/companyProfile", timeout=15)
+                if cr.status_code == 200:
+                    s.customer_id = str(cr.json().get("id", cr.json().get("customerId", "")))
+            except Exception:
+                pass
+            return True
         except Exception as e: return (False, str(e))
     def get(s, ep, p=None):
-        real_ep = _resolve_ep(ep)
+        real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         if k in s._c: return s._c[k]
         if not s.token or time.time()>=s.exp:
@@ -651,19 +660,24 @@ REG = [
 
 # === RUNNER ===
 def run(client, con=None):
+    """Run the DLP checks (backwards compatible)."""
+    return run_checks(client, REG, con)
+
+def run_checks(client, checks, con=None):
+    """Run an arbitrary list of checks."""
     results=[]
     if HAS_RICH and con:
         with Progress(SpinnerColumn(),TextColumn("[progress.description]{task.description}"),BarColumn(),TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),console=con) as prog:
-            task=prog.add_task("Scanning...",total=len(REG))
-            for id,sec,label,fn in REG:
+            task=prog.add_task("Scanning...",total=len(checks))
+            for id,sec,label,fn in checks:
                 prog.update(task,description=f"[cyan]{id}[/] {label}")
                 try: r=fn(client)
                 except Exception as ex: r=R(R.ERROR,str(ex))
                 results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
                 prog.advance(task)
     else:
-        for i,(id,sec,label,fn) in enumerate(REG,1):
-            print(f"  [{i}/{len(REG)}] {id}: {label}...",end=" ",flush=True)
+        for i,(id,sec,label,fn) in enumerate(checks,1):
+            print(f"  [{i}/{len(checks)}] {id}: {label}...",end=" ",flush=True)
             try: r=fn(client)
             except Exception as ex: r=R(R.ERROR,str(ex))
             results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
@@ -721,8 +735,10 @@ def save(results, cfg, path):
     with open(path,"w") as f: json.dump(rpt,f,indent=2,default=str)
 
 def main():
-    ap=argparse.ArgumentParser(description="Zscaler DLP Assessment — Full Auto")
+    ap=argparse.ArgumentParser(description="Zscaler Assessment — Full Auto")
     ap.add_argument("--config"); ap.add_argument("--output")
+    ap.add_argument("--scope", default="dlp", choices=["dlp","full","zia","zpa","zcc","all"],
+                    help="Assessment scope: dlp (default), full (dlp+platform), zia, zpa, zcc, or all")
     args=ap.parse_args(); con=Console() if HAS_RICH else None
     if args.config and Path(args.config).exists():
         with open(args.config) as f: cfg=json.load(f)
@@ -748,14 +764,32 @@ def main():
         if not Confirm.ask("[bold]Run?"): sys.exit(0)
         return c
 
+    # Build check registry based on scope
+    check_reg = list(REG)
+    if args.scope != "dlp":
+        try:
+            from zscaler_full_checks import PLATFORM_REG
+            if args.scope == "full" or args.scope == "all":
+                check_reg = list(REG) + PLATFORM_REG
+            elif args.scope == "zia":
+                check_reg = list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
+            elif args.scope == "zpa":
+                check_reg = [c for c in PLATFORM_REG if c[1].startswith("ZPA")]
+            elif args.scope == "zcc":
+                check_reg = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
+        except ImportError:
+            print("WARNING: zscaler_full_checks.py not found, running DLP checks only.")
+
     cl=Client(cfg["client_id"],cfg["client_secret"],cfg["vanity_domain"],cfg["cloud"])
     (con.print("[bold]Authenticating...[/]",end=" ") if con else print("  Auth...",end=" ",flush=True))
     a=cl.auth()
     if a is True: (con.print("[green]OK[/]") if con else print("OK"))
     else: print(f"FAIL: {a}"); sys.exit(1)
-    (con.print(f"\n[bold]{len(REG)} automated checks...[/]\n") if con else print(f"\n  {len(REG)} checks...\n"))
-    results=run(cl,con); report(results,cfg,con)
-    out=args.output or f"dlp_{cfg.get('org_name','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    (con.print(f"\n[bold]{len(check_reg)} automated checks ({args.scope} scope)...[/]\n") if con else print(f"\n  {len(check_reg)} checks ({args.scope} scope)...\n"))
+    # Override REG temporarily for run/report
+    orig_reg = REG
+    results=run_checks(cl, check_reg, con); report(results,cfg,con)
+    out=args.output or f"zscaler_{cfg.get('org_name','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     save(results,cfg,out)
     (con.print(f"\n[green]Report: {out}[/]\n") if con else print(f"\n  Report: {out}\n"))
 
