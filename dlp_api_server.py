@@ -1,179 +1,182 @@
 #!/usr/bin/env python3
 """
-DLP Assessment API Server
-==========================
-FastAPI wrapper around the full-auto DLP assessment engine.
-Streams real-time progress via Server-Sent Events (SSE).
-
-Install:
-    pip install fastapi uvicorn requests
+Zscaler Assessment API Server + Web GUI
+=========================================
+FastAPI server with SSE streaming and a web frontend.
 
 Run:
-    uvicorn dlp_api_server:app --host 0.0.0.0 --port 8000 --reload
+    python dlp_api_server.py
+    # Open http://localhost:8000 in your browser
 
 Endpoints:
-    POST /api/assess         — Run full assessment (SSE stream)
-    POST /api/assess/json    — Run full assessment (JSON response, no streaming)
+    GET  /                   — Web GUI
+    POST /api/assess         — Run assessment (SSE stream)
+    POST /api/assess/json    — Run assessment (JSON response)
+    POST /api/report/docx    — Generate Word doc from results
     GET  /api/health         — Health check
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, time, asyncio, uuid
+import json, asyncio, os, tempfile
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# ── Import the assessment engine ──────────────────────────────────────
-# This imports everything from the full-auto script sitting alongside
-# If you renamed the engine file, update this import
-import importlib.util, sys, os
+# ── Import the assessment engine ─────────────────────────────────────
+import importlib.util, sys
 
-ENGINE_PATH = os.path.join(os.path.dirname(__file__), "dlp_assessment_full_auto.py")
+ENGINE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dlp_assessment_full_auto.py")
 spec = importlib.util.spec_from_file_location("engine", ENGINE_PATH)
 engine = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(engine)
 
-# Pull what we need from the engine
 Client = engine.Client
 REG = engine.REG
 R = engine.R
 compute = engine.compute
 maturity = engine.maturity
 
+# Try to load platform checks
+PLATFORM_REG = []
+try:
+    CHECKS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_full_checks.py")
+    cspec = importlib.util.spec_from_file_location("full_checks", CHECKS_PATH)
+    full_checks = importlib.util.module_from_spec(cspec)
+    cspec.loader.exec_module(full_checks)
+    PLATFORM_REG = full_checks.PLATFORM_REG
+except Exception:
+    pass
 
-# ── FastAPI App ───────────────────────────────────────────────────────
+# ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Zscaler DLP Assessment API",
+    title="Zscaler Platform Assessment",
     version="3.0",
-    description="Full-auto DLP assessment engine via OneAPI. Zero manual checks.",
+    description="Full-auto assessment engine via OneAPI.",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Serve static files (web GUI)
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# ── Request / Response Models ─────────────────────────────────────────
+
+# ── Request Models ───────────────────────────────────────────────────
 
 class AssessRequest(BaseModel):
-    org_name: str
-    assessor: str
-    cloud: str = "zscloud"
-    vanity_domain: str
-    client_id: str
-    client_secret: str
+    org_name: str = "Unknown"
+    assessor: str = "Unknown"
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    scope: str = "full"
 
 
-class CheckResult(BaseModel):
-    id: str
-    section: str
-    label: str
-    status: str
-    detail: str
+# ── Routes ───────────────────────────────────────────────────────────
 
+@app.get("/")
+async def serve_gui():
+    """Serve the web GUI."""
+    index = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index):
+        return FileResponse(index)
+    return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
 
-class AssessResponse(BaseModel):
-    metadata: dict
-    score: int
-    maturity: str
-    sections: dict
-    checks: list[CheckResult]
-    critical: list[dict]
-    review: list[dict]
-
-
-# ── In-memory assessment store (for polling fallback) ─────────────────
-
-assessments: dict = {}
-
-
-# ── Health Check ──────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "engine_checks": len(REG), "version": "3.0"}
+    return {
+        "status": "ok",
+        "dlp_checks": len(REG),
+        "platform_checks": len(PLATFORM_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG),
+        "version": "3.0",
+    }
 
-
-# ── List all checks ──────────────────────────────────────────────────
 
 @app.get("/api/checks")
 async def list_checks():
-    return [{"id": id, "section": sec, "label": label} for id, sec, label, _ in REG]
+    all_checks = list(REG) + PLATFORM_REG
+    return [{"id": id, "section": sec, "label": label} for id, sec, label, _ in all_checks]
 
 
-# ── SSE Streaming Assessment ─────────────────────────────────────────
+def _get_checks(scope: str):
+    """Get the check list for the given scope."""
+    if scope == "full" or scope == "all":
+        return list(REG) + PLATFORM_REG
+    elif scope == "zia":
+        return list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
+    elif scope == "zpa":
+        return [c for c in PLATFORM_REG if c[1].startswith("ZPA")]
+    elif scope == "zcc":
+        return [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
+    return list(REG)  # dlp default
+
 
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
-    """
-    Run assessment with Server-Sent Events streaming.
-    Each check result is streamed as it completes.
-    Final event contains the full scored report.
-    
-    Usage from JS:
-        const es = new EventSource(...)  // or fetch with ReadableStream
-        // Events: "auth", "progress", "check", "complete", "error"
-    """
+    """Run assessment with SSE streaming."""
+    checks = _get_checks(req.scope)
+
     async def event_generator():
-        # Authenticate
         yield _sse("auth", {"status": "authenticating"})
 
         client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud)
-        auth_result = client.auth()
+        auth_result = await asyncio.to_thread(client.auth)
 
         if auth_result is not True:
             yield _sse("error", {"message": f"Authentication failed: {auth_result}"})
             return
 
         yield _sse("auth", {"status": "ok"})
-        yield _sse("progress", {"total": len(REG), "completed": 0, "pct": 0})
+        yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
 
-        # Run checks
         results = []
-        for i, (check_id, sec, label, fn) in enumerate(REG):
+        for i, (check_id, sec, label, fn) in enumerate(checks):
             try:
-                # Run in thread pool to not block the event loop
                 r = await asyncio.to_thread(fn, client)
             except Exception as ex:
-                r = R(R.ERROR, str(ex))
+                r = R(R.INFO, f"{label}: Could not complete check. {str(ex)[:120]}")
 
             result = {
-                "id": check_id,
-                "section": sec,
-                "label": label,
-                "status": r.status,
-                "detail": r.detail,
+                "id": check_id, "section": sec, "label": label,
+                "status": r.status, "detail": r.detail,
             }
             results.append(result)
 
             yield _sse("check", result)
             yield _sse("progress", {
-                "total": len(REG),
+                "total": len(checks),
                 "completed": i + 1,
-                "pct": round((i + 1) / len(REG) * 100),
+                "pct": round((i + 1) / len(checks) * 100),
                 "current": f"{check_id}: {label}",
             })
 
-        # Compute final report
         secs, overall = compute(results)
         report = {
             "metadata": {
-                "tool": "DLP Assessment Full Auto API",
+                "tool": "Zscaler Platform Assessment",
                 "version": "3.0",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "org": req.org_name,
                 "assessor": req.assessor,
                 "cloud": req.cloud,
-                "total_checks": len(REG),
+                "total_checks": len(checks),
+                "scope": req.scope,
             },
             "score": overall,
             "maturity": maturity(overall),
@@ -188,69 +191,37 @@ async def assess_stream(req: AssessRequest):
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
 
 
-# ── JSON (non-streaming) Assessment ──────────────────────────────────
+@app.post("/api/report/docx")
+async def generate_docx(request: Request):
+    """Generate a Word doc from assessment results."""
+    try:
+        from report_docx import generate_report
+    except ImportError:
+        raise HTTPException(status_code=500, detail="python-docx not installed. Run: pip install python-docx")
 
-@app.post("/api/assess/json", response_model=AssessResponse)
-async def assess_json(req: AssessRequest):
-    """
-    Run full assessment and return complete JSON response.
-    No streaming — waits for all checks to finish.
-    Better for programmatic/cURL usage.
-    """
-    client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud)
-    auth_result = client.auth()
+    data = await request.json()
+    results = data.get("checks", [])
+    cfg = data.get("metadata", {})
 
-    if auth_result is not True:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        tmp_path = tmp.name
 
-    results = []
-    for check_id, sec, label, fn in REG:
-        try:
-            r = await asyncio.to_thread(fn, client)
-        except Exception as ex:
-            r = R(R.ERROR, str(ex))
-        results.append({
-            "id": check_id, "section": sec, "label": label,
-            "status": r.status, "detail": r.detail,
-        })
+    generate_report(results, cfg, tmp_path, compute, maturity)
+    org = cfg.get("org", "report").replace(" ", "_")
+    return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        filename=f"zscaler_{org}_{datetime.now().strftime('%Y%m%d')}.docx")
 
-    secs, overall = compute(results)
-    return {
-        "metadata": {
-            "tool": "DLP Assessment Full Auto API",
-            "version": "3.0",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "org": req.org_name,
-            "assessor": req.assessor,
-            "cloud": req.cloud,
-            "total_checks": len(REG),
-        },
-        "score": overall,
-        "maturity": maturity(overall),
-        "sections": secs,
-        "checks": [CheckResult(**r) for r in results],
-        "critical": [r for r in results if r["status"] == "FAIL"],
-        "review": [r for r in results if r["status"] == "REVIEW"],
-    }
-
-
-# ── SSE Helper ────────────────────────────────────────────────────────
 
 def _sse(event: str, data: dict) -> str:
-    """Format a Server-Sent Event."""
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
-# ── Run directly ──────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     import uvicorn
+    print("\n  Zscaler Platform Assessment")
+    print("  Open http://localhost:8000 in your browser\n")
     uvicorn.run(app, host="0.0.0.0", port=8000)
