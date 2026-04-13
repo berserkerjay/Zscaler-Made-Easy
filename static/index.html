@@ -2051,8 +2051,9 @@ function renderBypassReport(data) {
     <div style="margin-top:1rem;padding:0.75rem;background:rgba(59,130,246,0.04);border:1px solid rgba(59,130,246,0.3);border-radius:8px;">
       <h3 style="margin:0 0 0.4rem 0;font-size:1rem;">📋 Aggregated Bypass Universe</h3>
       <p style="color:var(--dim);font-size:0.8rem;margin-bottom:0.6rem;">Every URL, cloud app, category, and IP exempted anywhere in the tenant — deduplicated and traced back to the rule that exempted it. URL categories are expanded into their constituent URLs.</p>
+      ${aggBlock('🎯 ALL URLs Bypassed (explicit + inherited + ZCC domain bypass)', 'all_urls_bypassed', 'URL')}
       ${aggBlock('All Bypassed URL Categories', 'url_categories', 'URL Category')}
-      ${aggBlock('All Explicitly Bypassed URLs', 'urls', 'URL')}
+      ${aggBlock('Explicitly-Listed URLs (from rule.urls / destinations / hostnames)', 'urls', 'URL')}
       ${aggBlock('🔗 Inherited URLs (from URL Categories)', 'inherited_urls', 'URL (via category)')}
       ${aggBlock('All Bypassed Cloud Applications', 'cloud_applications', 'Cloud App')}
       ${aggBlock('All Bypassed Cloud App Categories', 'cloud_app_categories', 'Cloud App Category')}

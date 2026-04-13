@@ -119,11 +119,28 @@ def _normalize_rule(r: Dict[str, Any], source: str) -> Dict[str, Any]:
         "scope": _scope_summary(r),
         # FULL lists — no truncation. Auditors need to see every item
         # that is being exempted from inspection.
+        #
+        # URL-ish fields come under many names across rule types:
+        #   URL filter rules: urlCategories + urls
+        #   SSL inspection:   destinations + urls + urlCategories
+        #   Firewall rules:   destCountries + destIpGroups (no URL typically)
+        #   DLP rules:        urlCategories + urls
+        # We sweep all known URL-ish fields into `urls` for a unified view.
         "url_categories":         _extract_names(r.get("urlCategories")),
-        "urls":                   _extract_names(r.get("urls")),
-        "cloud_applications":     _extract_names(r.get("cloudApplications")),
+        "urls":                   _extract_names(r.get("urls"))
+                                   + _extract_names(r.get("destinations"))
+                                   + _extract_names(r.get("destinationUrls"))
+                                   + _extract_names(r.get("destinationHostNames"))
+                                   + _extract_names(r.get("hostnames"))
+                                   + _extract_names(r.get("domains"))
+                                   + _extract_names(r.get("fqdns"))
+                                   + _extract_names(r.get("exemptedUrls")),
+        "cloud_applications":     _extract_names(r.get("cloudApplications"))
+                                   + _extract_names(r.get("applications")),
         "cloud_app_categories":   _extract_names(r.get("cloudApplicationCategories")),
-        "dest_ips":               _extract_names(r.get("destIps")),
+        "dest_ips":               _extract_names(r.get("destIps"))
+                                   + _extract_names(r.get("destinationIps"))
+                                   + _extract_names(r.get("destCidrs")),
         "dest_ip_groups":         _extract_names(r.get("destIpGroups")),
         "dest_ip_categories":     _extract_names(r.get("destIpCategories")),
         "file_types":             _extract_names(r.get("fileTypes")),
@@ -538,7 +555,21 @@ def _aggregate_bypasses(sections: Dict[str, Any], url_cat_lookup: Optional[Dict[
         items = sorted(bucket.values(), key=lambda x: (-x["count"], x["value"]))
         return {"count": len(items), "items": items}
 
+    # ── Build a consolidated "All URLs Bypassed" bucket — this is what
+    # most auditors actually want: one flat list combining every URL
+    # that is exempted, whether explicit (in a rule's urls field),
+    # inherited via a URL category, or bypassed at the ZCC layer.
+    all_urls = _mk()
+    def _merge_into_all(bucket_src, origin_tag):
+        for value, entry in bucket_src.items():
+            for rule_ctx in entry.get("rules") or []:
+                _push(all_urls, value, {**rule_ctx, "origin": origin_tag})
+    _merge_into_all(urls,           "explicit (rule)")
+    _merge_into_all(inherited_urls, "inherited (category)")
+    _merge_into_all(zcc_domains,    "zcc (domain bypass)")
+
     return {
+        "all_urls_bypassed":   _as_list(all_urls),          # ← consolidated URL list
         "url_categories":      _as_list(url_categories),
         "urls":                _as_list(urls),
         "inherited_urls":      _as_list(inherited_urls),   # URLs pulled in via a category reference
@@ -861,9 +892,10 @@ def to_markdown(report: Dict[str, Any]) -> str:
             out.append(f"| {idx} | `{str(it.get('value',''))[:120]}` | {rules_str} |")
         out.append("")
 
+    _agg_block("ALL URLs Bypassed (explicit + inherited + ZCC domain bypass)", "all_urls_bypassed", "URL")
     _agg_block("All Bypassed URL Categories", "url_categories", "URL Category")
-    _agg_block("All Explicitly Bypassed URLs", "urls", "URL")
-    _agg_block("All INHERITED URLs (from URL categories)", "inherited_urls", "URL (via category)")
+    _agg_block("Explicitly-Listed URLs (from rule.urls / destinations / hostnames)", "urls", "URL")
+    _agg_block("INHERITED URLs (from URL Categories)", "inherited_urls", "URL (via category)")
     _agg_block("All Bypassed Cloud Applications", "cloud_applications", "Cloud App")
     _agg_block("All Bypassed Cloud App Categories", "cloud_app_categories", "Cloud App Category")
     _agg_block("All Bypassed Destination IPs", "dest_ips", "IP / CIDR")
