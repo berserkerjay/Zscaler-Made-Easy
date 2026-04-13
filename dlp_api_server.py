@@ -263,6 +263,20 @@ async def compliance_summary(request: Request):
     return get_framework_summary(results)
 
 
+@app.post("/api/compliance/drilldown")
+async def compliance_drilldown(request: Request):
+    """Return per-control drilldown showing met/partially met/not met with evidence."""
+    try:
+        from compliance_mapping import get_control_drilldown
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
+    data = await request.json()
+    results = data.get("checks", [])
+    if not results:
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    return get_control_drilldown(results)
+
+
 def _get_checks(scope: str = "dlp", scopes: list = None):
     """Get the check list for the given scope or list of scopes."""
     if scopes:

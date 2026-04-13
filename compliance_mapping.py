@@ -302,3 +302,111 @@ def get_framework_summary(results: list) -> dict:
 def list_supported_frameworks() -> list:
     """Return list of supported compliance frameworks."""
     return [{"key": k, "name": v} for k, v in FRAMEWORK_DESCRIPTIONS.items()]
+
+
+def get_control_drilldown(results: list) -> dict:
+    """
+    For every framework, build a per-control breakdown showing:
+      - Status: Met / Partially Met / Not Met / Not Tested
+      - Evidence: which checks back this control and their results
+
+    Returns:
+      {
+        "NIST_800_53": {
+          "framework_name": "...",
+          "controls": [
+            {
+              "control": "SC-8 (Transmission Confidentiality)",
+              "status": "Met" | "Partially Met" | "Not Met" | "Not Tested",
+              "evidence": [
+                {"check_id": "4.1", "label": "...", "status": "PASS", "detail": "..."},
+                ...
+              ],
+              "passing_count": N,
+              "failing_count": N,
+              "review_count": N,
+            },
+            ...
+          ]
+        },
+        ...
+      }
+    """
+    # Build reverse map: framework -> control -> [checks that address it]
+    framework_controls = {}  # {fw: {control: [check_results]}}
+
+    for r in results:
+        cid = r.get("id", "")
+        mapping = get_compliance_for_check(cid)
+        for fw, controls in mapping.items():
+            fw_dict = framework_controls.setdefault(fw, {})
+            for ctrl in controls:
+                fw_dict.setdefault(ctrl, []).append(r)
+
+    out = {}
+    for fw, ctrl_map in framework_controls.items():
+        ctrl_list = []
+        for ctrl, evidence in sorted(ctrl_map.items()):
+            statuses = [e.get("status", "") for e in evidence]
+            passing = sum(1 for s in statuses if s == "PASS")
+            failing = sum(1 for s in statuses if s == "FAIL")
+            review = sum(1 for s in statuses if s == "REVIEW")
+            info = sum(1 for s in statuses if s in ("INFO", "ERROR"))
+            scored = passing + failing + review
+
+            # Determine control status
+            if scored == 0:
+                status = "Not Tested"  # only INFO results
+            elif failing == 0 and review == 0 and passing > 0:
+                status = "Met"
+            elif failing > 0 and passing == 0:
+                status = "Not Met"
+            elif failing > scored * 0.5:
+                status = "Not Met"
+            else:
+                status = "Partially Met"
+
+            # Sort evidence: FAIL first, then REVIEW, then PASS, then INFO
+            order = {"FAIL": 0, "REVIEW": 1, "PASS": 2, "INFO": 3, "ERROR": 3}
+            evidence_sorted = sorted(evidence, key=lambda e: (order.get(e.get("status", ""), 4), e.get("id", "")))
+
+            ctrl_list.append({
+                "control": ctrl,
+                "status": status,
+                "evidence": [
+                    {
+                        "check_id": e.get("id", ""),
+                        "label": e.get("label", ""),
+                        "status": e.get("status", ""),
+                        "detail": e.get("detail", "")[:300],
+                    }
+                    for e in evidence_sorted
+                ],
+                "passing_count": passing,
+                "failing_count": failing,
+                "review_count": review,
+                "info_count": info,
+                "total_evidence": len(evidence),
+            })
+
+        # Sort controls: Not Met first, Partially Met, Met, Not Tested
+        st_order = {"Not Met": 0, "Partially Met": 1, "Met": 2, "Not Tested": 3}
+        ctrl_list.sort(key=lambda c: (st_order.get(c["status"], 4), c["control"]))
+
+        # Framework-level summary
+        met = sum(1 for c in ctrl_list if c["status"] == "Met")
+        partial = sum(1 for c in ctrl_list if c["status"] == "Partially Met")
+        not_met = sum(1 for c in ctrl_list if c["status"] == "Not Met")
+        not_tested = sum(1 for c in ctrl_list if c["status"] == "Not Tested")
+
+        out[fw] = {
+            "framework_name": FRAMEWORK_DESCRIPTIONS.get(fw, fw),
+            "total_controls": len(ctrl_list),
+            "met": met,
+            "partially_met": partial,
+            "not_met": not_met,
+            "not_tested": not_tested,
+            "controls": ctrl_list,
+        }
+
+    return out
