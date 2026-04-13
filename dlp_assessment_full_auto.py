@@ -60,12 +60,17 @@ _ZCC_MAP = {
 }
 
 def _resolve_ep(ep, customer_id=""):
-    """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path."""
+    """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path.
+
+    Prefix 'raw:' to send the path verbatim (no /zia/api/v1/ rewrite) —
+    useful for probing alternative OneAPI path conventions.
+    """
+    if ep.startswith("raw:"):
+        return ep[4:]  # bypass resolver
     if ep.startswith("/zia/"):
         return "/zia/api/v1/" + ep[5:]
     if ep.startswith("/zcc/"):
         suffix = ep[5:]
-        # Map legacy ZCC paths to OneAPI function-style endpoints
         mapped = _ZCC_MAP.get(suffix, suffix)
         return "/zcc/papi/public/v1/" + mapped
     if ep.startswith("/zpa/"):

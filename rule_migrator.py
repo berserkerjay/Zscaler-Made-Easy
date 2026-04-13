@@ -427,9 +427,12 @@ def assess_current_status(client) -> Dict[str, Any]:
         "/zia/entitlement/features",
     }
 
-    # Try multiple endpoints known to expose this setting
+    # Try multiple endpoints known to expose this setting. Each candidate
+    # is tried through the standard /zia/api/v1/ resolver. For tricky
+    # paths we also include 'raw:' forms that bypass the resolver so we
+    # can try alternative OneAPI path conventions verbatim.
     candidate_endpoints = [
-        # Mode-bearing endpoints first — these hold the actual selector
+        # Mode-bearing endpoints — standard resolution (/zia/api/v1/...)
         "/zia/dlpAdvancedSettings",
         "/zia/advancedSettings",
         "/zia/security/advanced",
@@ -439,6 +442,18 @@ def assess_current_status(client) -> Dict[str, Any]:
         "/zia/dlp/advancedSettings",
         "/zia/dlp/settings",
         "/zia/configuration/advanced",
+        # Raw-path variants for DLP Advanced Settings — some OneAPI
+        # surfaces don't follow the /zia/api/v1/ pattern or use a
+        # different casing / prefix.
+        "raw:/zia/api/v1/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlp/advancedSettings",
+        "raw:/zia/api/v1/dlp-advanced-settings",
+        "raw:/zia/api/v1/admin/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlpSettings/advanced",
+        "raw:/api/v1/dlpAdvancedSettings",          # pre-OneAPI naming
+        "raw:/zia/v1/dlpAdvancedSettings",           # drop /api/
+        "raw:/zia/dlp/v1/advancedSettings",          # alt ordering
+        "raw:/dlp/api/v1/advancedSettings",          # alt namespace
         # "Inline DLP Rule Evaluation" surface candidates
         "/zia/inlineDlpConfig",
         "/zia/inlineDlpSettings",
@@ -869,15 +884,24 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
     ]
     # Write path probes MODE-BEARING endpoints only — NOT the feature-flag
-    # capability endpoints. Writing DLP_RULE_EVALUATE_ALL=True to
-    # /zia/featureFlags would not change the active mode (and is likely
-    # read-only anyway).
+    # capability endpoints (writing DLP_RULE_EVALUATE_ALL=True to
+    # /zia/featureFlags would not change the active mode).
     candidate_endpoints = [
         "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
         "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
         "/zia/advancedSettings/dlp", "/zia/dlpSettings",
         "/zia/dlp/advancedSettings", "/zia/dlp/settings",
         "/zia/configuration/advanced",
+        # Raw-path variants bypass the /zia/api/v1/ resolver
+        "raw:/zia/api/v1/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlp/advancedSettings",
+        "raw:/zia/api/v1/dlp-advanced-settings",
+        "raw:/zia/api/v1/admin/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlpSettings/advanced",
+        "raw:/api/v1/dlpAdvancedSettings",
+        "raw:/zia/v1/dlpAdvancedSettings",
+        "raw:/zia/dlp/v1/advancedSettings",
+        "raw:/dlp/api/v1/advancedSettings",
         "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
         "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
     ]
