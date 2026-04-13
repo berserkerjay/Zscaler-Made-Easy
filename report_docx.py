@@ -66,6 +66,24 @@ STATUS_LABELS = {
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+def _safe_style(doc, preferred_names):
+    """Return the first style name from preferred_names that exists in doc, else 'Table Grid' (always present)."""
+    available = {s.name for s in doc.styles}
+    for name in preferred_names:
+        if name in available:
+            return name
+    return "Table Grid" if "Table Grid" in available else None
+
+def _style_header_row(row, bg_hex="236BF5", fg_color=None):
+    """Apply Zscaler-blue header styling to a table row."""
+    for cell in row.cells:
+        _set_cell_shading(cell, bg_hex)
+        for p in cell.paragraphs:
+            for run in p.runs:
+                run.bold = True
+                if fg_color:
+                    run.font.color.rgb = fg_color
+
 def _set_cell_shading(cell, color_hex):
     """Set background color on a table cell."""
     shading = cell._element.get_or_add_tcPr()
@@ -200,7 +218,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     )
 
     mat_table = doc.add_table(rows=1, cols=3)
-    mat_table.style = "Light Grid Accent 1"
+    mat_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
     mat_headers = ["Score Range", "Maturity Level", "Description"]
     for i, h in enumerate(mat_headers):
         cell = mat_table.rows[0].cells[i]
@@ -255,7 +273,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     # ── Status Definitions ────────────────────────────────────────
     doc.add_heading("Finding Status Definitions", level=2)
     sd_table = doc.add_table(rows=1, cols=2)
-    sd_table.style = "Light Grid Accent 1"
+    sd_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
     sd_headers = ["Status", "What it Means"]
     for i, h in enumerate(sd_headers):
         cell = sd_table.rows[0].cells[i]
@@ -290,7 +308,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     doc.add_heading("Scorecard by Section", level=2)
 
     score_table = doc.add_table(rows=1, cols=6)
-    score_table.style = "Light Grid Accent 1"
+    score_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
     headers = ["Section", "Score", "Configured", "Action Req.", "Review", "N/A"]
     for i, h in enumerate(headers):
         cell = score_table.rows[0].cells[i]
@@ -403,7 +421,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         doc.add_paragraph()
 
         nc_table = doc.add_table(rows=1, cols=3)
-        nc_table.style = "Light Grid Accent 1"
+        nc_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
         nc_table.rows[0].cells[0].text = "Check"
         nc_table.rows[0].cells[1].text = "Feature"
         nc_table.rows[0].cells[2].text = "Detail"
