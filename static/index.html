@@ -1954,6 +1954,31 @@ function renderBypassReport(data) {
   }
 
   const zcc = (data.sections || {}).zcc || {};
+  // ZCC endpoint probes — so users can see which ZCC endpoints returned data
+  let zccProbesHtml = '';
+  if (zcc.endpoints_probed && zcc.endpoints_probed.length) {
+    const probeRows = zcc.endpoints_probed.map(p => {
+      const statusColor = p.status === 200 ? 'var(--pass)' : (p.status === 0 ? 'var(--fail)' : 'var(--warn)');
+      return `<tr>
+        <td style="padding:0.25rem 0.5rem;font-family:monospace;">${escapeHtml(p.endpoint)}</td>
+        <td style="padding:0.25rem 0.5rem;text-align:center;color:${statusColor};font-weight:600;">${p.status}</td>
+        <td style="padding:0.25rem 0.5rem;text-align:right;">${p.item_count != null ? p.item_count + ' profile(s)' : (p.error ? 'Error: ' + escapeHtml(p.error) : '—')}</td>
+      </tr>`;
+    }).join('');
+    zccProbesHtml = `<details style="margin-bottom:0.4rem;background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:6px;">
+      <summary style="padding:0.5rem 0.8rem;cursor:pointer;font-size:0.82rem;color:var(--dim);">ZCC endpoint probes (${zcc.endpoints_probed.length})</summary>
+      <div style="padding:0 0.5rem 0.5rem;">
+        <table style="width:100%;font-size:0.78rem;">
+          <thead><tr style="background:rgba(59,130,246,0.08);">
+            <th style="padding:0.3rem 0.5rem;text-align:left;">Endpoint</th>
+            <th style="padding:0.3rem 0.5rem;text-align:center;">Status</th>
+            <th style="padding:0.3rem 0.5rem;text-align:right;">Response</th>
+          </tr></thead>
+          <tbody>${probeRows}</tbody>
+        </table>
+      </div>
+    </details>`;
+  }
   const zccSections = [
     ['apps', 'ZCC App Bypass', ['profile', 'name', 'path', 'os']],
     ['processes', 'ZCC Process Bypass', ['profile', 'name']],
@@ -1961,7 +1986,7 @@ function renderBypassReport(data) {
     ['domains', 'ZCC Domain Bypass', ['profile', 'value']],
     ['trusted_networks', 'ZCC Trusted Networks', ['profile', 'value']],
   ];
-  let zccHtml = '';
+  let zccHtml = zccProbesHtml;
   for (const [key, label, cols] of zccSections) {
     const sec = zcc[key] || {};
     zccHtml += `
@@ -1987,7 +2012,89 @@ function renderBypassReport(data) {
       </ul>
     </div>`;
 
-  document.getElementById('bypassResult').innerHTML = top + diag + risky + rulesHtml + exmHtml + zccHtml + guidance;
+  // ── Aggregated bypass universe (the full deduplicated lists) ──
+  const agg = data.aggregated || {};
+  const aggBlock = (title, key, valueLabel) => {
+    const b = agg[key] || {};
+    const items = b.items || [];
+    if (!items.length) {
+      return `<details style="margin-bottom:0.4rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.55rem 0.8rem;cursor:pointer;">${escapeHtml(title)} <span style="color:var(--dim);font-weight:400;">(0)</span></summary>
+        <div style="padding:0.5rem 0.8rem;color:var(--dim);font-size:0.82rem;">No items.</div>
+      </details>`;
+    }
+    const rows = items.map((it, i) => {
+      const refs = (it.rules || []).map(r => `<span title="${escapeHtml(r.name || '')}" style="font-size:0.72rem;background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;margin-right:0.2rem;">${escapeHtml(r.source || '')}#${r.id != null ? r.id : '?'}</span>`).join('');
+      return `<tr>
+        <td style="padding:0.25rem 0.5rem;color:var(--dim);text-align:right;">${i+1}</td>
+        <td style="padding:0.25rem 0.5rem;font-family:monospace;word-break:break-all;">${escapeHtml(String(it.value || ''))}</td>
+        <td style="padding:0.25rem 0.5rem;text-align:right;color:var(--dim);">${it.count}</td>
+        <td style="padding:0.25rem 0.5rem;">${refs}</td>
+      </tr>`;
+    }).join('');
+    return `<details style="margin-bottom:0.4rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+      <summary style="padding:0.55rem 0.8rem;cursor:pointer;font-weight:600;">${escapeHtml(title)} <span style="color:var(--accent);font-weight:700;">(${items.length})</span></summary>
+      <div style="padding:0.3rem 0.5rem;max-height:420px;overflow-y:auto;">
+        <table style="width:100%;font-size:0.78rem;border-collapse:collapse;">
+          <thead><tr style="background:rgba(59,130,246,0.08);position:sticky;top:0;">
+            <th style="padding:0.3rem 0.5rem;text-align:right;">#</th>
+            <th style="padding:0.3rem 0.5rem;text-align:left;">${escapeHtml(valueLabel)}</th>
+            <th style="padding:0.3rem 0.5rem;text-align:right;">Refs</th>
+            <th style="padding:0.3rem 0.5rem;text-align:left;">Referenced By</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </details>`;
+  };
+  const aggHtml = `
+    <div style="margin-top:1rem;padding:0.75rem;background:rgba(59,130,246,0.04);border:1px solid rgba(59,130,246,0.3);border-radius:8px;">
+      <h3 style="margin:0 0 0.4rem 0;font-size:1rem;">📋 Aggregated Bypass Universe</h3>
+      <p style="color:var(--dim);font-size:0.8rem;margin-bottom:0.6rem;">Every URL, cloud app, category, and IP exempted anywhere in the tenant — deduplicated and traced back to the rule that exempted it. URL categories are expanded into their constituent URLs.</p>
+      ${aggBlock('All Bypassed URL Categories', 'url_categories', 'URL Category')}
+      ${aggBlock('All Explicitly Bypassed URLs', 'urls', 'URL')}
+      ${aggBlock('🔗 Inherited URLs (from URL Categories)', 'inherited_urls', 'URL (via category)')}
+      ${aggBlock('All Bypassed Cloud Applications', 'cloud_applications', 'Cloud App')}
+      ${aggBlock('All Bypassed Cloud App Categories', 'cloud_app_categories', 'Cloud App Category')}
+      ${aggBlock('All Bypassed Destination IPs', 'dest_ips', 'IP / CIDR')}
+      ${aggBlock('All Bypassed Destination IP Groups', 'dest_ip_groups', 'IP Group')}
+      ${aggBlock('ZCC · Bypassed Apps', 'zcc_apps', 'App')}
+      ${aggBlock('ZCC · Bypassed Processes', 'zcc_processes', 'Process')}
+      ${aggBlock('ZCC · Bypassed IPs', 'zcc_ips', 'IP / CIDR')}
+      ${aggBlock('ZCC · Bypassed Domains', 'zcc_domains', 'Domain')}
+      ${aggBlock('ZCC · Trusted Networks', 'zcc_trusted_networks', 'Network')}
+    </div>`;
+
+  // Category expansion detail — show which URLs each category contributes
+  let catHtml = '';
+  const cats = (agg.category_expansion || []);
+  if (cats.length) {
+    const catRows = cats.map(c => {
+      const urls = (c.urls || []).concat(c.db_urls || []);
+      const urlChips = urls.slice(0, 50).map(u => `<code style="font-size:0.72rem;background:rgba(59,130,246,0.08);padding:0.1rem 0.35rem;border-radius:3px;margin:0.1rem;display:inline-block;word-break:break-all;">${escapeHtml(u)}</code>`).join(' ');
+      const more = urls.length > 50 ? `<div style="color:var(--dim);font-size:0.75rem;margin-top:0.3rem;">...and ${urls.length - 50} more (see export for full list)</div>` : '';
+      const note = c.note ? `<div style="color:var(--warn);font-size:0.78rem;margin-top:0.3rem;">${escapeHtml(c.note)}</div>` : '';
+      const rule = c.referenced_by_rule || {};
+      return `<details style="margin-bottom:0.3rem;background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:6px;">
+        <summary style="padding:0.45rem 0.7rem;cursor:pointer;font-size:0.85rem;">
+          <strong>${escapeHtml(c.category || '?')}</strong>
+          <span style="color:var(--dim);font-size:0.72rem;">· ${escapeHtml(c.type || '?')}${urls.length ? ' · ' + urls.length + ' URLs' : ''}</span>
+          <span style="color:var(--accent);font-size:0.72rem;margin-left:0.4rem;">→ ${escapeHtml(rule.source || '?')}#${rule.id != null ? rule.id : '?'} ${escapeHtml(rule.name || '?')}</span>
+        </summary>
+        <div style="padding:0.5rem 0.8rem;">
+          ${note}${urlChips || '<div style="color:var(--dim);font-size:0.8rem;">No enumerable URLs.</div>'}${more}
+        </div>
+      </details>`;
+    }).join('');
+    catHtml = `
+      <div style="margin-top:0.75rem;padding:0.75rem;background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:8px;">
+        <h3 style="margin:0 0 0.4rem 0;font-size:0.95rem;">🗂 URL Category Expansion Detail</h3>
+        <p style="color:var(--dim);font-size:0.78rem;margin-bottom:0.5rem;">What each referenced category actually contributes to the effective bypass list.</p>
+        ${catRows}
+      </div>`;
+  }
+
+  document.getElementById('bypassResult').innerHTML = top + diag + risky + rulesHtml + exmHtml + zccHtml + aggHtml + catHtml + guidance;
 }
 
 
