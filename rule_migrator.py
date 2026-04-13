@@ -540,20 +540,44 @@ def assess_current_status(client) -> Dict[str, Any]:
                             break
                 if match_key is not None:
                     break
-        # Heuristic fallback: any bool OR enum string that looks like
-        # eval-all / rule-eval
+        # Heuristic fallback — tighter than before. The key MUST
+        # reference DLP or rule evaluation AND NOT be about SSL/URL
+        # bypass evaluation (different feature sharing the word
+        # 'evaluate'). Common false positive on /zia/advancedSettings:
+        # enableEvaluatePolicyOnGlobalSSLBypass — that's SSL bypass,
+        # not DLP rule evaluation.
+        HEURISTIC_NEGATIVE_TOKENS = (
+            "sslbypass", "urlbypass", "firewall", "auth", "sniff",
+            "http2", "tunnel", "domain", "ipv6", "office365",
+            "session", "ui", "surrogate", "admin",
+        )
+        HEURISTIC_REQUIRED_TOKENS = ("dlp", "rule")  # must contain at least one
+
+        def _is_dlp_rule_eval_key(k: str) -> bool:
+            kn = k.lower().replace("_", "").replace("-", "")
+            # Must reference DLP or rule
+            if not any(t in kn for t in HEURISTIC_REQUIRED_TOKENS):
+                return False
+            # Must reference evaluation / eval-all
+            if not ("evaluat" in kn or "firstmatch" in kn or "ruleorder" in kn):
+                return False
+            # Must NOT reference an unrelated feature (SSL bypass etc)
+            if any(t in kn for t in HEURISTIC_NEGATIVE_TOKENS):
+                return False
+            return True
+
         if match_key is None:
             for k, v in data.items():
-                kl = k.lower()
-                if "evaluat" in kl or "ruleeval" in kl.replace("_", ""):
-                    if isinstance(v, bool):
+                if not _is_dlp_rule_eval_key(k):
+                    continue
+                if isinstance(v, bool):
+                    match_key = k; match_value = v
+                    break
+                if isinstance(v, str):
+                    vl = v.lower()
+                    if "all" in vl or "order" in vl or "match" in vl:
                         match_key = k; match_value = v
                         break
-                    if isinstance(v, str):
-                        vl = v.lower()
-                        if "all" in vl or "order" in vl or "match" in vl:
-                            match_key = k; match_value = v
-                            break
 
         if match_key is None:
             continue  # nothing matched on this endpoint
