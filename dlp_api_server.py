@@ -128,9 +128,115 @@ async def health():
 
 
 @app.get("/api/checks")
-async def list_checks():
-    all_checks = list(REG) + PLATFORM_REG + GENAI_REG
-    return [{"id": id, "section": sec, "label": label} for id, sec, label, _ in all_checks]
+async def list_checks(scope: Optional[str] = None):
+    """List all check IDs, sections, and labels. Optional scope filter: dlp, zia, zpa, zcc, genai."""
+    if scope == "dlp":
+        all_checks = list(REG)
+    elif scope == "zia":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
+    elif scope == "zpa":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZPA")]
+    elif scope == "zcc":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
+    elif scope == "genai":
+        all_checks = list(GENAI_REG)
+    else:
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG
+
+    # Try to enrich with compliance mappings
+    try:
+        from compliance_mapping import get_compliance_for_check
+        return [
+            {
+                "id": id,
+                "section": sec,
+                "label": label,
+                "compliance": get_compliance_for_check(id),
+            }
+            for id, sec, label, _ in all_checks
+        ]
+    except Exception:
+        return [{"id": id, "section": sec, "label": label} for id, sec, label, _ in all_checks]
+
+
+@app.get("/api/checks/export")
+async def export_checks(format: str = "csv", scope: Optional[str] = None):
+    """Export the full check catalog as CSV, JSON, or Markdown."""
+    if scope == "dlp":
+        all_checks = list(REG)
+    elif scope == "zia":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
+    elif scope == "zpa":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZPA")]
+    elif scope == "zcc":
+        all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
+    elif scope == "genai":
+        all_checks = list(GENAI_REG)
+    else:
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG
+
+    try:
+        from compliance_mapping import get_compliance_for_check
+    except Exception:
+        get_compliance_for_check = lambda x: {}
+
+    suffix = scope or "all"
+    fname_base = f"zscaler_checks_{suffix}_{datetime.now().strftime('%Y%m%d')}"
+
+    if format == "json":
+        data = [
+            {
+                "id": id, "section": sec, "label": label,
+                "compliance": get_compliance_for_check(id),
+            }
+            for id, sec, label, _ in all_checks
+        ]
+        from fastapi.responses import Response
+        return Response(
+            content=json.dumps(data, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{fname_base}.json"'},
+        )
+    elif format == "md":
+        lines = [f"# Zscaler Assessment Checks ({suffix})\n",
+                 f"Total: {len(all_checks)} checks\n",
+                 f"Generated: {datetime.now().strftime('%Y-%m-%d')}\n",
+                 "\n| Check ID | Section | Description | Frameworks |",
+                 "|----------|---------|-------------|------------|"]
+        for id, sec, label, _ in all_checks:
+            comp = get_compliance_for_check(id)
+            fw_list = ", ".join(sorted(comp.keys())) if comp else ""
+            lines.append(f"| {id} | {sec} | {label} | {fw_list} |")
+        from fastapi.responses import Response
+        return Response(
+            content="\n".join(lines),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{fname_base}.md"'},
+        )
+    else:  # CSV (default)
+        import csv, io
+        buf = io.StringIO()
+        # Determine all framework keys
+        fw_keys = []
+        try:
+            from compliance_mapping import FRAMEWORK_DESCRIPTIONS
+            fw_keys = sorted(FRAMEWORK_DESCRIPTIONS.keys())
+        except Exception:
+            pass
+        writer = csv.writer(buf)
+        writer.writerow(["Check ID", "Section", "Description"] + fw_keys)
+        for id, sec, label, _ in all_checks:
+            comp = get_compliance_for_check(id)
+            row = [id, sec, label]
+            for fw in fw_keys:
+                row.append("; ".join(comp.get(fw, [])))
+            writer.writerow(row)
+        from fastapi.responses import Response
+        return Response(
+            content=buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{fname_base}.csv"'},
+        )
 
 
 @app.get("/api/frameworks")

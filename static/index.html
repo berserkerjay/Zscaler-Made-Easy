@@ -303,8 +303,18 @@
 
   <!-- Compliance Preview -->
   <div class="card">
-    <h2>Compliance Coverage</h2>
-    <p style="font-size:0.88rem;color:var(--dim);margin-bottom:1rem;">This tool maps every check to controls in 8 major regulatory frameworks. After running an assessment, you'll see a per-framework alignment summary in your results and Word report.</p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;">
+      <div>
+        <h2 style="margin-bottom:0.25rem;">Compliance Coverage</h2>
+        <p style="font-size:0.88rem;color:var(--dim);">Every check maps to controls in 8 major regulatory frameworks. After running an assessment, you'll see a per-framework alignment summary.</p>
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="exportChecks('all','csv')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">📄 Export All (CSV)</button>
+        <button class="btn btn-ghost" onclick="exportChecks('dlp','csv')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">DLP CSV</button>
+        <button class="btn btn-ghost" onclick="exportChecks('all','md')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">Markdown</button>
+        <button class="btn btn-ghost" onclick="exportChecks('all','json')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">JSON</button>
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
   </div>
 
@@ -510,6 +520,11 @@ fetch('/api/health').then(r => r.json()).then(d => {
 }).catch(() => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
+
+function exportChecks(scope, format) {
+  const url = `/api/checks/export?scope=${scope}&format=${format}`;
+  window.open(url, '_blank');
+}
 
 // Load supported compliance frameworks on page load
 fetch('/api/frameworks').then(r => r.json()).then(frameworks => {
