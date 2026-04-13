@@ -154,6 +154,104 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     summary2.add_run(f"Not configured/N/A: ").bold = True
     summary2.add_run(f"{counts['INFO']} checks.")
 
+    # ── Maturity Model Explanation ────────────────────────────────
+    doc.add_heading("Maturity Model & Scoring Methodology", level=2)
+    doc.add_paragraph(
+        "This assessment uses a five-tier maturity model adapted from the Zscaler "
+        "Zero Trust Maturity Framework. The overall score is calculated as the "
+        "percentage of evaluable checks that pass, where evaluable checks are those "
+        "where the corresponding feature is licensed and accessible via API. Features "
+        "marked 'Not Configured / N/A' are excluded from scoring, since they represent "
+        "capabilities not currently in use rather than failures."
+    )
+
+    mat_table = doc.add_table(rows=1, cols=3)
+    mat_table.style = "Light Grid Accent 1"
+    mat_headers = ["Score Range", "Maturity Level", "Description"]
+    for i, h in enumerate(mat_headers):
+        cell = mat_table.rows[0].cells[i]
+        cell.text = h
+        cell.paragraphs[0].runs[0].bold = True
+
+    mat_data = [
+        ("0 – 24%", "Ad Hoc",
+         "No formal program. Configurations are inconsistent or missing entirely. "
+         "Significant exposure to data loss, threats, and compliance gaps. Immediate "
+         "remediation needed for foundational security controls."),
+        ("25 – 49%", "Initial",
+         "Basic security controls in place but not standardized across the organization. "
+         "Coverage is partial; key features (DLP, SSL inspection, MFA enforcement) may "
+         "be missing or only applied to subsets of users."),
+        ("50 – 74%", "Developing",
+         "Most foundational controls are configured. Policy framework exists but "
+         "consistency, scoping, and tuning need work. Some advanced features in pilot "
+         "or limited rollout."),
+        ("75 – 89%", "Managed",
+         "Strong configuration baseline aligned with Zscaler best practices. Most "
+         "policies properly scoped to users/groups. Comprehensive logging in place. "
+         "Minor gaps remain in advanced features."),
+        ("90 – 100%", "Optimized",
+         "Comprehensive, well-tuned configuration matching Zscaler leading practices. "
+         "Full coverage across all licensed services. Continuous monitoring, automated "
+         "incident response, and integration with SIEM/SOAR. Mature zero trust posture."),
+    ]
+    current_band = mat
+    for score_range, level, desc in mat_data:
+        row = mat_table.add_row()
+        row.cells[0].text = score_range
+        row.cells[1].text = level
+        row.cells[2].text = desc
+        # Highlight the current maturity level
+        if level == current_band:
+            for cell in row.cells:
+                cell.paragraphs[0].runs[0].bold = True
+
+    doc.add_paragraph()
+    you_are = doc.add_paragraph()
+    you_are.add_run("Your organization is currently rated: ").italic = True
+    your_run = you_are.add_run(f"{mat} ({overall}%)")
+    your_run.bold = True
+    if overall >= 75:
+        your_run.font.color.rgb = COLORS["PASS"]
+    elif overall >= 50:
+        your_run.font.color.rgb = COLORS["REVIEW"]
+    else:
+        your_run.font.color.rgb = COLORS["FAIL"]
+
+    # ── Status Definitions ────────────────────────────────────────
+    doc.add_heading("Finding Status Definitions", level=2)
+    sd_table = doc.add_table(rows=1, cols=2)
+    sd_table.style = "Light Grid Accent 1"
+    sd_headers = ["Status", "What it Means"]
+    for i, h in enumerate(sd_headers):
+        cell = sd_table.rows[0].cells[i]
+        cell.text = h
+        cell.paragraphs[0].runs[0].bold = True
+    sd_data = [
+        ("Configured",
+         "Feature is enabled and configured in alignment with Zscaler best practices. "
+         "No action required."),
+        ("Action Required",
+         "Critical gap detected. Feature is misconfigured, disabled, or absent where "
+         "Zscaler best practice requires it. Address these findings first."),
+        ("Needs Review",
+         "Feature is present but its configuration requires manual verification or "
+         "additional context to determine alignment with best practice. Often indicates "
+         "policies that are partially scoped or default values that may not fit your "
+         "environment."),
+        ("Not Configured / N/A",
+         "Feature was not accessible during the assessment. This may indicate it is "
+         "not licensed, not deployed, or the API role lacks permission to read it. "
+         "These checks are excluded from the overall score."),
+    ]
+    for status, desc in sd_data:
+        row = sd_table.add_row()
+        row.cells[0].text = status
+        row.cells[0].paragraphs[0].runs[0].bold = True
+        row.cells[1].text = desc
+
+    doc.add_page_break()
+
     # ── Score Summary Table ───────────────────────────────────────
     doc.add_heading("Scorecard by Section", level=2)
 

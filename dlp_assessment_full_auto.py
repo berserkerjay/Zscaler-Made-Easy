@@ -764,7 +764,7 @@ def compute(results):
     _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
     secs={}
     for r in results:
-        s=r["sec"]
+        s=r.get("sec") or r.get("section") or "Other"
         if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"info":0}
         secs[s]["total"]+=1
         secs[s][_map.get(r["status"],"info")]+=1
