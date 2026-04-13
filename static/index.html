@@ -412,6 +412,10 @@
             <input type="checkbox" class="scope-cb" value="zcc" checked style="width:auto;cursor:pointer;">
             ZCC <span style="color:var(--dim);font-size:0.75rem;">(5 checks)</span>
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="genai" checked style="width:auto;cursor:pointer;">
+            GenAI &amp; Prompts <span style="color:var(--dim);font-size:0.75rem;">(20 checks)</span>
+          </label>
         </div>
         <div class="helper">Pick any combination. Total runtime is roughly 25 seconds per 50 checks.</div>
       </div>
@@ -465,6 +469,12 @@
     <div class="card">
       <h2>Scores by Section</h2>
       <div class="section-grid" id="sectionGrid"></div>
+    </div>
+
+    <div class="card" id="complianceCard">
+      <h2>Regulatory & Compliance Alignment</h2>
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:1rem;">Every check maps to controls across NIST 800-53, NIST 800-171, SOC 2, GDPR, HIPAA, PCI-DSS, ISO 27001, and CIS Controls.</p>
+      <div id="complianceGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.75rem;"></div>
     </div>
 
     <div class="card">
@@ -538,7 +548,7 @@ function clearConfig() {
   localStorage.removeItem(LS_KEY);
   ['org','assessor','vd','cid','csec','custid'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('cloud').value = 'production';
-  setSelectedScopes(['dlp','zia_extras','zcc']);
+  setSelectedScopes(['dlp','zia_extras','zcc','genai']);
   setStatus('Config cleared', 'success');
 }
 
@@ -750,7 +760,40 @@ function showResults(data) {
   }
 
   renderChecks(checks, 'all');
+  loadCompliance(data);
   window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+}
+
+async function loadCompliance(data) {
+  try {
+    const resp = await fetch('/api/compliance', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data),
+    });
+    if (!resp.ok) {
+      document.getElementById('complianceCard').style.display = 'none';
+      return;
+    }
+    const fw = await resp.json();
+    const grid = document.getElementById('complianceGrid');
+    grid.innerHTML = '';
+    for (const [key, s] of Object.entries(fw)) {
+      const color = s.status === 'Aligned' ? 'var(--pass)' : s.status === 'Partial' ? 'var(--warn)' : 'var(--fail)';
+      const shortName = (s.name || key).split(' — ')[0];
+      grid.innerHTML += `<div style="padding:1rem;background:rgba(15,23,42,0.5);border-radius:10px;border:1px solid var(--border);transition:all 0.2s var(--ease);">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;">
+          <span style="font-weight:600;font-size:0.9rem;">${shortName}</span>
+          <span style="font-size:0.7rem;font-weight:700;color:${color};padding:0.2rem 0.55rem;background:${color}1a;border-radius:6px;border:1px solid ${color}55;">${s.status}</span>
+        </div>
+        <div style="font-size:0.78rem;color:var(--dim);margin-bottom:0.5rem;">${s.alignment_pct}% alignment • ${s.passing_count} configured, ${s.failing_count} action required</div>
+        <div style="font-size:0.7rem;color:var(--dim);">${s.control_count} controls addressed</div>
+      </div>`;
+    }
+    document.getElementById('complianceCard').style.display = 'block';
+  } catch(e) {
+    document.getElementById('complianceCard').style.display = 'none';
+  }
 }
 
 function renderChecks(checks, filter) {

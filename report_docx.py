@@ -440,6 +440,73 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                     for run in p.runs:
                         run.font.size = Pt(8)
 
+    # ── Compliance Framework Mapping ──────────────────────────────
+    try:
+        from compliance_mapping import get_framework_summary, FRAMEWORK_DESCRIPTIONS
+        fw_summary = get_framework_summary(results)
+        if fw_summary:
+            doc.add_page_break()
+            doc.add_heading("Regulatory & Compliance Framework Alignment", level=1)
+            doc.add_paragraph(
+                "The following compliance frameworks have controls addressed by this "
+                "Zscaler configuration assessment. Each framework's alignment status is "
+                "calculated from the relevant checks that map to its controls."
+            )
+
+            fw_table = doc.add_table(rows=1, cols=4)
+            fw_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
+            fw_headers = ["Framework", "Status", "Alignment", "Controls Addressed"]
+            for i, h in enumerate(fw_headers):
+                cell = fw_table.rows[0].cells[i]
+                cell.text = h
+                cell.paragraphs[0].runs[0].bold = True
+
+            for fw_key, summary in sorted(fw_summary.items()):
+                row = fw_table.add_row()
+                row.cells[0].text = FRAMEWORK_DESCRIPTIONS.get(fw_key, fw_key).split(" — ")[0]
+                row.cells[1].text = summary["status"]
+                # Color status
+                stat_run = row.cells[1].paragraphs[0].runs[0]
+                stat_run.bold = True
+                if summary["status"] == "Aligned":
+                    stat_run.font.color.rgb = COLORS["PASS"]
+                elif summary["status"] == "Partial":
+                    stat_run.font.color.rgb = COLORS["REVIEW"]
+                else:
+                    stat_run.font.color.rgb = COLORS["FAIL"]
+                row.cells[2].text = f"{summary['alignment_pct']}% ({summary['passing_count']}/{summary['covered_count'] - summary['info_count']})"
+                row.cells[3].text = f"{summary['control_count']} control(s)"
+
+            # Detailed framework breakdown
+            doc.add_paragraph()
+            doc.add_heading("Detailed Control Mapping by Framework", level=2)
+            for fw_key, summary in sorted(fw_summary.items()):
+                doc.add_heading(FRAMEWORK_DESCRIPTIONS.get(fw_key, fw_key), level=3)
+                p = doc.add_paragraph()
+                p.add_run(f"Status: ").bold = True
+                stat_text = p.add_run(f"{summary['status']} ({summary['alignment_pct']}% alignment)")
+                stat_text.bold = True
+                if summary["status"] == "Aligned":
+                    stat_text.font.color.rgb = COLORS["PASS"]
+                elif summary["status"] == "Partial":
+                    stat_text.font.color.rgb = COLORS["REVIEW"]
+                else:
+                    stat_text.font.color.rgb = COLORS["FAIL"]
+
+                p2 = doc.add_paragraph()
+                p2.add_run(f"Findings: ").bold = True
+                p2.add_run(f"{summary['passing_count']} configured, {summary['failing_count']} action required, "
+                           f"{summary['review_count']} need review, {summary['info_count']} N/A")
+
+                p3 = doc.add_paragraph()
+                p3.add_run("Controls Addressed:").bold = True
+                ctrl_p = doc.add_paragraph()
+                ctrl_p.paragraph_format.left_indent = Cm(0.5)
+                ctrl_p.add_run(", ".join(summary["controls_addressed"])).font.size = Pt(9)
+    except Exception as e:
+        # Compliance mapping failure shouldn't break the report
+        pass
+
     # ── Footer ────────────────────────────────────────────────────
     doc.add_page_break()
     doc.add_heading("About This Assessment", level=1)

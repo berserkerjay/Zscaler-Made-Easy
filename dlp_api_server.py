@@ -43,12 +43,21 @@ maturity = engine.maturity
 
 # Try to load platform checks
 PLATFORM_REG = []
+GENAI_REG = []
 try:
     CHECKS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_full_checks.py")
     cspec = importlib.util.spec_from_file_location("full_checks", CHECKS_PATH)
     full_checks = importlib.util.module_from_spec(cspec)
     cspec.loader.exec_module(full_checks)
     PLATFORM_REG = full_checks.PLATFORM_REG
+except Exception:
+    pass
+try:
+    GENAI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_genai_checks.py")
+    gspec = importlib.util.spec_from_file_location("genai_checks", GENAI_PATH)
+    genai_checks = importlib.util.module_from_spec(gspec)
+    gspec.loader.exec_module(genai_checks)
+    GENAI_REG = genai_checks.GENAI_REG
 except Exception:
     pass
 
@@ -112,15 +121,40 @@ async def health():
         "status": "ok",
         "dlp_checks": len(REG),
         "platform_checks": len(PLATFORM_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG),
+        "genai_checks": len(GENAI_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG),
         "version": "3.0",
     }
 
 
 @app.get("/api/checks")
 async def list_checks():
-    all_checks = list(REG) + PLATFORM_REG
+    all_checks = list(REG) + PLATFORM_REG + GENAI_REG
     return [{"id": id, "section": sec, "label": label} for id, sec, label, _ in all_checks]
+
+
+@app.get("/api/frameworks")
+async def list_frameworks():
+    """List supported compliance frameworks."""
+    try:
+        from compliance_mapping import list_supported_frameworks
+        return list_supported_frameworks()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/compliance")
+async def compliance_summary(request: Request):
+    """Return compliance framework alignment summary from assessment results."""
+    try:
+        from compliance_mapping import get_framework_summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
+    data = await request.json()
+    results = data.get("checks", [])
+    if not results:
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    return get_framework_summary(results)
 
 
 def _get_checks(scope: str = "dlp", scopes: list = None):
@@ -144,6 +178,10 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
         if "zcc" in scopes:
             for c in PLATFORM_REG:
                 if c[1].startswith("ZCC") and c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "genai" in scopes:
+            for c in GENAI_REG:
+                if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
