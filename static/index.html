@@ -729,6 +729,8 @@ async function step1Assess() {
       <div style="margin-bottom:0.4rem;">${actionBreakdown}</div>
       <div style="padding:0.5rem;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;">💡 ${escapeHtml(s.recommendation)}</div>
       <div style="margin-top:0.4rem;">${ready}</div>
+      ${s.found_via ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--dim);">Detected via: <code style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.1rem 0.3rem;border-radius:3px;">${escapeHtml(s.found_via)}</code></div>` : ''}
+      ${s.diagnostics && s.diagnostics.length ? `<details style="margin-top:0.5rem;font-size:0.78rem;"><summary style="color:var(--accent);cursor:pointer;">View API diagnostics (${s.diagnostics.length} endpoint probe${s.diagnostics.length===1?'':'s'})</summary><div style="margin-top:0.4rem;padding:0.5rem;background:rgba(15,23,42,0.6);border-radius:4px;font-family:monospace;"><pre style="white-space:pre-wrap;color:var(--dim);">${escapeHtml(JSON.stringify(s.diagnostics, null, 2))}</pre></div></details>` : ''}
     `;
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';

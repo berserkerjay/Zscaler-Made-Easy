@@ -371,33 +371,72 @@ def fetch_current_rules(client, rule_type: str = "web_dlp") -> List[Dict[str, An
 
 def assess_current_status(client) -> Dict[str, Any]:
     """
-    Determine whether the tenant is currently in First-Match-Wins or
+    Determine whether the tenant is currently in Rule Order or
     Evaluate All Rules mode, and summarize current DLP rule posture.
 
     Returns:
       {
-        "current_mode": "First-Match-Wins" | "Evaluate All Rules" | "Unknown",
+        "current_mode": "Rule Order" | "Evaluate All Rules" | "Unknown",
         "evaluate_all_enabled": bool | None,
         "rule_count": N,
         "enabled_rules": N,
         "action_breakdown": {...},
         "recommendation": "...",
         "ready_to_migrate": bool,
+        "diagnostics": [...]   # what we tried + what we saw
       }
     """
-    # Check ZIA Advanced Settings for the Evaluate All Rules flag
-    adv, code = client.get("/zia/advancedSettings")
-    if code != 200:
-        adv, code = client.get("/zia/dlpAdvancedSettings")
-
+    diagnostics = []
     evaluate_all = None
-    if isinstance(adv, dict):
-        # Field name varies across API versions
-        for key in ("evaluateAllRules", "dlpEvaluateAllRules",
-                    "enableDlpEvaluateAllRules", "dlpEvaluateAll"):
-            if key in adv:
-                evaluate_all = bool(adv[key])
+    found_via = None
+
+    # Try multiple endpoints known to expose this setting
+    candidate_endpoints = [
+        "/zia/dlpAdvancedSettings",
+        "/zia/advancedSettings",
+        "/zia/security/advanced",
+        "/zia/dlpEvaluateAllRulesSetting",
+    ]
+    # Field names vary across API versions / docs
+    candidate_fields = [
+        "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
+        "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
+        "isDlpEvaluateAllRules", "evaluateAllDlpRules",
+    ]
+
+    for ep in candidate_endpoints:
+        try:
+            data, code = client.get(ep)
+        except Exception as e:
+            diagnostics.append({"endpoint": ep, "status": 0, "error": str(e)[:100]})
+            continue
+        diagnostics.append({
+            "endpoint": ep,
+            "status": code,
+            "type": type(data).__name__,
+            "keys": (list(data.keys())[:30] if isinstance(data, dict) else None),
+        })
+        if code != 200 or not isinstance(data, dict):
+            continue
+        # Look for any matching field
+        for fld in candidate_fields:
+            if fld in data:
+                evaluate_all = bool(data[fld])
+                found_via = f"{ep} → {fld} = {data[fld]}"
                 break
+        # Also walk one level deep in case it's nested
+        if evaluate_all is None:
+            for k, v in data.items():
+                if isinstance(v, dict):
+                    for fld in candidate_fields:
+                        if fld in v:
+                            evaluate_all = bool(v[fld])
+                            found_via = f"{ep} → {k}.{fld} = {v[fld]}"
+                            break
+                if evaluate_all is not None:
+                    break
+        if evaluate_all is not None:
+            break
 
     mode = ("Evaluate All Rules" if evaluate_all is True
             else "Rule Order" if evaluate_all is False
@@ -427,11 +466,28 @@ def assess_current_status(client) -> Dict[str, Any]:
     elif evaluate_all is False and not order_already_safe:
         recommendation = "Tenant is in Rule Order mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
     else:
-        recommendation = "Could not determine current mode via API. Check ZIA Advanced Settings → DLP → 'Evaluate All DLP Rules' in the admin portal."
+        # Could not auto-detect. Build a helpful message with what we tried.
+        endpoints_hit = [d for d in diagnostics if d.get("status") == 200]
+        if endpoints_hit:
+            sample_keys = endpoints_hit[0].get("keys", [])[:10]
+            recommendation = (
+                "Could not auto-detect the Evaluate All Rules toggle field name in the API response. "
+                f"Endpoints reachable: {', '.join(d['endpoint'] for d in endpoints_hit)}. "
+                f"Sample field names returned: {', '.join(sample_keys) if sample_keys else 'none'}. "
+                "Verify manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'. "
+                "If you can share the actual field name, the tool can be updated to detect it."
+            )
+        else:
+            recommendation = (
+                "Could not reach any ZIA Advanced Settings endpoint. The API client role may not include "
+                "'View ZIA Advanced Settings' permission. Verify in ZIA Admin → Administration → Advanced "
+                "Settings → DLP → 'Evaluate All DLP Rules', or grant the role and retry."
+            )
 
     return {
         "current_mode": mode,
         "evaluate_all_enabled": evaluate_all,
+        "found_via": found_via,
         "rule_count": len(rules),
         "enabled_rules": len(enabled),
         "disabled_rules": len(rules) - len(enabled),
@@ -439,6 +495,7 @@ def assess_current_status(client) -> Dict[str, Any]:
         "order_already_safe_for_eval_all": order_already_safe,
         "ready_to_migrate": evaluate_all is False,
         "recommendation": recommendation,
+        "diagnostics": diagnostics,
     }
 
 
