@@ -117,6 +117,18 @@ async def favicon():
 
 @app.get("/api/health")
 async def health():
+    # Surface the running git commit so users can verify they're on latest code.
+    commit = "unknown"
+    try:
+        import subprocess
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        ).decode().strip()
+    except Exception:
+        pass
     return {
         "status": "ok",
         "dlp_checks": len(REG),
@@ -124,6 +136,8 @@ async def health():
         "genai_checks": len(GENAI_REG),
         "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG),
         "version": "3.0",
+        "git_commit": commit,
+        "expected_min_commit": "870c737",
     }
 
 

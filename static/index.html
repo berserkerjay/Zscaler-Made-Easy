@@ -669,9 +669,11 @@ let partialResults = [];
 let runMeta = null;
 const LS_KEY = 'zscaler_assessment_config';
 
-// Load total checks on page load
+// Load total checks on page load + show running git commit so users can verify they're on latest code
 fetch('/api/health').then(r => r.json()).then(d => {
-  document.getElementById('totalChecksBadge').textContent = `${d.total_checks} automated checks available`;
+  const commit = d.git_commit && d.git_commit !== 'unknown' ? ` · build ${d.git_commit}` : '';
+  document.getElementById('totalChecksBadge').textContent = `${d.total_checks} automated checks available${commit}`;
+  if (commit) console.log(`[Zscaler Assessment] Running commit: ${d.git_commit} (expected ≥ ${d.expected_min_commit})`);
 }).catch(() => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
