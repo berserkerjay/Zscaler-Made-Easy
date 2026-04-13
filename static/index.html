@@ -207,7 +207,10 @@
       </div>
       <div class="field">
         <label>API Client Secret <span class="required">*</span></label>
-        <input id="csec" type="password" placeholder="OAuth2 client secret">
+        <div style="position:relative;">
+          <input id="csec" type="password" placeholder="OAuth2 client secret" style="padding-right:60px;">
+          <button type="button" id="toggleSecret" onclick="toggleSecret()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
+        </div>
         <div class="helper">Keep this private — never share or commit to source control</div>
         <div class="err-msg">Client secret is required</div>
       </div>
@@ -341,6 +344,18 @@ function clearConfig() {
 
 function toggleHelp(id) {
   document.getElementById(id).classList.toggle('open');
+}
+
+function toggleSecret() {
+  const inp = document.getElementById('csec');
+  const btn = document.getElementById('toggleSecret');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = 'Hide';
+  } else {
+    inp.type = 'password';
+    btn.textContent = 'Show';
+  }
 }
 
 function setStatus(msg, type) {
