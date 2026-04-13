@@ -153,6 +153,7 @@ class AssessRequest(BaseModel):
 class UpdateCheckRequest(BaseModel):
     only: Optional[list[str]] = None  # subset of source keys
     reset: bool = False               # wipe cache first
+    skip_tls_verify: bool = False     # corporate TLS MITM bypass (opt-in per request)
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -927,7 +928,7 @@ async def updates_check(req: UpdateCheckRequest):
         raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
     if req.reset:
         await asyncio.to_thread(reset_cache)
-    return await asyncio.to_thread(check_for_updates, False, req.only)
+    return await asyncio.to_thread(check_for_updates, False, req.only, req.skip_tls_verify)
 
 
 @app.post("/api/updates/reset-cache")

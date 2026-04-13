@@ -2348,15 +2348,19 @@ function renderBypassReport(data) {
 }
 
 
-async function runUpdateCheck(reset) {
+async function runUpdateCheck(reset, skipTlsVerify) {
   const btn = document.getElementById('updateRunBtn');
   const r = document.getElementById('updateResult');
   btn.disabled = true;
   const originalBtnText = btn.textContent;
   btn.textContent = 'Checking...';
-  r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Fetching PyPI + help.zscaler.com (parallel, ~3–5s)...</div>';
+  const modeNote = skipTlsVerify ? ' <strong style="color:#f59e0b;">(TLS verification disabled)</strong>' : '';
+  r.innerHTML = `<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Fetching PyPI + help.zscaler.com (parallel, ~3–5s)${modeNote}...</div>`;
   try {
-    const resp = await fetch('/api/updates/check', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reset: !!reset})});
+    const resp = await fetch('/api/updates/check', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({reset: !!reset, skip_tls_verify: !!skipTlsVerify}),
+    });
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     renderUpdateResults(data);
@@ -2378,13 +2382,37 @@ function renderUpdateResults(data) {
     const envRows = Object.entries(env).map(([k,v]) =>
       `<tr><td style="padding:0.2rem 0.5rem;font-family:monospace;color:var(--dim);">${escapeHtml(k)}</td><td style="padding:0.2rem 0.5rem;font-family:monospace;">${escapeHtml(v === null ? '(not set)' : String(v))}</td></tr>`
     ).join('');
+
+    // One-click TLS-bypass button only when the failure pattern looks
+    // like corporate TLS inspection (all CERTIFICATE_VERIFY_FAILED).
+    const tlsBypassBtn = data.tls_mitm_suspected ? `
+      <div style="margin:0.5rem 0;padding:0.5rem 0.75rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+        <div style="color:#ef4444;font-weight:600;font-size:0.85rem;">🔓 Retry without TLS verification</div>
+        <button class="activate-btn" onclick="runUpdateCheck(false, true)" style="padding:0.4rem 0.9rem;font-size:0.8rem;">🔓 Retry (skip TLS verify)</button>
+      </div>` : '';
+
+    const headline = data.tls_mitm_suspected
+      ? '⚠ Corporate TLS inspection detected — certificate verification failed on every source'
+      : '⚠ All sources failed — likely corporate proxy';
+
     proxyBanner = `
       <div style="padding:0.8rem;background:rgba(245,158,11,0.1);border-left:3px solid #f59e0b;border-radius:6px;margin-bottom:0.8rem;">
-        <div style="color:#f59e0b;font-weight:700;margin-bottom:0.3rem;">⚠ All sources failed — likely corporate proxy</div>
+        <div style="color:#f59e0b;font-weight:700;margin-bottom:0.3rem;">${headline}</div>
         <pre style="white-space:pre-wrap;color:var(--dim);font-size:0.78rem;margin:0 0 0.5rem 0;">${escapeHtml(data.proxy_hint)}</pre>
+        ${tlsBypassBtn}
         <details><summary style="cursor:pointer;color:var(--accent);font-size:0.78rem;">Current proxy / TLS env vars</summary>
         <table style="width:100%;font-size:0.78rem;margin-top:0.3rem;"><tbody>${envRows}</tbody></table>
         </details>
+      </div>`;
+  }
+
+  // Banner confirming the request skipped TLS verification (so user
+  // knows the results came from a reduced-trust fetch).
+  let tlsSkippedBanner = '';
+  if (data.network && data.network.request_skipped_tls_verify) {
+    tlsSkippedBanner = `
+      <div style="padding:0.5rem 0.75rem;background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;border-radius:4px;margin-bottom:0.6rem;font-size:0.8rem;color:var(--dim);">
+        ⚡ Results below were fetched with <strong>TLS verification disabled</strong> (you opted into the corporate-TLS-MITM bypass for this request).
       </div>`;
   }
 
@@ -2440,7 +2468,7 @@ function renderUpdateResults(data) {
     <div style="color:var(--dim);font-size:0.75rem;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--border);">
       Last checked: ${data.checked_at} · Cache: <code>${escapeHtml(data.cache_file || '')}</code>
     </div>`;
-  document.getElementById('updateResult').innerHTML = proxyBanner + top + rows + footer;
+  document.getElementById('updateResult').innerHTML = proxyBanner + tlsSkippedBanner + top + rows + footer;
 }
 </script>
 </body>
