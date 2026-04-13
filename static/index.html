@@ -416,8 +416,12 @@
             <input type="checkbox" class="scope-cb" value="genai" checked style="width:auto;cursor:pointer;">
             GenAI &amp; Prompts <span style="color:var(--dim);font-size:0.75rem;">(20 checks)</span>
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" id="complianceToggle" checked style="width:auto;cursor:pointer;">
+            Compliance Mapping <span style="color:var(--dim);font-size:0.75rem;">(8 frameworks)</span>
+          </label>
         </div>
-        <div class="helper">Pick any combination. Total runtime is roughly 25 seconds per 50 checks.</div>
+        <div class="helper">Pick any combination. Compliance Mapping adds per-control drill-down for NIST, SOC 2, GDPR, HIPAA, PCI-DSS, ISO 27001, CIS.</div>
       </div>
     </div>
 
@@ -582,6 +586,9 @@ function loadConfig() {
     if (Array.isArray(saved.scopes) && saved.scopes.length) {
       setSelectedScopes(saved.scopes);
     }
+    if (typeof saved.compliance === 'boolean' && document.getElementById('complianceToggle')) {
+      document.getElementById('complianceToggle').checked = saved.compliance;
+    }
   } catch(e){}
 }
 loadConfig();
@@ -595,6 +602,7 @@ function saveConfig() {
     cid: document.getElementById('cid').value,
     custid: document.getElementById('custid').value,
     scopes: getSelectedScopes(),
+    compliance: document.getElementById('complianceToggle')?.checked,
   };
   localStorage.setItem(LS_KEY, JSON.stringify(cfg));
   setStatus('Config saved (secret not stored)', 'success');
@@ -824,6 +832,12 @@ let drilldownData = null;
 let currentFwKey = null;
 
 async function loadCompliance(data) {
+  // Respect the Compliance Mapping checkbox
+  const toggle = document.getElementById('complianceToggle');
+  if (toggle && !toggle.checked) {
+    document.getElementById('complianceCard').style.display = 'none';
+    return;
+  }
   try {
     const resp = await fetch('/api/compliance', {
       method: 'POST',
