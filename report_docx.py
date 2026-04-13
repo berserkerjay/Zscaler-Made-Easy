@@ -28,15 +28,31 @@ except ImportError:
     sys.exit(1)
 
 
-# ── Colors ───────────────────────────────────────────────────────────
+# ── Zscaler Brand Colors ─────────────────────────────────────────────
+# Sourced from Zscaler brand guidelines and public brand assets
 
+ZS_BLUE = RGBColor(0x23, 0x6B, 0xF5)        # Dodger Blue (primary)
+ZS_ELECTRIC = RGBColor(0x00, 0x9C, 0xDA)    # Electric Blue
+ZS_MIDNIGHT = RGBColor(0x01, 0x26, 0x73)    # Midnight Blue (deep)
+ZS_AQUA = RGBColor(0x6B, 0xFF, 0xB3)        # Aquamarine (accent)
+ZS_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+ZS_DARK_TEXT = RGBColor(0x1A, 0x1A, 0x2E)
+ZS_GREY = RGBColor(0x55, 0x55, 0x55)
+ZS_LIGHT_GREY = RGBColor(0x99, 0x99, 0x99)
+
+# Status colors (Zscaler-aligned palette)
 COLORS = {
-    "PASS": RGBColor(0x22, 0x8B, 0x22),    # green
-    "FAIL": RGBColor(0xDC, 0x14, 0x3C),    # red
-    "REVIEW": RGBColor(0xDA, 0xA5, 0x20),  # gold
-    "INFO": RGBColor(0x64, 0x95, 0xED),    # blue
-    "ERROR": RGBColor(0x64, 0x95, 0xED),   # blue (same as info)
+    "PASS": RGBColor(0x10, 0x9E, 0x5F),    # success green
+    "FAIL": RGBColor(0xD9, 0x21, 0x2C),    # critical red
+    "REVIEW": RGBColor(0xE0, 0x82, 0x10),  # amber
+    "INFO": ZS_LIGHT_GREY,
+    "ERROR": ZS_LIGHT_GREY,
 }
+
+# Hex equivalents for cell shading
+ZS_BLUE_HEX = "236BF5"
+ZS_MIDNIGHT_HEX = "012673"
+ZS_LIGHT_BG_HEX = "F4F8FF"
 
 STATUS_LABELS = {
     "PASS": "Configured",
@@ -77,7 +93,7 @@ def _add_styled_row(table, cells_data):
 
 # ── Main Generator ───────────────────────────────────────────────────
 
-def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None):
+def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None, template_path=None):
     """
     Generate a Word document report from assessment results.
 
@@ -87,6 +103,10 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         output_path: Path for the .docx file
         compute_fn: Optional compute function (imported from engine)
         maturity_fn: Optional maturity function (imported from engine)
+        template_path: Optional path to a .docx template to use as the base.
+                       If provided, the report appends content into the template's
+                       layout, preserving header/footer/styles. Auto-detects
+                       'zscaler_template.docx' in the same folder as this file.
     """
     # Import compute/maturity if not provided
     if compute_fn is None or maturity_fn is None:
@@ -97,7 +117,20 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     secs, overall = compute_fn(results)
     mat = maturity_fn(overall)
 
-    doc = Document()
+    # Use the Zscaler template if available
+    if template_path is None:
+        default_template = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_template.docx")
+        if os.path.exists(default_template):
+            template_path = default_template
+
+    if template_path and os.path.exists(template_path):
+        doc = Document(template_path)
+        # Clear template body content but keep styles/headers/footers/margins
+        for elem in list(doc.element.body):
+            if elem.tag.endswith('}p') or elem.tag.endswith('}tbl'):
+                doc.element.body.remove(elem)
+    else:
+        doc = Document()
 
     # ── Styles ────────────────────────────────────────────────────
     style = doc.styles["Normal"]
