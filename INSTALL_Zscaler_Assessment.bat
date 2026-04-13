@@ -16,12 +16,44 @@ set INSTALL_DIR=%~dp0
 set INSTALL_DIR=%INSTALL_DIR:~0,-1%
 
 REM Install Python dependencies (silently)
+REM First locate real Python (skip Microsoft Store stub)
+set PYTHON_EXE=
+for /f "delims=" %%i in ('where python 2^>nul') do (
+    echo %%i | findstr /i "WindowsApps" >nul
+    if errorlevel 1 (
+        if not defined PYTHON_EXE set "PYTHON_EXE=%%i"
+    )
+)
+if not defined PYTHON_EXE set "PYTHON_EXE=python"
+
 echo  [1/4] Installing dependencies (this may take a minute)...
-python -m pip install --quiet --disable-pip-version-check fastapi uvicorn python-docx zscaler-sdk-python requests rich pydantic >nul 2>&1
+"%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check fastapi uvicorn python-docx zscaler-sdk-python requests rich pydantic >nul 2>&1
 if errorlevel 1 (
     echo  WARNING: Some dependencies may have failed to install.
     echo  Try running this script as Administrator.
 )
+
+REM Find the real pythonw.exe (avoid the Microsoft Store stub)
+echo  Locating Python installation...
+set PYTHONW_PATH=
+for /f "delims=" %%i in ('where pythonw 2^>nul') do (
+    echo %%i | findstr /i "WindowsApps" >nul
+    if errorlevel 1 (
+        if not defined PYTHONW_PATH set "PYTHONW_PATH=%%i"
+    )
+)
+
+if not defined PYTHONW_PATH (
+    echo  ERROR: Could not find a real pythonw.exe installation.
+    echo  Only the Microsoft Store stub was found, which won't work.
+    echo.
+    echo  Please install Python from https://www.python.org/downloads/
+    echo  and check "Add Python to PATH" during installation.
+    timeout /t 10 >nul
+    exit /b 1
+)
+
+echo  Found Python at: %PYTHONW_PATH%
 
 REM Create the launcher VBS that runs python silently (no console window)
 REM This launcher polls the server until it's actually responding, then opens the browser
@@ -41,9 +73,9 @@ echo http.Send
 echo If Err.Number = 0 And http.Status = 200 Then serverRunning = True
 echo On Error Goto 0
 echo.
-echo ' Start server if not already running
+echo ' Start server if not already running (use full path to avoid Store stub^)
 echo If Not serverRunning Then
-echo     WshShell.Run "pythonw.exe dlp_api_server.py", 0, False
+echo     WshShell.Run """%PYTHONW_PATH%"" dlp_api_server.py", 0, False
 echo End If
 echo.
 echo ' Poll the server until it's responding (up to 30 seconds^)
