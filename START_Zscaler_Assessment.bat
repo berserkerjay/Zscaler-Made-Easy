@@ -1,15 +1,25 @@
 @echo off
-REM ════════════════════════════════════════════════════════════════════
-REM  Zscaler Platform Assessment - START
-REM  Launches the silent VBS launcher (no console window remains)
-REM  Run INSTALL_Zscaler_Assessment.bat first to set up.
-REM ════════════════════════════════════════════════════════════════════
+title Zscaler Platform Assessment
 
-if not exist "%~dp0zscaler_launcher.vbs" (
-    echo Launcher not found. Please run INSTALL_Zscaler_Assessment.bat first.
-    timeout /t 5 >nul
+REM Find real Python (skip Microsoft Store stub)
+set PYTHON_EXE=
+for /f "delims=" %%i in ('where python 2^>nul') do (
+    echo %%i | findstr /i "WindowsApps" >nul
+    if errorlevel 1 (
+        if not defined PYTHON_EXE set "PYTHON_EXE=%%i"
+    )
+)
+if not defined PYTHON_EXE (
+    echo ERROR: Python is not installed or only the Microsoft Store stub was found.
+    echo Please install Python from https://www.python.org/downloads/
+    pause
     exit /b 1
 )
 
-start /b wscript.exe "%~dp0zscaler_launcher.vbs"
-exit
+cd /d "%~dp0"
+
+REM Open browser after 4 seconds (in parallel with server startup)
+start "" /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:8000"
+
+REM Run the server (this window stays open showing logs - close to stop)
+"%PYTHON_EXE%" dlp_api_server.py
