@@ -24,13 +24,49 @@ if errorlevel 1 (
 )
 
 REM Create the launcher VBS that runs python silently (no console window)
+REM This launcher polls the server until it's actually responding, then opens the browser
 echo  [2/4] Creating silent launcher...
 (
 echo Set WshShell = CreateObject("WScript.Shell"^)
+echo Set fso = CreateObject("Scripting.FileSystemObject"^)
 echo WshShell.CurrentDirectory = "%INSTALL_DIR%"
-echo WshShell.Run "pythonw.exe dlp_api_server.py", 0, False
-echo WScript.Sleep 3000
-echo WshShell.Run "http://localhost:8000", 1, False
+echo.
+echo ' Check if server is already running by trying to connect
+echo Set http = CreateObject("MSXML2.ServerXMLHTTP"^)
+echo http.SetTimeouts 1000, 1000, 1000, 1000
+echo serverRunning = False
+echo On Error Resume Next
+echo http.Open "GET", "http://localhost:8000/api/health", False
+echo http.Send
+echo If Err.Number = 0 And http.Status = 200 Then serverRunning = True
+echo On Error Goto 0
+echo.
+echo ' Start server if not already running
+echo If Not serverRunning Then
+echo     WshShell.Run "pythonw.exe dlp_api_server.py", 0, False
+echo End If
+echo.
+echo ' Poll the server until it's responding (up to 30 seconds^)
+echo ready = False
+echo For i = 1 To 30
+echo     WScript.Sleep 1000
+echo     On Error Resume Next
+echo     Set http = CreateObject("MSXML2.ServerXMLHTTP"^)
+echo     http.SetTimeouts 1000, 1000, 1000, 1000
+echo     http.Open "GET", "http://localhost:8000/api/health", False
+echo     http.Send
+echo     If Err.Number = 0 And http.Status = 200 Then
+echo         ready = True
+echo         Exit For
+echo     End If
+echo     On Error Goto 0
+echo Next
+echo.
+echo If ready Then
+echo     WshShell.Run "http://localhost:8000", 1, False
+echo Else
+echo     MsgBox "Zscaler Assessment server failed to start within 30 seconds." ^& vbCrLf ^& vbCrLf ^& "Try running INSTALL_Zscaler_Assessment.bat again, or check that Python is installed.", vbExclamation, "Zscaler Assessment"
+echo End If
 ) > "%INSTALL_DIR%\zscaler_launcher.vbs"
 
 REM Create the icon (Zscaler blue Z favicon)
