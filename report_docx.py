@@ -66,6 +66,81 @@ STATUS_LABELS = {
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+def _parse_detail_for_bp(detail: str):
+    """
+    Split a check's detail string into (as_is, best_practice).
+    Many checks follow the convention:
+        "<current state sentence>. Best Practice: <guidance>."
+    We split on 'Best Practice:' (case-insensitive) and clean both sides.
+    If the sentinel isn't present, the whole string is treated as as_is.
+    """
+    if not detail:
+        return "", ""
+    import re
+    m = re.split(r"\bBest\s+Practice\s*[:\-–]\s*", detail, maxsplit=1, flags=re.IGNORECASE)
+    if len(m) == 2:
+        as_is = m[0].strip().rstrip(".") + "."
+        bp = m[1].strip()
+        # Strip a trailing 'Ref:' note from best-practice text so it
+        # renders cleanly — we surface it separately in the recommendation.
+        bp = re.split(r"\s*Ref\s*[:]\s*", bp, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        return as_is, bp
+    return detail.strip(), ""
+
+
+def _generate_recommendation(check_id: str, label: str, as_is: str, best_practice: str) -> str:
+    """
+    Produce an actionable next-step recommendation based on pattern-matching
+    the As-Is text against known misconfiguration signals.
+    Falls back to a generic 'review against best practice' when no
+    specific pattern matches.
+    """
+    low = (as_is or "").lower()
+    lab = (label or "").lower()
+
+    # Extract the first concrete instruction from the best-practice text
+    bp_first = (best_practice or "").split(".")[0].strip() if best_practice else ""
+
+    # Pattern: feature missing / not configured / no X
+    if any(t in low for t in ("not configured", "no cloud firewall", "no url filter", "no dlp",
+                              "no rules", "no locations", "no admin role", "no engine",
+                              "not enabled", "not set", "disabled", "no policy", "not applied",
+                              "not deployed", "missing")):
+        base = f"Configure {label}."
+        if bp_first:
+            return f"{base} Align with Zscaler best practice: {bp_first}."
+        return base + " Follow Zscaler deployment guidance for this feature."
+
+    # Pattern: partially scoped — rule exists but global / missing scope
+    if any(t in low for t in ("globally scoped", "default action", "default rule", "no engines",
+                              "overbroad", "no scope", "unscoped", "applied globally",
+                              "unlimited", "no limit", "no description", "no owner")):
+        return (
+            f"Tighten scope on {label}. "
+            f"{bp_first + '. ' if bp_first else ''}"
+            f"Add user/group/location scoping, tag with a rule label, and document owner."
+        )
+
+    # Pattern: review / verify / needs human judgment (the detail already says so)
+    if any(t in low for t in ("review", "verify", "validate", "confirm", "investigate")):
+        if bp_first:
+            return f"Review {label} against: {bp_first}. Document the outcome and re-run the assessment."
+        return f"Review {label} with the feature owner. Document the outcome and re-run."
+
+    # Pattern: count-based signal (e.g. "3 rules in review state")
+    if any(t in low for t in ("some", "partial", "audit", "alert only", "log only")):
+        return (
+            f"Complete the rollout of {label}. "
+            f"Move alert/log-only rules to enforcement after the validation window. "
+            f"{bp_first + '.' if bp_first else ''}"
+        )
+
+    # Fallback: generic recommendation citing the best-practice text
+    if bp_first:
+        return f"Validate {label} against Zscaler best practice: {bp_first}."
+    return f"Manually verify {label} and document the rationale. Re-run the assessment after any change."
+
+
 def _safe_style(doc, preferred_names):
     """Return the first style name from preferred_names that exists in doc, else 'Table Grid' (always present)."""
     available = {s.name for s in doc.styles}
@@ -384,16 +459,47 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     reviews = [r for r in results if r["status"] == "REVIEW"]
     if reviews:
         doc.add_heading("Items Requiring Review", level=1)
-        p = doc.add_paragraph(
+        doc.add_paragraph(
             f"The following {len(reviews)} item(s) were detected but require manual "
-            f"verification or organizational context to determine if action is needed."
+            f"verification or organizational context to determine if action is needed. "
+            f"Each row compares the current configuration to Zscaler best practice "
+            f"and produces a specific recommended next step."
         )
-        doc.add_paragraph()
+
+        # Structured 4-column table: Check | As-Is Configuration | Best Practice | Recommended Action
+        rv_table = doc.add_table(rows=1, cols=4)
+        rv_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
+        rv_headers = ["Check", "As-Is Configuration", "Best Practice", "Recommended Action"]
+        for i, h in enumerate(rv_headers):
+            cell = rv_table.rows[0].cells[i]
+            cell.text = h
+            cell.paragraphs[0].runs[0].bold = True
+
         for r in reviews:
-            p = doc.add_paragraph()
-            run = p.add_run(f"{r['id']} — {r['label']}: ")
-            run.bold = True
-            p.add_run(r["detail"])
+            as_is, best_practice = _parse_detail_for_bp(r.get("detail", ""))
+            recommendation = _generate_recommendation(
+                check_id=r.get("id", ""),
+                label=r.get("label", ""),
+                as_is=as_is,
+                best_practice=best_practice,
+            )
+            row = rv_table.add_row()
+            # Check ID + label
+            check_cell = row.cells[0]
+            check_cell.text = ""
+            cp = check_cell.paragraphs[0]
+            cp.add_run(f"{r.get('id', '')}\n").bold = True
+            cp.add_run(r.get("label", ""))
+            # As-is
+            row.cells[1].text = as_is or "(not specified)"
+            # Best practice
+            row.cells[2].text = best_practice or "See Zscaler deployment guidance for this feature."
+            # Recommendation (highlighted)
+            rec_cell = row.cells[3]
+            rec_cell.text = ""
+            rp = rec_cell.paragraphs[0]
+            rec_run = rp.add_run(recommendation)
+            rec_run.bold = True
         doc.add_page_break()
 
     # ── Detailed Findings by Section ──────────────────────────────
