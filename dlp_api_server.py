@@ -98,6 +98,13 @@ async def serve_gui():
     return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    """Return empty favicon to silence browser 404s."""
+    from fastapi.responses import Response
+    return Response(status_code=204)
+
+
 @app.get("/api/health")
 async def health():
     return {
