@@ -31,6 +31,26 @@ module — by design.
 
 from typing import Any, Dict, List, Optional, Tuple
 
+# String values that represent "Evaluate All Rules is ON" in enum-style
+# fields like inlineDlpRuleEvaluation. The admin UI shows "By Rule Order"
+# (= False) or "Evaluate All Rules" (= True).
+_EVAL_ALL_TRUE_VALUES = {
+    "evaluate_all_rules", "evaluate_all", "eval_all", "eval_all_rules",
+    "all_rules", "allrules", "evalall",
+}
+
+
+def _is_truthy(value) -> bool:
+    """Interpret a detected value as 'Evaluate All Rules enabled'.
+    True for bool-True, or enum strings matching the eval-all pattern.
+    "By Rule Order" / "BY_RULE_ORDER" resolves to False."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower().replace("-", "_") in _EVAL_ALL_TRUE_VALUES
+    return bool(value)
+
+
 # Action precedence for Evaluate All Rules mode
 # Lower number = higher priority (runs first, most restrictive)
 ACTION_PRIORITY = {
@@ -401,8 +421,17 @@ def assess_current_status(client) -> Dict[str, Any]:
         "/zia/dlp/advancedSettings",
         "/zia/dlp/settings",
         "/zia/configuration/advanced",
+        # New: the setting is labeled "Inline DLP Rule Evaluation" in the
+        # admin UI — likely candidate endpoints for that specific surface.
+        "/zia/inlineDlpConfig",
+        "/zia/inlineDlpSettings",
+        "/zia/dlpRuleEvaluation",
+        "/zia/dlpConfiguration",
+        "/zia/dlpConfig",
     ]
-    # Field names vary across API versions / docs
+    # Field names vary across API versions / docs. Include both boolean
+    # flags and enum-string fields (the admin UI labels this "Inline DLP
+    # Rule Evaluation" with values "By Rule Order" / "Evaluate All Rules").
     candidate_fields = [
         "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
         "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
@@ -410,6 +439,12 @@ def assess_current_status(client) -> Dict[str, Any]:
         "dlpEvalAll", "evalAll", "evaluateAll",
         "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
         "evalAllRulesForDlp", "evaluateAllDlp",
+        # Enum-style (UI-label-matching) candidates — the value will be
+        # "BY_RULE_ORDER" or "EVALUATE_ALL_RULES" (or similar), not bool.
+        "inlineDlpRuleEvaluation", "inlineDlpRuleEvaluationType",
+        "dlpRuleEvaluation", "dlpRuleEvaluationType",
+        "ruleEvaluationType", "dlpEvaluationType",
+        "evaluationType", "evaluationMode", "dlpEvaluationMode",
     ]
 
     for ep in candidate_endpoints:
@@ -431,8 +466,8 @@ def assess_current_status(client) -> Dict[str, Any]:
         for fld in candidate_fields:
             real = lower_keys.get(fld.lower())
             if real is not None:
-                evaluate_all = bool(data[real])
-                found_via = f"{ep} → {real} = {data[real]}"
+                evaluate_all = _is_truthy(data[real])
+                found_via = f"{ep} → {real} = {data[real]!r}"
                 break
         # Also walk one level deep in case it's nested
         if evaluate_all is None:
@@ -442,19 +477,27 @@ def assess_current_status(client) -> Dict[str, Any]:
                     for fld in candidate_fields:
                         real = nested_lower.get(fld.lower())
                         if real is not None:
-                            evaluate_all = bool(v[real])
-                            found_via = f"{ep} → {k}.{real} = {v[real]}"
+                            evaluate_all = _is_truthy(v[real])
+                            found_via = f"{ep} → {k}.{real} = {v[real]!r}"
                             break
                 if evaluate_all is not None:
                     break
-        # Heuristic: any key with 'evaluate' AND 'all' in its name, boolean value
+        # Heuristic: any key with 'evaluat' (bool OR enum string) that
+        # looks like an eval-all indicator
         if evaluate_all is None:
             for k, v in data.items():
                 kl = k.lower()
-                if "evaluat" in kl and "all" in kl and isinstance(v, bool):
-                    evaluate_all = v
-                    found_via = f"{ep} → {k} = {v} (heuristic match)"
-                    break
+                if "evaluat" in kl or "ruleeval" in kl.replace("_", ""):
+                    if isinstance(v, bool):
+                        evaluate_all = v
+                        found_via = f"{ep} → {k} = {v} (heuristic match)"
+                        break
+                    if isinstance(v, str):
+                        vl = v.lower()
+                        if "all" in vl or "order" in vl or "match" in vl:
+                            evaluate_all = _is_truthy(v)
+                            found_via = f"{ep} → {k} = {v!r} (enum heuristic)"
+                            break
         if evaluate_all is not None:
             break
 
@@ -757,12 +800,39 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "dlpEvalAll", "evalAll", "evaluateAll",
         "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
         "evalAllRulesForDlp", "evaluateAllDlp",
+        # Enum-style fields — correspond to the admin UI's
+        # "Inline DLP Rule Evaluation" selector
+        "inlineDlpRuleEvaluation", "inlineDlpRuleEvaluationType",
+        "dlpRuleEvaluation", "dlpRuleEvaluationType",
+        "ruleEvaluationType", "dlpEvaluationType",
+        "evaluationType", "evaluationMode", "dlpEvaluationMode",
     ]
 
+    # Value candidates to try per field. For boolean-looking fields we
+    # send True; for enum-named fields we ALSO try the known string
+    # values. _try_put sweeps all applicable values until one sticks.
+    ENUM_TRUE_VALUES = [
+        "EVALUATE_ALL_RULES", "EVALUATE_ALL", "EVAL_ALL_RULES", "EVAL_ALL",
+        "ALL_RULES",
+    ]
+    BOOLEAN_TRUE_VALUE = True
+
+    def _values_for_field(field: str):
+        """Yield the candidate 'true' values to try for a given field name.
+        Enum-named fields get the string enum values. All fields also try
+        the boolean True as a fallback."""
+        fl = field.lower()
+        is_enum_named = any(t in fl for t in ("type", "mode", "evaluation"))
+        if is_enum_named:
+            for v in ENUM_TRUE_VALUES:
+                yield v
+        yield BOOLEAN_TRUE_VALUE
+
     def _try_put(endpoint: str, field: str) -> Tuple[bool, Dict[str, Any]]:
-        """GET the endpoint, inject field=True, PUT, verify via re-GET.
-        Returns (success, attempt_record)."""
-        rec: Dict[str, Any] = {"endpoint": endpoint, "field": field}
+        """GET the endpoint, inject field=<candidate-value>, PUT, verify.
+        Sweeps multiple value types per field (enum string + bool) until
+        one is accepted AND verified. Returns (success, attempt_record)."""
+        rec: Dict[str, Any] = {"endpoint": endpoint, "field": field, "values_tried": []}
         try:
             current_data, code = client.get(endpoint)
         except Exception as e:
@@ -772,33 +842,44 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         if code != 200 or not isinstance(current_data, dict):
             rec["phase"] = "get"; rec["skip_reason"] = "non-200 or not dict"
             return False, rec
-        # Merge — preserve every other setting on the endpoint
-        new_body = dict(current_data)
-        new_body[field] = True
-        try:
-            resp, put_code = client.put(endpoint, new_body)
-        except Exception as e:
-            rec["phase"] = "put"; rec["error"] = str(e)[:150]
-            return False, rec
-        rec["put_status"] = put_code
-        if put_code not in (200, 201, 204):
-            rec["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
-            return False, rec
-        # Verify via re-GET — drop cache so we don't read a stale value
-        try:
-            client._c = type(client._c)()  # reset LRU cache
-        except Exception:
-            pass
-        try:
-            verified, vcode = client.get(endpoint)
-        except Exception as e:
-            rec["phase"] = "verify"; rec["error"] = str(e)[:150]
-            return False, rec
-        rec["verify_status"] = vcode
-        rec["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
-        if isinstance(verified, dict) and bool(verified.get(field)) is True:
-            return True, rec
-        # PUT succeeded but field didn't stick — still record
+
+        for value in _values_for_field(field):
+            sub: Dict[str, Any] = {"value": value}
+            new_body = dict(current_data)
+            new_body[field] = value
+            try:
+                resp, put_code = client.put(endpoint, new_body)
+            except Exception as e:
+                sub["error"] = str(e)[:150]
+                rec["values_tried"].append(sub); continue
+            sub["put_status"] = put_code
+            if put_code not in (200, 201, 204):
+                sub["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
+                rec["values_tried"].append(sub); continue
+            # Verify via re-GET
+            try:
+                client._c = type(client._c)()  # reset LRU cache
+            except Exception:
+                pass
+            try:
+                verified, vcode = client.get(endpoint)
+            except Exception as e:
+                sub["verify_error"] = str(e)[:150]
+                rec["values_tried"].append(sub); continue
+            sub["verify_status"] = vcode
+            sub["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
+            rec["values_tried"].append(sub)
+            if isinstance(verified, dict) and _is_truthy(verified.get(field)):
+                rec["successful_value"] = value
+                rec["put_status"] = put_code
+                rec["verify_status"] = vcode
+                return True, rec
+        # None of the candidate values succeeded — collapse the latest
+        # attempt into the top-level rec for the GUI summary chips.
+        if rec["values_tried"]:
+            last = rec["values_tried"][-1]
+            rec["put_status"] = last.get("put_status")
+            rec["verify_status"] = last.get("verify_status")
         return False, rec
 
     # Strategy 1: use found_via if available
