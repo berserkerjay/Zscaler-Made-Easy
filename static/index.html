@@ -494,7 +494,7 @@
         <div>
           <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 1</span>
           <h3 style="font-size:1rem;margin-top:0.2rem;">Assess Current Status</h3>
-          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Check whether the tenant is in First-Match-Wins or Evaluate All Rules mode.</p>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Check whether the tenant is in Rule Order or Evaluate All Rules mode.</p>
         </div>
         <button class="btn btn-primary" onclick="step1Assess()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Run Assessment</button>
       </div>
@@ -714,11 +714,17 @@ async function step1Assess() {
     const resp = await fetch('/api/migrate/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const s = await resp.json();
-    const modeColor = s.current_mode === 'Evaluate All Rules' ? 'var(--pass)' : s.current_mode === 'First-Match-Wins' ? 'var(--warn)' : 'var(--info)';
-    const ready = s.ready_to_migrate ? '<span style="color:var(--pass);">✓ Ready to migrate</span>' : '<span style="color:var(--info);">— Migration not applicable</span>';
+    // Rename First-Match-Wins to "Rule Order" everywhere it shows up
+    const displayMode = (s.current_mode === 'First-Match-Wins') ? 'Rule Order' : s.current_mode;
+    const isEvalAll = s.evaluate_all_enabled === true;
+    const modeColor = isEvalAll ? 'var(--pass)' : displayMode === 'Rule Order' ? 'var(--warn)' : 'var(--info)';
+    const checkmark = isEvalAll ? '<span style="color:var(--pass);font-size:1.1rem;margin-right:0.35rem;">✅</span>' : '';
+    const ready = isEvalAll
+      ? '<span style="color:var(--pass);font-weight:600;">✅ Tenant is already in Evaluate All Rules — no migration needed.</span>'
+      : (s.ready_to_migrate ? '<span style="color:var(--pass);">✓ Ready to migrate</span>' : '<span style="color:var(--info);">— Migration not applicable</span>');
     const actionBreakdown = Object.entries(s.action_breakdown || {}).map(([a,n])=>`<span style="padding:0.15rem 0.45rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:4px;margin:0 0.2rem;font-size:0.75rem;">${a}: ${n}</span>`).join('');
     el.innerHTML = `
-      <div style="font-weight:600;margin-bottom:0.4rem;">Current Mode: <span style="color:${modeColor};">${s.current_mode}</span></div>
+      <div style="font-weight:600;margin-bottom:0.4rem;display:flex;align-items:center;">${checkmark}<span>Current Mode: <span style="color:${modeColor};">${displayMode}</span></span></div>
       <div style="color:var(--dim);margin-bottom:0.4rem;">${s.rule_count} rules (${s.enabled_rules} enabled, ${s.disabled_rules} disabled) · Order already safe: ${s.order_already_safe_for_eval_all ? '✓ Yes' : '✗ No'}</div>
       <div style="margin-bottom:0.4rem;">${actionBreakdown}</div>
       <div style="padding:0.5rem;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;">💡 ${escapeHtml(s.recommendation)}</div>

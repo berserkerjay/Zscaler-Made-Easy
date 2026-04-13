@@ -145,7 +145,7 @@ def analyze_rules(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "rule_id": rid,
                 "rule_name": name,
                 "type": "Shadowing Allow",
-                "message": "Under First-Match-Wins this Allow rule stops evaluation; under Evaluate All it has no suppressive effect. Consider consolidating or removing.",
+                "message": "Under Rule Order mode this Allow rule stops evaluation; under Evaluate All it has no suppressive effect. Consider consolidating or removing.",
             })
 
         # Deep scope check for cross-type shadowing (same categories + opposite actions)
@@ -400,7 +400,7 @@ def assess_current_status(client) -> Dict[str, Any]:
                 break
 
     mode = ("Evaluate All Rules" if evaluate_all is True
-            else "First-Match-Wins" if evaluate_all is False
+            else "Rule Order" if evaluate_all is False
             else "Unknown")
 
     # Rule posture
@@ -421,11 +421,11 @@ def assess_current_status(client) -> Dict[str, Any]:
         order_already_safe = True
 
     if evaluate_all is True:
-        recommendation = "Tenant is ALREADY in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning and exception management."
+        recommendation = "✅ Tenant is ALREADY in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning and exception management."
     elif evaluate_all is False and order_already_safe:
-        recommendation = "Tenant is in First-Match-Wins mode. Rule order is ALREADY optimal for Evaluate All — safe to enable the feature with low risk."
+        recommendation = "Tenant is in Rule Order mode. Rule order is ALREADY optimal for Evaluate All — safe to enable the feature with low risk."
     elif evaluate_all is False and not order_already_safe:
-        recommendation = "Tenant is in First-Match-Wins mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
+        recommendation = "Tenant is in Rule Order mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
     else:
         recommendation = "Could not determine current mode via API. Check ZIA Advanced Settings → DLP → 'Evaluate All DLP Rules' in the admin portal."
 
