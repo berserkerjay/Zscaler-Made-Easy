@@ -254,19 +254,33 @@ async def assess_stream(req: AssessRequest):
 @app.post("/api/report/docx")
 async def generate_docx(request: Request):
     """Generate a Word doc from assessment results."""
+    import traceback as _tb
     try:
         from report_docx import generate_report
-    except ImportError:
-        raise HTTPException(status_code=500, detail="python-docx not installed. Run: pip install python-docx")
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
 
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
+
     results = data.get("checks", [])
     cfg = data.get("metadata", {})
 
-    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-        tmp_path = tmp.name
+    if not results:
+        raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")
 
-    generate_report(results, cfg, tmp_path, compute, maturity)
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp_path = tmp.name
+        generate_report(results, cfg, tmp_path, compute, maturity)
+    except Exception as e:
+        # Surface the real error to the browser instead of a generic 500
+        tb = _tb.format_exc()
+        print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
+        raise HTTPException(status_code=500, detail=f"Word generation error: {type(e).__name__}: {str(e)[:300]}")
+
     org = cfg.get("org", "report").replace(" ", "_")
     return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         filename=f"zscaler_{org}_{datetime.now().strftime('%Y%m%d')}.docx")

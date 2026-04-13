@@ -794,7 +794,15 @@ async function downloadDocx() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(reportData),
     });
-    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    if (!resp.ok) {
+      // Try to read the actual error detail
+      let detail = `Server returned ${resp.status}`;
+      try {
+        const err = await resp.json();
+        if (err.detail) detail = err.detail;
+      } catch(e) {}
+      throw new Error(detail);
+    }
     const blob = await resp.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
