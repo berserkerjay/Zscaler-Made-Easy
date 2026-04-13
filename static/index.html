@@ -485,8 +485,8 @@
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:0.5rem;">
       <div>
-        <h2 style="margin-bottom:0.25rem;">Rule Migration — Evaluate All Rules</h2>
-        <p style="font-size:0.88rem;color:var(--dim);max-width:720px;">Analyze your current DLP / SSL / URL / firewall / Cloud App rules and generate a safe reordering for Zscaler's <strong>Evaluate All Rules</strong> mode. Identifies conflicts, shadowing, and overbroad rules. Export the plan as JSON or CSV for import into the Zscaler admin portal.</p>
+        <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
+        <p style="font-size:0.88rem;color:var(--dim);max-width:720px;">Analyze your current <strong>Inline Web DLP</strong> rules and generate a safe reordering for Zscaler's <strong>Evaluate All Rules</strong> mode. Identifies conflicts, shadowing, and overbroad rules. Export the plan as JSON or CSV for import into the Zscaler admin portal.</p>
       </div>
       <a class="help-toggle" onclick="toggleHelp('migrateHelp')">Why migrate? ›</a>
     </div>
@@ -494,29 +494,24 @@
       <h4>First-Match-Wins vs. Evaluate All Rules</h4>
       <ul>
         <li><strong>First-Match-Wins</strong> (default): Rules evaluate top-to-bottom, stop at first match. A broad Allow at the top can shadow specific Block rules below.</li>
-        <li><strong>Evaluate All Rules</strong>: ALL rules evaluate, most-restrictive action wins. This is the Zscaler best practice for DLP — ensures no sensitive-data rule is accidentally bypassed.</li>
+        <li><strong>Evaluate All Rules</strong>: ALL DLP rules evaluate, most-restrictive action wins. This is the Zscaler best practice for inline DLP — ensures no sensitive-data rule is accidentally bypassed.</li>
       </ul>
       <h4>Safe Migration Steps</h4>
       <ol>
-        <li>Fetch current rules using this tool</li>
+        <li>Fetch current inline Web DLP rules using this tool</li>
         <li>Review the analysis — fix WARNING issues first</li>
         <li>Export the proposed ordering (JSON/CSV)</li>
         <li>Put changing rules in audit/log-only mode in the Zscaler portal</li>
         <li>Apply new order via import</li>
-        <li>Flip "Evaluate All Rules" ON in ZIA Advanced Settings</li>
+        <li>Flip "Evaluate All Rules" ON in ZIA Advanced Settings → DLP</li>
         <li>Monitor 48-72 hours, then switch rules back to enforcement</li>
       </ol>
     </div>
 
     <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-      <select id="migrateRuleType" style="padding:0.6rem 0.9rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;">
-        <option value="web_dlp">Web DLP Rules</option>
-        <option value="ssl_inspection">SSL Inspection Rules</option>
-        <option value="url_filtering">URL Filtering Rules</option>
-        <option value="firewall">Firewall Rules</option>
-        <option value="cloud_app_control">Cloud App Control Rules</option>
-      </select>
-      <button class="btn btn-primary" onclick="migrateFetch()" style="padding:0.6rem 1.3rem;font-size:0.9rem;">Fetch & Analyze Rules</button>
+      <input type="hidden" id="migrateRuleType" value="web_dlp">
+      <span style="font-size:0.85rem;color:var(--dim);padding:0.5rem 0.9rem;background:rgba(15,23,42,0.4);border-radius:8px;border:1px solid var(--border);">📋 Scope: Inline Web DLP Rules</span>
+      <button class="btn btn-primary" onclick="migrateFetch()" style="padding:0.6rem 1.3rem;font-size:0.9rem;">Fetch &amp; Analyze DLP Rules</button>
       <span id="migrateStatus" class="status-msg"></span>
     </div>
 

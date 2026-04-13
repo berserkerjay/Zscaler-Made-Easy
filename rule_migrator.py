@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
 """
-Zscaler Rule Migration Helper — Evaluate All Rules Mode
+Zscaler Inline Web DLP Rule Migration — Evaluate All Rules
 =========================================================
-Helps migrate DLP and Cloud App Control rules from First-Match-Wins
-to Evaluate All Rules mode by:
+Scope: Inline Web DLP Rules ONLY (/zia/webDlpRules).
 
-1. Analyzing current rules for conflicts, shadowing, redundancy
+Helps migrate the inline Web DLP policy from First-Match-Wins to
+Zscaler's recommended Evaluate All Rules mode by:
+
+1. Analyzing current DLP rules for conflicts, shadowing, redundancy
 2. Generating a safe reorder that preserves intended behavior under
    Evaluate All Rules mode
 3. Exporting rules in API-importable format
-4. Optionally pushing the new ordering back to Zscaler
+4. Optionally pushing the new ordering back to Zscaler (gated)
 
-Zscaler Best Practice for Evaluate All Rules mode:
+Zscaler Best Practice for Inline DLP under Evaluate All Rules:
 - Block/Deny rules first (most restrictive)
+- Quarantine / Isolate next
 - Confirm/Prompt rules next (user-coaching)
+- Alert/Audit rules next
 - Allow rules last (least restrictive)
 - Within each action tier: most specific scope first
+  (user/group/department scoping > URL category scoping > global)
 - Remove redundant rules that would double-fire
-- Run in audit mode before enforcement
+- Run in audit/log-only mode before enforcement
+
+Other Zscaler rule types (SSL, URL, Firewall, Cloud App Control)
+have different best-practice ordering and are not covered by this
+module — by design.
 """
 
 from typing import Any, Dict, List, Optional, Tuple

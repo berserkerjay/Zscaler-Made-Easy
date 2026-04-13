@@ -287,23 +287,29 @@ class MigrateRequest(BaseModel):
     client_id: str = ""
     client_secret: str = ""
     customer_id: str = ""
-    rule_type: str = "web_dlp"  # web_dlp, ssl_inspection, url_filtering, firewall, cloud_app_control
+    # Inline Web DLP only — this tool's migration is scoped to the DLP Web Rules
+    # inline policy. Other rule types (SSL, URL, firewall, Cloud App) have
+    # different best-practice ordering rules and are out of scope here.
+    rule_type: str = "web_dlp"
 
 
 @app.post("/api/migrate/fetch")
 async def migrate_fetch(req: MigrateRequest):
-    """Fetch current rules from Zscaler for the given rule type."""
+    """Fetch current Inline Web DLP rules from Zscaler."""
     try:
         from rule_migrator import fetch_current_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
 
+    # Hard-lock to Web DLP regardless of what the caller sends
+    rule_type = "web_dlp"
+
     client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
     auth_result = await asyncio.to_thread(client.auth)
     if auth_result is not True:
         raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
-    rules = await asyncio.to_thread(fetch_current_rules, client, req.rule_type)
-    return {"rule_type": req.rule_type, "count": len(rules), "rules": rules}
+    rules = await asyncio.to_thread(fetch_current_rules, client, rule_type)
+    return {"rule_type": rule_type, "count": len(rules), "rules": rules}
 
 
 @app.post("/api/migrate/analyze")
