@@ -396,12 +396,20 @@ def assess_current_status(client) -> Dict[str, Any]:
         "/zia/advancedSettings",
         "/zia/security/advanced",
         "/zia/dlpEvaluateAllRulesSetting",
+        "/zia/advancedSettings/dlp",
+        "/zia/dlpSettings",
+        "/zia/dlp/advancedSettings",
+        "/zia/dlp/settings",
+        "/zia/configuration/advanced",
     ]
     # Field names vary across API versions / docs
     candidate_fields = [
         "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
         "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
         "isDlpEvaluateAllRules", "evaluateAllDlpRules",
+        "dlpEvalAll", "evalAll", "evaluateAll",
+        "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
+        "evalAllRulesForDlp", "evaluateAllDlp",
     ]
 
     for ep in candidate_endpoints:
@@ -414,29 +422,69 @@ def assess_current_status(client) -> Dict[str, Any]:
             "endpoint": ep,
             "status": code,
             "type": type(data).__name__,
-            "keys": (list(data.keys())[:30] if isinstance(data, dict) else None),
+            "keys": (list(data.keys())[:50] if isinstance(data, dict) else None),
         })
         if code != 200 or not isinstance(data, dict):
             continue
-        # Look for any matching field
+        # Look for any matching field (case-insensitive)
+        lower_keys = {k.lower(): k for k in data.keys()}
         for fld in candidate_fields:
-            if fld in data:
-                evaluate_all = bool(data[fld])
-                found_via = f"{ep} → {fld} = {data[fld]}"
+            real = lower_keys.get(fld.lower())
+            if real is not None:
+                evaluate_all = bool(data[real])
+                found_via = f"{ep} → {real} = {data[real]}"
                 break
         # Also walk one level deep in case it's nested
         if evaluate_all is None:
             for k, v in data.items():
                 if isinstance(v, dict):
+                    nested_lower = {nk.lower(): nk for nk in v.keys()}
                     for fld in candidate_fields:
-                        if fld in v:
-                            evaluate_all = bool(v[fld])
-                            found_via = f"{ep} → {k}.{fld} = {v[fld]}"
+                        real = nested_lower.get(fld.lower())
+                        if real is not None:
+                            evaluate_all = bool(v[real])
+                            found_via = f"{ep} → {k}.{real} = {v[real]}"
                             break
                 if evaluate_all is not None:
                     break
+        # Heuristic: any key with 'evaluate' AND 'all' in its name, boolean value
+        if evaluate_all is None:
+            for k, v in data.items():
+                kl = k.lower()
+                if "evaluat" in kl and "all" in kl and isinstance(v, bool):
+                    evaluate_all = v
+                    found_via = f"{ep} → {k} = {v} (heuristic match)"
+                    break
         if evaluate_all is not None:
             break
+
+    # Fallback: check individual rules — some Zscaler tenants expose
+    # the toggle as a per-rule field rather than a global setting
+    if evaluate_all is None:
+        try:
+            rules_probe, rcode = client.get("/zia/webDlpRules")
+            if rcode == 200 and isinstance(rules_probe, list) and rules_probe:
+                sample = rules_probe[0]
+                if isinstance(sample, dict):
+                    diagnostics.append({
+                        "endpoint": "/zia/webDlpRules[0]",
+                        "status": rcode,
+                        "type": "dict",
+                        "keys": list(sample.keys())[:50],
+                    })
+                    sample_lower = {k.lower(): k for k in sample.keys()}
+                    for fld in candidate_fields:
+                        real = sample_lower.get(fld.lower())
+                        if real is not None:
+                            # Per-rule: if any rule has it true, mode is Evaluate All
+                            any_true = any(
+                                bool(r.get(real)) for r in rules_probe if isinstance(r, dict)
+                            )
+                            evaluate_all = any_true
+                            found_via = f"/zia/webDlpRules[*].{real} (per-rule field; any-true = {any_true})"
+                            break
+        except Exception as e:
+            diagnostics.append({"endpoint": "/zia/webDlpRules", "status": 0, "error": str(e)[:100]})
 
     mode = ("Evaluate All Rules" if evaluate_all is True
             else "Rule Order" if evaluate_all is False
@@ -469,13 +517,21 @@ def assess_current_status(client) -> Dict[str, Any]:
         # Could not auto-detect. Build a helpful message with what we tried.
         endpoints_hit = [d for d in diagnostics if d.get("status") == 200]
         if endpoints_hit:
-            sample_keys = endpoints_hit[0].get("keys", [])[:10]
+            # Show keys from EVERY reachable endpoint to maximize chance of spotting it
+            sample_lines = []
+            for d in endpoints_hit:
+                keys = d.get("keys") or []
+                if keys:
+                    # Highlight any key containing 'eval', 'dlp', or 'all'
+                    interesting = [k for k in keys if any(t in k.lower() for t in ("eval", "dlp", "all", "rule"))]
+                    sample_lines.append(
+                        f"{d['endpoint']}: {', '.join(interesting[:15]) if interesting else ', '.join(keys[:10])}"
+                    )
             recommendation = (
                 "Could not auto-detect the Evaluate All Rules toggle field name in the API response. "
-                f"Endpoints reachable: {', '.join(d['endpoint'] for d in endpoints_hit)}. "
-                f"Sample field names returned: {', '.join(sample_keys) if sample_keys else 'none'}. "
+                f"Reachable endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n"
                 "Verify manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'. "
-                "If you can share the actual field name, the tool can be updated to detect it."
+                "Open the diagnostics panel below and share the field name; the tool will be updated to detect it."
             )
         else:
             recommendation = (
@@ -632,15 +688,9 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     and dry_run=False to actually make changes. Default is dry-run.
     """
     import os
-    # Current state
-    adv, code = client.get("/zia/advancedSettings")
-    current = None
-    if isinstance(adv, dict):
-        for key in ("evaluateAllRules", "dlpEvaluateAllRules",
-                    "enableDlpEvaluateAllRules", "dlpEvaluateAll"):
-            if key in adv:
-                current = adv[key]
-                break
+    # Use the same comprehensive probe as Step 1 to find current state
+    status = assess_current_status(client)
+    current = status.get("evaluate_all_enabled")
 
     if current is True:
         return {
