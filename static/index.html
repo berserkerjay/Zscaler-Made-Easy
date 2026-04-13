@@ -303,6 +303,33 @@
       <button class="btn btn-ghost" onclick="openUpdateModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
         🔄 Check for Zscaler Updates
       </button>
+      <button class="btn btn-ghost" onclick="openBypassModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
+        🔓 Bypass / Non-Inspected Traffic Report
+      </button>
+    </div>
+  </div>
+
+  <!-- Bypass inventory modal -->
+  <div id="bypassModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:1000px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 style="margin:0;">🔓 Bypass / Non-Inspected Traffic Inventory</h2>
+        <button class="btn btn-ghost" onclick="closeBypassModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
+        Aggregates every configuration that causes traffic to <strong>skip Zscaler inspection</strong>:
+        SSL inspection bypass rules, Do-Not-Inspect categories, URL filter / firewall / DLP ALLOW rules,
+        and ZCC app / process / IP / domain bypass lists + trusted networks.
+        Read-only — the tool never modifies the tenant.
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+        <button class="btn btn-primary" id="bypassRunBtn" onclick="runBypassReport()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Generate Report</button>
+        <span style="color:var(--dim);font-size:0.78rem;margin-right:0.5rem;">Export:</span>
+        <button class="btn btn-ghost" id="bypassExportCsv" onclick="exportBypass('csv')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📄 CSV</button>
+        <button class="btn btn-ghost" id="bypassExportMd"  onclick="exportBypass('markdown')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📝 Markdown</button>
+        <button class="btn btn-ghost" id="bypassExportJson" onclick="exportBypass('json')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">⚙ JSON</button>
+      </div>
+      <div id="bypassResult" style="font-size:0.88rem;"></div>
     </div>
   </div>
 
@@ -1792,8 +1819,164 @@ function closeUpdateModal() {
   document.body.style.overflow = '';
 }
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
+  if (e.key === 'Escape') {
+    if (document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
+    if (document.getElementById('bypassModal').style.display === 'block') closeBypassModal();
+  }
 });
+
+// ══════════════════════════════════════════════════════════════════
+// Bypass / Non-Inspected Traffic Inventory
+// ══════════════════════════════════════════════════════════════════
+let _bypassReportCache = null;
+
+function openBypassModal() {
+  document.getElementById('bypassModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  const r = document.getElementById('bypassResult');
+  if (!r.innerHTML.trim()) {
+    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Generate Report</strong> to inventory every bypass/exemption in your tenant.</div>';
+  }
+}
+function closeBypassModal() {
+  document.getElementById('bypassModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function runBypassReport() {
+  const body = migrateValidateCreds(); if (!body) return;  // pops credential alert if missing
+  const btn = document.getElementById('bypassRunBtn');
+  const r = document.getElementById('bypassResult');
+  btn.disabled = true;
+  const originalBtnText = btn.textContent;
+  btn.textContent = 'Generating...';
+  r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Querying ZIA + ZCC endpoints in parallel — this takes 5–15 seconds on a normal tenant.</div>';
+  ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
+  try {
+    const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const data = await resp.json();
+    _bypassReportCache = data;
+    renderBypassReport(data);
+    ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = false);
+  } catch(e) {
+    r.innerHTML = `<div style="color:var(--fail);padding:1rem;">Report failed: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalBtnText;
+  }
+}
+
+async function exportBypass(fmt) {
+  const body = migrateValidateCreds(); if (!body) return;
+  body.format = fmt;
+  try {
+    const resp = await fetch('/api/report/bypass/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const blob = await resp.blob();
+    const ext = fmt === 'markdown' ? 'md' : fmt;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `zscaler_bypass_${new Date().toISOString().slice(0,10)}.${ext}`;
+    a.click();
+  } catch(e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+
+function renderBypassReport(data) {
+  const s = data.summary || {};
+  const chip = (n, label, color) => `<span class="badge" style="background:${color}20;color:${color};">${label}: ${n}</span>`;
+  const top = `
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+      ${chip(s.ssl_bypass_rules || 0, 'SSL Bypass', '#f59e0b')}
+      ${chip(s.ssl_exemptions || 0, 'SSL Exempt', '#f59e0b')}
+      ${chip(s.url_filter_allow || 0, 'URL ALLOW', '#60a5fa')}
+      ${chip(s.firewall_allow || 0, 'FW ALLOW', '#60a5fa')}
+      ${chip(s.dlp_allow || 0, 'DLP Bypass', '#ef4444')}
+      ${chip(s.zcc_apps || 0, 'ZCC App', '#10b981')}
+      ${chip(s.zcc_processes || 0, 'ZCC Proc', '#10b981')}
+      ${chip(s.zcc_ips || 0, 'ZCC IP', '#10b981')}
+      ${chip(s.zcc_domains || 0, 'ZCC Domain', '#10b981')}
+      ${chip(s.zcc_trusted_nets || 0, 'ZCC Trusted', '#10b981')}
+      <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);font-weight:700;">Total: ${s.total_bypass_items || 0}</span>
+    </div>`;
+
+  let risky = '';
+  if (data.risk_flags && data.risk_flags.length) {
+    risky = `
+      <div style="padding:0.75rem;background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:6px;margin-bottom:0.8rem;">
+        <div style="color:#ef4444;font-weight:700;margin-bottom:0.3rem;">⚠ ${data.risk_flags.length} high-risk bypass${data.risk_flags.length===1?'':'es'} detected</div>
+        <ul style="margin-left:1.2rem;font-size:0.82rem;color:var(--dim);">
+          ${data.risk_flags.map(r => `<li><strong>${escapeHtml(r.name)}</strong> (${escapeHtml(r.source)} #${r.id}, action <code>${escapeHtml(r.action)}</code>) — ${escapeHtml(r.reason)}</li>`).join('')}
+        </ul>
+      </div>`;
+  }
+
+  const sections = [
+    ['ssl_bypass_rules', 'SSL Inspection Bypass Rules', ['id', 'name', 'action', 'state', 'scope']],
+    ['url_filter_allow', 'URL Filtering ALLOW Rules',   ['id', 'name', 'action', 'state', 'scope']],
+    ['firewall_allow',   'Firewall ALLOW Rules',        ['id', 'name', 'action', 'state', 'scope']],
+    ['dlp_allow',        'DLP ALLOW / BYPASS Rules',    ['id', 'name', 'action', 'state', 'scope']],
+  ];
+  const ruleTable = (items, cols) => {
+    if (!items || items.length === 0) return '<div style="color:var(--dim);font-size:0.82rem;padding:0.5rem;">No items.</div>';
+    return `<table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
+      <thead><tr style="background:rgba(59,130,246,0.08);">${cols.map(c=>`<th style="padding:0.35rem 0.5rem;text-align:left;">${c}</th>`).join('')}</tr></thead>
+      <tbody>${items.map(it => `<tr>${cols.map(c => {
+        let v = it[c]; if (Array.isArray(v)) v = v.slice(0,5).join(', ');
+        return `<td style="padding:0.3rem 0.5rem;border-top:1px solid var(--border);">${escapeHtml(String(v || '—'))}</td>`;
+      }).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+  };
+
+  let rulesHtml = '';
+  for (const [key, label, cols] of sections) {
+    const sec = (data.sections || {})[key] || {};
+    rulesHtml += `
+      <details open style="margin-bottom:0.5rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.6rem 0.8rem;cursor:pointer;font-weight:600;">${label} <span style="color:var(--dim);font-weight:400;">(${sec.count || 0}${sec.total_rules || sec.total_ssl_rules ? ' of ' + (sec.total_rules || sec.total_ssl_rules) : ''})</span></summary>
+        <div style="padding:0.5rem 0.8rem;">${ruleTable(sec.items, cols)}</div>
+      </details>`;
+  }
+
+  const zcc = (data.sections || {}).zcc || {};
+  const zccSections = [
+    ['apps', 'ZCC App Bypass', ['profile', 'name', 'path', 'os']],
+    ['processes', 'ZCC Process Bypass', ['profile', 'name']],
+    ['ips', 'ZCC IP Bypass', ['profile', 'value']],
+    ['domains', 'ZCC Domain Bypass', ['profile', 'value']],
+    ['trusted_networks', 'ZCC Trusted Networks', ['profile', 'value']],
+  ];
+  let zccHtml = '';
+  for (const [key, label, cols] of zccSections) {
+    const sec = zcc[key] || {};
+    zccHtml += `
+      <details style="margin-bottom:0.5rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.6rem 0.8rem;cursor:pointer;font-weight:600;">${label} <span style="color:var(--dim);font-weight:400;">(${sec.count || 0})</span></summary>
+        <div style="padding:0.5rem 0.8rem;">${ruleTable(sec.items, cols)}</div>
+      </details>`;
+  }
+
+  // SSL exemptions
+  const exm = (data.sections || {}).ssl_exemptions || {};
+  const exmHtml = `
+    <details style="margin-bottom:0.5rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+      <summary style="padding:0.6rem 0.8rem;cursor:pointer;font-weight:600;">SSL Exemptions / Do-Not-Inspect <span style="color:var(--dim);font-weight:400;">(${exm.count || 0})</span></summary>
+      <div style="padding:0.5rem 0.8rem;">${ruleTable(exm.items, ['source', 'field', 'value'])}</div>
+    </details>`;
+
+  const guidance = `
+    <div style="margin-top:1rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-left:3px solid var(--accent);border-radius:6px;font-size:0.82rem;">
+      <strong style="display:block;margin-bottom:0.3rem;">Guidance</strong>
+      <ul style="margin-left:1.1rem;color:var(--dim);">
+        ${(data.guidance || []).map(g => `<li>${escapeHtml(g)}</li>`).join('')}
+      </ul>
+    </div>`;
+
+  document.getElementById('bypassResult').innerHTML = top + risky + rulesHtml + exmHtml + zccHtml + guidance;
+}
+
 
 async function runUpdateCheck(reset) {
   const btn = document.getElementById('updateRunBtn');

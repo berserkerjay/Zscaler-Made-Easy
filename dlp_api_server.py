@@ -780,6 +780,57 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+# ── Bypass / Non-Inspected Traffic Inventory ────────────────────────
+@app.post("/api/report/bypass")
+async def report_bypass(req: MigrateRequest):
+    """Generate the bypass-inventory report (JSON). Read-only."""
+    try:
+        from bypass_report import generate_bypass_report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(generate_bypass_report, client)
+
+
+class BypassExportRequest(MigrateRequest):
+    format: str = "csv"  # csv | markdown | json
+
+
+@app.post("/api/report/bypass/export")
+async def report_bypass_export(req: BypassExportRequest):
+    """Generate and download the bypass report in csv / markdown / json."""
+    try:
+        from bypass_report import generate_bypass_report, to_csv, to_markdown
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    fmt = (req.format or "csv").lower()
+    if fmt not in ("csv", "markdown", "md", "json"):
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {req.format}")
+    client = await asyncio.to_thread(_build_client, req)
+    report = await asyncio.to_thread(generate_bypass_report, client)
+
+    from fastapi.responses import Response
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if fmt == "csv":
+        return Response(
+            content=to_csv(report),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.csv"},
+        )
+    if fmt in ("markdown", "md"):
+        return Response(
+            content=to_markdown(report),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.md"},
+        )
+    # json
+    return Response(
+        content=json.dumps(report, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"},
+    )
+
+
 # ── Updates: check for new Zscaler APIs / SDK / best practices ──────
 @app.get("/api/updates/sources")
 async def updates_sources():
