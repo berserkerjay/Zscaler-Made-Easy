@@ -691,7 +691,11 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "ok"})
             yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
 
-            for i, (check_id, sec, label, fn) in enumerate(checks):
+            # NOTE: the loop tuple variable must NOT be named `sec` — that
+            # shadows the outer `sec` (client_secret) and Python's
+            # closure rules then make every earlier reference to `sec`
+            # in this generator raise UnboundLocalError.
+            for i, (check_id, section, label, fn) in enumerate(checks):
                 # Bulletproof: every check runs in its own try/except with hard timeout
                 try:
                     r = await asyncio.wait_for(asyncio.to_thread(fn, client), timeout=60)
@@ -705,7 +709,7 @@ async def assess_stream(req: AssessRequest):
                     r = R(R.INFO, f"{label}: Invalid check result.")
 
                 result = {
-                    "id": check_id, "section": sec, "label": label,
+                    "id": check_id, "section": section, "label": label,
                     "status": str(r.status), "detail": str(r.detail)[:500],
                 }
                 results.append(result)
