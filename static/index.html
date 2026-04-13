@@ -416,12 +416,43 @@
             <input type="checkbox" class="scope-cb" value="genai" checked style="width:auto;cursor:pointer;">
             GenAI &amp; Prompts <span style="color:var(--dim);font-size:0.75rem;">(20 checks)</span>
           </label>
+        </div>
+        <div class="helper">Pick any combination of Zscaler scopes.</div>
+      </div>
+
+      <div class="field full">
+        <label>Compliance Frameworks <span style="color:var(--dim);font-size:0.7rem;font-weight:normal;">(optional — pick any to include in report)</span></label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
-            <input type="checkbox" id="complianceToggle" checked style="width:auto;cursor:pointer;">
-            Compliance Mapping <span style="color:var(--dim);font-size:0.75rem;">(8 frameworks)</span>
+            <input type="checkbox" class="fw-cb" value="NIST_800_53" checked style="width:auto;cursor:pointer;"> 🇺🇸 NIST 800-53 r5
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="NIST_800_171" checked style="width:auto;cursor:pointer;"> 🇺🇸 NIST 800-171 r3
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="SOC_2" checked style="width:auto;cursor:pointer;"> 📋 SOC 2
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="GDPR" checked style="width:auto;cursor:pointer;"> 🇪🇺 GDPR
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="HIPAA" checked style="width:auto;cursor:pointer;"> 🏥 HIPAA
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="PCI_DSS" checked style="width:auto;cursor:pointer;"> 💳 PCI-DSS v4.0
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="ISO_27001" checked style="width:auto;cursor:pointer;"> 🌐 ISO 27001:2022
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="CIS" checked style="width:auto;cursor:pointer;"> 🛡️ CIS Controls v8
           </label>
         </div>
-        <div class="helper">Pick any combination. Compliance Mapping adds per-control drill-down for NIST, SOC 2, GDPR, HIPAA, PCI-DSS, ISO 27001, CIS.</div>
+        <div class="helper">
+          <a onclick="toggleFrameworks(true)" style="color:var(--accent);cursor:pointer;margin-right:0.75rem;">Select all</a>
+          <a onclick="toggleFrameworks(false)" style="color:var(--accent);cursor:pointer;">Clear all</a>
+          <span style="margin-left:0.75rem;">Uncheck all to skip compliance analysis entirely.</span>
+        </div>
       </div>
     </div>
 
@@ -586,8 +617,8 @@ function loadConfig() {
     if (Array.isArray(saved.scopes) && saved.scopes.length) {
       setSelectedScopes(saved.scopes);
     }
-    if (typeof saved.compliance === 'boolean' && document.getElementById('complianceToggle')) {
-      document.getElementById('complianceToggle').checked = saved.compliance;
+    if (Array.isArray(saved.frameworks)) {
+      document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = saved.frameworks.includes(cb.value); });
     }
   } catch(e){}
 }
@@ -602,7 +633,7 @@ function saveConfig() {
     cid: document.getElementById('cid').value,
     custid: document.getElementById('custid').value,
     scopes: getSelectedScopes(),
-    compliance: document.getElementById('complianceToggle')?.checked,
+    frameworks: getSelectedFrameworks(),
   };
   localStorage.setItem(LS_KEY, JSON.stringify(cfg));
   setStatus('Config saved (secret not stored)', 'success');
@@ -831,10 +862,18 @@ function showResults(data) {
 let drilldownData = null;
 let currentFwKey = null;
 
+function getSelectedFrameworks() {
+  return Array.from(document.querySelectorAll('.fw-cb:checked')).map(cb => cb.value);
+}
+
+function toggleFrameworks(state) {
+  document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = state; });
+}
+
 async function loadCompliance(data) {
-  // Respect the Compliance Mapping checkbox
-  const toggle = document.getElementById('complianceToggle');
-  if (toggle && !toggle.checked) {
+  // Respect framework checkboxes — if none selected, skip entirely
+  const selectedFws = getSelectedFrameworks();
+  if (selectedFws.length === 0) {
     document.getElementById('complianceCard').style.display = 'none';
     return;
   }
@@ -845,7 +884,9 @@ async function loadCompliance(data) {
       body: JSON.stringify(data),
     });
     if (!resp.ok) { document.getElementById('complianceCard').style.display = 'none'; return; }
-    const fw = await resp.json();
+    let fw = await resp.json();
+    // Filter to selected frameworks only
+    fw = Object.fromEntries(Object.entries(fw).filter(([k]) => selectedFws.includes(k)));
 
     // Also fetch drilldown data for click-through
     const drillResp = await fetch('/api/compliance/drilldown', {
@@ -854,6 +895,9 @@ async function loadCompliance(data) {
       body: JSON.stringify(data),
     });
     drilldownData = drillResp.ok ? await drillResp.json() : null;
+    if (drilldownData) {
+      drilldownData = Object.fromEntries(Object.entries(drilldownData).filter(([k]) => selectedFws.includes(k)));
+    }
 
     const grid = document.getElementById('complianceGrid');
     grid.innerHTML = '';
