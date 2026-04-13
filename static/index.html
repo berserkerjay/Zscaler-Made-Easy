@@ -301,6 +301,13 @@
     <span class="badge" id="totalChecksBadge">Loading...</span>
   </div>
 
+  <!-- Compliance Preview -->
+  <div class="card">
+    <h2>Compliance Coverage</h2>
+    <p style="font-size:0.88rem;color:var(--dim);margin-bottom:1rem;">This tool maps every check to controls in 8 major regulatory frameworks. After running an assessment, you'll see a per-framework alignment summary in your results and Word report.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
+  </div>
+
   <!-- Quick Start -->
   <div class="card">
     <h2>Quick Start</h2>
@@ -503,6 +510,21 @@ fetch('/api/health').then(r => r.json()).then(d => {
 }).catch(() => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
+
+// Load supported compliance frameworks on page load
+fetch('/api/frameworks').then(r => r.json()).then(frameworks => {
+  if (!Array.isArray(frameworks)) return;
+  const list = document.getElementById('frameworksList');
+  if (!list) return;
+  const icons = {NIST_800_53:'🇺🇸', NIST_800_171:'🇺🇸', SOC_2:'📋', GDPR:'🇪🇺', HIPAA:'🏥', PCI_DSS:'💳', ISO_27001:'🌐', CIS:'🛡️'};
+  list.innerHTML = frameworks.map(fw => {
+    const shortName = (fw.name || fw.key).split(' — ')[0];
+    return `<div style="padding:0.85rem 1rem;background:rgba(15,23,42,0.5);border-radius:10px;border:1px solid var(--border);display:flex;align-items:center;gap:0.6rem;">
+      <span style="font-size:1.2rem;">${icons[fw.key] || '✓'}</span>
+      <span style="font-size:0.85rem;font-weight:500;">${shortName}</span>
+    </div>`;
+  }).join('');
+}).catch(() => {});
 
 function getSelectedScopes() {
   return Array.from(document.querySelectorAll('.scope-cb:checked')).map(cb => cb.value);
