@@ -76,7 +76,19 @@ def _scope_summary(r: Dict[str, Any]) -> str:
 
 
 def _action_of(r: Dict[str, Any]) -> str:
-    return (r.get("action") or "").upper().replace(" ", "_")
+    """
+    Normalize a rule's action to an upper-case string.
+    ZIA SSL inspection rules expose `action` as a *dict* like
+      {"type": "DO_NOT_DECRYPT", "sslInterceptionCert": {...}}
+    while most other rule types expose it as a plain string.
+    Handle both.
+    """
+    a = r.get("action")
+    if isinstance(a, dict):
+        a = a.get("type") or a.get("name") or a.get("actionType") or ""
+    if not isinstance(a, str):
+        a = str(a) if a is not None else ""
+    return a.upper().replace(" ", "_")
 
 
 def _normalize_rule(r: Dict[str, Any], source: str) -> Dict[str, Any]:
