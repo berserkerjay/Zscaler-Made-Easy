@@ -421,13 +421,24 @@ def assess_current_status(client) -> Dict[str, Any]:
         "/zia/dlp/advancedSettings",
         "/zia/dlp/settings",
         "/zia/configuration/advanced",
-        # New: the setting is labeled "Inline DLP Rule Evaluation" in the
-        # admin UI — likely candidate endpoints for that specific surface.
+        # "Inline DLP Rule Evaluation" surface candidates
         "/zia/inlineDlpConfig",
         "/zia/inlineDlpSettings",
         "/zia/dlpRuleEvaluation",
         "/zia/dlpConfiguration",
         "/zia/dlpConfig",
+        # Feature-flag surfaces — user confirmed their tenant exposes
+        # DLP_RULE_EVALUATE_ALL (bool) in an UPPER_SNAKE_CASE response
+        "/zia/featureFlags",
+        "/zia/features",
+        "/zia/featureVisibility",
+        "/zia/accountFeatures",
+        "/zia/tenantFeatures",
+        "/zia/visibility/features",
+        "/zia/subscriptions/features",
+        "/zia/productFeatures",
+        "/zia/featureCatalog",
+        "/zia/entitlement/features",
     ]
     # Field names vary across API versions / docs. Include both boolean
     # flags and enum-string fields (the admin UI labels this "Inline DLP
@@ -445,6 +456,12 @@ def assess_current_status(client) -> Dict[str, Any]:
         "dlpRuleEvaluation", "dlpRuleEvaluationType",
         "ruleEvaluationType", "dlpEvaluationType",
         "evaluationType", "evaluationMode", "dlpEvaluationMode",
+        # User-confirmed feature-flag field name. UPPER_SNAKE_CASE.
+        # Kept as provided — case-insensitive underscore-agnostic
+        # matching handles any variation.
+        "DLP_RULE_EVALUATE_ALL",
+        "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
+        "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
     ]
 
     for ep in candidate_endpoints:
@@ -461,10 +478,13 @@ def assess_current_status(client) -> Dict[str, Any]:
         })
         if code != 200 or not isinstance(data, dict):
             continue
-        # Look for any matching field (case-insensitive)
-        lower_keys = {k.lower(): k for k in data.keys()}
+        # Match keys case-insensitively AND underscore-agnostically so
+        # 'DLP_RULE_EVALUATE_ALL' matches a candidate written as
+        # 'dlpRuleEvaluateAll', 'dlp_rule_evaluate_all', or similar.
+        def _norm(s): return s.lower().replace("_", "").replace("-", "")
+        norm_keys = {_norm(k): k for k in data.keys()}
         for fld in candidate_fields:
-            real = lower_keys.get(fld.lower())
+            real = norm_keys.get(_norm(fld))
             if real is not None:
                 evaluate_all = _is_truthy(data[real])
                 found_via = f"{ep} → {real} = {data[real]!r}"
@@ -473,9 +493,9 @@ def assess_current_status(client) -> Dict[str, Any]:
         if evaluate_all is None:
             for k, v in data.items():
                 if isinstance(v, dict):
-                    nested_lower = {nk.lower(): nk for nk in v.keys()}
+                    nested_norm = {_norm(nk): nk for nk in v.keys()}
                     for fld in candidate_fields:
-                        real = nested_lower.get(fld.lower())
+                        real = nested_norm.get(_norm(fld))
                         if real is not None:
                             evaluate_all = _is_truthy(v[real])
                             found_via = f"{ep} → {k}.{real} = {v[real]!r}"
@@ -781,18 +801,7 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     # ── Real activation path ─────────────────────────────────────
     attempts: List[Dict[str, Any]] = []
 
-    # Same candidate lists used by assess_current_status
-    candidate_endpoints = [
-        "/zia/dlpAdvancedSettings",
-        "/zia/advancedSettings",
-        "/zia/security/advanced",
-        "/zia/dlpEvaluateAllRulesSetting",
-        "/zia/advancedSettings/dlp",
-        "/zia/dlpSettings",
-        "/zia/dlp/advancedSettings",
-        "/zia/dlp/settings",
-        "/zia/configuration/advanced",
-    ]
+    # Same candidate lists used by assess_current_status — defined below
     candidate_fields = [
         "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
         "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
@@ -806,6 +815,27 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "dlpRuleEvaluation", "dlpRuleEvaluationType",
         "ruleEvaluationType", "dlpEvaluationType",
         "evaluationType", "evaluationMode", "dlpEvaluationMode",
+        # User-confirmed feature-flag field (UPPER_SNAKE_CASE).
+        # Underscore-agnostic match handles case/underscore variants.
+        "DLP_RULE_EVALUATE_ALL",
+        "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
+        "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
+    ]
+    # Mirror the candidate_endpoints list from assess_current_status so
+    # the write path probes every known surface.
+    candidate_endpoints = [
+        "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
+        "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
+        "/zia/advancedSettings/dlp", "/zia/dlpSettings",
+        "/zia/dlp/advancedSettings", "/zia/dlp/settings",
+        "/zia/configuration/advanced",
+        "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
+        "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
+        "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
+        "/zia/accountFeatures", "/zia/tenantFeatures",
+        "/zia/visibility/features", "/zia/subscriptions/features",
+        "/zia/productFeatures", "/zia/featureCatalog",
+        "/zia/entitlement/features",
     ]
 
     # Value candidates to try per field. For boolean-looking fields we
@@ -843,10 +873,18 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             rec["phase"] = "get"; rec["skip_reason"] = "non-200 or not dict"
             return False, rec
 
+        # Resolve to the real key-name the server uses on this endpoint
+        # (e.g. server has 'DLP_RULE_EVALUATE_ALL' but the candidate is
+        # 'dlpRuleEvaluateAll' — they must match for the PUT to stick).
+        def _norm(s): return s.lower().replace("_", "").replace("-", "")
+        norm_keys = {_norm(k): k for k in current_data.keys()}
+        server_key = norm_keys.get(_norm(field), field)
+        rec["server_key"] = server_key
+
         for value in _values_for_field(field):
-            sub: Dict[str, Any] = {"value": value}
+            sub: Dict[str, Any] = {"value": value, "server_key": server_key}
             new_body = dict(current_data)
-            new_body[field] = value
+            new_body[server_key] = value
             try:
                 resp, put_code = client.put(endpoint, new_body)
             except Exception as e:
@@ -867,9 +905,9 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
                 sub["verify_error"] = str(e)[:150]
                 rec["values_tried"].append(sub); continue
             sub["verify_status"] = vcode
-            sub["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
+            sub["verify_value"] = verified.get(server_key) if isinstance(verified, dict) else None
             rec["values_tried"].append(sub)
-            if isinstance(verified, dict) and _is_truthy(verified.get(field)):
+            if isinstance(verified, dict) and _is_truthy(verified.get(server_key)):
                 rec["successful_value"] = value
                 rec["put_status"] = put_code
                 rec["verify_status"] = vcode
