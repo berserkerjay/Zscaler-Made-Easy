@@ -485,7 +485,7 @@
   <div class="card">
     <div style="margin-bottom:1rem;">
       <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
-      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the steps below in order. Steps 4b is destructive and optional. All write actions default to dry-run for safety.</p>
+      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the steps below in order. Step 3b is destructive and optional. All write actions default to dry-run for safety.</p>
     </div>
 
     <!-- Step 1 -->
@@ -548,13 +548,41 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-primary" onclick="step3Optimize()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Optimize</button>
+        <label class="btn btn-ghost" style="padding:0.55rem 1.1rem;font-size:0.85rem;cursor:pointer;">
+          📂 Upload Optimized Rules JSON
+          <input type="file" id="step3UploadFile" accept=".json,application/json" onchange="step3UploadOptimized(event)" style="display:none;">
+        </label>
+        <button class="btn btn-ghost" onclick="step3SaveOptimized()" id="step3SaveBtn" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save Optimized JSON</button>
         <button class="btn btn-ghost" onclick="migrateExport('json')" style="padding:0.55rem 1.1rem;font-size:0.85rem;">📄 Export Plan (JSON)</button>
         <button class="btn btn-ghost" onclick="migrateExport('csv')" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Export (CSV)</button>
       </div>
+      <p style="font-size:0.78rem;color:var(--dim);margin-top:0.4rem;">
+        💡 Skip auto-optimization by uploading a JSON of pre-curated rules in the order you want them posted (Step 5 will use that order directly).
+      </p>
       <div id="step3Result" style="display:none;margin-top:0.75rem;"></div>
       <div id="migrateDiff"></div>
+    </div>
+
+    <!-- Step 3b (optional, destructive) -->
+    <div style="padding:1rem;background:rgba(220,38,38,0.05);border-radius:10px;border:1px dashed rgba(220,38,38,0.4);margin-bottom:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:#dc2626;font-weight:700;letter-spacing:0.1em;">STEP 3B · OPTIONAL · DESTRUCTIVE</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Delete All Existing DLP Rules</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">
+            Use this <strong>only</strong> when migrating to Evaluate All Rules with a fresh re-post. Wipes every Inline Web DLP rule
+            so Step 5 can re-create them in the optimized order without conflicts.
+            <strong style="color:#dc2626;">Cannot be undone via API</strong> — make sure Step 2 backup is saved first.
+          </p>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button class="btn btn-ghost" onclick="step3bDeleteAll(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Preview Deletion (Dry-Run)</button>
+          <button class="btn btn-ghost" onclick="step3bDeleteAll(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;color:#dc2626;border-color:rgba(220,38,38,0.4);">⚠ Delete All</button>
+        </div>
+      </div>
+      <div id="step3bResult" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(220,38,38,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
     <!-- Step 4 -->
@@ -570,39 +598,19 @@
       <div id="step4Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
-    <!-- Step 4b (optional, destructive) -->
-    <div style="padding:1rem;background:rgba(220,38,38,0.05);border-radius:10px;border:1px dashed rgba(220,38,38,0.4);margin-bottom:0.75rem;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
-        <div>
-          <span style="font-size:0.7rem;color:#dc2626;font-weight:700;letter-spacing:0.1em;">STEP 4B · OPTIONAL · DESTRUCTIVE</span>
-          <h3 style="font-size:1rem;margin-top:0.2rem;">Delete All Existing DLP Rules</h3>
-          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">
-            Use this <strong>only</strong> when migrating to Evaluate All Rules with a fresh re-post. Wipes every Inline Web DLP rule
-            so Step 5 can re-create them in the optimized order without conflicts.
-            <strong style="color:#dc2626;">Cannot be undone via API</strong> — make sure Step 2 backup is saved first.
-          </p>
-        </div>
-        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-          <button class="btn btn-ghost" onclick="step4bDeleteAll(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Preview Deletion (Dry-Run)</button>
-          <button class="btn btn-ghost" onclick="step4bDeleteAll(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;color:#dc2626;border-color:rgba(220,38,38,0.4);">⚠ Delete All</button>
-        </div>
-      </div>
-      <div id="step4bResult" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(220,38,38,0.05);border-radius:8px;margin-top:0.5rem;"></div>
-    </div>
-
     <!-- Step 5 -->
     <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
         <div>
           <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 5</span>
           <h3 style="font-size:1rem;margin-top:0.2rem;">Post New Rules</h3>
-          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Choose mode based on whether you ran Step 4b.</p>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Choose mode based on whether you ran Step 3b.</p>
         </div>
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
           <select id="step5Mode" style="padding:0.55rem 0.75rem;font-size:0.82rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;color:var(--text);">
             <option value="auto">auto (PUT existing, POST new)</option>
             <option value="update">update only (PUT — re-order in place)</option>
-            <option value="create">create only (POST — use after Step 4b)</option>
+            <option value="create">create only (POST — use after Step 3b)</option>
           </select>
           <button class="btn btn-ghost" onclick="step5Post(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Dry-Run</button>
           <button class="btn btn-primary" onclick="step5Post(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Post Live</button>
@@ -857,9 +865,76 @@ async function step3Optimize() {
     `;
     showDiff(plan.diff || []);
     showManualReorder();
+    document.getElementById('step3SaveBtn').style.display = 'inline-flex';
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
   }
+}
+
+async function step3UploadOptimized(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const el = document.getElementById('step3Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Reading optimized rules...</span>';
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const rules = Array.isArray(parsed)
+      ? parsed
+      : (parsed.proposed_rules || parsed.proposed_order || parsed.rules || []);
+    if (!Array.isArray(rules) || rules.length === 0) throw new Error('No rules array found in JSON.');
+    optimizedRules = rules;
+    optimizedRules.forEach((r, i) => { r._proposed_order = i + 1; });
+    _autoOptimizedSnapshot = null;
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Loaded ${optimizedRules.length} optimized rule(s) from <code>${escapeHtml(file.name)}</code></div>
+      <div style="color:var(--dim);margin-top:0.25rem;font-size:0.82rem;">
+        The order in this file is the order Step 5 will post. Use ▲▼ below to fine-tune, or proceed straight to Step 5.
+      </div>
+    `;
+    // Optionally compute diff against migrateRules if it exists
+    if (Array.isArray(migrateRules) && migrateRules.length) {
+      const origPos = {};
+      migrateRules.forEach((r, i) => {
+        if (r.id != null) origPos[String(r.id)] = i + 1;
+      });
+      const diff = optimizedRules.map((r, i) => {
+        const rid = r.id != null ? String(r.id) : null;
+        const oldP = rid ? origPos[rid] : null;
+        const newP = i + 1;
+        if (oldP === newP) return null;
+        return {
+          rule_id: r.id,
+          rule_name: r.name || `Rule ${r.id || newP}`,
+          action: (r.action || '?').toUpperCase(),
+          old_position: oldP,
+          new_position: newP,
+        };
+      }).filter(Boolean);
+      showDiff(diff);
+    } else {
+      document.getElementById('migrateDiff').innerHTML = '';
+    }
+    showManualReorder();
+    document.getElementById('step3SaveBtn').style.display = 'inline-flex';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Upload failed: ' + escapeHtml(e.message) + '</span>';
+  }
+  event.target.value = '';
+}
+
+function step3SaveOptimized() {
+  if (!optimizedRules) return;
+  const clean = optimizedRules.map(r => {
+    const cr = {};
+    for (const k in r) if (!k.startsWith('_')) cr[k] = r[k];
+    return cr;
+  });
+  const blob = new Blob([JSON.stringify({proposed_rules: clean, count: clean.length, exported_at: new Date().toISOString()}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `zscaler_dlp_optimized_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
 }
 
 function showManualReorder() {
@@ -925,13 +1000,13 @@ function reorderReset() {
   showManualReorder();
 }
 
-async function step4bDeleteAll(dryRun) {
+async function step3bDeleteAll(dryRun) {
   if (!dryRun) {
     if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON Backup).\n\nThis cannot be undone via API. Continue?')) return;
   }
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = dryRun;
-  const el = document.getElementById('step4bResult'); el.style.display = 'block';
+  const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
     const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
