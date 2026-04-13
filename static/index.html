@@ -481,48 +481,105 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
   </div>
 
-  <!-- Rule Migration: Evaluate All Rules -->
+  <!-- Inline DLP Rule Migration: 5-Step Wizard -->
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:0.5rem;">
-      <div>
-        <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
-        <p style="font-size:0.88rem;color:var(--dim);max-width:720px;">Analyze your current <strong>Inline Web DLP</strong> rules and generate a safe reordering for Zscaler's <strong>Evaluate All Rules</strong> mode. Identifies conflicts, shadowing, and overbroad rules. Export the plan as JSON or CSV for import into the Zscaler admin portal.</p>
-      </div>
-      <a class="help-toggle" onclick="toggleHelp('migrateHelp')">Why migrate? ›</a>
-    </div>
-    <div class="help-content" id="migrateHelp">
-      <h4>First-Match-Wins vs. Evaluate All Rules</h4>
-      <ul>
-        <li><strong>First-Match-Wins</strong> (default): Rules evaluate top-to-bottom, stop at first match. A broad Allow at the top can shadow specific Block rules below.</li>
-        <li><strong>Evaluate All Rules</strong>: ALL DLP rules evaluate, most-restrictive action wins. This is the Zscaler best practice for inline DLP — ensures no sensitive-data rule is accidentally bypassed.</li>
-      </ul>
-      <h4>Safe Migration Steps</h4>
-      <ol>
-        <li>Fetch current inline Web DLP rules using this tool</li>
-        <li>Review the analysis — fix WARNING issues first</li>
-        <li>Export the proposed ordering (JSON/CSV)</li>
-        <li>Put changing rules in audit/log-only mode in the Zscaler portal</li>
-        <li>Apply new order via import</li>
-        <li>Flip "Evaluate All Rules" ON in ZIA Advanced Settings → DLP</li>
-        <li>Monitor 48-72 hours, then switch rules back to enforcement</li>
-      </ol>
+    <div style="margin-bottom:1rem;">
+      <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
+      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the 5 steps below in order. All write actions default to dry-run for safety.</p>
     </div>
 
-    <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-      <input type="hidden" id="migrateRuleType" value="web_dlp">
-      <span style="font-size:0.85rem;color:var(--dim);padding:0.5rem 0.9rem;background:rgba(15,23,42,0.4);border-radius:8px;border:1px solid var(--border);">📋 Scope: Inline Web DLP Rules</span>
-      <button class="btn btn-primary" onclick="migrateFetch()" style="padding:0.6rem 1.3rem;font-size:0.9rem;">Fetch &amp; Analyze DLP Rules</button>
-      <span id="migrateStatus" class="status-msg"></span>
+    <!-- Step 1 -->
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 1</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Assess Current Status</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Check whether the tenant is in First-Match-Wins or Evaluate All Rules mode.</p>
+        </div>
+        <button class="btn btn-primary" onclick="step1Assess()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Run Assessment</button>
+      </div>
+      <div id="step1Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
-    <div id="migrateResults" style="display:none;margin-top:1.25rem;">
-      <div id="migrateAnalysis" style="margin-bottom:1rem;"></div>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
-        <button class="btn btn-ghost" onclick="migrateExport('json')" style="padding:0.5rem 1rem;font-size:0.85rem;">📄 Export Plan (JSON)</button>
-        <button class="btn btn-ghost" onclick="migrateExport('csv')" style="padding:0.5rem 1rem;font-size:0.85rem;">Export Plan (CSV)</button>
+    <!-- Step 2 -->
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 2</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Download Current Rules</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Pull the live inline DLP rule set from Zscaler and save a backup before any changes.</p>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="step2Download()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Download Rules</button>
+          <button class="btn btn-ghost" id="step2SaveBtn" onclick="step2SaveLocal()" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save JSON Backup</button>
+        </div>
       </div>
+      <div id="step2Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
+    </div>
+
+    <!-- Step 3 -->
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
+      <div style="margin-bottom:0.5rem;">
+        <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 3</span>
+        <h3 style="font-size:1rem;margin-top:0.2rem;">Optimize for Evaluate All Rules (with Exceptions)</h3>
+        <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Generate the new rule ordering. Optionally declare exceptions before optimizing.</p>
+      </div>
+
+      <div style="margin:0.75rem 0;padding:0.75rem;background:rgba(15,23,42,0.5);border-radius:8px;border:1px dashed var(--border);">
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;">Exceptions (optional)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;font-size:0.82rem;">
+          <div>
+            <label style="display:block;color:var(--dim);margin-bottom:0.25rem;">Skip rule IDs (comma-separated — won't be reordered)</label>
+            <input id="exSkipIds" placeholder="e.g. 7, 12, 44" style="width:100%;padding:0.5rem 0.75rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+          </div>
+          <div>
+            <label style="display:block;color:var(--dim);margin-bottom:0.25rem;">Pin rule ID to position (e.g., "5:1" pins rule 5 to position 1)</label>
+            <input id="exPinned" placeholder="e.g. 5:1" style="width:100%;padding:0.5rem 0.75rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:0.85rem;">
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;color:var(--dim);">
+              <input type="checkbox" id="exAuditBlocks" style="width:auto;cursor:pointer;"> Convert BLOCK actions to audit-only (ALERT) during migration window
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="step3Optimize()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Optimize</button>
+        <button class="btn btn-ghost" onclick="migrateExport('json')" style="padding:0.55rem 1.1rem;font-size:0.85rem;">📄 Export Plan (JSON)</button>
+        <button class="btn btn-ghost" onclick="migrateExport('csv')" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Export (CSV)</button>
+      </div>
+      <div id="step3Result" style="display:none;margin-top:0.75rem;"></div>
       <div id="migrateDiff"></div>
     </div>
+
+    <!-- Step 4 -->
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 4</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Enable Evaluate All Rules</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Turn on the feature in ZIA Advanced Settings. Dry-run shows what would change; actual enable requires manual confirmation in the admin portal.</p>
+        </div>
+        <button class="btn btn-primary" onclick="step4Enable()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Check / Enable</button>
+      </div>
+      <div id="step4Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
+    </div>
+
+    <!-- Step 5 -->
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 5</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Post New Rules</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Dry-run returns the plan; actual writes are gated for safety — prefer the exported JSON + admin portal import.</p>
+        </div>
+        <button class="btn btn-primary" onclick="step5Post()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Post (Dry-Run)</button>
+      </div>
+      <div id="step5Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
+    </div>
+
+    <div id="migrateStatus" class="status-msg" style="margin-top:0.75rem;"></div>
   </div>
 
   <!-- Progress -->
@@ -625,58 +682,175 @@ function exportChecks(scope, format) {
 }
 
 let migrateRules = null;
+let optimizedRules = null;
 
-async function migrateFetch() {
-  const sm = document.getElementById('migrateStatus');
-  const body = {
+function migrateCredBody() {
+  return {
     cloud: document.getElementById('cloud').value,
     vanity_domain: document.getElementById('vd').value,
     client_id: document.getElementById('cid').value,
     client_secret: document.getElementById('csec').value,
     customer_id: document.getElementById('custid').value,
-    rule_type: document.getElementById('migrateRuleType').value,
   };
-  if (!body.client_id || !body.client_secret || !body.vanity_domain) {
+}
+
+function migrateValidateCreds() {
+  const b = migrateCredBody();
+  const sm = document.getElementById('migrateStatus');
+  if (!b.client_id || !b.client_secret || !b.vanity_domain) {
     sm.textContent = 'Fill in API credentials in the Tenant Configuration above first.';
     sm.className = 'status-msg error';
-    return;
+    return null;
   }
-  sm.textContent = 'Fetching rules from Zscaler...';
-  sm.className = 'status-msg';
+  sm.textContent = ''; sm.className = 'status-msg';
+  return b;
+}
 
+async function step1Assess() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const el = document.getElementById('step1Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Checking tenant status...</span>';
   try {
-    const resp = await fetch('/api/migrate/fetch', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      let d = `Server returned ${resp.status}`;
-      try { const j = await resp.json(); d = j.detail || d; } catch(e){}
-      throw new Error(d);
-    }
+    const resp = await fetch('/api/migrate/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const s = await resp.json();
+    const modeColor = s.current_mode === 'Evaluate All Rules' ? 'var(--pass)' : s.current_mode === 'First-Match-Wins' ? 'var(--warn)' : 'var(--info)';
+    const ready = s.ready_to_migrate ? '<span style="color:var(--pass);">✓ Ready to migrate</span>' : '<span style="color:var(--info);">— Migration not applicable</span>';
+    const actionBreakdown = Object.entries(s.action_breakdown || {}).map(([a,n])=>`<span style="padding:0.15rem 0.45rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:4px;margin:0 0.2rem;font-size:0.75rem;">${a}: ${n}</span>`).join('');
+    el.innerHTML = `
+      <div style="font-weight:600;margin-bottom:0.4rem;">Current Mode: <span style="color:${modeColor};">${s.current_mode}</span></div>
+      <div style="color:var(--dim);margin-bottom:0.4rem;">${s.rule_count} rules (${s.enabled_rules} enabled, ${s.disabled_rules} disabled) · Order already safe: ${s.order_already_safe_for_eval_all ? '✓ Yes' : '✗ No'}</div>
+      <div style="margin-bottom:0.4rem;">${actionBreakdown}</div>
+      <div style="padding:0.5rem;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;">💡 ${escapeHtml(s.recommendation)}</div>
+      <div style="margin-top:0.4rem;">${ready}</div>
+    `;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+async function step2Download() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const el = document.getElementById('step2Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Downloading rules...</span>';
+  try {
+    const resp = await fetch('/api/migrate/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     migrateRules = data.rules || [];
-    sm.textContent = `Fetched ${migrateRules.length} rules. Generating migration plan...`;
-
-    // Generate plan
-    const planResp = await fetch('/api/migrate/plan', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({rules: migrateRules}),
-    });
-    if (!planResp.ok) {
-      let d = `Plan error ${planResp.status}`;
-      try { const j = await planResp.json(); d = j.detail || d; } catch(e){}
-      throw new Error(d);
-    }
-    const plan = await planResp.json();
-    showMigratePlan(plan);
-    sm.textContent = `Analysis complete — ${plan.analysis.issue_count} issues, ${plan.diff_count} rules to reorder.`;
-    sm.className = 'status-msg success';
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Downloaded ${migrateRules.length} DLP rules</div>
+      <div style="color:var(--dim);margin-top:0.25rem;">Rules are cached in this session. Save a JSON backup before proceeding to Step 3.</div>
+    `;
+    document.getElementById('step2SaveBtn').style.display = 'inline-flex';
   } catch(e) {
-    sm.textContent = 'Migration fetch failed: ' + e.message;
-    sm.className = 'status-msg error';
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+function step2SaveLocal() {
+  if (!migrateRules) return;
+  const blob = new Blob([JSON.stringify({rules: migrateRules, count: migrateRules.length, backup_date: new Date().toISOString()}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `zscaler_dlp_rules_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+async function step3Optimize() {
+  if (!migrateRules) { document.getElementById('migrateStatus').textContent = 'Run Step 2 first to download rules.'; document.getElementById('migrateStatus').className='status-msg error'; return; }
+  const el = document.getElementById('step3Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Optimizing with exceptions...</span>';
+
+  // Build exceptions from UI
+  const exceptions = {};
+  const skipRaw = (document.getElementById('exSkipIds').value || '').trim();
+  if (skipRaw) exceptions.skip_rule_ids = skipRaw.split(/[,\s]+/).filter(Boolean);
+  const pinnedRaw = (document.getElementById('exPinned').value || '').trim();
+  if (pinnedRaw.includes(':')) {
+    const [rid, pos] = pinnedRaw.split(':').map(s=>s.trim());
+    if (rid && pos) exceptions.pinned = {rule_id: rid, position: parseInt(pos, 10)};
+  }
+  if (document.getElementById('exAuditBlocks').checked) exceptions.audit_only_actions = ['BLOCK','BLOCK_DROP','BLOCK_RESET'];
+
+  try {
+    const resp = await fetch('/api/migrate/optimize', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({rules: migrateRules, exceptions})});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const plan = await resp.json();
+    optimizedRules = plan.proposed_rules || [];
+    const conv = plan.conversions || [];
+    const convHtml = conv.length ? `<div style="padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;margin-top:0.5rem;font-size:0.8rem;"><strong>${conv.length} audit-only conversion(s)</strong> — these rules are temporarily ALERT-only. Revert after migration window.</div>` : '';
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Optimized ${optimizedRules.length} rules (${plan.diff_count} reordered, ${plan.unchanged_count} unchanged)</div>
+      <div style="color:var(--dim);margin-top:0.25rem;font-size:0.82rem;">Exceptions applied: ${JSON.stringify(exceptions) === '{}' ? 'none' : escapeHtml(JSON.stringify(exceptions))}</div>
+      ${convHtml}
+      ${plan.notes && plan.notes.length ? '<ul style="margin-top:0.4rem;margin-left:1.1rem;font-size:0.82rem;color:var(--dim);">' + plan.notes.map(n=>`<li>${escapeHtml(n)}</li>`).join('') + '</ul>' : ''}
+    `;
+    showDiff(plan.diff || []);
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+function showDiff(diff) {
+  const el = document.getElementById('migrateDiff');
+  if (!diff || diff.length === 0) { el.innerHTML = '<div style="margin-top:0.5rem;color:var(--pass);font-size:0.85rem;">✓ Rule order already optimal.</div>'; return; }
+  const rows = diff.slice(0, 50).map(d => {
+    const shiftColor = d.old_position && d.old_position > d.new_position ? 'var(--pass)' : 'var(--warn)';
+    const arrow = d.old_position && d.old_position > d.new_position ? '▲' : '▼';
+    const shift = d.old_position ? Math.abs(d.old_position - d.new_position) : 0;
+    return `<tr><td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--dim);">${d.rule_id}</td><td style="padding:0.35rem 0.5rem;">${escapeHtml(d.rule_name)}</td><td style="padding:0.35rem 0.5rem;"><span style="padding:0.1rem 0.4rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:3px;font-size:0.75rem;">${d.action}</span></td><td style="padding:0.35rem 0.5rem;text-align:center;color:var(--dim);">${d.old_position||'-'}</td><td style="padding:0.35rem 0.5rem;text-align:center;font-weight:700;">${d.new_position}</td><td style="padding:0.35rem 0.5rem;text-align:center;color:${shiftColor};font-weight:700;">${arrow} ${shift}</td></tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div style="margin-top:0.75rem;padding:0.75rem;background:rgba(15,23,42,0.5);border-radius:8px;border:1px solid var(--border);">
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;">Proposed Rule Order Changes</div>
+      <table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
+        <thead><tr style="background:rgba(59,130,246,0.08);"><th style="padding:0.4rem 0.5rem;text-align:left;">Rule ID</th><th style="padding:0.4rem 0.5rem;text-align:left;">Name</th><th style="padding:0.4rem 0.5rem;text-align:left;">Action</th><th style="padding:0.4rem 0.5rem;text-align:center;">Old</th><th style="padding:0.4rem 0.5rem;text-align:center;">New</th><th style="padding:0.4rem 0.5rem;text-align:center;">Shift</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${diff.length > 50 ? `<div style="margin-top:0.4rem;color:var(--dim);font-size:0.78rem;">...and ${diff.length - 50} more changes (see exported plan).</div>` : ''}
+    </div>`;
+}
+
+async function step4Enable() {
+  const body = migrateValidateCreds(); if (!body) return;
+  body.dry_run = true;
+  const el = document.getElementById('step4Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Checking Evaluate All Rules setting...</span>';
+  try {
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const r = await resp.json();
+    const stColor = r.status === 'already_enabled' ? 'var(--pass)' : 'var(--accent)';
+    el.innerHTML = `
+      <div style="font-weight:600;color:${stColor};margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')}</div>
+      <div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>
+      ${r.portal_path ? `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.8rem;"><strong>Manual step:</strong> ${escapeHtml(r.portal_path)}</div>` : ''}
+    `;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+async function step5Post() {
+  if (!optimizedRules) { document.getElementById('migrateStatus').textContent = 'Run Step 3 first to generate optimized rules.'; document.getElementById('migrateStatus').className='status-msg error'; return; }
+  const body = migrateValidateCreds(); if (!body) return;
+  body.proposed_rules = optimizedRules;
+  body.dry_run = true;
+  const el = document.getElementById('step5Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Building post plan (dry-run)...</span>';
+  try {
+    const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const r = await resp.json();
+    el.innerHTML = `
+      <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')}</div>
+      <div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>
+      ${r.total ? `<div style="margin-top:0.4rem;">Planned updates: <strong>${r.total}</strong> rule(s) would receive a new 'order' field.</div>` : ''}
+      ${r.recommendation ? `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;"><strong>Recommendation:</strong> ${escapeHtml(r.recommendation)}</div>` : ''}
+    `;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
   }
 }
 
@@ -755,12 +929,13 @@ function showMigratePlan(plan) {
 }
 
 async function migrateExport(format) {
-  if (!migrateRules) return;
+  const rules = optimizedRules || migrateRules;
+  if (!rules) return;
   try {
     const resp = await fetch(`/api/migrate/export?format=${format}`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({rules: migrateRules}),
+      body: JSON.stringify({rules}),
     });
     if (!resp.ok) {
       let d = `Export error ${resp.status}`;

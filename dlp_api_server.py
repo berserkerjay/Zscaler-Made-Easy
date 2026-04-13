@@ -293,23 +293,91 @@ class MigrateRequest(BaseModel):
     rule_type: str = "web_dlp"
 
 
+def _build_client(req: MigrateRequest):
+    """Build an authenticated Client from a migration request."""
+    client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+    auth_result = client.auth()
+    if auth_result is not True:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
+    return client
+
+
+# ── Step 1: Assess Current Status ─────────────────────────────────
+@app.post("/api/migrate/status")
+async def migrate_status(req: MigrateRequest):
+    """Step 1: Determine whether tenant is in First-Match-Wins or Evaluate All Rules mode."""
+    try:
+        from rule_migrator import assess_current_status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(assess_current_status, client)
+
+
+# ── Step 2: Download Current Rules ───────────────────────────────
 @app.post("/api/migrate/fetch")
 async def migrate_fetch(req: MigrateRequest):
-    """Fetch current Inline Web DLP rules from Zscaler."""
+    """Step 2: Download the current Inline Web DLP rules."""
     try:
         from rule_migrator import fetch_current_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    rules = await asyncio.to_thread(fetch_current_rules, client, "web_dlp")
+    return {"rule_type": "web_dlp", "count": len(rules), "rules": rules}
 
-    # Hard-lock to Web DLP regardless of what the caller sends
-    rule_type = "web_dlp"
 
-    client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
-    auth_result = await asyncio.to_thread(client.auth)
-    if auth_result is not True:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
-    rules = await asyncio.to_thread(fetch_current_rules, client, rule_type)
-    return {"rule_type": rule_type, "count": len(rules), "rules": rules}
+# ── Step 3: Optimize with Exceptions ─────────────────────────────
+class OptimizeRequest(BaseModel):
+    rules: list[dict] = []
+    exceptions: dict = {}
+
+
+@app.post("/api/migrate/optimize")
+async def migrate_optimize(req: OptimizeRequest):
+    """Step 3: Generate optimized ordering for Evaluate All Rules, with user exceptions."""
+    try:
+        from rule_migrator import optimize_for_eval_all_with_exceptions
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if not req.rules:
+        raise HTTPException(status_code=400, detail="No rules provided.")
+    return await asyncio.to_thread(optimize_for_eval_all_with_exceptions, req.rules, req.exceptions)
+
+
+# ── Step 4: Enable Evaluate All Rules ────────────────────────────
+class EnableRequest(MigrateRequest):
+    dry_run: bool = True
+
+
+@app.post("/api/migrate/enable")
+async def migrate_enable(req: EnableRequest):
+    """Step 4: Enable Evaluate All Rules in ZIA Advanced Settings (dry-run by default)."""
+    try:
+        from rule_migrator import enable_evaluate_all_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
+
+
+# ── Step 5: Post New Rule Order ──────────────────────────────────
+class PostRequest(MigrateRequest):
+    proposed_rules: list[dict] = []
+    dry_run: bool = True
+
+
+@app.post("/api/migrate/post")
+async def migrate_post(req: PostRequest):
+    """Step 5: Post the optimized rule ordering back to Zscaler (dry-run by default)."""
+    try:
+        from rule_migrator import post_new_rule_order
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if not req.proposed_rules:
+        raise HTTPException(status_code=400, detail="No proposed_rules provided.")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run)
 
 
 @app.post("/api/migrate/analyze")

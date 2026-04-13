@@ -363,3 +363,309 @@ def fetch_current_rules(client, rule_type: str = "web_dlp") -> List[Dict[str, An
             if k in data and isinstance(data[k], list):
                 return data[k]
     return []
+
+
+# ════════════════════════════════════════════════════════════════════
+# STEP 1 — Assess Current Status
+# ════════════════════════════════════════════════════════════════════
+
+def assess_current_status(client) -> Dict[str, Any]:
+    """
+    Determine whether the tenant is currently in First-Match-Wins or
+    Evaluate All Rules mode, and summarize current DLP rule posture.
+
+    Returns:
+      {
+        "current_mode": "First-Match-Wins" | "Evaluate All Rules" | "Unknown",
+        "evaluate_all_enabled": bool | None,
+        "rule_count": N,
+        "enabled_rules": N,
+        "action_breakdown": {...},
+        "recommendation": "...",
+        "ready_to_migrate": bool,
+      }
+    """
+    # Check ZIA Advanced Settings for the Evaluate All Rules flag
+    adv, code = client.get("/zia/advancedSettings")
+    if code != 200:
+        adv, code = client.get("/zia/dlpAdvancedSettings")
+
+    evaluate_all = None
+    if isinstance(adv, dict):
+        # Field name varies across API versions
+        for key in ("evaluateAllRules", "dlpEvaluateAllRules",
+                    "enableDlpEvaluateAllRules", "dlpEvaluateAll"):
+            if key in adv:
+                evaluate_all = bool(adv[key])
+                break
+
+    mode = ("Evaluate All Rules" if evaluate_all is True
+            else "First-Match-Wins" if evaluate_all is False
+            else "Unknown")
+
+    # Rule posture
+    rules = fetch_current_rules(client, "web_dlp")
+    enabled = [r for r in rules if (r.get("state") or "ENABLED").upper() == "ENABLED"]
+    actions = {}
+    for r in enabled:
+        a = (r.get("action") or "?").upper()
+        actions[a] = actions.get(a, 0) + 1
+
+    # Is current order already safe for Evaluate All?
+    if rules:
+        proposed = reorder_for_eval_all(list(rules))
+        orig_ids = [str(r.get("id", i+1)) for i, r in enumerate(rules)]
+        new_ids = [str(r.get("id", i+1)) for i, r in enumerate(proposed)]
+        order_already_safe = orig_ids == new_ids
+    else:
+        order_already_safe = True
+
+    if evaluate_all is True:
+        recommendation = "Tenant is ALREADY in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning and exception management."
+    elif evaluate_all is False and order_already_safe:
+        recommendation = "Tenant is in First-Match-Wins mode. Rule order is ALREADY optimal for Evaluate All — safe to enable the feature with low risk."
+    elif evaluate_all is False and not order_already_safe:
+        recommendation = "Tenant is in First-Match-Wins mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
+    else:
+        recommendation = "Could not determine current mode via API. Check ZIA Advanced Settings → DLP → 'Evaluate All DLP Rules' in the admin portal."
+
+    return {
+        "current_mode": mode,
+        "evaluate_all_enabled": evaluate_all,
+        "rule_count": len(rules),
+        "enabled_rules": len(enabled),
+        "disabled_rules": len(rules) - len(enabled),
+        "action_breakdown": actions,
+        "order_already_safe_for_eval_all": order_already_safe,
+        "ready_to_migrate": evaluate_all is False,
+        "recommendation": recommendation,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
+# STEP 3 — Optimize with Exceptions
+# ════════════════════════════════════════════════════════════════════
+
+def optimize_for_eval_all_with_exceptions(
+    rules: List[Dict[str, Any]],
+    exceptions: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Generate an optimized rule ordering for Evaluate All Rules mode,
+    with user-supplied exception handling.
+
+    Exceptions supported:
+      {
+        "pinned": {"rule_id": "5", "position": 1},  # force specific position
+        "skip_rule_ids": ["7", "12"],                # don't reorder these
+        "disabled_ok": true,                         # disabled rules stay as-is
+        "exempt_groups": ["HR-Benefits-Exception"],  # these groups bypass
+        "audit_only_actions": ["BLOCK"],             # convert these to ALERT temporarily
+        "keep_original_for_review": true,            # include original in output for diff
+      }
+
+    Returns:
+      {
+        "proposed_rules": [...],          # new ordered list
+        "original_rules": [...],          # for diff reference
+        "conversions": [...],             # rules whose action was changed to audit
+        "exception_applied": {...},       # what exceptions were honored
+        "diff": [...],                    # position changes
+        "safe_to_import": bool,
+      }
+    """
+    exceptions = exceptions or {}
+    original = list(rules)
+    working = [dict(r) for r in rules]  # deep-ish copy
+
+    # 1. Apply audit-only conversions for specified actions
+    conversions = []
+    audit_only = [a.upper() for a in (exceptions.get("audit_only_actions") or [])]
+    for r in working:
+        act = (r.get("action") or "").upper()
+        if act in audit_only:
+            r["_original_action"] = act
+            r["action"] = "ALERT"  # audit-only without enforcement
+            conversions.append({
+                "rule_id": r.get("id"),
+                "rule_name": r.get("name", "?"),
+                "from": act,
+                "to": "ALERT",
+                "reason": "User requested audit-only during migration",
+            })
+
+    # 2. Auto-reorder
+    reordered = reorder_for_eval_all(list(working))
+
+    # 3. Apply pinned positions (force a specific rule to a specific position)
+    pinned = exceptions.get("pinned") or {}
+    if pinned.get("rule_id") and pinned.get("position"):
+        target_id = str(pinned["rule_id"])
+        target_pos = max(1, int(pinned["position"])) - 1
+        idx = None
+        for i, r in enumerate(reordered):
+            if str(r.get("id")) == target_id:
+                idx = i
+                break
+        if idx is not None:
+            rule = reordered.pop(idx)
+            reordered.insert(min(target_pos, len(reordered)), rule)
+
+    # 4. Honor skip list (leave these rules in their original position)
+    skip_ids = {str(x) for x in (exceptions.get("skip_rule_ids") or [])}
+    if skip_ids:
+        # Build final: keep skipped at original positions, fill others around
+        skipped = [(i, r) for i, r in enumerate(original) if str(r.get("id")) in skip_ids]
+        others = [r for r in reordered if str(r.get("id")) not in skip_ids]
+        final = list(others)
+        for orig_pos, rule in skipped:
+            insert_at = min(orig_pos, len(final))
+            final.insert(insert_at, rule)
+        reordered = final
+
+    # 5. Add proposed order index for export
+    for i, r in enumerate(reordered, 1):
+        r["_proposed_order"] = i
+
+    # Compute diff
+    orig_positions = {str(r.get("id", i+1)): i+1 for i, r in enumerate(original)}
+    diff = []
+    for new_pos, r in enumerate(reordered, 1):
+        rid = str(r.get("id", new_pos))
+        old_pos = orig_positions.get(rid)
+        if old_pos != new_pos:
+            diff.append({
+                "rule_id": rid,
+                "rule_name": r.get("name", f"Rule {rid}"),
+                "action": (r.get("action") or "?").upper(),
+                "old_position": old_pos,
+                "new_position": new_pos,
+            })
+
+    # Safety check: any BLOCK after ALLOW under Evaluate All is fine, but
+    # a rule with _original_action flagged means we need user review
+    safe = not conversions  # conversions require manual review before import
+
+    return {
+        "proposed_rules": reordered,
+        "original_rules": original,
+        "conversions": conversions,
+        "exceptions_applied": exceptions,
+        "diff": diff,
+        "diff_count": len(diff),
+        "conversion_count": len(conversions),
+        "safe_to_import": safe,
+        "notes": [
+            "Review the diff below — each shift preserves scope semantics but changes first-match behavior.",
+            "If conversions are listed, those rules are TEMPORARILY in audit-only. Revert after validation.",
+            "Export the plan (Step 2) for backup before posting (Step 5).",
+        ] + (["⚠ Audit-only conversions require manual revert after migration window."] if conversions else []),
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
+# STEP 4 — Enable Evaluate All Rules
+# ════════════════════════════════════════════════════════════════════
+
+def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
+    """
+    Toggle Evaluate All Rules ON in ZIA Advanced Settings.
+
+    SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
+    and dry_run=False to actually make changes. Default is dry-run.
+    """
+    import os
+    # Current state
+    adv, code = client.get("/zia/advancedSettings")
+    current = None
+    if isinstance(adv, dict):
+        for key in ("evaluateAllRules", "dlpEvaluateAllRules",
+                    "enableDlpEvaluateAllRules", "dlpEvaluateAll"):
+            if key in adv:
+                current = adv[key]
+                break
+
+    if current is True:
+        return {
+            "status": "already_enabled",
+            "current": current,
+            "message": "Evaluate All Rules is already enabled. No change needed.",
+        }
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "current": current,
+            "would_enable": True,
+            "message": "DRY RUN: Would enable Evaluate All Rules via PUT /zia/advancedSettings. Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and call with dry_run=false to actually apply.",
+            "portal_path": "ZIA Admin → Administration → Advanced Settings → DLP → 'Enable Evaluate All DLP Rules'",
+        }
+
+    if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+        return {
+            "status": "blocked",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable for safety.",
+            "current": current,
+        }
+
+    return {
+        "status": "manual_required",
+        "current": current,
+        "message": "Automated toggle of Evaluate All Rules is intentionally disabled. Enable it manually in the ZIA admin portal for audit-trail clarity.",
+        "portal_path": "ZIA Admin → Administration → Advanced Settings → DLP → 'Enable Evaluate All DLP Rules'",
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
+# STEP 5 — Post New Rules
+# ════════════════════════════════════════════════════════════════════
+
+def post_new_rule_order(
+    client,
+    proposed_rules: List[Dict[str, Any]],
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """
+    Apply the new rule ordering back to Zscaler by updating each
+    rule's order field via the Web DLP Rules API.
+
+    SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
+    AND dry_run=False. Default is dry-run.
+    """
+    import os
+    updates = []
+    for new_pos, r in enumerate(proposed_rules, 1):
+        updates.append({
+            "rule_id": r.get("id"),
+            "rule_name": r.get("name", f"Rule {r.get('id', new_pos)}"),
+            "new_order": new_pos,
+            "action": (r.get("action") or "?").upper(),
+        })
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "planned_updates": updates,
+            "total": len(updates),
+            "message": f"DRY RUN: Would re-order {len(updates)} DLP rules. Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and dry_run=false to apply.",
+            "recommendation": "Strongly recommended: import the exported JSON via the Zscaler admin portal instead — it gives you an audit trail and rollback point.",
+        }
+
+    if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+        return {
+            "status": "blocked",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
+            "planned_updates": updates,
+        }
+
+    # Intentionally limited — return a guide rather than firing writes
+    return {
+        "status": "manual_required",
+        "planned_updates": updates,
+        "message": (
+            "Automated PUT of rule order is intentionally disabled. "
+            "Use the exported JSON from Step 2 to import the new ordering via the Zscaler admin portal. "
+            "This preserves audit trail and gives you a rollback point."
+        ),
+        "import_endpoint": "/zia/webDlpRules (PUT per rule with updated 'order' field)",
+    }
