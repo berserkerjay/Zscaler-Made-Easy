@@ -633,14 +633,32 @@ def assess_current_status(client) -> Dict[str, Any]:
         if feature_available is True:
             feature_note = (
                 f"✓ Feature is AVAILABLE on your tenant: {feature_source}. "
-                "But this is a capability flag — it tells you the mode CAN be used, not which mode is currently selected. "
-                "The actual 'By Rule Order' vs 'Evaluate All Rules' selector lives on a different endpoint we couldn't locate.\n\n"
+                "But this is a capability flag — it tells you the mode CAN be used, not which mode is currently selected.\n\n"
             )
         elif feature_available is False:
             feature_note = (
                 f"ℹ Feature availability flag says the capability is OFF on this tenant: {feature_source}. "
                 "Zscaler support may need to enable it before Evaluate All Rules can be selected.\n\n"
             )
+
+        # Hard truth: the zscaler-sdk-python, zscaler-sdk-go, and
+        # terraform-provider-zia repositories DO NOT expose the "Inline
+        # DLP Rule Evaluation" mode selector on any public API endpoint.
+        # The Go SDK's dlp_web_rules.go explicitly references "DLP
+        # Advanced Settings" as a separate configuration location in its
+        # comments, but no SDK module implements reading or writing it.
+        # Conclusion: the setting is UI-only (or configurable only via
+        # Zscaler support). The tool should stop pretending we can toggle
+        # it via API and hand off cleanly to the manual-declaration path.
+        sdk_note = (
+            "🔍 SDK investigation: We searched zscaler-sdk-python, "
+            "zscaler-sdk-go, and terraform-provider-zia for a "
+            "DLP-rule-evaluation-mode endpoint. None exposes one. "
+            "The Go SDK's dlp_web_rules module references 'DLP Advanced "
+            "Settings' in a comment but does NOT implement read or "
+            "write for it. The setting is configurable only via the "
+            "ZIA admin UI (or a Zscaler support request).\n\n"
+        )
         if endpoints_hit:
             sample_lines = []
             for d in endpoints_hit:
@@ -651,20 +669,19 @@ def assess_current_status(client) -> Dict[str, Any]:
                         f"{d['endpoint']}: {', '.join(interesting[:15]) if interesting else ', '.join(keys[:10])}"
                     )
             recommendation = (
-                feature_note +
-                "⚠ Could not determine the currently-selected evaluation mode via API. "
-                "The mode selector is not exposed on any reachable endpoint.\n\n"
-                f"Reachable endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n\n"
+                feature_note + sdk_note +
                 "📋 What to do:\n"
-                "  1. Verify the current mode manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'.\n"
-                "  2. Use the 'Declare Mode Manually' selector below to tell the wizard the mode — Steps 2-5 will work normally after that.\n"
-                "  3. If you believe your tenant SHOULD expose this via API, open the diagnostics and paste the JSON — Zscaler support can confirm whether the field is available in your API version."
+                "  1. Verify the current mode in ZIA Admin → Administration → Advanced Settings → DLP → 'Inline DLP Rule Evaluation' ('By Rule Order' or 'Evaluate All Rules').\n"
+                "  2. Use the 'Declare Mode Manually' selector below — Steps 2-5 will proceed normally under that declared mode.\n"
+                "  3. Step 4's API activation will attempt every known endpoint as a best-effort, but will almost certainly fall back to 'failed' on your tenant. That's expected; it's not a bug.\n"
+                "  4. If you believe your tenant has a newer API surface that exposes this, share the /api/migrate/status diagnostics — we can add a new endpoint candidate.\n\n"
+                "Reachable settings endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines)
             )
         else:
             recommendation = (
-                "Could not reach any ZIA Advanced Settings endpoint. The API client role may not include "
-                "'View ZIA Advanced Settings' permission. Verify in ZIA Admin → Administration → Advanced "
-                "Settings → DLP → 'Evaluate All DLP Rules', or grant the role and retry."
+                feature_note + sdk_note +
+                "⚠ Could not reach any ZIA Advanced Settings endpoint. "
+                "The API client role may not include 'View ZIA Advanced Settings' permission."
             )
 
     return {
