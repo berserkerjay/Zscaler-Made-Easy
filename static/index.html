@@ -5,82 +5,182 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zscaler Platform Assessment</title>
 <style>
-  :root { --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #e2e8f0; --dim: #94a3b8; --accent: #3b82f6; --pass: #22c55e; --fail: #ef4444; --warn: #eab308; --info: #64748b; }
+  :root { --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#e2e8f0; --dim:#94a3b8; --accent:#3b82f6; --accent-hover:#2563eb; --pass:#22c55e; --fail:#ef4444; --warn:#eab308; --info:#64748b; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
-  h1 span { color: var(--accent); }
-  .subtitle { color: var(--dim); margin-bottom: 2rem; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  body { font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* Header */
+  .hero { text-align: center; margin-bottom: 2rem; }
+  .hero h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .hero h1 .accent { color: var(--accent); }
+  .hero p { color: var(--dim); font-size: 1.05rem; }
+  .hero .badge { display: inline-block; background: rgba(59,130,246,0.15); color: var(--accent); padding: 0.2rem 0.8rem; border-radius: 20px; font-size: 0.75rem; margin-top: 0.5rem; }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.8rem; margin-bottom: 1.5rem; }
+  .card h2 { font-size: 1.25rem; margin-bottom: 1rem; font-weight: 600; }
+  .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--dim); font-weight: 500; }
+
+  /* Quick-start */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1rem 0; }
+  .step { padding: 1rem; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent); }
+  .step-num { font-size: 0.7rem; color: var(--accent); font-weight: 700; letter-spacing: 0.1em; }
+  .step-title { font-weight: 600; margin: 0.25rem 0; font-size: 0.9rem; }
+  .step-desc { font-size: 0.8rem; color: var(--dim); }
+  .help-toggle { cursor: pointer; color: var(--accent); font-size: 0.85rem; text-decoration: none; }
+  .help-toggle:hover { text-decoration: underline; }
+  .help-content { display: none; margin-top: 1rem; padding: 1rem; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent); }
+  .help-content.open { display: block; }
+  .help-content h4 { margin: 0.5rem 0 0.25rem; color: var(--accent); font-size: 0.9rem; }
+  .help-content ol, .help-content ul { margin-left: 1.25rem; font-size: 0.85rem; color: var(--dim); }
+  .help-content li { margin: 0.25rem 0; }
+  .help-content code { background: rgba(59,130,246,0.1); color: var(--accent); padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.8rem; }
+
+  /* Form */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  label { display: block; font-size: 0.85rem; color: var(--dim); margin-bottom: 0.3rem; }
-  input, select { width: 100%; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95rem; }
-  input:focus, select:focus { outline: none; border-color: var(--accent); }
-  .full-width { grid-column: 1 / -1; }
-  .btn { padding: 0.7rem 2rem; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .field { display: flex; flex-direction: column; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--text); margin-bottom: 0.4rem; font-weight: 500; }
+  .field label .required { color: var(--fail); font-size: 0.7rem; }
+  .field label .tooltip-icon { display: inline-block; width: 14px; height: 14px; background: var(--border); border-radius: 50%; text-align: center; line-height: 14px; font-size: 10px; color: var(--dim); cursor: help; }
+  .field .helper { font-size: 0.75rem; color: var(--dim); margin-top: 0.3rem; }
+  .field input, .field select { width: 100%; padding: 0.65rem 0.9rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95rem; transition: border-color 0.15s; }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .field input.error { border-color: var(--fail); }
+  .field .err-msg { font-size: 0.75rem; color: var(--fail); margin-top: 0.25rem; display: none; }
+  .field.has-error .err-msg { display: block; }
+
+  /* Buttons */
+  .btn { padding: 0.75rem 1.8rem; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 0.5rem; }
   .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { background: #2563eb; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn-secondary { background: var(--border); color: var(--text); margin-left: 0.5rem; }
-  .btn-group { margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-secondary:hover { background: #475569; }
+  .btn-ghost { background: transparent; color: var(--dim); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--dim); }
+  .actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap; }
+  .actions .status-msg { color: var(--dim); font-size: 0.85rem; }
+  .actions .status-msg.error { color: var(--fail); }
+  .actions .status-msg.success { color: var(--pass); }
 
   /* Progress */
-  .progress-wrap { display: none; }
-  .progress-wrap.active { display: block; }
-  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 0.5rem 0; }
-  .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; border-radius: 3px; }
-  .progress-text { font-size: 0.85rem; color: var(--dim); }
+  .progress-card { display: none; }
+  .progress-card.active { display: block; }
+  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .progress-header .pct { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .progress-bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); width: 0%; transition: width 0.3s; border-radius: 4px; }
+  .progress-detail { font-size: 0.85rem; color: var(--dim); }
 
   /* Results */
   #results { display: none; }
-  .score-hero { text-align: center; padding: 2rem; }
-  .score-num { font-size: 4rem; font-weight: 800; }
-  .score-label { font-size: 1.2rem; color: var(--dim); }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.5rem 0; }
-  .stat { text-align: center; padding: 1rem; background: var(--bg); border-radius: 8px; }
-  .stat-num { font-size: 1.8rem; font-weight: 700; }
-  .stat-label { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .score-hero { text-align: center; padding: 2.5rem; background: var(--card); border-radius: 12px; margin-bottom: 1.5rem; border: 1px solid var(--border); }
+  .score-num { font-size: 5rem; font-weight: 800; line-height: 1; }
+  .score-label { font-size: 1.3rem; color: var(--dim); margin-top: 0.5rem; }
+  .score-meta { color: var(--dim); font-size: 0.9rem; margin-top: 0.5rem; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin: 1.5rem 0; }
+  .stat { text-align: center; padding: 1.25rem 0.5rem; background: var(--bg); border-radius: 10px; border: 1px solid var(--border); }
+  .stat-num { font-size: 2rem; font-weight: 700; }
+  .stat-label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.25rem; }
 
   /* Section scores */
-  .section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-  .section-row { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; background: var(--bg); border-radius: 6px; }
+  .section-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .section-row { display: flex; justify-content: space-between; align-items: center; padding: 0.7rem 1rem; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
   .section-name { font-size: 0.85rem; }
-  .section-score { font-weight: 700; font-size: 0.9rem; }
+  .section-score { font-weight: 700; font-size: 0.95rem; }
 
-  /* Checks table */
-  .checks-filter { margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .filter-btn { padding: 0.4rem 1rem; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--dim); cursor: pointer; font-size: 0.8rem; }
+  /* Checks */
+  .checks-filter { margin-bottom: 1rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .filter-btn { padding: 0.4rem 1rem; border: 1px solid var(--border); border-radius: 20px; background: transparent; color: var(--dim); cursor: pointer; font-size: 0.8rem; transition: all 0.15s; }
+  .filter-btn:hover { color: var(--text); border-color: var(--dim); }
   .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
   .check-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); }
   .check-item:last-child { border-bottom: none; }
-  .check-status { font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; white-space: nowrap; min-width: 90px; text-align: center; }
+  .check-status { font-size: 0.7rem; font-weight: 700; padding: 0.25rem 0.55rem; border-radius: 4px; white-space: nowrap; min-width: 110px; text-align: center; }
   .status-PASS { background: rgba(34,197,94,0.15); color: var(--pass); }
   .status-FAIL { background: rgba(239,68,68,0.15); color: var(--fail); }
   .status-REVIEW { background: rgba(234,179,8,0.15); color: var(--warn); }
   .status-INFO { background: rgba(100,116,139,0.15); color: var(--info); }
   .check-body { flex: 1; }
-  .check-id { font-size: 0.75rem; color: var(--dim); }
+  .check-id { font-size: 0.7rem; color: var(--dim); font-family: 'Consolas', monospace; }
   .check-label { font-weight: 600; font-size: 0.9rem; }
   .check-detail { font-size: 0.82rem; color: var(--dim); margin-top: 0.25rem; line-height: 1.5; }
-  .check-section-header { padding: 0.6rem 1rem; background: var(--accent); color: white; font-weight: 700; font-size: 0.85rem; border-radius: 6px 6px 0 0; margin-top: 1rem; }
+  .section-header { padding: 0.65rem 1rem; background: linear-gradient(90deg, rgba(59,130,246,0.15), transparent); color: var(--accent); font-weight: 700; font-size: 0.85rem; margin-top: 1rem; border-left: 3px solid var(--accent); border-radius: 0 4px 4px 0; }
 
-  /* Download */
-  .download-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+  /* Download bar */
+  .download-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .form-grid, .section-grid, .stats, .steps { grid-template-columns: 1fr; }
+    .container { padding: 1rem; }
+    .hero h1 { font-size: 1.7rem; }
+  }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1><span>Zscaler</span> Platform Assessment</h1>
-  <p class="subtitle">Automated configuration assessment across ZIA, ZPA, and ZCC</p>
+  <!-- Hero -->
+  <div class="hero">
+    <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
+    <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
+    <span class="badge" id="totalChecksBadge">Loading...</span>
+  </div>
+
+  <!-- Quick Start -->
+  <div class="card">
+    <h2>Quick Start</h2>
+    <div class="steps">
+      <div class="step"><div class="step-num">STEP 1</div><div class="step-title">Get API Credentials</div><div class="step-desc">Create an OAuth client in your Zscaler admin portal with read-only access.</div></div>
+      <div class="step"><div class="step-num">STEP 2</div><div class="step-title">Enter Tenant Info</div><div class="step-desc">Fill in your organization details and credentials below.</div></div>
+      <div class="step"><div class="step-num">STEP 3</div><div class="step-title">Choose Scope</div><div class="step-desc">Select DLP, full platform, or a specific service to assess.</div></div>
+      <div class="step"><div class="step-num">STEP 4</div><div class="step-title">Download Report</div><div class="step-desc">Get your scored maturity report in JSON or Word format.</div></div>
+    </div>
+    <a class="help-toggle" onclick="toggleHelp('credHelp')">How do I get API credentials? &rsaquo;</a>
+    <div class="help-content" id="credHelp">
+      <h4>Getting Zscaler OneAPI Credentials</h4>
+      <ol>
+        <li>Log into your Zscaler admin portal (<code>admin.&lt;your-cloud&gt;.net</code>)</li>
+        <li>Go to <strong>Administration &rarr; API Key Management &rarr; OneAPI Credentials</strong></li>
+        <li>Click <strong>Add API Client</strong> and give it a name like <code>DLP Assessment</code></li>
+        <li>Grant these read-only scopes: <code>zia:read</code>, <code>zcc:read</code>, <code>zpa:read</code> (or minimum needed for your scope)</li>
+        <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the form below</li>
+        <li>Note your <strong>Vanity Domain</strong> (e.g., <code>acme</code>) — it's shown in the OneAPI setup page</li>
+      </ol>
+      <h4>Finding your ZPA Customer ID (optional, for ZPA checks)</h4>
+      <ol>
+        <li>Log into the ZPA admin portal</li>
+        <li>Look at the URL — it contains your customer ID: <code>https://admin.private.zscaler.com/app/&lt;CUSTOMER_ID&gt;/dashboard</code></li>
+      </ol>
+      <h4>Security note</h4>
+      <ul>
+        <li>This tool makes <strong>read-only</strong> API calls — nothing is modified</li>
+        <li>Credentials stay on your machine — they are not transmitted to any external service</li>
+        <li>Rotate your client secret periodically per Zscaler best practices</li>
+      </ul>
+    </div>
+  </div>
 
   <!-- Config Form -->
   <div class="card" id="configCard">
-    <h2 style="margin-bottom:1rem;">Tenant Configuration</h2>
+    <h2>Tenant Configuration</h2>
     <div class="form-grid">
-      <div><label>Organization Name</label><input id="org" value="SMOES"></div>
-      <div><label>Assessor</label><input id="assessor" value="Jason"></div>
-      <div><label>Cloud</label>
+      <div class="field">
+        <label>Organization Name <span class="required">*</span></label>
+        <input id="org" placeholder="e.g., Acme Corporation">
+        <div class="helper">Appears on the report title page</div>
+        <div class="err-msg">Organization name is required</div>
+      </div>
+      <div class="field">
+        <label>Assessor Name <span class="required">*</span></label>
+        <input id="assessor" placeholder="Your name">
+        <div class="helper">Who is running this assessment</div>
+        <div class="err-msg">Assessor name is required</div>
+      </div>
+      <div class="field">
+        <label>Zscaler Cloud <span class="required">*</span></label>
         <select id="cloud">
           <option value="production" selected>Production (api.zsapi.net)</option>
           <option value="zscloud">zscloud</option>
@@ -88,70 +188,104 @@
           <option value="zscalerone">zscalerone</option>
           <option value="zscalertwo">zscalertwo</option>
           <option value="zscalerthree">zscalerthree</option>
-          <option value="zscalerbeta">zscalerbeta</option>
+          <option value="zscalerbeta">zscalerbeta (preview)</option>
         </select>
+        <div class="helper">Find this in your admin portal URL (admin.zscalerthree.net = zscalerthree). Most tenants use Production.</div>
       </div>
-      <div><label>Vanity Domain</label><input id="vd" placeholder="e.g. Vegitto"></div>
-      <div><label>Client ID</label><input id="cid" placeholder="API Client ID"></div>
-      <div><label>Client Secret</label><input id="csec" type="password" placeholder="API Client Secret"></div>
-      <div><label>ZPA Customer ID (optional)</label><input id="custid" placeholder="Numeric ID from ZPA portal URL (for ZPA checks)"></div>
-      <div><label>Assessment Scope</label>
+      <div class="field">
+        <label>Vanity Domain <span class="required">*</span></label>
+        <input id="vd" placeholder="e.g., acme">
+        <div class="helper">Your org's unique Zscaler subdomain (from zslogin URL)</div>
+        <div class="err-msg">Vanity domain is required</div>
+      </div>
+      <div class="field">
+        <label>API Client ID <span class="required">*</span></label>
+        <input id="cid" placeholder="OAuth2 client identifier">
+        <div class="helper">From Admin &rarr; API Key Management &rarr; OneAPI Credentials</div>
+        <div class="err-msg">Client ID is required</div>
+      </div>
+      <div class="field">
+        <label>API Client Secret <span class="required">*</span></label>
+        <input id="csec" type="password" placeholder="OAuth2 client secret">
+        <div class="helper">Keep this private — never share or commit to source control</div>
+        <div class="err-msg">Client secret is required</div>
+      </div>
+      <div class="field">
+        <label>ZPA Customer ID <span style="color:var(--dim);font-size:0.7rem;">(optional)</span></label>
+        <input id="custid" placeholder="Numeric ID (only needed for ZPA checks)">
+        <div class="helper">From ZPA admin URL: /app/&lt;CUSTOMER_ID&gt;/dashboard</div>
+      </div>
+      <div class="field">
+        <label>Assessment Scope <span class="required">*</span></label>
         <select id="scope">
-          <option value="dlp">DLP Only (170 checks)</option>
-          <option value="full" selected>Full Platform (223 checks)</option>
-          <option value="zia">ZIA Only (DLP + Extras)</option>
-          <option value="zpa">ZPA Only</option>
-          <option value="zcc">ZCC Only</option>
+          <option value="dlp">DLP Only (170 checks) — fastest</option>
+          <option value="full" selected>Full Platform (223 checks) — recommended</option>
+          <option value="zia">ZIA Only (DLP + ZIA platform)</option>
+          <option value="zpa">ZPA Only (requires Customer ID)</option>
+          <option value="zcc">ZCC Only (devices, policies)</option>
         </select>
+        <div class="helper">Full Platform runs all 223 checks across ZIA, ZPA, and ZCC (~90 seconds)</div>
       </div>
     </div>
-    <div class="btn-group">
+
+    <div class="actions">
       <button class="btn btn-primary" id="runBtn" onclick="runAssessment()">Run Assessment</button>
-      <span id="authStatus" style="font-size:0.85rem;color:var(--dim);"></span>
+      <button class="btn btn-ghost" id="saveBtn" onclick="saveConfig()" title="Save config locally (except secret)">Save Config</button>
+      <button class="btn btn-ghost" id="clearBtn" onclick="clearConfig()" title="Clear saved config">Clear</button>
+      <span class="status-msg" id="statusMsg"></span>
     </div>
   </div>
 
   <!-- Progress -->
-  <div class="card progress-wrap" id="progressCard">
-    <div class="progress-text" id="progressText">Starting assessment...</div>
+  <div class="card progress-card" id="progressCard">
+    <div class="progress-header">
+      <div>
+        <div style="font-weight:600;">Running assessment...</div>
+        <div class="progress-detail" id="progressText">Starting...</div>
+      </div>
+      <div class="pct" id="progressPct">0%</div>
+    </div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-    <div class="progress-text" id="progressDetail"></div>
+    <div class="progress-detail" id="progressDetail"></div>
   </div>
 
   <!-- Results -->
   <div id="results">
     <div class="download-bar">
-      <button class="btn btn-primary" onclick="downloadJSON()">Download JSON</button>
-      <button class="btn btn-secondary" onclick="downloadDocx()">Download Word Doc</button>
-      <button class="btn btn-secondary" onclick="resetForm()">New Assessment</button>
+      <button class="btn btn-primary" onclick="downloadDocx()">Download Word Report</button>
+      <button class="btn btn-secondary" onclick="downloadJSON()">Download JSON</button>
+      <button class="btn btn-ghost" onclick="resetForm()">Run Another Assessment</button>
+    </div>
+
+    <div class="score-hero">
+      <div class="score-num" id="scoreNum">0%</div>
+      <div class="score-label" id="scoreLabel">Maturity Level</div>
+      <div class="score-meta" id="scoreMeta"></div>
     </div>
 
     <div class="card">
-      <div class="score-hero">
-        <div class="score-num" id="scoreNum">0%</div>
-        <div class="score-label" id="scoreLabel">Maturity Level</div>
-      </div>
+      <h2>Summary</h2>
       <div class="stats">
         <div class="stat"><div class="stat-num" style="color:var(--pass)" id="passCount">0</div><div class="stat-label">Configured</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--fail)" id="failCount">0</div><div class="stat-label">Action Required</div></div>
-        <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Review</div></div>
-        <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">N/A</div></div>
+        <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Needs Review</div></div>
+        <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">Not Configured</div></div>
       </div>
     </div>
 
     <div class="card">
-      <h2 style="margin-bottom:1rem;">Section Scores</h2>
+      <h2>Scores by Section</h2>
       <div class="section-grid" id="sectionGrid"></div>
     </div>
 
     <div class="card">
-      <h2 style="margin-bottom:1rem;">All Findings</h2>
-      <div class="checks-filter" id="filterBar">
+      <h2>Detailed Findings</h2>
+      <div class="checks-filter">
         <button class="filter-btn active" onclick="filterChecks('all',this)">All</button>
         <button class="filter-btn" onclick="filterChecks('FAIL',this)">Action Required</button>
-        <button class="filter-btn" onclick="filterChecks('REVIEW',this)">Review</button>
+        <button class="filter-btn" onclick="filterChecks('REVIEW',this)">Needs Review</button>
         <button class="filter-btn" onclick="filterChecks('PASS',this)">Configured</button>
-        <button class="filter-btn" onclick="filterChecks('INFO',this)">N/A</button>
+        <button class="filter-btn" onclick="filterChecks('INFO',this)">Not Configured</button>
       </div>
       <div id="checksList"></div>
     </div>
@@ -160,15 +294,101 @@
 
 <script>
 let reportData = null;
+const LS_KEY = 'zscaler_assessment_config';
+
+// Load total checks on page load
+fetch('/api/health').then(r => r.json()).then(d => {
+  document.getElementById('totalChecksBadge').textContent = `${d.total_checks} automated checks available`;
+}).catch(() => {
+  document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
+});
+
+// Load saved config (excluding secret)
+function loadConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    ['org','assessor','cloud','vd','cid','custid','scope'].forEach(id => {
+      if (saved[id] && document.getElementById(id)) {
+        document.getElementById(id).value = saved[id];
+      }
+    });
+  } catch(e){}
+}
+loadConfig();
+
+function saveConfig() {
+  const cfg = {
+    org: document.getElementById('org').value,
+    assessor: document.getElementById('assessor').value,
+    cloud: document.getElementById('cloud').value,
+    vd: document.getElementById('vd').value,
+    cid: document.getElementById('cid').value,
+    custid: document.getElementById('custid').value,
+    scope: document.getElementById('scope').value,
+  };
+  localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+  setStatus('Config saved (secret not stored)', 'success');
+}
+
+function clearConfig() {
+  localStorage.removeItem(LS_KEY);
+  ['org','assessor','vd','cid','csec','custid'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cloud').value = 'production';
+  document.getElementById('scope').value = 'full';
+  setStatus('Config cleared', 'success');
+}
+
+function toggleHelp(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg ' + (type || '');
+}
+
+function validate() {
+  const required = [
+    ['org', 'Organization name'],
+    ['assessor', 'Assessor name'],
+    ['vd', 'Vanity domain'],
+    ['cid', 'Client ID'],
+    ['csec', 'Client secret'],
+  ];
+  let valid = true;
+  document.querySelectorAll('.field').forEach(f => f.classList.remove('has-error'));
+  for (const [id, _] of required) {
+    const el = document.getElementById(id);
+    if (!el.value.trim()) {
+      el.closest('.field').classList.add('has-error');
+      valid = false;
+    }
+  }
+  return valid;
+}
 
 async function runAssessment() {
+  if (!validate()) {
+    setStatus('Please fill in all required fields', 'error');
+    document.querySelector('.field.has-error input')?.focus();
+    return;
+  }
+
+  // Warn if ZPA scope without customer ID
+  const scope = document.getElementById('scope').value;
+  const custid = document.getElementById('custid').value;
+  if (scope === 'zpa' && !custid) {
+    if (!confirm('ZPA checks require a Customer ID. Without it, ZPA checks will be skipped. Continue anyway?')) return;
+  }
+
   const btn = document.getElementById('runBtn');
   const prog = document.getElementById('progressCard');
-  const authSt = document.getElementById('authStatus');
   btn.disabled = true;
+  btn.textContent = 'Running...';
   prog.classList.add('active');
   document.getElementById('results').style.display = 'none';
-  authSt.textContent = 'Connecting...';
+  setStatus('Connecting to Zscaler...', '');
 
   const body = {
     org_name: document.getElementById('org').value,
@@ -178,15 +398,16 @@ async function runAssessment() {
     client_id: document.getElementById('cid').value,
     client_secret: document.getElementById('csec').value,
     customer_id: document.getElementById('custid').value,
-    scope: document.getElementById('scope').value
+    scope: scope,
   };
 
   try {
     const resp = await fetch('/api/assess', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body)
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
     });
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -196,68 +417,63 @@ async function runAssessment() {
       const {done, value} = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, {stream: true});
-
       const lines = buffer.split('\n');
       buffer = lines.pop();
-
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          try {
-            const evt = JSON.parse(line.slice(6));
-            handleEvent(evt);
-          } catch(e) {}
-        } else if (line.startsWith('event: ')) {
-          // event type line, handled via data
+          try { handleEvent(JSON.parse(line.slice(6))); } catch(e){}
         }
       }
     }
   } catch(e) {
-    authSt.textContent = 'Error: ' + e.message;
+    setStatus('Error: ' + e.message, 'error');
     btn.disabled = false;
+    btn.textContent = 'Run Assessment';
     prog.classList.remove('active');
   }
 }
 
 function handleEvent(evt) {
-  if (evt.status === 'authenticating') {
-    document.getElementById('authStatus').textContent = 'Authenticating...';
-  } else if (evt.status === 'ok' && !evt.total) {
-    document.getElementById('authStatus').textContent = 'Authenticated';
-  } else if (evt.total !== undefined && evt.completed !== undefined) {
+  if (evt.status === 'authenticating') setStatus('Authenticating with Zscaler...', '');
+  else if (evt.status === 'ok' && !evt.total) setStatus('Authenticated successfully', 'success');
+  else if (evt.total !== undefined && evt.completed !== undefined) {
     const pct = evt.pct || Math.round((evt.completed / evt.total) * 100);
     document.getElementById('progressFill').style.width = pct + '%';
-    document.getElementById('progressText').textContent = `${evt.completed} / ${evt.total} checks (${pct}%)`;
+    document.getElementById('progressPct').textContent = pct + '%';
+    document.getElementById('progressText').textContent = `Check ${evt.completed} of ${evt.total}`;
     if (evt.current) document.getElementById('progressDetail').textContent = evt.current;
   } else if (evt.score !== undefined) {
-    // Complete report
     reportData = evt;
     showResults(evt);
+    setStatus('Assessment complete', 'success');
   } else if (evt.message) {
-    document.getElementById('authStatus').textContent = evt.message;
+    setStatus('Error: ' + evt.message, 'error');
     document.getElementById('runBtn').disabled = false;
+    document.getElementById('runBtn').textContent = 'Run Assessment';
+    document.getElementById('progressCard').classList.remove('active');
   }
 }
 
 function showResults(data) {
   document.getElementById('progressCard').classList.remove('active');
   document.getElementById('results').style.display = 'block';
-  document.getElementById('runBtn').disabled = false;
+  const btn = document.getElementById('runBtn');
+  btn.disabled = false;
+  btn.textContent = 'Run Assessment';
 
-  // Score
   const score = data.score;
   const el = document.getElementById('scoreNum');
   el.textContent = score + '%';
   el.style.color = score >= 75 ? 'var(--pass)' : score >= 50 ? 'var(--warn)' : 'var(--fail)';
   document.getElementById('scoreLabel').textContent = data.maturity;
+  document.getElementById('scoreMeta').textContent = `${data.checks.length} checks • ${data.metadata.org} • ${new Date().toLocaleDateString()}`;
 
-  // Counts
   const checks = data.checks || [];
   document.getElementById('passCount').textContent = checks.filter(c => c.status === 'PASS').length;
   document.getElementById('failCount').textContent = checks.filter(c => c.status === 'FAIL').length;
   document.getElementById('warnCount').textContent = checks.filter(c => c.status === 'REVIEW').length;
   document.getElementById('infoCount').textContent = checks.filter(c => c.status === 'INFO' || c.status === 'ERROR').length;
 
-  // Sections
   const grid = document.getElementById('sectionGrid');
   grid.innerHTML = '';
   for (const [sec, d] of Object.entries(data.sections || {})) {
@@ -266,8 +482,8 @@ function showResults(data) {
     grid.innerHTML += `<div class="section-row"><span class="section-name">${sec}</span><span class="section-score" style="color:${color}">${pct}%</span></div>`;
   }
 
-  // Checks
   renderChecks(checks, 'all');
+  window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
 }
 
 function renderChecks(checks, filter) {
@@ -279,12 +495,12 @@ function renderChecks(checks, filter) {
     if (filter !== 'all' && st !== filter) continue;
     if (c.section !== curSec) {
       curSec = c.section;
-      list.innerHTML += `<div class="check-section-header">${curSec}</div>`;
+      list.innerHTML += `<div class="section-header">${curSec}</div>`;
     }
-    const stLabel = {PASS:'Configured',FAIL:'Action Required',REVIEW:'Needs Review',INFO:'N/A'}[st] || st;
-    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body"><span class="check-id">${c.id}</span> <span class="check-label">${c.label}</span><div class="check-detail">${c.detail || ''}</div></div></div>`;
+    const stLabel = {PASS:'Configured', FAIL:'Action Required', REVIEW:'Needs Review', INFO:'Not Configured'}[st] || st;
+    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body"><span class="check-id">[${c.id}]</span> <span class="check-label">${c.label}</span><div class="check-detail">${c.detail || ''}</div></div></div>`;
   }
-  if (!list.innerHTML) list.innerHTML = '<p style="padding:1rem;color:var(--dim)">No checks match this filter.</p>';
+  if (!list.innerHTML) list.innerHTML = '<p style="padding:2rem;text-align:center;color:var(--dim)">No checks match this filter.</p>';
 }
 
 function filterChecks(status, btn) {
@@ -295,32 +511,48 @@ function filterChecks(status, btn) {
 
 function downloadJSON() {
   if (!reportData) return;
-  const blob = new Blob([JSON.stringify(reportData, null, 2)], {type: 'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `zscaler_${reportData.metadata?.org || 'report'}_${new Date().toISOString().slice(0,10)}.json`;
+  const blob = new Blob([JSON.stringify(reportData, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `zscaler_${(reportData.metadata?.org || 'report').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
 }
 
 async function downloadDocx() {
   if (!reportData) return;
+  setStatus('Generating Word document...', '');
   try {
     const resp = await fetch('/api/report/docx', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(reportData)
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(reportData),
     });
-    if (!resp.ok) { alert('Word doc generation failed'); return; }
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
     const blob = await resp.blob();
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `zscaler_${reportData.metadata?.org || 'report'}_${new Date().toISOString().slice(0,10)}.docx`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `zscaler_${(reportData.metadata?.org || 'report').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.docx`;
     a.click();
-  } catch(e) { alert('Error: ' + e.message); }
+    setStatus('Word document downloaded', 'success');
+  } catch(e) {
+    setStatus('Word generation failed: ' + e.message, 'error');
+  }
 }
 
 function resetForm() {
   document.getElementById('results').style.display = 'none';
   reportData = null;
+  setStatus('', '');
+  window.scrollTo({top: 0, behavior: 'smooth'});
 }
+
+// Enter key submits form
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !document.getElementById('runBtn').disabled) {
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl.tagName === 'INPUT') runAssessment();
+  }
+});
 </script>
 </body>
 </html>

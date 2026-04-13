@@ -89,25 +89,56 @@ class Client:
             s.sess.headers["Authorization"] = f"Bearer {s.token}"
             return True
         except Exception as e: return (False, str(e))
-    def get(s, ep, p=None):
-        # Skip ZPA calls if no customer_id provided
+    def get(s, ep, p=None, _retry=0):
+        # Self-healing: skip ZPA calls if no customer_id provided
         if ep.startswith("/zpa/") and not s.customer_id:
             return ({"error":"ZPA customer ID not configured","status":404}, 404)
         real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         if k in s._c: return s._c[k]
+        # Self-healing: re-auth if token is stale or missing
         if not s.token or time.time()>=s.exp:
             a = s.auth()
             if a is not True:
                 return ({"error":str(a),"status":401}, 401)
         try:
-            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=30); time.sleep(0.5)
-            if r.status_code==200: res=(r.json(),200)
-            elif r.status_code==204: res=([],204)
-            elif r.status_code==429: time.sleep(int(r.headers.get("Retry-After",5))); return s.get(ep,p)
-            else: res=({"error":r.text,"status":r.status_code},r.status_code)
-        except Exception as e: res=({"error":str(e)},0)
-        s._c[k]=res; return res
+            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=30); time.sleep(0.3)
+            if r.status_code == 200:
+                try: res = (r.json(), 200)
+                except Exception: res = ([], 200)
+            elif r.status_code == 204:
+                res = ([], 204)
+            elif r.status_code == 429:
+                # Self-healing: honor Retry-After with cap
+                wait = min(int(r.headers.get("Retry-After", 5)), 30)
+                time.sleep(wait)
+                if _retry < 3: return s.get(ep, p, _retry+1)
+                res = ({"error":"rate limited","status":429}, 429)
+            elif r.status_code == 401:
+                # Self-healing: token expired mid-flight, force re-auth and retry
+                if _retry < 2:
+                    s.token = None
+                    return s.get(ep, p, _retry+1)
+                res = ({"error":"unauthorized","status":401}, 401)
+            elif r.status_code in (502, 503, 504):
+                # Self-healing: transient server error, retry with backoff
+                if _retry < 2:
+                    time.sleep(2 ** _retry)
+                    return s.get(ep, p, _retry+1)
+                res = ({"error":f"service unavailable","status":r.status_code}, r.status_code)
+            else:
+                res = ({"error":r.text[:200] if r.text else "error","status":r.status_code}, r.status_code)
+        except requests.exceptions.Timeout:
+            if _retry < 2: return s.get(ep, p, _retry+1)
+            res = ({"error":"request timeout","status":0}, 0)
+        except requests.exceptions.ConnectionError as e:
+            if _retry < 2:
+                time.sleep(2 ** _retry)
+                return s.get(ep, p, _retry+1)
+            res = ({"error":f"connection error: {str(e)[:100]}","status":0}, 0)
+        except Exception as e:
+            res = ({"error":str(e)[:200],"status":0}, 0)
+        s._c[k] = res; return res
 
 class R:
     PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; INFO="INFO"; ERROR="ERROR"
