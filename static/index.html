@@ -201,7 +201,10 @@
       </div>
       <div class="field">
         <label>API Client ID <span class="required">*</span></label>
-        <input id="cid" placeholder="OAuth2 client identifier">
+        <div style="position:relative;">
+          <input id="cid" type="password" placeholder="OAuth2 client identifier" style="padding-right:60px;">
+          <button type="button" id="toggleCid" onclick="toggleField('cid','toggleCid')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
+        </div>
         <div class="helper">From Admin &rarr; API Key Management &rarr; OneAPI Credentials</div>
         <div class="err-msg">Client ID is required</div>
       </div>
@@ -209,7 +212,7 @@
         <label>API Client Secret <span class="required">*</span></label>
         <div style="position:relative;">
           <input id="csec" type="password" placeholder="OAuth2 client secret" style="padding-right:60px;">
-          <button type="button" id="toggleSecret" onclick="toggleSecret()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
+          <button type="button" id="toggleSecret" onclick="toggleField('csec','toggleSecret')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
         </div>
         <div class="helper">Keep this private — never share or commit to source control</div>
         <div class="err-msg">Client secret is required</div>
@@ -298,6 +301,8 @@
 
 <script>
 let reportData = null;
+let partialResults = [];
+let runMeta = null;
 const LS_KEY = 'zscaler_assessment_config';
 
 // Load total checks on page load
@@ -346,9 +351,9 @@ function toggleHelp(id) {
   document.getElementById(id).classList.toggle('open');
 }
 
-function toggleSecret() {
-  const inp = document.getElementById('csec');
-  const btn = document.getElementById('toggleSecret');
+function toggleField(inputId, btnId) {
+  const inp = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
   if (inp.type === 'password') {
     inp.type = 'text';
     btn.textContent = 'Hide';
@@ -406,6 +411,16 @@ async function runAssessment() {
   document.getElementById('results').style.display = 'none';
   setStatus('Connecting to Zscaler...', '');
 
+  // Reset run state
+  partialResults = [];
+  reportData = null;
+  runMeta = {
+    org: document.getElementById('org').value,
+    assessor: document.getElementById('assessor').value,
+    cloud: document.getElementById('cloud').value,
+    scope: scope,
+  };
+
   const body = {
     org_name: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
@@ -442,17 +457,51 @@ async function runAssessment() {
       }
     }
   } catch(e) {
-    setStatus('Error: ' + e.message, 'error');
+    setStatus('Connection lost: ' + e.message + '. Showing partial results.', 'error');
     btn.disabled = false;
     btn.textContent = 'Run Assessment';
     prog.classList.remove('active');
+    // Show whatever we collected so far
+    if (partialResults.length > 0) {
+      buildPartialReport();
+    }
   }
+}
+
+function buildPartialReport() {
+  // Build a report from partial results so user can still download/view
+  const sections = {};
+  for (const c of partialResults) {
+    const sec = c.section;
+    if (!sections[sec]) sections[sec] = {total:0, pass:0, fail:0, warn:0, info:0};
+    sections[sec].total++;
+    const m = {PASS:'pass', FAIL:'fail', REVIEW:'warn', INFO:'info', ERROR:'info'};
+    sections[sec][m[c.status] || 'info']++;
+  }
+  for (const s in sections) {
+    const scored = sections[s].total - sections[s].info;
+    sections[s].pct = scored ? Math.round(sections[s].pass / scored * 100) : 100;
+  }
+  const scoredTotal = Object.values(sections).reduce((a,s) => a + s.total - s.info, 0);
+  const passed = Object.values(sections).reduce((a,s) => a + s.pass, 0);
+  const overall = scoredTotal ? Math.round(passed / scoredTotal * 100) : 100;
+  const mat = overall >= 90 ? 'Optimized' : overall >= 75 ? 'Managed' : overall >= 50 ? 'Developing' : overall >= 25 ? 'Initial' : 'Ad Hoc';
+  reportData = {
+    metadata: {tool:'Zscaler Platform Assessment (PARTIAL)', org: runMeta.org, assessor: runMeta.assessor, cloud: runMeta.cloud, scope: runMeta.scope, total_checks: partialResults.length, partial: true},
+    score: overall, maturity: mat, sections: sections, checks: partialResults,
+    critical: partialResults.filter(c => c.status === 'FAIL'),
+    review: partialResults.filter(c => c.status === 'REVIEW'),
+  };
+  showResults(reportData);
 }
 
 function handleEvent(evt) {
   if (evt.status === 'authenticating') setStatus('Authenticating with Zscaler...', '');
   else if (evt.status === 'ok' && !evt.total) setStatus('Authenticated successfully', 'success');
-  else if (evt.total !== undefined && evt.completed !== undefined) {
+  else if (evt.id && evt.label && evt.status) {
+    // Individual check result — accumulate
+    partialResults.push(evt);
+  } else if (evt.total !== undefined && evt.completed !== undefined) {
     const pct = evt.pct || Math.round((evt.completed / evt.total) * 100);
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progressPct').textContent = pct + '%';
@@ -463,10 +512,11 @@ function handleEvent(evt) {
     showResults(evt);
     setStatus('Assessment complete', 'success');
   } else if (evt.message) {
-    setStatus('Error: ' + evt.message, 'error');
+    setStatus('Error: ' + evt.message + (partialResults.length ? '. Showing partial results.' : ''), 'error');
     document.getElementById('runBtn').disabled = false;
     document.getElementById('runBtn').textContent = 'Run Assessment';
     document.getElementById('progressCard').classList.remove('active');
+    if (partialResults.length > 0) buildPartialReport();
   }
 }
 
