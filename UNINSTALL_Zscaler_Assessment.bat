@@ -32,4 +32,5 @@ echo.
 echo  Uninstall complete. The project files remain in this folder.
 echo  To remove them entirely, delete the folder.
 echo.
-pause
+timeout /t 3 >nul
+exit

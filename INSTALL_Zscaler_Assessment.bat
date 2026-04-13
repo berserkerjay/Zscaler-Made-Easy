@@ -50,7 +50,9 @@ powershell -NoProfile -Command ^
 
 if errorlevel 1 (
     echo  ERROR: Could not create desktop shortcut.
-    pause
+    echo  Closing in 5 seconds...
+timeout /t 5 >nul
+exit
     exit /b 1
 )
 
@@ -84,4 +86,6 @@ echo.
 echo   To uninstall, run:
 echo     UNINSTALL_Zscaler_Assessment.bat
 echo.
-pause
+echo  Closing in 5 seconds...
+timeout /t 5 >nul
+exit
