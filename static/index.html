@@ -94,6 +94,7 @@
       <div><label>Vanity Domain</label><input id="vd" placeholder="e.g. Vegitto"></div>
       <div><label>Client ID</label><input id="cid" placeholder="API Client ID"></div>
       <div><label>Client Secret</label><input id="csec" type="password" placeholder="API Client Secret"></div>
+      <div><label>ZPA Customer ID (optional)</label><input id="custid" placeholder="Numeric ID from ZPA portal URL (for ZPA checks)"></div>
       <div><label>Assessment Scope</label>
         <select id="scope">
           <option value="dlp">DLP Only (170 checks)</option>
@@ -176,6 +177,7 @@ async function runAssessment() {
     vanity_domain: document.getElementById('vd').value,
     client_id: document.getElementById('cid').value,
     client_secret: document.getElementById('csec').value,
+    customer_id: document.getElementById('custid').value,
     scope: document.getElementById('scope').value
   };
 

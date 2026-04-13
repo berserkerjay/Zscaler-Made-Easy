@@ -84,6 +84,7 @@ class AssessRequest(BaseModel):
     client_id: str = ""
     client_secret: str = ""
     scope: str = "full"
+    customer_id: str = ""  # Optional ZPA customer ID
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ async def assess_stream(req: AssessRequest):
     async def event_generator():
         yield _sse("auth", {"status": "authenticating"})
 
-        client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud)
+        client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
         auth_result = await asyncio.to_thread(client.auth)
 
         if auth_result is not True:

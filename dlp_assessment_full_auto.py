@@ -43,13 +43,31 @@ def _token_url(vd, cloud):
     """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
     return f"https://{vd}.zslogin.net/oauth2/v1/token"
 
-# OneAPI service path prefixes (confirmed via SDK + Postman)
+# OneAPI service path prefixes (confirmed via SDK source + Postman)
+# ZCC OneAPI uses function-style endpoints (not REST collections)
+_ZCC_MAP = {
+    "appProfiles":        "webPolicies/listByCompany",         # no direct appProfiles endpoint; use webPolicies
+    "webPolicies":        "webPolicies/listByCompany",
+    "forwardingProfiles": "webForwardingProfile/listByCompany",
+    "forwardingProfile":  "webForwardingProfile/listByCompany",
+    "devices":            "getDevices",
+    "deviceDetails":      "getDeviceDetails",
+    "trustedNetworks":    "webTrustedNetwork/listByCompany",
+    "failOpenPolicy":     "webFailOpenPolicy/listByCompany",
+    "companyInfo":        "getCompanyInfo",
+    "webAppService":      "webAppService/listByCompany",
+    "postureProfiles":    "webPolicies/listByCompany",         # posture profiles are in webPolicies
+}
+
 def _resolve_ep(ep, customer_id=""):
     """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path."""
     if ep.startswith("/zia/"):
         return "/zia/api/v1/" + ep[5:]
     if ep.startswith("/zcc/"):
-        return "/zcc/papi/public/v1/" + ep[5:]
+        suffix = ep[5:]
+        # Map legacy ZCC paths to OneAPI function-style endpoints
+        mapped = _ZCC_MAP.get(suffix, suffix)
+        return "/zcc/papi/public/v1/" + mapped
     if ep.startswith("/zpa/"):
         if customer_id:
             return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]
@@ -57,10 +75,10 @@ def _resolve_ep(ep, customer_id=""):
     return ep
 
 class Client:
-    def __init__(s, cid, sec, vd, cloud):
+    def __init__(s, cid, sec, vd, cloud, customer_id=""):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
         s.token = None; s.exp = 0; s.base = _base_url(cloud)
-        s.customer_id = ""
+        s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         s._c = {}
     def auth(s):
@@ -69,22 +87,19 @@ class Client:
             r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
             r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
             s.sess.headers["Authorization"] = f"Bearer {s.token}"
-            # Auto-discover customer ID for ZPA paths
-            try:
-                cr = s.sess.get(f"{s.base}/zidentity/api/v1/companyProfile", timeout=15)
-                if cr.status_code == 200:
-                    s.customer_id = str(cr.json().get("id", cr.json().get("customerId", "")))
-            except Exception:
-                pass
             return True
         except Exception as e: return (False, str(e))
     def get(s, ep, p=None):
+        # Skip ZPA calls if no customer_id provided
+        if ep.startswith("/zpa/") and not s.customer_id:
+            return ({"error":"ZPA customer ID not configured","status":404}, 404)
         real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         if k in s._c: return s._c[k]
         if not s.token or time.time()>=s.exp:
             a = s.auth()
-            if a is not True: raise ConnectionError(str(a))
+            if a is not True:
+                return ({"error":str(a),"status":401}, 401)
         try:
             r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=30); time.sleep(0.5)
             if r.status_code==200: res=(r.json(),200)
