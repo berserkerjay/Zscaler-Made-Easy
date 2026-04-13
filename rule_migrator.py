@@ -724,6 +724,75 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
 
 
 # ════════════════════════════════════════════════════════════════════
+# STEP 4b — Delete All Existing Rules (optional, gated)
+# ════════════════════════════════════════════════════════════════════
+
+def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
+    """
+    Delete every Inline Web DLP rule in the tenant. Used when the
+    migration plan is to wipe + repost a fresh optimized set under
+    Evaluate All Rules mode, avoiding any merge / order conflicts.
+
+    SAFETY:
+      - Default is dry_run=True (returns the list it would delete).
+      - Real delete requires dry_run=False AND env var
+        ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND.
+      - Always run Step 2 (Download) first to keep a backup.
+    """
+    import os
+    rules = fetch_current_rules(client, "web_dlp")
+    plan = [
+        {"rule_id": r.get("id"), "rule_name": r.get("name", f"Rule {r.get('id')}"),
+         "action": (r.get("action") or "?").upper(),
+         "state": (r.get("state") or "ENABLED").upper()}
+        for r in rules
+    ]
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "would_delete_count": len(plan),
+            "would_delete": plan,
+            "message": (
+                f"DRY RUN: Would delete {len(plan)} Inline Web DLP rules. "
+                "Make sure you ran Step 2 first to back them up. "
+                "Set dry_run=false (and ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND) to actually delete."
+            ),
+            "warning": "This is destructive and cannot be undone via API — restore requires re-posting from your backup.",
+        }
+
+    if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+        return {
+            "status": "blocked",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
+            "would_delete_count": len(plan),
+        }
+
+    deleted, failed = [], []
+    for r in rules:
+        rid = r.get("id")
+        if rid is None:
+            failed.append({"rule_name": r.get("name"), "reason": "missing id"})
+            continue
+        try:
+            _, code = client.delete(f"/zia/webDlpRules/{rid}") if hasattr(client, "delete") else (None, 0)
+            if code in (200, 204):
+                deleted.append({"rule_id": rid, "rule_name": r.get("name")})
+            else:
+                failed.append({"rule_id": rid, "rule_name": r.get("name"), "http_status": code})
+        except Exception as e:
+            failed.append({"rule_id": rid, "rule_name": r.get("name"), "error": str(e)[:200]})
+
+    return {
+        "status": "completed" if not failed else "partial",
+        "deleted_count": len(deleted),
+        "failed_count": len(failed),
+        "deleted": deleted,
+        "failed": failed,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
 # STEP 5 — Post New Rules
 # ════════════════════════════════════════════════════════════════════
 
@@ -731,48 +800,83 @@ def post_new_rule_order(
     client,
     proposed_rules: List[Dict[str, Any]],
     dry_run: bool = True,
+    mode: str = "auto",
 ) -> Dict[str, Any]:
     """
-    Apply the new rule ordering back to Zscaler by updating each
-    rule's order field via the Web DLP Rules API.
+    Push the proposed rules back to Zscaler.
+
+    mode:
+      - "auto"   : if rule has an id and exists in tenant, PUT (update order); else POST (create)
+      - "create" : always POST (use after delete-all)
+      - "update" : always PUT (preserve ids — re-order existing rules in place)
 
     SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
-    AND dry_run=False. Default is dry-run.
+    AND dry_run=False to actually write. Default is dry-run.
     """
     import os
-    updates = []
+    plan = []
     for new_pos, r in enumerate(proposed_rules, 1):
-        updates.append({
-            "rule_id": r.get("id"),
-            "rule_name": r.get("name", f"Rule {r.get('id', new_pos)}"),
+        rid = r.get("id")
+        action_op = "POST" if mode == "create" or (mode == "auto" and rid is None) else "PUT"
+        plan.append({
+            "rule_id": rid,
+            "rule_name": r.get("name", f"Rule {rid or new_pos}"),
             "new_order": new_pos,
             "action": (r.get("action") or "?").upper(),
+            "operation": action_op,
         })
 
     if dry_run:
         return {
             "status": "dry_run",
-            "planned_updates": updates,
-            "total": len(updates),
-            "message": f"DRY RUN: Would re-order {len(updates)} DLP rules. Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and dry_run=false to apply.",
-            "recommendation": "Strongly recommended: import the exported JSON via the Zscaler admin portal instead — it gives you an audit trail and rollback point.",
+            "mode": mode,
+            "planned_updates": plan,
+            "total": len(plan),
+            "message": (
+                f"DRY RUN: Would {('create' if mode=='create' else 'update/create')} {len(plan)} DLP rules in the new order. "
+                "Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and dry_run=false to apply."
+            ),
+            "recommendation": "Best practice: keep a JSON backup from Step 2 before running with dry_run=false.",
         }
 
     if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
         return {
             "status": "blocked",
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
-            "planned_updates": updates,
+            "planned_updates": plan,
         }
 
-    # Intentionally limited — return a guide rather than firing writes
+    succeeded, failed = [], []
+    for new_pos, r in enumerate(proposed_rules, 1):
+        rid = r.get("id")
+        body = {k: v for k, v in r.items() if not k.startswith("_")}
+        body["order"] = new_pos
+        try:
+            if mode == "create" or (mode == "auto" and rid is None):
+                # Strip id so server assigns a new one
+                body.pop("id", None)
+                data, code = client.post("/zia/webDlpRules", body)
+                op = "POST"
+            else:
+                data, code = client.put(f"/zia/webDlpRules/{rid}", body)
+                op = "PUT"
+            if code in (200, 201, 204):
+                succeeded.append({"rule_id": rid or (data or {}).get("id"),
+                                  "rule_name": r.get("name"), "operation": op,
+                                  "new_order": new_pos, "http_status": code})
+            else:
+                failed.append({"rule_id": rid, "rule_name": r.get("name"),
+                               "operation": op, "http_status": code,
+                               "error": (data or {}).get("error") if isinstance(data, dict) else str(data)[:200]})
+        except Exception as e:
+            failed.append({"rule_id": rid, "rule_name": r.get("name"),
+                           "error": str(e)[:200]})
+
     return {
-        "status": "manual_required",
-        "planned_updates": updates,
-        "message": (
-            "Automated PUT of rule order is intentionally disabled. "
-            "Use the exported JSON from Step 2 to import the new ordering via the Zscaler admin portal. "
-            "This preserves audit trail and gives you a rollback point."
-        ),
-        "import_endpoint": "/zia/webDlpRules (PUT per rule with updated 'order' field)",
+        "status": "completed" if not failed else "partial",
+        "mode": mode,
+        "succeeded_count": len(succeeded),
+        "failed_count": len(failed),
+        "succeeded": succeeded,
+        "failed": failed,
     }

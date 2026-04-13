@@ -375,15 +375,37 @@ async def migrate_enable(req: EnableRequest):
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
 
 
+# ── Step 4b: Delete All Existing Rules (gated) ───────────────────
+class DeleteAllRequest(MigrateRequest):
+    dry_run: bool = True
+
+
+@app.post("/api/migrate/delete-all")
+async def migrate_delete_all(req: DeleteAllRequest):
+    """Step 4b (optional): Delete every Inline Web DLP rule. Destructive — gated."""
+    try:
+        from rule_migrator import delete_all_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
+
+
 # ── Step 5: Post New Rule Order ──────────────────────────────────
 class PostRequest(MigrateRequest):
     proposed_rules: list[dict] = []
     dry_run: bool = True
+    mode: str = "auto"  # "auto" | "create" | "update"
 
 
 @app.post("/api/migrate/post")
 async def migrate_post(req: PostRequest):
-    """Step 5: Post the optimized rule ordering back to Zscaler (dry-run by default)."""
+    """Step 5: Post the optimized rule ordering back to Zscaler (dry-run by default).
+
+    mode=auto    → PUT existing rules, POST new ones
+    mode=create  → always POST (use after delete-all)
+    mode=update  → always PUT (re-order in place, ids preserved)
+    """
     try:
         from rule_migrator import post_new_rule_order
     except Exception as e:
@@ -391,7 +413,66 @@ async def migrate_post(req: PostRequest):
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run)
+    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
+
+
+# ── Upload rules (from a JSON backup file) ───────────────────────
+class UploadRulesRequest(BaseModel):
+    rules: list[dict] = []
+
+
+@app.post("/api/migrate/upload")
+async def migrate_upload(req: UploadRulesRequest):
+    """Accept a previously-saved (or hand-edited) JSON rule list and return it
+    normalized + analyzed. Pair with /api/migrate/optimize for re-ordering or
+    /api/migrate/post (mode=create) to push to a freshly-emptied tenant."""
+    try:
+        from rule_migrator import analyze_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if not req.rules:
+        raise HTTPException(status_code=400, detail="No rules in upload.")
+    return {
+        "count": len(req.rules),
+        "rules": req.rules,
+        "analysis": analyze_rules(req.rules),
+    }
+
+
+# ── Manual reorder (accept any explicit ordering) ────────────────
+class ReorderRequest(BaseModel):
+    rules: list[dict] = []
+    order: list = []  # list of rule IDs (or names) in desired order
+
+
+@app.post("/api/migrate/reorder")
+async def migrate_reorder(req: ReorderRequest):
+    """Re-order an in-memory rule list by an explicit ID/name sequence the user picked in the GUI."""
+    if not req.rules or not req.order:
+        raise HTTPException(status_code=400, detail="rules and order are required.")
+    by_id = {str(r.get("id")): r for r in req.rules if r.get("id") is not None}
+    by_name = {r.get("name"): r for r in req.rules if r.get("name")}
+    out, missing = [], []
+    seen = set()
+    for token in req.order:
+        key = str(token)
+        rule = by_id.get(key) or by_name.get(token)
+        if rule and id(rule) not in seen:
+            out.append(rule)
+            seen.add(id(rule))
+        else:
+            missing.append(token)
+    # Append any rules the user didn't explicitly position (preserve them at the end)
+    for r in req.rules:
+        if id(r) not in seen:
+            out.append(r)
+    for i, r in enumerate(out, 1):
+        r["_proposed_order"] = i
+    return {
+        "count": len(out),
+        "proposed_rules": out,
+        "missing_tokens": missing,
+    }
 
 
 @app.post("/api/migrate/analyze")

@@ -140,6 +140,50 @@ class Client:
             res = ({"error":str(e)[:200],"status":0}, 0)
         s._c[k] = res; return res
 
+    def _write(s, method, ep, body=None, _retry=0):
+        """Shared write path for POST / PUT / DELETE with self-healing."""
+        real_ep = _resolve_ep(ep, s.customer_id)
+        if not s.token or time.time() >= s.exp:
+            a = s.auth()
+            if a is not True:
+                return ({"error": str(a), "status": 401}, 401)
+        try:
+            kwargs = {"timeout": 30}
+            if body is not None:
+                kwargs["json"] = body
+            r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
+            time.sleep(0.3)
+            if r.status_code in (200, 201):
+                try: return (r.json(), r.status_code)
+                except Exception: return ({}, r.status_code)
+            if r.status_code == 204:
+                return ({}, 204)
+            if r.status_code == 429 and _retry < 3:
+                time.sleep(min(int(r.headers.get("Retry-After", 5)), 30))
+                return s._write(method, ep, body, _retry + 1)
+            if r.status_code == 401 and _retry < 2:
+                s.token = None
+                return s._write(method, ep, body, _retry + 1)
+            if r.status_code in (502, 503, 504) and _retry < 2:
+                time.sleep(2 ** _retry)
+                return s._write(method, ep, body, _retry + 1)
+            return ({"error": r.text[:200] if r.text else "error", "status": r.status_code}, r.status_code)
+        except requests.exceptions.Timeout:
+            if _retry < 2: return s._write(method, ep, body, _retry + 1)
+            return ({"error": "request timeout", "status": 0}, 0)
+        except requests.exceptions.ConnectionError as e:
+            if _retry < 2:
+                time.sleep(2 ** _retry)
+                return s._write(method, ep, body, _retry + 1)
+            return ({"error": f"connection error: {str(e)[:100]}", "status": 0}, 0)
+        except Exception as e:
+            return ({"error": str(e)[:200], "status": 0}, 0)
+
+    def post(s, ep, body=None):   return s._write("POST", ep, body)
+    def put(s, ep, body=None):    return s._write("PUT", ep, body)
+    def delete(s, ep, body=None): return s._write("DELETE", ep, body)
+
+
 class R:
     PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; INFO="INFO"; ERROR="ERROR"
     def __init__(s, st, det="", data=None): s.status,s.detail,s.data = st,det,data or {}

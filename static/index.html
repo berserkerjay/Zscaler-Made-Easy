@@ -485,7 +485,7 @@
   <div class="card">
     <div style="margin-bottom:1rem;">
       <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
-      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the 5 steps below in order. All write actions default to dry-run for safety.</p>
+      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the steps below in order. Steps 4b is destructive and optional. All write actions default to dry-run for safety.</p>
     </div>
 
     <!-- Step 1 -->
@@ -512,6 +512,10 @@
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="step2Download()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Download Rules</button>
           <button class="btn btn-ghost" id="step2SaveBtn" onclick="step2SaveLocal()" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save JSON Backup</button>
+          <label class="btn btn-ghost" style="padding:0.55rem 1.1rem;font-size:0.85rem;cursor:pointer;">
+            📂 Upload Rules JSON
+            <input type="file" id="step2UploadFile" accept=".json,application/json" onchange="step2UploadJson(event)" style="display:none;">
+          </label>
         </div>
       </div>
       <div id="step2Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
@@ -566,15 +570,43 @@
       <div id="step4Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
+    <!-- Step 4b (optional, destructive) -->
+    <div style="padding:1rem;background:rgba(220,38,38,0.05);border-radius:10px;border:1px dashed rgba(220,38,38,0.4);margin-bottom:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:#dc2626;font-weight:700;letter-spacing:0.1em;">STEP 4B · OPTIONAL · DESTRUCTIVE</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Delete All Existing DLP Rules</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">
+            Use this <strong>only</strong> when migrating to Evaluate All Rules with a fresh re-post. Wipes every Inline Web DLP rule
+            so Step 5 can re-create them in the optimized order without conflicts.
+            <strong style="color:#dc2626;">Cannot be undone via API</strong> — make sure Step 2 backup is saved first.
+          </p>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button class="btn btn-ghost" onclick="step4bDeleteAll(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Preview Deletion (Dry-Run)</button>
+          <button class="btn btn-ghost" onclick="step4bDeleteAll(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;color:#dc2626;border-color:rgba(220,38,38,0.4);">⚠ Delete All</button>
+        </div>
+      </div>
+      <div id="step4bResult" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(220,38,38,0.05);border-radius:8px;margin-top:0.5rem;"></div>
+    </div>
+
     <!-- Step 5 -->
     <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
         <div>
           <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 5</span>
           <h3 style="font-size:1rem;margin-top:0.2rem;">Post New Rules</h3>
-          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Dry-run returns the plan; actual writes are gated for safety — prefer the exported JSON + admin portal import.</p>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Choose mode based on whether you ran Step 4b.</p>
         </div>
-        <button class="btn btn-primary" onclick="step5Post()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Post (Dry-Run)</button>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+          <select id="step5Mode" style="padding:0.55rem 0.75rem;font-size:0.82rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+            <option value="auto">auto (PUT existing, POST new)</option>
+            <option value="update">update only (PUT — re-order in place)</option>
+            <option value="create">create only (POST — use after Step 4b)</option>
+          </select>
+          <button class="btn btn-ghost" onclick="step5Post(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Dry-Run</button>
+          <button class="btn btn-primary" onclick="step5Post(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Post Live</button>
+        </div>
       </div>
       <div id="step5Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
@@ -767,6 +799,33 @@ function step2SaveLocal() {
   a.click();
 }
 
+async function step2UploadJson(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const el = document.getElementById('step2Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Reading uploaded file...</span>';
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const rules = Array.isArray(parsed) ? parsed : (parsed.rules || parsed.proposed_rules || []);
+    if (!Array.isArray(rules) || rules.length === 0) throw new Error('No rules array found in JSON.');
+    const resp = await fetch('/api/migrate/upload', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({rules})});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const data = await resp.json();
+    migrateRules = data.rules;
+    const a = data.analysis || {};
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Loaded ${migrateRules.length} rules from <code>${escapeHtml(file.name)}</code></div>
+      <div style="color:var(--dim);margin-top:0.25rem;">Enabled: ${a.enabled_rules || 0} · Disabled: ${a.disabled_rules || 0} · Issues found: ${a.issue_count || 0}</div>
+      <div style="color:var(--dim);margin-top:0.25rem;font-size:0.8rem;">These rules are now staged for Step 3 (Optimize) or Step 5 (Post mode=create).</div>
+    `;
+    document.getElementById('step2SaveBtn').style.display = 'inline-flex';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Upload failed: ' + escapeHtml(e.message) + '</span>';
+  }
+  event.target.value = ''; // allow re-upload of same file
+}
+
 async function step3Optimize() {
   if (!migrateRules) { document.getElementById('migrateStatus').textContent = 'Run Step 2 first to download rules.'; document.getElementById('migrateStatus').className='status-msg error'; return; }
   const el = document.getElementById('step3Result'); el.style.display = 'block';
@@ -797,6 +856,102 @@ async function step3Optimize() {
       ${plan.notes && plan.notes.length ? '<ul style="margin-top:0.4rem;margin-left:1.1rem;font-size:0.82rem;color:var(--dim);">' + plan.notes.map(n=>`<li>${escapeHtml(n)}</li>`).join('') + '</ul>' : ''}
     `;
     showDiff(plan.diff || []);
+    showManualReorder();
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+function showManualReorder() {
+  if (!optimizedRules || optimizedRules.length === 0) return;
+  let host = document.getElementById('manualReorder');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'manualReorder';
+    document.getElementById('migrateDiff').insertAdjacentElement('afterend', host);
+  }
+  const rows = optimizedRules.map((r, i) => {
+    const name = escapeHtml(r.name || `Rule ${r.id || i+1}`);
+    const action = (r.action || '?').toUpperCase();
+    const id = r.id != null ? r.id : '';
+    return `<tr data-idx="${i}">
+      <td style="padding:0.3rem 0.5rem;text-align:center;font-weight:700;color:var(--accent);width:2.5rem;">${i+1}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:monospace;color:var(--dim);width:5rem;">${id}</td>
+      <td style="padding:0.3rem 0.5rem;">${name}</td>
+      <td style="padding:0.3rem 0.5rem;width:6rem;"><span style="padding:0.1rem 0.4rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:3px;font-size:0.75rem;">${escapeHtml(action)}</span></td>
+      <td style="padding:0.3rem 0.5rem;text-align:right;width:7rem;white-space:nowrap;">
+        <button class="btn btn-ghost" onclick="reorderMove(${i}, -1)" ${i===0?'disabled':''} style="padding:0.2rem 0.5rem;font-size:0.75rem;">▲</button>
+        <button class="btn btn-ghost" onclick="reorderMove(${i}, 1)" ${i===optimizedRules.length-1?'disabled':''} style="padding:0.2rem 0.5rem;font-size:0.75rem;">▼</button>
+      </td>
+    </tr>`;
+  }).join('');
+  host.innerHTML = `
+    <div style="margin-top:0.75rem;padding:0.75rem;background:rgba(15,23,42,0.5);border-radius:8px;border:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
+        <div style="font-size:0.85rem;font-weight:600;">Manual Reorder (overrides the auto-optimization)</div>
+        <button class="btn btn-ghost" onclick="reorderReset()" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Reset to auto-optimized</button>
+      </div>
+      <div style="font-size:0.78rem;color:var(--dim);margin-bottom:0.5rem;">Use the ▲▼ buttons to move rules. The order shown here is what Step 5 will post.</div>
+      <table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
+        <thead><tr style="background:rgba(59,130,246,0.08);">
+          <th style="padding:0.4rem 0.5rem;text-align:center;">#</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">ID</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Name</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Action</th>
+          <th style="padding:0.4rem 0.5rem;text-align:right;">Move</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+let _autoOptimizedSnapshot = null;
+function reorderMove(idx, delta) {
+  if (!optimizedRules) return;
+  const ni = idx + delta;
+  if (ni < 0 || ni >= optimizedRules.length) return;
+  if (!_autoOptimizedSnapshot) _autoOptimizedSnapshot = optimizedRules.slice();
+  const tmp = optimizedRules[idx];
+  optimizedRules[idx] = optimizedRules[ni];
+  optimizedRules[ni] = tmp;
+  optimizedRules.forEach((r,i)=>{ r._proposed_order = i+1; });
+  showManualReorder();
+}
+function reorderReset() {
+  if (!_autoOptimizedSnapshot) return;
+  optimizedRules = _autoOptimizedSnapshot.slice();
+  _autoOptimizedSnapshot = null;
+  optimizedRules.forEach((r,i)=>{ r._proposed_order = i+1; });
+  showManualReorder();
+}
+
+async function step4bDeleteAll(dryRun) {
+  if (!dryRun) {
+    if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON Backup).\n\nThis cannot be undone via API. Continue?')) return;
+  }
+  const body = migrateValidateCreds(); if (!body) return;
+  body.dry_run = dryRun;
+  const el = document.getElementById('step4bResult'); el.style.display = 'block';
+  el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
+  try {
+    const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const r = await resp.json();
+    if (r.status === 'dry_run') {
+      const list = (r.would_delete || []).slice(0, 30).map(x => `<li><code style="color:var(--dim);">${x.rule_id}</code> · ${escapeHtml(x.rule_name)} (${x.action})</li>`).join('');
+      el.innerHTML = `
+        <div style="color:#dc2626;font-weight:600;">DRY-RUN: would delete ${r.would_delete_count} rule(s).</div>
+        <div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>
+        <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.8rem;">${list}</ul>
+        ${r.would_delete_count > 30 ? `<div style="color:var(--dim);font-size:0.78rem;">...and ${r.would_delete_count - 30} more.</div>` : ''}
+        <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(220,38,38,0.08);border-left:3px solid #dc2626;border-radius:4px;font-size:0.8rem;">${escapeHtml(r.warning || '')}</div>`;
+    } else if (r.status === 'blocked') {
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>`;
+    } else {
+      el.innerHTML = `
+        <div style="color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">${r.status}: deleted ${r.deleted_count}, failed ${r.failed_count}</div>
+        ${r.failed_count ? `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>` : ''}`;
+    }
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
   }
@@ -842,21 +997,36 @@ async function step4Enable() {
   }
 }
 
-async function step5Post() {
-  if (!optimizedRules) { document.getElementById('migrateStatus').textContent = 'Run Step 3 first to generate optimized rules.'; document.getElementById('migrateStatus').className='status-msg error'; return; }
+async function step5Post(dryRun) {
+  const sourceRules = optimizedRules || migrateRules;
+  if (!sourceRules || sourceRules.length === 0) {
+    document.getElementById('migrateStatus').textContent = 'Run Step 3 (Optimize) or Step 2 (Download/Upload) first.';
+    document.getElementById('migrateStatus').className='status-msg error'; return;
+  }
   const body = migrateValidateCreds(); if (!body) return;
-  body.proposed_rules = optimizedRules;
-  body.dry_run = true;
+  body.proposed_rules = sourceRules;
+  body.dry_run = !!dryRun;
+  body.mode = document.getElementById('step5Mode').value || 'auto';
+  if (!dryRun) {
+    if (!confirm(`This will write ${sourceRules.length} rule(s) live to the tenant in mode="${body.mode}".\n\nDry-run first if you haven't. Continue?`)) return;
+  }
   const el = document.getElementById('step5Result'); el.style.display = 'block';
-  el.innerHTML = '<span style="color:var(--dim);">Building post plan (dry-run)...</span>';
+  el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building post plan (dry-run)...' : 'Posting rules live...'}</span>`;
   try {
     const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
+    let summary = '';
+    if (r.status === 'dry_run') {
+      summary = `<div style="margin-top:0.4rem;">Planned: <strong>${r.total}</strong> rule(s) (${(r.planned_updates || []).filter(x=>x.operation==='POST').length} POST · ${(r.planned_updates || []).filter(x=>x.operation==='PUT').length} PUT)</div>`;
+    } else if (r.status === 'completed' || r.status === 'partial') {
+      summary = `<div style="margin-top:0.4rem;color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">Succeeded: ${r.succeeded_count} · Failed: ${r.failed_count}</div>`;
+      if (r.failed_count) summary += `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>`;
+    }
     el.innerHTML = `
-      <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')}</div>
+      <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')} · mode: ${r.mode || 'auto'}</div>
       <div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>
-      ${r.total ? `<div style="margin-top:0.4rem;">Planned updates: <strong>${r.total}</strong> rule(s) would receive a new 'order' field.</div>` : ''}
+      ${summary}
       ${r.recommendation ? `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;"><strong>Recommendation:</strong> ${escapeHtml(r.recommendation)}</div>` : ''}
     `;
   } catch(e) {
