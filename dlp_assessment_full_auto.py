@@ -46,17 +46,29 @@ def _token_url(vd, cloud):
 # OneAPI service path prefixes (confirmed via SDK source + Postman)
 # ZCC OneAPI uses function-style endpoints (not REST collections)
 _ZCC_MAP = {
-    "appProfiles":        "webPolicies/listByCompany",         # no direct appProfiles endpoint; use webPolicies
+    "appProfiles":        "webPolicies/listByCompany",
     "webPolicies":        "webPolicies/listByCompany",
     "forwardingProfiles": "webForwardingProfile/listByCompany",
     "forwardingProfile":  "webForwardingProfile/listByCompany",
     "devices":            "getDevices",
     "deviceDetails":      "getDeviceDetails",
+    "deviceStats":        "web/getDeviceStats",
+    "deviceLookup":       "web/device/Lookup/udid",
     "trustedNetworks":    "webTrustedNetwork/listByCompany",
     "failOpenPolicy":     "webFailOpenPolicy/listByCompany",
     "companyInfo":        "getCompanyInfo",
     "webAppService":      "webAppService/listByCompany",
-    "postureProfiles":    "webPolicies/listByCompany",         # posture profiles are in webPolicies
+    "postureProfiles":    "appPostureInfo/listByCompany",
+    "machineTunnel":      "webMachineTunnel/listByCompany",
+    "browserProtection":  "webBrowserProtectionProfile/listByCompany",
+    "pacFiles":           "getPacFiles",
+    "zpnModuleMode":      "webZPNModuleMode/listByCompany",
+    "appBypass":          "webBypassAppConfig/listByCompany",
+    "privacyInfo":        "webPrivacyInfo/listByCompany",
+    "deviceCleanup":      "webDeviceCleanupInfo/listByCompany",
+    "deviceGroups":       "webDeviceGroups/listByCompany",
+    "lastPostureFields":  "web/getLastAppPostureFields",
+    "downloadStatus":     "downloadServiceStatus",
 }
 
 def _resolve_ep(ep, customer_id=""):

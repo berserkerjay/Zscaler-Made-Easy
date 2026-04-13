@@ -471,6 +471,251 @@ def zcc_5(cl):
     return R(R.WARN, "Cannot retrieve company info. Note: This may indicate the ZCC API scope is not enabled for this API client. Verify API role includes ZCC read permissions.")
 
 
+def zcc_6(cl):
+    """ZCC forwarding profiles (PAC / tunnel mode)"""
+    d, c = cl.get("/zcc/forwardingProfiles")
+    profiles = _ls(d) if c in (200, 204) else []
+    if not profiles:
+        return R(R.WARN, "No ZCC forwarding profiles. Best Practice: Define at least one forwarding profile mapping each OS/group to a tunnel method (Z-Tunnel 2.0, Packet Filter Based, or PAC). Z-Tunnel 2.0 is recommended for full traffic coverage. Ref: ZCC Deployment Guide - Forwarding Profiles.")
+    tunnel_20 = 0
+    pac = 0
+    pkt_filter = 0
+    none_forward = 0
+    for p in profiles:
+        mode = str(p.get("tunnelDriverType") or p.get("driverMode") or p.get("forwardingMode") or "").upper()
+        if "TUNNEL2" in mode or "ZTUNNEL" in mode or "TUNNEL_20" in mode: tunnel_20 += 1
+        elif "PAC" in mode: pac += 1
+        elif "PACKET" in mode or "FILTER" in mode: pkt_filter += 1
+        elif "NONE" in mode: none_forward += 1
+    distrib = []
+    if tunnel_20:   distrib.append(f"{tunnel_20} Z-Tunnel 2.0")
+    if pkt_filter:  distrib.append(f"{pkt_filter} Packet Filter")
+    if pac:         distrib.append(f"{pac} PAC")
+    if none_forward:distrib.append(f"{none_forward} None/Disabled")
+    if none_forward > 0:
+        return R(R.WARN, f"{len(profiles)} forwarding profile(s): {', '.join(distrib) if distrib else 'mixed modes'}. ⚠ {none_forward} profile(s) with forwarding disabled means those devices don't route through Zscaler. Best Practice: Every profile should actively forward via Z-Tunnel 2.0 for full coverage.")
+    return R(R.PASS, f"{len(profiles)} forwarding profile(s): {', '.join(distrib) if distrib else 'mixed modes'}.")
+
+
+def zcc_7(cl):
+    """ZCC machine tunnel policy (ZPA device-level access)"""
+    d, c = cl.get("/zcc/machineTunnel")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Machine Tunnel API not accessible. Not Configured / N/A — may require ZPA subscription + machine-tunnel feature.")
+    if not items:
+        return R(R.INFO, "No machine tunnel policies defined. Note: Machine tunnels let services on a device reach ZPA apps before user login. Optional feature — configure if you have pre-logon / server workloads that need ZPA access.")
+    return R(R.PASS, f"{len(items)} machine tunnel policy/policies. Best Practice: Ensure machine tunnel is scoped to device groups that actually need pre-logon ZPA access.")
+
+
+def zcc_8(cl):
+    """ZCC app profiles — posture + install requirements"""
+    d, c = cl.get("/zcc/webPolicies")
+    policies = _ls(d) if c in (200, 204) else []
+    if not policies:
+        return R(R.WARN, "No ZCC app profiles (policies). Best Practice: Each user population needs an app profile defining tunnel behavior, logging, PAC URL, enforcement options, and posture requirements. At minimum, define default + per-OS profiles.")
+    total = len(policies)
+    with_posture = 0
+    strict_enforce = 0
+    tamper_protect = 0
+    for p in policies:
+        posture = p.get("devicePosture") or p.get("postureProfileId") or p.get("postureProfile")
+        if posture: with_posture += 1
+        if p.get("strictEnforcement") or p.get("strict_enforcement"): strict_enforce += 1
+        if (p.get("uninstallPassword") or p.get("disablePassword")
+            or p.get("logoutPassword") or p.get("tamperProtection")): tamper_protect += 1
+    parts = []
+    parts.append(f"{with_posture}/{total} with posture")
+    parts.append(f"{strict_enforce}/{total} strict-enforcement")
+    parts.append(f"{tamper_protect}/{total} tamper-protected")
+    if with_posture == 0:
+        return R(R.WARN, f"{total} app profile(s): {', '.join(parts)}. Best Practice: Apply device posture profiles (OS version, disk encryption, AV running, domain joined) to block non-compliant devices from enrolling.")
+    if strict_enforce < total:
+        return R(R.WARN, f"{total} app profile(s): {', '.join(parts)}. Best Practice: Enable strict enforcement on all profiles — prevents users from disabling ZCC or editing forwarding settings.")
+    return R(R.PASS, f"{total} app profile(s): {', '.join(parts)}.")
+
+
+def zcc_9(cl):
+    """ZCC posture profiles defined"""
+    d, c = cl.get("/zcc/postureProfiles")
+    items = _ls(d) if c in (200, 204) else []
+    if not items:
+        return R(R.WARN, "No posture profiles defined. Best Practice: Define posture profiles to enforce device compliance (OS version, antivirus running, disk encryption, firewall on, domain-joined). Posture profiles gate ZCC enrollment and ZPA access — critical for zero-trust.")
+    return R(R.PASS, f"{len(items)} posture profile(s) configured.")
+
+
+def zcc_10(cl):
+    """ZCC ZPN module modes (ZIA/ZPA/ZDX/Deception enabled per tenant)"""
+    d, c = cl.get("/zcc/zpnModuleMode")
+    items = _ls(d) if c in (200, 204) else []
+    if not items:
+        return R(R.INFO, "ZPN module mode config not available. If you use a multi-service ZCC (ZIA+ZPA+ZDX), verify each module is enabled per profile in the admin portal.")
+    modes = set()
+    for it in items:
+        for k in it.keys():
+            kl = k.lower()
+            if "zia" in kl or "zpa" in kl or "zdx" in kl or "deception" in kl:
+                if it.get(k): modes.add(k)
+    return R(R.PASS, f"{len(items)} ZPN module-mode config(s). Modules enabled: {', '.join(sorted(modes)) if modes else '(unspecified)'}.")
+
+
+def zcc_11(cl):
+    """ZCC device enrollment state & version distribution"""
+    d, c = cl.get("/zcc/devices")
+    devs = _ls(d) if c in (200, 204) else []
+    if not devs:
+        return R(R.INFO, "No devices to analyze enrollment state.")
+    total = len(devs)
+    # Enrollment state
+    registered = 0
+    removed = 0
+    tamperd = 0
+    versions: dict = {}
+    stale = 0
+    import time as _t
+    now = _t.time()
+    for dv in devs[:2000]:
+        state = str(dv.get("registrationState") or dv.get("state") or "").upper()
+        if "REMOV" in state or "UNREGISTER" in state: removed += 1
+        elif "REGISTER" in state or "ACTIVE" in state: registered += 1
+        if dv.get("tamperDetected") or dv.get("tampered"): tamperd += 1
+        v = dv.get("zappVersion") or dv.get("agentVersion") or dv.get("version") or "?"
+        versions[v] = versions.get(v, 0) + 1
+        # Stale: lastSeen > 30 days ago
+        ls = dv.get("lastSeen") or dv.get("lastSeenTime") or 0
+        if isinstance(ls, (int, float)) and ls > 0:
+            if ls > 1e12: ls = ls / 1000.0  # ms → s
+            if now - ls > 30 * 86400: stale += 1
+    top3 = sorted(versions.items(), key=lambda x: -x[1])[:3]
+    ver_str = ", ".join(f"{v}:{n}" for v, n in top3) if top3 else "?"
+    notes = []
+    if removed: notes.append(f"{removed} REMOVED/unregistered")
+    if tamperd: notes.append(f"{tamperd} tamper-detected")
+    if stale:   notes.append(f"{stale} not seen in 30+ days")
+    status = R.WARN if (removed or tamperd or stale > total * 0.2) else R.PASS
+    detail = f"{total} device(s): {registered} registered"
+    if notes: detail += f", {', '.join(notes)}"
+    detail += f". Top versions: {ver_str}."
+    if tamperd:
+        detail += " Best Practice: Investigate tamper-detected devices immediately — they may have had ZCC forcibly removed."
+    elif removed > total * 0.1:
+        detail += " Best Practice: Clean up stale/unregistered devices; high count inflates the inventory and can mask real issues."
+    elif stale > total * 0.2:
+        detail += " Best Practice: Over 20% of devices haven't checked in in 30+ days — retire or re-enroll them."
+    return R(status, detail)
+
+
+def zcc_12(cl):
+    """ZCC PAC files"""
+    d, c = cl.get("/zcc/pacFiles")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "PAC files API not accessible on this role.")
+    if not items:
+        return R(R.INFO, "No PAC files defined. Note: PAC files are used by forwarding profiles set to 'PAC' mode. If all your profiles use Z-Tunnel 2.0, no PAC is needed.")
+    return R(R.PASS, f"{len(items)} PAC file(s) configured.")
+
+
+def zcc_13(cl):
+    """ZCC privacy info — what ZCC reports back"""
+    d, c = cl.get("/zcc/privacyInfo")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Privacy info API not accessible.")
+    if not items:
+        return R(R.WARN, "Privacy info not configured. Best Practice: Review privacy settings so end users can see what telemetry ZCC reports — important for GDPR / works-council compliance.")
+    return R(R.PASS, f"Privacy info configured across {len(items)} profile(s).")
+
+
+def zcc_14(cl):
+    """ZCC app bypass configuration"""
+    d, c = cl.get("/zcc/appBypass")
+    items = _ls(d) if c in (200, 204) else []
+    if not items:
+        return R(R.INFO, "No app-bypass config. Note: If ZCC tunnels break a specific app (e.g., VPN client, virtualization tool), add it to the app-bypass list. Should stay as small as possible — prefer domain/URL bypass over app-level bypass.")
+    total_apps = 0
+    for it in items:
+        for field in ("bypassAppList", "apps", "bypassApps", "applicationBypass"):
+            if isinstance(it.get(field), list):
+                total_apps += len(it[field])
+    return R(R.PASS, f"{len(items)} app-bypass config(s) covering ~{total_apps} app(s). Review quarterly to remove unneeded entries.")
+
+
+def zcc_15(cl):
+    """ZCC browser protection profiles"""
+    d, c = cl.get("/zcc/browserProtection")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Browser Protection API not accessible — may not be licensed on this tenant.")
+    if not items:
+        return R(R.INFO, "No browser protection profiles. Optional feature — enables ZCC to protect against browser-level threats (phishing, unsafe downloads) in addition to tunnel-level inspection.")
+    return R(R.PASS, f"{len(items)} browser protection profile(s) configured.")
+
+
+def zcc_16(cl):
+    """ZCC device cleanup policy (auto-unenroll stale endpoints)"""
+    d, c = cl.get("/zcc/deviceCleanup")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Device cleanup API not accessible.")
+    if not items:
+        return R(R.WARN, "No device cleanup policy. Best Practice: Configure auto-cleanup to unenroll devices not seen in N days (typically 90). Without this, retired laptops and reimaged hosts accumulate forever and inflate the license count.")
+    return R(R.PASS, f"{len(items)} device cleanup policy/policies — stale endpoints will auto-retire.")
+
+
+def zcc_17(cl):
+    """ZCC device groups for policy targeting"""
+    d, c = cl.get("/zcc/deviceGroups")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Device groups API not accessible.")
+    if not items:
+        return R(R.INFO, "No device groups. Best Practice: Create device groups (by OS, department, risk tier) for granular policy targeting. Device groups let you apply stricter posture / tighter tunnels to specific device populations.")
+    return R(R.PASS, f"{len(items)} device group(s) — usable for policy targeting.")
+
+
+def zcc_18(cl):
+    """ZCC trusted networks — structure check (not just count)"""
+    d, c = cl.get("/zcc/trustedNetworks")
+    items = _ls(d) if c in (200, 204) else []
+    if not items:
+        return R(R.WARN, "No trusted networks defined. Best Practice: Define corp SSIDs, DNS servers, hostnames, or IP ranges so ZCC behaves differently on-network vs off-network (e.g., skip tunnel on-net, full tunnel off-net).")
+    has_ssid = sum(1 for x in items if x.get("ssids") or x.get("wifiSsids"))
+    has_dns = sum(1 for x in items if x.get("dns") or x.get("dnsServers"))
+    has_hostname = sum(1 for x in items if x.get("hostnames") or x.get("resolvedIpsForHostname"))
+    detail = (f"{len(items)} trusted network(s): "
+              f"{has_ssid} with SSID check, {has_dns} with DNS check, "
+              f"{has_hostname} with hostname resolve. ")
+    if has_ssid == 0 and has_dns == 0 and has_hostname == 0:
+        return R(R.WARN, detail + "Best Practice: Trusted-network detection needs at least one check method (SSID / DNS / hostname) to work reliably.")
+    return R(R.PASS, detail)
+
+
+def zcc_19(cl):
+    """ZCC last posture fields (what posture info is being collected)"""
+    d, c = cl.get("/zcc/lastPostureFields")
+    if c == 200 and isinstance(d, (dict, list)):
+        fields = d if isinstance(d, list) else (d.get("fields") or d.get("postureFields") or list(d.keys()))
+        if fields:
+            return R(R.PASS, f"Posture collection fields active: {len(fields) if isinstance(fields, list) else 'configured'}.")
+    return R(R.INFO, "Last posture fields API not exposing data. If you rely on ZCC posture collection, verify the posture profiles are configured.")
+
+
+def zcc_20(cl):
+    """ZCC company info — enrollment auth method"""
+    d, c = cl.get("/zcc/companyInfo")
+    if c != 200 or not isinstance(d, dict):
+        return R(R.INFO, "Company info not accessible for enrollment-auth check.")
+    auth = (d.get("authMethod") or d.get("enrollmentAuthMethod") or "").upper()
+    if not auth:
+        return R(R.INFO, "Enrollment auth method not exposed. Manual check: ZIA Admin → ZCC → Mobile Portal → Enrollment.")
+    if "SAML" in auth or "ADFS" in auth or "AZURE" in auth or "OKTA" in auth:
+        return R(R.PASS, f"ZCC enrollment uses federated SSO: {auth}. Aligns with best practice.")
+    if "HOSTED" in auth or "BASIC" in auth or "LOCAL" in auth:
+        return R(R.WARN, f"ZCC enrollment auth: {auth}. Best Practice: Use SAML / IdP-federated enrollment so ZCC install is gated by corporate SSO + MFA, not Zscaler-hosted local accounts.")
+    return R(R.INFO, f"ZCC enrollment auth: {auth}.")
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # FULL PLATFORM REGISTRY
 # ═══════════════════════════════════════════════════════════════════════
@@ -540,10 +785,25 @@ PLATFORM_REG = [
     ("ZPA.14", "ZPA — App Access", "Log streaming (LSS)", zpa_14),
     ("ZPA.15", "ZPA — App Access", "Machine groups", zpa_15),
 
-    # ZCC — Device Management
-    ("ZCC.1", "ZCC — Devices", "Trusted networks", zcc_1),
-    ("ZCC.2", "ZCC — Devices", "Web policies", zcc_2),
-    ("ZCC.3", "ZCC — Devices", "Fail-open policy", zcc_3),
-    ("ZCC.4", "ZCC — Devices", "Device inventory", zcc_4),
-    ("ZCC.5", "ZCC — Devices", "Company info", zcc_5),
+    # ZCC — Device Management / Mobile Portal
+    ("ZCC.1",  "ZCC — Devices",          "Trusted networks",                    zcc_1),
+    ("ZCC.2",  "ZCC — Devices",          "Web policies (legacy)",               zcc_2),
+    ("ZCC.3",  "ZCC — Devices",          "Fail-open policy",                    zcc_3),
+    ("ZCC.4",  "ZCC — Devices",          "Device inventory + platform mix",     zcc_4),
+    ("ZCC.5",  "ZCC — Devices",          "Company info",                        zcc_5),
+    ("ZCC.6",  "ZCC — Mobile Portal",    "Forwarding profiles + tunnel modes",  zcc_6),
+    ("ZCC.7",  "ZCC — Mobile Portal",    "Machine tunnel policy (pre-logon)",   zcc_7),
+    ("ZCC.8",  "ZCC — Mobile Portal",    "App profiles — posture + enforcement", zcc_8),
+    ("ZCC.9",  "ZCC — Mobile Portal",    "Posture profiles defined",            zcc_9),
+    ("ZCC.10", "ZCC — Mobile Portal",    "ZPN module modes (ZIA/ZPA/ZDX)",      zcc_10),
+    ("ZCC.11", "ZCC — Mobile Portal",    "Enrollment + version + stale devices", zcc_11),
+    ("ZCC.12", "ZCC — Mobile Portal",    "PAC files",                           zcc_12),
+    ("ZCC.13", "ZCC — Mobile Portal",    "Privacy info (GDPR readiness)",       zcc_13),
+    ("ZCC.14", "ZCC — Mobile Portal",    "App bypass configuration",            zcc_14),
+    ("ZCC.15", "ZCC — Mobile Portal",    "Browser protection profiles",         zcc_15),
+    ("ZCC.16", "ZCC — Mobile Portal",    "Device cleanup policy",               zcc_16),
+    ("ZCC.17", "ZCC — Mobile Portal",    "Device groups for policy targeting",  zcc_17),
+    ("ZCC.18", "ZCC — Mobile Portal",    "Trusted networks — detection methods", zcc_18),
+    ("ZCC.19", "ZCC — Mobile Portal",    "Posture field collection",            zcc_19),
+    ("ZCC.20", "ZCC — Mobile Portal",    "Enrollment authentication method",    zcc_20),
 ]
