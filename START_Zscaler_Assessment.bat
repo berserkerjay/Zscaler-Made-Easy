@@ -13,6 +13,14 @@ REM ═════════════════════════�
 if not defined ZSCALER_BIND_HOST set ZSCALER_BIND_HOST=127.0.0.1
 if not defined ZSCALER_PORT      set ZSCALER_PORT=8000
 
+REM ──────────────────────────────────────────────────────────────
+REM  If you're behind a corporate proxy, uncomment and edit one of:
+REM    set HTTPS_PROXY=http://user:pass@proxy.corp:8080
+REM    set ZSCALER_UPDATE_PROXY=http://proxy.corp:8080
+REM  If corporate TLS inspection breaks the update checker:
+REM    set ZSCALER_UPDATE_VERIFY_TLS=0
+REM ──────────────────────────────────────────────────────────────
+
 REM Find real Python (skip Microsoft Store stub)
 set PYTHON_EXE=
 for /f "delims=" %%i in ('where python 2^>nul') do (
