@@ -138,6 +138,11 @@ class AssessRequest(BaseModel):
     customer_id: str = ""  # Optional ZPA customer ID
 
 
+class UpdateCheckRequest(BaseModel):
+    only: Optional[list[str]] = None  # subset of source keys
+    reset: bool = False               # wipe cache first
+
+
 # ── Routes ───────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -773,6 +778,52 @@ async def generate_docx(request: Request):
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
+# ── Updates: check for new Zscaler APIs / SDK / best practices ──────
+@app.get("/api/updates/sources")
+async def updates_sources():
+    """Enumerate the sources the update-checker monitors."""
+    try:
+        from zscaler_update_check import SOURCES
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
+    return [
+        {"key": s["key"], "name": s["name"], "importance": s.get("importance"),
+         "type": s["type"], "why": s.get("why", ""),
+         "url": s.get("url") or (f"https://pypi.org/project/{s['package']}/" if s.get("package") else None)}
+        for s in SOURCES
+    ]
+
+
+@app.post("/api/updates/check")
+async def updates_check(req: UpdateCheckRequest):
+    """
+    Check Zscaler upstream sources (SDK on PyPI + help-center pages)
+    for changes since the last time this was run. Returns a per-source
+    status: new | changed | unchanged | error.
+
+    Fetches are allowlisted to pypi.org and help.zscaler.com. No
+    credentials are required for this endpoint.
+    """
+    try:
+        from zscaler_update_check import check_for_updates, reset_cache
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
+    if req.reset:
+        await asyncio.to_thread(reset_cache)
+    return await asyncio.to_thread(check_for_updates, False, req.only)
+
+
+@app.post("/api/updates/reset-cache")
+async def updates_reset():
+    """Clear the last-seen cache — next check reports every source as 'new'."""
+    try:
+        from zscaler_update_check import reset_cache
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
+    ok = await asyncio.to_thread(reset_cache)
+    return {"ok": bool(ok)}
 
 
 if __name__ == "__main__":

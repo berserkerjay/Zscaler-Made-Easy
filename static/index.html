@@ -299,6 +299,30 @@
     <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
+    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-ghost" onclick="openUpdateModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
+        🔄 Check for Zscaler Updates
+      </button>
+    </div>
+  </div>
+
+  <!-- Update-check modal -->
+  <div id="updateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:900px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 style="margin:0;">🔄 Zscaler Update Check</h2>
+        <button class="btn btn-ghost" onclick="closeUpdateModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
+        Checks PyPI for SDK releases and help.zscaler.com for API / best-practice doc changes since the last time you ran this.
+        Fetches are allowlisted to pypi.org and help.zscaler.com — nothing else.
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+        <button class="btn btn-primary" id="updateRunBtn" onclick="runUpdateCheck(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Check Now</button>
+        <button class="btn btn-ghost" onclick="runUpdateCheck(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;" title="Clear cached baselines so every source is reported as 'new'.">Reset Cache + Re-check</button>
+      </div>
+      <div id="updateResult" style="font-size:0.88rem;"></div>
+    </div>
   </div>
 
   <!-- Quick Start -->
@@ -1750,6 +1774,103 @@ document.addEventListener('keydown', (e) => {
     if (activeEl && activeEl.tagName === 'INPUT') runAssessment();
   }
 });
+
+// ══════════════════════════════════════════════════════════════════
+// Update checker — monitors PyPI + help.zscaler.com for new APIs
+// and best-practice doc changes since last run.
+// ══════════════════════════════════════════════════════════════════
+function openUpdateModal() {
+  document.getElementById('updateModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  const r = document.getElementById('updateResult');
+  if (!r.innerHTML.trim()) {
+    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Check Now</strong> to compare the current state of Zscaler SDK + docs against your last-seen baseline.</div>';
+  }
+}
+function closeUpdateModal() {
+  document.getElementById('updateModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
+});
+
+async function runUpdateCheck(reset) {
+  const btn = document.getElementById('updateRunBtn');
+  const r = document.getElementById('updateResult');
+  btn.disabled = true;
+  const originalBtnText = btn.textContent;
+  btn.textContent = 'Checking...';
+  r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Fetching PyPI + help.zscaler.com (parallel, ~3–5s)...</div>';
+  try {
+    const resp = await fetch('/api/updates/check', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reset: !!reset})});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const data = await resp.json();
+    renderUpdateResults(data);
+  } catch(e) {
+    r.innerHTML = `<div style="color:var(--fail);padding:1rem;">Update check failed: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalBtnText;
+  }
+}
+
+function renderUpdateResults(data) {
+  const s = data.summary || {};
+  const top = `
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+      <span class="badge" style="background:rgba(16,185,129,0.15);color:#10b981;">Changed: ${s.changed||0}</span>
+      <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);">New: ${s.new||0}</span>
+      <span class="badge" style="background:rgba(100,116,139,0.15);color:var(--dim);">Unchanged: ${s.unchanged||0}</span>
+      <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--fail);">Errors: ${s.error||0}</span>
+      <span style="color:var(--dim);font-size:0.78rem;align-self:center;">· ${data.sources_count} sources · ${data.elapsed_seconds}s</span>
+    </div>`;
+  const rows = (data.results || []).map(r => {
+    const statusColors = {
+      changed:   ['#10b981','CHANGED'],
+      new:       ['#60a5fa','NEW'],
+      unchanged: ['#64748b','OK'],
+      error:     ['#ef4444','ERROR'],
+    };
+    const [col, label] = statusColors[r.status] || ['#64748b', (r.status||'?').toUpperCase()];
+    const impColor = r.importance === 'high' ? '#f59e0b' : r.importance === 'medium' ? '#64748b' : '#475569';
+    let detail = '';
+    if (r.status === 'error') {
+      detail = `<div style="color:var(--fail);font-size:0.78rem;margin-top:0.25rem;">${escapeHtml(r.error || '')}</div>`;
+    } else if (r.current !== undefined) {
+      const prev = r.previous !== null && r.previous !== undefined ? ` (was: <code style="color:var(--dim);">${escapeHtml(String(r.previous))}</code>)` : '';
+      detail = `<div style="color:var(--dim);font-size:0.78rem;margin-top:0.25rem;">Current: <code style="color:var(--accent);">${escapeHtml(String(r.current))}</code>${prev}</div>`;
+    }
+    let extra = '';
+    if (r.installed && r.installed_mismatch) {
+      extra += `<div style="color:#f59e0b;font-size:0.78rem;margin-top:0.2rem;">⚠ Installed: <code>${escapeHtml(r.installed)}</code> — upgrade available.</div>`;
+    }
+    if (r.action_hint) {
+      extra += `<div style="margin-top:0.3rem;padding:0.4rem 0.6rem;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;font-size:0.78rem;">${escapeHtml(r.action_hint)}</div>`;
+    }
+    const link = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:0.78rem;">Open ↗</a>` : '';
+    return `
+      <div style="padding:0.75rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+              <span style="padding:0.1rem 0.45rem;background:${col}20;color:${col};border-radius:4px;font-size:0.7rem;font-weight:700;letter-spacing:0.05em;">${label}</span>
+              <span style="padding:0.1rem 0.4rem;background:${impColor}20;color:${impColor};border-radius:4px;font-size:0.7rem;">${(r.importance || 'low').toUpperCase()}</span>
+              <strong style="font-size:0.92rem;">${escapeHtml(r.name)}</strong>
+            </div>
+            <div style="color:var(--dim);font-size:0.78rem;margin-top:0.2rem;">${escapeHtml(r.why || '')}</div>
+            ${detail}${extra}
+          </div>
+          <div>${link}</div>
+        </div>
+      </div>`;
+  }).join('');
+  const footer = `
+    <div style="color:var(--dim);font-size:0.75rem;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--border);">
+      Last checked: ${data.checked_at} · Cache: <code>${escapeHtml(data.cache_file || '')}</code>
+    </div>`;
+  document.getElementById('updateResult').innerHTML = top + rows + footer;
+}
 </script>
 </body>
 </html>
