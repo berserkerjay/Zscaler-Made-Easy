@@ -86,6 +86,28 @@ try:
 except Exception:
     pass
 
+# ZDX — Digital Experience
+ZDX_REG = []
+try:
+    ZDX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_zdx_checks.py")
+    zspec = importlib.util.spec_from_file_location("zdx_checks", ZDX_PATH)
+    zdx_mod = importlib.util.module_from_spec(zspec)
+    zspec.loader.exec_module(zdx_mod)
+    ZDX_REG = zdx_mod.ZDX_REG
+except Exception:
+    pass
+
+# ZIdentity — users/groups/resource-servers/entitlements
+ZID_REG = []
+try:
+    ZID_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_zidentity_checks.py")
+    idspec = importlib.util.spec_from_file_location("zidentity_checks", ZID_PATH)
+    zid_mod = importlib.util.module_from_spec(idspec)
+    idspec.loader.exec_module(zid_mod)
+    ZID_REG = zid_mod.ZID_REG
+except Exception:
+    pass
+
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -204,7 +226,9 @@ async def health():
         "platform_checks": len(PLATFORM_REG),
         "genai_checks": len(GENAI_REG),
         "automation_checks": len(AUTOMATION_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG),
+        "zdx_checks": len(ZDX_REG),
+        "zidentity_checks": len(ZID_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG),
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
@@ -226,8 +250,12 @@ async def list_checks(scope: Optional[str] = None):
         all_checks = list(GENAI_REG)
     elif scope == "automation":
         all_checks = list(AUTOMATION_REG)
+    elif scope == "zdx":
+        all_checks = list(ZDX_REG)
+    elif scope == "zidentity":
+        all_checks = list(ZID_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -260,8 +288,12 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
         all_checks = list(GENAI_REG)
     elif scope == "automation":
         all_checks = list(AUTOMATION_REG)
+    elif scope == "zdx":
+        all_checks = list(ZDX_REG)
+    elif scope == "zidentity":
+        all_checks = list(ZID_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -684,12 +716,24 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in AUTOMATION_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        if "zdx" in scopes:
+            for c in ZDX_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "zidentity" in scopes:
+            for c in ZID_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
-        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG)
+        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
     elif scope == "automation":
         return list(AUTOMATION_REG)
+    elif scope == "zdx":
+        return list(ZDX_REG)
+    elif scope == "zidentity":
+        return list(ZID_REG)
     elif scope == "zia":
         return list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
     elif scope == "zpa":

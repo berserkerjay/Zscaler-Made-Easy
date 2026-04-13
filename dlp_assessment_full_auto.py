@@ -69,6 +69,32 @@ _ZCC_MAP = {
     "deviceGroups":       "webDeviceGroups/listByCompany",
     "lastPostureFields":  "web/getLastAppPostureFields",
     "downloadStatus":     "downloadServiceStatus",
+    # Confirmed from zscaler-sdk-python/master/zscaler/zcc/*.py
+    "adminUsers":         "getAdminUsers",
+    "adminRoles":         "getAdminRoles",
+    "adminUsersSyncInfo": "getAdminUsersSyncInfo",
+    "zdxEntitlements":    "getZdxGroupEntitlements",
+    "zpaEntitlements":    "getZpaGroupEntitlements",
+    "downloadDevices":    "downloadDevices",
+    "downloadDisableReasons": "downloadDisableReasons",
+    "getDeviceCleanupInfo":   "getDeviceCleanupInfo",
+}
+
+# ZDX endpoints — authoritative from zscaler-sdk-go/zdx/services
+_ZDX_MAP = {
+    "administration": "administration",
+    "alerts":         "alerts",
+    "inventory":      "inventory",
+    "reports":        "reports",
+    "troubleshooting":"troubleshooting",
+}
+
+# ZIdentity endpoints — from zscaler-sdk-python/zid/
+_ZID_MAP = {
+    "users":             "users",
+    "groups":            "groups",
+    "resourceServers":   "resource_servers",
+    "userEntitlement":   "user_entitlement",
 }
 
 def _resolve_ep(ep, customer_id=""):
@@ -85,6 +111,14 @@ def _resolve_ep(ep, customer_id=""):
         suffix = ep[5:]
         mapped = _ZCC_MAP.get(suffix, suffix)
         return "/zcc/papi/public/v1/" + mapped
+    if ep.startswith("/zdx/"):
+        suffix = ep[5:]
+        mapped = _ZDX_MAP.get(suffix, suffix)
+        return "/zdx/v1/" + mapped
+    if ep.startswith("/zid/"):
+        suffix = ep[5:]
+        mapped = _ZID_MAP.get(suffix, suffix)
+        return "/zidentity/v1/" + mapped
     if ep.startswith("/zpa/"):
         if customer_id:
             return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]

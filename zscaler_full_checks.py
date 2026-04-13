@@ -701,6 +701,74 @@ def zcc_19(cl):
     return R(R.INFO, "Last posture fields API not exposing data. If you rely on ZCC posture collection, verify the posture profiles are configured.")
 
 
+def zcc_21(cl):
+    """ZCC admin users enrolled in the Mobile Portal"""
+    d, c = cl.get("/zcc/adminUsers")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Admin Users API not accessible. Grant 'View Admin' on the API role.")
+    if not items:
+        return R(R.WARN, "No ZCC admin users. Best Practice: At least two admins should be enrolled for redundancy — one-admin tenants break when that admin leaves.")
+    return R(R.PASS, f"{len(items)} ZCC admin user(s). Note: periodically prune ex-employees from this list — orphaned admins are an audit finding.")
+
+
+def zcc_22(cl):
+    """ZCC admin roles (least-privilege verification)"""
+    d, c = cl.get("/zcc/adminRoles")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Admin Roles API not accessible.")
+    if not items:
+        return R(R.WARN, "No ZCC admin roles defined. Best Practice: Define at least 'ZCC Read-Only' and 'ZCC Admin' roles so operators can see devices without being able to remove them.")
+    return R(R.PASS, f"{len(items)} ZCC admin role(s). Ensure read-only roles exist for SOC / helpdesk users.")
+
+
+def zcc_23(cl):
+    """ZCC admin users sync info — SSO / IdP sync health"""
+    d, c = cl.get("/zcc/adminUsersSyncInfo")
+    if c in (401, 403):
+        return R(R.INFO, "Admin sync info not accessible.")
+    if c != 200:
+        return R(R.INFO, f"Admin sync info endpoint returned HTTP {c}.")
+    if isinstance(d, dict):
+        last = d.get("lastSync") or d.get("lastSyncTime") or d.get("syncedAt")
+        return R(R.PASS, f"Admin sync info reachable (last sync: {last or 'unspecified'}). Best Practice: ZCC admins should be federated to your IdP (Azure AD / Okta) and sync daily.")
+    return R(R.PASS, "Admin sync info reachable.")
+
+
+def zcc_24(cl):
+    """ZDX group entitlements (ZDX feature licensing on ZCC)"""
+    d, c = cl.get("/zcc/zdxEntitlements")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "ZDX entitlements not accessible — may not have ZDX subscription.")
+    if not items:
+        return R(R.INFO, "No ZDX group entitlements defined. If ZDX is licensed, create group entitlements to control which users can see ZDX data.")
+    return R(R.PASS, f"{len(items)} ZDX group entitlement(s) configured.")
+
+
+def zcc_25(cl):
+    """ZPA group entitlements (ZPA feature licensing on ZCC)"""
+    d, c = cl.get("/zcc/zpaEntitlements")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "ZPA entitlements not accessible — may not have ZPA subscription.")
+    if not items:
+        return R(R.INFO, "No ZPA group entitlements defined. If ZPA is licensed, create group entitlements for least-privilege app access.")
+    return R(R.PASS, f"{len(items)} ZPA group entitlement(s) configured.")
+
+
+def zcc_26(cl):
+    """ZCC web app service exclusions"""
+    d, c = cl.get("/zcc/webAppService")
+    items = _ls(d) if c in (200, 204) else []
+    if c in (401, 403):
+        return R(R.INFO, "Web App Service API not accessible.")
+    if not items:
+        return R(R.INFO, "No web app service exclusions. Note: Used to carve out specific web apps from ZCC processing. Keep this list empty unless there's a specific compatibility issue.")
+    return R(R.WARN, f"{len(items)} web app service exclusion(s). Best Practice: Each exclusion is a blind spot — review quarterly and remove any that are no longer needed.")
+
+
 def zcc_20(cl):
     """ZCC company info — enrollment auth method"""
     d, c = cl.get("/zcc/companyInfo")
@@ -806,4 +874,10 @@ PLATFORM_REG = [
     ("ZCC.18", "ZCC — Mobile Portal",    "Trusted networks — detection methods", zcc_18),
     ("ZCC.19", "ZCC — Mobile Portal",    "Posture field collection",            zcc_19),
     ("ZCC.20", "ZCC — Mobile Portal",    "Enrollment authentication method",    zcc_20),
+    ("ZCC.21", "ZCC — Mobile Portal",    "Admin users (redundancy + hygiene)",  zcc_21),
+    ("ZCC.22", "ZCC — Mobile Portal",    "Admin roles (least privilege)",       zcc_22),
+    ("ZCC.23", "ZCC — Mobile Portal",    "Admin user sync info (IdP health)",   zcc_23),
+    ("ZCC.24", "ZCC — Mobile Portal",    "ZDX group entitlements",              zcc_24),
+    ("ZCC.25", "ZCC — Mobile Portal",    "ZPA group entitlements",              zcc_25),
+    ("ZCC.26", "ZCC — Mobile Portal",    "Web app service exclusions",          zcc_26),
 ]
