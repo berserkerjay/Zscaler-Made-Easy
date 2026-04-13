@@ -74,6 +74,18 @@ try:
 except Exception:
     pass
 
+# Automation-readiness checks (github.com/zscaler ecosystem: SDKs,
+# terraform providers, ansible collections, zscaler-terraformer).
+AUTOMATION_REG = []
+try:
+    AUTO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_automation_checks.py")
+    aspec = importlib.util.spec_from_file_location("automation_checks", AUTO_PATH)
+    auto_checks = importlib.util.module_from_spec(aspec)
+    aspec.loader.exec_module(auto_checks)
+    AUTOMATION_REG = auto_checks.AUTOMATION_REG
+except Exception:
+    pass
+
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -190,7 +202,8 @@ async def health():
         "dlp_checks": len(REG),
         "platform_checks": len(PLATFORM_REG),
         "genai_checks": len(GENAI_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG),
+        "automation_checks": len(AUTOMATION_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG),
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
@@ -199,7 +212,7 @@ async def health():
 
 @app.get("/api/checks")
 async def list_checks(scope: Optional[str] = None):
-    """List all check IDs, sections, and labels. Optional scope filter: dlp, zia, zpa, zcc, genai."""
+    """List all check IDs, sections, and labels. Optional scope filter: dlp, zia, zpa, zcc, genai, automation."""
     if scope == "dlp":
         all_checks = list(REG)
     elif scope == "zia":
@@ -210,8 +223,10 @@ async def list_checks(scope: Optional[str] = None):
         all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
     elif scope == "genai":
         all_checks = list(GENAI_REG)
+    elif scope == "automation":
+        all_checks = list(AUTOMATION_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -242,8 +257,10 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
         all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
     elif scope == "genai":
         all_checks = list(GENAI_REG)
+    elif scope == "automation":
+        all_checks = list(AUTOMATION_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -625,10 +642,16 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in GENAI_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        if "automation" in scopes:
+            for c in AUTOMATION_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
-        return list(REG) + PLATFORM_REG
+        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG)
+    elif scope == "automation":
+        return list(AUTOMATION_REG)
     elif scope == "zia":
         return list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
     elif scope == "zpa":

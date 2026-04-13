@@ -467,8 +467,12 @@
             <input type="checkbox" class="scope-cb" value="genai" checked style="width:auto;cursor:pointer;">
             GenAI &amp; Prompts <span style="color:var(--dim);font-size:0.75rem;">(20 checks)</span>
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Validates tenant readiness for github.com/zscaler automation projects: SDKs, Terraform providers, Ansible collections, zscaler-terraformer.">
+            <input type="checkbox" class="scope-cb" value="automation" style="width:auto;cursor:pointer;">
+            Automation Readiness <span style="color:var(--dim);font-size:0.75rem;">(19 checks — SDK/Terraform/Ansible)</span>
+          </label>
         </div>
-        <div class="helper">Pick any combination of Zscaler scopes.</div>
+        <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
       </div>
 
       <div class="field full">
@@ -1424,7 +1428,7 @@ async function runAssessment() {
   // Validate at least one scope selected
   const scopes = getSelectedScopes();
   if (scopes.length === 0) {
-    alert('\u26A0  No Assessment Scope Selected\n\nPlease check at least one scope (DLP, ZIA, ZPA, ZCC, GenAI, or Compliance) before running the assessment.');
+    alert('\u26A0  No Assessment Scope Selected\n\nPlease check at least one scope (DLP, ZIA, ZPA, ZCC, GenAI, Automation, or Compliance) before running the assessment.');
     return;
   }
 
