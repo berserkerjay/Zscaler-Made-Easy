@@ -528,10 +528,14 @@ def assess_current_status(client) -> Dict[str, Any]:
                         f"{d['endpoint']}: {', '.join(interesting[:15]) if interesting else ', '.join(keys[:10])}"
                     )
             recommendation = (
-                "Could not auto-detect the Evaluate All Rules toggle field name in the API response. "
-                f"Reachable endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n"
-                "Verify manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'. "
-                "Open the diagnostics panel below and share the field name; the tool will be updated to detect it."
+                "⚠ Your tenant's API does not expose the 'Evaluate All DLP Rules' toggle. "
+                "This is an account-level feature flag that Zscaler manages — many tenants have it "
+                "set only via the admin UI with no read-back endpoint.\n\n"
+                f"Reachable settings endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n\n"
+                "📋 What to do:\n"
+                "  1. Verify the current mode manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'.\n"
+                "  2. Use the 'Declare Mode Manually' selector below to tell the wizard the mode — Steps 2-5 will work normally after that.\n"
+                "  3. If you believe your tenant SHOULD expose this via API, open the diagnostics and paste the JSON — Zscaler support can confirm whether the field is available in your API version."
             )
         else:
             recommendation = (

@@ -414,7 +414,44 @@ async def migrate_status(req: MigrateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(assess_current_status, client)
+    result = await asyncio.to_thread(assess_current_status, client)
+    result["mode_source"] = "auto_detected" if result.get("found_via") else "api_unknown"
+    return result
+
+
+class ManualModeRequest(MigrateRequest):
+    mode: str = ""   # "rule_order" | "evaluate_all_rules"
+
+
+@app.post("/api/migrate/status/manual")
+async def migrate_status_manual(req: ManualModeRequest):
+    """Step 1 override: accept the user's manual declaration of the current mode
+    when the API doesn't expose the toggle (account-level feature flag). Returns
+    the same shape as /api/migrate/status so the wizard keeps working."""
+    try:
+        from rule_migrator import assess_current_status, fetch_current_rules, reorder_for_eval_all
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    m = (req.mode or "").strip().lower()
+    if m not in ("rule_order", "evaluate_all_rules"):
+        raise HTTPException(status_code=400,
+                            detail="mode must be 'rule_order' or 'evaluate_all_rules'")
+    client = await asyncio.to_thread(_build_client, req)
+    # Still run the real assessment (to get rule counts, posture) but OVERRIDE the mode.
+    base = await asyncio.to_thread(assess_current_status, client)
+    evaluate_all = (m == "evaluate_all_rules")
+    base["evaluate_all_enabled"] = evaluate_all
+    base["current_mode"] = "Evaluate All Rules" if evaluate_all else "Rule Order"
+    base["mode_source"] = "manual_declaration"
+    base["found_via"] = f"user-declared (API does not expose this flag in your tenant)"
+    base["ready_to_migrate"] = not evaluate_all
+    if evaluate_all:
+        base["recommendation"] = "✅ You declared this tenant is in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning."
+    elif base.get("order_already_safe_for_eval_all"):
+        base["recommendation"] = "You declared this tenant is in Rule Order mode. Rule order is already optimal for Evaluate All — safe to enable the feature with low risk."
+    else:
+        base["recommendation"] = "You declared this tenant is in Rule Order mode. Rule order is NOT yet safe for Evaluate All — run Step 3 (Optimize) before enabling."
+    return base
 
 
 # ── Step 2: Download Current Rules ───────────────────────────────
