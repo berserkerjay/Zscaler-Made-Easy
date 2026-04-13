@@ -75,12 +75,24 @@ def _resolve_ep(ep, customer_id=""):
     return ep
 
 class Client:
+    # Bound the response cache so a long-lived client process can't grow unbounded.
+    # Each entry is a small dict; 512 is plenty for an assessment run (~250 checks max).
+    _CACHE_MAX = 512
+
     def __init__(s, cid, sec, vd, cloud, customer_id=""):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
         s.token = None; s.exp = 0; s.base = _base_url(cloud)
         s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
-        s._c = {}
+        # Use OrderedDict for O(1) LRU eviction
+        from collections import OrderedDict
+        s._c = OrderedDict()
+
+    def _cache_set(s, k, v):
+        s._c[k] = v
+        s._c.move_to_end(k)
+        if len(s._c) > s._CACHE_MAX:
+            s._c.popitem(last=False)  # evict least-recently-used
     def auth(s):
         try:
             url = _token_url(s.vd, s.cloud)
@@ -95,7 +107,9 @@ class Client:
             return ({"error":"ZPA customer ID not configured","status":404}, 404)
         real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
-        if k in s._c: return s._c[k]
+        if k in s._c:
+            s._c.move_to_end(k)
+            return s._c[k]
         # Self-healing: re-auth if token is stale or missing
         if not s.token or time.time()>=s.exp:
             a = s.auth()
@@ -138,7 +152,7 @@ class Client:
             res = ({"error":f"connection error: {str(e)[:100]}","status":0}, 0)
         except Exception as e:
             res = ({"error":str(e)[:200],"status":0}, 0)
-        s._c[k] = res; return res
+        s._cache_set(k, res); return res
 
     def _write(s, method, ep, body=None, _retry=0):
         """Shared write path for POST / PUT / DELETE with self-healing."""

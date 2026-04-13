@@ -23,9 +23,22 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# ── Security hardening (secure-by-design controls) ───────────────────
+from security import (
+    ALLOWED_ORIGINS,
+    SecurityHeadersMiddleware,
+    OriginCheckMiddleware,
+    BodySizeLimitMiddleware,
+    RateLimitMiddleware,
+    get_bind_host, get_port, get_max_body_bytes, is_debug,
+    validate_cloud, validate_vanity, validate_credential, validate_customer_id,
+    mask_secret, scrub_dict,
+)
 
 # ── Import the assessment engine ─────────────────────────────────────
 import importlib.util, sys
@@ -69,13 +82,41 @@ app = FastAPI(
     description="Full-auto assessment engine via OneAPI.",
 )
 
+# Order matters: outermost first → body-size → rate-limit → origin → headers → gzip → CORS.
+# Body size and rate limit reject early before doing any real work.
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
+app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
+app.add_middleware(OriginCheckMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=sorted(ALLOWED_ORIGINS),  # No wildcard. Localhost only.
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
+    max_age=3600,
 )
+
+
+# ── Generic exception handler — never leak stack traces ────────────
+@app.exception_handler(Exception)
+async def _safe_exception_handler(request: Request, exc: Exception):
+    """Catch-all so internal errors never expose tracebacks to the client."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    if is_debug():
+        import traceback
+        return JSONResponse(
+            {"detail": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()},
+            status_code=500,
+        )
+    # In normal mode, return a generic message — log details server-side only.
+    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        {"detail": "Internal error. Run with ZSCALER_DEBUG=1 for details."},
+        status_code=500,
+    )
 
 # Serve static files (web GUI)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -101,11 +142,21 @@ class AssessRequest(BaseModel):
 
 @app.get("/")
 async def serve_gui():
-    """Serve the web GUI."""
+    """Serve the web GUI.
+    Forces revalidation on every page load so users always get the
+    latest UI after running UPDATE_Zscaler_Assessment.bat — no more
+    'Ctrl+F5 to clear cache' surprises.
+    """
     index = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index):
-        return FileResponse(index)
-    return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
+    if not os.path.exists(index):
+        return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
+    return FileResponse(
+        index,
+        headers={
+            "Cache-Control": "no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/favicon.ico")
@@ -308,11 +359,27 @@ class MigrateRequest(BaseModel):
 
 
 def _build_client(req: MigrateRequest):
-    """Build an authenticated Client from a migration request."""
-    client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+    """Build an authenticated Client from a migration request.
+    Validates every input first; never includes the secret in any error message.
+    """
+    cloud = validate_cloud(req.cloud)
+    vd = validate_vanity(req.vanity_domain)
+    cid = validate_credential("client_id", req.client_id, required=True)
+    sec = validate_credential("client_secret", req.client_secret, required=True)
+    cust = validate_customer_id(req.customer_id)
+
+    client = Client(cid, sec, vd, cloud, cust)
     auth_result = client.auth()
     if auth_result is not True:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
+        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
+        reason = ""
+        if isinstance(auth_result, tuple) and len(auth_result) == 2:
+            reason = str(auth_result[1])
+        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
+        )
     return client
 
 
@@ -569,6 +636,12 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
     """Run assessment with SSE streaming."""
+    # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
+    cloud = validate_cloud(req.cloud)
+    vd = validate_vanity(req.vanity_domain)
+    cid = validate_credential("client_id", req.client_id, required=True)
+    sec = validate_credential("client_secret", req.client_secret, required=True)
+    cust = validate_customer_id(req.customer_id)
     checks = _get_checks(req.scope, req.scopes)
 
     async def event_generator():
@@ -576,11 +649,15 @@ async def assess_stream(req: AssessRequest):
         try:
             yield _sse("auth", {"status": "authenticating"})
 
-            client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+            client = Client(cid, sec, vd, cloud, cust)
             auth_result = await asyncio.to_thread(client.auth)
 
             if auth_result is not True:
-                yield _sse("error", {"message": f"Authentication failed: {auth_result}"})
+                reason = ""
+                if isinstance(auth_result, tuple) and len(auth_result) == 2:
+                    reason = str(auth_result[1])
+                reason = (reason or "").replace(sec, mask_secret(sec)) if sec else reason
+                yield _sse("error", {"message": f"Authentication failed: {reason[:200]}"})
                 return
 
             yield _sse("auth", {"status": "ok"})
@@ -700,6 +777,16 @@ def _sse(event: str, data: dict) -> str:
 
 if __name__ == "__main__":
     import uvicorn
+    host = get_bind_host()
+    port = get_port()
     print("\n  Zscaler Platform Assessment")
-    print("  Open http://localhost:8000 in your browser\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"  Open http://{('localhost' if host == '127.0.0.1' else host)}:{port} in your browser\n")
+    if host != "127.0.0.1":
+        print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
+        print(f"     can reach this server. Currently listening on {host}:{port}.")
+        print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")
+    if not is_debug():
+        # Suppress access log spam in production mode (one line per request)
+        uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+    else:
+        uvicorn.run(app, host=host, port=port, log_level="info")
