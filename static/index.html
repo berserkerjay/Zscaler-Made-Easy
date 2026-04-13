@@ -738,14 +738,48 @@ function migrateCredBody() {
 
 function migrateValidateCreds() {
   const b = migrateCredBody();
-  const sm = document.getElementById('migrateStatus');
-  if (!b.client_id || !b.client_secret || !b.vanity_domain) {
-    sm.textContent = 'Fill in API credentials in the Tenant Configuration above first.';
-    sm.className = 'status-msg error';
+  const missing = [];
+  if (!b.vanity_domain || !b.vanity_domain.trim()) missing.push(['vd',  'Vanity Domain']);
+  if (!b.client_id     || !b.client_id.trim())     missing.push(['cid', 'Client ID']);
+  if (!b.client_secret || !b.client_secret.trim()) missing.push(['csec','Client Secret']);
+  if (missing.length) {
+    popMissingCredsAlert(missing);
     return null;
   }
-  sm.textContent = ''; sm.className = 'status-msg';
+  const sm = document.getElementById('migrateStatus');
+  if (sm) { sm.textContent = ''; sm.className = 'status-msg'; }
   return b;
+}
+
+// Single-source credential-gate: pops a real browser alert listing
+// which fields are missing, flags them red, scrolls to the first one,
+// and focuses it. Called from every action that would otherwise fail
+// against the tenant.
+function popMissingCredsAlert(missing) {
+  // missing = [ [elementId, humanLabel], ... ]
+  // Flag the fields red
+  document.querySelectorAll('.field').forEach(f => f.classList.remove('has-error'));
+  missing.forEach(([id]) => {
+    const el = document.getElementById(id);
+    if (el && el.closest('.field')) el.closest('.field').classList.add('has-error');
+  });
+  // Scroll to + focus first missing
+  const firstEl = document.getElementById(missing[0][0]);
+  if (firstEl) {
+    firstEl.scrollIntoView({behavior: 'smooth', block: 'center'});
+    setTimeout(() => firstEl.focus(), 250);
+  }
+  // Clear any inline status
+  const sm = document.getElementById('migrateStatus');
+  if (sm) { sm.textContent = ''; sm.className = 'status-msg'; }
+  // Actual popup
+  const list = missing.map(([,label]) => '  \u2022 ' + label).join('\n');
+  alert(
+    '\u26A0  Missing Tenant Credentials\n\n' +
+    'Please fill in the following field' + (missing.length > 1 ? 's' : '') + ' in the Tenant Configuration section at the top of the page:\n\n' +
+    list + '\n\n' +
+    'Then click the action again.'
+  );
 }
 
 async function step1Assess() {
@@ -1318,16 +1352,28 @@ function validate() {
 }
 
 async function runAssessment() {
-  if (!validate()) {
-    setStatus('Please fill in all required fields', 'error');
-    document.querySelector('.field.has-error input')?.focus();
+  // Credential gate — same popup style as the migration wizard
+  const missing = [];
+  const checks = [
+    ['org',      'Organization Name'],
+    ['assessor', 'Assessor Name'],
+    ['vd',       'Vanity Domain'],
+    ['cid',      'Client ID'],
+    ['csec',     'Client Secret'],
+  ];
+  for (const [id, label] of checks) {
+    const el = document.getElementById(id);
+    if (!el || !el.value || !el.value.trim()) missing.push([id, label]);
+  }
+  if (missing.length) {
+    popMissingCredsAlert(missing);
     return;
   }
 
   // Validate at least one scope selected
   const scopes = getSelectedScopes();
   if (scopes.length === 0) {
-    setStatus('Select at least one assessment scope', 'error');
+    alert('\u26A0  No Assessment Scope Selected\n\nPlease check at least one scope (DLP, ZIA, ZPA, ZCC, GenAI, or Compliance) before running the assessment.');
     return;
   }
 
