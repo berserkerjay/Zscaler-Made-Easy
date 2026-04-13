@@ -369,8 +369,10 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
     current_sec = ""
     for r in results:
-        if r["sec"] != current_sec:
-            current_sec = r["sec"]
+        # Support both 'sec' and 'section' keys for backwards compatibility
+        r_sec = r.get("sec") or r.get("section") or "Other"
+        if r_sec != current_sec:
+            current_sec = r_sec
             doc.add_heading(current_sec, level=2)
 
             # Section summary
