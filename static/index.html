@@ -481,6 +481,55 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
   </div>
 
+  <!-- Rule Migration: Evaluate All Rules -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:0.5rem;">
+      <div>
+        <h2 style="margin-bottom:0.25rem;">Rule Migration — Evaluate All Rules</h2>
+        <p style="font-size:0.88rem;color:var(--dim);max-width:720px;">Analyze your current DLP / SSL / URL / firewall / Cloud App rules and generate a safe reordering for Zscaler's <strong>Evaluate All Rules</strong> mode. Identifies conflicts, shadowing, and overbroad rules. Export the plan as JSON or CSV for import into the Zscaler admin portal.</p>
+      </div>
+      <a class="help-toggle" onclick="toggleHelp('migrateHelp')">Why migrate? ›</a>
+    </div>
+    <div class="help-content" id="migrateHelp">
+      <h4>First-Match-Wins vs. Evaluate All Rules</h4>
+      <ul>
+        <li><strong>First-Match-Wins</strong> (default): Rules evaluate top-to-bottom, stop at first match. A broad Allow at the top can shadow specific Block rules below.</li>
+        <li><strong>Evaluate All Rules</strong>: ALL rules evaluate, most-restrictive action wins. This is the Zscaler best practice for DLP — ensures no sensitive-data rule is accidentally bypassed.</li>
+      </ul>
+      <h4>Safe Migration Steps</h4>
+      <ol>
+        <li>Fetch current rules using this tool</li>
+        <li>Review the analysis — fix WARNING issues first</li>
+        <li>Export the proposed ordering (JSON/CSV)</li>
+        <li>Put changing rules in audit/log-only mode in the Zscaler portal</li>
+        <li>Apply new order via import</li>
+        <li>Flip "Evaluate All Rules" ON in ZIA Advanced Settings</li>
+        <li>Monitor 48-72 hours, then switch rules back to enforcement</li>
+      </ol>
+    </div>
+
+    <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+      <select id="migrateRuleType" style="padding:0.6rem 0.9rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.9rem;">
+        <option value="web_dlp">Web DLP Rules</option>
+        <option value="ssl_inspection">SSL Inspection Rules</option>
+        <option value="url_filtering">URL Filtering Rules</option>
+        <option value="firewall">Firewall Rules</option>
+        <option value="cloud_app_control">Cloud App Control Rules</option>
+      </select>
+      <button class="btn btn-primary" onclick="migrateFetch()" style="padding:0.6rem 1.3rem;font-size:0.9rem;">Fetch & Analyze Rules</button>
+      <span id="migrateStatus" class="status-msg"></span>
+    </div>
+
+    <div id="migrateResults" style="display:none;margin-top:1.25rem;">
+      <div id="migrateAnalysis" style="margin-bottom:1rem;"></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+        <button class="btn btn-ghost" onclick="migrateExport('json')" style="padding:0.5rem 1rem;font-size:0.85rem;">📄 Export Plan (JSON)</button>
+        <button class="btn btn-ghost" onclick="migrateExport('csv')" style="padding:0.5rem 1rem;font-size:0.85rem;">Export Plan (CSV)</button>
+      </div>
+      <div id="migrateDiff"></div>
+    </div>
+  </div>
+
   <!-- Progress -->
   <div class="card progress-card" id="progressCard">
     <div class="progress-header">
@@ -578,6 +627,160 @@ fetch('/api/health').then(r => r.json()).then(d => {
 function exportChecks(scope, format) {
   const url = `/api/checks/export?scope=${scope}&format=${format}`;
   window.open(url, '_blank');
+}
+
+let migrateRules = null;
+
+async function migrateFetch() {
+  const sm = document.getElementById('migrateStatus');
+  const body = {
+    cloud: document.getElementById('cloud').value,
+    vanity_domain: document.getElementById('vd').value,
+    client_id: document.getElementById('cid').value,
+    client_secret: document.getElementById('csec').value,
+    customer_id: document.getElementById('custid').value,
+    rule_type: document.getElementById('migrateRuleType').value,
+  };
+  if (!body.client_id || !body.client_secret || !body.vanity_domain) {
+    sm.textContent = 'Fill in API credentials in the Tenant Configuration above first.';
+    sm.className = 'status-msg error';
+    return;
+  }
+  sm.textContent = 'Fetching rules from Zscaler...';
+  sm.className = 'status-msg';
+
+  try {
+    const resp = await fetch('/api/migrate/fetch', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      let d = `Server returned ${resp.status}`;
+      try { const j = await resp.json(); d = j.detail || d; } catch(e){}
+      throw new Error(d);
+    }
+    const data = await resp.json();
+    migrateRules = data.rules || [];
+    sm.textContent = `Fetched ${migrateRules.length} rules. Generating migration plan...`;
+
+    // Generate plan
+    const planResp = await fetch('/api/migrate/plan', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({rules: migrateRules}),
+    });
+    if (!planResp.ok) {
+      let d = `Plan error ${planResp.status}`;
+      try { const j = await planResp.json(); d = j.detail || d; } catch(e){}
+      throw new Error(d);
+    }
+    const plan = await planResp.json();
+    showMigratePlan(plan);
+    sm.textContent = `Analysis complete — ${plan.analysis.issue_count} issues, ${plan.diff_count} rules to reorder.`;
+    sm.className = 'status-msg success';
+  } catch(e) {
+    sm.textContent = 'Migration fetch failed: ' + e.message;
+    sm.className = 'status-msg error';
+  }
+}
+
+function showMigratePlan(plan) {
+  document.getElementById('migrateResults').style.display = 'block';
+  const a = plan.analysis;
+  const issues = a.issues || [];
+  const warnCount = issues.filter(i => i.severity === 'WARNING').length;
+  const infoCount = issues.filter(i => i.severity === 'INFO').length;
+
+  // Analysis summary
+  let actionHtml = Object.entries(a.action_counts || {}).map(([act, n]) =>
+    `<span style="font-size:0.75rem;padding:0.2rem 0.5rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:4px;margin:0 0.2rem 0.2rem 0;display:inline-block;">${act}: ${n}</span>`
+  ).join('');
+
+  let issuesHtml = issues.slice(0, 20).map(i => {
+    const color = i.severity === 'WARNING' ? 'var(--warn)' : 'var(--info)';
+    return `<div style="padding:0.6rem 0.85rem;background:rgba(15,23,42,0.4);border-left:3px solid ${color};border-radius:6px;margin:0.3rem 0;font-size:0.82rem;">
+      <span style="color:${color};font-weight:700;font-size:0.72rem;">${i.severity}</span>
+      <span style="color:var(--dim);font-family:monospace;margin-left:0.5rem;">[${i.rule_id}]</span>
+      <span style="font-weight:600;margin-left:0.3rem;">${escapeHtml(i.rule_name)}</span>
+      <span style="color:var(--accent);margin-left:0.5rem;">${escapeHtml(i.type)}</span>
+      <div style="color:var(--dim);font-size:0.78rem;margin-top:0.25rem;">${escapeHtml(i.message)}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('migrateAnalysis').innerHTML = `
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);">
+      <h3 style="font-size:1rem;margin-bottom:0.5rem;">Analysis Summary</h3>
+      <div style="font-size:0.85rem;color:var(--dim);margin-bottom:0.5rem;">
+        ${a.total_rules} total · ${a.enabled_rules} enabled · ${a.disabled_rules} disabled · ${a.global_scoped_rules} global-scoped · ${a.specific_scoped_rules} targeted
+      </div>
+      <div style="margin-bottom:0.75rem;">${actionHtml}</div>
+      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.5rem;">Issues Detected: <span style="color:var(--warn);">${warnCount} warnings</span>, <span style="color:var(--info);">${infoCount} info</span></div>
+      ${issuesHtml || '<div style="color:var(--pass);font-size:0.85rem;">✓ No issues detected.</div>'}
+      ${issues.length > 20 ? `<div style="color:var(--dim);font-size:0.8rem;margin-top:0.5rem;">...and ${issues.length - 20} more issues (see exported plan).</div>` : ''}
+    </div>
+  `;
+
+  // Diff
+  const diffRows = (plan.diff || []).slice(0, 50).map(d => {
+    const shiftColor = d.shift > 0 ? 'var(--pass)' : d.shift < 0 ? 'var(--warn)' : 'var(--dim)';
+    const arrow = d.shift > 0 ? '▲' : d.shift < 0 ? '▼' : '—';
+    return `<tr>
+      <td style="padding:0.4rem 0.6rem;font-family:monospace;color:var(--dim);">${d.rule_id}</td>
+      <td style="padding:0.4rem 0.6rem;">${escapeHtml(d.rule_name)}</td>
+      <td style="padding:0.4rem 0.6rem;"><span style="padding:0.1rem 0.4rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:4px;font-size:0.75rem;">${d.action}</span></td>
+      <td style="padding:0.4rem 0.6rem;text-align:center;color:var(--dim);">${d.old_position}</td>
+      <td style="padding:0.4rem 0.6rem;text-align:center;font-weight:700;">${d.new_position}</td>
+      <td style="padding:0.4rem 0.6rem;text-align:center;color:${shiftColor};font-weight:700;">${arrow} ${Math.abs(d.shift || 0)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('migrateDiff').innerHTML = `
+    <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);">
+      <h3 style="font-size:1rem;margin-bottom:0.5rem;">Proposed Reordering (${plan.diff_count} changes, ${plan.unchanged_count} unchanged)</h3>
+      ${plan.diff_count === 0 ? '<div style="color:var(--pass);font-size:0.85rem;">✓ Rules are already in the optimal order for Evaluate All Rules mode.</div>' : `
+      <table style="width:100%;font-size:0.83rem;border-collapse:collapse;">
+        <thead>
+          <tr style="background:rgba(59,130,246,0.1);">
+            <th style="padding:0.5rem 0.6rem;text-align:left;">Rule ID</th>
+            <th style="padding:0.5rem 0.6rem;text-align:left;">Name</th>
+            <th style="padding:0.5rem 0.6rem;text-align:left;">Action</th>
+            <th style="padding:0.5rem 0.6rem;text-align:center;">Old Pos</th>
+            <th style="padding:0.5rem 0.6rem;text-align:center;">New Pos</th>
+            <th style="padding:0.5rem 0.6rem;text-align:center;">Shift</th>
+          </tr>
+        </thead>
+        <tbody>${diffRows}</tbody>
+      </table>
+      ${plan.diff.length > 50 ? `<div style="color:var(--dim);font-size:0.8rem;margin-top:0.5rem;">...and ${plan.diff.length - 50} more changes (see exported plan).</div>` : ''}
+      `}
+    </div>
+  `;
+  document.getElementById('migrateResults').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function migrateExport(format) {
+  if (!migrateRules) return;
+  try {
+    const resp = await fetch(`/api/migrate/export?format=${format}`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({rules: migrateRules}),
+    });
+    if (!resp.ok) {
+      let d = `Export error ${resp.status}`;
+      try { const j = await resp.json(); d = j.detail || d; } catch(e){}
+      throw new Error(d);
+    }
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `zscaler_eval_all_plan_${new Date().toISOString().slice(0,10)}.${format === 'json' ? 'json' : 'csv'}`;
+    a.click();
+  } catch(e) {
+    document.getElementById('migrateStatus').textContent = 'Export failed: ' + e.message;
+    document.getElementById('migrateStatus').className = 'status-msg error';
+  }
 }
 
 // Load supported compliance frameworks on page load

@@ -277,6 +277,87 @@ async def compliance_drilldown(request: Request):
     return get_control_drilldown(results)
 
 
+# ═══════════════════════════════════════════════════════════════════
+# Rule Migration API (Evaluate All Rules mode)
+# ═══════════════════════════════════════════════════════════════════
+
+class MigrateRequest(BaseModel):
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    customer_id: str = ""
+    rule_type: str = "web_dlp"  # web_dlp, ssl_inspection, url_filtering, firewall, cloud_app_control
+
+
+@app.post("/api/migrate/fetch")
+async def migrate_fetch(req: MigrateRequest):
+    """Fetch current rules from Zscaler for the given rule type."""
+    try:
+        from rule_migrator import fetch_current_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+
+    client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+    auth_result = await asyncio.to_thread(client.auth)
+    if auth_result is not True:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
+    rules = await asyncio.to_thread(fetch_current_rules, client, req.rule_type)
+    return {"rule_type": req.rule_type, "count": len(rules), "rules": rules}
+
+
+@app.post("/api/migrate/analyze")
+async def migrate_analyze(request: Request):
+    """Analyze rules for Evaluate All Rules migration issues."""
+    try:
+        from rule_migrator import analyze_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    data = await request.json()
+    rules = data.get("rules", [])
+    if not rules:
+        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    return analyze_rules(rules)
+
+
+@app.post("/api/migrate/plan")
+async def migrate_plan(request: Request):
+    """Generate full migration plan: analysis, reordered rules, diff, checklist."""
+    try:
+        from rule_migrator import generate_migration_plan
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    data = await request.json()
+    rules = data.get("rules", [])
+    if not rules:
+        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    return generate_migration_plan(rules)
+
+
+@app.post("/api/migrate/export")
+async def migrate_export(request: Request, format: str = "json"):
+    """Export proposed rule order as importable JSON or CSV."""
+    try:
+        from rule_migrator import generate_migration_plan, export_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    data = await request.json()
+    rules = data.get("rules", [])
+    if not rules:
+        raise HTTPException(status_code=400, detail="No rules provided in request body.")
+    plan = generate_migration_plan(rules)
+    content = export_rules(plan["proposed_order"], format=format)
+    from fastapi.responses import Response
+    mime = "application/json" if format == "json" else "text/csv"
+    ext = "json" if format == "json" else "csv"
+    fname = f"zscaler_eval_all_rules_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+    return Response(
+        content=content,
+        media_type=mime,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 def _get_checks(scope: str = "dlp", scopes: list = None):
     """Get the check list for the given scope or list of scopes."""
     if scopes:
