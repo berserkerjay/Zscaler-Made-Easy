@@ -199,6 +199,27 @@ async def serve_gui():
     )
 
 
+@app.get("/api/branding")
+async def branding_manifest():
+    """Report which optional branding assets are present in
+    static/branding/ so the GUI can decide which backdrops to render.
+    Only checks file existence — does NOT read or transmit contents."""
+    branding_dir = os.path.join(STATIC_DIR, "branding")
+    def exists(fname: str) -> bool:
+        try:
+            p = os.path.join(branding_dir, fname)
+            return os.path.isfile(p) and os.path.getsize(p) > 0
+        except Exception:
+            return False
+    return {
+        "logo_svg":      exists("logo.svg"),
+        "logo_png":      exists("logo.png"),
+        "portrait_jpg":  exists("portrait.jpg"),
+        "portrait_png":  exists("portrait.png"),
+        "favicon":       exists("favicon.ico"),
+    }
+
+
 @app.get("/favicon.ico")
 async def favicon():
     """Return empty favicon to silence browser 404s."""

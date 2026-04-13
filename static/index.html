@@ -40,7 +40,106 @@
     line-height: 1.55;
     font-feature-settings: "ss01", "cv01", "cv11";
     letter-spacing: -0.005em;
+    position: relative;
   }
+
+  /* ── Branding watermark layer ──
+     Only renders when the user has dropped files into static/branding/.
+     Loaded via <body class="has-portrait"> toggled by JS below.
+     Portrait sits at 12% opacity behind the hero; logo repeats as a
+     faint watermark across the whole page. */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0;
+    opacity: 0; transition: opacity 600ms ease;
+  }
+  body.has-portrait::before {
+    background: url("/static/branding/portrait.jpg") center right / contain no-repeat,
+                url("/static/branding/portrait.png") center right / contain no-repeat;
+    opacity: 0.12;
+    mask-image: linear-gradient(to left, rgba(0,0,0,0.8) 0%, transparent 70%);
+    -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,0.8) 0%, transparent 70%);
+  }
+  body.has-logo::after {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0;
+    background-image: url("/static/branding/logo.svg"), url("/static/branding/logo.png");
+    background-repeat: repeat;
+    background-size: 180px auto;
+    opacity: 0.025;
+  }
+  /* Content must sit above the watermark layers */
+  .container, .hero, .card, header, main { position: relative; z-index: 1; }
+
+  /* ── 508 / WCAG AA accessibility ── */
+  /* Skip-to-content link — visible only on keyboard focus */
+  .skip-link {
+    position: absolute; top: -100px; left: 1rem;
+    background: var(--accent); color: white;
+    padding: 0.6rem 1.1rem; border-radius: 6px;
+    text-decoration: none; font-weight: 600;
+    z-index: 10000;
+    transition: top 150ms ease;
+  }
+  .skip-link:focus {
+    top: 1rem;
+    outline: 3px solid var(--accent-hover);
+    outline-offset: 2px;
+  }
+
+  /* Universal focus indicators — 3px high-contrast ring on every
+     interactive element, meeting WCAG 2.1 SC 2.4.7 (Focus Visible)
+     and SC 1.4.11 (Non-text Contrast 3:1). */
+  :focus-visible {
+    outline: 3px solid var(--accent-hover);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  a:focus-visible, button:focus-visible, input:focus-visible,
+  select:focus-visible, textarea:focus-visible, summary:focus-visible,
+  details:focus-visible, label:focus-visible {
+    outline: 3px solid var(--accent-hover);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px rgba(59,130,246,0.2);
+  }
+
+  /* Respect prefers-reduced-motion — disables every animation /
+     transition for users with vestibular disorders (WCAG 2.3.3). */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* High-contrast mode — Windows High Contrast / forced-colors.
+     Uses system colors so the UI remains legible under OS-level
+     contrast overrides. */
+  @media (forced-colors: active) {
+    .btn, .card, input, select, textarea {
+      border: 1px solid CanvasText;
+      forced-color-adjust: none;
+    }
+    .btn-primary { background: Highlight; color: HighlightText; }
+  }
+
+  /* Screen-reader-only utility — visible to AT, hidden from sight */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  /* Minimum touch target 44×44px per WCAG 2.5.5 */
+  button, .btn, input[type="checkbox"], input[type="radio"], a[role="button"] {
+    min-height: 32px;
+  }
+  .btn { min-height: 40px; }
+
   .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; animation: fadeInUp 0.6s var(--ease); }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -317,28 +416,42 @@
 </style>
 </head>
 <body>
-<div class="container">
+<!-- 508/WCAG: Skip-to-content for keyboard and screen-reader users.
+     Becomes visible only on :focus, first tab stop on the page. -->
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<!-- ARIA live region for real-time status announcements.
+     Assistive tech reads its contents when updated (assessment
+     progress, errors, action confirmations). -->
+<div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<div class="container" role="document">
+  <header role="banner">
   <!-- Hero -->
   <div class="hero">
     <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
     <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
-      <button class="btn btn-ghost" onclick="openUpdateModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
-        🔄 Check for Zscaler Updates
+      <button class="btn btn-ghost" onclick="openUpdateModal()"
+              aria-label="Check for Zscaler SDK and documentation updates"
+              style="padding:0.45rem 1rem;font-size:0.82rem;">
+        <span aria-hidden="true">🔄</span> Check for Zscaler Updates
       </button>
-      <button class="btn btn-ghost" onclick="openBypassModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
-        🔓 Bypass / Non-Inspected Traffic Report
+      <button class="btn btn-ghost" onclick="openBypassModal()"
+              aria-label="Open Bypass and Non-Inspected Traffic Inventory Report"
+              style="padding:0.45rem 1rem;font-size:0.82rem;">
+        <span aria-hidden="true">🔓</span> Bypass / Non-Inspected Traffic Report
       </button>
     </div>
   </div>
 
   <!-- Bypass inventory modal -->
-  <div id="bypassModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+  <div id="bypassModal" role="dialog" aria-modal="true" aria-labelledby="bypassModalTitle" aria-describedby="bypassModalDesc" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
     <div style="max-width:1000px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <h2 style="margin:0;">🔓 Bypass / Non-Inspected Traffic Inventory</h2>
-        <button class="btn btn-ghost" onclick="closeBypassModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+        <h2 id="bypassModalTitle" style="margin:0;"><span aria-hidden="true">🔓</span> Bypass / Non-Inspected Traffic Inventory</h2>
+        <button class="btn btn-ghost" onclick="closeBypassModal()" aria-label="Close bypass report dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
       </div>
       <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
         Aggregates every configuration that causes traffic to <strong>skip Zscaler inspection</strong>:
@@ -358,11 +471,11 @@
   </div>
 
   <!-- Update-check modal -->
-  <div id="updateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+  <div id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
     <div style="max-width:900px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <h2 style="margin:0;">🔄 Zscaler Update Check</h2>
-        <button class="btn btn-ghost" onclick="closeUpdateModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+        <h2 id="updateModalTitle" style="margin:0;"><span aria-hidden="true">🔄</span> Zscaler Update Check</h2>
+        <button class="btn btn-ghost" onclick="closeUpdateModal()" aria-label="Close update-check dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
       </div>
       <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
         Checks PyPI for SDK releases and help.zscaler.com for API / best-practice doc changes since the last time you ran this.
@@ -375,6 +488,22 @@
       <div id="updateResult" style="font-size:0.88rem;"></div>
     </div>
   </div>
+  </header>
+
+  <main id="main-content" role="main" tabindex="-1" aria-label="Zscaler Platform Assessment — Configuration and Results">
+
+  <!-- Step indicator — surfaces current progress across the 4 phases -->
+  <nav id="stepBar" aria-label="Assessment workflow steps"
+       style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0 auto 1.25rem;max-width:1100px;padding:0.6rem 0.8rem;background:rgba(30,41,59,0.5);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;">
+    <span class="step-item" data-step="configure" aria-current="step"
+          style="color:var(--accent);font-weight:700;">① Configure</span>
+    <span style="color:var(--dim);" aria-hidden="true">→</span>
+    <span class="step-item" data-step="scope" style="color:var(--dim);">② Select Scope</span>
+    <span style="color:var(--dim);" aria-hidden="true">→</span>
+    <span class="step-item" data-step="run" style="color:var(--dim);">③ Run Assessment</span>
+    <span style="color:var(--dim);" aria-hidden="true">→</span>
+    <span class="step-item" data-step="review" style="color:var(--dim);">④ Review + Export</span>
+  </nav>
 
   <!-- Quick Start -->
   <div class="card">
@@ -798,6 +927,8 @@
       <div id="checksList"></div>
     </div>
   </div>
+
+  </main>
 </div>
 
 <script>
@@ -814,6 +945,35 @@ fetch('/api/health').then(r => r.json()).then(d => {
 }).catch(() => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
+
+// Branding backdrop loader — reads the manifest produced by
+// /api/branding and toggles body classes so the CSS ::before /
+// ::after layers render only when the user has dropped licensed
+// logo.svg / portrait.jpg into static/branding/.
+fetch('/api/branding').then(r => r.json()).then(d => {
+  if (d.logo_svg || d.logo_png) document.body.classList.add('has-logo');
+  if (d.portrait_jpg || d.portrait_png) document.body.classList.add('has-portrait');
+}).catch(() => { /* no-op — branding is optional */ });
+
+// Step bar updater — call announce('<phase>') to highlight the current
+// step across the top-of-page nav. Also announces to screen readers
+// via the #liveRegion ARIA live element.
+function setStep(phase, srMessage) {
+  document.querySelectorAll('#stepBar .step-item').forEach(el => {
+    const active = el.dataset.step === phase;
+    el.style.color = active ? 'var(--accent)' : 'var(--dim)';
+    el.style.fontWeight = active ? '700' : '400';
+    if (active) el.setAttribute('aria-current', 'step');
+    else el.removeAttribute('aria-current');
+  });
+  if (srMessage) announce(srMessage);
+}
+function announce(message) {
+  const lr = document.getElementById('liveRegion');
+  if (!lr) return;
+  lr.textContent = ''; // clear first so same message re-announces
+  setTimeout(() => { lr.textContent = message; }, 50);
+}
 
 function exportChecks(scope, format) {
   const url = `/api/checks/export?scope=${scope}&format=${format}`;
@@ -1733,6 +1893,7 @@ async function runAssessment() {
   prog.classList.add('active');
   document.getElementById('results').style.display = 'none';
   setStatus('Connecting to Zscaler...', '');
+  setStep('run', 'Assessment started — connecting to Zscaler');
 
   // Reset run state
   partialResults = [];
@@ -1846,6 +2007,7 @@ function handleEvent(evt) {
 function showResults(data) {
   document.getElementById('progressCard').classList.remove('active');
   document.getElementById('results').style.display = 'block';
+  setStep('review', 'Assessment complete — review results and export the report.');
   const btn = document.getElementById('runBtn');
   btn.disabled = false;
   btn.textContent = 'Run Assessment';
@@ -2098,17 +2260,34 @@ document.addEventListener('keydown', (e) => {
 // Update checker — monitors PyPI + help.zscaler.com for new APIs
 // and best-practice doc changes since last run.
 // ══════════════════════════════════════════════════════════════════
+// Focus-trap helper: remembers the element that had focus before the
+// modal opened, moves focus to the first focusable element inside the
+// modal, and restores focus on close (WCAG 2.4.3 Focus Order).
+let _lastFocus = null;
+function _focusFirstInModal(modalEl) {
+  const focusable = modalEl.querySelector(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (focusable) focusable.focus();
+}
+
 function openUpdateModal() {
-  document.getElementById('updateModal').style.display = 'block';
+  _lastFocus = document.activeElement;
+  const modal = document.getElementById('updateModal');
+  modal.style.display = 'block';
   document.body.style.overflow = 'hidden';
   const r = document.getElementById('updateResult');
   if (!r.innerHTML.trim()) {
     r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Check Now</strong> to compare the current state of Zscaler SDK + docs against your last-seen baseline.</div>';
   }
+  announce('Update-check dialog opened');
+  _focusFirstInModal(modal);
 }
 function closeUpdateModal() {
   document.getElementById('updateModal').style.display = 'none';
   document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  announce('Dialog closed');
 }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
@@ -2123,16 +2302,22 @@ document.addEventListener('keydown', (e) => {
 let _bypassReportCache = null;
 
 function openBypassModal() {
-  document.getElementById('bypassModal').style.display = 'block';
+  _lastFocus = document.activeElement;
+  const modal = document.getElementById('bypassModal');
+  modal.style.display = 'block';
   document.body.style.overflow = 'hidden';
   const r = document.getElementById('bypassResult');
   if (!r.innerHTML.trim()) {
     r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Generate Report</strong> to inventory every bypass/exemption in your tenant.</div>';
   }
+  announce('Bypass report dialog opened');
+  _focusFirstInModal(modal);
 }
 function closeBypassModal() {
   document.getElementById('bypassModal').style.display = 'none';
   document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  announce('Dialog closed');
 }
 
 async function runBypassReport() {
