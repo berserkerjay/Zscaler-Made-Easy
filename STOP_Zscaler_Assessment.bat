@@ -1,9 +1,8 @@
 @echo off
-REM Zscaler Assessment - stop server
-echo Stopping Zscaler Assessment server...
-taskkill /fi "WindowTitle eq Zscaler Assessment Server*" /f >nul 2>&1
-if errorlevel 1 (
-  echo No server window found. If running directly, press Ctrl+C in that window.
-) else (
-  echo Server stopped.
-)
+REM Zscaler Assessment - stop background server
+echo Stopping Zscaler Assessment background service...
+taskkill /f /im pythonw.exe >nul 2>&1
+taskkill /fi "WindowTitle eq Zscaler Assessment*" /f >nul 2>&1
+echo Done.
+timeout /t 2 >nul
+exit

@@ -1,15 +1,20 @@
 @echo off
-REM Zscaler Assessment - Windows launcher
-REM Starts server in background, opens browser, and closes this window
+REM ════════════════════════════════════════════════════════════════════
+REM  Zscaler Platform Assessment - START
+REM  Launches the silent VBS launcher (no console window remains)
+REM  This script auto-closes after launching.
+REM ════════════════════════════════════════════════════════════════════
 
-REM Start server in a minimized background window
-start "Zscaler Assessment Server" /min cmd /c "python dlp_api_server.py"
+if not exist "%~dp0zscaler_launcher.vbs" (
+    echo Creating silent launcher...
+    (
+    echo Set WshShell = CreateObject("WScript.Shell"^)
+    echo WshShell.CurrentDirectory = "%~dp0"
+    echo WshShell.Run "pythonw.exe dlp_api_server.py", 0, False
+    echo WScript.Sleep 3000
+    echo WshShell.Run "http://localhost:8000", 1, False
+    ) > "%~dp0zscaler_launcher.vbs"
+)
 
-REM Wait for server to start
-timeout /t 3 /nobreak >nul
-
-REM Open browser
-start http://localhost:8000
-
-REM Exit launcher window
+start /b wscript.exe "%~dp0zscaler_launcher.vbs"
 exit
