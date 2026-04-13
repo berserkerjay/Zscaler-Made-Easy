@@ -409,9 +409,27 @@ def assess_current_status(client) -> Dict[str, Any]:
     diagnostics = []
     evaluate_all = None
     found_via = None
+    # Feature-flag detection is SEPARATE from mode detection.
+    # DLP_RULE_EVALUATE_ALL=True on /zia/featureFlags means the
+    # CAPABILITY is enabled (tenant is allowed to use this mode),
+    # not that it's the currently-selected mode.
+    feature_available = None
+    feature_source = None
+
+    # Endpoints that report *capability* flags (feature availability),
+    # NOT the currently-selected mode. Matches here set feature_available
+    # but do NOT set evaluate_all (we keep probing for the real selector).
+    CAPABILITY_ENDPOINTS = {
+        "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
+        "/zia/accountFeatures", "/zia/tenantFeatures",
+        "/zia/visibility/features", "/zia/subscriptions/features",
+        "/zia/productFeatures", "/zia/featureCatalog",
+        "/zia/entitlement/features",
+    }
 
     # Try multiple endpoints known to expose this setting
     candidate_endpoints = [
+        # Mode-bearing endpoints first — these hold the actual selector
         "/zia/dlpAdvancedSettings",
         "/zia/advancedSettings",
         "/zia/security/advanced",
@@ -464,6 +482,8 @@ def assess_current_status(client) -> Dict[str, Any]:
         "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
     ]
 
+    def _norm(s): return s.lower().replace("_", "").replace("-", "")
+
     for ep in candidate_endpoints:
         try:
             data, code = client.get(ep)
@@ -478,48 +498,63 @@ def assess_current_status(client) -> Dict[str, Any]:
         })
         if code != 200 or not isinstance(data, dict):
             continue
-        # Match keys case-insensitively AND underscore-agnostically so
-        # 'DLP_RULE_EVALUATE_ALL' matches a candidate written as
-        # 'dlpRuleEvaluateAll', 'dlp_rule_evaluate_all', or similar.
-        def _norm(s): return s.lower().replace("_", "").replace("-", "")
+
+        is_capability_endpoint = ep in CAPABILITY_ENDPOINTS
+
+        # Match keys case-insensitively AND underscore-agnostically.
         norm_keys = {_norm(k): k for k in data.keys()}
+        match_key = None
+        match_value = None
+        nested_path = None
         for fld in candidate_fields:
             real = norm_keys.get(_norm(fld))
             if real is not None:
-                evaluate_all = _is_truthy(data[real])
-                found_via = f"{ep} → {real} = {data[real]!r}"
+                match_key = real
+                match_value = data[real]
                 break
-        # Also walk one level deep in case it's nested
-        if evaluate_all is None:
+        # Walk one level deep if still unmatched
+        if match_key is None:
             for k, v in data.items():
                 if isinstance(v, dict):
                     nested_norm = {_norm(nk): nk for nk in v.keys()}
                     for fld in candidate_fields:
                         real = nested_norm.get(_norm(fld))
                         if real is not None:
-                            evaluate_all = _is_truthy(v[real])
-                            found_via = f"{ep} → {k}.{real} = {v[real]!r}"
+                            match_key = real; match_value = v[real]
+                            nested_path = f"{k}.{real}"
                             break
-                if evaluate_all is not None:
+                if match_key is not None:
                     break
-        # Heuristic: any key with 'evaluat' (bool OR enum string) that
-        # looks like an eval-all indicator
-        if evaluate_all is None:
+        # Heuristic fallback: any bool OR enum string that looks like
+        # eval-all / rule-eval
+        if match_key is None:
             for k, v in data.items():
                 kl = k.lower()
                 if "evaluat" in kl or "ruleeval" in kl.replace("_", ""):
                     if isinstance(v, bool):
-                        evaluate_all = v
-                        found_via = f"{ep} → {k} = {v} (heuristic match)"
+                        match_key = k; match_value = v
                         break
                     if isinstance(v, str):
                         vl = v.lower()
                         if "all" in vl or "order" in vl or "match" in vl:
-                            evaluate_all = _is_truthy(v)
-                            found_via = f"{ep} → {k} = {v!r} (enum heuristic)"
+                            match_key = k; match_value = v
                             break
-        if evaluate_all is not None:
-            break
+
+        if match_key is None:
+            continue  # nothing matched on this endpoint
+
+        path_str = f"{ep} → {nested_path or match_key} = {match_value!r}"
+        if is_capability_endpoint:
+            # This tells us the FEATURE is available, not the current MODE.
+            # Keep probing for the real mode selector.
+            if feature_available is None:
+                feature_available = _is_truthy(match_value)
+                feature_source = path_str + " (capability flag — not the mode selector)"
+            continue
+        # Mode-bearing endpoint → this is the actual current selection
+        evaluate_all = _is_truthy(match_value)
+        found_via = path_str
+        break
 
     # Fallback: check individual rules — some Zscaler tenants expose
     # the toggle as a per-rule field rather than a global setting
@@ -577,24 +612,34 @@ def assess_current_status(client) -> Dict[str, Any]:
     elif evaluate_all is False and not order_already_safe:
         recommendation = "Tenant is in Rule Order mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
     else:
-        # Could not auto-detect. Build a helpful message with what we tried.
+        # Could not auto-detect the MODE. Build a helpful message.
         endpoints_hit = [d for d in diagnostics if d.get("status") == 200]
+        feature_note = ""
+        if feature_available is True:
+            feature_note = (
+                f"✓ Feature is AVAILABLE on your tenant: {feature_source}. "
+                "But this is a capability flag — it tells you the mode CAN be used, not which mode is currently selected. "
+                "The actual 'By Rule Order' vs 'Evaluate All Rules' selector lives on a different endpoint we couldn't locate.\n\n"
+            )
+        elif feature_available is False:
+            feature_note = (
+                f"ℹ Feature availability flag says the capability is OFF on this tenant: {feature_source}. "
+                "Zscaler support may need to enable it before Evaluate All Rules can be selected.\n\n"
+            )
         if endpoints_hit:
-            # Show keys from EVERY reachable endpoint to maximize chance of spotting it
             sample_lines = []
             for d in endpoints_hit:
                 keys = d.get("keys") or []
                 if keys:
-                    # Highlight any key containing 'eval', 'dlp', or 'all'
                     interesting = [k for k in keys if any(t in k.lower() for t in ("eval", "dlp", "all", "rule"))]
                     sample_lines.append(
                         f"{d['endpoint']}: {', '.join(interesting[:15]) if interesting else ', '.join(keys[:10])}"
                     )
             recommendation = (
-                "⚠ Your tenant's API does not expose the 'Evaluate All DLP Rules' toggle. "
-                "This is an account-level feature flag that Zscaler manages — many tenants have it "
-                "set only via the admin UI with no read-back endpoint.\n\n"
-                f"Reachable settings endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n\n"
+                feature_note +
+                "⚠ Could not determine the currently-selected evaluation mode via API. "
+                "The mode selector is not exposed on any reachable endpoint.\n\n"
+                f"Reachable endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n\n"
                 "📋 What to do:\n"
                 "  1. Verify the current mode manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'.\n"
                 "  2. Use the 'Declare Mode Manually' selector below to tell the wizard the mode — Steps 2-5 will work normally after that.\n"
@@ -609,8 +654,10 @@ def assess_current_status(client) -> Dict[str, Any]:
 
     return {
         "current_mode": mode,
-        "evaluate_all_enabled": evaluate_all,
+        "evaluate_all_enabled": evaluate_all,     # currently-selected mode
         "found_via": found_via,
+        "feature_available": feature_available,   # capability flag (independent of mode)
+        "feature_source": feature_source,
         "rule_count": len(rules),
         "enabled_rules": len(enabled),
         "disabled_rules": len(rules) - len(enabled),
@@ -821,8 +868,10 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
         "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
     ]
-    # Mirror the candidate_endpoints list from assess_current_status so
-    # the write path probes every known surface.
+    # Write path probes MODE-BEARING endpoints only — NOT the feature-flag
+    # capability endpoints. Writing DLP_RULE_EVALUATE_ALL=True to
+    # /zia/featureFlags would not change the active mode (and is likely
+    # read-only anyway).
     candidate_endpoints = [
         "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
         "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
@@ -831,11 +880,6 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "/zia/configuration/advanced",
         "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
         "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
-        "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
-        "/zia/accountFeatures", "/zia/tenantFeatures",
-        "/zia/visibility/features", "/zia/subscriptions/features",
-        "/zia/productFeatures", "/zia/featureCatalog",
-        "/zia/entitlement/features",
     ]
 
     # Value candidates to try per field. For boolean-looking fields we
