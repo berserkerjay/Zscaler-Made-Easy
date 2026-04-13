@@ -45,6 +45,30 @@
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes attention {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
+    50%      { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+  }
+  .activate-banner {
+    padding: 0.65rem 0.85rem;
+    background: linear-gradient(90deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    border-radius: 8px;
+    margin-top: 0.5rem;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 0.75rem; flex-wrap: wrap;
+    animation: attention 2s ease-out 1;
+  }
+  .activate-btn {
+    padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600;
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    color: white; border: 0; border-radius: 6px; cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .activate-btn:hover  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.4); }
+  .activate-btn:active { transform: scale(0.97); }
+  .activate-btn.green  { background: linear-gradient(135deg, #10b981, #059669); }
+  .activate-btn.green:hover { box-shadow: 0 4px 12px rgba(16,185,129,0.4); }
 
   /* Header */
   .hero { text-align: center; margin-bottom: 3rem; padding: 1rem 0; }
@@ -543,6 +567,9 @@
       <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the steps below in order. Step 3b is destructive and optional. All write actions default to dry-run for safety.</p>
     </div>
 
+    <!-- Pending-Activations Banner: appears when any step has a dry-run result that still needs to be activated live. -->
+    <div id="pendingActivationsBanner" style="display:none;"></div>
+
     <!-- Step 1 -->
     <div style="padding:1rem;background:rgba(15,23,42,0.4);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
@@ -646,9 +673,16 @@
         <div>
           <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 4</span>
           <h3 style="font-size:1rem;margin-top:0.2rem;">Enable Evaluate All Rules</h3>
-          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Turn on the feature in ZIA Advanced Settings. Dry-run shows what would change; actual enable requires manual confirmation in the admin portal.</p>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">
+            Three-stage flow: <strong>1. Check</strong> current state · <strong>2. Enable</strong> (dry-run → plan) · <strong>3. Activate</strong> the change.
+            If the API exposes the toggle, Activate flips it for you. Otherwise you'll be handed off to the admin portal and can click "Mark Activated" once done.
+          </p>
         </div>
-        <button class="btn btn-primary" onclick="step4Enable()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Check / Enable</button>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button class="btn btn-ghost"   onclick="step4Check()"       style="padding:0.55rem 1.1rem;font-size:0.85rem;">① Check</button>
+          <button class="btn btn-ghost"   onclick="step4EnablePlan()"  style="padding:0.55rem 1.1rem;font-size:0.85rem;">② Enable (Dry-Run)</button>
+          <button class="btn btn-primary" onclick="step4Activate()"    style="padding:0.55rem 1.1rem;font-size:0.85rem;">③ Activate</button>
+        </div>
       </div>
       <div id="step4Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
@@ -1162,12 +1196,23 @@ async function step3bDeleteAll(dryRun) {
         <div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>
         <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.8rem;">${list}</ul>
         ${r.would_delete_count > 30 ? `<div style="color:var(--dim);font-size:0.78rem;">...and ${r.would_delete_count - 30} more.</div>` : ''}
-        <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(220,38,38,0.08);border-left:3px solid #dc2626;border-radius:4px;font-size:0.8rem;">${escapeHtml(r.warning || '')}</div>`;
+        <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(220,38,38,0.08);border-left:3px solid #dc2626;border-radius:4px;font-size:0.8rem;">${escapeHtml(r.warning || '')}</div>
+        ${r.would_delete_count > 0 ? `
+          <div class="activate-banner">
+            <div style="color:#f59e0b;font-weight:600;">⚡ Review looks right? <span style="color:var(--dim);font-weight:400;">Click to delete all ${r.would_delete_count} rule(s) for real.</span></div>
+            <button class="activate-btn" onclick="step3bDeleteAll(false)">⚠ Activate: Delete Now</button>
+          </div>` : ''}
+        ${updateActivationBanner() || ''}`;
+      registerPendingAction('step3b', `Delete ${r.would_delete_count} rule(s)`, () => step3bDeleteAll(false));
     } else if (r.status === 'blocked') {
-      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>`;
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
+        <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
+          Launch via <code>START_Zscaler_Assessment_WRITES_ENABLED.bat</code> to enable write actions.
+        </div>`;
     } else {
+      clearPendingAction('step3b');
       el.innerHTML = `
-        <div style="color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">${r.status}: deleted ${r.deleted_count}, failed ${r.failed_count}</div>
+        <div style="color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">✓ ${r.status}: deleted ${r.deleted_count}, failed ${r.failed_count}</div>
         ${r.failed_count ? `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>` : ''}`;
     }
   } catch(e) {
@@ -1195,24 +1240,157 @@ function showDiff(diff) {
     </div>`;
 }
 
-async function step4Enable() {
+// ── Pending-activations registry & shared helpers ─────────────────
+// Lets every module register "I have a staged change ready to activate"
+// so the top-of-wizard banner can summarize them at a glance.
+const pendingActivations = new Map();   // key -> { label, activator, registered }
+
+function registerPendingAction(key, label, activator) {
+  pendingActivations.set(key, { label, activator, registered: Date.now() });
+  updateActivationBanner();
+}
+function clearPendingAction(key) {
+  if (pendingActivations.delete(key)) updateActivationBanner();
+}
+function updateActivationBanner() {
+  const banner = document.getElementById('pendingActivationsBanner');
+  if (!banner) return '';
+  if (pendingActivations.size === 0) {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+    return '';
+  }
+  const items = Array.from(pendingActivations.entries())
+    .map(([key, v]) =>
+      `<li style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
+        <code style="color:var(--dim);font-size:0.75rem;">${escapeHtml(key)}</code>
+        <span style="flex:1;">${escapeHtml(v.label)}</span>
+        <button class="activate-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="(pendingActivations.get('${key}').activator)();">⚡ Activate</button>
+      </li>`).join('');
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div class="activate-banner" style="align-items:flex-start;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+        <div style="color:#f59e0b;font-weight:700;">⚡ ${pendingActivations.size} staged change${pendingActivations.size===1?'':'s'} awaiting activation</div>
+        <span style="color:var(--dim);font-size:0.75rem;">Review below or activate from the list.</span>
+      </div>
+      <ul style="list-style:none;padding:0;margin:0.4rem 0 0 0;width:100%;">${items}</ul>
+    </div>`;
+  return '';
+}
+
+// ── Step 4 — three-stage flow: Check → Enable (Dry-Run) → Activate ──
+
+let _step4Plan = null;   // cached dry-run result for Activate to use
+
+async function step4Check() {
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = true;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
-  el.innerHTML = '<span style="color:var(--dim);">Checking Evaluate All Rules setting...</span>';
+  el.innerHTML = '<span style="color:var(--dim);">① Checking current state of Evaluate All Rules...</span>';
   try {
     const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
-    const stColor = r.status === 'already_enabled' ? 'var(--pass)' : 'var(--accent)';
+    const currentTxt = r.current === true ? 'ENABLED' : r.current === false ? 'DISABLED' : 'UNKNOWN (API does not expose this flag)';
+    const currentColor = r.current === true ? 'var(--pass)' : r.current === false ? 'var(--warn)' : 'var(--info)';
+    let nextLabel = '';
+    if (r.status === 'already_enabled') nextLabel = '<span style="color:var(--pass);font-weight:600;">✓ Already enabled — no further action needed.</span>';
+    else nextLabel = '<span style="color:var(--dim);">Next: click <strong>② Enable (Dry-Run)</strong> to build the activation plan.</span>';
     el.innerHTML = `
-      <div style="font-weight:600;color:${stColor};margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')}</div>
-      <div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>
-      ${r.portal_path ? `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.8rem;"><strong>Manual step:</strong> ${escapeHtml(r.portal_path)}</div>` : ''}
+      <div style="font-weight:600;margin-bottom:0.4rem;">① Check complete</div>
+      <div style="margin-bottom:0.4rem;">Current: <span style="color:${currentColor};font-weight:600;">${currentTxt}</span></div>
+      <div style="color:var(--dim);font-size:0.82rem;">${escapeHtml(r.message || '')}</div>
+      <div style="margin-top:0.4rem;">${nextLabel}</div>
     `;
   } catch(e) {
-    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+    el.innerHTML = '<span style="color:var(--fail);">Check failed: ' + escapeHtml(e.message) + '</span>';
   }
+}
+
+async function step4EnablePlan() {
+  const body = migrateValidateCreds(); if (!body) return;
+  body.dry_run = true;
+  const el = document.getElementById('step4Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">② Building enable plan (dry-run)...</span>';
+  try {
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const r = await resp.json();
+    _step4Plan = r;
+    if (r.status === 'already_enabled') {
+      clearPendingAction('step4');
+      el.innerHTML = `<div style="color:var(--pass);font-weight:600;">✓ Already enabled — no activation needed.</div><div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>`;
+      return;
+    }
+    // Plan exists → offer inline activate prompt
+    el.innerHTML = `
+      <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">② Enable plan ready (dry-run)</div>
+      <div style="color:var(--dim);margin-bottom:0.5rem;">${escapeHtml(r.message || '')}</div>
+      ${r.portal_path ? `<div style="margin-bottom:0.4rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.8rem;"><strong>Admin portal path:</strong> ${escapeHtml(r.portal_path)}</div>` : ''}
+      <div class="activate-banner">
+        <div style="color:#f59e0b;font-weight:600;">⚡ Ready to activate? <span style="color:var(--dim);font-weight:400;">Click Activate to flip the toggle (or handle it manually in the portal and click 'Mark Activated').</span></div>
+        <div style="display:flex;gap:0.5rem;">
+          <button class="activate-btn" onclick="step4Activate()">⚡ Activate Now</button>
+          <button class="activate-btn green" onclick="step4MarkActivated()">✓ Mark as Activated (I did it in the portal)</button>
+        </div>
+      </div>
+    `;
+    registerPendingAction('step4', 'Enable "Evaluate All DLP Rules"', () => step4Activate());
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Plan failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+async function step4Activate() {
+  if (!_step4Plan) {
+    alert('⚠  No plan staged\n\nRun ② Enable (Dry-Run) first to build the activation plan.');
+    return;
+  }
+  if (!confirm('This will attempt to flip "Evaluate All DLP Rules" live.\n\nIf the API cannot set this flag (most tenants), you will be handed off to the admin portal. Continue?')) return;
+  const body = migrateValidateCreds(); if (!body) return;
+  body.dry_run = false;
+  const el = document.getElementById('step4Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">③ Activating...</span>';
+  try {
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const r = await resp.json();
+    if (r.status === 'manual_required') {
+      el.innerHTML = `
+        <div style="color:var(--warn);font-weight:600;margin-bottom:0.4rem;">Manual activation required</div>
+        <div style="color:var(--dim);margin-bottom:0.4rem;">${escapeHtml(r.message || '')}</div>
+        ${r.portal_path ? `<div style="margin-bottom:0.4rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.85rem;"><strong>Go to:</strong> ${escapeHtml(r.portal_path)}</div>` : ''}
+        <div class="activate-banner">
+          <div style="color:#f59e0b;font-weight:600;">✓ Once you've toggled it in the portal:</div>
+          <button class="activate-btn green" onclick="step4MarkActivated()">✓ Mark as Activated</button>
+        </div>`;
+      return;
+    }
+    if (r.status === 'blocked') {
+      el.innerHTML = `
+        <div style="color:var(--warn);font-weight:600;">Blocked.</div>
+        <div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
+        <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
+          Relaunch via <code>START_Zscaler_Assessment_WRITES_ENABLED.bat</code> to enable write actions.
+        </div>`;
+      return;
+    }
+    clearPendingAction('step4');
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Activated</div>
+      <div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || 'Evaluate All Rules is now enabled.')}</div>`;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Activation failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+function step4MarkActivated() {
+  clearPendingAction('step4');
+  const el = document.getElementById('step4Result'); el.style.display = 'block';
+  el.innerHTML = `
+    <div style="color:var(--pass);font-weight:600;">✓ Marked as Activated</div>
+    <div style="color:var(--dim);margin-top:0.25rem;">You declared that "Evaluate All DLP Rules" is enabled in the admin portal. Proceed to Step 5 when ready.</div>`;
 }
 
 async function step5Post(dryRun) {
@@ -1235,16 +1413,29 @@ async function step5Post(dryRun) {
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     let summary = '';
+    let activatePrompt = '';
     if (r.status === 'dry_run') {
-      summary = `<div style="margin-top:0.4rem;">Planned: <strong>${r.total}</strong> rule(s) (${(r.planned_updates || []).filter(x=>x.operation==='POST').length} POST · ${(r.planned_updates || []).filter(x=>x.operation==='PUT').length} PUT)</div>`;
+      const posts = (r.planned_updates || []).filter(x=>x.operation==='POST').length;
+      const puts  = (r.planned_updates || []).filter(x=>x.operation==='PUT').length;
+      summary = `<div style="margin-top:0.4rem;">Planned: <strong>${r.total}</strong> rule(s) (${posts} POST · ${puts} PUT)</div>`;
+      activatePrompt = `
+        <div class="activate-banner">
+          <div style="color:#f59e0b;font-weight:600;">⚡ Ready to post live? <span style="color:var(--dim);font-weight:400;">${r.total} rule(s), mode=${body.mode}</span></div>
+          <button class="activate-btn" onclick="step5Post(false)">🚀 Activate: Post Live</button>
+        </div>`;
+      registerPendingAction('step5', `Post ${r.total} rule(s) (mode=${body.mode})`, () => step5Post(false));
     } else if (r.status === 'completed' || r.status === 'partial') {
-      summary = `<div style="margin-top:0.4rem;color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">Succeeded: ${r.succeeded_count} · Failed: ${r.failed_count}</div>`;
+      summary = `<div style="margin-top:0.4rem;color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">✓ Succeeded: ${r.succeeded_count} · Failed: ${r.failed_count}</div>`;
       if (r.failed_count) summary += `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>`;
+      clearPendingAction('step5');
+    } else if (r.status === 'blocked') {
+      summary = `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">Relaunch via <code>START_Zscaler_Assessment_WRITES_ENABLED.bat</code> to enable write actions.</div>`;
     }
     el.innerHTML = `
       <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')} · mode: ${r.mode || 'auto'}</div>
       <div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>
       ${summary}
+      ${activatePrompt}
       ${r.recommendation ? `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;"><strong>Recommendation:</strong> ${escapeHtml(r.recommendation)}</div>` : ''}
     `;
   } catch(e) {
