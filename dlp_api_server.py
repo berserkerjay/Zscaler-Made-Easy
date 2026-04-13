@@ -83,7 +83,8 @@ class AssessRequest(BaseModel):
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
-    scope: str = "full"
+    scope: str = "full"  # legacy single scope, kept for compatibility
+    scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
     customer_id: str = ""  # Optional ZPA customer ID
 
 
@@ -122,8 +123,30 @@ async def list_checks():
     return [{"id": id, "section": sec, "label": label} for id, sec, label, _ in all_checks]
 
 
-def _get_checks(scope: str):
-    """Get the check list for the given scope."""
+def _get_checks(scope: str = "dlp", scopes: list = None):
+    """Get the check list for the given scope or list of scopes."""
+    if scopes:
+        # New checkbox-style scope selection
+        out = []
+        seen = set()
+        if "dlp" in scopes:
+            for c in REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "zia_extras" in scopes:
+            for c in PLATFORM_REG:
+                if c[1].startswith("ZIA") and c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "zpa" in scopes:
+            for c in PLATFORM_REG:
+                if c[1].startswith("ZPA") and c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "zcc" in scopes:
+            for c in PLATFORM_REG:
+                if c[1].startswith("ZCC") and c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        return out
+    # Legacy scope string
     if scope == "full" or scope == "all":
         return list(REG) + PLATFORM_REG
     elif scope == "zia":
@@ -138,7 +161,7 @@ def _get_checks(scope: str):
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
     """Run assessment with SSE streaming."""
-    checks = _get_checks(req.scope)
+    checks = _get_checks(req.scope, req.scopes)
 
     async def event_generator():
         results = []
@@ -205,7 +228,7 @@ async def assess_stream(req: AssessRequest):
                     "assessor": req.assessor,
                     "cloud": req.cloud,
                     "total_checks": len(checks),
-                    "scope": req.scope,
+                    "scope": ",".join(req.scopes) if req.scopes else req.scope,
                 },
                 "score": overall,
                 "maturity": maturity(overall),

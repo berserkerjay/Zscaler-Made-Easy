@@ -222,16 +222,27 @@
         <input id="custid" placeholder="Numeric ID (only needed for ZPA checks)">
         <div class="helper">From ZPA admin URL: /app/&lt;CUSTOMER_ID&gt;/dashboard</div>
       </div>
-      <div class="field">
+      <div class="field full">
         <label>Assessment Scope <span class="required">*</span></label>
-        <select id="scope">
-          <option value="dlp">DLP Only (170 checks) — fastest</option>
-          <option value="full" selected>Full Platform (223 checks) — recommended</option>
-          <option value="zia">ZIA Only (DLP + ZIA platform)</option>
-          <option value="zpa">ZPA Only (requires Customer ID)</option>
-          <option value="zcc">ZCC Only (devices, policies)</option>
-        </select>
-        <div class="helper">Full Platform runs all 223 checks across ZIA, ZPA, and ZCC (~90 seconds)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
+            DLP Assessment <span style="color:var(--dim);font-size:0.75rem;">(170 checks)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="zia_extras" checked style="width:auto;cursor:pointer;">
+            ZIA Platform <span style="color:var(--dim);font-size:0.75rem;">(33 checks)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="zpa" style="width:auto;cursor:pointer;">
+            ZPA <span style="color:var(--dim);font-size:0.75rem;">(15 checks - needs Customer ID)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="scope-cb" value="zcc" checked style="width:auto;cursor:pointer;">
+            ZCC <span style="color:var(--dim);font-size:0.75rem;">(5 checks)</span>
+          </label>
+        </div>
+        <div class="helper">Pick any combination. Total runtime is roughly 25 seconds per 50 checks.</div>
       </div>
     </div>
 
@@ -312,15 +323,28 @@ fetch('/api/health').then(r => r.json()).then(d => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
 
+function getSelectedScopes() {
+  return Array.from(document.querySelectorAll('.scope-cb:checked')).map(cb => cb.value);
+}
+
+function setSelectedScopes(arr) {
+  document.querySelectorAll('.scope-cb').forEach(cb => {
+    cb.checked = (arr || []).includes(cb.value);
+  });
+}
+
 // Load saved config (excluding secret)
 function loadConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-    ['org','assessor','cloud','vd','cid','custid','scope'].forEach(id => {
+    ['org','assessor','cloud','vd','cid','custid'].forEach(id => {
       if (saved[id] && document.getElementById(id)) {
         document.getElementById(id).value = saved[id];
       }
     });
+    if (Array.isArray(saved.scopes) && saved.scopes.length) {
+      setSelectedScopes(saved.scopes);
+    }
   } catch(e){}
 }
 loadConfig();
@@ -333,7 +357,7 @@ function saveConfig() {
     vd: document.getElementById('vd').value,
     cid: document.getElementById('cid').value,
     custid: document.getElementById('custid').value,
-    scope: document.getElementById('scope').value,
+    scopes: getSelectedScopes(),
   };
   localStorage.setItem(LS_KEY, JSON.stringify(cfg));
   setStatus('Config saved (secret not stored)', 'success');
@@ -343,7 +367,7 @@ function clearConfig() {
   localStorage.removeItem(LS_KEY);
   ['org','assessor','vd','cid','csec','custid'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('cloud').value = 'production';
-  document.getElementById('scope').value = 'full';
+  setSelectedScopes(['dlp','zia_extras','zcc']);
   setStatus('Config cleared', 'success');
 }
 
@@ -396,11 +420,17 @@ async function runAssessment() {
     return;
   }
 
+  // Validate at least one scope selected
+  const scopes = getSelectedScopes();
+  if (scopes.length === 0) {
+    setStatus('Select at least one assessment scope', 'error');
+    return;
+  }
+
   // Warn if ZPA scope without customer ID
-  const scope = document.getElementById('scope').value;
   const custid = document.getElementById('custid').value;
-  if (scope === 'zpa' && !custid) {
-    if (!confirm('ZPA checks require a Customer ID. Without it, ZPA checks will be skipped. Continue anyway?')) return;
+  if (scopes.includes('zpa') && !custid) {
+    if (!confirm('ZPA is selected but no Customer ID was provided. ZPA checks will be skipped. Continue anyway?')) return;
   }
 
   const btn = document.getElementById('runBtn');
@@ -418,7 +448,7 @@ async function runAssessment() {
     org: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
     cloud: document.getElementById('cloud').value,
-    scope: scope,
+    scopes: scopes,
   };
 
   const body = {
@@ -429,7 +459,7 @@ async function runAssessment() {
     client_id: document.getElementById('cid').value,
     client_secret: document.getElementById('csec').value,
     customer_id: document.getElementById('custid').value,
-    scope: scope,
+    scopes: scopes,
   };
 
   try {
