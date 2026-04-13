@@ -272,35 +272,67 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
     # ── Status Definitions ────────────────────────────────────────
     doc.add_heading("Finding Status Definitions", level=2)
-    sd_table = doc.add_table(rows=1, cols=2)
+    sd_table = doc.add_table(rows=1, cols=4)
     sd_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
-    sd_headers = ["Status", "What it Means"]
+    sd_headers = ["Finding Status", "Best Practice", "As-Is Configuration", "What It Means"]
     for i, h in enumerate(sd_headers):
         cell = sd_table.rows[0].cells[i]
         cell.text = h
         cell.paragraphs[0].runs[0].bold = True
     sd_data = [
-        ("Configured",
-         "Feature is enabled and configured in alignment with Zscaler best practices. "
-         "No action required."),
-        ("Action Required",
-         "Critical gap detected. Feature is misconfigured, disabled, or absent where "
-         "Zscaler best practice requires it. Address these findings first."),
-        ("Needs Review",
-         "Feature is present but its configuration requires manual verification or "
-         "additional context to determine alignment with best practice. Often indicates "
-         "policies that are partially scoped or default values that may not fit your "
-         "environment."),
-        ("Not Configured / N/A",
-         "Feature was not accessible during the assessment. This may indicate it is "
-         "not licensed, not deployed, or the API role lacks permission to read it. "
-         "These checks are excluded from the overall score."),
+        (
+            "Configured",
+            "Feature enabled and scoped per Zscaler deployment guidance. "
+            "Relevant controls active across users/locations.",
+            "The tenant returned the expected settings and the check "
+            "passed all validation rules.",
+            "No action required. Keep monitoring — re-run the assessment "
+            "periodically to catch drift."
+        ),
+        (
+            "Action Required",
+            "Feature is a Zscaler core best practice (SSL inspection, DLP "
+            "dictionaries/engines, cloud firewall, etc.) and must be "
+            "configured for baseline posture.",
+            "Feature is disabled, not configured, or set in a way that "
+            "defeats its protection (e.g. default-allow, bypass rules "
+            "globally scoped, empty rule list).",
+            "Critical gap — fix before next audit cycle. Address these "
+            "findings first; they drive the largest impact on the "
+            "overall score."
+        ),
+        (
+            "Needs Review",
+            "Feature should be deliberately scoped and periodically "
+            "reviewed — typically rule ordering, engine tuning, "
+            "exception lists, and logging retention.",
+            "Feature is present but partial: some scope missing, some "
+            "values default, exceptions in place that could not be "
+            "auto-validated.",
+            "Human judgment required. Schedule a review with the feature "
+            "owner; the configuration may be intentional but warrants "
+            "documentation and periodic re-review."
+        ),
+        (
+            "Not Configured / N/A",
+            "Feature is optional for many environments (e.g. ICAP, "
+            "specific GenAI modules) or requires a subscription/licensing "
+            "not present on every tenant.",
+            "Endpoint returned 404/403 or the feature returned empty. "
+            "The assessment could not read it — not confirmed absent, "
+            "not confirmed present.",
+            "Excluded from scoring. If the feature IS licensed, grant "
+            "the API role read access and re-run. If it is not in scope, "
+            "no action needed."
+        ),
     ]
-    for status, desc in sd_data:
+    for status, bp, asis, means in sd_data:
         row = sd_table.add_row()
         row.cells[0].text = status
         row.cells[0].paragraphs[0].runs[0].bold = True
-        row.cells[1].text = desc
+        row.cells[1].text = bp
+        row.cells[2].text = asis
+        row.cells[3].text = means
 
     doc.add_page_break()
 
