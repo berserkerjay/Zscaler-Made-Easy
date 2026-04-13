@@ -141,60 +141,85 @@ async def assess_stream(req: AssessRequest):
     checks = _get_checks(req.scope)
 
     async def event_generator():
-        yield _sse("auth", {"status": "authenticating"})
-
-        client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
-        auth_result = await asyncio.to_thread(client.auth)
-
-        if auth_result is not True:
-            yield _sse("error", {"message": f"Authentication failed: {auth_result}"})
-            return
-
-        yield _sse("auth", {"status": "ok"})
-        yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
-
         results = []
-        for i, (check_id, sec, label, fn) in enumerate(checks):
+        try:
+            yield _sse("auth", {"status": "authenticating"})
+
+            client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+            auth_result = await asyncio.to_thread(client.auth)
+
+            if auth_result is not True:
+                yield _sse("error", {"message": f"Authentication failed: {auth_result}"})
+                return
+
+            yield _sse("auth", {"status": "ok"})
+            yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
+
+            for i, (check_id, sec, label, fn) in enumerate(checks):
+                # Bulletproof: every check runs in its own try/except with hard timeout
+                try:
+                    r = await asyncio.wait_for(asyncio.to_thread(fn, client), timeout=60)
+                except asyncio.TimeoutError:
+                    r = R(R.INFO, f"{label}: Check timed out after 60 seconds.")
+                except Exception as ex:
+                    r = R(R.INFO, f"{label}: Could not complete check. {str(ex)[:120]}")
+
+                # Defensive: ensure r has expected shape
+                if not hasattr(r, 'status') or not hasattr(r, 'detail'):
+                    r = R(R.INFO, f"{label}: Invalid check result.")
+
+                result = {
+                    "id": check_id, "section": sec, "label": label,
+                    "status": str(r.status), "detail": str(r.detail)[:500],
+                }
+                results.append(result)
+
+                # Yield check + progress, skipping if client disconnected
+                try:
+                    yield _sse("check", result)
+                    yield _sse("progress", {
+                        "total": len(checks),
+                        "completed": i + 1,
+                        "pct": round((i + 1) / len(checks) * 100),
+                        "current": f"{check_id}: {label}",
+                    })
+                    # Periodic keepalive every 10 checks
+                    if (i + 1) % 10 == 0:
+                        yield ": keepalive\n\n"
+                except Exception:
+                    # Client disconnected; just keep collecting results
+                    pass
+
+            # Always send the complete event, even if some checks failed
             try:
-                r = await asyncio.to_thread(fn, client)
-            except Exception as ex:
-                r = R(R.INFO, f"{label}: Could not complete check. {str(ex)[:120]}")
+                secs, overall = compute(results)
+            except Exception as e:
+                secs, overall = {}, 0
 
-            result = {
-                "id": check_id, "section": sec, "label": label,
-                "status": r.status, "detail": r.detail,
+            report = {
+                "metadata": {
+                    "tool": "Zscaler Platform Assessment",
+                    "version": "3.0",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "org": req.org_name,
+                    "assessor": req.assessor,
+                    "cloud": req.cloud,
+                    "total_checks": len(checks),
+                    "scope": req.scope,
+                },
+                "score": overall,
+                "maturity": maturity(overall),
+                "sections": secs,
+                "checks": results,
+                "critical": [r for r in results if r["status"] == "FAIL"],
+                "review": [r for r in results if r["status"] == "REVIEW"],
             }
-            results.append(result)
 
-            yield _sse("check", result)
-            yield _sse("progress", {
-                "total": len(checks),
-                "completed": i + 1,
-                "pct": round((i + 1) / len(checks) * 100),
-                "current": f"{check_id}: {label}",
-            })
+            yield _sse("complete", report)
 
-        secs, overall = compute(results)
-        report = {
-            "metadata": {
-                "tool": "Zscaler Platform Assessment",
-                "version": "3.0",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "org": req.org_name,
-                "assessor": req.assessor,
-                "cloud": req.cloud,
-                "total_checks": len(checks),
-                "scope": req.scope,
-            },
-            "score": overall,
-            "maturity": maturity(overall),
-            "sections": secs,
-            "checks": results,
-            "critical": [r for r in results if r["status"] == "FAIL"],
-            "review": [r for r in results if r["status"] == "REVIEW"],
-        }
-
-        yield _sse("complete", report)
+        except Exception as e:
+            # Catch-all: never let the generator crash the stream
+            yield _sse("error", {"message": f"Server error: {str(e)[:200]}"})
 
     return StreamingResponse(
         event_generator(),
