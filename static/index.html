@@ -1324,19 +1324,17 @@ async function step4EnablePlan() {
       return;
     }
     // Plan exists → offer inline activate prompt
+    const planSrc = r.plan_source ? `<div style="margin-bottom:0.4rem;font-size:0.78rem;color:var(--dim);">Plan source: <code style="color:var(--accent);">${escapeHtml(r.plan_source)}</code></div>` : '';
     el.innerHTML = `
       <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">② Enable plan ready (dry-run)</div>
       <div style="color:var(--dim);margin-bottom:0.5rem;">${escapeHtml(r.message || '')}</div>
-      ${r.portal_path ? `<div style="margin-bottom:0.4rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.8rem;"><strong>Admin portal path:</strong> ${escapeHtml(r.portal_path)}</div>` : ''}
+      ${planSrc}
       <div class="activate-banner">
-        <div style="color:#f59e0b;font-weight:600;">⚡ Ready to activate? <span style="color:var(--dim);font-weight:400;">Click Activate to flip the toggle (or handle it manually in the portal and click 'Mark Activated').</span></div>
-        <div style="display:flex;gap:0.5rem;">
-          <button class="activate-btn" onclick="step4Activate()">⚡ Activate Now</button>
-          <button class="activate-btn green" onclick="step4MarkActivated()">✓ Mark as Activated (I did it in the portal)</button>
-        </div>
+        <div style="color:#f59e0b;font-weight:600;">⚡ Ready to activate via API?</div>
+        <button class="activate-btn" onclick="step4Activate()">⚡ Activate Now</button>
       </div>
     `;
-    registerPendingAction('step4', 'Enable "Evaluate All DLP Rules"', () => step4Activate());
+    registerPendingAction('step4', 'Enable "Evaluate All DLP Rules" via API', () => step4Activate());
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Plan failed: ' + escapeHtml(e.message) + '</span>';
   }
@@ -1347,24 +1345,31 @@ async function step4Activate() {
     alert('⚠  No plan staged\n\nRun ② Enable (Dry-Run) first to build the activation plan.');
     return;
   }
-  if (!confirm('This will attempt to flip "Evaluate All DLP Rules" live.\n\nIf the API cannot set this flag (most tenants), you will be handed off to the admin portal. Continue?')) return;
+  if (!confirm('This will attempt to enable "Evaluate All DLP Rules" via API write.\n\nThe tool will try the exact field it detected first, then blind-probe candidate endpoints/fields. Every attempt is logged.\n\nContinue?')) return;
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = false;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
-  el.innerHTML = '<span style="color:var(--dim);">③ Activating...</span>';
+  el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (trying found field, then candidate combinations)</span>';
   try {
     const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
-    if (r.status === 'manual_required') {
+
+    const attemptsHtml = (r.attempts && r.attempts.length) ? `
+      <details style="margin-top:0.4rem;">
+        <summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View all API attempts (${r.attempts.length})</summary>
+        <pre style="white-space:pre-wrap;font-size:0.72rem;color:var(--dim);padding:0.5rem;background:rgba(15,23,42,0.6);border-radius:4px;">${escapeHtml(JSON.stringify(r.attempts, null, 2))}</pre>
+      </details>` : '';
+
+    if (r.status === 'activated') {
+      clearPendingAction('step4');
       el.innerHTML = `
-        <div style="color:var(--warn);font-weight:600;margin-bottom:0.4rem;">Manual activation required</div>
+        <div style="color:var(--pass);font-weight:700;margin-bottom:0.4rem;">✓ Activated via API</div>
         <div style="color:var(--dim);margin-bottom:0.4rem;">${escapeHtml(r.message || '')}</div>
-        ${r.portal_path ? `<div style="margin-bottom:0.4rem;padding:0.5rem;background:rgba(59,130,246,0.08);border-radius:4px;font-size:0.85rem;"><strong>Go to:</strong> ${escapeHtml(r.portal_path)}</div>` : ''}
-        <div class="activate-banner">
-          <div style="color:#f59e0b;font-weight:600;">✓ Once you've toggled it in the portal:</div>
-          <button class="activate-btn green" onclick="step4MarkActivated()">✓ Mark as Activated</button>
-        </div>`;
+        <div style="padding:0.5rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;font-size:0.82rem;">
+          Wrote: <code>${escapeHtml(r.via || '')}</code> → <code>${escapeHtml(r.field || '')}</code> = <code>true</code> (verified by re-GET).
+        </div>
+        ${attemptsHtml}`;
       return;
     }
     if (r.status === 'blocked') {
@@ -1376,10 +1381,24 @@ async function step4Activate() {
         </div>`;
       return;
     }
+    if (r.status === 'failed') {
+      el.innerHTML = `
+        <div style="color:var(--warn);font-weight:700;margin-bottom:0.4rem;">✗ API activation failed</div>
+        <div style="color:var(--dim);margin-bottom:0.4rem;">${escapeHtml(r.message || '')}</div>
+        ${attemptsHtml}
+        <div style="margin-top:0.5rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.82rem;">
+          If none of the ${r.attempts ? r.attempts.length : 0} attempts worked, this tenant likely requires a
+          Zscaler support request to enable the feature. Paste the attempts JSON into the ticket — it shows
+          exactly which endpoints and fields were probed.
+        </div>`;
+      return;
+    }
+    // Generic / unknown status
     clearPendingAction('step4');
     el.innerHTML = `
-      <div style="color:var(--pass);font-weight:600;">✓ Activated</div>
-      <div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || 'Evaluate All Rules is now enabled.')}</div>`;
+      <div style="color:var(--pass);font-weight:600;">✓ ${escapeHtml(r.status || 'done')}</div>
+      <div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>
+      ${attemptsHtml}`;
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Activation failed: ' + escapeHtml(e.message) + '</span>';
   }

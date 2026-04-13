@@ -686,15 +686,26 @@ def optimize_for_eval_all_with_exceptions(
 
 def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     """
-    Toggle Evaluate All Rules ON in ZIA Advanced Settings.
+    Toggle 'Evaluate All DLP Rules' ON via the ZIA API.
 
-    SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
-    and dry_run=False to actually make changes. Default is dry-run.
+    Strategy:
+      1. Run the same probe as Step 1 to find the field in GET responses.
+      2. If found, GET → modify → PUT to the same endpoint.
+      3. If not found, try each candidate endpoint + field combination
+         with a real PUT, verifying via follow-up GET.
+      4. Every attempt is recorded in `attempts[]` so auditors (and
+         future debuggers) see exactly what was tried.
+
+    SAFETY:
+      - dry_run=True (default) returns the plan only.
+      - dry_run=False + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND is required
+        to actually call PUT.
     """
     import os
     # Use the same comprehensive probe as Step 1 to find current state
     status = assess_current_status(client)
     current = status.get("evaluate_all_enabled")
+    found_via = status.get("found_via")
 
     if current is True:
         return {
@@ -704,26 +715,150 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         }
 
     if dry_run:
+        plan_source = found_via or "(field not in GET response — will attempt blind PUT on candidate endpoints)"
         return {
             "status": "dry_run",
             "current": current,
             "would_enable": True,
-            "message": "DRY RUN: Would enable Evaluate All Rules via PUT /zia/advancedSettings. Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and call with dry_run=false to actually apply.",
-            "portal_path": "ZIA Admin → Administration → Advanced Settings → DLP → 'Enable Evaluate All DLP Rules'",
+            "plan_source": plan_source,
+            "message": (
+                f"DRY RUN: Would enable Evaluate All DLP Rules. "
+                f"Plan source: {plan_source}. "
+                f"Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and click Activate to apply."
+            ),
         }
 
     if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
         return {
             "status": "blocked",
-            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable for safety.",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat).",
             "current": current,
         }
 
+    # ── Real activation path ─────────────────────────────────────
+    attempts: List[Dict[str, Any]] = []
+
+    # Same candidate lists used by assess_current_status
+    candidate_endpoints = [
+        "/zia/dlpAdvancedSettings",
+        "/zia/advancedSettings",
+        "/zia/security/advanced",
+        "/zia/dlpEvaluateAllRulesSetting",
+        "/zia/advancedSettings/dlp",
+        "/zia/dlpSettings",
+        "/zia/dlp/advancedSettings",
+        "/zia/dlp/settings",
+        "/zia/configuration/advanced",
+    ]
+    candidate_fields = [
+        "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
+        "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
+        "isDlpEvaluateAllRules", "evaluateAllDlpRules",
+        "dlpEvalAll", "evalAll", "evaluateAll",
+        "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
+        "evalAllRulesForDlp", "evaluateAllDlp",
+    ]
+
+    def _try_put(endpoint: str, field: str) -> Tuple[bool, Dict[str, Any]]:
+        """GET the endpoint, inject field=True, PUT, verify via re-GET.
+        Returns (success, attempt_record)."""
+        rec: Dict[str, Any] = {"endpoint": endpoint, "field": field}
+        try:
+            current_data, code = client.get(endpoint)
+        except Exception as e:
+            rec["phase"] = "get"; rec["error"] = str(e)[:150]
+            return False, rec
+        rec["get_status"] = code
+        if code != 200 or not isinstance(current_data, dict):
+            rec["phase"] = "get"; rec["skip_reason"] = "non-200 or not dict"
+            return False, rec
+        # Merge — preserve every other setting on the endpoint
+        new_body = dict(current_data)
+        new_body[field] = True
+        try:
+            resp, put_code = client.put(endpoint, new_body)
+        except Exception as e:
+            rec["phase"] = "put"; rec["error"] = str(e)[:150]
+            return False, rec
+        rec["put_status"] = put_code
+        if put_code not in (200, 201, 204):
+            rec["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
+            return False, rec
+        # Verify via re-GET — drop cache so we don't read a stale value
+        try:
+            client._c = type(client._c)()  # reset LRU cache
+        except Exception:
+            pass
+        try:
+            verified, vcode = client.get(endpoint)
+        except Exception as e:
+            rec["phase"] = "verify"; rec["error"] = str(e)[:150]
+            return False, rec
+        rec["verify_status"] = vcode
+        rec["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
+        if isinstance(verified, dict) and bool(verified.get(field)) is True:
+            return True, rec
+        # PUT succeeded but field didn't stick — still record
+        return False, rec
+
+    # Strategy 1: use found_via if available
+    if found_via:
+        # found_via format: "/zia/advancedSettings → fieldName = value"
+        try:
+            ep_part, field_part = found_via.split("→", 1)
+            endpoint = ep_part.strip()
+            field = field_part.split("=", 1)[0].strip().split(".", 1)[-1].strip()
+            ok, rec = _try_put(endpoint, field)
+            attempts.append(rec)
+            if ok:
+                return {
+                    "status": "activated",
+                    "via": endpoint,
+                    "field": field,
+                    "attempts": attempts,
+                    "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified).",
+                }
+        except Exception as e:
+            attempts.append({"phase": "parse_found_via", "error": str(e)[:150], "found_via": found_via})
+
+    # Strategy 2: try each candidate endpoint × field that GETs 200
+    seen_eps: set = set()
+    for endpoint in candidate_endpoints:
+        if endpoint in seen_eps:
+            continue
+        seen_eps.add(endpoint)
+        try:
+            data, code = client.get(endpoint)
+        except Exception:
+            continue
+        if code != 200 or not isinstance(data, dict):
+            continue
+        for field in candidate_fields:
+            ok, rec = _try_put(endpoint, field)
+            attempts.append(rec)
+            if ok:
+                return {
+                    "status": "activated",
+                    "via": endpoint,
+                    "field": field,
+                    "attempts": attempts,
+                    "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified after blind-probe).",
+                }
+            # Don't hammer a rejecting endpoint — if we got a 400/422 on
+            # the first field, subsequent fields on same endpoint will
+            # likely reject the same way.
+            if rec.get("put_status") in (400, 422):
+                break
+
     return {
-        "status": "manual_required",
+        "status": "failed",
         "current": current,
-        "message": "Automated toggle of Evaluate All Rules is intentionally disabled. Enable it manually in the ZIA admin portal for audit-trail clarity.",
-        "portal_path": "ZIA Admin → Administration → Advanced Settings → DLP → 'Enable Evaluate All DLP Rules'",
+        "attempts": attempts,
+        "message": (
+            f"Tried {len(attempts)} endpoint/field combination(s) — none accepted the toggle. "
+            "Your tenant may require enabling this via a Zscaler support ticket or the admin UI. "
+            "See the attempts list below for exactly what was tried."
+        ),
     }
 
 
