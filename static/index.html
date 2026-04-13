@@ -1382,15 +1382,31 @@ async function step4Activate() {
       return;
     }
     if (r.status === 'failed') {
+      const s = r.summary || {};
+      const summaryChips = `
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.4rem 0;">
+          <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);">Reachable endpoints: ${s.discover_reachable || 0}</span>
+          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--pass);">PUT 200: ${s.put_200 || 0}</span>
+          <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warn);">PUT 400/422 (bad body): ${s.put_400_or_422 || 0}</span>
+          <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--fail);">PUT 401/403 (perm): ${s.put_401_or_403 || 0}</span>
+          <span class="badge" style="background:rgba(100,116,139,0.15);color:var(--dim);">PUT 404: ${s.put_404 || 0}</span>
+        </div>`;
+      let hint = '';
+      if ((s.put_401_or_403 || 0) > 0 && (s.put_200 || 0) === 0) {
+        hint = '<strong>Permission issue likely:</strong> the API client role lacks write scope on Advanced Settings. Add ZIA → Administration → Advanced Settings write permission to the API role and retry.';
+      } else if ((s.put_400_or_422 || 0) > 0 && (s.put_200 || 0) === 0) {
+        hint = '<strong>Schema rejection:</strong> every PUT body was rejected. Your tenant\'s ZIA API version probably doesn\'t expose this toggle at all — Zscaler support can enable it account-side.';
+      } else if ((s.discover_reachable || 0) === 0) {
+        hint = '<strong>No settings endpoints reachable:</strong> the API client role is missing Advanced Settings <em>read</em> permission — add it and retry.';
+      } else {
+        hint = 'Paste the attempts list into a Zscaler support ticket; they can tell you which endpoint/field your tenant exposes or enable it for you.';
+      }
       el.innerHTML = `
         <div style="color:var(--warn);font-weight:700;margin-bottom:0.4rem;">✗ API activation failed</div>
         <div style="color:var(--dim);margin-bottom:0.4rem;">${escapeHtml(r.message || '')}</div>
+        ${summaryChips}
         ${attemptsHtml}
-        <div style="margin-top:0.5rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.82rem;">
-          If none of the ${r.attempts ? r.attempts.length : 0} attempts worked, this tenant likely requires a
-          Zscaler support request to enable the feature. Paste the attempts JSON into the ticket — it shows
-          exactly which endpoints and fields were probed.
-        </div>`;
+        <div style="margin-top:0.5rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.82rem;">${hint}</div>`;
       return;
     }
     // Generic / unknown status

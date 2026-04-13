@@ -821,7 +821,9 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         except Exception as e:
             attempts.append({"phase": "parse_found_via", "error": str(e)[:150], "found_via": found_via})
 
-    # Strategy 2: try each candidate endpoint × field that GETs 200
+    # Strategy 2: exhaustive probe — try every candidate endpoint and
+    # every candidate field. No early termination on 400/422 since some
+    # tenants reject SOME fields and accept OTHERS on the same endpoint.
     seen_eps: set = set()
     for endpoint in candidate_endpoints:
         if endpoint in seen_eps:
@@ -829,10 +831,17 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         seen_eps.add(endpoint)
         try:
             data, code = client.get(endpoint)
-        except Exception:
+        except Exception as e:
+            attempts.append({"endpoint": endpoint, "phase": "discover", "error": str(e)[:150]})
             continue
         if code != 200 or not isinstance(data, dict):
+            attempts.append({"endpoint": endpoint, "phase": "discover",
+                             "get_status": code, "skip_reason": f"non-200 or not dict"})
             continue
+        # Record that this endpoint was reachable so the user sees it in diagnostics
+        attempts.append({"endpoint": endpoint, "phase": "discover",
+                         "get_status": code, "keys_count": len(data),
+                         "keys_sample": list(data.keys())[:15]})
         for field in candidate_fields:
             ok, rec = _try_put(endpoint, field)
             attempts.append(rec)
@@ -844,20 +853,51 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
                     "attempts": attempts,
                     "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified after blind-probe).",
                 }
-            # Don't hammer a rejecting endpoint — if we got a 400/422 on
-            # the first field, subsequent fields on same endpoint will
-            # likely reject the same way.
-            if rec.get("put_status") in (400, 422):
-                break
+
+    # Strategy 3: last-resort — some tenants expose this only through a
+    # targeted sub-resource. Try POSTing / PATCHing with just the field
+    # and see if anything accepts it.
+    for endpoint in ("/zia/advancedSettings", "/zia/dlpSettings", "/zia/dlpAdvancedSettings"):
+        for field in candidate_fields:
+            rec = {"endpoint": endpoint, "field": field, "phase": "patch"}
+            try:
+                resp, code = client.put(endpoint, {field: True})
+                rec["put_status"] = code
+            except Exception as e:
+                rec["error"] = str(e)[:150]
+                attempts.append(rec); continue
+            if code in (200, 201, 204):
+                # Verify
+                try:
+                    client._c = type(client._c)()
+                    verified, vcode = client.get(endpoint)
+                    rec["verify_status"] = vcode
+                    rec["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
+                    if isinstance(verified, dict) and bool(verified.get(field)) is True:
+                        attempts.append(rec)
+                        return {"status": "activated", "via": endpoint, "field": field,
+                                "attempts": attempts,
+                                "message": f"✓ Enabled via PATCH-style PUT {endpoint} (minimal body) → {field}=true."}
+                except Exception as e:
+                    rec["verify_error"] = str(e)[:150]
+            attempts.append(rec)
 
     return {
         "status": "failed",
         "current": current,
         "attempts": attempts,
+        "summary": {
+            "total_attempts":    len(attempts),
+            "discover_reachable": sum(1 for a in attempts if a.get("phase") == "discover" and a.get("get_status") == 200),
+            "put_200":           sum(1 for a in attempts if a.get("put_status") in (200, 201, 204)),
+            "put_400_or_422":    sum(1 for a in attempts if a.get("put_status") in (400, 422)),
+            "put_401_or_403":    sum(1 for a in attempts if a.get("put_status") in (401, 403)),
+            "put_404":           sum(1 for a in attempts if a.get("put_status") == 404),
+        },
         "message": (
-            f"Tried {len(attempts)} endpoint/field combination(s) — none accepted the toggle. "
-            "Your tenant may require enabling this via a Zscaler support ticket or the admin UI. "
-            "See the attempts list below for exactly what was tried."
+            f"Exhausted {len(attempts)} attempts — none enabled the toggle. "
+            "Paste the attempts list into a Zscaler support ticket; they can tell you "
+            "which endpoint/field your tenant actually exposes (or enable it for you)."
         ),
     }
 
