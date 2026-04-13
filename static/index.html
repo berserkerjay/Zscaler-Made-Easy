@@ -1913,6 +1913,19 @@ function renderBypassReport(data) {
       </div>`;
   }
 
+  // Per-section diagnostics — when non-empty, shows the GUI exactly which fetcher failed and why.
+  let diag = '';
+  if (data.diagnostics && data.diagnostics.length) {
+    diag = `
+      <div style="padding:0.75rem;background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;border-radius:6px;margin-bottom:0.8rem;">
+        <div style="color:#f59e0b;font-weight:700;margin-bottom:0.3rem;">⚠ ${data.diagnostics.length} section${data.diagnostics.length===1?'':'s'} had issues — other sections still rendered below.</div>
+        <details><summary style="cursor:pointer;font-size:0.8rem;color:var(--accent);">Show details</summary>
+        <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.78rem;color:var(--dim);">
+          ${data.diagnostics.map(d => `<li><strong>${escapeHtml(d.section)}</strong>: <code>${escapeHtml(d.error_type || '?')}</code> — ${escapeHtml(d.error || '')}</li>`).join('')}
+        </ul></details>
+      </div>`;
+  }
+
   const sections = [
     ['ssl_bypass_rules', 'SSL Inspection Bypass Rules', ['id', 'name', 'action', 'state', 'scope']],
     ['url_filter_allow', 'URL Filtering ALLOW Rules',   ['id', 'name', 'action', 'state', 'scope']],
@@ -1974,7 +1987,7 @@ function renderBypassReport(data) {
       </ul>
     </div>`;
 
-  document.getElementById('bypassResult').innerHTML = top + risky + rulesHtml + exmHtml + zccHtml + guidance;
+  document.getElementById('bypassResult').innerHTML = top + diag + risky + rulesHtml + exmHtml + zccHtml + guidance;
 }
 
 

@@ -264,62 +264,88 @@ def _fetch_zcc_bypasses(client) -> Dict[str, Any]:
 # ── Top-level report generator ───────────────────────────────────────
 
 def generate_bypass_report(client) -> Dict[str, Any]:
-    """Produce the full bypass inventory. Read-only."""
+    """Produce the full bypass inventory. Read-only.
+
+    Every section is independently wrapped so a single failing endpoint
+    never prevents the whole report from returning. The top-level is
+    also wrapped — if anything unexpected goes wrong, we still return a
+    valid (degraded) report with a diagnostics field so the GUI can
+    render something useful.
+    """
+    import traceback as _tb
     start = datetime.now(timezone.utc)
-    sections = {}
+    sections: Dict[str, Any] = {}
+    diagnostics: List[Dict[str, Any]] = []
 
-    try: sections["ssl_bypass_rules"] = _fetch_ssl_bypass(client)
-    except Exception as e: sections["ssl_bypass_rules"] = {"error": str(e)[:200]}
+    def _safe(name, fn):
+        try:
+            return fn()
+        except Exception as e:
+            diagnostics.append({
+                "section": name,
+                "error_type": type(e).__name__,
+                "error": str(e)[:300],
+                "traceback_last": (_tb.format_exc().splitlines() or [""])[-1][:200],
+            })
+            return {"error": str(e)[:200], "items": [], "count": 0}
 
-    try: sections["ssl_exemptions"] = _fetch_ssl_exemptions(client)
-    except Exception as e: sections["ssl_exemptions"] = {"error": str(e)[:200]}
+    sections["ssl_bypass_rules"] = _safe("ssl_bypass_rules", lambda: _fetch_ssl_bypass(client))
+    sections["ssl_exemptions"]   = _safe("ssl_exemptions",   lambda: _fetch_ssl_exemptions(client))
+    sections["url_filter_allow"] = _safe("url_filter_allow", lambda: _fetch_urlfilter_bypass(client))
+    sections["firewall_allow"]   = _safe("firewall_allow",   lambda: _fetch_firewall_bypass(client))
+    sections["dlp_allow"]        = _safe("dlp_allow",        lambda: _fetch_dlp_bypass(client))
+    sections["zcc"]              = _safe("zcc",              lambda: _fetch_zcc_bypasses(client))
 
-    try: sections["url_filter_allow"] = _fetch_urlfilter_bypass(client)
-    except Exception as e: sections["url_filter_allow"] = {"error": str(e)[:200]}
+    # Summary counts — defensively guard every lookup
+    def _count(section_key, nested_key=None):
+        try:
+            sec = sections.get(section_key, {}) or {}
+            if nested_key:
+                return int((sec.get(nested_key, {}) or {}).get("count", 0) or 0)
+            return int(sec.get("count", 0) or 0)
+        except Exception:
+            return 0
 
-    try: sections["firewall_allow"] = _fetch_firewall_bypass(client)
-    except Exception as e: sections["firewall_allow"] = {"error": str(e)[:200]}
-
-    try: sections["dlp_allow"] = _fetch_dlp_bypass(client)
-    except Exception as e: sections["dlp_allow"] = {"error": str(e)[:200]}
-
-    try: sections["zcc"] = _fetch_zcc_bypasses(client)
-    except Exception as e: sections["zcc"] = {"error": str(e)[:200]}
-
-    # Summary counts
     summary = {
-        "ssl_bypass_rules":  sections["ssl_bypass_rules"].get("count", 0),
-        "ssl_exemptions":    sections["ssl_exemptions"].get("count", 0),
-        "url_filter_allow":  sections["url_filter_allow"].get("count", 0),
-        "firewall_allow":    sections["firewall_allow"].get("count", 0),
-        "dlp_allow":         sections["dlp_allow"].get("count", 0),
-        "zcc_apps":          sections["zcc"].get("apps", {}).get("count", 0),
-        "zcc_processes":     sections["zcc"].get("processes", {}).get("count", 0),
-        "zcc_ips":           sections["zcc"].get("ips", {}).get("count", 0),
-        "zcc_domains":       sections["zcc"].get("domains", {}).get("count", 0),
-        "zcc_trusted_nets":  sections["zcc"].get("trusted_networks", {}).get("count", 0),
+        "ssl_bypass_rules":  _count("ssl_bypass_rules"),
+        "ssl_exemptions":    _count("ssl_exemptions"),
+        "url_filter_allow":  _count("url_filter_allow"),
+        "firewall_allow":    _count("firewall_allow"),
+        "dlp_allow":         _count("dlp_allow"),
+        "zcc_apps":          _count("zcc", "apps"),
+        "zcc_processes":     _count("zcc", "processes"),
+        "zcc_ips":           _count("zcc", "ips"),
+        "zcc_domains":       _count("zcc", "domains"),
+        "zcc_trusted_nets":  _count("zcc", "trusted_networks"),
     }
     summary["total_bypass_items"] = sum(v for v in summary.values() if isinstance(v, int))
 
-    # Risk-flag: rules with action=BYPASS that are globally scoped (no user/group/location)
-    risky = []
-    for key in ("ssl_bypass_rules", "url_filter_allow", "firewall_allow", "dlp_allow"):
-        for item in sections[key].get("items") or []:
-            if item.get("scope", "").startswith("global") and item.get("state") == "ENABLED":
-                risky.append({
-                    "source": item["source"],
-                    "id": item["id"],
-                    "name": item["name"],
-                    "action": item["action"],
-                    "reason": "Globally-scoped bypass rule — applies to everyone.",
-                })
+    # Risk-flag: rules with action=BYPASS that are globally scoped
+    risky: List[Dict[str, Any]] = []
+    try:
+        for key in ("ssl_bypass_rules", "url_filter_allow", "firewall_allow", "dlp_allow"):
+            for item in (sections.get(key, {}) or {}).get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("scope", "")).startswith("global") and item.get("state") == "ENABLED":
+                    risky.append({
+                        "source": item.get("source", "?"),
+                        "id": item.get("id"),
+                        "name": item.get("name", "?"),
+                        "action": item.get("action", "?"),
+                        "reason": "Globally-scoped bypass rule — applies to everyone.",
+                    })
+    except Exception as e:
+        diagnostics.append({"section": "risk_flags", "error_type": type(e).__name__, "error": str(e)[:200]})
 
     return {
         "generated_at": start.isoformat(),
         "elapsed_seconds": round((datetime.now(timezone.utc) - start).total_seconds(), 2),
+        "report_version": 2,
         "summary": summary,
         "risk_flags": risky,
         "sections": sections,
+        "diagnostics": diagnostics,  # empty list = clean run; populated = something failed per-section
         "guidance": [
             "Document business justification for every bypass — auditors expect this.",
             "Periodically (quarterly minimum) review the bypass list. Remove anything without a current owner.",
