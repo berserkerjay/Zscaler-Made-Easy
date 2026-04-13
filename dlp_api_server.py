@@ -23,9 +23,22 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# ── Security hardening (secure-by-design controls) ───────────────────
+from security import (
+    ALLOWED_ORIGINS,
+    SecurityHeadersMiddleware,
+    OriginCheckMiddleware,
+    BodySizeLimitMiddleware,
+    RateLimitMiddleware,
+    get_bind_host, get_port, get_max_body_bytes, is_debug,
+    validate_cloud, validate_vanity, validate_credential, validate_customer_id,
+    mask_secret, scrub_dict,
+)
 
 # ── Import the assessment engine ─────────────────────────────────────
 import importlib.util, sys
@@ -69,13 +82,41 @@ app = FastAPI(
     description="Full-auto assessment engine via OneAPI.",
 )
 
+# Order matters: outermost first → body-size → rate-limit → origin → headers → gzip → CORS.
+# Body size and rate limit reject early before doing any real work.
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
+app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
+app.add_middleware(OriginCheckMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=sorted(ALLOWED_ORIGINS),  # No wildcard. Localhost only.
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
+    max_age=3600,
 )
+
+
+# ── Generic exception handler — never leak stack traces ────────────
+@app.exception_handler(Exception)
+async def _safe_exception_handler(request: Request, exc: Exception):
+    """Catch-all so internal errors never expose tracebacks to the client."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    if is_debug():
+        import traceback
+        return JSONResponse(
+            {"detail": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()},
+            status_code=500,
+        )
+    # In normal mode, return a generic message — log details server-side only.
+    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        {"detail": "Internal error. Run with ZSCALER_DEBUG=1 for details."},
+        status_code=500,
+    )
 
 # Serve static files (web GUI)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -97,15 +138,30 @@ class AssessRequest(BaseModel):
     customer_id: str = ""  # Optional ZPA customer ID
 
 
+class UpdateCheckRequest(BaseModel):
+    only: Optional[list[str]] = None  # subset of source keys
+    reset: bool = False               # wipe cache first
+
+
 # ── Routes ───────────────────────────────────────────────────────────
 
 @app.get("/")
 async def serve_gui():
-    """Serve the web GUI."""
+    """Serve the web GUI.
+    Forces revalidation on every page load so users always get the
+    latest UI after running UPDATE_Zscaler_Assessment.bat — no more
+    'Ctrl+F5 to clear cache' surprises.
+    """
     index = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index):
-        return FileResponse(index)
-    return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
+    if not os.path.exists(index):
+        return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
+    return FileResponse(
+        index,
+        headers={
+            "Cache-Control": "no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/favicon.ico")
@@ -308,11 +364,27 @@ class MigrateRequest(BaseModel):
 
 
 def _build_client(req: MigrateRequest):
-    """Build an authenticated Client from a migration request."""
-    client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+    """Build an authenticated Client from a migration request.
+    Validates every input first; never includes the secret in any error message.
+    """
+    cloud = validate_cloud(req.cloud)
+    vd = validate_vanity(req.vanity_domain)
+    cid = validate_credential("client_id", req.client_id, required=True)
+    sec = validate_credential("client_secret", req.client_secret, required=True)
+    cust = validate_customer_id(req.customer_id)
+
+    client = Client(cid, sec, vd, cloud, cust)
     auth_result = client.auth()
     if auth_result is not True:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {auth_result}")
+        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
+        reason = ""
+        if isinstance(auth_result, tuple) and len(auth_result) == 2:
+            reason = str(auth_result[1])
+        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
+        )
     return client
 
 
@@ -375,15 +447,37 @@ async def migrate_enable(req: EnableRequest):
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
 
 
+# ── Step 4b: Delete All Existing Rules (gated) ───────────────────
+class DeleteAllRequest(MigrateRequest):
+    dry_run: bool = True
+
+
+@app.post("/api/migrate/delete-all")
+async def migrate_delete_all(req: DeleteAllRequest):
+    """Step 4b (optional): Delete every Inline Web DLP rule. Destructive — gated."""
+    try:
+        from rule_migrator import delete_all_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
+
+
 # ── Step 5: Post New Rule Order ──────────────────────────────────
 class PostRequest(MigrateRequest):
     proposed_rules: list[dict] = []
     dry_run: bool = True
+    mode: str = "auto"  # "auto" | "create" | "update"
 
 
 @app.post("/api/migrate/post")
 async def migrate_post(req: PostRequest):
-    """Step 5: Post the optimized rule ordering back to Zscaler (dry-run by default)."""
+    """Step 5: Post the optimized rule ordering back to Zscaler (dry-run by default).
+
+    mode=auto    → PUT existing rules, POST new ones
+    mode=create  → always POST (use after delete-all)
+    mode=update  → always PUT (re-order in place, ids preserved)
+    """
     try:
         from rule_migrator import post_new_rule_order
     except Exception as e:
@@ -391,7 +485,66 @@ async def migrate_post(req: PostRequest):
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run)
+    return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
+
+
+# ── Upload rules (from a JSON backup file) ───────────────────────
+class UploadRulesRequest(BaseModel):
+    rules: list[dict] = []
+
+
+@app.post("/api/migrate/upload")
+async def migrate_upload(req: UploadRulesRequest):
+    """Accept a previously-saved (or hand-edited) JSON rule list and return it
+    normalized + analyzed. Pair with /api/migrate/optimize for re-ordering or
+    /api/migrate/post (mode=create) to push to a freshly-emptied tenant."""
+    try:
+        from rule_migrator import analyze_rules
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if not req.rules:
+        raise HTTPException(status_code=400, detail="No rules in upload.")
+    return {
+        "count": len(req.rules),
+        "rules": req.rules,
+        "analysis": analyze_rules(req.rules),
+    }
+
+
+# ── Manual reorder (accept any explicit ordering) ────────────────
+class ReorderRequest(BaseModel):
+    rules: list[dict] = []
+    order: list = []  # list of rule IDs (or names) in desired order
+
+
+@app.post("/api/migrate/reorder")
+async def migrate_reorder(req: ReorderRequest):
+    """Re-order an in-memory rule list by an explicit ID/name sequence the user picked in the GUI."""
+    if not req.rules or not req.order:
+        raise HTTPException(status_code=400, detail="rules and order are required.")
+    by_id = {str(r.get("id")): r for r in req.rules if r.get("id") is not None}
+    by_name = {r.get("name"): r for r in req.rules if r.get("name")}
+    out, missing = [], []
+    seen = set()
+    for token in req.order:
+        key = str(token)
+        rule = by_id.get(key) or by_name.get(token)
+        if rule and id(rule) not in seen:
+            out.append(rule)
+            seen.add(id(rule))
+        else:
+            missing.append(token)
+    # Append any rules the user didn't explicitly position (preserve them at the end)
+    for r in req.rules:
+        if id(r) not in seen:
+            out.append(r)
+    for i, r in enumerate(out, 1):
+        r["_proposed_order"] = i
+    return {
+        "count": len(out),
+        "proposed_rules": out,
+        "missing_tokens": missing,
+    }
 
 
 @app.post("/api/migrate/analyze")
@@ -488,6 +641,12 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
     """Run assessment with SSE streaming."""
+    # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
+    cloud = validate_cloud(req.cloud)
+    vd = validate_vanity(req.vanity_domain)
+    cid = validate_credential("client_id", req.client_id, required=True)
+    sec = validate_credential("client_secret", req.client_secret, required=True)
+    cust = validate_customer_id(req.customer_id)
     checks = _get_checks(req.scope, req.scopes)
 
     async def event_generator():
@@ -495,11 +654,15 @@ async def assess_stream(req: AssessRequest):
         try:
             yield _sse("auth", {"status": "authenticating"})
 
-            client = Client(req.client_id, req.client_secret, req.vanity_domain, req.cloud, req.customer_id)
+            client = Client(cid, sec, vd, cloud, cust)
             auth_result = await asyncio.to_thread(client.auth)
 
             if auth_result is not True:
-                yield _sse("error", {"message": f"Authentication failed: {auth_result}"})
+                reason = ""
+                if isinstance(auth_result, tuple) and len(auth_result) == 2:
+                    reason = str(auth_result[1])
+                reason = (reason or "").replace(sec, mask_secret(sec)) if sec else reason
+                yield _sse("error", {"message": f"Authentication failed: {reason[:200]}"})
                 return
 
             yield _sse("auth", {"status": "ok"})
@@ -617,8 +780,115 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+# ── Bypass / Non-Inspected Traffic Inventory ────────────────────────
+@app.post("/api/report/bypass")
+async def report_bypass(req: MigrateRequest):
+    """Generate the bypass-inventory report (JSON). Read-only."""
+    try:
+        from bypass_report import generate_bypass_report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(generate_bypass_report, client)
+
+
+class BypassExportRequest(MigrateRequest):
+    format: str = "csv"  # csv | markdown | json
+
+
+@app.post("/api/report/bypass/export")
+async def report_bypass_export(req: BypassExportRequest):
+    """Generate and download the bypass report in csv / markdown / json."""
+    try:
+        from bypass_report import generate_bypass_report, to_csv, to_markdown
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    fmt = (req.format or "csv").lower()
+    if fmt not in ("csv", "markdown", "md", "json"):
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {req.format}")
+    client = await asyncio.to_thread(_build_client, req)
+    report = await asyncio.to_thread(generate_bypass_report, client)
+
+    from fastapi.responses import Response
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if fmt == "csv":
+        return Response(
+            content=to_csv(report),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.csv"},
+        )
+    if fmt in ("markdown", "md"):
+        return Response(
+            content=to_markdown(report),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.md"},
+        )
+    # json
+    return Response(
+        content=json.dumps(report, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"},
+    )
+
+
+# ── Updates: check for new Zscaler APIs / SDK / best practices ──────
+@app.get("/api/updates/sources")
+async def updates_sources():
+    """Enumerate the sources the update-checker monitors."""
+    try:
+        from zscaler_update_check import SOURCES
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
+    return [
+        {"key": s["key"], "name": s["name"], "importance": s.get("importance"),
+         "type": s["type"], "why": s.get("why", ""),
+         "url": s.get("url") or (f"https://pypi.org/project/{s['package']}/" if s.get("package") else None)}
+        for s in SOURCES
+    ]
+
+
+@app.post("/api/updates/check")
+async def updates_check(req: UpdateCheckRequest):
+    """
+    Check Zscaler upstream sources (SDK on PyPI + help-center pages)
+    for changes since the last time this was run. Returns a per-source
+    status: new | changed | unchanged | error.
+
+    Fetches are allowlisted to pypi.org and help.zscaler.com. No
+    credentials are required for this endpoint.
+    """
+    try:
+        from zscaler_update_check import check_for_updates, reset_cache
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
+    if req.reset:
+        await asyncio.to_thread(reset_cache)
+    return await asyncio.to_thread(check_for_updates, False, req.only)
+
+
+@app.post("/api/updates/reset-cache")
+async def updates_reset():
+    """Clear the last-seen cache — next check reports every source as 'new'."""
+    try:
+        from zscaler_update_check import reset_cache
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
+    ok = await asyncio.to_thread(reset_cache)
+    return {"ok": bool(ok)}
+
+
 if __name__ == "__main__":
     import uvicorn
+    host = get_bind_host()
+    port = get_port()
     print("\n  Zscaler Platform Assessment")
-    print("  Open http://localhost:8000 in your browser\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"  Open http://{('localhost' if host == '127.0.0.1' else host)}:{port} in your browser\n")
+    if host != "127.0.0.1":
+        print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
+        print(f"     can reach this server. Currently listening on {host}:{port}.")
+        print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")
+    if not is_debug():
+        # Suppress access log spam in production mode (one line per request)
+        uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+    else:
+        uvicorn.run(app, host=host, port=port, log_level="info")

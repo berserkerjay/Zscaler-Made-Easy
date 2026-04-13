@@ -11,8 +11,13 @@ echo.
 
 REM ----- Step 1: Stop running server -----
 echo [1/4] Stopping running server...
-taskkill /f /im pythonw.exe >nul 2>&1
-taskkill /f /fi "WINDOWTITLE eq Zscaler Platform Assessment*" >nul 2>&1
+set FOUND=
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do (
+    set FOUND=1
+    taskkill /f /pid %%a >nul 2>&1
+    echo       Stopped PID %%a on port 8000.
+)
+if not defined FOUND echo       No server was running.
 timeout /t 2 /nobreak >nul
 echo       Done.
 echo.

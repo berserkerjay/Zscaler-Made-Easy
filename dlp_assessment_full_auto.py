@@ -75,12 +75,24 @@ def _resolve_ep(ep, customer_id=""):
     return ep
 
 class Client:
+    # Bound the response cache so a long-lived client process can't grow unbounded.
+    # Each entry is a small dict; 512 is plenty for an assessment run (~250 checks max).
+    _CACHE_MAX = 512
+
     def __init__(s, cid, sec, vd, cloud, customer_id=""):
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
         s.token = None; s.exp = 0; s.base = _base_url(cloud)
         s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
-        s._c = {}
+        # Use OrderedDict for O(1) LRU eviction
+        from collections import OrderedDict
+        s._c = OrderedDict()
+
+    def _cache_set(s, k, v):
+        s._c[k] = v
+        s._c.move_to_end(k)
+        if len(s._c) > s._CACHE_MAX:
+            s._c.popitem(last=False)  # evict least-recently-used
     def auth(s):
         try:
             url = _token_url(s.vd, s.cloud)
@@ -95,7 +107,9 @@ class Client:
             return ({"error":"ZPA customer ID not configured","status":404}, 404)
         real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
-        if k in s._c: return s._c[k]
+        if k in s._c:
+            s._c.move_to_end(k)
+            return s._c[k]
         # Self-healing: re-auth if token is stale or missing
         if not s.token or time.time()>=s.exp:
             a = s.auth()
@@ -138,7 +152,51 @@ class Client:
             res = ({"error":f"connection error: {str(e)[:100]}","status":0}, 0)
         except Exception as e:
             res = ({"error":str(e)[:200],"status":0}, 0)
-        s._c[k] = res; return res
+        s._cache_set(k, res); return res
+
+    def _write(s, method, ep, body=None, _retry=0):
+        """Shared write path for POST / PUT / DELETE with self-healing."""
+        real_ep = _resolve_ep(ep, s.customer_id)
+        if not s.token or time.time() >= s.exp:
+            a = s.auth()
+            if a is not True:
+                return ({"error": str(a), "status": 401}, 401)
+        try:
+            kwargs = {"timeout": 30}
+            if body is not None:
+                kwargs["json"] = body
+            r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
+            time.sleep(0.3)
+            if r.status_code in (200, 201):
+                try: return (r.json(), r.status_code)
+                except Exception: return ({}, r.status_code)
+            if r.status_code == 204:
+                return ({}, 204)
+            if r.status_code == 429 and _retry < 3:
+                time.sleep(min(int(r.headers.get("Retry-After", 5)), 30))
+                return s._write(method, ep, body, _retry + 1)
+            if r.status_code == 401 and _retry < 2:
+                s.token = None
+                return s._write(method, ep, body, _retry + 1)
+            if r.status_code in (502, 503, 504) and _retry < 2:
+                time.sleep(2 ** _retry)
+                return s._write(method, ep, body, _retry + 1)
+            return ({"error": r.text[:200] if r.text else "error", "status": r.status_code}, r.status_code)
+        except requests.exceptions.Timeout:
+            if _retry < 2: return s._write(method, ep, body, _retry + 1)
+            return ({"error": "request timeout", "status": 0}, 0)
+        except requests.exceptions.ConnectionError as e:
+            if _retry < 2:
+                time.sleep(2 ** _retry)
+                return s._write(method, ep, body, _retry + 1)
+            return ({"error": f"connection error: {str(e)[:100]}", "status": 0}, 0)
+        except Exception as e:
+            return ({"error": str(e)[:200], "status": 0}, 0)
+
+    def post(s, ep, body=None):   return s._write("POST", ep, body)
+    def put(s, ep, body=None):    return s._write("PUT", ep, body)
+    def delete(s, ep, body=None): return s._write("DELETE", ep, body)
+
 
 class R:
     PASS="PASS"; FAIL="FAIL"; WARN="REVIEW"; INFO="INFO"; ERROR="ERROR"

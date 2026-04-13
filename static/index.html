@@ -299,6 +299,57 @@
     <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
+    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-ghost" onclick="openUpdateModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
+        🔄 Check for Zscaler Updates
+      </button>
+      <button class="btn btn-ghost" onclick="openBypassModal()" style="padding:0.45rem 1rem;font-size:0.82rem;">
+        🔓 Bypass / Non-Inspected Traffic Report
+      </button>
+    </div>
+  </div>
+
+  <!-- Bypass inventory modal -->
+  <div id="bypassModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:1000px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 style="margin:0;">🔓 Bypass / Non-Inspected Traffic Inventory</h2>
+        <button class="btn btn-ghost" onclick="closeBypassModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
+        Aggregates every configuration that causes traffic to <strong>skip Zscaler inspection</strong>:
+        SSL inspection bypass rules, Do-Not-Inspect categories, URL filter / firewall / DLP ALLOW rules,
+        and ZCC app / process / IP / domain bypass lists + trusted networks.
+        Read-only — the tool never modifies the tenant.
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+        <button class="btn btn-primary" id="bypassRunBtn" onclick="runBypassReport()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Generate Report</button>
+        <span style="color:var(--dim);font-size:0.78rem;margin-right:0.5rem;">Export:</span>
+        <button class="btn btn-ghost" id="bypassExportCsv" onclick="exportBypass('csv')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📄 CSV</button>
+        <button class="btn btn-ghost" id="bypassExportMd"  onclick="exportBypass('markdown')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📝 Markdown</button>
+        <button class="btn btn-ghost" id="bypassExportJson" onclick="exportBypass('json')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">⚙ JSON</button>
+      </div>
+      <div id="bypassResult" style="font-size:0.88rem;"></div>
+    </div>
+  </div>
+
+  <!-- Update-check modal -->
+  <div id="updateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:900px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 style="margin:0;">🔄 Zscaler Update Check</h2>
+        <button class="btn btn-ghost" onclick="closeUpdateModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
+        Checks PyPI for SDK releases and help.zscaler.com for API / best-practice doc changes since the last time you ran this.
+        Fetches are allowlisted to pypi.org and help.zscaler.com — nothing else.
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+        <button class="btn btn-primary" id="updateRunBtn" onclick="runUpdateCheck(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Check Now</button>
+        <button class="btn btn-ghost" onclick="runUpdateCheck(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;" title="Clear cached baselines so every source is reported as 'new'.">Reset Cache + Re-check</button>
+      </div>
+      <div id="updateResult" style="font-size:0.88rem;"></div>
+    </div>
   </div>
 
   <!-- Quick Start -->
@@ -485,7 +536,7 @@
   <div class="card">
     <div style="margin-bottom:1rem;">
       <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
-      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the 5 steps below in order. All write actions default to dry-run for safety.</p>
+      <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the steps below in order. Step 3b is destructive and optional. All write actions default to dry-run for safety.</p>
     </div>
 
     <!-- Step 1 -->
@@ -512,6 +563,10 @@
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="step2Download()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Download Rules</button>
           <button class="btn btn-ghost" id="step2SaveBtn" onclick="step2SaveLocal()" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save JSON Backup</button>
+          <label class="btn btn-ghost" style="padding:0.55rem 1.1rem;font-size:0.85rem;cursor:pointer;">
+            📂 Upload Rules JSON
+            <input type="file" id="step2UploadFile" accept=".json,application/json" onchange="step2UploadJson(event)" style="display:none;">
+          </label>
         </div>
       </div>
       <div id="step2Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
@@ -544,13 +599,41 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-primary" onclick="step3Optimize()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Optimize</button>
+        <label class="btn btn-ghost" style="padding:0.55rem 1.1rem;font-size:0.85rem;cursor:pointer;">
+          📂 Upload Optimized Rules JSON
+          <input type="file" id="step3UploadFile" accept=".json,application/json" onchange="step3UploadOptimized(event)" style="display:none;">
+        </label>
+        <button class="btn btn-ghost" onclick="step3SaveOptimized()" id="step3SaveBtn" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save Optimized JSON</button>
         <button class="btn btn-ghost" onclick="migrateExport('json')" style="padding:0.55rem 1.1rem;font-size:0.85rem;">📄 Export Plan (JSON)</button>
         <button class="btn btn-ghost" onclick="migrateExport('csv')" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Export (CSV)</button>
       </div>
+      <p style="font-size:0.78rem;color:var(--dim);margin-top:0.4rem;">
+        💡 Skip auto-optimization by uploading a JSON of pre-curated rules in the order you want them posted (Step 5 will use that order directly).
+      </p>
       <div id="step3Result" style="display:none;margin-top:0.75rem;"></div>
       <div id="migrateDiff"></div>
+    </div>
+
+    <!-- Step 3b (optional, destructive) -->
+    <div style="padding:1rem;background:rgba(220,38,38,0.05);border-radius:10px;border:1px dashed rgba(220,38,38,0.4);margin-bottom:0.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+        <div>
+          <span style="font-size:0.7rem;color:#dc2626;font-weight:700;letter-spacing:0.1em;">STEP 3B · OPTIONAL · DESTRUCTIVE</span>
+          <h3 style="font-size:1rem;margin-top:0.2rem;">Delete All Existing DLP Rules</h3>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">
+            Use this <strong>only</strong> when migrating to Evaluate All Rules with a fresh re-post. Wipes every Inline Web DLP rule
+            so Step 5 can re-create them in the optimized order without conflicts.
+            <strong style="color:#dc2626;">Cannot be undone via API</strong> — make sure Step 2 backup is saved first.
+          </p>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button class="btn btn-ghost" onclick="step3bDeleteAll(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Preview Deletion (Dry-Run)</button>
+          <button class="btn btn-ghost" onclick="step3bDeleteAll(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;color:#dc2626;border-color:rgba(220,38,38,0.4);">⚠ Delete All</button>
+        </div>
+      </div>
+      <div id="step3bResult" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(220,38,38,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
     <!-- Step 4 -->
@@ -572,9 +655,17 @@
         <div>
           <span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">STEP 5</span>
           <h3 style="font-size:1rem;margin-top:0.2rem;">Post New Rules</h3>
-          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Dry-run returns the plan; actual writes are gated for safety — prefer the exported JSON + admin portal import.</p>
+          <p style="font-size:0.82rem;color:var(--dim);margin-top:0.2rem;">Apply the optimized ordering. Choose mode based on whether you ran Step 3b.</p>
         </div>
-        <button class="btn btn-primary" onclick="step5Post()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Post (Dry-Run)</button>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+          <select id="step5Mode" style="padding:0.55rem 0.75rem;font-size:0.82rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+            <option value="auto">auto (PUT existing, POST new)</option>
+            <option value="update">update only (PUT — re-order in place)</option>
+            <option value="create">create only (POST — use after Step 3b)</option>
+          </select>
+          <button class="btn btn-ghost" onclick="step5Post(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Dry-Run</button>
+          <button class="btn btn-primary" onclick="step5Post(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Post Live</button>
+        </div>
       </div>
       <div id="step5Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
@@ -698,14 +789,48 @@ function migrateCredBody() {
 
 function migrateValidateCreds() {
   const b = migrateCredBody();
-  const sm = document.getElementById('migrateStatus');
-  if (!b.client_id || !b.client_secret || !b.vanity_domain) {
-    sm.textContent = 'Fill in API credentials in the Tenant Configuration above first.';
-    sm.className = 'status-msg error';
+  const missing = [];
+  if (!b.vanity_domain || !b.vanity_domain.trim()) missing.push(['vd',  'Vanity Domain']);
+  if (!b.client_id     || !b.client_id.trim())     missing.push(['cid', 'Client ID']);
+  if (!b.client_secret || !b.client_secret.trim()) missing.push(['csec','Client Secret']);
+  if (missing.length) {
+    popMissingCredsAlert(missing);
     return null;
   }
-  sm.textContent = ''; sm.className = 'status-msg';
+  const sm = document.getElementById('migrateStatus');
+  if (sm) { sm.textContent = ''; sm.className = 'status-msg'; }
   return b;
+}
+
+// Single-source credential-gate: pops a real browser alert listing
+// which fields are missing, flags them red, scrolls to the first one,
+// and focuses it. Called from every action that would otherwise fail
+// against the tenant.
+function popMissingCredsAlert(missing) {
+  // missing = [ [elementId, humanLabel], ... ]
+  // Flag the fields red
+  document.querySelectorAll('.field').forEach(f => f.classList.remove('has-error'));
+  missing.forEach(([id]) => {
+    const el = document.getElementById(id);
+    if (el && el.closest('.field')) el.closest('.field').classList.add('has-error');
+  });
+  // Scroll to + focus first missing
+  const firstEl = document.getElementById(missing[0][0]);
+  if (firstEl) {
+    firstEl.scrollIntoView({behavior: 'smooth', block: 'center'});
+    setTimeout(() => firstEl.focus(), 250);
+  }
+  // Clear any inline status
+  const sm = document.getElementById('migrateStatus');
+  if (sm) { sm.textContent = ''; sm.className = 'status-msg'; }
+  // Actual popup
+  const list = missing.map(([,label]) => '  \u2022 ' + label).join('\n');
+  alert(
+    '\u26A0  Missing Tenant Credentials\n\n' +
+    'Please fill in the following field' + (missing.length > 1 ? 's' : '') + ' in the Tenant Configuration section at the top of the page:\n\n' +
+    list + '\n\n' +
+    'Then click the action again.'
+  );
 }
 
 async function step1Assess() {
@@ -767,6 +892,33 @@ function step2SaveLocal() {
   a.click();
 }
 
+async function step2UploadJson(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const el = document.getElementById('step2Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Reading uploaded file...</span>';
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const rules = Array.isArray(parsed) ? parsed : (parsed.rules || parsed.proposed_rules || []);
+    if (!Array.isArray(rules) || rules.length === 0) throw new Error('No rules array found in JSON.');
+    const resp = await fetch('/api/migrate/upload', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({rules})});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const data = await resp.json();
+    migrateRules = data.rules;
+    const a = data.analysis || {};
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Loaded ${migrateRules.length} rules from <code>${escapeHtml(file.name)}</code></div>
+      <div style="color:var(--dim);margin-top:0.25rem;">Enabled: ${a.enabled_rules || 0} · Disabled: ${a.disabled_rules || 0} · Issues found: ${a.issue_count || 0}</div>
+      <div style="color:var(--dim);margin-top:0.25rem;font-size:0.8rem;">These rules are now staged for Step 3 (Optimize) or Step 5 (Post mode=create).</div>
+    `;
+    document.getElementById('step2SaveBtn').style.display = 'inline-flex';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Upload failed: ' + escapeHtml(e.message) + '</span>';
+  }
+  event.target.value = ''; // allow re-upload of same file
+}
+
 async function step3Optimize() {
   if (!migrateRules) { document.getElementById('migrateStatus').textContent = 'Run Step 2 first to download rules.'; document.getElementById('migrateStatus').className='status-msg error'; return; }
   const el = document.getElementById('step3Result'); el.style.display = 'block';
@@ -797,6 +949,169 @@ async function step3Optimize() {
       ${plan.notes && plan.notes.length ? '<ul style="margin-top:0.4rem;margin-left:1.1rem;font-size:0.82rem;color:var(--dim);">' + plan.notes.map(n=>`<li>${escapeHtml(n)}</li>`).join('') + '</ul>' : ''}
     `;
     showDiff(plan.diff || []);
+    showManualReorder();
+    document.getElementById('step3SaveBtn').style.display = 'inline-flex';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+async function step3UploadOptimized(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const el = document.getElementById('step3Result'); el.style.display = 'block';
+  el.innerHTML = '<span style="color:var(--dim);">Reading optimized rules...</span>';
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const rules = Array.isArray(parsed)
+      ? parsed
+      : (parsed.proposed_rules || parsed.proposed_order || parsed.rules || []);
+    if (!Array.isArray(rules) || rules.length === 0) throw new Error('No rules array found in JSON.');
+    optimizedRules = rules;
+    optimizedRules.forEach((r, i) => { r._proposed_order = i + 1; });
+    _autoOptimizedSnapshot = null;
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Loaded ${optimizedRules.length} optimized rule(s) from <code>${escapeHtml(file.name)}</code></div>
+      <div style="color:var(--dim);margin-top:0.25rem;font-size:0.82rem;">
+        The order in this file is the order Step 5 will post. Use ▲▼ below to fine-tune, or proceed straight to Step 5.
+      </div>
+    `;
+    // Optionally compute diff against migrateRules if it exists
+    if (Array.isArray(migrateRules) && migrateRules.length) {
+      const origPos = {};
+      migrateRules.forEach((r, i) => {
+        if (r.id != null) origPos[String(r.id)] = i + 1;
+      });
+      const diff = optimizedRules.map((r, i) => {
+        const rid = r.id != null ? String(r.id) : null;
+        const oldP = rid ? origPos[rid] : null;
+        const newP = i + 1;
+        if (oldP === newP) return null;
+        return {
+          rule_id: r.id,
+          rule_name: r.name || `Rule ${r.id || newP}`,
+          action: (r.action || '?').toUpperCase(),
+          old_position: oldP,
+          new_position: newP,
+        };
+      }).filter(Boolean);
+      showDiff(diff);
+    } else {
+      document.getElementById('migrateDiff').innerHTML = '';
+    }
+    showManualReorder();
+    document.getElementById('step3SaveBtn').style.display = 'inline-flex';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Upload failed: ' + escapeHtml(e.message) + '</span>';
+  }
+  event.target.value = '';
+}
+
+function step3SaveOptimized() {
+  if (!optimizedRules) return;
+  const clean = optimizedRules.map(r => {
+    const cr = {};
+    for (const k in r) if (!k.startsWith('_')) cr[k] = r[k];
+    return cr;
+  });
+  const blob = new Blob([JSON.stringify({proposed_rules: clean, count: clean.length, exported_at: new Date().toISOString()}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `zscaler_dlp_optimized_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function showManualReorder() {
+  if (!optimizedRules || optimizedRules.length === 0) return;
+  let host = document.getElementById('manualReorder');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'manualReorder';
+    document.getElementById('migrateDiff').insertAdjacentElement('afterend', host);
+  }
+  const rows = optimizedRules.map((r, i) => {
+    const name = escapeHtml(r.name || `Rule ${r.id || i+1}`);
+    const action = (r.action || '?').toUpperCase();
+    const id = r.id != null ? r.id : '';
+    return `<tr data-idx="${i}">
+      <td style="padding:0.3rem 0.5rem;text-align:center;font-weight:700;color:var(--accent);width:2.5rem;">${i+1}</td>
+      <td style="padding:0.3rem 0.5rem;font-family:monospace;color:var(--dim);width:5rem;">${id}</td>
+      <td style="padding:0.3rem 0.5rem;">${name}</td>
+      <td style="padding:0.3rem 0.5rem;width:6rem;"><span style="padding:0.1rem 0.4rem;background:rgba(59,130,246,0.1);color:var(--accent);border-radius:3px;font-size:0.75rem;">${escapeHtml(action)}</span></td>
+      <td style="padding:0.3rem 0.5rem;text-align:right;width:7rem;white-space:nowrap;">
+        <button class="btn btn-ghost" onclick="reorderMove(${i}, -1)" ${i===0?'disabled':''} style="padding:0.2rem 0.5rem;font-size:0.75rem;">▲</button>
+        <button class="btn btn-ghost" onclick="reorderMove(${i}, 1)" ${i===optimizedRules.length-1?'disabled':''} style="padding:0.2rem 0.5rem;font-size:0.75rem;">▼</button>
+      </td>
+    </tr>`;
+  }).join('');
+  host.innerHTML = `
+    <div style="margin-top:0.75rem;padding:0.75rem;background:rgba(15,23,42,0.5);border-radius:8px;border:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
+        <div style="font-size:0.85rem;font-weight:600;">Manual Reorder (overrides the auto-optimization)</div>
+        <button class="btn btn-ghost" onclick="reorderReset()" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Reset to auto-optimized</button>
+      </div>
+      <div style="font-size:0.78rem;color:var(--dim);margin-bottom:0.5rem;">Use the ▲▼ buttons to move rules. The order shown here is what Step 5 will post.</div>
+      <table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
+        <thead><tr style="background:rgba(59,130,246,0.08);">
+          <th style="padding:0.4rem 0.5rem;text-align:center;">#</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">ID</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Name</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Action</th>
+          <th style="padding:0.4rem 0.5rem;text-align:right;">Move</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+let _autoOptimizedSnapshot = null;
+function reorderMove(idx, delta) {
+  if (!optimizedRules) return;
+  const ni = idx + delta;
+  if (ni < 0 || ni >= optimizedRules.length) return;
+  if (!_autoOptimizedSnapshot) _autoOptimizedSnapshot = optimizedRules.slice();
+  const tmp = optimizedRules[idx];
+  optimizedRules[idx] = optimizedRules[ni];
+  optimizedRules[ni] = tmp;
+  optimizedRules.forEach((r,i)=>{ r._proposed_order = i+1; });
+  showManualReorder();
+}
+function reorderReset() {
+  if (!_autoOptimizedSnapshot) return;
+  optimizedRules = _autoOptimizedSnapshot.slice();
+  _autoOptimizedSnapshot = null;
+  optimizedRules.forEach((r,i)=>{ r._proposed_order = i+1; });
+  showManualReorder();
+}
+
+async function step3bDeleteAll(dryRun) {
+  if (!dryRun) {
+    if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON Backup).\n\nThis cannot be undone via API. Continue?')) return;
+  }
+  const body = migrateValidateCreds(); if (!body) return;
+  body.dry_run = dryRun;
+  const el = document.getElementById('step3bResult'); el.style.display = 'block';
+  el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
+  try {
+    const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const r = await resp.json();
+    if (r.status === 'dry_run') {
+      const list = (r.would_delete || []).slice(0, 30).map(x => `<li><code style="color:var(--dim);">${x.rule_id}</code> · ${escapeHtml(x.rule_name)} (${x.action})</li>`).join('');
+      el.innerHTML = `
+        <div style="color:#dc2626;font-weight:600;">DRY-RUN: would delete ${r.would_delete_count} rule(s).</div>
+        <div style="color:var(--dim);margin-top:0.25rem;">${escapeHtml(r.message || '')}</div>
+        <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.8rem;">${list}</ul>
+        ${r.would_delete_count > 30 ? `<div style="color:var(--dim);font-size:0.78rem;">...and ${r.would_delete_count - 30} more.</div>` : ''}
+        <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(220,38,38,0.08);border-left:3px solid #dc2626;border-radius:4px;font-size:0.8rem;">${escapeHtml(r.warning || '')}</div>`;
+    } else if (r.status === 'blocked') {
+      el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>`;
+    } else {
+      el.innerHTML = `
+        <div style="color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">${r.status}: deleted ${r.deleted_count}, failed ${r.failed_count}</div>
+        ${r.failed_count ? `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>` : ''}`;
+    }
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
   }
@@ -842,21 +1157,36 @@ async function step4Enable() {
   }
 }
 
-async function step5Post() {
-  if (!optimizedRules) { document.getElementById('migrateStatus').textContent = 'Run Step 3 first to generate optimized rules.'; document.getElementById('migrateStatus').className='status-msg error'; return; }
+async function step5Post(dryRun) {
+  const sourceRules = optimizedRules || migrateRules;
+  if (!sourceRules || sourceRules.length === 0) {
+    document.getElementById('migrateStatus').textContent = 'Run Step 3 (Optimize) or Step 2 (Download/Upload) first.';
+    document.getElementById('migrateStatus').className='status-msg error'; return;
+  }
   const body = migrateValidateCreds(); if (!body) return;
-  body.proposed_rules = optimizedRules;
-  body.dry_run = true;
+  body.proposed_rules = sourceRules;
+  body.dry_run = !!dryRun;
+  body.mode = document.getElementById('step5Mode').value || 'auto';
+  if (!dryRun) {
+    if (!confirm(`This will write ${sourceRules.length} rule(s) live to the tenant in mode="${body.mode}".\n\nDry-run first if you haven't. Continue?`)) return;
+  }
   const el = document.getElementById('step5Result'); el.style.display = 'block';
-  el.innerHTML = '<span style="color:var(--dim);">Building post plan (dry-run)...</span>';
+  el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building post plan (dry-run)...' : 'Posting rules live...'}</span>`;
   try {
     const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
+    let summary = '';
+    if (r.status === 'dry_run') {
+      summary = `<div style="margin-top:0.4rem;">Planned: <strong>${r.total}</strong> rule(s) (${(r.planned_updates || []).filter(x=>x.operation==='POST').length} POST · ${(r.planned_updates || []).filter(x=>x.operation==='PUT').length} PUT)</div>`;
+    } else if (r.status === 'completed' || r.status === 'partial') {
+      summary = `<div style="margin-top:0.4rem;color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">Succeeded: ${r.succeeded_count} · Failed: ${r.failed_count}</div>`;
+      if (r.failed_count) summary += `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>`;
+    }
     el.innerHTML = `
-      <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')}</div>
+      <div style="font-weight:600;color:var(--accent);margin-bottom:0.4rem;">Status: ${r.status.replace(/_/g,' ')} · mode: ${r.mode || 'auto'}</div>
       <div style="color:var(--dim);">${escapeHtml(r.message || '')}</div>
-      ${r.total ? `<div style="margin-top:0.4rem;">Planned updates: <strong>${r.total}</strong> rule(s) would receive a new 'order' field.</div>` : ''}
+      ${summary}
       ${r.recommendation ? `<div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;"><strong>Recommendation:</strong> ${escapeHtml(r.recommendation)}</div>` : ''}
     `;
   } catch(e) {
@@ -1073,16 +1403,28 @@ function validate() {
 }
 
 async function runAssessment() {
-  if (!validate()) {
-    setStatus('Please fill in all required fields', 'error');
-    document.querySelector('.field.has-error input')?.focus();
+  // Credential gate — same popup style as the migration wizard
+  const missing = [];
+  const checks = [
+    ['org',      'Organization Name'],
+    ['assessor', 'Assessor Name'],
+    ['vd',       'Vanity Domain'],
+    ['cid',      'Client ID'],
+    ['csec',     'Client Secret'],
+  ];
+  for (const [id, label] of checks) {
+    const el = document.getElementById(id);
+    if (!el || !el.value || !el.value.trim()) missing.push([id, label]);
+  }
+  if (missing.length) {
+    popMissingCredsAlert(missing);
     return;
   }
 
   // Validate at least one scope selected
   const scopes = getSelectedScopes();
   if (scopes.length === 0) {
-    setStatus('Select at least one assessment scope', 'error');
+    alert('\u26A0  No Assessment Scope Selected\n\nPlease check at least one scope (DLP, ZIA, ZPA, ZCC, GenAI, or Compliance) before running the assessment.');
     return;
   }
 
@@ -1459,6 +1801,272 @@ document.addEventListener('keydown', (e) => {
     if (activeEl && activeEl.tagName === 'INPUT') runAssessment();
   }
 });
+
+// ══════════════════════════════════════════════════════════════════
+// Update checker — monitors PyPI + help.zscaler.com for new APIs
+// and best-practice doc changes since last run.
+// ══════════════════════════════════════════════════════════════════
+function openUpdateModal() {
+  document.getElementById('updateModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  const r = document.getElementById('updateResult');
+  if (!r.innerHTML.trim()) {
+    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Check Now</strong> to compare the current state of Zscaler SDK + docs against your last-seen baseline.</div>';
+  }
+}
+function closeUpdateModal() {
+  document.getElementById('updateModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
+    if (document.getElementById('bypassModal').style.display === 'block') closeBypassModal();
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// Bypass / Non-Inspected Traffic Inventory
+// ══════════════════════════════════════════════════════════════════
+let _bypassReportCache = null;
+
+function openBypassModal() {
+  document.getElementById('bypassModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  const r = document.getElementById('bypassResult');
+  if (!r.innerHTML.trim()) {
+    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Generate Report</strong> to inventory every bypass/exemption in your tenant.</div>';
+  }
+}
+function closeBypassModal() {
+  document.getElementById('bypassModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function runBypassReport() {
+  const body = migrateValidateCreds(); if (!body) return;  // pops credential alert if missing
+  const btn = document.getElementById('bypassRunBtn');
+  const r = document.getElementById('bypassResult');
+  btn.disabled = true;
+  const originalBtnText = btn.textContent;
+  btn.textContent = 'Generating...';
+  r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Querying ZIA + ZCC endpoints in parallel — this takes 5–15 seconds on a normal tenant.</div>';
+  ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
+  try {
+    const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const data = await resp.json();
+    _bypassReportCache = data;
+    renderBypassReport(data);
+    ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = false);
+  } catch(e) {
+    r.innerHTML = `<div style="color:var(--fail);padding:1rem;">Report failed: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalBtnText;
+  }
+}
+
+async function exportBypass(fmt) {
+  const body = migrateValidateCreds(); if (!body) return;
+  body.format = fmt;
+  try {
+    const resp = await fetch('/api/report/bypass/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const blob = await resp.blob();
+    const ext = fmt === 'markdown' ? 'md' : fmt;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `zscaler_bypass_${new Date().toISOString().slice(0,10)}.${ext}`;
+    a.click();
+  } catch(e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+
+function renderBypassReport(data) {
+  const s = data.summary || {};
+  const chip = (n, label, color) => `<span class="badge" style="background:${color}20;color:${color};">${label}: ${n}</span>`;
+  const top = `
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+      ${chip(s.ssl_bypass_rules || 0, 'SSL Bypass', '#f59e0b')}
+      ${chip(s.ssl_exemptions || 0, 'SSL Exempt', '#f59e0b')}
+      ${chip(s.url_filter_allow || 0, 'URL ALLOW', '#60a5fa')}
+      ${chip(s.firewall_allow || 0, 'FW ALLOW', '#60a5fa')}
+      ${chip(s.dlp_allow || 0, 'DLP Bypass', '#ef4444')}
+      ${chip(s.zcc_apps || 0, 'ZCC App', '#10b981')}
+      ${chip(s.zcc_processes || 0, 'ZCC Proc', '#10b981')}
+      ${chip(s.zcc_ips || 0, 'ZCC IP', '#10b981')}
+      ${chip(s.zcc_domains || 0, 'ZCC Domain', '#10b981')}
+      ${chip(s.zcc_trusted_nets || 0, 'ZCC Trusted', '#10b981')}
+      <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);font-weight:700;">Total: ${s.total_bypass_items || 0}</span>
+    </div>`;
+
+  let risky = '';
+  if (data.risk_flags && data.risk_flags.length) {
+    risky = `
+      <div style="padding:0.75rem;background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:6px;margin-bottom:0.8rem;">
+        <div style="color:#ef4444;font-weight:700;margin-bottom:0.3rem;">⚠ ${data.risk_flags.length} high-risk bypass${data.risk_flags.length===1?'':'es'} detected</div>
+        <ul style="margin-left:1.2rem;font-size:0.82rem;color:var(--dim);">
+          ${data.risk_flags.map(r => `<li><strong>${escapeHtml(r.name)}</strong> (${escapeHtml(r.source)} #${r.id}, action <code>${escapeHtml(r.action)}</code>) — ${escapeHtml(r.reason)}</li>`).join('')}
+        </ul>
+      </div>`;
+  }
+
+  // Per-section diagnostics — when non-empty, shows the GUI exactly which fetcher failed and why.
+  let diag = '';
+  if (data.diagnostics && data.diagnostics.length) {
+    diag = `
+      <div style="padding:0.75rem;background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;border-radius:6px;margin-bottom:0.8rem;">
+        <div style="color:#f59e0b;font-weight:700;margin-bottom:0.3rem;">⚠ ${data.diagnostics.length} section${data.diagnostics.length===1?'':'s'} had issues — other sections still rendered below.</div>
+        <details><summary style="cursor:pointer;font-size:0.8rem;color:var(--accent);">Show details</summary>
+        <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.78rem;color:var(--dim);">
+          ${data.diagnostics.map(d => `<li><strong>${escapeHtml(d.section)}</strong>: <code>${escapeHtml(d.error_type || '?')}</code> — ${escapeHtml(d.error || '')}</li>`).join('')}
+        </ul></details>
+      </div>`;
+  }
+
+  const sections = [
+    ['ssl_bypass_rules', 'SSL Inspection Bypass Rules', ['id', 'name', 'action', 'state', 'scope']],
+    ['url_filter_allow', 'URL Filtering ALLOW Rules',   ['id', 'name', 'action', 'state', 'scope']],
+    ['firewall_allow',   'Firewall ALLOW Rules',        ['id', 'name', 'action', 'state', 'scope']],
+    ['dlp_allow',        'DLP ALLOW / BYPASS Rules',    ['id', 'name', 'action', 'state', 'scope']],
+  ];
+  const ruleTable = (items, cols) => {
+    if (!items || items.length === 0) return '<div style="color:var(--dim);font-size:0.82rem;padding:0.5rem;">No items.</div>';
+    return `<table style="width:100%;font-size:0.8rem;border-collapse:collapse;">
+      <thead><tr style="background:rgba(59,130,246,0.08);">${cols.map(c=>`<th style="padding:0.35rem 0.5rem;text-align:left;">${c}</th>`).join('')}</tr></thead>
+      <tbody>${items.map(it => `<tr>${cols.map(c => {
+        let v = it[c]; if (Array.isArray(v)) v = v.slice(0,5).join(', ');
+        return `<td style="padding:0.3rem 0.5rem;border-top:1px solid var(--border);">${escapeHtml(String(v || '—'))}</td>`;
+      }).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+  };
+
+  let rulesHtml = '';
+  for (const [key, label, cols] of sections) {
+    const sec = (data.sections || {})[key] || {};
+    rulesHtml += `
+      <details open style="margin-bottom:0.5rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.6rem 0.8rem;cursor:pointer;font-weight:600;">${label} <span style="color:var(--dim);font-weight:400;">(${sec.count || 0}${sec.total_rules || sec.total_ssl_rules ? ' of ' + (sec.total_rules || sec.total_ssl_rules) : ''})</span></summary>
+        <div style="padding:0.5rem 0.8rem;">${ruleTable(sec.items, cols)}</div>
+      </details>`;
+  }
+
+  const zcc = (data.sections || {}).zcc || {};
+  const zccSections = [
+    ['apps', 'ZCC App Bypass', ['profile', 'name', 'path', 'os']],
+    ['processes', 'ZCC Process Bypass', ['profile', 'name']],
+    ['ips', 'ZCC IP Bypass', ['profile', 'value']],
+    ['domains', 'ZCC Domain Bypass', ['profile', 'value']],
+    ['trusted_networks', 'ZCC Trusted Networks', ['profile', 'value']],
+  ];
+  let zccHtml = '';
+  for (const [key, label, cols] of zccSections) {
+    const sec = zcc[key] || {};
+    zccHtml += `
+      <details style="margin-bottom:0.5rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.6rem 0.8rem;cursor:pointer;font-weight:600;">${label} <span style="color:var(--dim);font-weight:400;">(${sec.count || 0})</span></summary>
+        <div style="padding:0.5rem 0.8rem;">${ruleTable(sec.items, cols)}</div>
+      </details>`;
+  }
+
+  // SSL exemptions
+  const exm = (data.sections || {}).ssl_exemptions || {};
+  const exmHtml = `
+    <details style="margin-bottom:0.5rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+      <summary style="padding:0.6rem 0.8rem;cursor:pointer;font-weight:600;">SSL Exemptions / Do-Not-Inspect <span style="color:var(--dim);font-weight:400;">(${exm.count || 0})</span></summary>
+      <div style="padding:0.5rem 0.8rem;">${ruleTable(exm.items, ['source', 'field', 'value'])}</div>
+    </details>`;
+
+  const guidance = `
+    <div style="margin-top:1rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-left:3px solid var(--accent);border-radius:6px;font-size:0.82rem;">
+      <strong style="display:block;margin-bottom:0.3rem;">Guidance</strong>
+      <ul style="margin-left:1.1rem;color:var(--dim);">
+        ${(data.guidance || []).map(g => `<li>${escapeHtml(g)}</li>`).join('')}
+      </ul>
+    </div>`;
+
+  document.getElementById('bypassResult').innerHTML = top + diag + risky + rulesHtml + exmHtml + zccHtml + guidance;
+}
+
+
+async function runUpdateCheck(reset) {
+  const btn = document.getElementById('updateRunBtn');
+  const r = document.getElementById('updateResult');
+  btn.disabled = true;
+  const originalBtnText = btn.textContent;
+  btn.textContent = 'Checking...';
+  r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Fetching PyPI + help.zscaler.com (parallel, ~3–5s)...</div>';
+  try {
+    const resp = await fetch('/api/updates/check', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reset: !!reset})});
+    if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
+    const data = await resp.json();
+    renderUpdateResults(data);
+  } catch(e) {
+    r.innerHTML = `<div style="color:var(--fail);padding:1rem;">Update check failed: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalBtnText;
+  }
+}
+
+function renderUpdateResults(data) {
+  const s = data.summary || {};
+  const top = `
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+      <span class="badge" style="background:rgba(16,185,129,0.15);color:#10b981;">Changed: ${s.changed||0}</span>
+      <span class="badge" style="background:rgba(59,130,246,0.15);color:var(--accent);">New: ${s.new||0}</span>
+      <span class="badge" style="background:rgba(100,116,139,0.15);color:var(--dim);">Unchanged: ${s.unchanged||0}</span>
+      <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--fail);">Errors: ${s.error||0}</span>
+      <span style="color:var(--dim);font-size:0.78rem;align-self:center;">· ${data.sources_count} sources · ${data.elapsed_seconds}s</span>
+    </div>`;
+  const rows = (data.results || []).map(r => {
+    const statusColors = {
+      changed:   ['#10b981','CHANGED'],
+      new:       ['#60a5fa','NEW'],
+      unchanged: ['#64748b','OK'],
+      error:     ['#ef4444','ERROR'],
+    };
+    const [col, label] = statusColors[r.status] || ['#64748b', (r.status||'?').toUpperCase()];
+    const impColor = r.importance === 'high' ? '#f59e0b' : r.importance === 'medium' ? '#64748b' : '#475569';
+    let detail = '';
+    if (r.status === 'error') {
+      detail = `<div style="color:var(--fail);font-size:0.78rem;margin-top:0.25rem;">${escapeHtml(r.error || '')}</div>`;
+    } else if (r.current !== undefined) {
+      const prev = r.previous !== null && r.previous !== undefined ? ` (was: <code style="color:var(--dim);">${escapeHtml(String(r.previous))}</code>)` : '';
+      detail = `<div style="color:var(--dim);font-size:0.78rem;margin-top:0.25rem;">Current: <code style="color:var(--accent);">${escapeHtml(String(r.current))}</code>${prev}</div>`;
+    }
+    let extra = '';
+    if (r.installed && r.installed_mismatch) {
+      extra += `<div style="color:#f59e0b;font-size:0.78rem;margin-top:0.2rem;">⚠ Installed: <code>${escapeHtml(r.installed)}</code> — upgrade available.</div>`;
+    }
+    if (r.action_hint) {
+      extra += `<div style="margin-top:0.3rem;padding:0.4rem 0.6rem;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;font-size:0.78rem;">${escapeHtml(r.action_hint)}</div>`;
+    }
+    const link = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:0.78rem;">Open ↗</a>` : '';
+    return `
+      <div style="padding:0.75rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+              <span style="padding:0.1rem 0.45rem;background:${col}20;color:${col};border-radius:4px;font-size:0.7rem;font-weight:700;letter-spacing:0.05em;">${label}</span>
+              <span style="padding:0.1rem 0.4rem;background:${impColor}20;color:${impColor};border-radius:4px;font-size:0.7rem;">${(r.importance || 'low').toUpperCase()}</span>
+              <strong style="font-size:0.92rem;">${escapeHtml(r.name)}</strong>
+            </div>
+            <div style="color:var(--dim);font-size:0.78rem;margin-top:0.2rem;">${escapeHtml(r.why || '')}</div>
+            ${detail}${extra}
+          </div>
+          <div>${link}</div>
+        </div>
+      </div>`;
+  }).join('');
+  const footer = `
+    <div style="color:var(--dim);font-size:0.75rem;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--border);">
+      Last checked: ${data.checked_at} · Cache: <code>${escapeHtml(data.cache_file || '')}</code>
+    </div>`;
+  document.getElementById('updateResult').innerHTML = top + rows + footer;
+}
 </script>
 </body>
 </html>
