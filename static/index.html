@@ -3093,17 +3093,252 @@ function renderChecks(checks, filter) {
   const list = document.getElementById('checksList');
   list.innerHTML = '';
   let curSec = '';
+  // Build a set of check_ids that have a registered remediation recipe
+  // so we only render the 🔧 Remediate button where it's meaningful.
+  const remediableIds = new Set(
+    (window._remediationCatalog || []).map(r => r.check_id)
+  );
+  const isRemediable = (cid) => {
+    if (remediableIds.has(cid)) return true;
+    // Prefix match — a recipe for 'FW-01' covers 'FW-01.dns' etc.
+    for (const r of remediableIds) if (cid && cid.startsWith(r)) return true;
+    return false;
+  };
+
   for (const c of checks) {
     const st = c.status === 'ERROR' ? 'INFO' : c.status;
     if (filter !== 'all' && st !== filter) continue;
     if (c.section !== curSec) {
       curSec = c.section;
-      list.innerHTML += `<div class="section-header">${curSec}</div>`;
+      list.innerHTML += `<div class="section-header">${escapeHtml(curSec)}</div>`;
     }
     const stLabel = {PASS:'Configured', FAIL:'Action Required', REVIEW:'Needs Review', INFO:'Not Configured'}[st] || st;
-    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body"><span class="check-id">[${c.id}]</span> <span class="check-label">${c.label}</span><div class="check-detail">${c.detail || ''}</div></div></div>`;
+    // Remediate button only on actionable (FAIL/REVIEW) rows that have a recipe
+    const showRemediate = (st === 'FAIL' || st === 'REVIEW') && isRemediable(c.id);
+    const remediateBtn = showRemediate
+      ? `<button type="button" onclick="openRemediationWizard('${encodeURIComponent(c.id)}')"
+                 aria-label="Remediate ${escapeHtml(c.label)}"
+                 style="float:right;margin-left:0.5rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;padding:0.3rem 0.7rem;font-size:0.75rem;border-radius:5px;cursor:pointer;">
+           🔧 Remediate</button>`
+      : '';
+    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body">${remediateBtn}<span class="check-id">[${escapeHtml(c.id)}]</span> <span class="check-label">${escapeHtml(c.label)}</span><div class="check-detail">${escapeHtml(c.detail || '')}</div></div></div>`;
   }
   if (!list.innerHTML) list.innerHTML = '<p style="padding:2rem;text-align:center;color:var(--dim)">No checks match this filter.</p>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Guided Remediation Wizard
+// Reads /api/remediation/catalog once + caches. Opens a modal with
+// the recipe's field spec rendered as an accessible form. Submit →
+// /api/remediation/plan (validate + preview) → Activate →
+// /api/remediation/execute with dry_run=false (writes gated).
+// ══════════════════════════════════════════════════════════════════
+
+window._remediationCatalog = null;
+let _currentRemediationCheckId = null;
+
+async function _loadRemediationCatalog() {
+  if (window._remediationCatalog) return window._remediationCatalog;
+  try {
+    const r = await fetch('/api/remediation/catalog');
+    const d = await r.json();
+    window._remediationCatalog = d.catalog || [];
+  } catch(e) {
+    window._remediationCatalog = [];
+  }
+  return window._remediationCatalog;
+}
+// Preload so renderChecks can decide which rows get the Remediate button
+_loadRemediationCatalog();
+
+function _findRecipeForCheck(check_id) {
+  for (const r of (window._remediationCatalog || [])) {
+    if (r.check_id === check_id || (check_id || '').startsWith(r.check_id)) return r;
+  }
+  return null;
+}
+
+async function openRemediationWizard(encodedCheckId) {
+  const check_id = decodeURIComponent(encodedCheckId);
+  _currentRemediationCheckId = check_id;
+  await _loadRemediationCatalog();
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) {
+    alert(`No remediation recipe registered for check '${check_id}'.`);
+    return;
+  }
+  // Ensure modal exists
+  _ensureRemediationModal();
+  const modal = document.getElementById('remediationModal');
+  document.getElementById('remediationTitle').textContent = `🔧 ${recipe.label}`;
+  document.getElementById('remediationSummary').textContent = recipe.summary;
+  const destructiveNote = recipe.destructive
+    ? '<div style="margin:0.5rem 0;padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.8rem;"><strong>⚠ This writes to the tenant.</strong> Requires the writes-enabled launcher. Dry-run preview always runs first.</div>'
+    : '';
+  document.getElementById('remediationDestructive').innerHTML = destructiveNote;
+
+  // Render the form
+  const formHost = document.getElementById('remediationFormFields');
+  formHost.innerHTML = recipe.fields.map(f => _renderField(f)).join('');
+  document.getElementById('remediationResult').innerHTML = '';
+  document.getElementById('remediationActivateBtn').style.display = 'none';
+
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+  setTimeout(() => document.querySelector('#remediationFormFields input, #remediationFormFields textarea, #remediationFormFields select')?.focus(), 100);
+}
+
+function _renderField(f) {
+  const id = `remField_${f.key}`;
+  const req = f.required ? ' <span style="color:var(--warn);">*</span>' : '';
+  const hint = f.hint ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">${escapeHtml(f.hint)}</div>` : '';
+  const base = `padding:0.4rem 0.6rem;font-size:0.85rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;`;
+  let input = '';
+  if (f.type === 'enum') {
+    input = `<select id="${id}" style="${base}">` +
+      (f.options || []).map(o => `<option value="${escapeHtml(o)}" ${o === f.default ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('') +
+      `</select>`;
+  } else if (f.type === 'textarea') {
+    input = `<textarea id="${id}" rows="3" style="${base}font-family:inherit;resize:vertical;" placeholder="${escapeHtml(f.hint || '')}"></textarea>`;
+  } else if (f.type === 'number') {
+    input = `<input id="${id}" type="number" value="${f.default ?? ''}" ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''} style="${base}">`;
+  } else if (f.type === 'csv') {
+    input = `<input id="${id}" type="text" placeholder="${escapeHtml(f.hint || 'comma-separated')}" style="${base}font-family:monospace;">`;
+  } else {
+    input = `<input id="${id}" type="text" ${f.max_length ? `maxlength="${f.max_length}"` : ''} value="${escapeHtml(f.default ?? '')}" style="${base}">`;
+  }
+  return `<div style="margin-bottom:0.7rem;">
+    <label for="${id}" style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.2rem;">${escapeHtml(f.label)}${req}</label>
+    ${input}
+    ${hint}
+  </div>`;
+}
+
+function _collectRemediationCriteria() {
+  const recipe = _findRecipeForCheck(_currentRemediationCheckId);
+  if (!recipe) return {};
+  const out = {};
+  for (const f of recipe.fields) {
+    const el = document.getElementById(`remField_${f.key}`);
+    if (!el) continue;
+    out[f.key] = el.value;
+  }
+  return out;
+}
+
+async function remediationPreview() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const criteria = _collectRemediationCriteria();
+  const resultEl = document.getElementById('remediationResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Validating + building plan...</div>';
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = criteria;
+  try {
+    const r = await fetch('/api/remediation/plan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (!data.ok) {
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;">
+        <strong>Validation failed:</strong>
+        <ul style="margin:0.3rem 0 0 1.1rem;">${(data.errors || []).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+      </div>`;
+      document.getElementById('remediationActivateBtn').style.display = 'none';
+      return;
+    }
+    // Show the planned request
+    resultEl.innerHTML = `
+      <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:6px;">
+        <div style="font-weight:600;margin-bottom:0.3rem;">✓ Plan ready</div>
+        <div style="font-size:0.82rem;"><strong>Method:</strong> <code>${escapeHtml(data.method)}</code></div>
+        <div style="font-size:0.82rem;"><strong>Endpoint:</strong> <code>${escapeHtml(data.endpoint)}</code></div>
+        <div style="font-size:0.82rem;margin-top:0.4rem;"><strong>Body:</strong></div>
+        <pre style="background:rgba(15,23,42,0.6);padding:0.5rem;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin-top:0.2rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
+      </div>`;
+    document.getElementById('remediationActivateBtn').style.display = 'inline-flex';
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function remediationActivate() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) return;
+  if (recipe.destructive) {
+    if (!confirm(`This will APPLY the remediation to your tenant.\n\nRecipe: ${recipe.label}\n\nMake sure you launched via START_Zscaler_Assessment_WRITES_ENABLED.bat. Continue?`)) return;
+  }
+  const criteria = _collectRemediationCriteria();
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = criteria;
+  body.dry_run = false;
+  const resultEl = document.getElementById('remediationResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Applying...</div>';
+  try {
+    const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (data.status === 'completed') {
+      resultEl.innerHTML = `<div style="padding:0.6rem 0.8rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;">
+        <strong style="color:var(--pass);">✓ Applied (HTTP ${data.http_status})</strong>
+        <div style="font-size:0.82rem;margin-top:0.3rem;">${escapeHtml(data.message || '')}</div>
+      </div>`;
+      document.getElementById('remediationActivateBtn').style.display = 'none';
+    } else if (data.status === 'blocked') {
+      resultEl.innerHTML = `<div style="color:var(--warn);padding:0.6rem 0.8rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;">
+        <strong>Blocked:</strong> ${escapeHtml(data.reason || '')}
+      </div>`;
+    } else {
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.6rem 0.8rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;">
+        <strong>${escapeHtml(data.status || 'failed')}:</strong> ${escapeHtml(data.error || data.message || '')}
+      </div>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Apply failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeRemediationModal() {
+  const modal = document.getElementById('remediationModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  _currentRemediationCheckId = null;
+}
+
+function _ensureRemediationModal() {
+  if (document.getElementById('remediationModal')) return;
+  const m = document.createElement('div');
+  m.id = 'remediationModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'remediationTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:720px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <h2 id="remediationTitle" style="margin:0;">🔧 Remediate</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeRemediationModal()" aria-label="Close remediation dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p id="remediationSummary" style="color:var(--dim);font-size:0.88rem;"></p>
+      <div id="remediationDestructive"></div>
+      <div id="remediationFormFields" style="margin-top:0.8rem;"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.8rem;">
+        <button type="button" class="btn btn-primary" onclick="remediationPreview()" style="padding:0.55rem 1rem;font-size:0.85rem;">Preview plan (dry-run)</button>
+        <button type="button" id="remediationActivateBtn" onclick="remediationActivate()"
+                style="display:none;padding:0.55rem 1rem;font-size:0.85rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+          ⚡ Activate (apply live)
+        </button>
+      </div>
+      <div id="remediationResult" style="margin-top:0.8rem;"></div>
+    </div>`;
+  document.body.appendChild(m);
+  // Esc closes this modal too
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeRemediationModal();
+  });
 }
 
 function filterChecks(status, btn) {
