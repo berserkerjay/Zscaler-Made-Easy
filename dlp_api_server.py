@@ -1032,23 +1032,23 @@ async def report_bypass(req: MigrateRequest):
 
 
 class BypassExportRequest(MigrateRequest):
-    format: str = "csv"  # csv | markdown | json
+    format: str = "csv"  # csv | markdown | json | docx
 
 
 @app.post("/api/report/bypass/export")
 async def report_bypass_export(req: BypassExportRequest):
-    """Generate and download the bypass report in csv / markdown / json."""
+    """Generate and download the bypass report in csv / markdown / json / docx."""
     try:
         from bypass_report import generate_bypass_report, to_csv, to_markdown
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
     fmt = (req.format or "csv").lower()
-    if fmt not in ("csv", "markdown", "md", "json"):
+    if fmt not in ("csv", "markdown", "md", "json", "docx", "word", "doc"):
         raise HTTPException(status_code=400, detail=f"Unsupported format: {req.format}")
     client = await asyncio.to_thread(_build_client, req)
     report = await asyncio.to_thread(generate_bypass_report, client)
 
-    from fastapi.responses import Response
+    from fastapi.responses import Response, FileResponse
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     if fmt == "csv":
         return Response(
@@ -1061,6 +1061,23 @@ async def report_bypass_export(req: BypassExportRequest):
             content=to_markdown(report),
             media_type="text/markdown",
             headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.md"},
+        )
+    if fmt in ("docx", "word", "doc"):
+        try:
+            from bypass_report import to_docx
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
+        output_path = os.path.join(tempfile.gettempdir(), f"zscaler_bypass_{ts}.docx")
+        try:
+            await asyncio.to_thread(to_docx, report, output_path)
+        except ImportError as e:
+            raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
+        return FileResponse(
+            output_path,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=f"zscaler_bypass_{ts}.docx",
         )
     # json
     return Response(

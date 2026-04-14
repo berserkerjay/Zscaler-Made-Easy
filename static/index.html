@@ -520,9 +520,10 @@
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
         <button class="btn btn-primary" id="bypassRunBtn" onclick="runBypassReport()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Generate Report</button>
         <span style="color:var(--dim);font-size:0.78rem;margin-right:0.5rem;">Export:</span>
-        <button class="btn btn-ghost" id="bypassExportCsv" onclick="exportBypass('csv')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📄 CSV</button>
-        <button class="btn btn-ghost" id="bypassExportMd"  onclick="exportBypass('markdown')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📝 Markdown</button>
-        <button class="btn btn-ghost" id="bypassExportJson" onclick="exportBypass('json')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">⚙ JSON</button>
+        <button class="btn btn-ghost" id="bypassExportCsv"  onclick="exportBypass('csv')"      disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📄 CSV</button>
+        <button class="btn btn-ghost" id="bypassExportMd"   onclick="exportBypass('markdown')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📝 Markdown</button>
+        <button class="btn btn-ghost" id="bypassExportDocx" onclick="exportBypass('docx')"     disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📘 Word</button>
+        <button class="btn btn-ghost" id="bypassExportJson" onclick="exportBypass('json')"     disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">⚙ JSON</button>
       </div>
       <div id="bypassResult" style="font-size:0.88rem;"></div>
     </div>
@@ -2872,14 +2873,14 @@ async function runBypassReport() {
   const originalBtnText = btn.textContent;
   btn.textContent = 'Generating...';
   r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Querying ZIA + ZCC endpoints in parallel — this takes 5–15 seconds on a normal tenant.</div>';
-  ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
+  ['bypassExportCsv','bypassExportMd','bypassExportDocx','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
   try {
     const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     _bypassReportCache = data;
     renderBypassReport(data);
-    ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = false);
+    ['bypassExportCsv','bypassExportMd','bypassExportDocx','bypassExportJson'].forEach(id => document.getElementById(id).disabled = false);
   } catch(e) {
     r.innerHTML = `<div style="color:var(--fail);padding:1rem;">Report failed: ${escapeHtml(e.message)}</div>`;
   } finally {
@@ -2895,7 +2896,8 @@ async function exportBypass(fmt) {
     const resp = await fetch('/api/report/bypass/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const blob = await resp.blob();
-    const ext = fmt === 'markdown' ? 'md' : fmt;
+    const extMap = {markdown: 'md', docx: 'docx', word: 'docx', doc: 'docx', csv: 'csv', json: 'json'};
+    const ext = extMap[fmt] || fmt;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `zscaler_bypass_${new Date().toISOString().slice(0,10)}.${ext}`;
