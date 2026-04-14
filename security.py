@@ -170,6 +170,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         h.setdefault("X-Frame-Options", "DENY")
         h.setdefault("Referrer-Policy", "no-referrer")
         h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=()")
+        # Content-Security-Policy — prevents inline-script injection from
+        # taking over the GUI and blocks every external network fetch.
+        # 'unsafe-inline' on style + script is required because the app
+        # ships its UI as inline <style> + <script> in index.html; any
+        # CSP tightening past that requires externalizing those blocks.
+        # img-src 'self' data: = same-origin images + inline data URIs
+        # only (covers the SVG favicon and the /static/branding/ files).
+        # connect-src 'self' = API calls scoped to the same origin.
+        h.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
         # Don't cache API responses — they may carry assessment data
         if request.url.path.startswith("/api/"):
             h["Cache-Control"] = "no-store"

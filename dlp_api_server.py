@@ -74,6 +74,40 @@ try:
 except Exception:
     pass
 
+# Automation-readiness checks (github.com/zscaler ecosystem: SDKs,
+# terraform providers, ansible collections, zscaler-terraformer).
+AUTOMATION_REG = []
+try:
+    AUTO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_automation_checks.py")
+    aspec = importlib.util.spec_from_file_location("automation_checks", AUTO_PATH)
+    auto_checks = importlib.util.module_from_spec(aspec)
+    aspec.loader.exec_module(auto_checks)
+    AUTOMATION_REG = auto_checks.AUTOMATION_REG
+except Exception:
+    pass
+
+# ZDX — Digital Experience
+ZDX_REG = []
+try:
+    ZDX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_zdx_checks.py")
+    zspec = importlib.util.spec_from_file_location("zdx_checks", ZDX_PATH)
+    zdx_mod = importlib.util.module_from_spec(zspec)
+    zspec.loader.exec_module(zdx_mod)
+    ZDX_REG = zdx_mod.ZDX_REG
+except Exception:
+    pass
+
+# ZIdentity — users/groups/resource-servers/entitlements
+ZID_REG = []
+try:
+    ZID_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_zidentity_checks.py")
+    idspec = importlib.util.spec_from_file_location("zidentity_checks", ZID_PATH)
+    zid_mod = importlib.util.module_from_spec(idspec)
+    idspec.loader.exec_module(zid_mod)
+    ZID_REG = zid_mod.ZID_REG
+except Exception:
+    pass
+
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -141,6 +175,7 @@ class AssessRequest(BaseModel):
 class UpdateCheckRequest(BaseModel):
     only: Optional[list[str]] = None  # subset of source keys
     reset: bool = False               # wipe cache first
+    skip_tls_verify: bool = False     # corporate TLS MITM bypass (opt-in per request)
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -162,6 +197,92 @@ async def serve_gui():
             "Pragma": "no-cache",
         },
     )
+
+
+# ── Text-prompt command interface ────────────────────────────────
+# Lets the GUI accept natural-language-ish input and dispatch it to
+# one of the explicit actions in commands.COMMAND_CATALOG.
+
+class CommandParseRequest(BaseModel):
+    text: str = ""
+    # Opt-in local-LLM parsing (default off). Endpoint MUST be loopback.
+    use_llm: bool = False
+    llm_endpoint: str = "http://localhost:11434/api/chat"  # Ollama default
+    llm_model: str = "llama3.1"
+    llm_kind: str = "ollama"   # "ollama" | "openai"
+
+
+@app.get("/api/commands")
+async def commands_catalog():
+    """Return the list of supported commands so the GUI can render
+    autocomplete + help without hardcoding."""
+    try:
+        from commands import COMMAND_CATALOG
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"commands module unavailable: {e}")
+    return {"catalog": COMMAND_CATALOG}
+
+
+@app.post("/api/commands/parse")
+async def commands_parse(req: CommandParseRequest):
+    """Parse arbitrary user text into a structured action.
+
+    Default path (use_llm=false) is purely deterministic — never runs
+    user code, never calls an LLM, never leaves the machine.
+
+    Opt-in path (use_llm=true) routes the query through a LOCAL LLM
+    on a loopback endpoint (Ollama / llama.cpp / LM Studio). The LLM
+    result is schema-validated against the command catalog and FALLS
+    BACK to the deterministic parser on any error, parsing failure,
+    or non-allowlisted action/scope."""
+    try:
+        from commands import parse, to_dict
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"commands module unavailable: {e}")
+
+    raw = (req.text or "")[:500]
+
+    if req.use_llm:
+        try:
+            from llm_parser import parse_with_llm
+        except Exception as e:
+            # Module unavailable — fall back to deterministic parser
+            result = await asyncio.to_thread(parse, raw)
+            result.suggestion = (result.suggestion or "") + f" [LLM module unavailable: {e}]"
+            return to_dict(result)
+        result = await asyncio.to_thread(
+            parse_with_llm, raw,
+            req.llm_endpoint, req.llm_model, req.llm_kind,
+        )
+        d = to_dict(result)
+        d["parser"] = "llm"  # tag so GUI can display which path was used
+        return d
+
+    result = await asyncio.to_thread(parse, raw)
+    d = to_dict(result)
+    d["parser"] = "deterministic"
+    return d
+
+
+@app.get("/api/branding")
+async def branding_manifest():
+    """Report which optional branding assets are present in
+    static/branding/ so the GUI can decide which backdrops to render.
+    Only checks file existence — does NOT read or transmit contents."""
+    branding_dir = os.path.join(STATIC_DIR, "branding")
+    def exists(fname: str) -> bool:
+        try:
+            p = os.path.join(branding_dir, fname)
+            return os.path.isfile(p) and os.path.getsize(p) > 0
+        except Exception:
+            return False
+    return {
+        "logo_svg":      exists("logo.svg"),
+        "logo_png":      exists("logo.png"),
+        "portrait_jpg":  exists("portrait.jpg"),
+        "portrait_png":  exists("portrait.png"),
+        "favicon":       exists("favicon.ico"),
+    }
 
 
 @app.get("/favicon.ico")
@@ -190,7 +311,10 @@ async def health():
         "dlp_checks": len(REG),
         "platform_checks": len(PLATFORM_REG),
         "genai_checks": len(GENAI_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG),
+        "automation_checks": len(AUTOMATION_REG),
+        "zdx_checks": len(ZDX_REG),
+        "zidentity_checks": len(ZID_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG),
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
@@ -199,7 +323,7 @@ async def health():
 
 @app.get("/api/checks")
 async def list_checks(scope: Optional[str] = None):
-    """List all check IDs, sections, and labels. Optional scope filter: dlp, zia, zpa, zcc, genai."""
+    """List all check IDs, sections, and labels. Optional scope filter: dlp, zia, zpa, zcc, genai, automation."""
     if scope == "dlp":
         all_checks = list(REG)
     elif scope == "zia":
@@ -210,8 +334,14 @@ async def list_checks(scope: Optional[str] = None):
         all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
     elif scope == "genai":
         all_checks = list(GENAI_REG)
+    elif scope == "automation":
+        all_checks = list(AUTOMATION_REG)
+    elif scope == "zdx":
+        all_checks = list(ZDX_REG)
+    elif scope == "zidentity":
+        all_checks = list(ZID_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -242,8 +372,14 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
         all_checks = [c for c in PLATFORM_REG if c[1].startswith("ZCC")]
     elif scope == "genai":
         all_checks = list(GENAI_REG)
+    elif scope == "automation":
+        all_checks = list(AUTOMATION_REG)
+    elif scope == "zdx":
+        all_checks = list(ZDX_REG)
+    elif scope == "zidentity":
+        all_checks = list(ZID_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -397,7 +533,44 @@ async def migrate_status(req: MigrateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(assess_current_status, client)
+    result = await asyncio.to_thread(assess_current_status, client)
+    result["mode_source"] = "auto_detected" if result.get("found_via") else "api_unknown"
+    return result
+
+
+class ManualModeRequest(MigrateRequest):
+    mode: str = ""   # "rule_order" | "evaluate_all_rules"
+
+
+@app.post("/api/migrate/status/manual")
+async def migrate_status_manual(req: ManualModeRequest):
+    """Step 1 override: accept the user's manual declaration of the current mode
+    when the API doesn't expose the toggle (account-level feature flag). Returns
+    the same shape as /api/migrate/status so the wizard keeps working."""
+    try:
+        from rule_migrator import assess_current_status, fetch_current_rules, reorder_for_eval_all
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    m = (req.mode or "").strip().lower()
+    if m not in ("rule_order", "evaluate_all_rules"):
+        raise HTTPException(status_code=400,
+                            detail="mode must be 'rule_order' or 'evaluate_all_rules'")
+    client = await asyncio.to_thread(_build_client, req)
+    # Still run the real assessment (to get rule counts, posture) but OVERRIDE the mode.
+    base = await asyncio.to_thread(assess_current_status, client)
+    evaluate_all = (m == "evaluate_all_rules")
+    base["evaluate_all_enabled"] = evaluate_all
+    base["current_mode"] = "Evaluate All Rules" if evaluate_all else "Rule Order"
+    base["mode_source"] = "manual_declaration"
+    base["found_via"] = f"user-declared (API does not expose this flag in your tenant)"
+    base["ready_to_migrate"] = not evaluate_all
+    if evaluate_all:
+        base["recommendation"] = "✅ You declared this tenant is in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning."
+    elif base.get("order_already_safe_for_eval_all"):
+        base["recommendation"] = "You declared this tenant is in Rule Order mode. Rule order is already optimal for Evaluate All — safe to enable the feature with low risk."
+    else:
+        base["recommendation"] = "You declared this tenant is in Rule Order mode. Rule order is NOT yet safe for Evaluate All — run Step 3 (Optimize) before enabling."
+    return base
 
 
 # ── Step 2: Download Current Rules ───────────────────────────────
@@ -625,10 +798,28 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in GENAI_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        if "automation" in scopes:
+            for c in AUTOMATION_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "zdx" in scopes:
+            for c in ZDX_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
+        if "zidentity" in scopes:
+            for c in ZID_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
-        return list(REG) + PLATFORM_REG
+        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
+    elif scope == "automation":
+        return list(AUTOMATION_REG)
+    elif scope == "zdx":
+        return list(ZDX_REG)
+    elif scope == "zidentity":
+        return list(ZID_REG)
     elif scope == "zia":
         return list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
     elif scope == "zpa":
@@ -668,7 +859,11 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "ok"})
             yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
 
-            for i, (check_id, sec, label, fn) in enumerate(checks):
+            # NOTE: the loop tuple variable must NOT be named `sec` — that
+            # shadows the outer `sec` (client_secret) and Python's
+            # closure rules then make every earlier reference to `sec`
+            # in this generator raise UnboundLocalError.
+            for i, (check_id, section, label, fn) in enumerate(checks):
                 # Bulletproof: every check runs in its own try/except with hard timeout
                 try:
                     r = await asyncio.wait_for(asyncio.to_thread(fn, client), timeout=60)
@@ -682,7 +877,7 @@ async def assess_stream(req: AssessRequest):
                     r = R(R.INFO, f"{label}: Invalid check result.")
 
                 result = {
-                    "id": check_id, "section": sec, "label": label,
+                    "id": check_id, "section": section, "label": label,
                     "status": str(r.status), "detail": str(r.detail)[:500],
                 }
                 results.append(result)
@@ -863,7 +1058,7 @@ async def updates_check(req: UpdateCheckRequest):
         raise HTTPException(status_code=500, detail=f"update checker unavailable: {e}")
     if req.reset:
         await asyncio.to_thread(reset_cache)
-    return await asyncio.to_thread(check_for_updates, False, req.only)
+    return await asyncio.to_thread(check_for_updates, False, req.only, req.skip_tls_verify)
 
 
 @app.post("/api/updates/reset-cache")

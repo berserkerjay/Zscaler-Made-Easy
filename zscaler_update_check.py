@@ -167,8 +167,16 @@ def _save_cache(data: Dict[str, Any]) -> None:
 
 # ── Fetchers ─────────────────────────────────────────────────────────
 
-def _safe_get(url: str) -> Tuple[Optional[bytes], int, str]:
-    """Fetch URL via requests with strict allowlist + timeout. Returns (body, status, error)."""
+def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[bytes], int, str]:
+    """Fetch URL via requests with strict allowlist + timeout. Returns (body, status, error).
+
+    Honors standard proxy env vars (HTTPS_PROXY, HTTP_PROXY, NO_PROXY)
+    via requests' built-in support. If those vars aren't set and the
+    machine is behind a corporate proxy, surface a helpful message.
+
+    verify_tls: explicit override. None = use env-var default (verify),
+                False = skip TLS verification (for corporate TLS MITM).
+    """
     host = (urlparse(url).hostname or "").lower()
     if host not in ALLOWED_HOSTS:
         return None, 0, f"host not in allowlist: {host}"
@@ -176,19 +184,63 @@ def _safe_get(url: str) -> Tuple[Optional[bytes], int, str]:
         import requests
     except Exception:
         return None, 0, "requests library not available"
+
+    proxies = None
+    # requests already reads HTTPS_PROXY automatically, but we also accept
+    # a process-local ZSCALER_UPDATE_PROXY so users can override without
+    # setting a system-wide var.
+    custom = os.environ.get("ZSCALER_UPDATE_PROXY")
+    if custom:
+        proxies = {"http": custom, "https": custom}
+
+    # TLS verification: explicit arg overrides env var
+    if verify_tls is None:
+        verify_tls = os.environ.get("ZSCALER_UPDATE_VERIFY_TLS", "1") != "0"
+
     try:
+        # Suppress urllib3's InsecureRequestWarning when the user has explicitly
+        # opted into verify=False (they know, we know — no need to spam the log).
+        if not verify_tls:
+            try:
+                import urllib3
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            except Exception:
+                pass
         r = requests.get(
             url,
             timeout=FETCH_TIMEOUT,
             headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/json,*/*"},
+            proxies=proxies,
+            verify=verify_tls,
         )
         return r.content, r.status_code, ""
+    except requests.exceptions.SSLError as e:
+        return None, 0, (f"TLS error (corporate TLS inspection?): {str(e)[:200]}. "
+                         f"If a corporate proxy intercepts TLS, set ZSCALER_UPDATE_VERIFY_TLS=0.")
+    except requests.exceptions.ProxyError as e:
+        return None, 0, (f"Proxy rejected the request: {str(e)[:200]}. "
+                         f"Set HTTPS_PROXY=http://user:pass@proxy:port or "
+                         f"ZSCALER_UPDATE_PROXY to point at an allowed egress.")
+    except requests.exceptions.ConnectTimeout:
+        return None, 0, (f"Connection timeout to {host}. "
+                         f"Likely blocked by a corporate proxy or firewall. "
+                         f"Set HTTPS_PROXY/ZSCALER_UPDATE_PROXY or run the tool "
+                         f"from a host that can reach pypi.org / help.zscaler.com.")
     except requests.exceptions.Timeout:
-        return None, 0, "timeout"
-    except requests.exceptions.ConnectionError:
-        return None, 0, "connection error"
+        return None, 0, f"read timeout to {host} ({FETCH_TIMEOUT}s)"
+    except requests.exceptions.ConnectionError as e:
+        msg = str(e)[:200]
+        hint = ""
+        low = msg.lower()
+        if "proxy" in low or "tunnel" in low or "403" in low or "407" in low:
+            hint = (" — looks like corporate proxy blocking/auth issue. "
+                    "Set HTTPS_PROXY=http://user:pass@proxy:port or "
+                    "ZSCALER_UPDATE_PROXY.")
+        elif "name" in low or "resolve" in low or "getaddrinfo" in low:
+            hint = " — DNS resolution failed; check network/DNS settings."
+        return None, 0, f"connection error: {msg}{hint}"
     except Exception as e:
-        return None, 0, str(e)[:150]
+        return None, 0, f"{type(e).__name__}: {str(e)[:200]}"
 
 
 def _strip_volatile(html_bytes: bytes) -> bytes:
@@ -221,10 +273,10 @@ def _hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()[:16]
 
 
-def _check_pypi(source: Dict[str, Any], cached: Dict[str, Any]) -> Dict[str, Any]:
+def _check_pypi(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Optional[bool] = None) -> Dict[str, Any]:
     pkg = source["package"]
     url = f"https://pypi.org/pypi/{pkg}/json"
-    body, code, err = _safe_get(url)
+    body, code, err = _safe_get(url, verify_tls=verify_tls)
     if err or code != 200 or not body:
         return {**_base_result(source, cached),
                 "status": "error", "error": err or f"HTTP {code}"}
@@ -278,9 +330,9 @@ def _check_pypi(source: Dict[str, Any], cached: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-def _check_html(source: Dict[str, Any], cached: Dict[str, Any]) -> Dict[str, Any]:
+def _check_html(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Optional[bool] = None) -> Dict[str, Any]:
     url = source["url"]
-    body, code, err = _safe_get(url)
+    body, code, err = _safe_get(url, verify_tls=verify_tls)
     if err or code != 200 or not body:
         return {**_base_result(source, cached),
                 "status": "error", "error": err or f"HTTP {code}",
@@ -313,7 +365,7 @@ def _base_result(source: Dict[str, Any], cached: Dict[str, Any]) -> Dict[str, An
 
 # ── Orchestrator ─────────────────────────────────────────────────────
 
-def check_for_updates(force: bool = False, only: Optional[List[str]] = None) -> Dict[str, Any]:
+def check_for_updates(force: bool = False, only: Optional[List[str]] = None, skip_tls_verify: bool = False) -> Dict[str, Any]:
     """
     Run all (or a subset of) update checks in parallel.
     Returns:
@@ -331,10 +383,14 @@ def check_for_updates(force: bool = False, only: Optional[List[str]] = None) -> 
     def _run_one(s):
         cached = cache.get(s["key"], {})
         try:
+            # Per-request TLS-verify override: when the user opts into
+            # bypass (e.g. behind corporate TLS MITM), pass verify=False
+            # without touching env vars or requiring a server restart.
+            verify_tls = False if skip_tls_verify else None
             if s["type"] == "pypi":
-                res = _check_pypi(s, cached)
+                res = _check_pypi(s, cached, verify_tls=verify_tls)
             elif s["type"] == "html_hash":
-                res = _check_html(s, cached)
+                res = _check_html(s, cached, verify_tls=verify_tls)
             else:
                 res = {**_base_result(s, cached), "status": "error",
                        "error": f"unknown source type: {s['type']}"}
@@ -384,6 +440,23 @@ def check_for_updates(force: bool = False, only: Optional[List[str]] = None) -> 
         st = r.get("status", "error")
         summary[st] = summary.get(st, 0) + 1
 
+    # Surface proxy / env state so the user can diagnose mass-connection
+    # failures (very common in corporate environments).
+    network_diag = {
+        "HTTPS_PROXY":            os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or None,
+        "HTTP_PROXY":             os.environ.get("HTTP_PROXY")  or os.environ.get("http_proxy")  or None,
+        "NO_PROXY":               os.environ.get("NO_PROXY")    or os.environ.get("no_proxy")    or None,
+        "ZSCALER_UPDATE_PROXY":   os.environ.get("ZSCALER_UPDATE_PROXY") or None,
+        "ZSCALER_UPDATE_VERIFY_TLS": os.environ.get("ZSCALER_UPDATE_VERIFY_TLS", "1"),
+        "request_skipped_tls_verify": bool(skip_tls_verify),
+    }
+    all_errors = all(r.get("status") == "error" for r in results) if results else False
+    # Detect TLS MITM pattern specifically — every error mentions SSL / CERTIFICATE_VERIFY_FAILED
+    tls_only = all_errors and all(
+        ("SSL" in (r.get("error") or "") or "certificate" in (r.get("error") or "").lower())
+        for r in results
+    )
+
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "elapsed_seconds": round(time.time() - started, 2),
@@ -392,6 +465,27 @@ def check_for_updates(force: bool = False, only: Optional[List[str]] = None) -> 
         "summary": summary,
         "any_changed": summary.get("changed", 0) + summary.get("new", 0) > 0,
         "cache_file": _cache_path(),
+        "network": network_diag,
+        "tls_mitm_suspected": tls_only,
+        "proxy_hint": (
+            "Corporate TLS inspection detected — every source failed with "
+            "CERTIFICATE_VERIFY_FAILED. Your proxy is re-signing TLS with "
+            "a CA that Python doesn't trust.\n\n"
+            "Fastest fix: click the 🔓 button below to retry with TLS "
+            "verification disabled for this session. This is safe because:\n"
+            "  • Destinations are allowlisted (pypi.org + help.zscaler.com).\n"
+            "  • Content is only hashed — never executed.\n"
+            "  • The bypass applies only to the update-checker, not to "
+            "Zscaler tenant API traffic."
+            if tls_only else
+            "Every source returned 'connection error'. This almost always means a "
+            "corporate proxy is blocking outbound traffic to pypi.org and help.zscaler.com. "
+            "Fix by either:\n"
+            "  1. Setting HTTPS_PROXY=http://user:pass@proxy:port in the environment BEFORE "
+            "starting the server.\n"
+            "  2. Setting ZSCALER_UPDATE_PROXY similarly (takes precedence for the update checker only).\n"
+            "  3. Running the tool from a host that can reach pypi.org and help.zscaler.com directly."
+        ) if all_errors else None,
     }
 
 

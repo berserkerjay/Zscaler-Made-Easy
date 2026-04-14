@@ -31,6 +31,26 @@ module — by design.
 
 from typing import Any, Dict, List, Optional, Tuple
 
+# String values that represent "Evaluate All Rules is ON" in enum-style
+# fields like inlineDlpRuleEvaluation. The admin UI shows "By Rule Order"
+# (= False) or "Evaluate All Rules" (= True).
+_EVAL_ALL_TRUE_VALUES = {
+    "evaluate_all_rules", "evaluate_all", "eval_all", "eval_all_rules",
+    "all_rules", "allrules", "evalall",
+}
+
+
+def _is_truthy(value) -> bool:
+    """Interpret a detected value as 'Evaluate All Rules enabled'.
+    True for bool-True, or enum strings matching the eval-all pattern.
+    "By Rule Order" / "BY_RULE_ORDER" resolves to False."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower().replace("-", "_") in _EVAL_ALL_TRUE_VALUES
+    return bool(value)
+
+
 # Action precedence for Evaluate All Rules mode
 # Lower number = higher priority (runs first, most restrictive)
 ACTION_PRIORITY = {
@@ -389,9 +409,30 @@ def assess_current_status(client) -> Dict[str, Any]:
     diagnostics = []
     evaluate_all = None
     found_via = None
+    # Feature-flag detection is SEPARATE from mode detection.
+    # DLP_RULE_EVALUATE_ALL=True on /zia/featureFlags means the
+    # CAPABILITY is enabled (tenant is allowed to use this mode),
+    # not that it's the currently-selected mode.
+    feature_available = None
+    feature_source = None
 
-    # Try multiple endpoints known to expose this setting
+    # Endpoints that report *capability* flags (feature availability),
+    # NOT the currently-selected mode. Matches here set feature_available
+    # but do NOT set evaluate_all (we keep probing for the real selector).
+    CAPABILITY_ENDPOINTS = {
+        "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
+        "/zia/accountFeatures", "/zia/tenantFeatures",
+        "/zia/visibility/features", "/zia/subscriptions/features",
+        "/zia/productFeatures", "/zia/featureCatalog",
+        "/zia/entitlement/features",
+    }
+
+    # Try multiple endpoints known to expose this setting. Each candidate
+    # is tried through the standard /zia/api/v1/ resolver. For tricky
+    # paths we also include 'raw:' forms that bypass the resolver so we
+    # can try alternative OneAPI path conventions verbatim.
     candidate_endpoints = [
+        # Mode-bearing endpoints — standard resolution (/zia/api/v1/...)
         "/zia/dlpAdvancedSettings",
         "/zia/advancedSettings",
         "/zia/security/advanced",
@@ -401,8 +442,40 @@ def assess_current_status(client) -> Dict[str, Any]:
         "/zia/dlp/advancedSettings",
         "/zia/dlp/settings",
         "/zia/configuration/advanced",
+        # Raw-path variants for DLP Advanced Settings — some OneAPI
+        # surfaces don't follow the /zia/api/v1/ pattern or use a
+        # different casing / prefix.
+        "raw:/zia/api/v1/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlp/advancedSettings",
+        "raw:/zia/api/v1/dlp-advanced-settings",
+        "raw:/zia/api/v1/admin/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlpSettings/advanced",
+        "raw:/api/v1/dlpAdvancedSettings",          # pre-OneAPI naming
+        "raw:/zia/v1/dlpAdvancedSettings",           # drop /api/
+        "raw:/zia/dlp/v1/advancedSettings",          # alt ordering
+        "raw:/dlp/api/v1/advancedSettings",          # alt namespace
+        # "Inline DLP Rule Evaluation" surface candidates
+        "/zia/inlineDlpConfig",
+        "/zia/inlineDlpSettings",
+        "/zia/dlpRuleEvaluation",
+        "/zia/dlpConfiguration",
+        "/zia/dlpConfig",
+        # Feature-flag surfaces — user confirmed their tenant exposes
+        # DLP_RULE_EVALUATE_ALL (bool) in an UPPER_SNAKE_CASE response
+        "/zia/featureFlags",
+        "/zia/features",
+        "/zia/featureVisibility",
+        "/zia/accountFeatures",
+        "/zia/tenantFeatures",
+        "/zia/visibility/features",
+        "/zia/subscriptions/features",
+        "/zia/productFeatures",
+        "/zia/featureCatalog",
+        "/zia/entitlement/features",
     ]
-    # Field names vary across API versions / docs
+    # Field names vary across API versions / docs. Include both boolean
+    # flags and enum-string fields (the admin UI labels this "Inline DLP
+    # Rule Evaluation" with values "By Rule Order" / "Evaluate All Rules").
     candidate_fields = [
         "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
         "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
@@ -410,7 +483,21 @@ def assess_current_status(client) -> Dict[str, Any]:
         "dlpEvalAll", "evalAll", "evaluateAll",
         "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
         "evalAllRulesForDlp", "evaluateAllDlp",
+        # Enum-style (UI-label-matching) candidates — the value will be
+        # "BY_RULE_ORDER" or "EVALUATE_ALL_RULES" (or similar), not bool.
+        "inlineDlpRuleEvaluation", "inlineDlpRuleEvaluationType",
+        "dlpRuleEvaluation", "dlpRuleEvaluationType",
+        "ruleEvaluationType", "dlpEvaluationType",
+        "evaluationType", "evaluationMode", "dlpEvaluationMode",
+        # User-confirmed feature-flag field name. UPPER_SNAKE_CASE.
+        # Kept as provided — case-insensitive underscore-agnostic
+        # matching handles any variation.
+        "DLP_RULE_EVALUATE_ALL",
+        "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
+        "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
     ]
+
+    def _norm(s): return s.lower().replace("_", "").replace("-", "")
 
     for ep in candidate_endpoints:
         try:
@@ -426,37 +513,87 @@ def assess_current_status(client) -> Dict[str, Any]:
         })
         if code != 200 or not isinstance(data, dict):
             continue
-        # Look for any matching field (case-insensitive)
-        lower_keys = {k.lower(): k for k in data.keys()}
+
+        is_capability_endpoint = ep in CAPABILITY_ENDPOINTS
+
+        # Match keys case-insensitively AND underscore-agnostically.
+        norm_keys = {_norm(k): k for k in data.keys()}
+        match_key = None
+        match_value = None
+        nested_path = None
         for fld in candidate_fields:
-            real = lower_keys.get(fld.lower())
+            real = norm_keys.get(_norm(fld))
             if real is not None:
-                evaluate_all = bool(data[real])
-                found_via = f"{ep} → {real} = {data[real]}"
+                match_key = real
+                match_value = data[real]
                 break
-        # Also walk one level deep in case it's nested
-        if evaluate_all is None:
+        # Walk one level deep if still unmatched
+        if match_key is None:
             for k, v in data.items():
                 if isinstance(v, dict):
-                    nested_lower = {nk.lower(): nk for nk in v.keys()}
+                    nested_norm = {_norm(nk): nk for nk in v.keys()}
                     for fld in candidate_fields:
-                        real = nested_lower.get(fld.lower())
+                        real = nested_norm.get(_norm(fld))
                         if real is not None:
-                            evaluate_all = bool(v[real])
-                            found_via = f"{ep} → {k}.{real} = {v[real]}"
+                            match_key = real; match_value = v[real]
+                            nested_path = f"{k}.{real}"
                             break
-                if evaluate_all is not None:
+                if match_key is not None:
                     break
-        # Heuristic: any key with 'evaluate' AND 'all' in its name, boolean value
-        if evaluate_all is None:
+        # Heuristic fallback — tighter than before. The key MUST
+        # reference DLP or rule evaluation AND NOT be about SSL/URL
+        # bypass evaluation (different feature sharing the word
+        # 'evaluate'). Common false positive on /zia/advancedSettings:
+        # enableEvaluatePolicyOnGlobalSSLBypass — that's SSL bypass,
+        # not DLP rule evaluation.
+        HEURISTIC_NEGATIVE_TOKENS = (
+            "sslbypass", "urlbypass", "firewall", "auth", "sniff",
+            "http2", "tunnel", "domain", "ipv6", "office365",
+            "session", "ui", "surrogate", "admin",
+        )
+        HEURISTIC_REQUIRED_TOKENS = ("dlp", "rule")  # must contain at least one
+
+        def _is_dlp_rule_eval_key(k: str) -> bool:
+            kn = k.lower().replace("_", "").replace("-", "")
+            # Must reference DLP or rule
+            if not any(t in kn for t in HEURISTIC_REQUIRED_TOKENS):
+                return False
+            # Must reference evaluation / eval-all
+            if not ("evaluat" in kn or "firstmatch" in kn or "ruleorder" in kn):
+                return False
+            # Must NOT reference an unrelated feature (SSL bypass etc)
+            if any(t in kn for t in HEURISTIC_NEGATIVE_TOKENS):
+                return False
+            return True
+
+        if match_key is None:
             for k, v in data.items():
-                kl = k.lower()
-                if "evaluat" in kl and "all" in kl and isinstance(v, bool):
-                    evaluate_all = v
-                    found_via = f"{ep} → {k} = {v} (heuristic match)"
+                if not _is_dlp_rule_eval_key(k):
+                    continue
+                if isinstance(v, bool):
+                    match_key = k; match_value = v
                     break
-        if evaluate_all is not None:
-            break
+                if isinstance(v, str):
+                    vl = v.lower()
+                    if "all" in vl or "order" in vl or "match" in vl:
+                        match_key = k; match_value = v
+                        break
+
+        if match_key is None:
+            continue  # nothing matched on this endpoint
+
+        path_str = f"{ep} → {nested_path or match_key} = {match_value!r}"
+        if is_capability_endpoint:
+            # This tells us the FEATURE is available, not the current MODE.
+            # Keep probing for the real mode selector.
+            if feature_available is None:
+                feature_available = _is_truthy(match_value)
+                feature_source = path_str + " (capability flag — not the mode selector)"
+            continue
+        # Mode-bearing endpoint → this is the actual current selection
+        evaluate_all = _is_truthy(match_value)
+        found_via = path_str
+        break
 
     # Fallback: check individual rules — some Zscaler tenants expose
     # the toggle as a per-rule field rather than a global setting
@@ -514,36 +651,69 @@ def assess_current_status(client) -> Dict[str, Any]:
     elif evaluate_all is False and not order_already_safe:
         recommendation = "Tenant is in Rule Order mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
     else:
-        # Could not auto-detect. Build a helpful message with what we tried.
+        # Could not auto-detect the MODE. Build a helpful message.
         endpoints_hit = [d for d in diagnostics if d.get("status") == 200]
+        feature_note = ""
+        if feature_available is True:
+            feature_note = (
+                f"✓ Feature is AVAILABLE on your tenant: {feature_source}. "
+                "But this is a capability flag — it tells you the mode CAN be used, not which mode is currently selected.\n\n"
+            )
+        elif feature_available is False:
+            feature_note = (
+                f"ℹ Feature availability flag says the capability is OFF on this tenant: {feature_source}. "
+                "Zscaler support may need to enable it before Evaluate All Rules can be selected.\n\n"
+            )
+
+        # Hard truth: the zscaler-sdk-python, zscaler-sdk-go, and
+        # terraform-provider-zia repositories DO NOT expose the "Inline
+        # DLP Rule Evaluation" mode selector on any public API endpoint.
+        # The Go SDK's dlp_web_rules.go explicitly references "DLP
+        # Advanced Settings" as a separate configuration location in its
+        # comments, but no SDK module implements reading or writing it.
+        # Conclusion: the setting is UI-only (or configurable only via
+        # Zscaler support). The tool should stop pretending we can toggle
+        # it via API and hand off cleanly to the manual-declaration path.
+        sdk_note = (
+            "🔍 SDK investigation: We searched zscaler-sdk-python, "
+            "zscaler-sdk-go, and terraform-provider-zia for a "
+            "DLP-rule-evaluation-mode endpoint. None exposes one. "
+            "The Go SDK's dlp_web_rules module references 'DLP Advanced "
+            "Settings' in a comment but does NOT implement read or "
+            "write for it. The setting is configurable only via the "
+            "ZIA admin UI (or a Zscaler support request).\n\n"
+        )
         if endpoints_hit:
-            # Show keys from EVERY reachable endpoint to maximize chance of spotting it
             sample_lines = []
             for d in endpoints_hit:
                 keys = d.get("keys") or []
                 if keys:
-                    # Highlight any key containing 'eval', 'dlp', or 'all'
                     interesting = [k for k in keys if any(t in k.lower() for t in ("eval", "dlp", "all", "rule"))]
                     sample_lines.append(
                         f"{d['endpoint']}: {', '.join(interesting[:15]) if interesting else ', '.join(keys[:10])}"
                     )
             recommendation = (
-                "Could not auto-detect the Evaluate All Rules toggle field name in the API response. "
-                f"Reachable endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines) + "\n"
-                "Verify manually in ZIA Admin → Administration → Advanced Settings → DLP → 'Evaluate All DLP Rules'. "
-                "Open the diagnostics panel below and share the field name; the tool will be updated to detect it."
+                feature_note + sdk_note +
+                "📋 What to do:\n"
+                "  1. Verify the current mode in ZIA Admin → Administration → Advanced Settings → DLP → 'Inline DLP Rule Evaluation' ('By Rule Order' or 'Evaluate All Rules').\n"
+                "  2. Use the 'Declare Mode Manually' selector below — Steps 2-5 will proceed normally under that declared mode.\n"
+                "  3. Step 4's API activation will attempt every known endpoint as a best-effort, but will almost certainly fall back to 'failed' on your tenant. That's expected; it's not a bug.\n"
+                "  4. If you believe your tenant has a newer API surface that exposes this, share the /api/migrate/status diagnostics — we can add a new endpoint candidate.\n\n"
+                "Reachable settings endpoints and likely-relevant fields:\n• " + "\n• ".join(sample_lines)
             )
         else:
             recommendation = (
-                "Could not reach any ZIA Advanced Settings endpoint. The API client role may not include "
-                "'View ZIA Advanced Settings' permission. Verify in ZIA Admin → Administration → Advanced "
-                "Settings → DLP → 'Evaluate All DLP Rules', or grant the role and retry."
+                feature_note + sdk_note +
+                "⚠ Could not reach any ZIA Advanced Settings endpoint. "
+                "The API client role may not include 'View ZIA Advanced Settings' permission."
             )
 
     return {
         "current_mode": mode,
-        "evaluate_all_enabled": evaluate_all,
+        "evaluate_all_enabled": evaluate_all,     # currently-selected mode
         "found_via": found_via,
+        "feature_available": feature_available,   # capability flag (independent of mode)
+        "feature_source": feature_source,
         "rule_count": len(rules),
         "enabled_rules": len(enabled),
         "disabled_rules": len(rules) - len(enabled),
@@ -682,15 +852,26 @@ def optimize_for_eval_all_with_exceptions(
 
 def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     """
-    Toggle Evaluate All Rules ON in ZIA Advanced Settings.
+    Toggle 'Evaluate All DLP Rules' ON via the ZIA API.
 
-    SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
-    and dry_run=False to actually make changes. Default is dry-run.
+    Strategy:
+      1. Run the same probe as Step 1 to find the field in GET responses.
+      2. If found, GET → modify → PUT to the same endpoint.
+      3. If not found, try each candidate endpoint + field combination
+         with a real PUT, verifying via follow-up GET.
+      4. Every attempt is recorded in `attempts[]` so auditors (and
+         future debuggers) see exactly what was tried.
+
+    SAFETY:
+      - dry_run=True (default) returns the plan only.
+      - dry_run=False + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND is required
+        to actually call PUT.
     """
     import os
     # Use the same comprehensive probe as Step 1 to find current state
     status = assess_current_status(client)
     current = status.get("evaluate_all_enabled")
+    found_via = status.get("found_via")
 
     if current is True:
         return {
@@ -700,26 +881,252 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         }
 
     if dry_run:
+        plan_source = found_via or "(field not in GET response — will attempt blind PUT on candidate endpoints)"
         return {
             "status": "dry_run",
             "current": current,
             "would_enable": True,
-            "message": "DRY RUN: Would enable Evaluate All Rules via PUT /zia/advancedSettings. Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and call with dry_run=false to actually apply.",
-            "portal_path": "ZIA Admin → Administration → Advanced Settings → DLP → 'Enable Evaluate All DLP Rules'",
+            "plan_source": plan_source,
+            "message": (
+                f"DRY RUN: Would enable Evaluate All DLP Rules. "
+                f"Plan source: {plan_source}. "
+                f"Set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND and click Activate to apply."
+            ),
         }
 
     if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
         return {
             "status": "blocked",
-            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable for safety.",
+            "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat).",
             "current": current,
         }
 
+    # ── Real activation path ─────────────────────────────────────
+    attempts: List[Dict[str, Any]] = []
+
+    # Same candidate lists used by assess_current_status — defined below
+    candidate_fields = [
+        "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
+        "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
+        "isDlpEvaluateAllRules", "evaluateAllDlpRules",
+        "dlpEvalAll", "evalAll", "evaluateAll",
+        "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
+        "evalAllRulesForDlp", "evaluateAllDlp",
+        # Enum-style fields — correspond to the admin UI's
+        # "Inline DLP Rule Evaluation" selector
+        "inlineDlpRuleEvaluation", "inlineDlpRuleEvaluationType",
+        "dlpRuleEvaluation", "dlpRuleEvaluationType",
+        "ruleEvaluationType", "dlpEvaluationType",
+        "evaluationType", "evaluationMode", "dlpEvaluationMode",
+        # User-confirmed feature-flag field (UPPER_SNAKE_CASE).
+        # Underscore-agnostic match handles case/underscore variants.
+        "DLP_RULE_EVALUATE_ALL",
+        "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
+        "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
+    ]
+    # Write path probes MODE-BEARING endpoints only — NOT the feature-flag
+    # capability endpoints (writing DLP_RULE_EVALUATE_ALL=True to
+    # /zia/featureFlags would not change the active mode).
+    candidate_endpoints = [
+        "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
+        "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
+        "/zia/advancedSettings/dlp", "/zia/dlpSettings",
+        "/zia/dlp/advancedSettings", "/zia/dlp/settings",
+        "/zia/configuration/advanced",
+        # Raw-path variants bypass the /zia/api/v1/ resolver
+        "raw:/zia/api/v1/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlp/advancedSettings",
+        "raw:/zia/api/v1/dlp-advanced-settings",
+        "raw:/zia/api/v1/admin/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlpSettings/advanced",
+        "raw:/api/v1/dlpAdvancedSettings",
+        "raw:/zia/v1/dlpAdvancedSettings",
+        "raw:/zia/dlp/v1/advancedSettings",
+        "raw:/dlp/api/v1/advancedSettings",
+        "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
+        "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
+    ]
+
+    # Value candidates to try per field. For boolean-looking fields we
+    # send True; for enum-named fields we ALSO try the known string
+    # values. _try_put sweeps all applicable values until one sticks.
+    ENUM_TRUE_VALUES = [
+        "EVALUATE_ALL_RULES", "EVALUATE_ALL", "EVAL_ALL_RULES", "EVAL_ALL",
+        "ALL_RULES",
+    ]
+    BOOLEAN_TRUE_VALUE = True
+
+    def _values_for_field(field: str):
+        """Yield the candidate 'true' values to try for a given field name.
+        Enum-named fields get the string enum values. All fields also try
+        the boolean True as a fallback."""
+        fl = field.lower()
+        is_enum_named = any(t in fl for t in ("type", "mode", "evaluation"))
+        if is_enum_named:
+            for v in ENUM_TRUE_VALUES:
+                yield v
+        yield BOOLEAN_TRUE_VALUE
+
+    def _try_put(endpoint: str, field: str) -> Tuple[bool, Dict[str, Any]]:
+        """GET the endpoint, inject field=<candidate-value>, PUT, verify.
+        Sweeps multiple value types per field (enum string + bool) until
+        one is accepted AND verified. Returns (success, attempt_record)."""
+        rec: Dict[str, Any] = {"endpoint": endpoint, "field": field, "values_tried": []}
+        try:
+            current_data, code = client.get(endpoint)
+        except Exception as e:
+            rec["phase"] = "get"; rec["error"] = str(e)[:150]
+            return False, rec
+        rec["get_status"] = code
+        if code != 200 or not isinstance(current_data, dict):
+            rec["phase"] = "get"; rec["skip_reason"] = "non-200 or not dict"
+            return False, rec
+
+        # Resolve to the real key-name the server uses on this endpoint
+        # (e.g. server has 'DLP_RULE_EVALUATE_ALL' but the candidate is
+        # 'dlpRuleEvaluateAll' — they must match for the PUT to stick).
+        def _norm(s): return s.lower().replace("_", "").replace("-", "")
+        norm_keys = {_norm(k): k for k in current_data.keys()}
+        server_key = norm_keys.get(_norm(field), field)
+        rec["server_key"] = server_key
+
+        for value in _values_for_field(field):
+            sub: Dict[str, Any] = {"value": value, "server_key": server_key}
+            new_body = dict(current_data)
+            new_body[server_key] = value
+            try:
+                resp, put_code = client.put(endpoint, new_body)
+            except Exception as e:
+                sub["error"] = str(e)[:150]
+                rec["values_tried"].append(sub); continue
+            sub["put_status"] = put_code
+            if put_code not in (200, 201, 204):
+                sub["put_error"] = (resp.get("error") if isinstance(resp, dict) else str(resp)[:200])
+                rec["values_tried"].append(sub); continue
+            # Verify via re-GET
+            try:
+                client._c = type(client._c)()  # reset LRU cache
+            except Exception:
+                pass
+            try:
+                verified, vcode = client.get(endpoint)
+            except Exception as e:
+                sub["verify_error"] = str(e)[:150]
+                rec["values_tried"].append(sub); continue
+            sub["verify_status"] = vcode
+            sub["verify_value"] = verified.get(server_key) if isinstance(verified, dict) else None
+            rec["values_tried"].append(sub)
+            if isinstance(verified, dict) and _is_truthy(verified.get(server_key)):
+                rec["successful_value"] = value
+                rec["put_status"] = put_code
+                rec["verify_status"] = vcode
+                return True, rec
+        # None of the candidate values succeeded — collapse the latest
+        # attempt into the top-level rec for the GUI summary chips.
+        if rec["values_tried"]:
+            last = rec["values_tried"][-1]
+            rec["put_status"] = last.get("put_status")
+            rec["verify_status"] = last.get("verify_status")
+        return False, rec
+
+    # Strategy 1: use found_via if available
+    if found_via:
+        # found_via format: "/zia/advancedSettings → fieldName = value"
+        try:
+            ep_part, field_part = found_via.split("→", 1)
+            endpoint = ep_part.strip()
+            field = field_part.split("=", 1)[0].strip().split(".", 1)[-1].strip()
+            ok, rec = _try_put(endpoint, field)
+            attempts.append(rec)
+            if ok:
+                return {
+                    "status": "activated",
+                    "via": endpoint,
+                    "field": field,
+                    "attempts": attempts,
+                    "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified).",
+                }
+        except Exception as e:
+            attempts.append({"phase": "parse_found_via", "error": str(e)[:150], "found_via": found_via})
+
+    # Strategy 2: exhaustive probe — try every candidate endpoint and
+    # every candidate field. No early termination on 400/422 since some
+    # tenants reject SOME fields and accept OTHERS on the same endpoint.
+    seen_eps: set = set()
+    for endpoint in candidate_endpoints:
+        if endpoint in seen_eps:
+            continue
+        seen_eps.add(endpoint)
+        try:
+            data, code = client.get(endpoint)
+        except Exception as e:
+            attempts.append({"endpoint": endpoint, "phase": "discover", "error": str(e)[:150]})
+            continue
+        if code != 200 or not isinstance(data, dict):
+            attempts.append({"endpoint": endpoint, "phase": "discover",
+                             "get_status": code, "skip_reason": f"non-200 or not dict"})
+            continue
+        # Record that this endpoint was reachable so the user sees it in diagnostics
+        attempts.append({"endpoint": endpoint, "phase": "discover",
+                         "get_status": code, "keys_count": len(data),
+                         "keys_sample": list(data.keys())[:15]})
+        for field in candidate_fields:
+            ok, rec = _try_put(endpoint, field)
+            attempts.append(rec)
+            if ok:
+                return {
+                    "status": "activated",
+                    "via": endpoint,
+                    "field": field,
+                    "attempts": attempts,
+                    "message": f"✓ Evaluate All DLP Rules enabled via PUT {endpoint} → {field}=true (verified after blind-probe).",
+                }
+
+    # Strategy 3: last-resort — some tenants expose this only through a
+    # targeted sub-resource. Try POSTing / PATCHing with just the field
+    # and see if anything accepts it.
+    for endpoint in ("/zia/advancedSettings", "/zia/dlpSettings", "/zia/dlpAdvancedSettings"):
+        for field in candidate_fields:
+            rec = {"endpoint": endpoint, "field": field, "phase": "patch"}
+            try:
+                resp, code = client.put(endpoint, {field: True})
+                rec["put_status"] = code
+            except Exception as e:
+                rec["error"] = str(e)[:150]
+                attempts.append(rec); continue
+            if code in (200, 201, 204):
+                # Verify
+                try:
+                    client._c = type(client._c)()
+                    verified, vcode = client.get(endpoint)
+                    rec["verify_status"] = vcode
+                    rec["verify_value"] = verified.get(field) if isinstance(verified, dict) else None
+                    if isinstance(verified, dict) and bool(verified.get(field)) is True:
+                        attempts.append(rec)
+                        return {"status": "activated", "via": endpoint, "field": field,
+                                "attempts": attempts,
+                                "message": f"✓ Enabled via PATCH-style PUT {endpoint} (minimal body) → {field}=true."}
+                except Exception as e:
+                    rec["verify_error"] = str(e)[:150]
+            attempts.append(rec)
+
     return {
-        "status": "manual_required",
+        "status": "failed",
         "current": current,
-        "message": "Automated toggle of Evaluate All Rules is intentionally disabled. Enable it manually in the ZIA admin portal for audit-trail clarity.",
-        "portal_path": "ZIA Admin → Administration → Advanced Settings → DLP → 'Enable Evaluate All DLP Rules'",
+        "attempts": attempts,
+        "summary": {
+            "total_attempts":    len(attempts),
+            "discover_reachable": sum(1 for a in attempts if a.get("phase") == "discover" and a.get("get_status") == 200),
+            "put_200":           sum(1 for a in attempts if a.get("put_status") in (200, 201, 204)),
+            "put_400_or_422":    sum(1 for a in attempts if a.get("put_status") in (400, 422)),
+            "put_401_or_403":    sum(1 for a in attempts if a.get("put_status") in (401, 403)),
+            "put_404":           sum(1 for a in attempts if a.get("put_status") == 404),
+        },
+        "message": (
+            f"Exhausted {len(attempts)} attempts — none enabled the toggle. "
+            "Paste the attempts list into a Zscaler support ticket; they can tell you "
+            "which endpoint/field your tenant actually exposes (or enable it for you)."
+        ),
     }
 
 

@@ -46,28 +46,79 @@ def _token_url(vd, cloud):
 # OneAPI service path prefixes (confirmed via SDK source + Postman)
 # ZCC OneAPI uses function-style endpoints (not REST collections)
 _ZCC_MAP = {
-    "appProfiles":        "webPolicies/listByCompany",         # no direct appProfiles endpoint; use webPolicies
+    "appProfiles":        "webPolicies/listByCompany",
     "webPolicies":        "webPolicies/listByCompany",
     "forwardingProfiles": "webForwardingProfile/listByCompany",
     "forwardingProfile":  "webForwardingProfile/listByCompany",
     "devices":            "getDevices",
     "deviceDetails":      "getDeviceDetails",
+    "deviceStats":        "web/getDeviceStats",
+    "deviceLookup":       "web/device/Lookup/udid",
     "trustedNetworks":    "webTrustedNetwork/listByCompany",
     "failOpenPolicy":     "webFailOpenPolicy/listByCompany",
     "companyInfo":        "getCompanyInfo",
     "webAppService":      "webAppService/listByCompany",
-    "postureProfiles":    "webPolicies/listByCompany",         # posture profiles are in webPolicies
+    "postureProfiles":    "appPostureInfo/listByCompany",
+    "machineTunnel":      "webMachineTunnel/listByCompany",
+    "browserProtection":  "webBrowserProtectionProfile/listByCompany",
+    "pacFiles":           "getPacFiles",
+    "zpnModuleMode":      "webZPNModuleMode/listByCompany",
+    "appBypass":          "webBypassAppConfig/listByCompany",
+    "privacyInfo":        "webPrivacyInfo/listByCompany",
+    "deviceCleanup":      "webDeviceCleanupInfo/listByCompany",
+    "deviceGroups":       "webDeviceGroups/listByCompany",
+    "lastPostureFields":  "web/getLastAppPostureFields",
+    "downloadStatus":     "downloadServiceStatus",
+    # Confirmed from zscaler-sdk-python/master/zscaler/zcc/*.py
+    "adminUsers":         "getAdminUsers",
+    "adminRoles":         "getAdminRoles",
+    "adminUsersSyncInfo": "getAdminUsersSyncInfo",
+    "zdxEntitlements":    "getZdxGroupEntitlements",
+    "zpaEntitlements":    "getZpaGroupEntitlements",
+    "downloadDevices":    "downloadDevices",
+    "downloadDisableReasons": "downloadDisableReasons",
+    "getDeviceCleanupInfo":   "getDeviceCleanupInfo",
+}
+
+# ZDX endpoints — authoritative from zscaler-sdk-go/zdx/services
+_ZDX_MAP = {
+    "administration": "administration",
+    "alerts":         "alerts",
+    "inventory":      "inventory",
+    "reports":        "reports",
+    "troubleshooting":"troubleshooting",
+}
+
+# ZIdentity endpoints — from zscaler-sdk-python/zid/
+_ZID_MAP = {
+    "users":             "users",
+    "groups":            "groups",
+    "resourceServers":   "resource_servers",
+    "userEntitlement":   "user_entitlement",
 }
 
 def _resolve_ep(ep, customer_id=""):
-    """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path."""
+    """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path.
+
+    Prefix 'raw:' to send the path verbatim (no /zia/api/v1/ rewrite) —
+    useful for probing alternative OneAPI path conventions.
+    """
+    if ep.startswith("raw:"):
+        return ep[4:]  # bypass resolver
     if ep.startswith("/zia/"):
         return "/zia/api/v1/" + ep[5:]
     if ep.startswith("/zcc/"):
         suffix = ep[5:]
-        # Map legacy ZCC paths to OneAPI function-style endpoints
         mapped = _ZCC_MAP.get(suffix, suffix)
         return "/zcc/papi/public/v1/" + mapped
+    if ep.startswith("/zdx/"):
+        suffix = ep[5:]
+        mapped = _ZDX_MAP.get(suffix, suffix)
+        return "/zdx/v1/" + mapped
+    if ep.startswith("/zid/"):
+        suffix = ep[5:]
+        mapped = _ZID_MAP.get(suffix, suffix)
+        return "/zidentity/v1/" + mapped
     if ep.startswith("/zpa/"):
         if customer_id:
             return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]

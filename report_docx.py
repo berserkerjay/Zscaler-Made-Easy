@@ -66,6 +66,173 @@ STATUS_LABELS = {
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+def _parse_detail_for_bp(detail: str):
+    """
+    Split a check's detail string into (as_is, best_practice).
+    Many checks follow the convention:
+        "<current state sentence>. Best Practice: <guidance>."
+    We split on 'Best Practice:' (case-insensitive) and clean both sides.
+    If the sentinel isn't present, the whole string is treated as as_is.
+    """
+    if not detail:
+        return "", ""
+    import re
+    m = re.split(r"\bBest\s+Practice\s*[:\-–]\s*", detail, maxsplit=1, flags=re.IGNORECASE)
+    if len(m) == 2:
+        as_is = m[0].strip().rstrip(".") + "."
+        bp = m[1].strip()
+        # Strip a trailing 'Ref:' note from best-practice text so it
+        # renders cleanly — we surface it separately in the recommendation.
+        bp = re.split(r"\s*Ref\s*[:]\s*", bp, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        return as_is, bp
+    return detail.strip(), ""
+
+
+def _generate_why_it_matters(check_id: str, label: str, as_is: str, best_practice: str, section: str = "") -> str:
+    """
+    Produce a business-impact 'why it matters' sentence. Explains the
+    risk/cost of the current configuration in terms of security,
+    compliance, and operational outcomes — not the remediation step.
+    """
+    low = (as_is or "").lower()
+    lab = (label or "").lower()
+    sec = (section or "").lower()
+
+    # Security-critical feature disabled
+    if any(t in low for t in ("disabled", "not configured", "no cloud firewall",
+                              "no dlp", "no engine", "no url filter", "no ssl")):
+        if "ssl" in lab or "tls" in lab:
+            return ("Encrypted-traffic inspection is the single highest-value Zscaler control. "
+                    "Without it, threats hiding in HTTPS (most modern malware, data exfil, C2) "
+                    "bypass every other security layer.")
+        if "dlp" in lab or "dlp" in sec:
+            return ("Data can leave the organization unnoticed. Audit-framework mappings "
+                    "(PCI 10, HIPAA 164.312, GDPR Art. 32) explicitly require DLP controls on "
+                    "outbound traffic — this check gates that capability.")
+        if "firewall" in lab:
+            return ("Non-web traffic (SSH, RDP, FTP, arbitrary TCP/UDP) bypasses URL filtering. "
+                    "Without cloud firewall rules, those protocols aren't controlled at all — "
+                    "a common exfiltration and lateral-movement vector.")
+        if "sandbox" in lab:
+            return ("Zero-day / unknown-hash files traverse the gateway uninspected. Critical "
+                    "for targeted-attack resilience and auditor-requested malware analysis.")
+        if "audit" in lab or "log" in lab:
+            return ("Without audit-log access the tool can't validate other checks and auditors "
+                    "can't trace changes. Typically a quick role permission fix.")
+        return (f"'{label}' is a baseline Zscaler control. With it disabled/missing, the "
+                "protection it provides is not in effect for any user.")
+
+    # Globally scoped / overbroad
+    if any(t in low for t in ("globally scoped", "default action", "default rule",
+                              "overbroad", "no scope", "unscoped", "applied globally",
+                              "no engines")):
+        return ("A globally-scoped rule applies to everyone — low-privilege users get the same "
+                "treatment as administrators. Scoping reduces false-positive noise and enforces "
+                "least privilege. Also an auditor flag: compliance frameworks require "
+                "role-based segmentation.")
+
+    # Missing descriptions / owners / documentation
+    if any(t in low for t in ("no description", "no owner", "not documented")):
+        return ("Rules without descriptions or owners become orphaned. Within 6–12 months "
+                "no one knows why they exist, so they're either kept forever (compounding noise) "
+                "or removed blindly (breaking something). Audit frameworks require documented "
+                "rationale for every control.")
+
+    # Bypass / exemption
+    if "bypass" in low or "exempt" in low or "allow" in low:
+        return ("Every bypass is a documented blind spot. Auditors require a business-"
+                "justification record for each exemption. Untracked bypasses often get "
+                "weaponized by attackers who spot patterns in category/URL bypass lists.")
+
+    # Alert-only / audit-only / partial rollout
+    if any(t in low for t in ("alert only", "audit only", "log only", "partial", "some")):
+        return ("An alert-only rule generates SIEM noise but doesn't protect users. Until the "
+                "rule is moved to enforce/block, the coverage you expect is not actually in "
+                "effect. Plan a migration window with owner sign-off.")
+
+    # Review / verify needed
+    if any(t in low for t in ("review", "verify", "validate", "confirm")):
+        return ("This check can't be auto-validated — a human needs to confirm the setting "
+                "matches your organization's policy. Skipping review is the #1 source of audit "
+                "findings ('control existed but no one reviewed it').")
+
+    # Fail-open / tamper / stale
+    if "fail open" in low or "failopen" in low or "fail-open" in low:
+        return ("Fail-open means traffic bypasses Zscaler when the agent can't reach the cloud. "
+                "For strict-security tenants (regulated industries, zero-trust), fail-closed is "
+                "mandatory — fail-open becomes an attacker's on-demand bypass.")
+    if "tamper" in low or "uninstall" in low:
+        return ("If users can uninstall or disable ZCC, the security posture is effectively "
+                "voluntary. Tamper protection (uninstall password, strict enforcement) is "
+                "required for enforceable compliance claims.")
+    if "stale" in low or "not seen" in low or "unregister" in low:
+        return ("Stale device records inflate the license count, hide compromised-device "
+                "indicators, and make inventory auditing unreliable. Clean them up periodically.")
+
+    # Fallback: explain the control
+    if best_practice:
+        bp_first = best_practice.split(".")[0]
+        return (f"{bp_first}. This is the Zscaler-recommended baseline; deviations should be "
+                "documented with business justification.")
+    return ("This configuration deviates from Zscaler's documented best practice. "
+            "Deviations increase the probability of missed threats, audit findings, or "
+            "operational incidents. Review and either align with best practice or document "
+            "the exception.")
+
+
+def _generate_recommendation(check_id: str, label: str, as_is: str, best_practice: str) -> str:
+    """
+    Produce an actionable next-step recommendation based on pattern-matching
+    the As-Is text against known misconfiguration signals.
+    Falls back to a generic 'review against best practice' when no
+    specific pattern matches.
+    """
+    low = (as_is or "").lower()
+    lab = (label or "").lower()
+
+    # Extract the first concrete instruction from the best-practice text
+    bp_first = (best_practice or "").split(".")[0].strip() if best_practice else ""
+
+    # Pattern: feature missing / not configured / no X
+    if any(t in low for t in ("not configured", "no cloud firewall", "no url filter", "no dlp",
+                              "no rules", "no locations", "no admin role", "no engine",
+                              "not enabled", "not set", "disabled", "no policy", "not applied",
+                              "not deployed", "missing")):
+        base = f"Configure {label}."
+        if bp_first:
+            return f"{base} Align with Zscaler best practice: {bp_first}."
+        return base + " Follow Zscaler deployment guidance for this feature."
+
+    # Pattern: partially scoped — rule exists but global / missing scope
+    if any(t in low for t in ("globally scoped", "default action", "default rule", "no engines",
+                              "overbroad", "no scope", "unscoped", "applied globally",
+                              "unlimited", "no limit", "no description", "no owner")):
+        return (
+            f"Tighten scope on {label}. "
+            f"{bp_first + '. ' if bp_first else ''}"
+            f"Add user/group/location scoping, tag with a rule label, and document owner."
+        )
+
+    # Pattern: review / verify / needs human judgment (the detail already says so)
+    if any(t in low for t in ("review", "verify", "validate", "confirm", "investigate")):
+        if bp_first:
+            return f"Review {label} against: {bp_first}. Document the outcome and re-run the assessment."
+        return f"Review {label} with the feature owner. Document the outcome and re-run."
+
+    # Pattern: count-based signal (e.g. "3 rules in review state")
+    if any(t in low for t in ("some", "partial", "audit", "alert only", "log only")):
+        return (
+            f"Complete the rollout of {label}. "
+            f"Move alert/log-only rules to enforcement after the validation window. "
+            f"{bp_first + '.' if bp_first else ''}"
+        )
+
+    # Fallback: generic recommendation citing the best-practice text
+    if bp_first:
+        return f"Validate {label} against Zscaler best practice: {bp_first}."
+    return f"Manually verify {label} and document the rationale. Re-run the assessment after any change."
+
+
 def _safe_style(doc, preferred_names):
     """Return the first style name from preferred_names that exists in doc, else 'Table Grid' (always present)."""
     available = {s.name for s in doc.styles}
@@ -272,35 +439,67 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
     # ── Status Definitions ────────────────────────────────────────
     doc.add_heading("Finding Status Definitions", level=2)
-    sd_table = doc.add_table(rows=1, cols=2)
+    sd_table = doc.add_table(rows=1, cols=4)
     sd_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
-    sd_headers = ["Status", "What it Means"]
+    sd_headers = ["Finding Name", "Best Practice", "Actual Configuration", "Why It Matters"]
     for i, h in enumerate(sd_headers):
         cell = sd_table.rows[0].cells[i]
         cell.text = h
         cell.paragraphs[0].runs[0].bold = True
     sd_data = [
-        ("Configured",
-         "Feature is enabled and configured in alignment with Zscaler best practices. "
-         "No action required."),
-        ("Action Required",
-         "Critical gap detected. Feature is misconfigured, disabled, or absent where "
-         "Zscaler best practice requires it. Address these findings first."),
-        ("Needs Review",
-         "Feature is present but its configuration requires manual verification or "
-         "additional context to determine alignment with best practice. Often indicates "
-         "policies that are partially scoped or default values that may not fit your "
-         "environment."),
-        ("Not Configured / N/A",
-         "Feature was not accessible during the assessment. This may indicate it is "
-         "not licensed, not deployed, or the API role lacks permission to read it. "
-         "These checks are excluded from the overall score."),
+        (
+            "Configured",
+            "Feature enabled and scoped per Zscaler deployment guidance. "
+            "Relevant controls active across users/locations.",
+            "The tenant returned the expected settings and the check "
+            "passed all validation rules.",
+            "No action required. Keep monitoring — re-run the assessment "
+            "periodically to catch drift."
+        ),
+        (
+            "Action Required",
+            "Feature is a Zscaler core best practice (SSL inspection, DLP "
+            "dictionaries/engines, cloud firewall, etc.) and must be "
+            "configured for baseline posture.",
+            "Feature is disabled, not configured, or set in a way that "
+            "defeats its protection (e.g. default-allow, bypass rules "
+            "globally scoped, empty rule list).",
+            "Critical gap — fix before next audit cycle. Address these "
+            "findings first; they drive the largest impact on the "
+            "overall score."
+        ),
+        (
+            "Needs Review",
+            "Feature should be deliberately scoped and periodically "
+            "reviewed — typically rule ordering, engine tuning, "
+            "exception lists, and logging retention.",
+            "Feature is present but partial: some scope missing, some "
+            "values default, exceptions in place that could not be "
+            "auto-validated.",
+            "Human judgment required. Schedule a review with the feature "
+            "owner; the configuration may be intentional but warrants "
+            "documentation and periodic re-review."
+        ),
+        (
+            "Not Configured / N/A",
+            "Feature is optional for many environments (e.g. ICAP, "
+            "specific GenAI modules) or requires a subscription/licensing "
+            "not present on every tenant.",
+            "Endpoint returned 404/403 or the feature returned empty. "
+            "The assessment could not read it — not confirmed absent, "
+            "not confirmed present.",
+            "Excluded from scoring. If the feature IS licensed, grant "
+            "the API role read access and re-run. If it is not in scope, "
+            "no action needed."
+        ),
     ]
-    for status, desc in sd_data:
+    for status, bp, asis, means in sd_data:
         row = sd_table.add_row()
         row.cells[0].text = status
         row.cells[0].paragraphs[0].runs[0].bold = True
-        row.cells[1].text = desc
+        row.cells[1].text = bp
+        row.cells[2].text = asis
+        row.cells[3].text = means
 
     doc.add_page_break()
 
@@ -352,16 +551,49 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     reviews = [r for r in results if r["status"] == "REVIEW"]
     if reviews:
         doc.add_heading("Items Requiring Review", level=1)
-        p = doc.add_paragraph(
+        doc.add_paragraph(
             f"The following {len(reviews)} item(s) were detected but require manual "
-            f"verification or organizational context to determine if action is needed."
+            f"verification or organizational context to determine if action is needed. "
+            f"Each row compares the current configuration to Zscaler best practice "
+            f"and produces a specific recommended next step."
         )
-        doc.add_paragraph()
+
+        # Structured 4-column table per auditor ask:
+        #   Finding Name | Best Practice | Actual Configuration | Why It Matters
+        rv_table = doc.add_table(rows=1, cols=4)
+        rv_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
+        rv_headers = ["Finding Name", "Best Practice", "Actual Configuration", "Why It Matters"]
+        for i, h in enumerate(rv_headers):
+            cell = rv_table.rows[0].cells[i]
+            cell.text = h
+            cell.paragraphs[0].runs[0].bold = True
+
         for r in reviews:
-            p = doc.add_paragraph()
-            run = p.add_run(f"{r['id']} — {r['label']}: ")
-            run.bold = True
-            p.add_run(r["detail"])
+            as_is, best_practice = _parse_detail_for_bp(r.get("detail", ""))
+            why_matters = _generate_why_it_matters(
+                check_id=r.get("id", ""),
+                label=r.get("label", ""),
+                as_is=as_is,
+                best_practice=best_practice,
+                section=r.get("sec") or r.get("section") or "",
+            )
+            row = rv_table.add_row()
+            # Column 0: Finding Name (id + label)
+            name_cell = row.cells[0]
+            name_cell.text = ""
+            np = name_cell.paragraphs[0]
+            np.add_run(f"{r.get('id', '')}\n").bold = True
+            np.add_run(r.get("label", ""))
+            # Column 1: Best Practice
+            row.cells[1].text = best_practice or "See Zscaler deployment guidance for this feature."
+            # Column 2: Actual Configuration
+            row.cells[2].text = as_is or "(not specified)"
+            # Column 3: Why It Matters (bold)
+            why_cell = row.cells[3]
+            why_cell.text = ""
+            wp = why_cell.paragraphs[0]
+            why_run = wp.add_run(why_matters)
+            why_run.bold = True
         doc.add_page_break()
 
     # ── Detailed Findings by Section ──────────────────────────────
