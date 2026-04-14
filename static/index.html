@@ -140,7 +140,18 @@
   }
   .btn { min-height: 40px; }
 
-  .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; animation: fadeInUp 0.6s var(--ease); }
+  /* Main container shrinks 380px to make room for the right-side
+     prompt sidebar. Collapsed sidebar restores full width via .sidebar-collapsed on body. */
+  .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; padding-right: calc(1.5rem + 400px); animation: fadeInUp 0.6s var(--ease); transition: padding-right 200ms ease; }
+  body.sidebar-collapsed .container { padding-right: 1.5rem; }
+  body.sidebar-collapsed #promptSidebar { transform: translateX(100%); }
+  body.sidebar-collapsed #sidebarOpenRail { display: block !important; }
+  @media (max-width: 960px) {
+    #promptSidebar { width: 100vw; transform: translateX(100%); }
+    body:not(.sidebar-force-open) #promptSidebar { transform: translateX(100%); }
+    body:not(.sidebar-force-open) #sidebarOpenRail { display: block !important; }
+    .container { padding-right: 1.5rem !important; }
+  }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -516,6 +527,11 @@
               style="padding:0.45rem 1rem;font-size:0.82rem;">
         <span aria-hidden="true">🔓</span> Bypass / Non-Inspected Traffic Report
       </button>
+      <button class="btn btn-ghost" onclick="openBestPracticesModal()"
+              aria-label="Open curated Zscaler Best Practices reference library"
+              style="padding:0.45rem 1rem;font-size:0.82rem;">
+        <span aria-hidden="true">📚</span> Best Practices Library
+      </button>
     </div>
   </div>
 
@@ -729,6 +745,10 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="ZIdentity directory, groups, resource servers, user entitlements.">
             <input type="checkbox" class="scope-cb" value="zidentity" style="width:auto;cursor:pointer;">
             ZIdentity <span style="color:var(--dim);font-size:0.75rem;">(5 checks — users/groups/entitlements)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts.">
+            <input type="checkbox" class="scope-cb" value="rbac" style="width:auto;cursor:pointer;">
+            RBAC <span style="color:var(--dim);font-size:0.75rem;">(12 checks — admin/role/MFA hygiene)</span>
           </label>
         </div>
         <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
@@ -964,6 +984,11 @@
     <div class="download-bar">
       <button class="btn btn-primary" onclick="downloadDocx()">Download Word Report</button>
       <button class="btn btn-secondary" onclick="downloadJSON()">Download JSON</button>
+      <button class="btn btn-ghost" onclick="openRemediationReview()"
+              aria-label="Review and remediate findings"
+              style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;">
+        🔧 Review &amp; Remediate
+      </button>
       <button class="btn btn-ghost" onclick="resetForm()">Run Another Assessment</button>
     </div>
 
@@ -1028,6 +1053,57 @@
 
   </main>
 </div>
+
+<!-- Right-side prompt sidebar — chat-style scrolling panel.
+     Uses position:fixed so it stays visible as the user scrolls
+     the main content. Toggle button collapses it to an edge rail. -->
+<aside id="promptSidebar" role="complementary" aria-label="Prompt sidebar"
+       style="position:fixed;top:0;right:0;bottom:0;width:380px;z-index:900;background:rgba(10,14,26,0.96);border-left:1px solid var(--border);display:flex;flex-direction:column;backdrop-filter:blur(6px);transition:transform 200ms ease;">
+  <!-- Sticky header with collapse toggle -->
+  <header style="padding:0.8rem 1rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+    <div>
+      <strong style="font-size:0.9rem;">💬 Prompt</strong>
+      <span id="promptSidebarProvider" style="color:var(--dim);font-size:0.72rem;margin-left:0.35rem;">deterministic</span>
+    </div>
+    <button type="button" onclick="toggleSidebar()" aria-label="Collapse sidebar"
+            id="sidebarToggleBtn"
+            style="background:none;border:1px solid var(--border);color:var(--dim);padding:0.25rem 0.55rem;border-radius:5px;cursor:pointer;font-size:0.85rem;">▶</button>
+  </header>
+
+  <!-- Scrollable history -->
+  <div id="promptHistory" role="log" aria-live="polite" aria-atomic="false"
+       style="flex:1;overflow-y:auto;padding:0.6rem 0.8rem;font-size:0.82rem;">
+    <div style="color:var(--dim);font-size:0.78rem;text-align:center;padding:1rem 0.5rem;">
+      <div style="font-size:1.4rem;margin-bottom:0.4rem;">⌕</div>
+      Ask for an action to start.<br>
+      Try: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">check dlp</code>
+      or <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">help</code>.
+    </div>
+  </div>
+
+  <!-- Fixed footer input area -->
+  <div style="border-top:1px solid var(--border);padding:0.6rem 0.75rem;background:rgba(15,23,42,0.8);">
+    <div style="position:relative;">
+      <label for="sidebarPromptInput" class="sr-only">Prompt input</label>
+      <textarea id="sidebarPromptInput" rows="2" autocomplete="off"
+                placeholder="Ask the tool…  (Enter sends, Shift+Enter newline)"
+                style="width:100%;padding:0.5rem 2.2rem 0.5rem 0.6rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem;font-family:inherit;resize:none;"></textarea>
+      <button type="button" onclick="runSidebarPrompt()" aria-label="Send prompt"
+              style="position:absolute;right:0.3rem;bottom:0.4rem;background:var(--accent);color:white;border:0;border-radius:5px;padding:0.25rem 0.55rem;font-size:0.78rem;cursor:pointer;">Send</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.35rem;font-size:0.7rem;color:var(--dim);">
+      <span><kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">/</kbd> to focus · <kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">?</kbd> for help</span>
+      <button type="button" onclick="clearPromptHistory()"
+              style="background:none;border:0;color:var(--dim);cursor:pointer;font-size:0.7rem;">🗑 Clear</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Collapsed-sidebar edge rail (shown when sidebar hidden) -->
+<button type="button" id="sidebarOpenRail" onclick="toggleSidebar()" aria-label="Open prompt sidebar"
+        style="display:none;position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:899;background:var(--accent);color:white;border:0;border-radius:6px 0 0 6px;padding:0.8rem 0.5rem;cursor:pointer;writing-mode:vertical-rl;font-size:0.8rem;">
+  💬 Prompt
+</button>
 
 <script>
 let reportData = null;
@@ -1424,6 +1500,168 @@ async function runPrompt(overrideText) {
 // ── Client-side dispatch map ─────────────────────────────────────
 // Each action maps to a concrete handler that already exists.
 // Returns true if dispatched, false otherwise.
+// ══════════════════════════════════════════════════════════════════
+// Right-side Prompt Sidebar
+// - Persistent chat-like history (last 50 turns, newest at bottom)
+// - Same parser / dispatch as the hero prompt bar, but renders into
+//   the sidebar instead of the single-result banner
+// - Enter sends, Shift+Enter newline, Esc blurs
+// ══════════════════════════════════════════════════════════════════
+
+let _sidebarHistory = [];
+try {
+  const saved = sessionStorage.getItem('zassess_prompt_history');
+  if (saved) _sidebarHistory = JSON.parse(saved).slice(-50);
+} catch(e) {}
+
+function _saveHistory() {
+  try { sessionStorage.setItem('zassess_prompt_history', JSON.stringify(_sidebarHistory.slice(-50))); } catch(e) {}
+}
+
+function _renderSidebarHistory() {
+  const host = document.getElementById('promptHistory');
+  if (!host) return;
+  if (_sidebarHistory.length === 0) {
+    host.innerHTML = `<div style="color:var(--dim);font-size:0.78rem;text-align:center;padding:1rem 0.5rem;">
+      <div style="font-size:1.4rem;margin-bottom:0.4rem;">⌕</div>
+      Ask for an action to start.<br>
+      Try: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">check dlp</code>
+      or <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">help</code>.
+    </div>`;
+    return;
+  }
+  const items = _sidebarHistory.map((turn, i) => {
+    const parsed = turn.parsed || {};
+    const conf = Math.round((parsed.confidence || 0) * 100);
+    const confColor = conf >= 80 ? 'var(--pass)' : conf >= 50 ? 'var(--warn)' : 'var(--fail)';
+    let parserTag = 'deterministic';
+    let parserColor = 'var(--dim)';
+    if (parsed.parser === 'llm' && parsed.llm_kind === 'anthropic') { parserTag = 'Claude ☁';  parserColor = 'var(--warn)'; }
+    else if (parsed.parser === 'llm' && parsed.llm_kind === 'openai_cloud') { parserTag = 'ChatGPT ☁'; parserColor = 'var(--warn)'; }
+    else if (parsed.parser === 'llm') { parserTag = 'Ollama 🏠'; parserColor = 'var(--pass)'; }
+
+    const paramsStr = parsed.params && Object.keys(parsed.params).length
+      ? `<code style="background:rgba(59,130,246,0.08);color:var(--text);padding:0.05rem 0.3rem;border-radius:3px;font-size:0.7rem;display:inline-block;margin-top:0.2rem;">${escapeHtml(JSON.stringify(parsed.params))}</code>` : '';
+    const sug = parsed.suggestion
+      ? `<div style="color:var(--dim);font-size:0.72rem;margin-top:0.25rem;padding:0.25rem 0.4rem;background:rgba(245,158,11,0.06);border-left:2px solid var(--warn);border-radius:3px;">💡 ${escapeHtml(parsed.suggestion)}</div>` : '';
+
+    return `
+    <div style="margin-bottom:0.7rem;">
+      <div style="color:var(--dim);font-size:0.7rem;margin-bottom:0.2rem;">${escapeHtml(turn.ts)}</div>
+      <div style="background:rgba(59,130,246,0.06);padding:0.35rem 0.5rem;border-radius:6px;margin-bottom:0.25rem;word-break:break-word;">
+        <span style="color:var(--dim);font-size:0.7rem;">you</span>
+        <div style="font-size:0.82rem;">${escapeHtml(turn.text)}</div>
+      </div>
+      <div style="background:rgba(15,23,42,0.6);padding:0.35rem 0.5rem;border-radius:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.3rem;">
+          <span style="color:var(--accent);font-weight:600;font-size:0.82rem;">${escapeHtml(parsed.action || '?')}</span>
+          <span style="background:${parserColor}20;color:${parserColor};padding:0.05rem 0.3rem;border-radius:3px;font-size:0.68rem;">${escapeHtml(parserTag)}</span>
+        </div>
+        ${paramsStr}
+        <div style="color:${confColor};font-size:0.7rem;margin-top:0.15rem;">${conf}% confidence</div>
+        ${sug}
+      </div>
+    </div>`;
+  }).join('');
+  host.innerHTML = items;
+  // Auto-scroll to bottom so the newest turn is visible
+  host.scrollTop = host.scrollHeight;
+}
+
+function clearPromptHistory() {
+  _sidebarHistory = [];
+  _saveHistory();
+  _renderSidebarHistory();
+}
+
+async function runSidebarPrompt(overrideText) {
+  const inputEl = document.getElementById('sidebarPromptInput');
+  const text = (overrideText || inputEl?.value || '').trim();
+  if (!text) return;
+
+  const useLlm = !!document.getElementById('useLlmToggle')?.checked;
+  const provider = _currentProvider();
+  let llmModel = document.getElementById('llmModelPicker')?.value;
+  let llmEndpoint, llmKind, llmApiKey = '';
+  if (provider === 'anthropic') {
+    llmEndpoint = 'https://api.anthropic.com/v1/messages';
+    llmKind = 'anthropic';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'claude-sonnet-4-6';
+  } else if (provider === 'openai_cloud') {
+    llmEndpoint = 'https://api.openai.com/v1/chat/completions';
+    llmKind = 'openai_cloud';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'gpt-4o-mini';
+  } else {
+    llmEndpoint = 'http://localhost:11434/api/chat';
+    llmKind = 'ollama';
+    if (!llmModel) llmModel = _llmStatus?.recommended_model || 'llama3.2:3b';
+  }
+
+  // Show pending turn immediately
+  const ts = new Date().toLocaleTimeString();
+  _sidebarHistory.push({ ts, text, parsed: { action: '…', confidence: 0 } });
+  _renderSidebarHistory();
+  if (inputEl && !overrideText) inputEl.value = '';
+
+  try {
+    const resp = await fetch('/api/commands/parse', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text, use_llm: useLlm, llm_endpoint: llmEndpoint, llm_model: llmModel, llm_kind: llmKind, llm_api_key: llmApiKey }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const parsed = await resp.json();
+    _sidebarHistory[_sidebarHistory.length - 1].parsed = parsed;
+    _saveHistory();
+    _renderSidebarHistory();
+    // Update provider tag in header
+    const tag = document.getElementById('promptSidebarProvider');
+    if (tag) tag.textContent = parsed.parser === 'llm' ? (parsed.llm_kind || 'llm') : 'deterministic';
+    // Dispatch like the old runPrompt
+    dispatchCommand(parsed);
+  } catch(e) {
+    _sidebarHistory[_sidebarHistory.length - 1].parsed = { action: 'error', confidence: 0, suggestion: e.message };
+    _saveHistory();
+    _renderSidebarHistory();
+  }
+}
+
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('zassess_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+
+// Restore collapsed state
+try {
+  if (localStorage.getItem('zassess_sidebar_collapsed') === '1') {
+    document.body.classList.add('sidebar-collapsed');
+  }
+} catch(e) {}
+
+// Wire sidebar input: Enter sends, Shift+Enter inserts newline
+document.getElementById('sidebarPromptInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSidebarPrompt(); }
+  if (e.key === 'Escape') { e.target.blur(); }
+});
+
+// Override the global "/" shortcut to focus the sidebar input
+// (replaces earlier handler targeting promptInput; both still work)
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+    // If sidebar is open, focus it; otherwise fall back to the hero prompt
+    const sidebar = document.getElementById('promptSidebar');
+    const collapsed = document.body.classList.contains('sidebar-collapsed');
+    if (!collapsed && sidebar) {
+      e.preventDefault();
+      document.getElementById('sidebarPromptInput')?.focus();
+    }
+  }
+});
+
+// First render
+_renderSidebarHistory();
+
 function dispatchCommand(parsed) {
   const action = parsed.action;
   const p = parsed.params || {};
@@ -2865,17 +3103,794 @@ function renderChecks(checks, filter) {
   const list = document.getElementById('checksList');
   list.innerHTML = '';
   let curSec = '';
+  // Build a set of check_ids that have a registered remediation recipe
+  // so we only render the 🔧 Remediate button where it's meaningful.
+  const remediableIds = new Set(
+    (window._remediationCatalog || []).map(r => r.check_id)
+  );
+  const isRemediable = (cid) => {
+    if (remediableIds.has(cid)) return true;
+    // Prefix match — a recipe for 'FW-01' covers 'FW-01.dns' etc.
+    for (const r of remediableIds) if (cid && cid.startsWith(r)) return true;
+    return false;
+  };
+
   for (const c of checks) {
     const st = c.status === 'ERROR' ? 'INFO' : c.status;
     if (filter !== 'all' && st !== filter) continue;
     if (c.section !== curSec) {
       curSec = c.section;
-      list.innerHTML += `<div class="section-header">${curSec}</div>`;
+      list.innerHTML += `<div class="section-header">${escapeHtml(curSec)}</div>`;
     }
     const stLabel = {PASS:'Configured', FAIL:'Action Required', REVIEW:'Needs Review', INFO:'Not Configured'}[st] || st;
-    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body"><span class="check-id">[${c.id}]</span> <span class="check-label">${c.label}</span><div class="check-detail">${c.detail || ''}</div></div></div>`;
+    // Remediate button only on actionable (FAIL/REVIEW) rows that have a recipe
+    const showRemediate = (st === 'FAIL' || st === 'REVIEW') && isRemediable(c.id);
+    const remediateBtn = showRemediate
+      ? `<button type="button" onclick="openRemediationWizard('${encodeURIComponent(c.id)}')"
+                 aria-label="Remediate ${escapeHtml(c.label)}"
+                 style="float:right;margin-left:0.5rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;padding:0.3rem 0.7rem;font-size:0.75rem;border-radius:5px;cursor:pointer;">
+           🔧 Remediate</button>`
+      : '';
+    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body">${remediateBtn}<span class="check-id">[${escapeHtml(c.id)}]</span> <span class="check-label">${escapeHtml(c.label)}</span><div class="check-detail">${escapeHtml(c.detail || '')}</div></div></div>`;
   }
   if (!list.innerHTML) list.innerHTML = '<p style="padding:2rem;text-align:center;color:var(--dim)">No checks match this filter.</p>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Guided Remediation Wizard
+// Reads /api/remediation/catalog once + caches. Opens a modal with
+// the recipe's field spec rendered as an accessible form. Submit →
+// /api/remediation/plan (validate + preview) → Activate →
+// /api/remediation/execute with dry_run=false (writes gated).
+// ══════════════════════════════════════════════════════════════════
+
+window._remediationCatalog = null;
+let _currentRemediationCheckId = null;
+
+async function _loadRemediationCatalog() {
+  if (window._remediationCatalog) return window._remediationCatalog;
+  try {
+    const r = await fetch('/api/remediation/catalog');
+    const d = await r.json();
+    window._remediationCatalog = d.catalog || [];
+  } catch(e) {
+    window._remediationCatalog = [];
+  }
+  return window._remediationCatalog;
+}
+// Preload so renderChecks can decide which rows get the Remediate button
+_loadRemediationCatalog();
+
+function _findRecipeForCheck(check_id) {
+  for (const r of (window._remediationCatalog || [])) {
+    if (r.check_id === check_id || (check_id || '').startsWith(r.check_id)) return r;
+  }
+  return null;
+}
+
+async function openRemediationWizard(encodedCheckId) {
+  const check_id = decodeURIComponent(encodedCheckId);
+  _currentRemediationCheckId = check_id;
+  await _loadRemediationCatalog();
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) {
+    alert(`No remediation recipe registered for check '${check_id}'.`);
+    return;
+  }
+  // Ensure modal exists
+  _ensureRemediationModal();
+  const modal = document.getElementById('remediationModal');
+  document.getElementById('remediationTitle').textContent = `🔧 ${recipe.label}`;
+  document.getElementById('remediationSummary').textContent = recipe.summary;
+  const destructiveNote = recipe.destructive
+    ? '<div style="margin:0.5rem 0;padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.8rem;"><strong>⚠ This writes to the tenant.</strong> Requires the writes-enabled launcher. Dry-run preview always runs first.</div>'
+    : '';
+  document.getElementById('remediationDestructive').innerHTML = destructiveNote;
+
+  // Render the form
+  const formHost = document.getElementById('remediationFormFields');
+  formHost.innerHTML = recipe.fields.map(f => _renderField(f)).join('');
+  document.getElementById('remediationResult').innerHTML = '';
+  document.getElementById('remediationActivateBtn').style.display = 'none';
+
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+  setTimeout(() => document.querySelector('#remediationFormFields input, #remediationFormFields textarea, #remediationFormFields select')?.focus(), 100);
+}
+
+function _renderField(f) {
+  const id = `remField_${f.key}`;
+  const req = f.required ? ' <span style="color:var(--warn);">*</span>' : '';
+  const hint = f.hint ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">${escapeHtml(f.hint)}</div>` : '';
+  const base = `padding:0.4rem 0.6rem;font-size:0.85rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:6px;color:var(--text);width:100%;`;
+  let input = '';
+  if (f.type === 'enum') {
+    input = `<select id="${id}" style="${base}">` +
+      (f.options || []).map(o => `<option value="${escapeHtml(o)}" ${o === f.default ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('') +
+      `</select>`;
+  } else if (f.type === 'textarea') {
+    input = `<textarea id="${id}" rows="3" style="${base}font-family:inherit;resize:vertical;" placeholder="${escapeHtml(f.hint || '')}"></textarea>`;
+  } else if (f.type === 'number') {
+    input = `<input id="${id}" type="number" value="${f.default ?? ''}" ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''} style="${base}">`;
+  } else if (f.type === 'csv') {
+    input = `<input id="${id}" type="text" placeholder="${escapeHtml(f.hint || 'comma-separated')}" style="${base}font-family:monospace;">`;
+  } else {
+    input = `<input id="${id}" type="text" ${f.max_length ? `maxlength="${f.max_length}"` : ''} value="${escapeHtml(f.default ?? '')}" style="${base}">`;
+  }
+  return `<div style="margin-bottom:0.7rem;">
+    <label for="${id}" style="display:block;font-size:0.82rem;font-weight:600;margin-bottom:0.2rem;">${escapeHtml(f.label)}${req}</label>
+    ${input}
+    ${hint}
+  </div>`;
+}
+
+function _collectRemediationCriteria() {
+  const recipe = _findRecipeForCheck(_currentRemediationCheckId);
+  if (!recipe) return {};
+  const out = {};
+  for (const f of recipe.fields) {
+    const el = document.getElementById(`remField_${f.key}`);
+    if (!el) continue;
+    out[f.key] = el.value;
+  }
+  return out;
+}
+
+async function remediationPreview() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const criteria = _collectRemediationCriteria();
+  const resultEl = document.getElementById('remediationResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Validating + building plan...</div>';
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = criteria;
+  try {
+    const r = await fetch('/api/remediation/plan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (!data.ok) {
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;">
+        <strong>Validation failed:</strong>
+        <ul style="margin:0.3rem 0 0 1.1rem;">${(data.errors || []).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+      </div>`;
+      document.getElementById('remediationActivateBtn').style.display = 'none';
+      return;
+    }
+    // Show the planned request
+    resultEl.innerHTML = `
+      <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:6px;">
+        <div style="font-weight:600;margin-bottom:0.3rem;">✓ Plan ready</div>
+        <div style="font-size:0.82rem;"><strong>Method:</strong> <code>${escapeHtml(data.method)}</code></div>
+        <div style="font-size:0.82rem;"><strong>Endpoint:</strong> <code>${escapeHtml(data.endpoint)}</code></div>
+        <div style="font-size:0.82rem;margin-top:0.4rem;"><strong>Body:</strong></div>
+        <pre style="background:rgba(15,23,42,0.6);padding:0.5rem;border-radius:4px;font-size:0.75rem;overflow-x:auto;margin-top:0.2rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
+      </div>`;
+    document.getElementById('remediationActivateBtn').style.display = 'inline-flex';
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function remediationActivate() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) return;
+  if (recipe.destructive) {
+    if (!confirm(`This will APPLY the remediation to your tenant.\n\nRecipe: ${recipe.label}\n\nMake sure you launched via START_Zscaler_Assessment_WRITES_ENABLED.bat. Continue?`)) return;
+  }
+  const criteria = _collectRemediationCriteria();
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = criteria;
+  body.dry_run = false;
+  const resultEl = document.getElementById('remediationResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Applying...</div>';
+  try {
+    const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (data.status === 'completed') {
+      resultEl.innerHTML = `<div style="padding:0.6rem 0.8rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;">
+        <strong style="color:var(--pass);">✓ Applied (HTTP ${data.http_status})</strong>
+        <div style="font-size:0.82rem;margin-top:0.3rem;">${escapeHtml(data.message || '')}</div>
+      </div>`;
+      document.getElementById('remediationActivateBtn').style.display = 'none';
+    } else if (data.status === 'blocked') {
+      resultEl.innerHTML = `<div style="color:var(--warn);padding:0.6rem 0.8rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;">
+        <strong>Blocked:</strong> ${escapeHtml(data.reason || '')}
+      </div>`;
+    } else {
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.6rem 0.8rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;">
+        <strong>${escapeHtml(data.status || 'failed')}:</strong> ${escapeHtml(data.error || data.message || '')}
+      </div>`;
+    }
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Apply failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeRemediationModal() {
+  const modal = document.getElementById('remediationModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  _currentRemediationCheckId = null;
+}
+
+function _ensureRemediationModal() {
+  if (document.getElementById('remediationModal')) return;
+  const m = document.createElement('div');
+  m.id = 'remediationModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'remediationTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:720px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <h2 id="remediationTitle" style="margin:0;">🔧 Remediate</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeRemediationModal()" aria-label="Close remediation dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p id="remediationSummary" style="color:var(--dim);font-size:0.88rem;"></p>
+      <div id="remediationDestructive"></div>
+      <div id="remediationFormFields" style="margin-top:0.8rem;"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.8rem;">
+        <button type="button" class="btn btn-primary" onclick="remediationPreview()" style="padding:0.55rem 1rem;font-size:0.85rem;">Preview plan (dry-run)</button>
+        <button type="button" id="remediationActivateBtn" onclick="remediationActivate()"
+                style="display:none;padding:0.55rem 1rem;font-size:0.85rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+          ⚡ Activate (apply live)
+        </button>
+      </div>
+      <div id="remediationResult" style="margin-top:0.8rem;"></div>
+    </div>`;
+  document.body.appendChild(m);
+  // Esc closes this modal too
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeRemediationModal();
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Review & Remediate — holistic flow
+// Shows every REVIEW/FAIL finding that has a registered recipe,
+// lets the user tick which to fix, then walks through them
+// sequentially with Next/Skip/Apply/Finish controls.
+// ══════════════════════════════════════════════════════════════════
+
+let _remediationQueue = [];   // [{check_id, label, status, detail, recipe}]
+let _remediationIndex = 0;
+let _remediationResults = []; // accumulated outcomes for final summary
+
+async function openRemediationReview() {
+  await _loadRemediationCatalog();
+  const recipes = window._remediationCatalog || [];
+  if (!recipes.length) {
+    alert('No remediation recipes are registered.');
+    return;
+  }
+  // Match findings against recipes
+  const checks = (reportData && reportData.checks) || [];
+  const candidates = [];
+  const isRem = (cid) => {
+    for (const r of recipes) {
+      if (r.check_id === cid) return r;
+      if (cid && cid.startsWith(r.check_id)) return r;
+    }
+    return null;
+  };
+  for (const c of checks) {
+    const st = c.status === 'ERROR' ? 'INFO' : c.status;
+    if (st !== 'FAIL' && st !== 'REVIEW') continue;
+    const recipe = isRem(c.id);
+    if (recipe) {
+      candidates.push({
+        check_id: c.id, label: c.label, status: st,
+        detail: c.detail || '', section: c.section || '',
+        recipe,
+      });
+    }
+  }
+
+  _ensureReviewModal();
+  const list = document.getElementById('reviewList');
+  if (!candidates.length) {
+    list.innerHTML = `<div style="padding:1.2rem;text-align:center;color:var(--dim);">
+      <div style="font-size:1.4rem;margin-bottom:0.4rem;">🎉</div>
+      No remediable findings in this assessment — either everything passed or no recipes cover the open items.
+      <div style="font-size:0.78rem;margin-top:0.4rem;">Recipe catalog has ${recipes.length} remediation(s). Add more in <code>remediation.py</code>.</div>
+    </div>`;
+    document.getElementById('reviewStartBtn').style.display = 'none';
+  } else {
+    // Group by section for readability
+    const bySection = {};
+    for (const cand of candidates) {
+      (bySection[cand.section] ||= []).push(cand);
+    }
+    const html = Object.entries(bySection).map(([sec, items]) => `
+      <div style="margin-bottom:0.8rem;">
+        <div style="font-size:0.78rem;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;">${escapeHtml(sec || 'Other')}</div>
+        ${items.map(it => {
+          const stColor = it.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)';
+          return `<label style="display:flex;gap:0.5rem;align-items:flex-start;padding:0.55rem 0.7rem;margin-bottom:0.3rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="checkbox" class="reviewCheck" data-check-id="${escapeHtml(it.check_id)}" checked style="margin-top:0.2rem;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:0.85rem;">
+                <span style="color:${stColor};font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(it.status)}</span>
+                <code style="color:var(--dim);font-size:0.75rem;margin:0 0.3rem;">${escapeHtml(it.check_id)}</code>
+                ${escapeHtml(it.label)}
+              </div>
+              <div style="color:var(--dim);font-size:0.76rem;margin-top:0.2rem;">→ ${escapeHtml(it.recipe.label)}</div>
+            </div>
+          </label>`;
+        }).join('')}
+      </div>`).join('');
+    list.innerHTML = `
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.6rem;">
+        <button type="button" class="btn btn-ghost" onclick="_reviewSelectAll(true)" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Select all</button>
+        <button type="button" class="btn btn-ghost" onclick="_reviewSelectAll(false)" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Clear</button>
+        <span style="flex:1;text-align:right;color:var(--dim);font-size:0.78rem;align-self:center;">${candidates.length} remediable finding(s)</span>
+      </div>
+      ${html}`;
+    document.getElementById('reviewStartBtn').style.display = 'inline-flex';
+  }
+  // Stash for the Start button
+  window._reviewCandidates = candidates;
+  document.getElementById('reviewModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+}
+
+function _reviewSelectAll(checked) {
+  document.querySelectorAll('.reviewCheck').forEach(cb => { cb.checked = checked; });
+}
+
+function closeReviewModal() {
+  const m = document.getElementById('reviewModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+}
+
+function startRemediationWizard() {
+  const selected = Array.from(document.querySelectorAll('.reviewCheck:checked'))
+    .map(cb => cb.dataset.checkId);
+  const queue = (window._reviewCandidates || []).filter(c => selected.includes(c.check_id));
+  if (!queue.length) {
+    alert('Select at least one finding to remediate.');
+    return;
+  }
+  _remediationQueue = queue;
+  _remediationIndex = 0;
+  _remediationResults = [];
+  closeReviewModal();
+  _showWizardStep();
+}
+
+function _showWizardStep() {
+  _ensureWizardModal();
+  const idx = _remediationIndex;
+  const total = _remediationQueue.length;
+  if (idx >= total) {
+    _showWizardSummary();
+    return;
+  }
+  const item = _remediationQueue[idx];
+  const recipe = item.recipe;
+  _currentRemediationCheckId = item.check_id;
+
+  document.getElementById('wizardTitle').textContent = `🔧 Step ${idx + 1} of ${total}`;
+  document.getElementById('wizardFindingLabel').innerHTML = `
+    <div style="font-weight:600;">${escapeHtml(item.label)}</div>
+    <div style="color:var(--dim);font-size:0.78rem;margin-top:0.2rem;">
+      <code>${escapeHtml(item.check_id)}</code> · ${escapeHtml(item.section)} · status <strong style="color:${item.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)'};">${escapeHtml(item.status)}</strong>
+    </div>
+    <div style="color:var(--dim);font-size:0.8rem;margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.5);border-radius:4px;">${escapeHtml(item.detail)}</div>`;
+  document.getElementById('wizardRecipe').textContent = recipe.label;
+  document.getElementById('wizardSummary').textContent = recipe.summary;
+  document.getElementById('wizardDestructive').innerHTML = recipe.destructive
+    ? '<div style="margin:0.4rem 0;padding:0.45rem 0.65rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.78rem;"><strong>⚠ Writes to the tenant.</strong> Requires START_Zscaler_Assessment_WRITES_ENABLED.bat. Preview first; confirm before apply.</div>'
+    : '';
+  document.getElementById('wizardFormFields').innerHTML = recipe.fields.map(f => _renderField(f)).join('');
+  document.getElementById('wizardResult').innerHTML = '';
+  document.getElementById('wizardApplyBtn').style.display = 'none';
+
+  // Progress bar
+  const pct = Math.round((idx / total) * 100);
+  document.getElementById('wizardProgress').style.width = pct + '%';
+  document.getElementById('wizardProgressLabel').textContent = `${idx} of ${total} processed`;
+
+  document.getElementById('wizardModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.querySelector('#wizardFormFields input, #wizardFormFields textarea, #wizardFormFields select')?.focus(), 100);
+}
+
+function _collectWizardCriteria() {
+  const recipe = _findRecipeForCheck(_currentRemediationCheckId);
+  if (!recipe) return {};
+  const out = {};
+  for (const f of recipe.fields) {
+    const el = document.getElementById(`remField_${f.key}`);
+    if (el) out[f.key] = el.value;
+  }
+  return out;
+}
+
+async function wizardPreview() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const resultEl = document.getElementById('wizardResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Validating…</div>';
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = _collectWizardCriteria();
+  try {
+    const r = await fetch('/api/remediation/plan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (!data.ok) {
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;">
+        <strong>Validation failed:</strong>
+        <ul style="margin:0.3rem 0 0 1.1rem;">${(data.errors || []).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+      </div>`;
+      document.getElementById('wizardApplyBtn').style.display = 'none';
+      return;
+    }
+    resultEl.innerHTML = `
+      <div style="padding:0.5rem 0.7rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:6px;font-size:0.82rem;">
+        <strong>Plan ready:</strong> <code>${escapeHtml(data.method)}</code> <code>${escapeHtml(data.endpoint)}</code>
+        <pre style="background:rgba(15,23,42,0.6);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
+      </div>`;
+    document.getElementById('wizardApplyBtn').style.display = 'inline-flex';
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function wizardApply() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) return;
+  if (recipe.destructive && !confirm(`Apply '${recipe.label}' to the tenant now?`)) return;
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = _collectWizardCriteria();
+  body.dry_run = false;
+  const resultEl = document.getElementById('wizardResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Applying…</div>';
+  try {
+    const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    let outcome;
+    if (data.status === 'completed') {
+      outcome = {check_id, label: recipe.label, status: 'applied', message: data.message || '', http: data.http_status};
+      resultEl.innerHTML = `<div style="padding:0.5rem 0.7rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;"><strong style="color:var(--pass);">✓ Applied (HTTP ${data.http_status})</strong><div style="font-size:0.8rem;margin-top:0.2rem;">${escapeHtml(data.message || '')}</div></div>`;
+    } else if (data.status === 'blocked') {
+      outcome = {check_id, label: recipe.label, status: 'blocked', message: data.reason || ''};
+      resultEl.innerHTML = `<div style="color:var(--warn);padding:0.5rem 0.7rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;"><strong>Blocked:</strong> ${escapeHtml(data.reason || '')}</div>`;
+    } else {
+      outcome = {check_id, label: recipe.label, status: 'failed', message: data.error || data.message || 'unknown error'};
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;"><strong>${escapeHtml(data.status || 'failed')}:</strong> ${escapeHtml(data.error || data.message || '')}</div>`;
+    }
+    _remediationResults.push(outcome);
+    // Advance-button relabel so the user continues naturally
+    document.getElementById('wizardNextBtn').textContent = (_remediationIndex + 1 >= _remediationQueue.length) ? 'Finish →' : 'Next →';
+    document.getElementById('wizardApplyBtn').style.display = 'none';
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Apply failed: ${escapeHtml(e.message)}</div>`;
+    _remediationResults.push({check_id, label: recipe.label, status: 'error', message: e.message});
+  }
+}
+
+function wizardSkip() {
+  const item = _remediationQueue[_remediationIndex];
+  if (item) _remediationResults.push({check_id: item.check_id, label: item.recipe.label, status: 'skipped'});
+  _remediationIndex++;
+  _showWizardStep();
+}
+
+function wizardNext() {
+  _remediationIndex++;
+  _showWizardStep();
+}
+
+function closeWizard() {
+  const m = document.getElementById('wizardModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+  _remediationQueue = [];
+  _remediationIndex = 0;
+  _remediationResults = [];
+}
+
+function _showWizardSummary() {
+  const host = document.getElementById('wizardModal');
+  const by = {applied: 0, skipped: 0, blocked: 0, failed: 0, error: 0};
+  for (const r of _remediationResults) by[r.status] = (by[r.status] || 0) + 1;
+  const rows = _remediationResults.map(r => {
+    const colors = {applied:'var(--pass)', skipped:'var(--dim)', blocked:'var(--warn)', failed:'var(--fail)', error:'var(--fail)'};
+    const icons  = {applied:'✓', skipped:'→', blocked:'⚠', failed:'✗', error:'✗'};
+    return `<tr>
+      <td style="padding:0.3rem 0.5rem;color:${colors[r.status] || 'var(--dim)'};font-weight:600;">${icons[r.status] || '?'} ${escapeHtml(r.status)}</td>
+      <td style="padding:0.3rem 0.5rem;"><code style="color:var(--dim);">${escapeHtml(r.check_id)}</code></td>
+      <td style="padding:0.3rem 0.5rem;">${escapeHtml(r.label)}</td>
+      <td style="padding:0.3rem 0.5rem;font-size:0.78rem;color:var(--dim);">${escapeHtml(r.message || '')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('wizardTitle').textContent = '🔧 Remediation Summary';
+  document.getElementById('wizardFindingLabel').innerHTML = `
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.4rem;">
+      <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--pass);">Applied: ${by.applied}</span>
+      <span class="badge" style="background:rgba(148,163,184,0.15);color:var(--dim);">Skipped: ${by.skipped}</span>
+      <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warn);">Blocked: ${by.blocked}</span>
+      <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--fail);">Failed: ${(by.failed||0) + (by.error||0)}</span>
+    </div>`;
+  document.getElementById('wizardRecipe').textContent = '';
+  document.getElementById('wizardSummary').textContent = 'Review what happened, then re-run the assessment to confirm the fixes.';
+  document.getElementById('wizardDestructive').innerHTML = '';
+  document.getElementById('wizardFormFields').innerHTML = rows.length
+    ? `<table style="width:100%;font-size:0.82rem;border-collapse:collapse;"><thead><tr style="background:rgba(59,130,246,0.08);">
+        <th style="padding:0.35rem 0.5rem;text-align:left;">Status</th>
+        <th style="padding:0.35rem 0.5rem;text-align:left;">ID</th>
+        <th style="padding:0.35rem 0.5rem;text-align:left;">Recipe</th>
+        <th style="padding:0.35rem 0.5rem;text-align:left;">Message</th>
+       </tr></thead><tbody>${rows}</tbody></table>`
+    : '<div style="color:var(--dim);">No remediations processed.</div>';
+  document.getElementById('wizardResult').innerHTML = '';
+  document.getElementById('wizardPreviewBtn').style.display = 'none';
+  document.getElementById('wizardApplyBtn').style.display = 'none';
+  document.getElementById('wizardSkipBtn').style.display = 'none';
+  document.getElementById('wizardNextBtn').textContent = 'Close';
+  document.getElementById('wizardNextBtn').onclick = closeWizard;
+  document.getElementById('wizardProgress').style.width = '100%';
+  document.getElementById('wizardProgressLabel').textContent = 'Done';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 📚 Best Practices Library — curated Zscaler help-portal links
+// ══════════════════════════════════════════════════════════════════
+let _bestPracticesCache = null;
+
+async function openBestPracticesModal() {
+  _ensureBestPracticesModal();
+  const modal = document.getElementById('bestPracticesModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+  const host = document.getElementById('bestPracticesContent');
+  if (!_bestPracticesCache) {
+    host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
+    try {
+      const r = await fetch('/api/best-practices');
+      _bestPracticesCache = await r.json();
+    } catch(e) {
+      host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
+  }
+  _renderBestPractices(_bestPracticesCache);
+}
+
+function closeBestPracticesModal() {
+  document.getElementById('bestPracticesModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+}
+
+function _renderBestPractices(data, discoveredData) {
+  const entries = data.entries || [];
+  const services = data.services || [];
+  const bySvc = {};
+  for (const e of entries) (bySvc[e.service] ||= []).push(e);
+  const svcOrder = services.length ? services : Object.keys(bySvc);
+
+  const renderEntry = (e, isDiscovered) => `
+    <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
+      <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
+         style="color:var(--accent);text-decoration:none;font-weight:600;">
+        ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
+      </a>
+      ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
+      ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
+      <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;word-break:break-all;">${escapeHtml(e.url)}</div>
+    </li>`;
+
+  const curatedHtml = svcOrder.map(svc => {
+    const items = (bySvc[svc] || []).map(e => renderEntry(e, false)).join('');
+    return `
+      <section style="margin-bottom:1rem;">
+        <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${(bySvc[svc] || []).length})</span></h3>
+        <ul style="list-style:none;padding:0;margin:0;">${items}</ul>
+      </section>`;
+  }).join('');
+
+  // Discovered section — only renders when a crawl has produced new entries
+  let discoveredHtml = '';
+  if (discoveredData && discoveredData.new_entries && discoveredData.new_entries.length) {
+    const newBySvc = {};
+    for (const e of discoveredData.new_entries) (newBySvc[e.service] ||= []).push(e);
+    const newHtml = Object.entries(newBySvc).map(([svc, items]) => `
+      <section style="margin-bottom:0.8rem;">
+        <h4 style="font-size:0.78rem;color:var(--pass);margin-bottom:0.3rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-weight:400;">(${items.length})</span></h4>
+        <ul style="list-style:none;padding:0;margin:0;">${items.map(e => renderEntry(e, true)).join('')}</ul>
+      </section>`).join('');
+    const addedCount = (typeof discoveredData.added_to_library === 'number')
+      ? discoveredData.added_to_library : discoveredData.new_entries.length;
+    discoveredHtml = `
+      <div style="padding:0.8rem 1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:8px;margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
+          <strong style="color:var(--pass);">✨ ${addedCount} article${addedCount === 1 ? '' : 's'} added to the library</strong>
+          <span style="color:var(--dim);font-size:0.72rem;">scanned ${discoveredData.pages_fetched || 0} index page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
+        </div>
+        ${newHtml}
+        <div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">
+          These are now persisted in your per-user data dir and will appear in future sessions alongside curated entries (badged DISCOVERED).
+        </div>
+      </div>`;
+  } else if (discoveredData) {
+    const msg = discoveredData.total_matched
+      ? `Crawl found ${discoveredData.total_matched} total article${discoveredData.total_matched === 1 ? '' : 's'} — all already in the curated list.`
+      : 'Crawl completed but found no matching articles.';
+    discoveredHtml = `
+      <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:6px;margin-bottom:1rem;font-size:0.82rem;color:var(--dim);">
+        ${msg} <span style="font-size:0.72rem;">(${discoveredData.pages_fetched || 0} pages · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+      </div>`;
+  }
+
+  document.getElementById('bestPracticesContent').innerHTML = `
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.8rem;">
+      Curated list of every Zscaler help-portal article titled "Best Practices" or "Leading Practices".
+      Click <strong>🔄 Check for new articles</strong> to crawl <code>help.zscaler.com</code> for anything added since this list was compiled.
+    </p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
+      <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
+              aria-label="Crawl help.zscaler.com for new Best Practices articles and add them to the library"
+              style="padding:0.5rem 1rem;font-size:0.85rem;">🔄 Update library</button>
+      <button type="button" class="btn btn-ghost" onclick="crawlBestPractices(true)"
+              aria-label="Force a fresh crawl, bypassing the 24h cache"
+              style="padding:0.5rem 0.9rem;font-size:0.8rem;">⟳ Force refresh</button>
+      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · help.zscaler.com allowlisted</span>
+    </div>
+    ${discoveredHtml}
+    ${curatedHtml}`;
+}
+
+async function crawlBestPractices(force) {
+  const btn = document.getElementById('bpCrawlBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling help.zscaler.com…'; }
+  try {
+    const r = await fetch('/api/best-practices/crawl', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ force: !!force }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    // The crawl auto-persists discoveries into the library, so re-fetch
+    // the merged catalog so newly-promoted entries appear inline in
+    // their service sections (with a DISCOVERED badge).
+    try {
+      const r2 = await fetch('/api/best-practices');
+      _bestPracticesCache = await r2.json();
+    } catch(_) { /* keep previous cache */ }
+    _renderBestPractices(_bestPracticesCache, data);
+    // Confirmation toast
+    if (typeof data.added_to_library === 'number' && data.added_to_library > 0) {
+      announce(`${data.added_to_library} new article${data.added_to_library === 1 ? '' : 's'} added to the library.`);
+    }
+  } catch (e) {
+    const host = document.getElementById('bestPracticesContent');
+    if (host) {
+      const banner = document.createElement('div');
+      banner.style.cssText = 'padding:0.6rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;margin-bottom:0.8rem;';
+      banner.innerHTML = `<strong style="color:var(--fail);">Crawl failed:</strong> ${escapeHtml(e.message)}`;
+      host.insertBefore(banner, host.firstChild);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Update library'; }
+  }
+}
+
+function _ensureBestPracticesModal() {
+  if (document.getElementById('bestPracticesModal')) return;
+  const m = document.createElement('div');
+  m.id = 'bestPracticesModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'bestPracticesTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:820px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <h2 id="bestPracticesTitle" style="margin:0;"><span aria-hidden="true">📚</span> Zscaler Best Practices Library</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeBestPracticesModal()" aria-label="Close best-practices library" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <div id="bestPracticesContent"></div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeBestPracticesModal();
+  });
+}
+
+function _ensureReviewModal() {
+  if (document.getElementById('reviewModal')) return;
+  const m = document.createElement('div');
+  m.id = 'reviewModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'reviewTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:820px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+        <h2 id="reviewTitle" style="margin:0;"><span aria-hidden="true">🔧</span> Review &amp; Remediate</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" aria-label="Close review dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.6rem;">Findings below have an auto-remediation recipe. Tick which ones to fix, then click Start — the wizard walks through them one at a time, with Preview / Apply / Skip at each step.</p>
+      <div id="reviewList" style="max-height:55vh;overflow-y:auto;margin-bottom:0.8rem;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
+        <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" style="padding:0.5rem 1rem;">Cancel</button>
+        <button type="button" id="reviewStartBtn" onclick="startRemediationWizard()"
+                style="padding:0.5rem 1.2rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+          Start Wizard →
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeReviewModal();
+  });
+}
+
+function _ensureWizardModal() {
+  if (document.getElementById('wizardModal')) return;
+  const m = document.createElement('div');
+  m.id = 'wizardModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'wizardTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:760px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <!-- Progress header -->
+      <div style="margin-bottom:0.6rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+          <h2 id="wizardTitle" style="margin:0;font-size:1.1rem;">🔧 Remediation</h2>
+          <button type="button" class="btn btn-ghost" onclick="closeWizard()" aria-label="Abort wizard" style="padding:0.35rem 0.7rem;font-size:0.8rem;">✕ Abort</button>
+        </div>
+        <div style="height:4px;background:rgba(148,163,184,0.15);border-radius:2px;overflow:hidden;">
+          <div id="wizardProgress" style="height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);transition:width 200ms ease;width:0%;"></div>
+        </div>
+        <div id="wizardProgressLabel" style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">0 of 0 processed</div>
+      </div>
+      <!-- Finding being remediated -->
+      <div id="wizardFindingLabel" style="padding:0.55rem 0.7rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;margin-bottom:0.6rem;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.2rem;">
+        <strong id="wizardRecipe" style="color:var(--accent);"></strong>
+      </div>
+      <p id="wizardSummary" style="color:var(--dim);font-size:0.82rem;margin-bottom:0.5rem;"></p>
+      <div id="wizardDestructive"></div>
+      <div id="wizardFormFields" style="margin-top:0.6rem;"></div>
+      <div id="wizardResult" style="margin-top:0.6rem;"></div>
+      <!-- Controls -->
+      <div style="display:flex;gap:0.4rem;justify-content:space-between;margin-top:0.8rem;flex-wrap:wrap;">
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button type="button" id="wizardPreviewBtn" class="btn btn-primary" onclick="wizardPreview()" style="padding:0.5rem 1rem;font-size:0.85rem;">Preview plan</button>
+          <button type="button" id="wizardApplyBtn" onclick="wizardApply()"
+                  style="display:none;padding:0.5rem 1rem;font-size:0.85rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+            ⚡ Apply now
+          </button>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button type="button" id="wizardSkipBtn" class="btn btn-ghost" onclick="wizardSkip()" style="padding:0.5rem 1rem;font-size:0.85rem;">Skip →</button>
+          <button type="button" id="wizardNextBtn" class="btn btn-ghost" onclick="wizardNext()" style="padding:0.5rem 1rem;font-size:0.85rem;">Next →</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeWizard();
+  });
 }
 
 function filterChecks(status, btn) {

@@ -14,6 +14,9 @@ Frameworks covered:
   - PCI-DSS v4.0 (Payment Card Industry)
   - ISO/IEC 27001:2022 (Information Security Management)
   - CIS Controls v8 (Center for Internet Security)
+  - CMMC 2.0 Level 1 (15 basic practices — FAR 52.204-21 alignment)
+  - CMMC 2.0 Level 2 (110 practices — NIST 800-171 alignment, for CUI handlers)
+  - CMMC 2.0 Level 3 (Level 2 + NIST 800-172 enhanced — critical programs)
 
 Mapping is based on Zscaler-published compliance documentation and
 common control alignment patterns. Each check ID maps to a list of
@@ -35,6 +38,9 @@ FRAMEWORK_DESCRIPTIONS = {
     "PCI_DSS": "PCI-DSS v4.0 — Payment Card Industry Data Security Standard",
     "ISO_27001": "ISO/IEC 27001:2022 — Information Security Management Systems",
     "CIS": "CIS Controls v8 — Center for Internet Security",
+    "CMMC_L1": "CMMC 2.0 Level 1 — Foundational (15 practices, FAR 52.204-21). Required for any DoD contractor handling Federal Contract Information (FCI).",
+    "CMMC_L2": "CMMC 2.0 Level 2 — Advanced (110 practices, aligned to NIST SP 800-171 Rev 2). Required for contractors handling Controlled Unclassified Information (CUI).",
+    "CMMC_L3": "CMMC 2.0 Level 3 — Expert (Level 2 plus a subset of NIST SP 800-172 enhanced requirements). Required for CUI in highest-priority DoD programs.",
 }
 
 # Mapping of check categories to compliance controls
@@ -49,6 +55,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["4.2.1 (Strong Cryptography in Transit)", "11.5.1 (Intrusion Detection)"],
         "ISO_27001": ["A.5.10 (Acceptable Use)", "A.8.20 (Networks Security)", "A.8.24 (Use of Cryptography)"],
         "CIS": ["13.10 (Encrypt Sensitive Data in Transit)", "13.6 (Collect Network Traffic Flow Logs)"],
+        "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)"],
+        "CMMC_L2": ["SC.L2-3.13.8 (Transmission Confidentiality)", "SC.L2-3.13.11 (FIPS Cryptography)", "SC.L2-3.13.16 (Protection of CUI at Rest)", "SI.L2-3.14.6 (Monitor Communications)"],
+        "CMMC_L3": ["SC.L3-3.13.4e (Control Information Flows — Critical Programs)", "SI.L3-3.14.1e (Integrity Verification)"],
     },
     "dlp": {
         "NIST_800_53": ["AC-4 (Information Flow Enforcement)", "SC-7 (Boundary Protection)", "MP-5 (Media Transport)", "AU-12 (Audit Generation)"],
@@ -59,6 +68,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["3.5 (Protect Stored PAN)", "4.2 (PAN in Transit)", "10.2 (Audit Logs)"],
         "ISO_27001": ["A.5.34 (Privacy & PII Protection)", "A.8.12 (Data Leakage Prevention)", "A.8.10 (Information Deletion)"],
         "CIS": ["3.13 (Deploy DLP)", "3.3 (Configure Data Access Control Lists)"],
+        "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)", "SC.L1-3.13.5 (Public-Access System Components)"],
+        "CMMC_L2": ["AC.L2-3.1.3 (Control CUI Flow)", "MP.L2-3.8.5 (Media Transport)", "AU.L2-3.3.1 (Create Audit Records)"],
+        "CMMC_L3": ["AC.L3-3.1.3e (Info Flow for Critical Programs)"],
     },
     "url_filtering": {
         "NIST_800_53": ["AC-4 (Information Flow Enforcement)", "SC-7 (Boundary Protection)", "SC-7(8) (Route Traffic to Authenticated Proxy)"],
@@ -69,6 +81,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["1.4 (Network Security Controls)", "5.4 (Anti-Phishing)"],
         "ISO_27001": ["A.8.20 (Networks Security)", "A.8.21 (Security of Network Services)", "A.8.22 (Web Filtering)"],
         "CIS": ["9.3 (Maintain and Enforce Network-Based URL Filters)"],
+        "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)", "AC.L1-3.1.20 (External Connections)"],
+        "CMMC_L2": ["SC.L2-3.13.6 (Deny Communications by Default)", "AC.L2-3.1.3 (Control CUI Flow)"],
+        "CMMC_L3": ["SC.L3-3.13.4e (Control Info Flows — Critical Programs)"],
     },
     "firewall": {
         "NIST_800_53": ["SC-7 (Boundary Protection)", "AC-4 (Information Flow Enforcement)", "CA-3 (System Interconnections)"],
@@ -79,6 +94,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["1.2 (Network Security Configuration)", "1.3 (Network Access Configuration)", "1.4 (Network Security Controls)"],
         "ISO_27001": ["A.8.20 (Networks Security)", "A.8.22 (Segregation in Networks)"],
         "CIS": ["12.2 (Establish and Maintain Network Architecture)", "13.4 (Perform Traffic Filtering Between Network Segments)"],
+        "CMMC_L1": ["SC.L1-3.13.1 (Boundary Protection)", "SC.L1-3.13.5 (Public-Access System Components)"],
+        "CMMC_L2": ["SC.L2-3.13.6 (Deny by Default)", "SC.L2-3.13.2 (Security Engineering Principles)", "CA.L2-3.12.4 (Plans of Action)"],
+        "CMMC_L3": ["SC.L3-3.13.4e (Control Info Flows — Critical Programs)"],
     },
     "zpa_zero_trust": {
         "NIST_800_53": ["AC-3 (Access Enforcement)", "AC-6 (Least Privilege)", "AC-17 (Remote Access)", "IA-2 (Identification)"],
@@ -89,6 +107,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["7.2 (Define Access Needs)", "7.3 (Restrict Access)", "8.3 (Strong Authentication)"],
         "ISO_27001": ["A.5.15 (Access Control)", "A.5.18 (Access Rights)", "A.8.2 (Privileged Access Rights)"],
         "CIS": ["6.7 (Centralize Access Control)", "6.8 (Define and Maintain Role-Based Access Control)", "12.7 (Ensure Remote Devices Use VPN/ZTNA)"],
+        "CMMC_L1": ["AC.L1-3.1.1 (Authorized Access)", "AC.L1-3.1.2 (Transaction Limits)", "IA.L1-3.5.1 (Identify Users)", "IA.L1-3.5.2 (Authenticate Users)"],
+        "CMMC_L2": ["AC.L2-3.1.5 (Least Privilege)", "AC.L2-3.1.12 (Monitor Remote Access)", "AC.L2-3.1.13 (Remote Access Cryptography)", "IA.L2-3.5.3 (Multifactor Authentication)"],
+        "CMMC_L3": ["AC.L3-3.1.2e (Restrict Privileges — Critical Programs)"],
     },
     "logging_monitoring": {
         "NIST_800_53": ["AU-2 (Audit Events)", "AU-3 (Audit Records Content)", "AU-6 (Audit Review)", "AU-12 (Audit Generation)", "SI-4 (System Monitoring)"],
@@ -99,6 +120,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["10.2 (Audit Logs)", "10.5 (Log Retention 1 Year)", "10.7 (Time Synchronization)"],
         "ISO_27001": ["A.8.15 (Logging)", "A.8.16 (Monitoring Activities)", "A.5.25 (Assessment of Information Security Events)"],
         "CIS": ["8.1 (Establish Audit Log Management)", "8.5 (Collect Detailed Audit Logs)", "8.10 (Retain Audit Logs)"],
+        "CMMC_L1": [],
+        "CMMC_L2": ["AU.L2-3.3.1 (Create & Retain Audit Records)", "AU.L2-3.3.2 (Audit Record Content)", "AU.L2-3.3.5 (Correlate Audit Records)", "SI.L2-3.14.6 (Monitor System)", "SI.L2-3.14.7 (Identify Unauthorized Use)"],
+        "CMMC_L3": ["AU.L3-3.3.1e (Automated Audit Analysis)", "SI.L3-3.14.6e (Threat Hunting)"],
     },
     "endpoint_dlp": {
         "NIST_800_53": ["MP-5 (Media Transport)", "MP-7 (Media Use)", "AC-19 (Mobile Device Access Control)", "SC-7 (Boundary Protection)"],
@@ -109,6 +133,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["3.5 (Protect Stored PAN)", "9.7 (Removable Media)"],
         "ISO_27001": ["A.8.7 (Protection Against Malware)", "A.8.9 (Configuration Management)", "A.8.12 (Data Leakage)"],
         "CIS": ["3.6 (Encrypt Data on End-User Devices)", "10.5 (Enable Anti-Exploitation)"],
+        "CMMC_L1": ["MP.L1-3.8.3 (Media Sanitization)"],
+        "CMMC_L2": ["MP.L2-3.8.5 (Media Transport)", "MP.L2-3.8.7 (Removable Media Controls)", "MP.L2-3.8.8 (Prohibit Unauthorized Media)", "AC.L2-3.1.19 (Encrypt Mobile Devices)"],
+        "CMMC_L3": [],
     },
     "malware_threat": {
         "NIST_800_53": ["SI-3 (Malicious Code Protection)", "SI-4 (System Monitoring)", "SI-7 (Software Integrity)"],
@@ -119,6 +146,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["5.2 (Anti-Malware Mechanisms)", "5.3 (Protection from Malware)", "5.4 (Anti-Phishing)"],
         "ISO_27001": ["A.8.7 (Protection Against Malware)"],
         "CIS": ["10.1 (Deploy Anti-Malware)", "10.2 (Centrally Manage Anti-Malware)", "10.7 (Anti-Phishing)"],
+        "CMMC_L1": ["SI.L1-3.14.1 (Flaw Remediation)", "SI.L1-3.14.2 (Malicious Code Protection)", "SI.L1-3.14.4 (Update Malicious Code Protection)", "SI.L1-3.14.5 (Scan for Malicious Code)"],
+        "CMMC_L2": ["SI.L2-3.14.3 (Monitor Security Advisories)"],
+        "CMMC_L3": ["SI.L3-3.14.1e (Integrity Verification)"],
     },
     "identity_admin": {
         "NIST_800_53": ["AC-2 (Account Management)", "AC-5 (Separation of Duties)", "AC-6 (Least Privilege)", "IA-2 (Identification)"],
@@ -129,6 +159,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["7.1 (Access Control)", "7.2 (Define Access Needs)", "8.2 (Identify Users)"],
         "ISO_27001": ["A.5.16 (Identity Management)", "A.5.18 (Access Rights)", "A.8.2 (Privileged Access)"],
         "CIS": ["5.1 (Establish Account Management Process)", "6.7 (Centralize Access Control)"],
+        "CMMC_L1": ["AC.L1-3.1.1 (Authorized Access)", "AC.L1-3.1.2 (Transaction/Function Limits)", "IA.L1-3.5.1 (Identify Users)", "IA.L1-3.5.2 (Authenticate Users)"],
+        "CMMC_L2": ["AC.L2-3.1.4 (Separation of Duties)", "AC.L2-3.1.5 (Least Privilege)", "AC.L2-3.1.6 (Non-Privileged Accounts for Non-Security)", "AC.L2-3.1.7 (Non-Privileged Cannot Execute Security)", "IA.L2-3.5.3 (Multifactor Authentication)", "IA.L2-3.5.7 (Password Complexity)"],
+        "CMMC_L3": ["AC.L3-3.1.3e (Enforce Info Flow — Critical Programs)"],
     },
     "incident_response": {
         "NIST_800_53": ["IR-4 (Incident Handling)", "IR-5 (Incident Monitoring)", "IR-6 (Incident Reporting)", "IR-7 (Incident Response Assistance)"],
@@ -139,6 +172,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["12.10 (Incident Response Plan)", "12.10.1 (Incident Response Procedures)"],
         "ISO_27001": ["A.5.24 (Incident Management Planning)", "A.5.25 (Event Assessment)", "A.5.26 (Incident Response)"],
         "CIS": ["17.1 (Designate Incident Response Personnel)", "17.4 (Establish Incident Response Plans)"],
+        "CMMC_L1": [],
+        "CMMC_L2": ["IR.L2-3.6.1 (Incident Handling Capability)", "IR.L2-3.6.2 (Track, Document, Report Incidents)", "IR.L2-3.6.3 (Test Incident Response)"],
+        "CMMC_L3": ["IR.L3-3.6.1e (Security Operations Center)"],
     },
     "ai_governance": {
         "NIST_800_53": ["RA-3 (Risk Assessment)", "PM-9 (Risk Management Strategy)", "AC-4 (Information Flow)", "SI-7 (Software Integrity)"],
@@ -149,6 +185,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["12.3.1 (Risk Assessment for Critical Technologies)"],
         "ISO_27001": ["A.5.7 (Threat Intelligence)", "A.5.34 (PII Protection)", "A.8.27 (Secure System Architecture)"],
         "CIS": ["3.1 (Establish Data Management Process)", "3.13 (Deploy DLP)"],
+        "CMMC_L1": [],
+        "CMMC_L2": ["RA.L2-3.11.1 (Risk Assessments)", "RA.L2-3.11.2 (Scan for Vulnerabilities)", "AC.L2-3.1.3 (Control CUI Flow)"],
+        "CMMC_L3": ["RA.L3-3.11.1e (Threat Intelligence)"],
         "_FRAMEWORK_NOTE": "EU AI Act, NIST AI RMF, and OWASP LLM Top 10 also apply specifically to GenAI controls.",
     },
     "device_compliance": {
@@ -160,6 +199,9 @@ CONTROL_DOMAINS = {
         "PCI_DSS": ["1.4.5 (NSC for User Devices)", "8.4 (MFA for All Access)"],
         "ISO_27001": ["A.8.1 (User Endpoint Devices)", "A.5.9 (Inventory)", "A.8.9 (Configuration Management)"],
         "CIS": ["1.1 (Establish Device Inventory)", "4.1 (Establish Secure Configuration Process)"],
+        "CMMC_L1": ["AC.L1-3.1.20 (External Connections)", "AC.L1-3.1.22 (Control Public Info)"],
+        "CMMC_L2": ["CM.L2-3.4.1 (Baseline Configuration)", "CM.L2-3.4.2 (Security Configurations)", "CM.L2-3.4.6 (Least Functionality)", "AC.L2-3.1.18 (Control Mobile Device Connection)"],
+        "CMMC_L3": ["CM.L3-3.4.1e (Application Whitelisting)"],
     },
 }
 

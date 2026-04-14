@@ -175,10 +175,23 @@ _BP_FALLBACKS = [
 
 def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
     """Pick the most specific fallback BP text + link for a check that
-    didn't carry inline 'Best Practice:' guidance in its detail string."""
+    didn't carry inline 'Best Practice:' guidance in its detail string.
+
+    Best-practice URLs come from zscaler_best_practices.BEST_PRACTICES
+    (the curated Zscaler help-portal reference list) so the references
+    stay authoritative instead of drifting against hardcoded strings.
+    """
+    try:
+        from zscaler_best_practices import lookup_by_topic
+    except Exception:
+        lookup_by_topic = lambda _t: {}
+
     haystack = " ".join((label or "", section or "", check_id or "")).lower()
-    for needle, text, url in _BP_FALLBACKS:
+    for needle, text, _fallback_url in _BP_FALLBACKS:
         if needle in haystack:
+            # Prefer the curated Zscaler URL if our topic-map has one
+            bp = lookup_by_topic(needle)
+            url = bp.get("url") or _fallback_url
             return f"{text} Reference: {url}"
     return (
         "Apply the Zscaler-recommended baseline for this control. Reference "
