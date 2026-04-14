@@ -108,6 +108,17 @@ try:
 except Exception:
     pass
 
+# RBAC checks — admin roles / SSO / MFA / group-binding across all scopes
+RBAC_REG = []
+try:
+    RBAC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zscaler_rbac_checks.py")
+    rbspec = importlib.util.spec_from_file_location("rbac_checks", RBAC_PATH)
+    rbac_mod = importlib.util.module_from_spec(rbspec)
+    rbspec.loader.exec_module(rbac_mod)
+    RBAC_REG = rbac_mod.RBAC_REG
+except Exception:
+    pass
+
 # ── FastAPI App ──────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -216,6 +227,70 @@ class CommandParseRequest(BaseModel):
     llm_model: str = "llama3.1"
     llm_kind: str = "ollama"   # "ollama" | "openai" | "anthropic"
     llm_api_key: str = ""      # required when llm_kind == "anthropic"
+
+
+# ── Guided Auto-Remediation ────────────────────────────────────
+# Takes a finding + user-supplied criteria and generates the API
+# call that would fix it. Read-only by default (dry_run=True);
+# live writes gated by ENABLE_WRITE_ACTIONS env var per standard
+# policy. See remediation.py for recipe catalog.
+
+class RemediationPlanRequest(BaseModel):
+    # Tenant fields (duplicated rather than inheriting MigrateRequest so
+    # this class is defined ahead of MigrateRequest without a forward-ref).
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    customer_id: str = ""
+    check_id: str = ""
+    criteria: dict = {}
+
+
+class RemediationExecuteRequest(BaseModel):
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    customer_id: str = ""
+    check_id: str = ""
+    criteria: dict = {}
+    dry_run: bool = True
+
+
+@app.get("/api/remediation/catalog")
+async def remediation_catalog():
+    """List the remediations available + their input schemas."""
+    try:
+        from remediation import get_catalog
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
+    return {"catalog": get_catalog()}
+
+
+@app.post("/api/remediation/plan")
+async def remediation_plan(req: RemediationPlanRequest):
+    """Build the planned API call without sending. Returns endpoint,
+    method, body, and any validation errors against the field spec."""
+    try:
+        from remediation import plan
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
+    result = await asyncio.to_thread(plan, req.check_id, req.criteria)
+    return result
+
+
+@app.post("/api/remediation/execute")
+async def remediation_execute(req: RemediationExecuteRequest):
+    """Plan + optionally execute. dry_run=True returns the plan only;
+    dry_run=False requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND."""
+    try:
+        from remediation import execute
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
+    return result
 
 
 @app.get("/permissions")
@@ -592,7 +667,8 @@ async def health():
         "automation_checks": len(AUTOMATION_REG),
         "zdx_checks": len(ZDX_REG),
         "zidentity_checks": len(ZID_REG),
-        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG),
+        "rbac_checks": len(RBAC_REG),
+        "total_checks": len(REG) + len(PLATFORM_REG) + len(GENAI_REG) + len(AUTOMATION_REG) + len(ZDX_REG) + len(ZID_REG) + len(RBAC_REG),
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
@@ -618,8 +694,10 @@ async def list_checks(scope: Optional[str] = None):
         all_checks = list(ZDX_REG)
     elif scope == "zidentity":
         all_checks = list(ZID_REG)
+    elif scope == "rbac":
+        all_checks = list(RBAC_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
 
     # Try to enrich with compliance mappings
     try:
@@ -656,8 +734,10 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
         all_checks = list(ZDX_REG)
     elif scope == "zidentity":
         all_checks = list(ZID_REG)
+    elif scope == "rbac":
+        all_checks = list(RBAC_REG)
     else:
-        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
+        all_checks = list(REG) + PLATFORM_REG + GENAI_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
 
     try:
         from compliance_mapping import get_compliance_for_check
@@ -1088,16 +1168,22 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
             for c in ZID_REG:
                 if c[0] not in seen:
                     seen.add(c[0]); out.append(c)
+        if "rbac" in scopes:
+            for c in RBAC_REG:
+                if c[0] not in seen:
+                    seen.add(c[0]); out.append(c)
         return out
     # Legacy scope string
     if scope == "full" or scope == "all":
-        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG)
+        return list(REG) + PLATFORM_REG + list(AUTOMATION_REG) + list(ZDX_REG) + list(ZID_REG) + list(RBAC_REG)
     elif scope == "automation":
         return list(AUTOMATION_REG)
     elif scope == "zdx":
         return list(ZDX_REG)
     elif scope == "zidentity":
         return list(ZID_REG)
+    elif scope == "rbac":
+        return list(RBAC_REG)
     elif scope == "zia":
         return list(REG) + [c for c in PLATFORM_REG if c[1].startswith("ZIA")]
     elif scope == "zpa":

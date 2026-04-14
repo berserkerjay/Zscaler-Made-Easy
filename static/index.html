@@ -140,7 +140,18 @@
   }
   .btn { min-height: 40px; }
 
-  .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; animation: fadeInUp 0.6s var(--ease); }
+  /* Main container shrinks 380px to make room for the right-side
+     prompt sidebar. Collapsed sidebar restores full width via .sidebar-collapsed on body. */
+  .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; padding-right: calc(1.5rem + 400px); animation: fadeInUp 0.6s var(--ease); transition: padding-right 200ms ease; }
+  body.sidebar-collapsed .container { padding-right: 1.5rem; }
+  body.sidebar-collapsed #promptSidebar { transform: translateX(100%); }
+  body.sidebar-collapsed #sidebarOpenRail { display: block !important; }
+  @media (max-width: 960px) {
+    #promptSidebar { width: 100vw; transform: translateX(100%); }
+    body:not(.sidebar-force-open) #promptSidebar { transform: translateX(100%); }
+    body:not(.sidebar-force-open) #sidebarOpenRail { display: block !important; }
+    .container { padding-right: 1.5rem !important; }
+  }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -730,6 +741,10 @@
             <input type="checkbox" class="scope-cb" value="zidentity" style="width:auto;cursor:pointer;">
             ZIdentity <span style="color:var(--dim);font-size:0.75rem;">(5 checks — users/groups/entitlements)</span>
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;" title="Role-Based Access Control hygiene: admin counts, SSO federation, MFA, group-bound policies, stale accounts.">
+            <input type="checkbox" class="scope-cb" value="rbac" style="width:auto;cursor:pointer;">
+            RBAC <span style="color:var(--dim);font-size:0.75rem;">(12 checks — admin/role/MFA hygiene)</span>
+          </label>
         </div>
         <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
       </div>
@@ -1028,6 +1043,57 @@
 
   </main>
 </div>
+
+<!-- Right-side prompt sidebar — chat-style scrolling panel.
+     Uses position:fixed so it stays visible as the user scrolls
+     the main content. Toggle button collapses it to an edge rail. -->
+<aside id="promptSidebar" role="complementary" aria-label="Prompt sidebar"
+       style="position:fixed;top:0;right:0;bottom:0;width:380px;z-index:900;background:rgba(10,14,26,0.96);border-left:1px solid var(--border);display:flex;flex-direction:column;backdrop-filter:blur(6px);transition:transform 200ms ease;">
+  <!-- Sticky header with collapse toggle -->
+  <header style="padding:0.8rem 1rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+    <div>
+      <strong style="font-size:0.9rem;">💬 Prompt</strong>
+      <span id="promptSidebarProvider" style="color:var(--dim);font-size:0.72rem;margin-left:0.35rem;">deterministic</span>
+    </div>
+    <button type="button" onclick="toggleSidebar()" aria-label="Collapse sidebar"
+            id="sidebarToggleBtn"
+            style="background:none;border:1px solid var(--border);color:var(--dim);padding:0.25rem 0.55rem;border-radius:5px;cursor:pointer;font-size:0.85rem;">▶</button>
+  </header>
+
+  <!-- Scrollable history -->
+  <div id="promptHistory" role="log" aria-live="polite" aria-atomic="false"
+       style="flex:1;overflow-y:auto;padding:0.6rem 0.8rem;font-size:0.82rem;">
+    <div style="color:var(--dim);font-size:0.78rem;text-align:center;padding:1rem 0.5rem;">
+      <div style="font-size:1.4rem;margin-bottom:0.4rem;">⌕</div>
+      Ask for an action to start.<br>
+      Try: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">check dlp</code>
+      or <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">help</code>.
+    </div>
+  </div>
+
+  <!-- Fixed footer input area -->
+  <div style="border-top:1px solid var(--border);padding:0.6rem 0.75rem;background:rgba(15,23,42,0.8);">
+    <div style="position:relative;">
+      <label for="sidebarPromptInput" class="sr-only">Prompt input</label>
+      <textarea id="sidebarPromptInput" rows="2" autocomplete="off"
+                placeholder="Ask the tool…  (Enter sends, Shift+Enter newline)"
+                style="width:100%;padding:0.5rem 2.2rem 0.5rem 0.6rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.85rem;font-family:inherit;resize:none;"></textarea>
+      <button type="button" onclick="runSidebarPrompt()" aria-label="Send prompt"
+              style="position:absolute;right:0.3rem;bottom:0.4rem;background:var(--accent);color:white;border:0;border-radius:5px;padding:0.25rem 0.55rem;font-size:0.78rem;cursor:pointer;">Send</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.35rem;font-size:0.7rem;color:var(--dim);">
+      <span><kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">/</kbd> to focus · <kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">?</kbd> for help</span>
+      <button type="button" onclick="clearPromptHistory()"
+              style="background:none;border:0;color:var(--dim);cursor:pointer;font-size:0.7rem;">🗑 Clear</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Collapsed-sidebar edge rail (shown when sidebar hidden) -->
+<button type="button" id="sidebarOpenRail" onclick="toggleSidebar()" aria-label="Open prompt sidebar"
+        style="display:none;position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:899;background:var(--accent);color:white;border:0;border-radius:6px 0 0 6px;padding:0.8rem 0.5rem;cursor:pointer;writing-mode:vertical-rl;font-size:0.8rem;">
+  💬 Prompt
+</button>
 
 <script>
 let reportData = null;
@@ -1424,6 +1490,168 @@ async function runPrompt(overrideText) {
 // ── Client-side dispatch map ─────────────────────────────────────
 // Each action maps to a concrete handler that already exists.
 // Returns true if dispatched, false otherwise.
+// ══════════════════════════════════════════════════════════════════
+// Right-side Prompt Sidebar
+// - Persistent chat-like history (last 50 turns, newest at bottom)
+// - Same parser / dispatch as the hero prompt bar, but renders into
+//   the sidebar instead of the single-result banner
+// - Enter sends, Shift+Enter newline, Esc blurs
+// ══════════════════════════════════════════════════════════════════
+
+let _sidebarHistory = [];
+try {
+  const saved = sessionStorage.getItem('zassess_prompt_history');
+  if (saved) _sidebarHistory = JSON.parse(saved).slice(-50);
+} catch(e) {}
+
+function _saveHistory() {
+  try { sessionStorage.setItem('zassess_prompt_history', JSON.stringify(_sidebarHistory.slice(-50))); } catch(e) {}
+}
+
+function _renderSidebarHistory() {
+  const host = document.getElementById('promptHistory');
+  if (!host) return;
+  if (_sidebarHistory.length === 0) {
+    host.innerHTML = `<div style="color:var(--dim);font-size:0.78rem;text-align:center;padding:1rem 0.5rem;">
+      <div style="font-size:1.4rem;margin-bottom:0.4rem;">⌕</div>
+      Ask for an action to start.<br>
+      Try: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">check dlp</code>
+      or <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">help</code>.
+    </div>`;
+    return;
+  }
+  const items = _sidebarHistory.map((turn, i) => {
+    const parsed = turn.parsed || {};
+    const conf = Math.round((parsed.confidence || 0) * 100);
+    const confColor = conf >= 80 ? 'var(--pass)' : conf >= 50 ? 'var(--warn)' : 'var(--fail)';
+    let parserTag = 'deterministic';
+    let parserColor = 'var(--dim)';
+    if (parsed.parser === 'llm' && parsed.llm_kind === 'anthropic') { parserTag = 'Claude ☁';  parserColor = 'var(--warn)'; }
+    else if (parsed.parser === 'llm' && parsed.llm_kind === 'openai_cloud') { parserTag = 'ChatGPT ☁'; parserColor = 'var(--warn)'; }
+    else if (parsed.parser === 'llm') { parserTag = 'Ollama 🏠'; parserColor = 'var(--pass)'; }
+
+    const paramsStr = parsed.params && Object.keys(parsed.params).length
+      ? `<code style="background:rgba(59,130,246,0.08);color:var(--text);padding:0.05rem 0.3rem;border-radius:3px;font-size:0.7rem;display:inline-block;margin-top:0.2rem;">${escapeHtml(JSON.stringify(parsed.params))}</code>` : '';
+    const sug = parsed.suggestion
+      ? `<div style="color:var(--dim);font-size:0.72rem;margin-top:0.25rem;padding:0.25rem 0.4rem;background:rgba(245,158,11,0.06);border-left:2px solid var(--warn);border-radius:3px;">💡 ${escapeHtml(parsed.suggestion)}</div>` : '';
+
+    return `
+    <div style="margin-bottom:0.7rem;">
+      <div style="color:var(--dim);font-size:0.7rem;margin-bottom:0.2rem;">${escapeHtml(turn.ts)}</div>
+      <div style="background:rgba(59,130,246,0.06);padding:0.35rem 0.5rem;border-radius:6px;margin-bottom:0.25rem;word-break:break-word;">
+        <span style="color:var(--dim);font-size:0.7rem;">you</span>
+        <div style="font-size:0.82rem;">${escapeHtml(turn.text)}</div>
+      </div>
+      <div style="background:rgba(15,23,42,0.6);padding:0.35rem 0.5rem;border-radius:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.3rem;">
+          <span style="color:var(--accent);font-weight:600;font-size:0.82rem;">${escapeHtml(parsed.action || '?')}</span>
+          <span style="background:${parserColor}20;color:${parserColor};padding:0.05rem 0.3rem;border-radius:3px;font-size:0.68rem;">${escapeHtml(parserTag)}</span>
+        </div>
+        ${paramsStr}
+        <div style="color:${confColor};font-size:0.7rem;margin-top:0.15rem;">${conf}% confidence</div>
+        ${sug}
+      </div>
+    </div>`;
+  }).join('');
+  host.innerHTML = items;
+  // Auto-scroll to bottom so the newest turn is visible
+  host.scrollTop = host.scrollHeight;
+}
+
+function clearPromptHistory() {
+  _sidebarHistory = [];
+  _saveHistory();
+  _renderSidebarHistory();
+}
+
+async function runSidebarPrompt(overrideText) {
+  const inputEl = document.getElementById('sidebarPromptInput');
+  const text = (overrideText || inputEl?.value || '').trim();
+  if (!text) return;
+
+  const useLlm = !!document.getElementById('useLlmToggle')?.checked;
+  const provider = _currentProvider();
+  let llmModel = document.getElementById('llmModelPicker')?.value;
+  let llmEndpoint, llmKind, llmApiKey = '';
+  if (provider === 'anthropic') {
+    llmEndpoint = 'https://api.anthropic.com/v1/messages';
+    llmKind = 'anthropic';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'claude-sonnet-4-6';
+  } else if (provider === 'openai_cloud') {
+    llmEndpoint = 'https://api.openai.com/v1/chat/completions';
+    llmKind = 'openai_cloud';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'gpt-4o-mini';
+  } else {
+    llmEndpoint = 'http://localhost:11434/api/chat';
+    llmKind = 'ollama';
+    if (!llmModel) llmModel = _llmStatus?.recommended_model || 'llama3.2:3b';
+  }
+
+  // Show pending turn immediately
+  const ts = new Date().toLocaleTimeString();
+  _sidebarHistory.push({ ts, text, parsed: { action: '…', confidence: 0 } });
+  _renderSidebarHistory();
+  if (inputEl && !overrideText) inputEl.value = '';
+
+  try {
+    const resp = await fetch('/api/commands/parse', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text, use_llm: useLlm, llm_endpoint: llmEndpoint, llm_model: llmModel, llm_kind: llmKind, llm_api_key: llmApiKey }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const parsed = await resp.json();
+    _sidebarHistory[_sidebarHistory.length - 1].parsed = parsed;
+    _saveHistory();
+    _renderSidebarHistory();
+    // Update provider tag in header
+    const tag = document.getElementById('promptSidebarProvider');
+    if (tag) tag.textContent = parsed.parser === 'llm' ? (parsed.llm_kind || 'llm') : 'deterministic';
+    // Dispatch like the old runPrompt
+    dispatchCommand(parsed);
+  } catch(e) {
+    _sidebarHistory[_sidebarHistory.length - 1].parsed = { action: 'error', confidence: 0, suggestion: e.message };
+    _saveHistory();
+    _renderSidebarHistory();
+  }
+}
+
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('zassess_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+}
+
+// Restore collapsed state
+try {
+  if (localStorage.getItem('zassess_sidebar_collapsed') === '1') {
+    document.body.classList.add('sidebar-collapsed');
+  }
+} catch(e) {}
+
+// Wire sidebar input: Enter sends, Shift+Enter inserts newline
+document.getElementById('sidebarPromptInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runSidebarPrompt(); }
+  if (e.key === 'Escape') { e.target.blur(); }
+});
+
+// Override the global "/" shortcut to focus the sidebar input
+// (replaces earlier handler targeting promptInput; both still work)
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+    // If sidebar is open, focus it; otherwise fall back to the hero prompt
+    const sidebar = document.getElementById('promptSidebar');
+    const collapsed = document.body.classList.contains('sidebar-collapsed');
+    if (!collapsed && sidebar) {
+      e.preventDefault();
+      document.getElementById('sidebarPromptInput')?.focus();
+    }
+  }
+});
+
+// First render
+_renderSidebarHistory();
+
 function dispatchCommand(parsed) {
   const action = parsed.action;
   const p = parsed.params || {};
