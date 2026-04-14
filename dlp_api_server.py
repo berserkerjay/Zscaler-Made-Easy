@@ -293,6 +293,21 @@ async def remediation_execute(req: RemediationExecuteRequest):
     return result
 
 
+@app.get("/api/best-practices")
+async def best_practices_list(service: Optional[str] = None):
+    """Return the curated Zscaler best-practices / leading-practices
+    reference list (all help.zscaler.com articles). Optional ?service=
+    filter (ZIA / ZPA / ZCC / Deception)."""
+    try:
+        from zscaler_best_practices import list_all, services
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"best-practices module unavailable: {e}")
+    return {
+        "entries": list_all(service or ""),
+        "services": services(),
+    }
+
+
 @app.get("/permissions")
 async def serve_permissions_page():
     """Standalone HTML view of the Required API Access catalog.

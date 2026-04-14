@@ -527,6 +527,11 @@
               style="padding:0.45rem 1rem;font-size:0.82rem;">
         <span aria-hidden="true">🔓</span> Bypass / Non-Inspected Traffic Report
       </button>
+      <button class="btn btn-ghost" onclick="openBestPracticesModal()"
+              aria-label="Open curated Zscaler Best Practices reference library"
+              style="padding:0.45rem 1rem;font-size:0.82rem;">
+        <span aria-hidden="true">📚</span> Best Practices Library
+      </button>
     </div>
   </div>
 
@@ -3639,6 +3644,92 @@ function _showWizardSummary() {
   document.getElementById('wizardNextBtn').onclick = closeWizard;
   document.getElementById('wizardProgress').style.width = '100%';
   document.getElementById('wizardProgressLabel').textContent = 'Done';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 📚 Best Practices Library — curated Zscaler help-portal links
+// ══════════════════════════════════════════════════════════════════
+let _bestPracticesCache = null;
+
+async function openBestPracticesModal() {
+  _ensureBestPracticesModal();
+  const modal = document.getElementById('bestPracticesModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+  const host = document.getElementById('bestPracticesContent');
+  if (!_bestPracticesCache) {
+    host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
+    try {
+      const r = await fetch('/api/best-practices');
+      _bestPracticesCache = await r.json();
+    } catch(e) {
+      host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
+      return;
+    }
+  }
+  _renderBestPractices(_bestPracticesCache);
+}
+
+function closeBestPracticesModal() {
+  document.getElementById('bestPracticesModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+}
+
+function _renderBestPractices(data) {
+  const entries = data.entries || [];
+  const services = data.services || [];
+  // Group by service
+  const bySvc = {};
+  for (const e of entries) (bySvc[e.service] ||= []).push(e);
+  const svcOrder = services.length ? services : Object.keys(bySvc);
+
+  const html = svcOrder.map(svc => {
+    const items = (bySvc[svc] || []).map(e => `
+      <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
+        <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);text-decoration:none;font-weight:600;">
+          ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
+        </a>
+        ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
+        <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;">${escapeHtml(e.url)}</div>
+      </li>`).join('');
+    return `
+      <section style="margin-bottom:1rem;">
+        <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${(bySvc[svc] || []).length})</span></h3>
+        <ul style="list-style:none;padding:0;margin:0;">${items}</ul>
+      </section>`;
+  }).join('');
+
+  document.getElementById('bestPracticesContent').innerHTML = `
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.8rem;">
+      Curated list of every Zscaler help-portal article titled "Best Practices" or "Leading Practices".
+      Opens in a new tab. These are the authoritative references used throughout the assessment report.
+    </p>
+    ${html}`;
+}
+
+function _ensureBestPracticesModal() {
+  if (document.getElementById('bestPracticesModal')) return;
+  const m = document.createElement('div');
+  m.id = 'bestPracticesModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'bestPracticesTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:820px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <h2 id="bestPracticesTitle" style="margin:0;"><span aria-hidden="true">📚</span> Zscaler Best Practices Library</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeBestPracticesModal()" aria-label="Close best-practices library" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <div id="bestPracticesContent"></div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeBestPracticesModal();
+  });
 }
 
 function _ensureReviewModal() {
