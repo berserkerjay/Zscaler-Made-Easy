@@ -293,6 +293,85 @@ async def remediation_execute(req: RemediationExecuteRequest):
     return result
 
 
+@app.post("/api/diagnose/zcc")
+async def diagnose_zcc(req: MigrateRequest):
+    """Probe every ZCC endpoint the assessment relies on and return
+    per-endpoint HTTP status + response-key count + a likely-cause
+    hint. Lets users see what's readable vs blocked vs not-exposed."""
+    client = await asyncio.to_thread(_build_client, req)
+    ZCC_ENDPOINTS = [
+        ("/zcc/companyInfo",         "Company info"),
+        ("/zcc/adminUsers",          "Admin users"),
+        ("/zcc/adminRoles",          "Admin roles"),
+        ("/zcc/adminUsersSyncInfo",  "Admin IdP sync info"),
+        ("/zcc/devices",             "Device inventory"),
+        ("/zcc/webPolicies",         "App profiles (web policies)"),
+        ("/zcc/forwardingProfiles",  "Forwarding profiles"),
+        ("/zcc/trustedNetworks",     "Trusted networks"),
+        ("/zcc/failOpenPolicy",      "Fail-open policy"),
+        ("/zcc/webAppService",       "Web app service exclusions"),
+        ("/zcc/privacyInfo",         "Privacy info"),
+        ("/zcc/zdxEntitlements",     "ZDX entitlements"),
+        ("/zcc/zpaEntitlements",     "ZPA entitlements"),
+        ("/zcc/machineTunnel",       "Machine tunnel (speculative — may not exist on your tenant)"),
+        ("/zcc/browserProtection",   "Browser protection (speculative — license-gated)"),
+        ("/zcc/pacFiles",            "PAC files (speculative)"),
+        ("/zcc/deviceGroups",        "Device groups (speculative)"),
+        ("/zcc/postureProfiles",     "Posture profiles"),
+        ("/zcc/appBypass",           "App bypass"),
+        ("/zcc/deviceCleanup",       "Device cleanup"),
+        ("/zcc/zpnModuleMode",       "ZPN module modes"),
+    ]
+    def _probe():
+        out = []
+        for ep, label in ZCC_ENDPOINTS:
+            try:
+                data, code = client.get(ep)
+            except Exception as e:
+                out.append({"endpoint": ep, "label": label, "status": 0,
+                            "error": f"{type(e).__name__}: {str(e)[:150]}",
+                            "likely_cause": "Network / client error"})
+                continue
+            if isinstance(data, list):
+                items = len(data); keys = None
+            elif isinstance(data, dict):
+                items = None
+                keys = list(data.keys())[:20]
+            else:
+                items = None; keys = None
+            cause = ""
+            if code == 200:
+                cause = "OK — data readable."
+            elif code == 204:
+                cause = "OK but empty — endpoint reachable, no items defined."
+            elif code in (401, 403):
+                cause = "API role lacks read permission for this ZCC feature. Grant the scope in ZIdentity → Role."
+            elif code == 404:
+                cause = "Endpoint not found — feature not licensed, not deployed, or not exposed on your OneAPI version."
+            elif code == 429:
+                cause = "Rate-limited. Retry after a short delay."
+            elif code in (500, 502, 503, 504):
+                cause = "Upstream ZCC service error; try again shortly."
+            else:
+                cause = f"HTTP {code} — inspect 'error' field."
+            rec = {"endpoint": ep, "label": label, "status": code,
+                   "items": items, "keys": keys, "likely_cause": cause}
+            if isinstance(data, dict) and code != 200 and data.get("error"):
+                rec["error"] = str(data["error"])[:200]
+            out.append(rec)
+        return out
+
+    attempts = await asyncio.to_thread(_probe)
+    summary = {
+        "total":      len(attempts),
+        "readable":   sum(1 for a in attempts if a["status"] in (200, 204)),
+        "forbidden":  sum(1 for a in attempts if a["status"] in (401, 403)),
+        "not_found":  sum(1 for a in attempts if a["status"] == 404),
+        "error":      sum(1 for a in attempts if a["status"] not in (200, 204, 401, 403, 404)),
+    }
+    return {"summary": summary, "attempts": attempts}
+
+
 @app.get("/api/best-practices")
 async def best_practices_list(service: Optional[str] = None):
     """Return the curated Zscaler best-practices / leading-practices

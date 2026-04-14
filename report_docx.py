@@ -200,6 +200,132 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
     )
 
 
+# Admin-portal remediation paths per section keyword. These tell the
+# auditor exactly WHERE in the Zscaler admin UI to make the change.
+# Keyed the same way as _BP_FALLBACKS — case-insensitive substring on
+# (label + section + check_id).
+_REMEDIATION_PATHS = [
+    # (match-substring, admin-portal path, API hint or None)
+    ("ssl",
+     "ZIA Admin → Policy → SSL Inspection → Add Rule (or edit Default Rule). "
+     "Set Action = Inspect, attach URL categories to inspect, add exempt URL list.",
+     "POST /zia/sslInspectionRules with {name, description, action:{type:DECRYPT}, "
+     "urlCategories:[...], state:ENABLED, order, rank}"),
+
+    ("dlp",
+     "ZIA Admin → Policy → Data Loss Prevention → DLP Rules → Add. "
+     "Attach DLP Engines (PCI, PII, Source Code, etc.), scope to users/groups, "
+     "choose action (ALERT → BLOCK after validation).",
+     "POST /zia/webDlpRules with {name, description, action, dlpEngines:[...], "
+     "users/groups, state, order, rank}"),
+
+    ("firewall",
+     "ZIA Admin → Policy → Firewall Control → Access Policy → Add Rule. "
+     "Default rule action = BLOCK_DROP. Scoped allow rules must specify "
+     "users/groups + destination categories. Enable IPS profile on every rule.",
+     "POST /zia/firewallRules with {name, description, action:BLOCK_DROP, "
+     "nwApplications:[...], destCountries:[...], state:ENABLED, order}"),
+
+    ("url filter",
+     "ZIA Admin → Policy → URL & Cloud App Control → URL Filtering → Add Rule. "
+     "Block MALICIOUS_SITES, UNKNOWN, NEWLY_REG_DOMAINS at the default rule. "
+     "Allow rules should be scoped with documented justification.",
+     "POST /zia/urlFilteringRules with {name, description, action, "
+     "urlCategories:[...], state, order}"),
+
+    ("sandbox",
+     "ZIA Admin → Policy → Advanced Threat Protection → Sandbox Policy → "
+     "Set File Types = ALL_EXECUTABLES + ARCHIVES + DOCUMENTS. "
+     "Action = BLOCK_PENDING_VERDICT. Configure quarantine per file-class risk.",
+     "PUT /zia/sandboxSettings"),
+
+    ("location",
+     "ZIA Admin → Administration → Locations → Add Location. Define office "
+     "IP ranges, assign per-location forwarding method (GRE/IPSec/ZCC), apply "
+     "appropriate policy groups. Redundant tunnels for BCP.",
+     "POST /zia/locations + POST /zia/vpnCredentials or /zia/greTunnels"),
+
+    ("admin",
+     "ZIdentity Admin → API Clients → Role → Edit. Create dedicated roles "
+     "('Auditor Read-Only', 'Rule Editor', 'Super-Admin') with minimum scope "
+     "per use case. Federate admin login to Okta/Azure AD/Ping with MFA.",
+     "Role/MFA changes are not API-accessible — use the ZIdentity admin UI."),
+
+    ("zpa",
+     "ZPA Admin → Policy → Access Policy → Add Rule. Bind conditions to "
+     "SCIM_GROUP (not individual users). Attach Posture Profile for device "
+     "trust. Set App Segment TCP/UDP port ranges explicitly.",
+     "POST /zpa/policySet/{id}/rule with conditions:[{operands:[{objectType:SCIM_GROUP, ...}]}]"),
+
+    ("zcc",
+     "ZIA Admin → ZCC → App Profiles → Add (or edit existing). Enable strict "
+     "enforcement, tamper-protection password, Z-Tunnel 2.0, attach a "
+     "Posture Profile. Require MFA via ZIdentity for enrollment.",
+     "PUT /zcc/papi/public/v1/webPolicies/listByCompany (update profile)"),
+
+    ("genai",
+     "ZIA Admin → Policy → URL & Cloud App Control → Cloud App Control → AI "
+     "Applications. Allow sanctioned providers only; block 'Generative AI' "
+     "category for all other apps. Attach DLP engines to outbound prompt traffic.",
+     "POST /zia/cloudAppControlRules + DLP engine bindings on /zia/webDlpRules"),
+
+    ("automation",
+     "ZIdentity Admin → API Clients → Add per-use-case client (terraform-reader, "
+     "ansible-executor). Grant minimum role. ZIA Admin → Activity → Audit Log "
+     "Retention → set ≥ 90 days.",
+     "Use the ZIdentity admin UI for roles; audit retention via /zia/auditlogSettings."),
+
+    ("zdx",
+     "ZDX Admin → Configuration → Applications → Add monitored app (O365, "
+     "Salesforce, Zoom, ServiceNow). Configure probe cadence. Alerts → Rules "
+     "→ add threshold rules on app-score degradation.",
+     "POST /zdx/administration/apps + POST /zdx/alerts/rules"),
+
+    ("zidentity",
+     "ZIdentity Admin → Users → Federate to your IdP (SAML/SCIM). Groups → "
+     "Add groups from IdP. Resource Servers → grant API-client access. "
+     "Bind roles to groups, not individual users.",
+     "Configured via ZIdentity admin UI + SCIM sync from IdP."),
+
+    ("rbac",
+     "ZIdentity Admin → Roles → Least-privilege per use case. "
+     "Users → enforce SSO. Authentication → require MFA for admin logins. "
+     "Audit Log → review role assignments quarterly.",
+     "Role changes via ZIdentity admin UI; audit history via /zia/auditlogEntryReport."),
+]
+
+
+def _resolve_remediation(label: str, section: str, check_id: str) -> tuple:
+    """Return (portal_path, api_hint) for this check. Prefers a
+    registered remediation recipe (exact endpoint + field list),
+    falls back to the per-section portal-path map."""
+    # 1. Registered recipe takes precedence — tells us the exact API call
+    try:
+        from remediation import get_recipe
+        recipe = get_recipe(check_id)
+        if recipe:
+            fields = [f.get("label", f.get("key", "")) for f in recipe.get("fields", [])]
+            api_hint = f"{recipe['method']} {recipe['endpoint']} with {{{', '.join(fields)}}}"
+            portal_hint = (
+                f"Use the tool's 🔧 Remediate button on this finding, OR apply via API. "
+                f"Recipe: '{recipe.get('label', '')}' — fields required: "
+                f"{', '.join(fields)}."
+            )
+            return (portal_hint, api_hint)
+    except Exception:
+        pass
+    # 2. Fall back to section-keyword path map
+    haystack = " ".join((label or "", section or "", check_id or "")).lower()
+    for needle, path, api in _REMEDIATION_PATHS:
+        if needle in haystack:
+            return (path, api or "")
+    return (
+        "Review this control with the feature owner; document any "
+        "deviation from Zscaler best practice with business justification.",
+        "",
+    )
+
+
 def _generate_why_it_matters(check_id: str, label: str, as_is: str, best_practice: str, section: str = "") -> str:
     """
     Produce a business-impact 'why it matters' sentence. Explains the
@@ -670,11 +796,11 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             f"and produces a specific recommended next step."
         )
 
-        # Structured 4-column table per auditor ask:
-        #   Finding Name | Best Practice | Actual Configuration | Why It Matters
-        rv_table = doc.add_table(rows=1, cols=4)
+        # Structured 5-column table:
+        #   Finding Name | Best Practice | Actual | Why It Matters | Remediation Steps
+        rv_table = doc.add_table(rows=1, cols=5)
         rv_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
-        rv_headers = ["Finding Name", "Best Practice", "Actual Configuration", "Why It Matters"]
+        rv_headers = ["Finding Name", "Best Practice", "Actual Configuration", "Why It Matters", "Remediation Steps"]
         for i, h in enumerate(rv_headers):
             cell = rv_table.rows[0].cells[i]
             cell.text = h
@@ -689,10 +815,11 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 best_practice=best_practice,
                 section=r.get("sec") or r.get("section") or "",
             )
-            # Resolve a section/check-keyed BP fallback so the cell is
-            # never the generic "See Zscaler deployment guidance" string.
             section_txt = r.get("sec") or r.get("section") or ""
             resolved_bp = best_practice or _resolve_best_practice(
+                r.get("label", ""), section_txt, r.get("id", "")
+            )
+            portal_path, api_hint = _resolve_remediation(
                 r.get("label", ""), section_txt, r.get("id", "")
             )
             row = rv_table.add_row()
@@ -702,7 +829,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             np = name_cell.paragraphs[0]
             np.add_run(f"{r.get('id', '')}\n").bold = True
             np.add_run(r.get("label", ""))
-            # Column 1: Best Practice (with section-aware fallback)
+            # Column 1: Best Practice
             row.cells[1].text = resolved_bp
             # Column 2: Actual Configuration
             row.cells[2].text = as_is or "(not specified)"
@@ -712,6 +839,16 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             wp = why_cell.paragraphs[0]
             why_run = wp.add_run(why_matters)
             why_run.bold = True
+            # Column 4: Remediation Steps — portal path + optional API hint
+            rem_cell = row.cells[4]
+            rem_cell.text = ""
+            rp = rem_cell.paragraphs[0]
+            rp.add_run("Admin portal: ").bold = True
+            rp.add_run(portal_path)
+            if api_hint:
+                rp2 = rem_cell.add_paragraph()
+                rp2.add_run("API: ").bold = True
+                rp2.add_run(api_hint)
         doc.add_page_break()
 
     # ── Detailed Findings by Section ──────────────────────────────
