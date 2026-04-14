@@ -488,6 +488,23 @@
   </div>
 
   <!-- Bypass inventory modal -->
+  <!-- Required API Access modal — rendered from /api/permissions/required -->
+  <div id="permissionsModal" role="dialog" aria-modal="true" aria-labelledby="permissionsModalTitle"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:960px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 id="permissionsModalTitle" style="margin:0;">
+          <span aria-hidden="true">🔑</span> Required API Access per Assessment Scope
+        </h2>
+        <button class="btn btn-ghost" onclick="closePermissionsModal()" aria-label="Close API access dialog"
+                style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <div id="permissionsContent" style="font-size:0.88rem;">
+        <div style="color:var(--dim);text-align:center;padding:1rem;">Loading…</div>
+      </div>
+    </div>
+  </div>
+
   <div id="bypassModal" role="dialog" aria-modal="true" aria-labelledby="bypassModalTitle" aria-describedby="bypassModalDesc" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
     <div style="max-width:1000px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
@@ -639,7 +656,14 @@
         <div class="helper">From ZPA admin URL: /app/&lt;CUSTOMER_ID&gt;/dashboard</div>
       </div>
       <div class="field full">
-        <label>Assessment Scope <span class="required">*</span></label>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+          <label>Assessment Scope <span class="required">*</span></label>
+          <button type="button" onclick="openPermissionsModal()"
+                  aria-label="Show minimum API access required per scope"
+                  style="background:none;border:1px solid var(--accent);color:var(--accent);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;">
+            🔑 Required API Access
+          </button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
@@ -2713,8 +2737,108 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
     if (document.getElementById('bypassModal').style.display === 'block') closeBypassModal();
+    if (document.getElementById('permissionsModal').style.display === 'block') closePermissionsModal();
   }
 });
+
+// ── Required API Access modal ─────────────────────────────────────
+let _permissionsCache = null;
+
+async function openPermissionsModal() {
+  _lastFocus = document.activeElement;
+  const modal = document.getElementById('permissionsModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  announce('Required API Access dialog opened');
+  _focusFirstInModal(modal);
+
+  const host = document.getElementById('permissionsContent');
+  if (!_permissionsCache) {
+    host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading required permissions…</div>';
+    try {
+      const r = await fetch('/api/permissions/required');
+      _permissionsCache = await r.json();
+    } catch (e) {
+      host.innerHTML = '<div style="color:var(--fail);padding:1rem;">Failed to load: ' + escapeHtml(e.message) + '</div>';
+      return;
+    }
+  }
+  renderPermissions(_permissionsCache);
+}
+
+function closePermissionsModal() {
+  document.getElementById('permissionsModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  announce('Dialog closed');
+}
+
+function renderPermissions(data) {
+  const scopes = data.scopes || {};
+  const notes  = data.global_notes || [];
+  const portal = data.portal_url || 'https://admin.zidentity.net/';
+
+  const notesHtml = `
+    <div style="padding:0.8rem 1rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:8px;margin-bottom:1rem;">
+      <div style="font-weight:700;margin-bottom:0.4rem;">Before you start</div>
+      <ol style="margin-left:1.2rem;font-size:0.82rem;line-height:1.55;color:var(--dim);">
+        ${notes.map(n => `<li style="margin-bottom:0.3rem;">${escapeHtml(n)}</li>`).join('')}
+      </ol>
+      <div style="margin-top:0.5rem;font-size:0.82rem;">
+        <strong>ZIdentity admin portal:</strong>
+        <a href="${escapeHtml(portal)}" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);">${escapeHtml(portal)} ↗</a>
+      </div>
+    </div>`;
+
+  const cards = Object.entries(scopes).map(([key, s]) => {
+    const reads = (s.permissions_read || []).map(p =>
+      `<li style="margin-bottom:0.15rem;"><code style="background:rgba(59,130,246,0.08);padding:0.1rem 0.4rem;border-radius:3px;font-size:0.78rem;">${escapeHtml(p)}</code></li>`
+    ).join('');
+    const endpoints = (s.endpoints_used || []).map(e =>
+      `<code style="background:rgba(148,163,184,0.1);color:var(--dim);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.72rem;margin:0.1rem 0.15rem 0.1rem 0;display:inline-block;">${escapeHtml(e)}</code>`
+    ).join(' ');
+    const customerIdNote = s.customer_id_needed
+      ? `<div style="margin-top:0.4rem;padding:0.4rem 0.55rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.78rem;">
+           <strong>⚠ Customer ID required</strong>${s.customer_id_note ? ' — ' + escapeHtml(s.customer_id_note) : ''}
+         </div>`
+      : '';
+    const noteBlock = s.note
+      ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--dim);"><em>${escapeHtml(s.note)}</em></div>`
+      : '';
+
+    return `
+      <details open style="margin-bottom:0.6rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.7rem 0.9rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <div>
+            <strong>${escapeHtml(s.label || key)}</strong>
+            <span style="color:var(--dim);font-size:0.78rem;margin-left:0.4rem;">· ${escapeHtml(s.service || '')}</span>
+          </div>
+          <code style="color:var(--accent);font-size:0.75rem;">scope=${escapeHtml(key)}</code>
+        </summary>
+        <div style="padding:0 0.9rem 0.9rem;">
+          <div style="color:var(--dim);font-size:0.82rem;margin-bottom:0.5rem;">${escapeHtml(s.description || '')}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+            <div>
+              <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">Minimum READ permissions</div>
+              <ul style="list-style:none;padding:0;margin:0;font-size:0.82rem;">${reads || '<li style="color:var(--dim);">(none specific)</li>'}</ul>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">Endpoints used by the checks</div>
+              <div style="max-height:160px;overflow-y:auto;line-height:1.7;">${endpoints || '<span style="color:var(--dim);font-size:0.78rem;">(composite — no direct endpoints)</span>'}</div>
+            </div>
+          </div>
+          <div style="margin-top:0.5rem;font-size:0.8rem;">
+            <strong>License / subscription:</strong> <span style="color:var(--dim);">${escapeHtml(s.license_required || '—')}</span>
+          </div>
+          ${customerIdNote}
+          ${noteBlock}
+        </div>
+      </details>`;
+  }).join('');
+
+  document.getElementById('permissionsContent').innerHTML = notesHtml + cards;
+}
 
 // ══════════════════════════════════════════════════════════════════
 // Bypass / Non-Inspected Traffic Inventory

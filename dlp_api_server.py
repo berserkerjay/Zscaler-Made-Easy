@@ -212,6 +212,19 @@ class CommandParseRequest(BaseModel):
     llm_kind: str = "ollama"   # "ollama" | "openai"
 
 
+@app.get("/api/permissions/required")
+async def permissions_required():
+    """Return the minimum OneAPI role permissions required per scope.
+    Read-only; no tenant data involved. Used by the GUI's 'Required
+    API Access' quick-link modal so users can set up the API role
+    correctly before running an assessment."""
+    try:
+        from scope_permissions import get_all_permissions
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"scope_permissions unavailable: {e}")
+    return get_all_permissions()
+
+
 @app.get("/api/llm/status")
 async def llm_status():
     """Probe the local Ollama instance. Reports whether it's running
