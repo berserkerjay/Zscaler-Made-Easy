@@ -205,11 +205,172 @@ async def serve_gui():
 
 class CommandParseRequest(BaseModel):
     text: str = ""
-    # Opt-in local-LLM parsing (default off). Endpoint MUST be loopback.
+    # Opt-in LLM parsing (default off).
+    # For kind=ollama / openai → endpoint MUST be loopback (enforced
+    # in llm_parser.py).
+    # For kind=anthropic → endpoint MUST be api.anthropic.com and
+    # llm_api_key is required. Sends the user's query to Anthropic's
+    # Messages API. The user explicitly opts into this in the GUI.
     use_llm: bool = False
-    llm_endpoint: str = "http://localhost:11434/api/chat"  # Ollama default
+    llm_endpoint: str = "http://localhost:11434/api/chat"
     llm_model: str = "llama3.1"
-    llm_kind: str = "ollama"   # "ollama" | "openai"
+    llm_kind: str = "ollama"   # "ollama" | "openai" | "anthropic"
+    llm_api_key: str = ""      # required when llm_kind == "anthropic"
+
+
+@app.get("/permissions")
+async def serve_permissions_page():
+    """Standalone HTML view of the Required API Access catalog.
+    Renders the same data as /api/permissions/required but as a full
+    page so the GUI's quick-link button can target="_blank" and open
+    it in a new browser tab (per user request).
+    """
+    try:
+        from scope_permissions import get_all_permissions
+        import html as _html
+        data = get_all_permissions()
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    def esc(s):
+        return _html.escape(str(s or ""))
+
+    notes_html = "".join(
+        f'<li>{esc(n)}</li>' for n in data.get("global_notes", [])
+    )
+    cards_html = []
+    for key, s in (data.get("scopes") or {}).items():
+        reads = "".join(
+            f'<li><code>{esc(p)}</code></li>'
+            for p in (s.get("permissions_read") or [])
+        )
+        endpoints = "".join(
+            f'<code class="endpoint">{esc(e)}</code> '
+            for e in (s.get("endpoints_used") or [])
+        )
+        customer_id_note = ""
+        if s.get("customer_id_needed"):
+            customer_id_note = (
+                f'<div class="warn-box"><strong>⚠ Customer ID required</strong>'
+                f'{" — " + esc(s.get("customer_id_note", "")) if s.get("customer_id_note") else ""}</div>'
+            )
+        note_block = f'<div class="note"><em>{esc(s.get("note", ""))}</em></div>' if s.get("note") else ""
+        cards_html.append(f"""
+        <section class="card" aria-labelledby="scope-{esc(key)}">
+          <header>
+            <h2 id="scope-{esc(key)}">{esc(s.get("label", key))} <span class="service">· {esc(s.get("service", ""))}</span></h2>
+            <code class="scope-key">scope={esc(key)}</code>
+          </header>
+          <p class="desc">{esc(s.get("description", ""))}</p>
+          <div class="grid">
+            <div>
+              <h3>Minimum READ permissions</h3>
+              <ul class="perms">{reads or '<li class="muted">(none specific)</li>'}</ul>
+            </div>
+            <div>
+              <h3>Endpoints used</h3>
+              <div class="endpoints">{endpoints or '<span class="muted">(composite — no direct endpoints)</span>'}</div>
+            </div>
+          </div>
+          <div class="license"><strong>License / subscription:</strong> {esc(s.get("license_required", "—"))}</div>
+          {customer_id_note}
+          {note_block}
+        </section>
+        """)
+
+    portal = data.get("portal_url", "https://admin.zidentity.net/")
+    page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Required API Access · Zscaler Platform Assessment</title>
+<style>
+  :root {{
+    --bg: #0a0e1a;
+    --card: #1e293b;
+    --border: rgba(148,163,184,0.2);
+    --text: #f1f5f9;
+    --dim: #94a3b8;
+    --accent: #3b82f6;
+    --warn: #f59e0b;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  html {{ color-scheme: dark; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.55;
+    padding: 2rem 1rem; min-height: 100vh;
+  }}
+  :focus-visible {{ outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+  .container {{ max-width: 1100px; margin: 0 auto; }}
+  h1 {{ font-size: 2rem; margin-bottom: 0.4rem; }}
+  h1 .accent {{ color: var(--accent); }}
+  .lead {{ color: var(--dim); margin-bottom: 1.5rem; }}
+  .notes {{ background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.3);
+           border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }}
+  .notes h2 {{ font-size: 1rem; margin-bottom: 0.5rem; }}
+  .notes ol {{ margin-left: 1.4rem; color: var(--dim); font-size: 0.92rem; line-height: 1.65; }}
+  .notes ol li {{ margin-bottom: 0.35rem; }}
+  .portal-link {{ color: var(--accent); }}
+  .card {{
+    background: rgba(30,41,59,0.5); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 0.8rem;
+  }}
+  .card header {{ display: flex; justify-content: space-between; align-items: center;
+                 flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem; }}
+  .card h2 {{ font-size: 1.05rem; }}
+  .card h3 {{ font-size: 0.85rem; margin-bottom: 0.35rem; color: var(--accent); }}
+  .service {{ color: var(--dim); font-size: 0.85rem; font-weight: 400; }}
+  .scope-key {{ color: var(--accent); font-size: 0.78rem; }}
+  .desc {{ color: var(--dim); font-size: 0.9rem; margin-bottom: 0.7rem; }}
+  .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.6rem; }}
+  @media (max-width: 720px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+  .perms {{ list-style: none; font-size: 0.85rem; }}
+  .perms li {{ margin-bottom: 0.15rem; }}
+  .perms code {{ background: rgba(59,130,246,0.08); padding: 0.1rem 0.4rem;
+                border-radius: 3px; font-size: 0.82rem; }}
+  .endpoints {{ max-height: 180px; overflow-y: auto; line-height: 1.8; }}
+  .endpoint {{ background: rgba(148,163,184,0.1); color: var(--dim);
+             padding: 0.1rem 0.35rem; border-radius: 3px;
+             font-size: 0.75rem; display: inline-block;
+             margin: 0.1rem 0.15rem 0.1rem 0; }}
+  .license {{ font-size: 0.85rem; color: var(--dim); margin-top: 0.4rem; }}
+  .license strong {{ color: var(--text); }}
+  .warn-box {{ margin-top: 0.5rem; padding: 0.45rem 0.6rem;
+              background: rgba(245,158,11,0.08);
+              border-left: 3px solid var(--warn);
+              border-radius: 4px; font-size: 0.82rem; }}
+  .note {{ margin-top: 0.4rem; color: var(--dim); font-size: 0.82rem; }}
+  .muted {{ color: var(--dim); }}
+  .print-btn {{
+    float: right; margin-bottom: 1rem;
+    background: var(--accent); color: white; border: 0;
+    padding: 0.5rem 1rem; font-size: 0.85rem;
+    border-radius: 6px; cursor: pointer;
+  }}
+  @media print {{ .print-btn {{ display: none; }} body {{ background: white; color: black; }} }}
+</style>
+</head>
+<body>
+<main class="container" role="main">
+  <button class="print-btn" onclick="window.print()" aria-label="Print this page">🖨 Print</button>
+  <h1><span class="accent">Required API Access</span> per Assessment Scope</h1>
+  <p class="lead">Minimum OneAPI role permissions to grant on the API client before running each assessment scope. All checks are read-only.</p>
+  <div class="notes">
+    <h2>Before you start</h2>
+    <ol>{notes_html}</ol>
+    <p style="margin-top:0.5rem;font-size:0.88rem;">
+      <strong>ZIdentity admin portal:</strong>
+      <a href="{esc(portal)}" target="_blank" rel="noopener noreferrer" class="portal-link">{esc(portal)} ↗</a>
+    </p>
+  </div>
+  {''.join(cards_html)}
+</main>
+</body>
+</html>"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=page, headers={"Cache-Control": "no-cache, must-revalidate"})
 
 
 @app.get("/api/permissions/required")
@@ -267,6 +428,78 @@ async def commands_catalog():
     return {"catalog": COMMAND_CATALOG}
 
 
+class LlmValidateRequest(BaseModel):
+    llm_kind: str = "ollama"        # "ollama" | "openai" | "anthropic"
+    llm_endpoint: str = ""
+    llm_model: str = ""
+    llm_api_key: str = ""
+
+
+@app.post("/api/llm/validate")
+async def llm_validate(req: LlmValidateRequest):
+    """Probe the configured LLM with a one-token request to confirm the
+    integration works. Returns ok=true on success or a specific error
+    message if model ID / API key / endpoint / network is wrong.
+    Same loopback / allowlist rules as the real parse endpoint."""
+    kind = req.llm_kind or "ollama"
+    if kind == "anthropic":
+        endpoint = req.llm_endpoint or "https://api.anthropic.com/v1/messages"
+        model = req.llm_model or "claude-haiku-4-5-20251001"
+        api_key = req.llm_api_key or ""
+        if not api_key:
+            return {"ok": False, "error": "API key required for Anthropic provider."}
+        try:
+            from llm_parser import _is_allowed_endpoint, _call_anthropic
+            if not _is_allowed_endpoint(endpoint, kind):
+                return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
+            raw = await asyncio.to_thread(
+                _call_anthropic, endpoint, model,
+                "You are a test probe. Respond with exactly the word: OK",
+                "ping", api_key,
+            )
+            return {"ok": True, "provider": "anthropic", "model": model,
+                    "response_preview": (raw or "")[:80]}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
+
+    if kind == "openai_cloud":
+        endpoint = req.llm_endpoint or "https://api.openai.com/v1/chat/completions"
+        model = req.llm_model or "gpt-4o-mini"
+        api_key = req.llm_api_key or ""
+        if not api_key:
+            return {"ok": False, "error": "API key required for OpenAI provider."}
+        try:
+            from llm_parser import _is_allowed_endpoint, _call_openai_compatible
+            if not _is_allowed_endpoint(endpoint, kind):
+                return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
+            raw = await asyncio.to_thread(
+                _call_openai_compatible, endpoint, model,
+                'You are a test probe. Respond with JSON: {"status":"ok"}',
+                "ping", api_key,
+            )
+            return {"ok": True, "provider": "openai", "model": model,
+                    "response_preview": (raw or "")[:80]}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
+
+    if kind == "ollama":
+        endpoint = req.llm_endpoint or "http://localhost:11434/api/chat"
+        model = req.llm_model or "llama3.2:3b"
+        try:
+            from llm_parser import _is_allowed_endpoint, _call_ollama
+            if not _is_allowed_endpoint(endpoint, kind):
+                return {"ok": False, "error": f"Endpoint refused: must be loopback for Ollama."}
+            raw = await asyncio.to_thread(
+                _call_ollama, endpoint, model,
+                "You are a test probe. Respond with exactly: OK",
+                "ping",
+            )
+            return {"ok": True, "provider": "ollama", "model": model, "response_preview": (raw or "")[:80]}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
+    return {"ok": False, "error": f"Unknown kind: {kind}"}
+
+
 @app.post("/api/commands/parse")
 async def commands_parse(req: CommandParseRequest):
     """Parse arbitrary user text into a structured action.
@@ -296,10 +529,11 @@ async def commands_parse(req: CommandParseRequest):
             return to_dict(result)
         result = await asyncio.to_thread(
             parse_with_llm, raw,
-            req.llm_endpoint, req.llm_model, req.llm_kind,
+            req.llm_endpoint, req.llm_model, req.llm_kind, req.llm_api_key,
         )
         d = to_dict(result)
         d["parser"] = "llm"  # tag so GUI can display which path was used
+        d["llm_kind"] = req.llm_kind
         return d
 
     result = await asyncio.to_thread(parse, raw)

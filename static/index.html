@@ -456,14 +456,46 @@
       <label style="display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer;margin-left:0.4rem;">
         <input type="checkbox" id="useLlmToggle" style="width:auto;cursor:pointer;"
                aria-describedby="llmStatusLine">
-        <span>Use local LLM</span>
+        <span>Use LLM</span>
       </label>
-      <select id="llmModelPicker" aria-label="Local LLM model"
+      <select id="llmProviderPicker" aria-label="LLM provider"
+              style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
+        <option value="ollama">Local (Ollama)</option>
+        <option value="anthropic">Claude (Anthropic API)</option>
+        <option value="openai_cloud">ChatGPT (OpenAI API)</option>
+      </select>
+      <select id="llmModelPicker" aria-label="LLM model"
               style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
       </select>
       <button type="button" onclick="refreshLlmStatus()" class="btn btn-ghost"
               style="padding:0.1rem 0.4rem;font-size:0.72rem;margin-left:0.2rem;background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;"
-              aria-label="Re-check Ollama status">↻</button>
+              aria-label="Re-check LLM status">↻</button>
+    </div>
+    <!-- API key field — only rendered when Claude provider selected.
+         Stored in sessionStorage (not localStorage) so it disappears
+         when the browser tab closes. -->
+    <div id="llmApiKeyRow" style="display:none;max-width:720px;margin:0.35rem auto 0;text-align:left;">
+      <label for="llmApiKeyInput" style="font-size:0.72rem;color:var(--warn);display:block;margin-bottom:0.2rem;">
+        Anthropic API key (starts with <code>sk-ant-</code>)
+      </label>
+      <div style="display:flex;gap:0.4rem;align-items:center;">
+        <div style="position:relative;flex:1;">
+          <input type="password" id="llmApiKeyInput" autocomplete="off" spellcheck="false"
+                 placeholder="sk-ant-api03-..."
+                 aria-describedby="llmValidateResult"
+                 style="width:100%;padding:0.4rem 2.3rem 0.4rem 0.6rem;font-size:0.8rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:monospace;">
+          <button type="button" id="llmApiKeyReveal" onclick="toggleApiKeyVisibility()"
+                  aria-label="Toggle API key visibility"
+                  style="position:absolute;right:0.3rem;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--dim);cursor:pointer;padding:0.2rem 0.4rem;font-size:0.9rem;">
+            <span aria-hidden="true">👁</span>
+          </button>
+        </div>
+        <button type="button" class="btn btn-ghost" onclick="validateLlm()"
+                aria-label="Validate LLM integration"
+                style="padding:0.4rem 0.8rem;font-size:0.78rem;white-space:nowrap;">✓ Validate</button>
+      </div>
+      <div id="llmValidateResult" role="status" aria-live="polite"
+           style="display:none;margin-top:0.4rem;padding:0.4rem 0.6rem;border-radius:6px;font-size:0.78rem;"></div>
     </div>
     <div id="llmStatusLine" role="status" aria-live="polite"
          style="font-size:0.72rem;color:var(--dim);max-width:720px;margin:0.25rem auto 0;">
@@ -659,11 +691,11 @@
       <div class="field full">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
           <label>Assessment Scope <span class="required">*</span></label>
-          <button type="button" onclick="openPermissionsModal()"
-                  aria-label="Show minimum API access required per scope"
-                  style="background:none;border:1px solid var(--accent);color:var(--accent);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;">
-            🔑 Required API Access
-          </button>
+          <a href="/permissions" target="_blank" rel="noopener noreferrer"
+             aria-label="Open minimum API access required per scope (opens in new tab)"
+             style="text-decoration:none;background:none;border:1px solid var(--accent);color:var(--accent);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;display:inline-block;">
+            🔑 Required API Access <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
+          </a>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
@@ -1031,12 +1063,30 @@ fetch('/api/branding').then(r => r.json()).then(d => {
 // and the dispatch map is allowlisted client-side.
 // ══════════════════════════════════════════════════════════════════
 
-// LLM toggle + status wiring
+// LLM toggle + provider + status wiring
 let _llmStatus = {ollama_running: false, models: [], recommended_model: null};
 
+const ANTHROPIC_MODELS = [
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-5",
+  "claude-opus-4-5",
+];
+// OpenAI model list — commonly-available chat-completions IDs.
+const OPENAI_MODELS = [
+  "gpt-4o-mini",
+  "gpt-4o",
+  "gpt-4-turbo",
+  "gpt-4",
+  "gpt-3.5-turbo",
+];
+
 try {
-  const saved = localStorage.getItem('zassess_use_llm');
-  if (saved === '1') document.getElementById('useLlmToggle').checked = true;
+  const savedLlm = localStorage.getItem('zassess_use_llm');
+  if (savedLlm === '1') document.getElementById('useLlmToggle').checked = true;
+  const savedProvider = localStorage.getItem('zassess_llm_provider');
+  if (savedProvider) document.getElementById('llmProviderPicker').value = savedProvider;
 } catch(e) {}
 
 document.getElementById('useLlmToggle')?.addEventListener('change', (e) => {
@@ -1044,9 +1094,26 @@ document.getElementById('useLlmToggle')?.addEventListener('change', (e) => {
   updateLlmUi();
 });
 
+document.getElementById('llmProviderPicker')?.addEventListener('change', (e) => {
+  try { localStorage.setItem('zassess_llm_provider', e.target.value || ''); } catch(e) {}
+  updateLlmUi();
+});
+
 document.getElementById('llmModelPicker')?.addEventListener('change', (e) => {
   try { localStorage.setItem('zassess_llm_model', e.target.value || ''); } catch(e) {}
 });
+
+// API key stays in sessionStorage so it clears when the tab closes.
+// It's never written to localStorage or sent anywhere except the LLM
+// call through our server proxy.
+document.getElementById('llmApiKeyInput')?.addEventListener('input', (e) => {
+  try { sessionStorage.setItem('zassess_llm_api_key', e.target.value || ''); } catch(e) {}
+  updateLlmUi();
+});
+try {
+  const k = sessionStorage.getItem('zassess_llm_api_key');
+  if (k) document.getElementById('llmApiKeyInput').value = k;
+} catch(e) {}
 
 async function refreshLlmStatus() {
   const line = document.getElementById('llmStatusLine');
@@ -1060,45 +1127,191 @@ async function refreshLlmStatus() {
   updateLlmUi();
 }
 
+function _currentProvider() {
+  return document.getElementById('llmProviderPicker')?.value || 'ollama';
+}
+
 function updateLlmUi() {
   const toggle = document.getElementById('useLlmToggle');
   const line = document.getElementById('llmStatusLine');
-  const picker = document.getElementById('llmModelPicker');
-  const useLlm = toggle?.checked;
+  const modelPicker = document.getElementById('llmModelPicker');
+  const providerPicker = document.getElementById('llmProviderPicker');
+  const apiKeyRow = document.getElementById('llmApiKeyRow');
+  const useLlm = !!toggle?.checked;
 
+  // Show/hide provider + model picker based on toggle
+  providerPicker.style.display = useLlm ? 'inline-block' : 'none';
+  modelPicker.style.display    = useLlm ? 'inline-block' : 'none';
+
+  const provider = _currentProvider();
+  // API-key field shows for any cloud provider (anthropic or openai_cloud).
+  const isCloud = (provider === 'anthropic' || provider === 'openai_cloud');
+  apiKeyRow.style.display = (useLlm && isCloud) ? 'block' : 'none';
+  // Dynamic label on the API-key field so users know which key to paste
+  const keyLabel = document.querySelector('label[for="llmApiKeyInput"]');
+  if (keyLabel) {
+    keyLabel.innerHTML = provider === 'openai_cloud'
+      ? 'OpenAI API key (starts with <code>sk-</code>)'
+      : 'Anthropic API key (starts with <code>sk-ant-</code>)';
+  }
+  const keyInput = document.getElementById('llmApiKeyInput');
+  if (keyInput) {
+    keyInput.placeholder = provider === 'openai_cloud' ? 'sk-...' : 'sk-ant-api03-...';
+  }
+
+  if (!useLlm) {
+    line.innerHTML = '<span style="color:var(--dim);">Using deterministic parser. Tick the box to enable natural-language parsing.</span>';
+    return;
+  }
+
+  // ─── Cloud provider branch (shared for Anthropic + OpenAI) ───
+  if (isCloud) {
+    const isAnthropic = (provider === 'anthropic');
+    const models  = isAnthropic ? ANTHROPIC_MODELS : OPENAI_MODELS;
+    const defaultModel = isAnthropic ? 'claude-sonnet-4-6' : 'gpt-4o-mini';
+    const providerName = isAnthropic ? 'Claude (Anthropic)' : 'ChatGPT (OpenAI)';
+    const providerHost = isAnthropic ? 'api.anthropic.com' : 'api.openai.com';
+    const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
+    const chosen = models.includes(saved) ? saved : defaultModel;
+    modelPicker.innerHTML = models
+      .map(m => `<option value="${escapeHtml(m)}" ${m === chosen ? 'selected' : ''}>${escapeHtml(m)}</option>`)
+      .join('');
+    const hasKey = !!(document.getElementById('llmApiKeyInput')?.value || '').trim();
+    const keyNote = hasKey
+      ? '<span style="color:var(--pass);">✓ API key set (session-only).</span>'
+      : '<span style="color:var(--warn);">⚠ API key required.</span>';
+    line.innerHTML = `
+      <span style="color:var(--warn);"><strong>⚠ Cloud LLM:</strong></span>
+      <span style="color:var(--dim);">Your query is sent to <code>${escapeHtml(providerHost)}</code> (${escapeHtml(providerName)}). Not on-machine.</span>
+      <span style="color:var(--dim);">Do not enter tenant secrets in the prompt.</span>
+      ${keyNote}
+      <details style="display:inline-block;margin-left:0.3rem;">
+        <summary style="cursor:pointer;color:var(--accent);">What gets sent</summary>
+        <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
+          <ul style="margin-left:1.2rem;font-size:0.75rem;line-height:1.55;">
+            <li>Sent: the text you type (max 500 chars) + a fixed system prompt describing the command catalog.</li>
+            <li>NOT sent: Zscaler client_id, client_secret, vanity_domain, customer_id, rules, or results.</li>
+            <li>Endpoint locked to <code>${escapeHtml(providerHost)}</code>. Any other host is refused pre-fetch.</li>
+            <li>API key lives in <code>sessionStorage</code> — clears on tab close, never on disk.</li>
+          </ul>
+        </div>
+      </details>`;
+    return;
+  }
+
+  // ─── Legacy Claude-only branch (removed — handled above) ────
+  if (false && provider === 'anthropic') {
+    const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
+    const defaultModel = ANTHROPIC_MODELS.includes(saved) ? saved : 'claude-sonnet-4-6';
+    modelPicker.innerHTML = ANTHROPIC_MODELS
+      .map(m => `<option value="${escapeHtml(m)}" ${m === defaultModel ? 'selected' : ''}>${escapeHtml(m)}</option>`)
+      .join('');
+    const hasKey = !!(document.getElementById('llmApiKeyInput')?.value || '').trim();
+    const keyNote = hasKey
+      ? '<span style="color:var(--pass);">✓ API key set (session-only).</span>'
+      : '<span style="color:var(--warn);">⚠ API key required.</span>';
+    line.innerHTML = `
+      <span style="color:var(--warn);"><strong>⚠ Cloud LLM:</strong></span>
+      <span style="color:var(--dim);">Your query is sent to <code>api.anthropic.com</code>. Unlike Ollama, this is NOT on-machine.</span>
+      <span style="color:var(--dim);">Do not enter tenant secrets in the prompt.</span>
+      ${keyNote}
+      <details style="display:inline-block;margin-left:0.3rem;">
+        <summary style="cursor:pointer;color:var(--accent);">What gets sent</summary>
+        <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
+          <ul style="margin-left:1.2rem;font-size:0.75rem;line-height:1.55;">
+            <li>Sent: only the text you type into the prompt bar (max 500 chars), plus the fixed system prompt describing the command catalog.</li>
+            <li>NOT sent: your Zscaler client_id, client_secret, vanity_domain, customer_id, downloaded rules, or assessment results.</li>
+            <li>Endpoint locked to <code>api.anthropic.com</code> by llm_parser's allowlist. Any other host is refused pre-fetch.</li>
+            <li>API key lives in <code>sessionStorage</code> — clears when the tab closes. Never written to disk.</li>
+          </ul>
+        </div>
+      </details>`;
+    return;
+  }
+
+  // ─── Local Ollama branch ─────────────────────────────────────
   if (_llmStatus.ollama_running && _llmStatus.models?.length) {
-    // Populate picker
     const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
     const recommended = _llmStatus.recommended_model || _llmStatus.models[0];
-    picker.innerHTML = _llmStatus.models
+    modelPicker.innerHTML = _llmStatus.models
       .map(m => `<option value="${escapeHtml(m)}" ${m === (saved || recommended) ? 'selected' : ''}>${escapeHtml(m)}</option>`)
       .join('');
-    picker.style.display = useLlm ? 'inline-block' : 'none';
-
-    line.innerHTML = useLlm
-      ? `<span style="color:var(--pass);">✓ Local LLM active — Ollama on 127.0.0.1:11434 · ${_llmStatus.models.length} model${_llmStatus.models.length===1?'':'s'} installed.</span> <span style="color:var(--dim);">Queries stay on this machine.</span>`
-      : `<span style="color:var(--dim);">Ollama detected (${_llmStatus.models.length} models). Tick the box to enable natural-language parsing.</span>`;
+    line.innerHTML = `<span style="color:var(--pass);">✓ Local LLM active — Ollama on 127.0.0.1:11434 · ${_llmStatus.models.length} model${_llmStatus.models.length===1?'':'s'} installed.</span> <span style="color:var(--dim);">Queries stay on this machine.</span>`;
   } else {
-    picker.style.display = 'none';
-    if (useLlm) {
-      // User wants it but Ollama isn't there — give them the install path
-      line.innerHTML = `
-        <span style="color:var(--warn);">⚠ Local LLM enabled but Ollama is not reachable at 127.0.0.1:11434.</span>
-        <span style="color:var(--dim);">Queries will fall back to the deterministic parser.</span>
-        <details style="display:inline-block;margin-left:0.3rem;">
-          <summary style="cursor:pointer;color:var(--accent);">How to install</summary>
-          <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
-            <ol style="margin-left:1.2rem;font-size:0.75rem;line-height:1.6;">
-              <li>Download Ollama from <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">ollama.com/download</a> (Win/macOS/Linux, &lt;5 min).</li>
-              <li>Open a terminal and run: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">ollama pull llama3.2:3b</code> <span style="color:var(--dim);">(~2 GB, fastest option)</span></li>
-              <li>Click <strong>↻</strong> next to the toggle here to re-check.</li>
-            </ol>
-            <div style="color:var(--dim);font-size:0.72rem;margin-top:0.3rem;">Full guide: <code>LLM_SETUP.md</code> in the repo.</div>
-          </div>
-        </details>`;
+    modelPicker.innerHTML = '';
+    line.innerHTML = `
+      <span style="color:var(--warn);">⚠ Local LLM enabled but Ollama is not reachable at 127.0.0.1:11434.</span>
+      <span style="color:var(--dim);">Queries will fall back to the deterministic parser.</span>
+      <details style="display:inline-block;margin-left:0.3rem;">
+        <summary style="cursor:pointer;color:var(--accent);">How to install / switch to Claude</summary>
+        <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
+          <ol style="margin-left:1.2rem;font-size:0.75rem;line-height:1.6;">
+            <li>Download Ollama from <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">ollama.com/download</a>.</li>
+            <li>Run <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">ollama pull llama3.2:3b</code>.</li>
+            <li>Or change the Provider dropdown above to <strong>Claude</strong> if you prefer the Anthropic API (requires API key, cloud).</li>
+            <li>Click <strong>↻</strong> to re-check.</li>
+          </ol>
+        </div>
+      </details>`;
+  }
+}
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById('llmApiKeyInput');
+  const btn = document.getElementById('llmApiKeyReveal');
+  if (!input || !btn) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.querySelector('span').textContent = '🙈';
+    btn.setAttribute('aria-label', 'Hide API key');
+  } else {
+    input.type = 'password';
+    btn.querySelector('span').textContent = '👁';
+    btn.setAttribute('aria-label', 'Show API key');
+  }
+}
+
+async function validateLlm() {
+  const provider = _currentProvider();
+  const model = document.getElementById('llmModelPicker')?.value;
+  const apiKey = document.getElementById('llmApiKeyInput')?.value || '';
+  const resultEl = document.getElementById('llmValidateResult');
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'rgba(148,163,184,0.1)';
+  resultEl.style.color = 'var(--dim)';
+  resultEl.style.border = '1px solid var(--border)';
+  resultEl.textContent = '⏳ Pinging ' + (provider === 'anthropic' ? 'Anthropic API' : 'Ollama') + '...';
+
+  const body = { llm_kind: provider, llm_model: model, llm_api_key: apiKey };
+  if (provider === 'anthropic') {
+    body.llm_endpoint = 'https://api.anthropic.com/v1/messages';
+  } else {
+    body.llm_endpoint = 'http://localhost:11434/api/chat';
+  }
+
+  try {
+    const r = await fetch('/api/llm/validate', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      resultEl.style.background = 'rgba(16,185,129,0.1)';
+      resultEl.style.color = 'var(--pass)';
+      resultEl.style.border = '1px solid rgba(16,185,129,0.3)';
+      const preview = data.response_preview ? ` · model replied: "${escapeHtml(data.response_preview)}"` : '';
+      resultEl.innerHTML = `✓ <strong>Integration working</strong> — ${escapeHtml(data.provider)} · ${escapeHtml(data.model)}${preview}`;
     } else {
-      line.innerHTML = '<span style="color:var(--dim);">Using deterministic parser. Tick the box to enable natural-language parsing (requires local Ollama).</span>';
+      resultEl.style.background = 'rgba(239,68,68,0.1)';
+      resultEl.style.color = 'var(--fail)';
+      resultEl.style.border = '1px solid rgba(239,68,68,0.3)';
+      resultEl.innerHTML = `✗ <strong>Validation failed</strong><br><span style="font-family:monospace;font-size:0.75rem;">${escapeHtml(data.error || 'unknown error')}</span>`;
     }
+  } catch (e) {
+    resultEl.style.background = 'rgba(239,68,68,0.1)';
+    resultEl.style.color = 'var(--fail)';
+    resultEl.style.border = '1px solid rgba(239,68,68,0.3)';
+    resultEl.innerHTML = `✗ Network error: ${escapeHtml(e.message)}`;
   }
 }
 
@@ -1129,13 +1342,28 @@ async function runPrompt(overrideText) {
   banner.style.borderLeft = '3px solid var(--accent)';
   banner.innerHTML = `<span style="color:var(--dim);">⏳ Parsing: "${escapeHtml(text)}"${useLlm ? ' <span style="color:var(--warn);">[local LLM]</span>' : ''}...</span>`;
 
-  // Resolve the selected model — picker value, localStorage, or the
-  // status-probe's recommended model, in that order.
+  // Resolve provider / endpoint / model / api-key from the UI.
+  const provider = _currentProvider();   // 'ollama' | 'anthropic'
   let llmModel = document.getElementById('llmModelPicker')?.value;
   if (!llmModel) {
     try { llmModel = localStorage.getItem('zassess_llm_model'); } catch(e) {}
   }
-  if (!llmModel) llmModel = _llmStatus?.recommended_model || 'llama3.2:3b';
+  let llmEndpoint, llmKind, llmApiKey = '';
+  if (provider === 'anthropic') {
+    llmEndpoint = 'https://api.anthropic.com/v1/messages';
+    llmKind     = 'anthropic';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'claude-sonnet-4-6';
+  } else if (provider === 'openai_cloud') {
+    llmEndpoint = 'https://api.openai.com/v1/chat/completions';
+    llmKind     = 'openai_cloud';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'gpt-4o-mini';
+  } else {
+    llmEndpoint = 'http://localhost:11434/api/chat';
+    llmKind     = 'ollama';
+    if (!llmModel) llmModel = _llmStatus?.recommended_model || 'llama3.2:3b';
+  }
 
   let parsed;
   try {
@@ -1144,9 +1372,10 @@ async function runPrompt(overrideText) {
       body: JSON.stringify({
         text,
         use_llm: useLlm,
-        llm_endpoint: 'http://localhost:11434/api/chat',
+        llm_endpoint: llmEndpoint,
         llm_model: llmModel,
-        llm_kind: 'ollama',
+        llm_kind: llmKind,
+        llm_api_key: llmApiKey,
       }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1159,9 +1388,16 @@ async function runPrompt(overrideText) {
   // Render what the parser interpreted so the user can see before dispatch
   const conf = Math.round((parsed.confidence || 0) * 100);
   const confColor = conf >= 80 ? 'var(--pass)' : conf >= 50 ? 'var(--warn)' : 'var(--fail)';
-  const parserTag = parsed.parser === 'llm'
-    ? '<span style="background:rgba(245,158,11,0.15);color:var(--warn);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">LLM</span>'
-    : '<span style="background:rgba(148,163,184,0.12);color:var(--dim);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">deterministic</span>';
+  let parserTag;
+  if (parsed.parser === 'llm' && parsed.llm_kind === 'anthropic') {
+    parserTag = '<span style="background:rgba(245,158,11,0.15);color:var(--warn);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;" title="Parsed by Claude (api.anthropic.com — cloud)">Claude ☁</span>';
+  } else if (parsed.parser === 'llm' && parsed.llm_kind === 'openai_cloud') {
+    parserTag = '<span style="background:rgba(245,158,11,0.15);color:var(--warn);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;" title="Parsed by ChatGPT (api.openai.com — cloud)">ChatGPT ☁</span>';
+  } else if (parsed.parser === 'llm') {
+    parserTag = '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;" title="Parsed by local Ollama (on-machine)">Ollama 🏠</span>';
+  } else {
+    parserTag = '<span style="background:rgba(148,163,184,0.12);color:var(--dim);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">deterministic</span>';
+  }
   banner.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
       <div>
