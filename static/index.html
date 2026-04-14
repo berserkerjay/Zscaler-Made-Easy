@@ -979,6 +979,11 @@
     <div class="download-bar">
       <button class="btn btn-primary" onclick="downloadDocx()">Download Word Report</button>
       <button class="btn btn-secondary" onclick="downloadJSON()">Download JSON</button>
+      <button class="btn btn-ghost" onclick="openRemediationReview()"
+              aria-label="Review and remediate findings"
+              style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;">
+        🔧 Review &amp; Remediate
+      </button>
       <button class="btn btn-ghost" onclick="resetForm()">Run Another Assessment</button>
     </div>
 
@@ -3338,6 +3343,382 @@ function _ensureRemediationModal() {
   // Esc closes this modal too
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && m.style.display === 'block') closeRemediationModal();
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Review & Remediate — holistic flow
+// Shows every REVIEW/FAIL finding that has a registered recipe,
+// lets the user tick which to fix, then walks through them
+// sequentially with Next/Skip/Apply/Finish controls.
+// ══════════════════════════════════════════════════════════════════
+
+let _remediationQueue = [];   // [{check_id, label, status, detail, recipe}]
+let _remediationIndex = 0;
+let _remediationResults = []; // accumulated outcomes for final summary
+
+async function openRemediationReview() {
+  await _loadRemediationCatalog();
+  const recipes = window._remediationCatalog || [];
+  if (!recipes.length) {
+    alert('No remediation recipes are registered.');
+    return;
+  }
+  // Match findings against recipes
+  const checks = (reportData && reportData.checks) || [];
+  const candidates = [];
+  const isRem = (cid) => {
+    for (const r of recipes) {
+      if (r.check_id === cid) return r;
+      if (cid && cid.startsWith(r.check_id)) return r;
+    }
+    return null;
+  };
+  for (const c of checks) {
+    const st = c.status === 'ERROR' ? 'INFO' : c.status;
+    if (st !== 'FAIL' && st !== 'REVIEW') continue;
+    const recipe = isRem(c.id);
+    if (recipe) {
+      candidates.push({
+        check_id: c.id, label: c.label, status: st,
+        detail: c.detail || '', section: c.section || '',
+        recipe,
+      });
+    }
+  }
+
+  _ensureReviewModal();
+  const list = document.getElementById('reviewList');
+  if (!candidates.length) {
+    list.innerHTML = `<div style="padding:1.2rem;text-align:center;color:var(--dim);">
+      <div style="font-size:1.4rem;margin-bottom:0.4rem;">🎉</div>
+      No remediable findings in this assessment — either everything passed or no recipes cover the open items.
+      <div style="font-size:0.78rem;margin-top:0.4rem;">Recipe catalog has ${recipes.length} remediation(s). Add more in <code>remediation.py</code>.</div>
+    </div>`;
+    document.getElementById('reviewStartBtn').style.display = 'none';
+  } else {
+    // Group by section for readability
+    const bySection = {};
+    for (const cand of candidates) {
+      (bySection[cand.section] ||= []).push(cand);
+    }
+    const html = Object.entries(bySection).map(([sec, items]) => `
+      <div style="margin-bottom:0.8rem;">
+        <div style="font-size:0.78rem;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;">${escapeHtml(sec || 'Other')}</div>
+        ${items.map(it => {
+          const stColor = it.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)';
+          return `<label style="display:flex;gap:0.5rem;align-items:flex-start;padding:0.55rem 0.7rem;margin-bottom:0.3rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+            <input type="checkbox" class="reviewCheck" data-check-id="${escapeHtml(it.check_id)}" checked style="margin-top:0.2rem;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:0.85rem;">
+                <span style="color:${stColor};font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(it.status)}</span>
+                <code style="color:var(--dim);font-size:0.75rem;margin:0 0.3rem;">${escapeHtml(it.check_id)}</code>
+                ${escapeHtml(it.label)}
+              </div>
+              <div style="color:var(--dim);font-size:0.76rem;margin-top:0.2rem;">→ ${escapeHtml(it.recipe.label)}</div>
+            </div>
+          </label>`;
+        }).join('')}
+      </div>`).join('');
+    list.innerHTML = `
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.6rem;">
+        <button type="button" class="btn btn-ghost" onclick="_reviewSelectAll(true)" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Select all</button>
+        <button type="button" class="btn btn-ghost" onclick="_reviewSelectAll(false)" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Clear</button>
+        <span style="flex:1;text-align:right;color:var(--dim);font-size:0.78rem;align-self:center;">${candidates.length} remediable finding(s)</span>
+      </div>
+      ${html}`;
+    document.getElementById('reviewStartBtn').style.display = 'inline-flex';
+  }
+  // Stash for the Start button
+  window._reviewCandidates = candidates;
+  document.getElementById('reviewModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+}
+
+function _reviewSelectAll(checked) {
+  document.querySelectorAll('.reviewCheck').forEach(cb => { cb.checked = checked; });
+}
+
+function closeReviewModal() {
+  const m = document.getElementById('reviewModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+}
+
+function startRemediationWizard() {
+  const selected = Array.from(document.querySelectorAll('.reviewCheck:checked'))
+    .map(cb => cb.dataset.checkId);
+  const queue = (window._reviewCandidates || []).filter(c => selected.includes(c.check_id));
+  if (!queue.length) {
+    alert('Select at least one finding to remediate.');
+    return;
+  }
+  _remediationQueue = queue;
+  _remediationIndex = 0;
+  _remediationResults = [];
+  closeReviewModal();
+  _showWizardStep();
+}
+
+function _showWizardStep() {
+  _ensureWizardModal();
+  const idx = _remediationIndex;
+  const total = _remediationQueue.length;
+  if (idx >= total) {
+    _showWizardSummary();
+    return;
+  }
+  const item = _remediationQueue[idx];
+  const recipe = item.recipe;
+  _currentRemediationCheckId = item.check_id;
+
+  document.getElementById('wizardTitle').textContent = `🔧 Step ${idx + 1} of ${total}`;
+  document.getElementById('wizardFindingLabel').innerHTML = `
+    <div style="font-weight:600;">${escapeHtml(item.label)}</div>
+    <div style="color:var(--dim);font-size:0.78rem;margin-top:0.2rem;">
+      <code>${escapeHtml(item.check_id)}</code> · ${escapeHtml(item.section)} · status <strong style="color:${item.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)'};">${escapeHtml(item.status)}</strong>
+    </div>
+    <div style="color:var(--dim);font-size:0.8rem;margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.5);border-radius:4px;">${escapeHtml(item.detail)}</div>`;
+  document.getElementById('wizardRecipe').textContent = recipe.label;
+  document.getElementById('wizardSummary').textContent = recipe.summary;
+  document.getElementById('wizardDestructive').innerHTML = recipe.destructive
+    ? '<div style="margin:0.4rem 0;padding:0.45rem 0.65rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.78rem;"><strong>⚠ Writes to the tenant.</strong> Requires START_Zscaler_Assessment_WRITES_ENABLED.bat. Preview first; confirm before apply.</div>'
+    : '';
+  document.getElementById('wizardFormFields').innerHTML = recipe.fields.map(f => _renderField(f)).join('');
+  document.getElementById('wizardResult').innerHTML = '';
+  document.getElementById('wizardApplyBtn').style.display = 'none';
+
+  // Progress bar
+  const pct = Math.round((idx / total) * 100);
+  document.getElementById('wizardProgress').style.width = pct + '%';
+  document.getElementById('wizardProgressLabel').textContent = `${idx} of ${total} processed`;
+
+  document.getElementById('wizardModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.querySelector('#wizardFormFields input, #wizardFormFields textarea, #wizardFormFields select')?.focus(), 100);
+}
+
+function _collectWizardCriteria() {
+  const recipe = _findRecipeForCheck(_currentRemediationCheckId);
+  if (!recipe) return {};
+  const out = {};
+  for (const f of recipe.fields) {
+    const el = document.getElementById(`remField_${f.key}`);
+    if (el) out[f.key] = el.value;
+  }
+  return out;
+}
+
+async function wizardPreview() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const resultEl = document.getElementById('wizardResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Validating…</div>';
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = _collectWizardCriteria();
+  try {
+    const r = await fetch('/api/remediation/plan', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (!data.ok) {
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;">
+        <strong>Validation failed:</strong>
+        <ul style="margin:0.3rem 0 0 1.1rem;">${(data.errors || []).map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul>
+      </div>`;
+      document.getElementById('wizardApplyBtn').style.display = 'none';
+      return;
+    }
+    resultEl.innerHTML = `
+      <div style="padding:0.5rem 0.7rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:6px;font-size:0.82rem;">
+        <strong>Plan ready:</strong> <code>${escapeHtml(data.method)}</code> <code>${escapeHtml(data.endpoint)}</code>
+        <pre style="background:rgba(15,23,42,0.6);padding:0.4rem;border-radius:4px;font-size:0.72rem;overflow-x:auto;margin-top:0.3rem;">${escapeHtml(JSON.stringify(data.body, null, 2))}</pre>
+      </div>`;
+    document.getElementById('wizardApplyBtn').style.display = 'inline-flex';
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Preview failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function wizardApply() {
+  const check_id = _currentRemediationCheckId;
+  if (!check_id) return;
+  const recipe = _findRecipeForCheck(check_id);
+  if (!recipe) return;
+  if (recipe.destructive && !confirm(`Apply '${recipe.label}' to the tenant now?`)) return;
+  const body = migrateCredBody();
+  body.check_id = check_id;
+  body.criteria = _collectWizardCriteria();
+  body.dry_run = false;
+  const resultEl = document.getElementById('wizardResult');
+  resultEl.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">⏳ Applying…</div>';
+  try {
+    const r = await fetch('/api/remediation/execute', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    let outcome;
+    if (data.status === 'completed') {
+      outcome = {check_id, label: recipe.label, status: 'applied', message: data.message || '', http: data.http_status};
+      resultEl.innerHTML = `<div style="padding:0.5rem 0.7rem;background:rgba(16,185,129,0.08);border-left:3px solid var(--pass);border-radius:4px;"><strong style="color:var(--pass);">✓ Applied (HTTP ${data.http_status})</strong><div style="font-size:0.8rem;margin-top:0.2rem;">${escapeHtml(data.message || '')}</div></div>`;
+    } else if (data.status === 'blocked') {
+      outcome = {check_id, label: recipe.label, status: 'blocked', message: data.reason || ''};
+      resultEl.innerHTML = `<div style="color:var(--warn);padding:0.5rem 0.7rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;"><strong>Blocked:</strong> ${escapeHtml(data.reason || '')}</div>`;
+    } else {
+      outcome = {check_id, label: recipe.label, status: 'failed', message: data.error || data.message || 'unknown error'};
+      resultEl.innerHTML = `<div style="color:var(--fail);padding:0.5rem 0.7rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;"><strong>${escapeHtml(data.status || 'failed')}:</strong> ${escapeHtml(data.error || data.message || '')}</div>`;
+    }
+    _remediationResults.push(outcome);
+    // Advance-button relabel so the user continues naturally
+    document.getElementById('wizardNextBtn').textContent = (_remediationIndex + 1 >= _remediationQueue.length) ? 'Finish →' : 'Next →';
+    document.getElementById('wizardApplyBtn').style.display = 'none';
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:var(--fail);">Apply failed: ${escapeHtml(e.message)}</div>`;
+    _remediationResults.push({check_id, label: recipe.label, status: 'error', message: e.message});
+  }
+}
+
+function wizardSkip() {
+  const item = _remediationQueue[_remediationIndex];
+  if (item) _remediationResults.push({check_id: item.check_id, label: item.recipe.label, status: 'skipped'});
+  _remediationIndex++;
+  _showWizardStep();
+}
+
+function wizardNext() {
+  _remediationIndex++;
+  _showWizardStep();
+}
+
+function closeWizard() {
+  const m = document.getElementById('wizardModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+  _remediationQueue = [];
+  _remediationIndex = 0;
+  _remediationResults = [];
+}
+
+function _showWizardSummary() {
+  const host = document.getElementById('wizardModal');
+  const by = {applied: 0, skipped: 0, blocked: 0, failed: 0, error: 0};
+  for (const r of _remediationResults) by[r.status] = (by[r.status] || 0) + 1;
+  const rows = _remediationResults.map(r => {
+    const colors = {applied:'var(--pass)', skipped:'var(--dim)', blocked:'var(--warn)', failed:'var(--fail)', error:'var(--fail)'};
+    const icons  = {applied:'✓', skipped:'→', blocked:'⚠', failed:'✗', error:'✗'};
+    return `<tr>
+      <td style="padding:0.3rem 0.5rem;color:${colors[r.status] || 'var(--dim)'};font-weight:600;">${icons[r.status] || '?'} ${escapeHtml(r.status)}</td>
+      <td style="padding:0.3rem 0.5rem;"><code style="color:var(--dim);">${escapeHtml(r.check_id)}</code></td>
+      <td style="padding:0.3rem 0.5rem;">${escapeHtml(r.label)}</td>
+      <td style="padding:0.3rem 0.5rem;font-size:0.78rem;color:var(--dim);">${escapeHtml(r.message || '')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('wizardTitle').textContent = '🔧 Remediation Summary';
+  document.getElementById('wizardFindingLabel').innerHTML = `
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.4rem;">
+      <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--pass);">Applied: ${by.applied}</span>
+      <span class="badge" style="background:rgba(148,163,184,0.15);color:var(--dim);">Skipped: ${by.skipped}</span>
+      <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warn);">Blocked: ${by.blocked}</span>
+      <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--fail);">Failed: ${(by.failed||0) + (by.error||0)}</span>
+    </div>`;
+  document.getElementById('wizardRecipe').textContent = '';
+  document.getElementById('wizardSummary').textContent = 'Review what happened, then re-run the assessment to confirm the fixes.';
+  document.getElementById('wizardDestructive').innerHTML = '';
+  document.getElementById('wizardFormFields').innerHTML = rows.length
+    ? `<table style="width:100%;font-size:0.82rem;border-collapse:collapse;"><thead><tr style="background:rgba(59,130,246,0.08);">
+        <th style="padding:0.35rem 0.5rem;text-align:left;">Status</th>
+        <th style="padding:0.35rem 0.5rem;text-align:left;">ID</th>
+        <th style="padding:0.35rem 0.5rem;text-align:left;">Recipe</th>
+        <th style="padding:0.35rem 0.5rem;text-align:left;">Message</th>
+       </tr></thead><tbody>${rows}</tbody></table>`
+    : '<div style="color:var(--dim);">No remediations processed.</div>';
+  document.getElementById('wizardResult').innerHTML = '';
+  document.getElementById('wizardPreviewBtn').style.display = 'none';
+  document.getElementById('wizardApplyBtn').style.display = 'none';
+  document.getElementById('wizardSkipBtn').style.display = 'none';
+  document.getElementById('wizardNextBtn').textContent = 'Close';
+  document.getElementById('wizardNextBtn').onclick = closeWizard;
+  document.getElementById('wizardProgress').style.width = '100%';
+  document.getElementById('wizardProgressLabel').textContent = 'Done';
+}
+
+function _ensureReviewModal() {
+  if (document.getElementById('reviewModal')) return;
+  const m = document.createElement('div');
+  m.id = 'reviewModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'reviewTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:820px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+        <h2 id="reviewTitle" style="margin:0;"><span aria-hidden="true">🔧</span> Review &amp; Remediate</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" aria-label="Close review dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.6rem;">Findings below have an auto-remediation recipe. Tick which ones to fix, then click Start — the wizard walks through them one at a time, with Preview / Apply / Skip at each step.</p>
+      <div id="reviewList" style="max-height:55vh;overflow-y:auto;margin-bottom:0.8rem;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
+        <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" style="padding:0.5rem 1rem;">Cancel</button>
+        <button type="button" id="reviewStartBtn" onclick="startRemediationWizard()"
+                style="padding:0.5rem 1.2rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+          Start Wizard →
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeReviewModal();
+  });
+}
+
+function _ensureWizardModal() {
+  if (document.getElementById('wizardModal')) return;
+  const m = document.createElement('div');
+  m.id = 'wizardModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'wizardTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:760px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <!-- Progress header -->
+      <div style="margin-bottom:0.6rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+          <h2 id="wizardTitle" style="margin:0;font-size:1.1rem;">🔧 Remediation</h2>
+          <button type="button" class="btn btn-ghost" onclick="closeWizard()" aria-label="Abort wizard" style="padding:0.35rem 0.7rem;font-size:0.8rem;">✕ Abort</button>
+        </div>
+        <div style="height:4px;background:rgba(148,163,184,0.15);border-radius:2px;overflow:hidden;">
+          <div id="wizardProgress" style="height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);transition:width 200ms ease;width:0%;"></div>
+        </div>
+        <div id="wizardProgressLabel" style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">0 of 0 processed</div>
+      </div>
+      <!-- Finding being remediated -->
+      <div id="wizardFindingLabel" style="padding:0.55rem 0.7rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;margin-bottom:0.6rem;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.2rem;">
+        <strong id="wizardRecipe" style="color:var(--accent);"></strong>
+      </div>
+      <p id="wizardSummary" style="color:var(--dim);font-size:0.82rem;margin-bottom:0.5rem;"></p>
+      <div id="wizardDestructive"></div>
+      <div id="wizardFormFields" style="margin-top:0.6rem;"></div>
+      <div id="wizardResult" style="margin-top:0.6rem;"></div>
+      <!-- Controls -->
+      <div style="display:flex;gap:0.4rem;justify-content:space-between;margin-top:0.8rem;flex-wrap:wrap;">
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button type="button" id="wizardPreviewBtn" class="btn btn-primary" onclick="wizardPreview()" style="padding:0.5rem 1rem;font-size:0.85rem;">Preview plan</button>
+          <button type="button" id="wizardApplyBtn" onclick="wizardApply()"
+                  style="display:none;padding:0.5rem 1rem;font-size:0.85rem;background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+            ⚡ Apply now
+          </button>
+        </div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <button type="button" id="wizardSkipBtn" class="btn btn-ghost" onclick="wizardSkip()" style="padding:0.5rem 1rem;font-size:0.85rem;">Skip →</button>
+          <button type="button" id="wizardNextBtn" class="btn btn-ghost" onclick="wizardNext()" style="padding:0.5rem 1rem;font-size:0.85rem;">Next →</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeWizard();
   });
 }
 
