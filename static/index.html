@@ -1723,6 +1723,9 @@ async function step3bDeleteAll(dryRun) {
     if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON Backup).\n\nThis cannot be undone via API. Continue?')) return;
   }
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step3b entry before re-running — keeps the pending
+  // banner accurate when the user re-runs the preview.
+  clearPendingAction('step3b');
   body.dry_run = dryRun;
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
@@ -1742,9 +1745,18 @@ async function step3bDeleteAll(dryRun) {
           <div class="activate-banner">
             <div style="color:#f59e0b;font-weight:600;">⚡ Review looks right? <span style="color:var(--dim);font-weight:400;">Click to delete all ${r.would_delete_count} rule(s) for real.</span></div>
             <button class="activate-btn" onclick="step3bDeleteAll(false)">⚠ Activate: Delete Now</button>
-          </div>` : ''}
+          </div>` : `
+          <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(16,185,129,0.06);border-left:3px solid var(--pass);border-radius:4px;font-size:0.8rem;color:var(--dim);">
+            Nothing to delete — your tenant has no Inline Web DLP rules matching this scope.
+          </div>`}
         ${updateActivationBanner() || ''}`;
-      registerPendingAction('step3b', `Delete ${r.would_delete_count} rule(s)`, () => step3bDeleteAll(false));
+      // Only register as a pending action if there's actually something
+      // to delete. An entry saying 'Delete 0 rule(s)' is pointless noise.
+      if (r.would_delete_count > 0) {
+        registerPendingAction('step3b', `Delete ${r.would_delete_count} rule(s)`, () => step3bDeleteAll(false));
+      } else {
+        clearPendingAction('step3b');
+      }
     } else if (r.status === 'blocked') {
       el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
         <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
@@ -1806,18 +1818,44 @@ function updateActivationBanner() {
       `<li style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
         <code style="color:var(--dim);font-size:0.75rem;">${escapeHtml(key)}</code>
         <span style="flex:1;">${escapeHtml(v.label)}</span>
-        <button class="activate-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="(pendingActivations.get('${key}').activator)();">⚡ Activate</button>
+        <button class="activate-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem;" aria-label="Activate ${escapeHtml(v.label)}"
+                onclick="activatePending('${key}')">⚡ Activate</button>
+        <button class="btn btn-ghost" style="padding:0.25rem 0.55rem;font-size:0.75rem;border:1px solid var(--border);color:var(--dim);background:transparent;" aria-label="Dismiss ${escapeHtml(v.label)}"
+                onclick="clearPendingAction('${key}')">✕ Dismiss</button>
       </li>`).join('');
   banner.style.display = 'block';
   banner.innerHTML = `
     <div class="activate-banner" style="align-items:flex-start;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
         <div style="color:#f59e0b;font-weight:700;">⚡ ${pendingActivations.size} staged change${pendingActivations.size===1?'':'s'} awaiting activation</div>
-        <span style="color:var(--dim);font-size:0.75rem;">Review below or activate from the list.</span>
+        <button class="btn btn-ghost" onclick="clearAllPendingActions()" aria-label="Dismiss all staged changes"
+                style="padding:0.2rem 0.6rem;font-size:0.72rem;color:var(--dim);border:1px solid var(--border);background:transparent;">Dismiss all</button>
       </div>
       <ul style="list-style:none;padding:0;margin:0.4rem 0 0 0;width:100%;">${items}</ul>
     </div>`;
   return '';
+}
+
+// Safe-invoke wrapper — catches stale activators and reports cleanly
+function activatePending(key) {
+  const entry = pendingActivations.get(key);
+  if (!entry) {
+    updateActivationBanner();
+    return;
+  }
+  try {
+    entry.activator();
+  } catch (e) {
+    alert('Activation failed: ' + (e && e.message ? e.message : String(e)) +
+          '\n\nThe pending entry has been cleared. Re-run the step to try again.');
+    clearPendingAction(key);
+  }
+}
+
+function clearAllPendingActions() {
+  pendingActivations.clear();
+  updateActivationBanner();
+  announce('All pending activations dismissed');
 }
 
 // ── Step 4 — three-stage flow: Check → Enable (Dry-Run) → Activate ──
@@ -1826,6 +1864,10 @@ let _step4Plan = null;   // cached dry-run result for Activate to use
 
 async function step4Check() {
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step4 entry from the pending-activations banner —
+  // Check is a read-only stage, no activation is staged by it.
+  clearPendingAction('step4');
+  _step4Plan = null;
   body.dry_run = true;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">① Checking current state of Evaluate All Rules...</span>';
@@ -1851,6 +1893,9 @@ async function step4Check() {
 
 async function step4EnablePlan() {
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step4 entry before re-running — avoids duplicate
+  // 'Enable ... via API' rows piling up in the pending banner.
+  clearPendingAction('step4');
   body.dry_run = true;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">② Building enable plan (dry-run)...</span>';
@@ -1976,6 +2021,8 @@ async function step5Post(dryRun) {
     document.getElementById('migrateStatus').className='status-msg error'; return;
   }
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step5 pending entry before re-running.
+  clearPendingAction('step5');
   body.proposed_rules = sourceRules;
   body.dry_run = !!dryRun;
   body.mode = document.getElementById('step5Mode').value || 'auto';
