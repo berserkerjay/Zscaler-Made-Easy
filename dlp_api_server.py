@@ -428,6 +428,62 @@ async def commands_catalog():
     return {"catalog": COMMAND_CATALOG}
 
 
+class LlmValidateRequest(BaseModel):
+    llm_kind: str = "ollama"        # "ollama" | "openai" | "anthropic"
+    llm_endpoint: str = ""
+    llm_model: str = ""
+    llm_api_key: str = ""
+
+
+@app.post("/api/llm/validate")
+async def llm_validate(req: LlmValidateRequest):
+    """Probe the configured LLM with a one-token request to confirm the
+    integration works. Returns ok=true on success or a specific error
+    message if model ID / API key / endpoint / network is wrong.
+    Same loopback / allowlist rules as the real parse endpoint."""
+    kind = req.llm_kind or "ollama"
+    if kind == "anthropic":
+        endpoint = req.llm_endpoint or "https://api.anthropic.com/v1/messages"
+        model = req.llm_model or "claude-haiku-4-5-20251001"
+        api_key = req.llm_api_key or ""
+        if not api_key:
+            return {"ok": False, "error": "API key required for Anthropic provider."}
+        try:
+            from llm_parser import _is_allowed_endpoint, _call_anthropic
+            if not _is_allowed_endpoint(endpoint, kind):
+                return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
+            # Minimal probe: just ask for "OK" so token cost is ~5
+            raw = await asyncio.to_thread(
+                _call_anthropic, endpoint, model,
+                "You are a test probe. Respond with exactly the word: OK",
+                "ping", api_key,
+            )
+            return {
+                "ok": True,
+                "provider": "anthropic",
+                "model": model,
+                "response_preview": (raw or "")[:80],
+            }
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
+    elif kind == "ollama":
+        endpoint = req.llm_endpoint or "http://localhost:11434/api/chat"
+        model = req.llm_model or "llama3.2:3b"
+        try:
+            from llm_parser import _is_allowed_endpoint, _call_ollama
+            if not _is_allowed_endpoint(endpoint, kind):
+                return {"ok": False, "error": f"Endpoint refused: must be loopback for Ollama."}
+            raw = await asyncio.to_thread(
+                _call_ollama, endpoint, model,
+                "You are a test probe. Respond with exactly: OK",
+                "ping",
+            )
+            return {"ok": True, "provider": "ollama", "model": model, "response_preview": (raw or "")[:80]}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
+    return {"ok": False, "error": f"Unknown kind: {kind}"}
+
+
 @app.post("/api/commands/parse")
 async def commands_parse(req: CommandParseRequest):
     """Parse arbitrary user text into a structured action.

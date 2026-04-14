@@ -144,7 +144,11 @@ def _call_ollama(endpoint: str, model: str, system: str, user: str) -> Optional[
 def _call_anthropic(endpoint: str, model: str, system: str, user: str, api_key: str) -> Optional[str]:
     """Call Anthropic's Messages API. Requires an API key.
     Endpoint defaults to https://api.anthropic.com/v1/messages.
-    Strict allowlist: only api.anthropic.com is reachable from this code path."""
+    Strict allowlist: only api.anthropic.com is reachable from this code path.
+
+    On 4xx errors, surfaces the API's actual error message (model not
+    found, invalid key, etc.) instead of the generic 'Bad Request'.
+    """
     import requests
     if not api_key:
         raise RuntimeError("Anthropic API key is required for kind='anthropic'.")
@@ -162,9 +166,25 @@ def _call_anthropic(endpoint: str, model: str, system: str, user: str, api_key: 
         "content-type": "application/json",
     }
     r = requests.post(endpoint, json=body, headers=headers, timeout=LLM_TIMEOUT_SEC)
-    r.raise_for_status()
+
+    if not r.ok:
+        # Surface the API's actual error text (e.g. 'model X not found').
+        # Anthropic returns {"type":"error","error":{"type":"...","message":"..."}}
+        detail = f"HTTP {r.status_code}"
+        try:
+            err = r.json().get("error", {})
+            msg = err.get("message") or err.get("type") or ""
+            if msg:
+                detail = f"{detail}: {msg}"
+        except Exception:
+            if r.text:
+                detail = f"{detail}: {r.text[:200]}"
+        # Hint for the classic 'model not found' case
+        if r.status_code == 400 and "model" in detail.lower():
+            detail += f"  (requested model='{model}' — check https://docs.anthropic.com/en/docs/about-claude/models for valid IDs)"
+        raise RuntimeError(detail)
+
     data = r.json()
-    # content is a list of blocks: [{type: "text", text: "..."}]
     parts = data.get("content") or []
     text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
     msg = "".join(text_parts).strip()

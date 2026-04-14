@@ -477,9 +477,24 @@
       <label for="llmApiKeyInput" style="font-size:0.72rem;color:var(--warn);display:block;margin-bottom:0.2rem;">
         Anthropic API key (starts with <code>sk-ant-</code>)
       </label>
-      <input type="password" id="llmApiKeyInput" autocomplete="off" spellcheck="false"
-             placeholder="sk-ant-api03-..."
-             style="width:100%;padding:0.35rem 0.6rem;font-size:0.8rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:monospace;">
+      <div style="display:flex;gap:0.4rem;align-items:center;">
+        <div style="position:relative;flex:1;">
+          <input type="password" id="llmApiKeyInput" autocomplete="off" spellcheck="false"
+                 placeholder="sk-ant-api03-..."
+                 aria-describedby="llmValidateResult"
+                 style="width:100%;padding:0.4rem 2.3rem 0.4rem 0.6rem;font-size:0.8rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:monospace;">
+          <button type="button" id="llmApiKeyReveal" onclick="toggleApiKeyVisibility()"
+                  aria-label="Toggle API key visibility"
+                  style="position:absolute;right:0.3rem;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--dim);cursor:pointer;padding:0.2rem 0.4rem;font-size:0.9rem;">
+            <span aria-hidden="true">👁</span>
+          </button>
+        </div>
+        <button type="button" class="btn btn-ghost" onclick="validateLlm()"
+                aria-label="Validate LLM integration"
+                style="padding:0.4rem 0.8rem;font-size:0.78rem;white-space:nowrap;">✓ Validate</button>
+      </div>
+      <div id="llmValidateResult" role="status" aria-live="polite"
+           style="display:none;margin-top:0.4rem;padding:0.4rem 0.6rem;border-radius:6px;font-size:0.78rem;"></div>
     </div>
     <div id="llmStatusLine" role="status" aria-live="polite"
          style="font-size:0.72rem;color:var(--dim);max-width:720px;margin:0.25rem auto 0;">
@@ -1050,11 +1065,16 @@ fetch('/api/branding').then(r => r.json()).then(d => {
 // LLM toggle + provider + status wiring
 let _llmStatus = {ollama_running: false, models: [], recommended_model: null};
 
-// Claude model list — pinned to current stable IDs.
+// Claude model list — pinned to dated snapshot IDs which are more
+// stable than aliases. If the API rejects any of these with 400, the
+// Validate button's error message surfaces the exact reason and the
+// user can edit via DevTools or add their own model name.
 const ANTHROPIC_MODELS = [
   "claude-sonnet-4-6",
   "claude-opus-4-6",
-  "claude-haiku-4-5",
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-5",
+  "claude-opus-4-5",
 ];
 
 try {
@@ -1180,6 +1200,65 @@ function updateLlmUi() {
           </ol>
         </div>
       </details>`;
+  }
+}
+
+function toggleApiKeyVisibility() {
+  const input = document.getElementById('llmApiKeyInput');
+  const btn = document.getElementById('llmApiKeyReveal');
+  if (!input || !btn) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.querySelector('span').textContent = '🙈';
+    btn.setAttribute('aria-label', 'Hide API key');
+  } else {
+    input.type = 'password';
+    btn.querySelector('span').textContent = '👁';
+    btn.setAttribute('aria-label', 'Show API key');
+  }
+}
+
+async function validateLlm() {
+  const provider = _currentProvider();
+  const model = document.getElementById('llmModelPicker')?.value;
+  const apiKey = document.getElementById('llmApiKeyInput')?.value || '';
+  const resultEl = document.getElementById('llmValidateResult');
+  resultEl.style.display = 'block';
+  resultEl.style.background = 'rgba(148,163,184,0.1)';
+  resultEl.style.color = 'var(--dim)';
+  resultEl.style.border = '1px solid var(--border)';
+  resultEl.textContent = '⏳ Pinging ' + (provider === 'anthropic' ? 'Anthropic API' : 'Ollama') + '...';
+
+  const body = { llm_kind: provider, llm_model: model, llm_api_key: apiKey };
+  if (provider === 'anthropic') {
+    body.llm_endpoint = 'https://api.anthropic.com/v1/messages';
+  } else {
+    body.llm_endpoint = 'http://localhost:11434/api/chat';
+  }
+
+  try {
+    const r = await fetch('/api/llm/validate', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      resultEl.style.background = 'rgba(16,185,129,0.1)';
+      resultEl.style.color = 'var(--pass)';
+      resultEl.style.border = '1px solid rgba(16,185,129,0.3)';
+      const preview = data.response_preview ? ` · model replied: "${escapeHtml(data.response_preview)}"` : '';
+      resultEl.innerHTML = `✓ <strong>Integration working</strong> — ${escapeHtml(data.provider)} · ${escapeHtml(data.model)}${preview}`;
+    } else {
+      resultEl.style.background = 'rgba(239,68,68,0.1)';
+      resultEl.style.color = 'var(--fail)';
+      resultEl.style.border = '1px solid rgba(239,68,68,0.3)';
+      resultEl.innerHTML = `✗ <strong>Validation failed</strong><br><span style="font-family:monospace;font-size:0.75rem;">${escapeHtml(data.error || 'unknown error')}</span>`;
+    }
+  } catch (e) {
+    resultEl.style.background = 'rgba(239,68,68,0.1)';
+    resultEl.style.color = 'var(--fail)';
+    resultEl.style.border = '1px solid rgba(239,68,68,0.3)';
+    resultEl.innerHTML = `✗ Network error: ${escapeHtml(e.message)}`;
   }
 }
 
