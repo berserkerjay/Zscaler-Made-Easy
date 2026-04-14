@@ -690,6 +690,11 @@
              style="text-decoration:none;background:none;border:1px solid var(--accent);color:var(--accent);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;display:inline-block;">
             🔑 Required API Access <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
           </a>
+          <button type="button" onclick="diagnoseZcc()"
+                  aria-label="Probe every ZCC endpoint and show which are readable"
+                  style="background:none;border:1px solid var(--border);color:var(--dim);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;">
+            🔍 Diagnose ZCC Access
+          </button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
@@ -4105,6 +4110,90 @@ document.addEventListener('keydown', (e) => {
 
 // ── Required API Access modal ─────────────────────────────────────
 let _permissionsCache = null;
+
+// Runs a ZCC endpoint probe so the user can see exactly what's
+// readable vs blocked vs not-exposed on their tenant.
+async function diagnoseZcc() {
+  const body = migrateValidateCreds(); if (!body) return;
+  _ensureZccDiagModal();
+  const modal = document.getElementById('zccDiagModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  _lastFocus = document.activeElement;
+  const host = document.getElementById('zccDiagContent');
+  host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1.5rem;">⏳ Probing every ZCC endpoint on your tenant…</div>';
+  try {
+    const r = await fetch('/api/diagnose/zcc', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    const s = data.summary || {};
+    const rowsHtml = (data.attempts || []).map(a => {
+      const stColor = a.status === 200 || a.status === 204 ? 'var(--pass)'
+                    : a.status === 401 || a.status === 403 ? 'var(--warn)'
+                    : a.status === 404 ? 'var(--dim)'
+                    : 'var(--fail)';
+      const keyPreview = a.keys ? a.keys.slice(0,5).join(', ') + (a.keys.length > 5 ? `… (+${a.keys.length - 5})` : '') : '';
+      const itemPreview = a.items !== null && a.items !== undefined ? `${a.items} item${a.items === 1 ? '' : 's'}` : '';
+      return `<tr>
+        <td style="padding:0.35rem 0.5rem;font-family:monospace;color:var(--dim);font-size:0.75rem;">${escapeHtml(a.endpoint)}</td>
+        <td style="padding:0.35rem 0.5rem;">${escapeHtml(a.label)}</td>
+        <td style="padding:0.35rem 0.5rem;color:${stColor};font-weight:700;text-align:center;">${a.status}</td>
+        <td style="padding:0.35rem 0.5rem;color:var(--dim);font-size:0.78rem;">${escapeHtml(itemPreview || keyPreview || (a.error || ''))}</td>
+        <td style="padding:0.35rem 0.5rem;color:var(--dim);font-size:0.78rem;">${escapeHtml(a.likely_cause || '')}</td>
+      </tr>`;
+    }).join('');
+    host.innerHTML = `
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem;">
+        <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--pass);">Readable: ${s.readable||0}</span>
+        <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warn);">Forbidden: ${s.forbidden||0}</span>
+        <span class="badge" style="background:rgba(148,163,184,0.15);color:var(--dim);">Not Found: ${s.not_found||0}</span>
+        <span class="badge" style="background:rgba(239,68,68,0.15);color:var(--fail);">Error: ${s.error||0}</span>
+        <span style="color:var(--dim);font-size:0.72rem;align-self:center;">${s.total||0} endpoints probed</span>
+      </div>
+      <table style="width:100%;font-size:0.82rem;border-collapse:collapse;">
+        <thead><tr style="background:rgba(59,130,246,0.08);">
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Endpoint</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Feature</th>
+          <th style="padding:0.4rem 0.5rem;text-align:center;">HTTP</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Preview</th>
+          <th style="padding:0.4rem 0.5rem;text-align:left;">Likely cause</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div style="margin-top:0.8rem;padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:6px;font-size:0.8rem;color:var(--dim);">
+        <strong style="color:var(--text);">How to read this:</strong> endpoints showing <span style="color:var(--pass);">200</span> are readable and their data is in the assessment. <span style="color:var(--warn);">401/403</span> means the API role lacks that specific ZCC read scope — fix in ZIdentity. <span style="color:var(--dim);">404</span> means the feature isn't licensed or isn't exposed by OneAPI on your tenant — not a bug.
+      </div>`;
+  } catch(e) {
+    host.innerHTML = `<div style="color:var(--fail);padding:1rem;">Diagnosis failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeZccDiagModal() {
+  document.getElementById('zccDiagModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+}
+
+function _ensureZccDiagModal() {
+  if (document.getElementById('zccDiagModal')) return;
+  const m = document.createElement('div');
+  m.id = 'zccDiagModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.setAttribute('aria-labelledby', 'zccDiagTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:960px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <h2 id="zccDiagTitle" style="margin:0;"><span aria-hidden="true">🔍</span> ZCC Endpoint Diagnostics</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeZccDiagModal()" aria-label="Close ZCC diagnostics" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <div id="zccDiagContent"></div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeZccDiagModal();
+  });
+}
 
 async function openPermissionsModal() {
   _lastFocus = document.activeElement;
