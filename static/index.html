@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <style>
   :root {
+    /* Dark theme — default */
     --bg: #0a0e1a;
     --bg-grad: radial-gradient(ellipse at top, #1a2341 0%, #0a0e1a 60%);
     --card: rgba(30, 41, 59, 0.6);
@@ -28,6 +29,39 @@
     --ease: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  /* Light theme — activated by body.theme-light set via JS */
+  body.theme-light {
+    --bg: #f8fafc;
+    --bg-grad: radial-gradient(ellipse at top, #e2e8f0 0%, #f8fafc 60%);
+    --card: rgba(255, 255, 255, 0.85);
+    --card-solid: #ffffff;
+    --border: rgba(100, 116, 139, 0.2);
+    --border-strong: rgba(100, 116, 139, 0.4);
+    --text: #0f172a;
+    --dim: #475569;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-glow: rgba(37, 99, 235, 0.35);
+    --pass: #059669;
+    --fail: #dc2626;
+    --warn: #d97706;
+    --info: #475569;
+    --shadow-sm: 0 2px 8px rgba(15,23,42,0.08);
+    --shadow-md: 0 8px 24px rgba(15,23,42,0.12);
+    --shadow-lg: 0 20px 60px rgba(15,23,42,0.18);
+    color-scheme: light;
+  }
+  body.theme-light { color: var(--text); }
+  /* Ensure modal / panel backgrounds track the theme too */
+  body.theme-light #permissionsModal > div,
+  body.theme-light #bypassModal > div,
+  body.theme-light #updateModal > div,
+  body.theme-light #remediationModal > div,
+  body.theme-light #reviewModal > div,
+  body.theme-light #wizardModal > div,
+  body.theme-light #bestPracticesModal > div,
+  body.theme-light #promptSidebar { background: #ffffff !important; color: var(--text); }
+  body.theme-light #bgIntensityControl { background: rgba(248,250,252,0.9) !important; color: var(--dim); }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   html { scroll-behavior: smooth; }
   body {
@@ -54,10 +88,17 @@
     pointer-events: none; z-index: 0;
     opacity: 0; transition: opacity 600ms ease;
   }
+  /* Backdrop intensity — controlled by --bg-intensity set via JS.
+     Default (subtle=0.6) keeps text readable; medium=1.0 roughly
+     doubles what you see; prominent=1.6 makes the portrait clearly
+     visible behind the hero. */
+  body { --bg-intensity: 0.6; }
+  body.bg-intensity-medium    { --bg-intensity: 1.0; }
+  body.bg-intensity-prominent { --bg-intensity: 1.6; }
   body.has-portrait::before {
     background: url("/static/branding/portrait.jpg") center right / contain no-repeat,
                 url("/static/branding/portrait.png") center right / contain no-repeat;
-    opacity: 0.12;
+    opacity: calc(0.12 * var(--bg-intensity));
     mask-image: linear-gradient(to left, rgba(0,0,0,0.8) 0%, transparent 70%);
     -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,0.8) 0%, transparent 70%);
   }
@@ -68,7 +109,7 @@
     background-image: url("/static/branding/logo.svg"), url("/static/branding/logo.png");
     background-repeat: repeat;
     background-size: 180px auto;
-    opacity: 0.025;
+    opacity: calc(0.025 * var(--bg-intensity));
   }
   /* Content must sit above the watermark layers */
   .container, .hero, .card, header, main { position: relative; z-index: 1; }
@@ -1111,14 +1152,93 @@ fetch('/api/health').then(r => r.json()).then(d => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
 
-// Branding backdrop loader — reads the manifest produced by
-// /api/branding and toggles body classes so the CSS ::before /
-// ::after layers render only when the user has dropped licensed
-// logo.svg / portrait.jpg into static/branding/.
+// Branding backdrop loader + intensity control.
+// Reads the manifest from /api/branding and toggles body classes so
+// the CSS ::before / ::after layers render only when the user has
+// dropped licensed logo.svg / portrait.jpg into static/branding/.
+// Backdrop intensity persists in localStorage.
+function _applyBackdropIntensity(level) {
+  document.body.classList.remove('bg-intensity-subtle','bg-intensity-medium','bg-intensity-prominent');
+  if (level === 'medium')    document.body.classList.add('bg-intensity-medium');
+  if (level === 'prominent') document.body.classList.add('bg-intensity-prominent');
+  try { localStorage.setItem('zassess_bg_intensity', level); } catch(e) {}
+}
+let _savedIntensity = 'subtle';
+try { _savedIntensity = localStorage.getItem('zassess_bg_intensity') || 'subtle'; } catch(e) {}
+_applyBackdropIntensity(_savedIntensity);
+
 fetch('/api/branding').then(r => r.json()).then(d => {
-  if (d.logo_svg || d.logo_png) document.body.classList.add('has-logo');
-  if (d.portrait_jpg || d.portrait_png) document.body.classList.add('has-portrait');
+  const hasLogo = !!(d.logo_svg || d.logo_png);
+  const hasPortrait = !!(d.portrait_jpg || d.portrait_png);
+  if (hasLogo) document.body.classList.add('has-logo');
+  if (hasPortrait) document.body.classList.add('has-portrait');
+  // If any branding asset is present, render an intensity picker in
+  // the corner so the user can dial the backdrop up without code.
+  if (hasLogo || hasPortrait) _renderBackdropIntensityControl();
 }).catch(() => { /* no-op — branding is optional */ });
+
+function _renderBackdropIntensityControl() {
+  if (document.getElementById('bgIntensityControl')) return;
+  const el = document.createElement('div');
+  el.id = 'bgIntensityControl';
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', 'Backdrop intensity');
+  el.style.cssText = 'position:fixed;bottom:0.75rem;left:0.75rem;z-index:800;background:rgba(15,23,42,0.85);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.6rem;font-size:0.72rem;color:var(--dim);display:flex;gap:0.35rem;align-items:center;backdrop-filter:blur(6px);';
+  el.innerHTML = `
+    <span style="margin-right:0.25rem;">🎨 Backdrop</span>
+    <label style="cursor:pointer;"><input type="radio" name="bgi" value="subtle" ${_savedIntensity==='subtle'?'checked':''} style="width:auto;cursor:pointer;"> Subtle</label>
+    <label style="cursor:pointer;"><input type="radio" name="bgi" value="medium" ${_savedIntensity==='medium'?'checked':''} style="width:auto;cursor:pointer;"> Medium</label>
+    <label style="cursor:pointer;"><input type="radio" name="bgi" value="prominent" ${_savedIntensity==='prominent'?'checked':''} style="width:auto;cursor:pointer;"> Prominent</label>`;
+  document.body.appendChild(el);
+  el.addEventListener('change', (e) => {
+    if (e.target.name === 'bgi') _applyBackdropIntensity(e.target.value);
+  });
+}
+
+// ─── Light / Dark theme toggle ────────────────────────────────────
+// First load: honor saved preference; otherwise honor OS
+// prefers-color-scheme; default dark.
+function _applyTheme(theme) {
+  if (theme === 'light') document.body.classList.add('theme-light');
+  else                   document.body.classList.remove('theme-light');
+  try { localStorage.setItem('zassess_theme', theme); } catch(e) {}
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) {
+    btn.textContent = theme === 'light' ? '🌙 Dark mode' : '☀ Light mode';
+    btn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+  }
+  announce(`Theme: ${theme}`);
+}
+function _initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('zassess_theme'); } catch(e) {}
+  if (saved === 'light' || saved === 'dark') {
+    _applyTheme(saved);
+    return;
+  }
+  // OS preference
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  _applyTheme(prefersLight ? 'light' : 'dark');
+}
+_initTheme();
+
+function _renderThemeToggle() {
+  if (document.getElementById('themeToggleBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'themeToggleBtn';
+  btn.type = 'button';
+  btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:rgba(15,23,42,0.85);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;backdrop-filter:blur(6px);';
+  btn.addEventListener('click', () => {
+    const isLight = document.body.classList.contains('theme-light');
+    _applyTheme(isLight ? 'dark' : 'light');
+  });
+  // Set label to match current state
+  const isLight = document.body.classList.contains('theme-light');
+  btn.textContent = isLight ? '🌙 Dark mode' : '☀ Light mode';
+  btn.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+  document.body.appendChild(btn);
+}
+_renderThemeToggle();
 
 // ══════════════════════════════════════════════════════════════════
 // Text-prompt command bar
