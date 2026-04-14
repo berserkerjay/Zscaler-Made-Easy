@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <style>
   :root {
+    /* Dark theme — default */
     --bg: #0a0e1a;
     --bg-grad: radial-gradient(ellipse at top, #1a2341 0%, #0a0e1a 60%);
     --card: rgba(30, 41, 59, 0.6);
@@ -28,6 +29,39 @@
     --ease: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  /* Light theme — activated by body.theme-light set via JS */
+  body.theme-light {
+    --bg: #f8fafc;
+    --bg-grad: radial-gradient(ellipse at top, #e2e8f0 0%, #f8fafc 60%);
+    --card: rgba(255, 255, 255, 0.85);
+    --card-solid: #ffffff;
+    --border: rgba(100, 116, 139, 0.2);
+    --border-strong: rgba(100, 116, 139, 0.4);
+    --text: #0f172a;
+    --dim: #475569;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-glow: rgba(37, 99, 235, 0.35);
+    --pass: #059669;
+    --fail: #dc2626;
+    --warn: #d97706;
+    --info: #475569;
+    --shadow-sm: 0 2px 8px rgba(15,23,42,0.08);
+    --shadow-md: 0 8px 24px rgba(15,23,42,0.12);
+    --shadow-lg: 0 20px 60px rgba(15,23,42,0.18);
+    color-scheme: light;
+  }
+  body.theme-light { color: var(--text); }
+  /* Ensure modal / panel backgrounds track the theme too */
+  body.theme-light #permissionsModal > div,
+  body.theme-light #bypassModal > div,
+  body.theme-light #updateModal > div,
+  body.theme-light #remediationModal > div,
+  body.theme-light #reviewModal > div,
+  body.theme-light #wizardModal > div,
+  body.theme-light #bestPracticesModal > div,
+  body.theme-light #promptSidebar { background: #ffffff !important; color: var(--text); }
+  body.theme-light #bgIntensityControl { background: rgba(248,250,252,0.9) !important; color: var(--dim); }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   html { scroll-behavior: smooth; }
   body {
@@ -54,10 +88,17 @@
     pointer-events: none; z-index: 0;
     opacity: 0; transition: opacity 600ms ease;
   }
+  /* Backdrop intensity — controlled by --bg-intensity set via JS.
+     Default (subtle=0.6) keeps text readable; medium=1.0 roughly
+     doubles what you see; prominent=1.6 makes the portrait clearly
+     visible behind the hero. */
+  body { --bg-intensity: 0.6; }
+  body.bg-intensity-medium    { --bg-intensity: 1.0; }
+  body.bg-intensity-prominent { --bg-intensity: 1.6; }
   body.has-portrait::before {
     background: url("/static/branding/portrait.jpg") center right / contain no-repeat,
                 url("/static/branding/portrait.png") center right / contain no-repeat;
-    opacity: 0.12;
+    opacity: calc(0.12 * var(--bg-intensity));
     mask-image: linear-gradient(to left, rgba(0,0,0,0.8) 0%, transparent 70%);
     -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,0.8) 0%, transparent 70%);
   }
@@ -68,7 +109,7 @@
     background-image: url("/static/branding/logo.svg"), url("/static/branding/logo.png");
     background-repeat: repeat;
     background-size: 180px auto;
-    opacity: 0.025;
+    opacity: calc(0.025 * var(--bg-intensity));
   }
   /* Content must sit above the watermark layers */
   .container, .hero, .card, header, main { position: relative; z-index: 1; }
@@ -140,16 +181,16 @@
   }
   .btn { min-height: 40px; }
 
-  /* Main container shrinks 380px to make room for the right-side
-     prompt sidebar. Collapsed sidebar restores full width via .sidebar-collapsed on body. */
+  /* Main container shrinks to make room for the right-side prompt
+     sidebar. Collapsed via .sidebar-collapsed on body. The sidebar
+     stays interactive even on narrow viewports; it slides off-screen
+     ONLY when the user explicitly collapses it. */
   .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; padding-right: calc(1.5rem + 400px); animation: fadeInUp 0.6s var(--ease); transition: padding-right 200ms ease; }
   body.sidebar-collapsed .container { padding-right: 1.5rem; }
-  body.sidebar-collapsed #promptSidebar { transform: translateX(100%); }
+  body.sidebar-collapsed #promptSidebar { transform: translateX(100%); pointer-events: none; }
   body.sidebar-collapsed #sidebarOpenRail { display: block !important; }
   @media (max-width: 960px) {
-    #promptSidebar { width: 100vw; transform: translateX(100%); }
-    body:not(.sidebar-force-open) #promptSidebar { transform: translateX(100%); }
-    body:not(.sidebar-force-open) #sidebarOpenRail { display: block !important; }
+    #promptSidebar { width: min(380px, 100vw); }
     .container { padding-right: 1.5rem !important; }
   }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -444,77 +485,14 @@
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
 
-    <!-- Text-prompt command bar. Deterministic by default; optional
-         local-LLM toggle for natural-language parsing (loopback-only). -->
-    <div role="search" aria-label="Text-prompt command bar"
-         style="max-width:720px;margin:1.2rem auto 0.6rem;display:flex;gap:0.4rem;align-items:center;">
-      <label for="promptInput" class="sr-only">Ask the tool what to do</label>
-      <div style="position:relative;flex:1;">
-        <input id="promptInput" type="text" autocomplete="off"
-               placeholder="Ask for an action — e.g. 'check dlp', 'why FW-01', 'bypass', '?' for help"
-               aria-describedby="promptHint"
-               style="width:100%;padding:0.7rem 0.9rem 0.7rem 2.4rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:0.92rem;">
-        <span aria-hidden="true" style="position:absolute;left:0.85rem;top:50%;transform:translateY(-50%);color:var(--dim);font-size:1rem;">⌕</span>
-        <kbd aria-hidden="true" style="position:absolute;right:0.6rem;top:50%;transform:translateY(-50%);background:rgba(148,163,184,0.12);color:var(--dim);font-size:0.7rem;padding:0.15rem 0.4rem;border-radius:4px;border:1px solid var(--border);">/</kbd>
-      </div>
-      <button class="btn btn-primary" onclick="runPrompt()" aria-label="Run command"
-              style="padding:0.6rem 1.1rem;font-size:0.85rem;">Run</button>
+    <!-- The prompt bar has moved to the right-side sidebar so it's
+         accessible from anywhere on the page. These hidden form
+         elements persist for script compatibility. -->
+    <div hidden aria-hidden="true">
+      <input id="promptInput" type="text">
+      <div id="promptHint"></div>
+      <div id="promptResult"></div>
     </div>
-    <div id="promptHint" style="font-size:0.77rem;color:var(--dim);max-width:720px;margin:0 auto;">
-      Press <kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;font-size:0.7rem;">/</kbd> to focus ·
-      <button type="button" onclick="runPrompt('help')" class="btn btn-ghost"
-              style="padding:0.1rem 0.5rem;font-size:0.72rem;display:inline;background:none;border:none;color:var(--accent);cursor:pointer;">help</button> for the command list ·
-      <label style="display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer;margin-left:0.4rem;">
-        <input type="checkbox" id="useLlmToggle" style="width:auto;cursor:pointer;"
-               aria-describedby="llmStatusLine">
-        <span>Use LLM</span>
-      </label>
-      <select id="llmProviderPicker" aria-label="LLM provider"
-              style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
-        <option value="ollama">Local (Ollama)</option>
-        <option value="anthropic">Claude (Anthropic API)</option>
-        <option value="openai_cloud">ChatGPT (OpenAI API)</option>
-      </select>
-      <select id="llmModelPicker" aria-label="LLM model"
-              style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
-      </select>
-      <button type="button" onclick="refreshLlmStatus()" class="btn btn-ghost"
-              style="padding:0.1rem 0.4rem;font-size:0.72rem;margin-left:0.2rem;background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;"
-              aria-label="Re-check LLM status">↻</button>
-    </div>
-    <!-- API key field — only rendered when Claude provider selected.
-         Stored in sessionStorage (not localStorage) so it disappears
-         when the browser tab closes. -->
-    <div id="llmApiKeyRow" style="display:none;max-width:720px;margin:0.35rem auto 0;text-align:left;">
-      <label for="llmApiKeyInput" style="font-size:0.72rem;color:var(--warn);display:block;margin-bottom:0.2rem;">
-        Anthropic API key (starts with <code>sk-ant-</code>)
-      </label>
-      <div style="display:flex;gap:0.4rem;align-items:center;">
-        <div style="position:relative;flex:1;">
-          <input type="password" id="llmApiKeyInput" autocomplete="off" spellcheck="false"
-                 placeholder="sk-ant-api03-..."
-                 aria-describedby="llmValidateResult"
-                 style="width:100%;padding:0.4rem 2.3rem 0.4rem 0.6rem;font-size:0.8rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:monospace;">
-          <button type="button" id="llmApiKeyReveal" onclick="toggleApiKeyVisibility()"
-                  aria-label="Toggle API key visibility"
-                  style="position:absolute;right:0.3rem;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--dim);cursor:pointer;padding:0.2rem 0.4rem;font-size:0.9rem;">
-            <span aria-hidden="true">👁</span>
-          </button>
-        </div>
-        <button type="button" class="btn btn-ghost" onclick="validateLlm()"
-                aria-label="Validate LLM integration"
-                style="padding:0.4rem 0.8rem;font-size:0.78rem;white-space:nowrap;">✓ Validate</button>
-      </div>
-      <div id="llmValidateResult" role="status" aria-live="polite"
-           style="display:none;margin-top:0.4rem;padding:0.4rem 0.6rem;border-radius:6px;font-size:0.78rem;"></div>
-    </div>
-    <div id="llmStatusLine" role="status" aria-live="polite"
-         style="font-size:0.72rem;color:var(--dim);max-width:720px;margin:0.25rem auto 0;">
-      <span>Checking for local Ollama...</span>
-    </div>
-    <!-- Prompt result / feedback banner -->
-    <div id="promptResult" role="status" aria-live="polite"
-         style="display:none;max-width:720px;margin:0.6rem auto 0;padding:0.6rem 0.8rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;text-align:left;"></div>
 
     <div style="margin-top:0.9rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
       <button class="btn btn-ghost" onclick="openUpdateModal()"
@@ -1081,6 +1059,60 @@
     </div>
   </div>
 
+  <!-- Collapsible Settings (LLM provider + key + validate) -->
+  <details id="sidebarSettings" style="border-top:1px solid var(--border);background:rgba(15,23,42,0.6);">
+    <summary style="padding:0.5rem 0.8rem;cursor:pointer;font-size:0.78rem;color:var(--dim);display:flex;justify-content:space-between;align-items:center;">
+      <span>⚙ Parser settings</span>
+      <span id="sidebarSettingsBadge" style="font-size:0.7rem;color:var(--accent);">deterministic</span>
+    </summary>
+    <div style="padding:0.6rem 0.8rem 0.8rem;font-size:0.76rem;">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;margin-bottom:0.5rem;">
+        <input type="checkbox" id="useLlmToggle" style="width:auto;cursor:pointer;">
+        <span>Use LLM (natural-language parser)</span>
+      </label>
+      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem;">
+        <label for="llmProviderPicker" class="sr-only">LLM provider</label>
+        <select id="llmProviderPicker" aria-label="LLM provider"
+                style="padding:0.25rem 0.4rem;font-size:0.75rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
+          <option value="ollama">Local (Ollama)</option>
+          <option value="anthropic">Claude (Anthropic)</option>
+          <option value="openai_cloud">ChatGPT (OpenAI)</option>
+        </select>
+        <label for="llmModelPicker" class="sr-only">LLM model</label>
+        <select id="llmModelPicker" aria-label="LLM model"
+                style="padding:0.25rem 0.4rem;font-size:0.75rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;flex:1;"></select>
+        <button type="button" onclick="refreshLlmStatus()" class="btn btn-ghost"
+                aria-label="Re-check LLM status"
+                style="padding:0.15rem 0.4rem;font-size:0.75rem;background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;border-radius:4px;">↻</button>
+      </div>
+      <!-- API-key row (hidden unless a cloud provider is picked) -->
+      <div id="llmApiKeyRow" style="display:none;margin-bottom:0.4rem;">
+        <label for="llmApiKeyInput" style="display:block;font-size:0.72rem;color:var(--warn);margin-bottom:0.2rem;">
+          API key
+        </label>
+        <div style="display:flex;gap:0.3rem;align-items:center;">
+          <div style="position:relative;flex:1;">
+            <input type="password" id="llmApiKeyInput" autocomplete="off" spellcheck="false"
+                   placeholder="sk-..."
+                   aria-describedby="llmValidateResult"
+                   style="width:100%;padding:0.3rem 2rem 0.3rem 0.5rem;font-size:0.78rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:monospace;">
+            <button type="button" id="llmApiKeyReveal" onclick="toggleApiKeyVisibility()"
+                    aria-label="Toggle API key visibility"
+                    style="position:absolute;right:0.2rem;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--dim);cursor:pointer;padding:0.1rem 0.3rem;font-size:0.85rem;">
+              <span aria-hidden="true">👁</span>
+            </button>
+          </div>
+          <button type="button" onclick="validateLlm()" aria-label="Validate LLM integration"
+                  style="padding:0.3rem 0.55rem;font-size:0.72rem;background:none;border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;white-space:nowrap;">✓ Validate</button>
+        </div>
+        <div id="llmValidateResult" role="status" aria-live="polite"
+             style="display:none;margin-top:0.3rem;padding:0.3rem 0.45rem;border-radius:4px;font-size:0.72rem;"></div>
+      </div>
+      <div id="llmStatusLine" role="status" aria-live="polite"
+           style="font-size:0.7rem;color:var(--dim);">Checking for local Ollama…</div>
+    </div>
+  </details>
+
   <!-- Fixed footer input area -->
   <div style="border-top:1px solid var(--border);padding:0.6rem 0.75rem;background:rgba(15,23,42,0.8);">
     <div style="position:relative;">
@@ -1092,7 +1124,7 @@
               style="position:absolute;right:0.3rem;bottom:0.4rem;background:var(--accent);color:white;border:0;border-radius:5px;padding:0.25rem 0.55rem;font-size:0.78rem;cursor:pointer;">Send</button>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.35rem;font-size:0.7rem;color:var(--dim);">
-      <span><kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">/</kbd> to focus · <kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">?</kbd> for help</span>
+      <span><kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">/</kbd> focus · <kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;">?</kbd> help</span>
       <button type="button" onclick="clearPromptHistory()"
               style="background:none;border:0;color:var(--dim);cursor:pointer;font-size:0.7rem;">🗑 Clear</button>
     </div>
@@ -1120,14 +1152,93 @@ fetch('/api/health').then(r => r.json()).then(d => {
   document.getElementById('totalChecksBadge').textContent = 'Server not reachable';
 });
 
-// Branding backdrop loader — reads the manifest produced by
-// /api/branding and toggles body classes so the CSS ::before /
-// ::after layers render only when the user has dropped licensed
-// logo.svg / portrait.jpg into static/branding/.
+// Branding backdrop loader + intensity control.
+// Reads the manifest from /api/branding and toggles body classes so
+// the CSS ::before / ::after layers render only when the user has
+// dropped licensed logo.svg / portrait.jpg into static/branding/.
+// Backdrop intensity persists in localStorage.
+function _applyBackdropIntensity(level) {
+  document.body.classList.remove('bg-intensity-subtle','bg-intensity-medium','bg-intensity-prominent');
+  if (level === 'medium')    document.body.classList.add('bg-intensity-medium');
+  if (level === 'prominent') document.body.classList.add('bg-intensity-prominent');
+  try { localStorage.setItem('zassess_bg_intensity', level); } catch(e) {}
+}
+let _savedIntensity = 'subtle';
+try { _savedIntensity = localStorage.getItem('zassess_bg_intensity') || 'subtle'; } catch(e) {}
+_applyBackdropIntensity(_savedIntensity);
+
 fetch('/api/branding').then(r => r.json()).then(d => {
-  if (d.logo_svg || d.logo_png) document.body.classList.add('has-logo');
-  if (d.portrait_jpg || d.portrait_png) document.body.classList.add('has-portrait');
+  const hasLogo = !!(d.logo_svg || d.logo_png);
+  const hasPortrait = !!(d.portrait_jpg || d.portrait_png);
+  if (hasLogo) document.body.classList.add('has-logo');
+  if (hasPortrait) document.body.classList.add('has-portrait');
+  // If any branding asset is present, render an intensity picker in
+  // the corner so the user can dial the backdrop up without code.
+  if (hasLogo || hasPortrait) _renderBackdropIntensityControl();
 }).catch(() => { /* no-op — branding is optional */ });
+
+function _renderBackdropIntensityControl() {
+  if (document.getElementById('bgIntensityControl')) return;
+  const el = document.createElement('div');
+  el.id = 'bgIntensityControl';
+  el.setAttribute('role', 'region');
+  el.setAttribute('aria-label', 'Backdrop intensity');
+  el.style.cssText = 'position:fixed;bottom:0.75rem;left:0.75rem;z-index:800;background:rgba(15,23,42,0.85);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.6rem;font-size:0.72rem;color:var(--dim);display:flex;gap:0.35rem;align-items:center;backdrop-filter:blur(6px);';
+  el.innerHTML = `
+    <span style="margin-right:0.25rem;">🎨 Backdrop</span>
+    <label style="cursor:pointer;"><input type="radio" name="bgi" value="subtle" ${_savedIntensity==='subtle'?'checked':''} style="width:auto;cursor:pointer;"> Subtle</label>
+    <label style="cursor:pointer;"><input type="radio" name="bgi" value="medium" ${_savedIntensity==='medium'?'checked':''} style="width:auto;cursor:pointer;"> Medium</label>
+    <label style="cursor:pointer;"><input type="radio" name="bgi" value="prominent" ${_savedIntensity==='prominent'?'checked':''} style="width:auto;cursor:pointer;"> Prominent</label>`;
+  document.body.appendChild(el);
+  el.addEventListener('change', (e) => {
+    if (e.target.name === 'bgi') _applyBackdropIntensity(e.target.value);
+  });
+}
+
+// ─── Light / Dark theme toggle ────────────────────────────────────
+// First load: honor saved preference; otherwise honor OS
+// prefers-color-scheme; default dark.
+function _applyTheme(theme) {
+  if (theme === 'light') document.body.classList.add('theme-light');
+  else                   document.body.classList.remove('theme-light');
+  try { localStorage.setItem('zassess_theme', theme); } catch(e) {}
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) {
+    btn.textContent = theme === 'light' ? '🌙 Dark mode' : '☀ Light mode';
+    btn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+  }
+  announce(`Theme: ${theme}`);
+}
+function _initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem('zassess_theme'); } catch(e) {}
+  if (saved === 'light' || saved === 'dark') {
+    _applyTheme(saved);
+    return;
+  }
+  // OS preference
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  _applyTheme(prefersLight ? 'light' : 'dark');
+}
+_initTheme();
+
+function _renderThemeToggle() {
+  if (document.getElementById('themeToggleBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'themeToggleBtn';
+  btn.type = 'button';
+  btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:rgba(15,23,42,0.85);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;backdrop-filter:blur(6px);';
+  btn.addEventListener('click', () => {
+    const isLight = document.body.classList.contains('theme-light');
+    _applyTheme(isLight ? 'dark' : 'light');
+  });
+  // Set label to match current state
+  const isLight = document.body.classList.contains('theme-light');
+  btn.textContent = isLight ? '🌙 Dark mode' : '☀ Light mode';
+  btn.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+  document.body.appendChild(btn);
+}
+_renderThemeToggle();
 
 // ══════════════════════════════════════════════════════════════════
 // Text-prompt command bar
@@ -1632,12 +1743,11 @@ function toggleSidebar() {
   try { localStorage.setItem('zassess_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
 }
 
-// Restore collapsed state
-try {
-  if (localStorage.getItem('zassess_sidebar_collapsed') === '1') {
-    document.body.classList.add('sidebar-collapsed');
-  }
-} catch(e) {}
+// Sidebar starts open on every load — the prompt is the primary
+// input surface now, so a stale 'collapsed' from a previous session
+// would strand the user. Users can still collapse via the ▶ button.
+try { localStorage.removeItem('zassess_sidebar_collapsed'); } catch(e) {}
+document.body.classList.remove('sidebar-collapsed');
 
 // Wire sidebar input: Enter sends, Shift+Enter inserts newline
 document.getElementById('sidebarPromptInput')?.addEventListener('keydown', (e) => {
