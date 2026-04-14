@@ -245,6 +245,34 @@
   .card h2 { font-size: 1.4rem; margin-bottom: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
   .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--dim); font-weight: 500; }
 
+  /* Collapsible card sections — every .card top-level h2/h3 gets a
+     click-to-collapse twisty attached at runtime by _initCollapsibleCards().
+     Persisted per heading text in localStorage so reloads keep state. */
+  .card h2.collapsible,
+  .card h3.collapsible {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .card h2.collapsible:hover,
+  .card h3.collapsible:hover { color: var(--accent); }
+  .card h2.collapsible::before,
+  .card h3.collapsible::before {
+    content: "▾";
+    display: inline-block;
+    font-size: 0.85em;
+    color: var(--dim);
+    transition: transform 0.2s var(--ease);
+    width: 0.9em;
+    text-align: center;
+  }
+  .card.collapsed h2.collapsible::before,
+  .card.collapsed h3.collapsible::before { transform: rotate(-90deg); }
+  .card.collapsed > :not(h2):not(h3):not(.card-header-row) { display: none !important; }
+  .card.collapsed { padding-bottom: 1rem; }
+
   /* Quick-start */
   .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1rem 0; }
   .step {
@@ -510,6 +538,51 @@
               style="padding:0.45rem 1rem;font-size:0.82rem;">
         <span aria-hidden="true">📚</span> Best Practices Library
       </button>
+      <button class="btn btn-ghost" onclick="openDlpEfficacyModal()"
+              aria-label="Score every custom DLP dictionary and engine on detection efficacy"
+              style="padding:0.45rem 1rem;font-size:0.82rem;">
+        <span aria-hidden="true">📊</span> DLP Dictionary &amp; Engine Efficacy
+      </button>
+    </div>
+  </div>
+
+  <!-- DLP Efficacy modal -->
+  <div id="dlpEffModal" role="dialog" aria-modal="true" aria-labelledby="dlpEffModalTitle"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:1100px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 id="dlpEffModalTitle" style="margin:0;">
+          <span aria-hidden="true">📊</span> DLP Dictionary &amp; Engine Efficacy
+        </h2>
+        <button class="btn btn-ghost" onclick="closeDlpEffModal()" aria-label="Close DLP efficacy dialog"
+                style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
+        Scores every custom DLP dictionary and engine on likelihood of detecting real data without
+        flooding incidents with false positives. Static analysis (no user data required), plus an
+        optional <em>local corpus test</em> where you paste sample text and see which dictionaries
+        would fire. The corpus never leaves this server — we run regex locally with Python's stdlib.
+      </p>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+        <button class="btn btn-primary" id="dlpEffRunBtn" onclick="runDlpEfficacy()"
+                style="padding:0.55rem 1.1rem;font-size:0.85rem;">Score Tenant</button>
+        <button class="btn btn-ghost" onclick="toggleDlpEffCorpus()"
+                style="padding:0.55rem 1.1rem;font-size:0.85rem;">🧪 Local Corpus Test</button>
+      </div>
+      <div id="dlpEffCorpusPanel" style="display:none;margin-bottom:1rem;padding:0.9rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+        <label for="dlpEffCorpus" style="display:block;font-size:0.85rem;margin-bottom:0.4rem;">
+          Paste sample text (≤ 256 KB). Stays on this server — local regex only.
+        </label>
+        <textarea id="dlpEffCorpus" rows="6" maxlength="262144"
+                  style="width:100%;font-family:monospace;font-size:0.8rem;background:#0b1220;color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:0.5rem;"
+                  placeholder="e.g. a few emails, a spreadsheet row, a chat transcript — whatever represents realistic data"></textarea>
+        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;">
+          <button class="btn btn-primary" onclick="runDlpEfficacyCorpus()"
+                  style="padding:0.4rem 0.9rem;font-size:0.8rem;">Run Corpus Test</button>
+          <span id="dlpEffCorpusStatus" style="color:var(--dim);font-size:0.78rem;align-self:center;"></span>
+        </div>
+      </div>
+      <div id="dlpEffResult" style="font-size:0.88rem;"></div>
     </div>
   </div>
 
@@ -4105,8 +4178,245 @@ document.addEventListener('keydown', (e) => {
     if (document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
     if (document.getElementById('bypassModal').style.display === 'block') closeBypassModal();
     if (document.getElementById('permissionsModal').style.display === 'block') closePermissionsModal();
+    const eff = document.getElementById('dlpEffModal');
+    if (eff && eff.style.display === 'block') closeDlpEffModal();
   }
 });
+
+// ══════════════════════════════════════════════════════════════════
+// DLP Dictionary & Engine Efficacy
+// ══════════════════════════════════════════════════════════════════
+// Tenant-wide efficacy scoring for custom DLP dictionaries + engines.
+// Static analysis first (graph of rules -> engines -> dictionaries),
+// optional local corpus test second (server-side regex only — no data
+// ever leaves this process). All result sections are collapsible so
+// large tenants don't drown the viewport.
+let _dlpEffCache = null;
+
+function openDlpEfficacyModal() {
+  _lastFocus = document.activeElement;
+  const modal = document.getElementById('dlpEffModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  const r = document.getElementById('dlpEffResult');
+  if (!r.innerHTML.trim()) {
+    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Score Tenant</strong> to grade every custom DLP dictionary and engine.</div>';
+  }
+  announce('DLP efficacy dialog opened');
+  _focusFirstInModal(modal);
+}
+function closeDlpEffModal() {
+  document.getElementById('dlpEffModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  announce('Dialog closed');
+}
+function toggleDlpEffCorpus() {
+  const p = document.getElementById('dlpEffCorpusPanel');
+  p.style.display = (p.style.display === 'none') ? 'block' : 'none';
+  if (p.style.display === 'block') document.getElementById('dlpEffCorpus').focus();
+}
+
+function _effGradeColor(grade) {
+  return ({A:'#4ade80', B:'#a3e635', C:'#facc15', D:'#fb923c', F:'#f87171'})[grade] || 'var(--dim)';
+}
+function _effEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Render one scored item (dictionary or engine) as a collapsible
+// <details> block — summary row shows grade chip + name + score;
+// body shows reasons + remediation + raw metadata.
+function _renderEffItem(item, kind) {
+  const color = _effGradeColor(item.grade);
+  const metaBits = [];
+  if (kind === 'dict') {
+    metaBits.push(`${item.phrases||0} phrase${item.phrases===1?'':'s'}`);
+    metaBits.push(`${item.patterns||0} pattern${item.patterns===1?'':'s'}`);
+    if (item.min_match_count) metaBits.push(`min match ${item.min_match_count}`);
+  } else {
+    metaBits.push(`${item.dictionary_count||0} dict ref${item.dictionary_count===1?'':'s'}`);
+    if (item.expression) metaBits.push('has expression');
+  }
+  if (item.orphan_engine) metaBits.push('⚠ orphan (no engine uses it)');
+  if (item.orphan_rule)   metaBits.push('⚠ orphan (no rule uses it)');
+
+  const reasons = (item.reasons||[]).map(r => `<li>${_effEsc(r)}</li>`).join('');
+  const remediation = (item.remediation||[]).map(r => `<li>${_effEsc(r)}</li>`).join('');
+
+  return `
+    <details style="border:1px solid var(--border);border-radius:6px;margin:0.3rem 0;background:var(--bg);">
+      <summary style="cursor:pointer;padding:0.5rem 0.7rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+        <span style="background:${color};color:#0b1220;padding:0.1rem 0.45rem;border-radius:4px;font-weight:700;font-size:0.8rem;min-width:1.5rem;text-align:center;">${_effEsc(item.grade)}</span>
+        <span style="font-weight:600;">${_effEsc(item.name)}</span>
+        <span style="color:var(--dim);font-size:0.78rem;">score ${item.score}/100</span>
+        <span style="color:var(--dim);font-size:0.78rem;">· ${_effEsc(metaBits.join(' · '))}</span>
+        <span style="margin-left:auto;padding:0.08rem 0.4rem;border:1px solid var(--border);border-radius:4px;font-size:0.7rem;color:var(--dim);">${_effEsc(item.type)}</span>
+      </summary>
+      <div style="padding:0.5rem 0.9rem 0.8rem;font-size:0.82rem;">
+        ${reasons ? `<div style="margin-bottom:0.4rem;"><strong>Findings:</strong><ul style="margin:0.2rem 0 0 1.2rem;padding:0;">${reasons}</ul></div>` : ''}
+        ${remediation ? `<div style="margin-bottom:0.3rem;"><strong>Remediation:</strong><ul style="margin:0.2rem 0 0 1.2rem;padding:0;">${remediation}</ul></div>` : ''}
+        ${kind === 'engine' && item.expression ? `<div style="color:var(--dim);font-family:monospace;font-size:0.78rem;">expr: ${_effEsc(item.expression)}</div>` : ''}
+      </div>
+    </details>`;
+}
+
+function _renderDlpEfficacy(data) {
+  if (!data || !data.counts) return '<div style="color:var(--dim);">No data returned.</div>';
+  const c = data.counts, a = data.averages || {}, o = data.orphans || {};
+  const dictSec = (data.dictionaries || []).map(d => _renderEffItem(d, 'dict')).join('');
+  const engSec  = (data.engines || []).map(e => _renderEffItem(e, 'engine')).join('');
+
+  const avgDict = a.custom_dictionary_efficacy == null ? '—' : `${a.custom_dictionary_efficacy}/100`;
+  const avgEng  = a.custom_engine_efficacy == null    ? '—' : `${a.custom_engine_efficacy}/100`;
+
+  const orphanBlock = (title, list) => {
+    if (!list || !list.length) return '';
+    return `
+      <details style="border:1px solid var(--border);border-radius:6px;margin:0.25rem 0;background:var(--bg);">
+        <summary style="cursor:pointer;padding:0.4rem 0.6rem;font-size:0.85rem;">
+          ⚠ ${_effEsc(title)} <span style="color:var(--dim);">(${list.length})</span>
+        </summary>
+        <ul style="margin:0.3rem 0 0.6rem 1.6rem;font-size:0.82rem;">
+          ${list.map(n => `<li>${_effEsc(n)}</li>`).join('')}
+        </ul>
+      </details>`;
+  };
+
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.5rem;margin-bottom:0.8rem;">
+      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Dictionaries</div>
+        <div style="font-size:1.2rem;font-weight:700;">${c.dictionaries_custom}/${c.dictionaries_total}</div>
+        <div style="color:var(--dim);font-size:0.72rem;">custom / total</div>
+      </div>
+      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Engines</div>
+        <div style="font-size:1.2rem;font-weight:700;">${c.engines_custom}/${c.engines_total}</div>
+        <div style="color:var(--dim);font-size:0.72rem;">custom / total</div>
+      </div>
+      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg Dict Score</div>
+        <div style="font-size:1.2rem;font-weight:700;">${_effEsc(avgDict)}</div>
+      </div>
+      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg Engine Score</div>
+        <div style="font-size:1.2rem;font-weight:700;">${_effEsc(avgEng)}</div>
+      </div>
+      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">DLP Rules</div>
+        <div style="font-size:1.2rem;font-weight:700;">${c.rules}</div>
+      </div>
+    </div>
+
+    <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.6rem;">
+      <summary style="cursor:pointer;font-weight:700;font-size:0.92rem;">📚 Dictionaries (${data.dictionaries.length})</summary>
+      <div style="margin-top:0.4rem;">${dictSec || '<div style="color:var(--dim);padding:0.4rem;">No dictionaries found.</div>'}</div>
+    </details>
+
+    <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.6rem;">
+      <summary style="cursor:pointer;font-weight:700;font-size:0.92rem;">⚙ Engines (${data.engines.length})</summary>
+      <div style="margin-top:0.4rem;">${engSec || '<div style="color:var(--dim);padding:0.4rem;">No engines found.</div>'}</div>
+    </details>
+
+    <details style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.6rem;">
+      <summary style="cursor:pointer;font-weight:700;font-size:0.92rem;">⚠ Orphans &amp; Unused</summary>
+      <div style="margin-top:0.4rem;">
+        ${orphanBlock('Dictionaries not referenced by any engine', o.dictionaries_unused_by_engines)}
+        ${orphanBlock('Dictionaries not reachable by any rule',    o.dictionaries_unused_by_rules)}
+        ${orphanBlock('Engines not referenced by any rule',        o.engines_unused_by_rules)}
+        ${(!o.dictionaries_unused_by_engines?.length && !o.dictionaries_unused_by_rules?.length && !o.engines_unused_by_rules?.length) ? '<div style="color:var(--dim);padding:0.3rem;">No orphans — every custom dict and engine is reachable.</div>' : ''}
+      </div>
+    </details>`;
+}
+
+async function runDlpEfficacy() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const btn = document.getElementById('dlpEffRunBtn');
+  const r = document.getElementById('dlpEffResult');
+  const originalBtnText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Scoring...';
+  r.innerHTML = '<div style="color:var(--dim);padding:0.8rem;">Fetching dictionaries, engines, and rules...</div>';
+  try {
+    const resp = await fetch('/api/dlp/efficacy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      r.innerHTML = `<div style="color:var(--bad);padding:0.8rem;">${_effEsc(data.detail || ('HTTP ' + resp.status))}</div>`;
+      return;
+    }
+    _dlpEffCache = data;
+    r.innerHTML = _renderDlpEfficacy(data);
+    announce('DLP efficacy scored');
+  } catch (e) {
+    r.innerHTML = `<div style="color:var(--bad);padding:0.8rem;">Failed: ${_effEsc(e.message || e)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = originalBtnText;
+  }
+}
+
+async function runDlpEfficacyCorpus() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const corpusEl = document.getElementById('dlpEffCorpus');
+  const corpus = corpusEl.value || '';
+  const status = document.getElementById('dlpEffCorpusStatus');
+  if (!corpus.trim()) { status.textContent = 'Paste some sample text first.'; return; }
+  status.textContent = 'Running local regex on ' + corpus.length + ' chars...';
+  try {
+    const resp = await fetch('/api/dlp/efficacy/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({...body, corpus, max_dicts: 200}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      status.textContent = 'Error: ' + (data.detail || ('HTTP ' + resp.status));
+      return;
+    }
+    status.textContent = `${data.dicts_tested} custom dict(s) tested against ${data.corpus_length} chars`;
+    const hits = (data.results || []).filter(r => r.total_hits > 0);
+    const misses = (data.results || []).filter(r => r.total_hits === 0);
+    const renderHit = (h) => `
+      <details style="border:1px solid var(--border);border-radius:6px;margin:0.25rem 0;background:var(--bg);">
+        <summary style="cursor:pointer;padding:0.4rem 0.6rem;">
+          <strong>${_effEsc(h.name)}</strong>
+          <span style="color:var(--dim);">· ${h.total_hits} hit(s) (${h.phrase_hits} phrase, ${h.pattern_hits} regex)</span>
+        </summary>
+        <div style="padding:0.4rem 0.7rem;font-size:0.8rem;">
+          ${h.phrase_samples.length ? '<strong>Phrase matches:</strong><ul style="margin:0.2rem 0 0.3rem 1.2rem;">' + h.phrase_samples.map(s => `<li>"${_effEsc(s.phrase)}" — ${s.count}×</li>`).join('') + '</ul>' : ''}
+          ${h.pattern_samples.length ? '<strong>Regex matches:</strong><ul style="margin:0.2rem 0 0.3rem 1.2rem;">' + h.pattern_samples.map(s => `<li><code>${_effEsc(s.pattern)}</code> — ${s.count}×</li>`).join('') + '</ul>' : ''}
+        </div>
+      </details>`;
+    const panel = `
+      <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-top:0.6rem;">
+        <summary style="cursor:pointer;font-weight:700;">🎯 Matched dictionaries (${hits.length})</summary>
+        <div style="margin-top:0.4rem;">${hits.map(renderHit).join('') || '<div style="color:var(--dim);padding:0.4rem;">No dictionaries matched this corpus — the data either isn&#39;t sensitive per your defs, or your dicts need tuning.</div>'}</div>
+      </details>
+      <details style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-top:0.3rem;">
+        <summary style="cursor:pointer;font-weight:700;">Silent dictionaries (${misses.length})</summary>
+        <div style="margin-top:0.3rem;color:var(--dim);font-size:0.82rem;">
+          ${misses.map(m => _effEsc(m.name)).join(', ') || 'None.'}
+        </div>
+      </details>`;
+    // Inject under any existing efficacy result, don't replace it
+    let r = document.getElementById('dlpEffResult');
+    let zone = document.getElementById('dlpEffCorpusResults');
+    if (!zone) {
+      zone = document.createElement('div');
+      zone.id = 'dlpEffCorpusResults';
+      zone.style.marginTop = '1rem';
+      zone.style.borderTop = '1px dashed var(--border)';
+      zone.style.paddingTop = '0.6rem';
+      r.appendChild(zone);
+    }
+    zone.innerHTML = '<div style="font-weight:700;margin-bottom:0.3rem;">🧪 Local Corpus Test Results</div>' + panel;
+  } catch (e) {
+    status.textContent = 'Failed: ' + (e.message || e);
+  }
+}
 
 // ── Required API Access modal ─────────────────────────────────────
 let _permissionsCache = null;
@@ -4693,6 +5003,51 @@ function renderUpdateResults(data) {
       Last checked: ${data.checked_at} · Cache: <code>${escapeHtml(data.cache_file || '')}</code>
     </div>`;
   document.getElementById('updateResult').innerHTML = proxyBanner + tlsSkippedBanner + top + rows + footer;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Collapsible card sections
+// ══════════════════════════════════════════════════════════════════
+// Every top-level .card h2/h3 becomes a click target that hides every
+// sibling below it. Collapse state is keyed by the heading's text
+// content so reloads preserve user choice across sessions.
+function _initCollapsibleCards() {
+  const LS_KEY = 'zs_collapsed_sections_v1';
+  let state = {};
+  try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (_) {}
+
+  const cards = document.querySelectorAll('div.card');
+  cards.forEach(card => {
+    // First heading in the card becomes the toggle target
+    const h = card.querySelector(':scope > h2, :scope > h3');
+    if (!h) return;
+    if (h.classList.contains('collapsible')) return; // idempotent
+    h.classList.add('collapsible');
+    h.setAttribute('role', 'button');
+    h.setAttribute('tabindex', '0');
+    h.setAttribute('aria-expanded', 'true');
+    const key = (h.textContent || '').trim().slice(0, 80);
+    if (state[key]) {
+      card.classList.add('collapsed');
+      h.setAttribute('aria-expanded', 'false');
+    }
+    const toggle = () => {
+      const nowCollapsed = !card.classList.contains('collapsed');
+      card.classList.toggle('collapsed', nowCollapsed);
+      h.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+      state[key] = nowCollapsed;
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (_) {}
+    };
+    h.addEventListener('click', toggle);
+    h.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initCollapsibleCards);
+} else {
+  _initCollapsibleCards();
 }
 </script>
 </body>

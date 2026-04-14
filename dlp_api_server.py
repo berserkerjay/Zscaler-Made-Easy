@@ -372,6 +372,48 @@ async def diagnose_zcc(req: MigrateRequest):
     return {"summary": summary, "attempts": attempts}
 
 
+# ── DLP Efficacy: dictionary + engine quality scoring ─────────────
+class DlpEfficacyCorpusRequest(MigrateRequest):
+    # User-supplied sample text. Module caps at 256 KB before regex.
+    corpus: str = ""
+    max_dicts: int = 200
+
+
+@app.post("/api/dlp/efficacy")
+async def dlp_efficacy(req: MigrateRequest):
+    """Score every custom DLP dictionary and engine on the tenant.
+
+    Static analysis only — no user content, no outbound calls beyond
+    the three read-only endpoints the assessment already uses
+    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
+
+    Returns per-item 0–100 score + letter grade + specific reasons
+    + remediation steps, plus orphan detection and tenant-wide
+    efficacy averages."""
+    try:
+        from dlp_efficacy import analyze
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(analyze, client)
+
+
+@app.post("/api/dlp/efficacy/test")
+async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
+    """Test a user-supplied text sample against every custom
+    dictionary's phrases + regex patterns. Runs locally with stdlib
+    re — the corpus never leaves this server, never reaches Zscaler,
+    never reaches any LLM. 256 KB hard cap on input."""
+    try:
+        from dlp_efficacy import corpus_test
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(
+        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
+    )
+
+
 @app.get("/api/best-practices")
 async def best_practices_list(service: Optional[str] = None):
     """Return the curated Zscaler best-practices / leading-practices
