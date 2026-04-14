@@ -322,9 +322,15 @@ async def best_practices_crawl(req: BPCrawlRequest):
     behavior as the update checker)."""
     try:
         from bp_crawler import crawl
+        from zscaler_best_practices import save_discovered
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bp_crawler unavailable: {e}")
     result = await asyncio.to_thread(crawl, req.skip_tls_verify, req.force)
+    # Auto-promote newly-discovered entries into the persistent library
+    # so the curated + discovered catalog survives subsequent sessions.
+    new_entries = result.get("new_entries") or []
+    added = await asyncio.to_thread(save_discovered, new_entries)
+    result["added_to_library"] = added
     return result
 
 

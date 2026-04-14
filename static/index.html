@@ -3714,15 +3714,17 @@ function _renderBestPractices(data, discoveredData) {
         <h4 style="font-size:0.78rem;color:var(--pass);margin-bottom:0.3rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-weight:400;">(${items.length})</span></h4>
         <ul style="list-style:none;padding:0;margin:0;">${items.map(e => renderEntry(e, true)).join('')}</ul>
       </section>`).join('');
+    const addedCount = (typeof discoveredData.added_to_library === 'number')
+      ? discoveredData.added_to_library : discoveredData.new_entries.length;
     discoveredHtml = `
       <div style="padding:0.8rem 1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:8px;margin-bottom:1rem;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
-          <strong style="color:var(--pass);">✨ ${discoveredData.new_entries.length} new article${discoveredData.new_entries.length === 1 ? '' : 's'} discovered</strong>
+          <strong style="color:var(--pass);">✨ ${addedCount} article${addedCount === 1 ? '' : 's'} added to the library</strong>
           <span style="color:var(--dim);font-size:0.72rem;">scanned ${discoveredData.pages_fetched || 0} index page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
         </div>
         ${newHtml}
         <div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">
-          To promote these into the curated catalog, add them to <code>zscaler_best_practices.py</code>.
+          These are now persisted in your per-user data dir and will appear in future sessions alongside curated entries (badged DISCOVERED).
         </div>
       </div>`;
   } else if (discoveredData) {
@@ -3742,11 +3744,12 @@ function _renderBestPractices(data, discoveredData) {
     </p>
     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
       <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
-              style="padding:0.5rem 1rem;font-size:0.85rem;">🔄 Check for new articles</button>
+              aria-label="Crawl help.zscaler.com for new Best Practices articles and add them to the library"
+              style="padding:0.5rem 1rem;font-size:0.85rem;">🔄 Update library</button>
       <button type="button" class="btn btn-ghost" onclick="crawlBestPractices(true)"
-              aria-label="Force a fresh crawl, bypassing the cache"
+              aria-label="Force a fresh crawl, bypassing the 24h cache"
               style="padding:0.5rem 0.9rem;font-size:0.8rem;">⟳ Force refresh</button>
-      <span style="color:var(--dim);font-size:0.72rem;">24h cache · help.zscaler.com allowlisted · no data leaves the app</span>
+      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · help.zscaler.com allowlisted</span>
     </div>
     ${discoveredHtml}
     ${curatedHtml}`;
@@ -3762,7 +3765,18 @@ async function crawlBestPractices(force) {
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
+    // The crawl auto-persists discoveries into the library, so re-fetch
+    // the merged catalog so newly-promoted entries appear inline in
+    // their service sections (with a DISCOVERED badge).
+    try {
+      const r2 = await fetch('/api/best-practices');
+      _bestPracticesCache = await r2.json();
+    } catch(_) { /* keep previous cache */ }
     _renderBestPractices(_bestPracticesCache, data);
+    // Confirmation toast
+    if (typeof data.added_to_library === 'number' && data.added_to_library > 0) {
+      announce(`${data.added_to_library} new article${data.added_to_library === 1 ? '' : 's'} added to the library.`);
+    }
   } catch (e) {
     const host = document.getElementById('bestPracticesContent');
     if (host) {
@@ -3772,7 +3786,7 @@ async function crawlBestPractices(force) {
       host.insertBefore(banner, host.firstChild);
     }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Check for new articles'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Update library'; }
   }
 }
 

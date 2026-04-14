@@ -185,6 +185,93 @@ BEST_PRACTICES: List[Dict[str, Any]] = [
 ]
 
 
+def _discovered_store_path() -> str:
+    """Writable location for crawler-discovered entries that persist
+    across sessions. Mirrors the update-checker's cache location so
+    everything sits under one per-user data dir."""
+    import sys
+    try:
+        if sys.platform == "win32":
+            base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+            d = os.path.join(base, "ZscalerAssessment")
+        elif sys.platform == "darwin":
+            d = os.path.expanduser("~/Library/Caches/ZscalerAssessment")
+        else:
+            d = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
+                             "zscaler_assessment")
+        os.makedirs(d, exist_ok=True)
+    except Exception:
+        d = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(d, "bp_discovered.json")
+
+
+def _load_discovered() -> List[Dict[str, Any]]:
+    import json
+    try:
+        with open(_discovered_store_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("entries", []) if isinstance(data, dict) else []
+    except Exception:
+        return []
+
+
+def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
+    """Merge crawler-discovered entries into the persisted store.
+    Deduplicates by URL against both the curated list and previously
+    saved discoveries. Returns the count actually appended."""
+    import json, time
+    if not new_entries:
+        return 0
+    curated_urls = {e["url"] for e in BEST_PRACTICES}
+    existing = _load_discovered()
+    existing_urls = {e["url"] for e in existing}
+    added = []
+    for e in new_entries:
+        url = e.get("url")
+        if not url or url in curated_urls or url in existing_urls:
+            continue
+        # Defensive copy of just the fields we care about
+        added.append({
+            "key":     e.get("key") or f"discovered_{len(existing) + len(added) + 1}",
+            "service": e.get("service", "Other"),
+            "title":   e.get("title", ""),
+            "url":     url,
+            "topics":  e.get("topics", []),
+            "discovered": True,
+            "first_seen": e.get("first_seen") or time.time(),
+        })
+    if not added:
+        return 0
+    merged = existing + added
+    try:
+        with open(_discovered_store_path(), "w", encoding="utf-8") as f:
+            json.dump({"entries": merged, "updated_at": time.time()}, f, indent=2)
+    except Exception:
+        pass
+    return len(added)
+
+
+def reset_discovered() -> bool:
+    """Wipe the persisted discovery store — drops back to curated-only."""
+    try:
+        p = _discovered_store_path()
+        if os.path.exists(p):
+            os.remove(p)
+        return True
+    except Exception:
+        return False
+
+
+def _merged_catalog() -> List[Dict[str, Any]]:
+    """Curated + any previously-crawled discoveries, deduplicated."""
+    discovered = _load_discovered()
+    by_url = {e["url"]: e for e in BEST_PRACTICES}
+    for d in discovered:
+        if d.get("url") and d["url"] not in by_url:
+            by_url[d["url"]] = d
+    return list(by_url.values())
+
+
 def lookup_by_topic(topic: str) -> Dict[str, Any]:
     """Return the first best-practice entry whose topic list matches.
     Case-insensitive, underscore-insensitive substring match.
@@ -192,7 +279,7 @@ def lookup_by_topic(topic: str) -> Dict[str, Any]:
     t = (topic or "").lower().replace("-", "_").replace(" ", "_")
     if not t:
         return {}
-    for entry in BEST_PRACTICES:
+    for entry in _merged_catalog():
         for topic_kw in entry.get("topics", []):
             if topic_kw == t or topic_kw in t or t in topic_kw:
                 return entry
@@ -200,12 +287,13 @@ def lookup_by_topic(topic: str) -> Dict[str, Any]:
 
 
 def list_all(service: str = "") -> List[Dict[str, Any]]:
-    """Return the full list, optionally filtered by service name
-    (case-insensitive). Used by /api/best-practices and the GUI."""
+    """Return the merged (curated + discovered) list, optionally
+    filtered by service name (case-insensitive)."""
+    entries = _merged_catalog()
     if not service:
-        return list(BEST_PRACTICES)
+        return entries
     s = service.lower()
-    return [e for e in BEST_PRACTICES if e.get("service", "").lower() == s]
+    return [e for e in entries if e.get("service", "").lower() == s]
 
 
 def services() -> List[str]:
