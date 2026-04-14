@@ -3677,24 +3677,26 @@ function closeBestPracticesModal() {
   if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
 }
 
-function _renderBestPractices(data) {
+function _renderBestPractices(data, discoveredData) {
   const entries = data.entries || [];
   const services = data.services || [];
-  // Group by service
   const bySvc = {};
   for (const e of entries) (bySvc[e.service] ||= []).push(e);
   const svcOrder = services.length ? services : Object.keys(bySvc);
 
-  const html = svcOrder.map(svc => {
-    const items = (bySvc[svc] || []).map(e => `
-      <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
-        <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
-           style="color:var(--accent);text-decoration:none;font-weight:600;">
-          ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
-        </a>
-        ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
-        <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;">${escapeHtml(e.url)}</div>
-      </li>`).join('');
+  const renderEntry = (e, isDiscovered) => `
+    <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
+      <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
+         style="color:var(--accent);text-decoration:none;font-weight:600;">
+        ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
+      </a>
+      ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
+      ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
+      <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;word-break:break-all;">${escapeHtml(e.url)}</div>
+    </li>`;
+
+  const curatedHtml = svcOrder.map(svc => {
+    const items = (bySvc[svc] || []).map(e => renderEntry(e, false)).join('');
     return `
       <section style="margin-bottom:1rem;">
         <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${(bySvc[svc] || []).length})</span></h3>
@@ -3702,12 +3704,76 @@ function _renderBestPractices(data) {
       </section>`;
   }).join('');
 
+  // Discovered section — only renders when a crawl has produced new entries
+  let discoveredHtml = '';
+  if (discoveredData && discoveredData.new_entries && discoveredData.new_entries.length) {
+    const newBySvc = {};
+    for (const e of discoveredData.new_entries) (newBySvc[e.service] ||= []).push(e);
+    const newHtml = Object.entries(newBySvc).map(([svc, items]) => `
+      <section style="margin-bottom:0.8rem;">
+        <h4 style="font-size:0.78rem;color:var(--pass);margin-bottom:0.3rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-weight:400;">(${items.length})</span></h4>
+        <ul style="list-style:none;padding:0;margin:0;">${items.map(e => renderEntry(e, true)).join('')}</ul>
+      </section>`).join('');
+    discoveredHtml = `
+      <div style="padding:0.8rem 1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:8px;margin-bottom:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
+          <strong style="color:var(--pass);">✨ ${discoveredData.new_entries.length} new article${discoveredData.new_entries.length === 1 ? '' : 's'} discovered</strong>
+          <span style="color:var(--dim);font-size:0.72rem;">scanned ${discoveredData.pages_fetched || 0} index page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
+        </div>
+        ${newHtml}
+        <div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">
+          To promote these into the curated catalog, add them to <code>zscaler_best_practices.py</code>.
+        </div>
+      </div>`;
+  } else if (discoveredData) {
+    const msg = discoveredData.total_matched
+      ? `Crawl found ${discoveredData.total_matched} total article${discoveredData.total_matched === 1 ? '' : 's'} — all already in the curated list.`
+      : 'Crawl completed but found no matching articles.';
+    discoveredHtml = `
+      <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:6px;margin-bottom:1rem;font-size:0.82rem;color:var(--dim);">
+        ${msg} <span style="font-size:0.72rem;">(${discoveredData.pages_fetched || 0} pages · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+      </div>`;
+  }
+
   document.getElementById('bestPracticesContent').innerHTML = `
     <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.8rem;">
       Curated list of every Zscaler help-portal article titled "Best Practices" or "Leading Practices".
-      Opens in a new tab. These are the authoritative references used throughout the assessment report.
+      Click <strong>🔄 Check for new articles</strong> to crawl <code>help.zscaler.com</code> for anything added since this list was compiled.
     </p>
-    ${html}`;
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
+      <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
+              style="padding:0.5rem 1rem;font-size:0.85rem;">🔄 Check for new articles</button>
+      <button type="button" class="btn btn-ghost" onclick="crawlBestPractices(true)"
+              aria-label="Force a fresh crawl, bypassing the cache"
+              style="padding:0.5rem 0.9rem;font-size:0.8rem;">⟳ Force refresh</button>
+      <span style="color:var(--dim);font-size:0.72rem;">24h cache · help.zscaler.com allowlisted · no data leaves the app</span>
+    </div>
+    ${discoveredHtml}
+    ${curatedHtml}`;
+}
+
+async function crawlBestPractices(force) {
+  const btn = document.getElementById('bpCrawlBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling help.zscaler.com…'; }
+  try {
+    const r = await fetch('/api/best-practices/crawl', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ force: !!force }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    _renderBestPractices(_bestPracticesCache, data);
+  } catch (e) {
+    const host = document.getElementById('bestPracticesContent');
+    if (host) {
+      const banner = document.createElement('div');
+      banner.style.cssText = 'padding:0.6rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;margin-bottom:0.8rem;';
+      banner.innerHTML = `<strong style="color:var(--fail);">Crawl failed:</strong> ${escapeHtml(e.message)}`;
+      host.insertBefore(banner, host.firstChild);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Check for new articles'; }
+  }
 }
 
 function _ensureBestPracticesModal() {

@@ -308,6 +308,26 @@ async def best_practices_list(service: Optional[str] = None):
     }
 
 
+class BPCrawlRequest(BaseModel):
+    force: bool = False
+    skip_tls_verify: bool = False
+
+
+@app.post("/api/best-practices/crawl")
+async def best_practices_crawl(req: BPCrawlRequest):
+    """Crawl help.zscaler.com for articles titled 'Best Practices' or
+    'Leading Practices' and report any NEW ones beyond the curated
+    catalog. Results are cached for 24h; force=true bypasses the cache.
+    skip_tls_verify=true opts into the corporate-TLS-MITM bypass (same
+    behavior as the update checker)."""
+    try:
+        from bp_crawler import crawl
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"bp_crawler unavailable: {e}")
+    result = await asyncio.to_thread(crawl, req.skip_tls_verify, req.force)
+    return result
+
+
 @app.get("/permissions")
 async def serve_permissions_page():
     """Standalone HTML view of the Required API Access catalog.
