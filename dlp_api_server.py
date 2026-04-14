@@ -293,6 +293,57 @@ async def remediation_execute(req: RemediationExecuteRequest):
     return result
 
 
+# ───────────────────────────────────────────────────────────────────
+# Tenant-credentials request model + client factory.
+#
+# Defined up here (instead of next to the rule-migration block where
+# the rest of this class family lives) because MULTIPLE endpoints
+# above the migration block accept a MigrateRequest as their body —
+# specifically /api/diagnose/zcc, /api/dlp/efficacy, and
+# /api/dlp/efficacy/test. In plain Python, class-inheritance and
+# function annotations are evaluated at import time, so the base
+# class must exist before any referencing line is parsed. Moving
+# these definitions up eliminates the NameError that otherwise fires
+# on `class DlpEfficacyCorpusRequest(MigrateRequest)`.
+# ───────────────────────────────────────────────────────────────────
+class MigrateRequest(BaseModel):
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    customer_id: str = ""
+    # Inline Web DLP only — this tool's migration is scoped to the DLP
+    # Web Rules inline policy. Other rule types (SSL, URL, firewall,
+    # Cloud App) have different best-practice ordering rules and are
+    # out of scope here.
+    rule_type: str = "web_dlp"
+
+
+def _build_client(req: "MigrateRequest"):
+    """Build an authenticated Client from a migration request.
+    Validates every input first; never echoes the secret in any error.
+    """
+    cloud = validate_cloud(req.cloud)
+    vd = validate_vanity(req.vanity_domain)
+    cid = validate_credential("client_id", req.client_id, required=True)
+    sec = validate_credential("client_secret", req.client_secret, required=True)
+    cust = validate_customer_id(req.customer_id)
+
+    client = Client(cid, sec, vd, cloud, cust)
+    auth_result = client.auth()
+    if auth_result is not True:
+        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
+        reason = ""
+        if isinstance(auth_result, tuple) and len(auth_result) == 2:
+            reason = str(auth_result[1])
+        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
+        )
+    return client
+
+
 @app.post("/api/diagnose/zcc")
 async def diagnose_zcc(req: MigrateRequest):
     """Probe every ZCC endpoint the assessment relies on and return
@@ -370,48 +421,6 @@ async def diagnose_zcc(req: MigrateRequest):
         "error":      sum(1 for a in attempts if a["status"] not in (200, 204, 401, 403, 404)),
     }
     return {"summary": summary, "attempts": attempts}
-
-
-# ── DLP Efficacy: dictionary + engine quality scoring ─────────────
-class DlpEfficacyCorpusRequest(MigrateRequest):
-    # User-supplied sample text. Module caps at 256 KB before regex.
-    corpus: str = ""
-    max_dicts: int = 200
-
-
-@app.post("/api/dlp/efficacy")
-async def dlp_efficacy(req: MigrateRequest):
-    """Score every custom DLP dictionary and engine on the tenant.
-
-    Static analysis only — no user content, no outbound calls beyond
-    the three read-only endpoints the assessment already uses
-    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
-
-    Returns per-item 0–100 score + letter grade + specific reasons
-    + remediation steps, plus orphan detection and tenant-wide
-    efficacy averages."""
-    try:
-        from dlp_efficacy import analyze
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
-    client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(analyze, client)
-
-
-@app.post("/api/dlp/efficacy/test")
-async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
-    """Test a user-supplied text sample against every custom
-    dictionary's phrases + regex patterns. Runs locally with stdlib
-    re — the corpus never leaves this server, never reaches Zscaler,
-    never reaches any LLM. 256 KB hard cap on input."""
-    try:
-        from dlp_efficacy import corpus_test
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
-    client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(
-        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
-    )
 
 
 @app.get("/api/best-practices")
@@ -1006,42 +1015,56 @@ async def compliance_drilldown(request: Request):
 # ═══════════════════════════════════════════════════════════════════
 # Rule Migration API (Evaluate All Rules mode)
 # ═══════════════════════════════════════════════════════════════════
-
-class MigrateRequest(BaseModel):
-    cloud: str = "production"
-    vanity_domain: str = ""
-    client_id: str = ""
-    client_secret: str = ""
-    customer_id: str = ""
-    # Inline Web DLP only — this tool's migration is scoped to the DLP Web Rules
-    # inline policy. Other rule types (SSL, URL, firewall, Cloud App) have
-    # different best-practice ordering rules and are out of scope here.
-    rule_type: str = "web_dlp"
+# MigrateRequest + _build_client are defined earlier in the file now
+# (just above the /api/diagnose/zcc endpoint) so classes which
+# inherit from MigrateRequest above the rule-migration block don't
+# crash on import. See the comment next to the earlier definition.
 
 
-def _build_client(req: MigrateRequest):
-    """Build an authenticated Client from a migration request.
-    Validates every input first; never includes the secret in any error message.
-    """
-    cloud = validate_cloud(req.cloud)
-    vd = validate_vanity(req.vanity_domain)
-    cid = validate_credential("client_id", req.client_id, required=True)
-    sec = validate_credential("client_secret", req.client_secret, required=True)
-    cust = validate_customer_id(req.customer_id)
+# ── DLP Efficacy: dictionary + engine quality scoring ────────────
+# Declared here (not at the top of the route table) because
+# DlpEfficacyCorpusRequest inherits from MigrateRequest, which is
+# defined just above. Moving this block earlier caused a NameError
+# at import time.
+class DlpEfficacyCorpusRequest(MigrateRequest):
+    # User-supplied sample text. Module caps at 256 KB before regex.
+    corpus: str = ""
+    max_dicts: int = 200
 
-    client = Client(cid, sec, vd, cloud, cust)
-    auth_result = client.auth()
-    if auth_result is not True:
-        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
-        reason = ""
-        if isinstance(auth_result, tuple) and len(auth_result) == 2:
-            reason = str(auth_result[1])
-        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
-        raise HTTPException(
-            status_code=401,
-            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
-        )
-    return client
+
+@app.post("/api/dlp/efficacy")
+async def dlp_efficacy(req: MigrateRequest):
+    """Score every custom DLP dictionary and engine on the tenant.
+
+    Static analysis only — no user content, no outbound calls beyond
+    the three read-only endpoints the assessment already uses
+    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
+
+    Returns per-item 0–100 score + letter grade + specific reasons
+    + remediation steps, plus orphan detection and tenant-wide
+    efficacy averages."""
+    try:
+        from dlp_efficacy import analyze
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(analyze, client)
+
+
+@app.post("/api/dlp/efficacy/test")
+async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
+    """Test a user-supplied text sample against every custom
+    dictionary's phrases + regex patterns. Runs locally with stdlib
+    re — the corpus never leaves this server, never reaches Zscaler,
+    never reaches any LLM. 256 KB hard cap on input."""
+    try:
+        from dlp_efficacy import corpus_test
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(
+        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
+    )
 
 
 # ── Step 1: Assess Current Status ─────────────────────────────────
