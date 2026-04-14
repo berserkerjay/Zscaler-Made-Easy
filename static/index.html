@@ -462,6 +462,7 @@
               style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
         <option value="ollama">Local (Ollama)</option>
         <option value="anthropic">Claude (Anthropic API)</option>
+        <option value="openai_cloud">ChatGPT (OpenAI API)</option>
       </select>
       <select id="llmModelPicker" aria-label="LLM model"
               style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
@@ -1065,16 +1066,20 @@ fetch('/api/branding').then(r => r.json()).then(d => {
 // LLM toggle + provider + status wiring
 let _llmStatus = {ollama_running: false, models: [], recommended_model: null};
 
-// Claude model list — pinned to dated snapshot IDs which are more
-// stable than aliases. If the API rejects any of these with 400, the
-// Validate button's error message surfaces the exact reason and the
-// user can edit via DevTools or add their own model name.
 const ANTHROPIC_MODELS = [
   "claude-sonnet-4-6",
   "claude-opus-4-6",
   "claude-haiku-4-5-20251001",
   "claude-sonnet-4-5",
   "claude-opus-4-5",
+];
+// OpenAI model list — commonly-available chat-completions IDs.
+const OPENAI_MODELS = [
+  "gpt-4o-mini",
+  "gpt-4o",
+  "gpt-4-turbo",
+  "gpt-4",
+  "gpt-3.5-turbo",
 ];
 
 try {
@@ -1139,15 +1144,63 @@ function updateLlmUi() {
   modelPicker.style.display    = useLlm ? 'inline-block' : 'none';
 
   const provider = _currentProvider();
-  apiKeyRow.style.display = (useLlm && provider === 'anthropic') ? 'block' : 'none';
+  // API-key field shows for any cloud provider (anthropic or openai_cloud).
+  const isCloud = (provider === 'anthropic' || provider === 'openai_cloud');
+  apiKeyRow.style.display = (useLlm && isCloud) ? 'block' : 'none';
+  // Dynamic label on the API-key field so users know which key to paste
+  const keyLabel = document.querySelector('label[for="llmApiKeyInput"]');
+  if (keyLabel) {
+    keyLabel.innerHTML = provider === 'openai_cloud'
+      ? 'OpenAI API key (starts with <code>sk-</code>)'
+      : 'Anthropic API key (starts with <code>sk-ant-</code>)';
+  }
+  const keyInput = document.getElementById('llmApiKeyInput');
+  if (keyInput) {
+    keyInput.placeholder = provider === 'openai_cloud' ? 'sk-...' : 'sk-ant-api03-...';
+  }
 
   if (!useLlm) {
     line.innerHTML = '<span style="color:var(--dim);">Using deterministic parser. Tick the box to enable natural-language parsing.</span>';
     return;
   }
 
-  // ─── Anthropic / Claude branch ───────────────────────────────
-  if (provider === 'anthropic') {
+  // ─── Cloud provider branch (shared for Anthropic + OpenAI) ───
+  if (isCloud) {
+    const isAnthropic = (provider === 'anthropic');
+    const models  = isAnthropic ? ANTHROPIC_MODELS : OPENAI_MODELS;
+    const defaultModel = isAnthropic ? 'claude-sonnet-4-6' : 'gpt-4o-mini';
+    const providerName = isAnthropic ? 'Claude (Anthropic)' : 'ChatGPT (OpenAI)';
+    const providerHost = isAnthropic ? 'api.anthropic.com' : 'api.openai.com';
+    const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
+    const chosen = models.includes(saved) ? saved : defaultModel;
+    modelPicker.innerHTML = models
+      .map(m => `<option value="${escapeHtml(m)}" ${m === chosen ? 'selected' : ''}>${escapeHtml(m)}</option>`)
+      .join('');
+    const hasKey = !!(document.getElementById('llmApiKeyInput')?.value || '').trim();
+    const keyNote = hasKey
+      ? '<span style="color:var(--pass);">✓ API key set (session-only).</span>'
+      : '<span style="color:var(--warn);">⚠ API key required.</span>';
+    line.innerHTML = `
+      <span style="color:var(--warn);"><strong>⚠ Cloud LLM:</strong></span>
+      <span style="color:var(--dim);">Your query is sent to <code>${escapeHtml(providerHost)}</code> (${escapeHtml(providerName)}). Not on-machine.</span>
+      <span style="color:var(--dim);">Do not enter tenant secrets in the prompt.</span>
+      ${keyNote}
+      <details style="display:inline-block;margin-left:0.3rem;">
+        <summary style="cursor:pointer;color:var(--accent);">What gets sent</summary>
+        <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
+          <ul style="margin-left:1.2rem;font-size:0.75rem;line-height:1.55;">
+            <li>Sent: the text you type (max 500 chars) + a fixed system prompt describing the command catalog.</li>
+            <li>NOT sent: Zscaler client_id, client_secret, vanity_domain, customer_id, rules, or results.</li>
+            <li>Endpoint locked to <code>${escapeHtml(providerHost)}</code>. Any other host is refused pre-fetch.</li>
+            <li>API key lives in <code>sessionStorage</code> — clears on tab close, never on disk.</li>
+          </ul>
+        </div>
+      </details>`;
+    return;
+  }
+
+  // ─── Legacy Claude-only branch (removed — handled above) ────
+  if (false && provider === 'anthropic') {
     const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
     const defaultModel = ANTHROPIC_MODELS.includes(saved) ? saved : 'claude-sonnet-4-6';
     modelPicker.innerHTML = ANTHROPIC_MODELS
@@ -1301,6 +1354,11 @@ async function runPrompt(overrideText) {
     llmKind     = 'anthropic';
     try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
     if (!llmModel) llmModel = 'claude-sonnet-4-6';
+  } else if (provider === 'openai_cloud') {
+    llmEndpoint = 'https://api.openai.com/v1/chat/completions';
+    llmKind     = 'openai_cloud';
+    try { llmApiKey = sessionStorage.getItem('zassess_llm_api_key') || ''; } catch(e) {}
+    if (!llmModel) llmModel = 'gpt-4o-mini';
   } else {
     llmEndpoint = 'http://localhost:11434/api/chat';
     llmKind     = 'ollama';
@@ -1333,6 +1391,8 @@ async function runPrompt(overrideText) {
   let parserTag;
   if (parsed.parser === 'llm' && parsed.llm_kind === 'anthropic') {
     parserTag = '<span style="background:rgba(245,158,11,0.15);color:var(--warn);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;" title="Parsed by Claude (api.anthropic.com — cloud)">Claude ☁</span>';
+  } else if (parsed.parser === 'llm' && parsed.llm_kind === 'openai_cloud') {
+    parserTag = '<span style="background:rgba(245,158,11,0.15);color:var(--warn);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;" title="Parsed by ChatGPT (api.openai.com — cloud)">ChatGPT ☁</span>';
   } else if (parsed.parser === 'llm') {
     parserTag = '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;" title="Parsed by local Ollama (on-machine)">Ollama 🏠</span>';
   } else {

@@ -452,21 +452,37 @@ async def llm_validate(req: LlmValidateRequest):
             from llm_parser import _is_allowed_endpoint, _call_anthropic
             if not _is_allowed_endpoint(endpoint, kind):
                 return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
-            # Minimal probe: just ask for "OK" so token cost is ~5
             raw = await asyncio.to_thread(
                 _call_anthropic, endpoint, model,
                 "You are a test probe. Respond with exactly the word: OK",
                 "ping", api_key,
             )
-            return {
-                "ok": True,
-                "provider": "anthropic",
-                "model": model,
-                "response_preview": (raw or "")[:80],
-            }
+            return {"ok": True, "provider": "anthropic", "model": model,
+                    "response_preview": (raw or "")[:80]}
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
-    elif kind == "ollama":
+
+    if kind == "openai_cloud":
+        endpoint = req.llm_endpoint or "https://api.openai.com/v1/chat/completions"
+        model = req.llm_model or "gpt-4o-mini"
+        api_key = req.llm_api_key or ""
+        if not api_key:
+            return {"ok": False, "error": "API key required for OpenAI provider."}
+        try:
+            from llm_parser import _is_allowed_endpoint, _call_openai_compatible
+            if not _is_allowed_endpoint(endpoint, kind):
+                return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
+            raw = await asyncio.to_thread(
+                _call_openai_compatible, endpoint, model,
+                'You are a test probe. Respond with JSON: {"status":"ok"}',
+                "ping", api_key,
+            )
+            return {"ok": True, "provider": "openai", "model": model,
+                    "response_preview": (raw or "")[:80]}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
+
+    if kind == "ollama":
         endpoint = req.llm_endpoint or "http://localhost:11434/api/chat"
         model = req.llm_model or "llama3.2:3b"
         try:

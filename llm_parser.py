@@ -62,7 +62,8 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 # non-loopback request, and it's scoped by the caller's `kind` argument
 # so a misconfigured local Ollama request can't accidentally egress.
 _REMOTE_HOSTS_BY_KIND = {
-    "anthropic": {"api.anthropic.com"},
+    "anthropic":    {"api.anthropic.com"},
+    "openai_cloud": {"api.openai.com"},
 }
 
 # Hard caps
@@ -193,8 +194,12 @@ def _call_anthropic(endpoint: str, model: str, system: str, user: str, api_key: 
     return msg[:LLM_MAX_RESPONSE_BYTES]
 
 
-def _call_openai_compatible(endpoint: str, model: str, system: str, user: str) -> Optional[str]:
-    """Call an OpenAI-compatible /v1/chat/completions endpoint (llama.cpp, LM Studio)."""
+def _call_openai_compatible(endpoint: str, model: str, system: str, user: str, api_key: str = "") -> Optional[str]:
+    """Call an OpenAI-compatible /v1/chat/completions endpoint.
+    Works for BOTH cloud OpenAI (api.openai.com with an api_key) AND
+    local OpenAI-compatible servers (llama.cpp, LM Studio on loopback,
+    no key needed). On 4xx surfaces the server's actual error detail.
+    """
     import requests
     body = {
         "model": model,
@@ -206,8 +211,25 @@ def _call_openai_compatible(endpoint: str, model: str, system: str, user: str) -
         "max_tokens": 400,
         "response_format": {"type": "json_object"},
     }
-    r = requests.post(endpoint, json=body, timeout=LLM_TIMEOUT_SEC)
-    r.raise_for_status()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    r = requests.post(endpoint, json=body, headers=headers, timeout=LLM_TIMEOUT_SEC)
+
+    if not r.ok:
+        detail = f"HTTP {r.status_code}"
+        try:
+            err = r.json().get("error", {})
+            msg = err.get("message") or err.get("code") or err.get("type") or ""
+            if msg:
+                detail = f"{detail}: {msg}"
+        except Exception:
+            if r.text:
+                detail = f"{detail}: {r.text[:200]}"
+        if r.status_code == 400 and "model" in detail.lower():
+            detail += f"  (requested model='{model}' — check OpenAI's model list for valid IDs)"
+        raise RuntimeError(detail)
+
     data = r.json()
     choices = data.get("choices") or []
     if not choices:
@@ -340,10 +362,21 @@ def parse_with_llm(
             raw = _call_ollama(endpoint, model, system, original[:500])
         elif kind == "anthropic":
             raw = _call_anthropic(endpoint, model, system, original[:500], api_key)
+        elif kind == "openai_cloud":
+            # Cloud OpenAI — api_key is required
+            if not api_key:
+                raise RuntimeError("OpenAI API key is required for kind='openai_cloud'.")
+            raw = _call_openai_compatible(endpoint, model, system, original[:500], api_key)
         else:
+            # Local OpenAI-compatible (llama.cpp, LM Studio) — no key needed
             raw = _call_openai_compatible(endpoint, model, system, original[:500])
     except Exception as e:
-        kind_label = "Anthropic API" if kind == "anthropic" else "Local LLM"
+        kind_label = {
+            "anthropic":    "Anthropic API",
+            "openai_cloud": "OpenAI API",
+            "ollama":       "Local LLM (Ollama)",
+            "openai":       "Local LLM (OpenAI-compatible)",
+        }.get(kind, "LLM")
         fallback.suggestion = (
             f"{kind_label} unreachable ({type(e).__name__}: {str(e)[:120]}). "
             "Used the deterministic parser instead."
