@@ -199,6 +199,71 @@ async def serve_gui():
     )
 
 
+# ── Text-prompt command interface ────────────────────────────────
+# Lets the GUI accept natural-language-ish input and dispatch it to
+# one of the explicit actions in commands.COMMAND_CATALOG.
+
+class CommandParseRequest(BaseModel):
+    text: str = ""
+    # Opt-in local-LLM parsing (default off). Endpoint MUST be loopback.
+    use_llm: bool = False
+    llm_endpoint: str = "http://localhost:11434/api/chat"  # Ollama default
+    llm_model: str = "llama3.1"
+    llm_kind: str = "ollama"   # "ollama" | "openai"
+
+
+@app.get("/api/commands")
+async def commands_catalog():
+    """Return the list of supported commands so the GUI can render
+    autocomplete + help without hardcoding."""
+    try:
+        from commands import COMMAND_CATALOG
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"commands module unavailable: {e}")
+    return {"catalog": COMMAND_CATALOG}
+
+
+@app.post("/api/commands/parse")
+async def commands_parse(req: CommandParseRequest):
+    """Parse arbitrary user text into a structured action.
+
+    Default path (use_llm=false) is purely deterministic — never runs
+    user code, never calls an LLM, never leaves the machine.
+
+    Opt-in path (use_llm=true) routes the query through a LOCAL LLM
+    on a loopback endpoint (Ollama / llama.cpp / LM Studio). The LLM
+    result is schema-validated against the command catalog and FALLS
+    BACK to the deterministic parser on any error, parsing failure,
+    or non-allowlisted action/scope."""
+    try:
+        from commands import parse, to_dict
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"commands module unavailable: {e}")
+
+    raw = (req.text or "")[:500]
+
+    if req.use_llm:
+        try:
+            from llm_parser import parse_with_llm
+        except Exception as e:
+            # Module unavailable — fall back to deterministic parser
+            result = await asyncio.to_thread(parse, raw)
+            result.suggestion = (result.suggestion or "") + f" [LLM module unavailable: {e}]"
+            return to_dict(result)
+        result = await asyncio.to_thread(
+            parse_with_llm, raw,
+            req.llm_endpoint, req.llm_model, req.llm_kind,
+        )
+        d = to_dict(result)
+        d["parser"] = "llm"  # tag so GUI can display which path was used
+        return d
+
+    result = await asyncio.to_thread(parse, raw)
+    d = to_dict(result)
+    d["parser"] = "deterministic"
+    return d
+
+
 @app.get("/api/branding")
 async def branding_manifest():
     """Report which optional branding assets are present in

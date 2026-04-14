@@ -432,7 +432,41 @@
     <h1><span class="accent">Zscaler</span> Platform Assessment</h1>
     <p>Automated best-practice validation across ZIA, ZPA, and ZCC</p>
     <span class="badge" id="totalChecksBadge">Loading...</span>
-    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+
+    <!-- Text-prompt command bar. Deterministic by default; optional
+         local-LLM toggle for natural-language parsing (loopback-only). -->
+    <div role="search" aria-label="Text-prompt command bar"
+         style="max-width:720px;margin:1.2rem auto 0.6rem;display:flex;gap:0.4rem;align-items:center;">
+      <label for="promptInput" class="sr-only">Ask the tool what to do</label>
+      <div style="position:relative;flex:1;">
+        <input id="promptInput" type="text" autocomplete="off"
+               placeholder="Ask for an action — e.g. 'check dlp', 'why FW-01', 'bypass', '?' for help"
+               aria-describedby="promptHint"
+               style="width:100%;padding:0.7rem 0.9rem 0.7rem 2.4rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:0.92rem;">
+        <span aria-hidden="true" style="position:absolute;left:0.85rem;top:50%;transform:translateY(-50%);color:var(--dim);font-size:1rem;">⌕</span>
+        <kbd aria-hidden="true" style="position:absolute;right:0.6rem;top:50%;transform:translateY(-50%);background:rgba(148,163,184,0.12);color:var(--dim);font-size:0.7rem;padding:0.15rem 0.4rem;border-radius:4px;border:1px solid var(--border);">/</kbd>
+      </div>
+      <button class="btn btn-primary" onclick="runPrompt()" aria-label="Run command"
+              style="padding:0.6rem 1.1rem;font-size:0.85rem;">Run</button>
+    </div>
+    <div id="promptHint" style="font-size:0.77rem;color:var(--dim);max-width:720px;margin:0 auto;">
+      Press <kbd style="background:rgba(148,163,184,0.12);padding:0.05rem 0.3rem;border-radius:3px;font-size:0.7rem;">/</kbd> to focus ·
+      <button type="button" onclick="runPrompt('help')" class="btn btn-ghost"
+              style="padding:0.1rem 0.5rem;font-size:0.72rem;display:inline;background:none;border:none;color:var(--accent);cursor:pointer;">help</button> for the command list ·
+      <label style="display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer;margin-left:0.4rem;">
+        <input type="checkbox" id="useLlmToggle" style="width:auto;cursor:pointer;"
+               aria-describedby="llmToggleNote">
+        <span>Use local LLM (Ollama)</span>
+      </label>
+      <span id="llmToggleNote" style="color:var(--warn);font-size:0.72rem;display:none;margin-left:0.4rem;">
+        ⚠ Loopback only — queries go to your local Ollama at 127.0.0.1:11434. Never sent to a cloud.
+      </span>
+    </div>
+    <!-- Prompt result / feedback banner -->
+    <div id="promptResult" role="status" aria-live="polite"
+         style="display:none;max-width:720px;margin:0.6rem auto 0;padding:0.6rem 0.8rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;text-align:left;"></div>
+
+    <div style="margin-top:0.9rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
       <button class="btn btn-ghost" onclick="openUpdateModal()"
               aria-label="Check for Zscaler SDK and documentation updates"
               style="padding:0.45rem 1rem;font-size:0.82rem;">
@@ -954,6 +988,270 @@ fetch('/api/branding').then(r => r.json()).then(d => {
   if (d.logo_svg || d.logo_png) document.body.classList.add('has-logo');
   if (d.portrait_jpg || d.portrait_png) document.body.classList.add('has-portrait');
 }).catch(() => { /* no-op — branding is optional */ });
+
+// ══════════════════════════════════════════════════════════════════
+// Text-prompt command bar
+//
+// Every user query routes through /api/commands/parse which returns
+// a structured {action, params, confidence}. We dispatch client-side
+// against an explicit map of actions → handlers that already exist.
+// No arbitrary code execution — the parser is allowlisted server-side
+// and the dispatch map is allowlisted client-side.
+// ══════════════════════════════════════════════════════════════════
+
+// Persist the LLM-toggle preference (session only — not a secret)
+try {
+  const saved = localStorage.getItem('zassess_use_llm');
+  if (saved === '1') {
+    document.getElementById('useLlmToggle').checked = true;
+    document.getElementById('llmToggleNote').style.display = 'inline';
+  }
+} catch(e) {}
+
+document.getElementById('useLlmToggle')?.addEventListener('change', (e) => {
+  document.getElementById('llmToggleNote').style.display = e.target.checked ? 'inline' : 'none';
+  try { localStorage.setItem('zassess_use_llm', e.target.checked ? '1' : '0'); } catch(e) {}
+});
+
+// Press "/" anywhere to focus the prompt (except inside form inputs)
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+    e.preventDefault();
+    document.getElementById('promptInput')?.focus();
+  }
+});
+// Enter in the prompt input runs the prompt
+document.getElementById('promptInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); runPrompt(); }
+  if (e.key === 'Escape') { e.target.blur(); }
+});
+
+async function runPrompt(overrideText) {
+  const inputEl = document.getElementById('promptInput');
+  const text = (overrideText || inputEl?.value || '').trim();
+  if (!text) return;
+  const useLlm = !!document.getElementById('useLlmToggle')?.checked;
+
+  const banner = document.getElementById('promptResult');
+  banner.style.display = 'block';
+  banner.style.borderLeft = '3px solid var(--accent)';
+  banner.innerHTML = `<span style="color:var(--dim);">⏳ Parsing: "${escapeHtml(text)}"${useLlm ? ' <span style="color:var(--warn);">[local LLM]</span>' : ''}...</span>`;
+
+  let parsed;
+  try {
+    const resp = await fetch('/api/commands/parse', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        text,
+        use_llm: useLlm,
+        llm_endpoint: 'http://localhost:11434/api/chat',
+        llm_model: 'llama3.1',
+        llm_kind: 'ollama',
+      }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    parsed = await resp.json();
+  } catch (e) {
+    banner.innerHTML = `<span style="color:var(--fail);">Parse failed: ${escapeHtml(e.message)}</span>`;
+    return;
+  }
+
+  // Render what the parser interpreted so the user can see before dispatch
+  const conf = Math.round((parsed.confidence || 0) * 100);
+  const confColor = conf >= 80 ? 'var(--pass)' : conf >= 50 ? 'var(--warn)' : 'var(--fail)';
+  const parserTag = parsed.parser === 'llm'
+    ? '<span style="background:rgba(245,158,11,0.15);color:var(--warn);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">LLM</span>'
+    : '<span style="background:rgba(148,163,184,0.12);color:var(--dim);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">deterministic</span>';
+  banner.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+      <div>
+        <strong style="color:var(--accent);">${escapeHtml(parsed.action || '?')}</strong>${parserTag}
+        ${Object.keys(parsed.params || {}).length ? `<code style="background:rgba(59,130,246,0.1);color:var(--text);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.75rem;margin-left:0.4rem;">${escapeHtml(JSON.stringify(parsed.params))}</code>` : ''}
+        <span style="color:${confColor};font-size:0.72rem;margin-left:0.4rem;">${conf}% confidence</span>
+      </div>
+      <button class="btn btn-ghost" onclick="document.getElementById('promptResult').style.display='none'"
+              aria-label="Dismiss parse result"
+              style="padding:0.2rem 0.5rem;font-size:0.72rem;">✕</button>
+    </div>
+    ${parsed.suggestion ? `<div style="color:var(--dim);font-size:0.78rem;margin-top:0.3rem;">💡 ${escapeHtml(parsed.suggestion)}</div>` : ''}
+  `;
+
+  // Dispatch. If confidence is low, only dispatch explicit actions
+  // (filter/goto) and let the user re-phrase for anything destructive.
+  const dispatched = dispatchCommand(parsed);
+  if (dispatched) {
+    if (inputEl && !overrideText) inputEl.value = '';
+    announce(`Command dispatched: ${parsed.action}`);
+  }
+}
+
+// ── Client-side dispatch map ─────────────────────────────────────
+// Each action maps to a concrete handler that already exists.
+// Returns true if dispatched, false otherwise.
+function dispatchCommand(parsed) {
+  const action = parsed.action;
+  const p = parsed.params || {};
+  switch (action) {
+    case 'show_help':
+      showCommandHelp();
+      return true;
+
+    case 'open_bypass_report':
+      openBypassModal();
+      return true;
+
+    case 'open_update_check':
+      openUpdateModal();
+      return true;
+
+    case 'clear_form':
+      if (typeof resetForm === 'function') resetForm();
+      return true;
+
+    case 'goto': {
+      const anchor = (p.anchor || '').toLowerCase();
+      const map = {
+        migration: 'Inline DLP Rule Migration',
+        results:   '#results',
+        config:    '#cid',
+        scope:     '#scopes',
+      };
+      const target = map[anchor];
+      if (target && target.startsWith('#')) {
+        document.querySelector(target)?.scrollIntoView({behavior:'smooth', block:'center'});
+      } else if (target) {
+        // Find a heading containing the text
+        const h = Array.from(document.querySelectorAll('h1,h2,h3'))
+          .find(el => el.textContent.includes(target));
+        if (h) h.scrollIntoView({behavior:'smooth', block:'center'});
+      } else {
+        return false;
+      }
+      return true;
+    }
+
+    case 'run_assessment': {
+      const scopes = Array.isArray(p.scopes) ? p.scopes : [];
+      if (scopes.length === 0) return false;
+      // Check the corresponding scope boxes + run
+      document.querySelectorAll('.scope-cb').forEach(cb => {
+        cb.checked = scopes.includes(cb.value);
+      });
+      // If a section filter was included, stash it for post-run application
+      if (p.filter) window._promptSectionFilter = p.filter;
+      // Defer so the banner renders first
+      setTimeout(() => { if (typeof runAssessment === 'function') runAssessment(); }, 150);
+      return true;
+    }
+
+    case 'filter': {
+      const kw = (p.keyword || '').toLowerCase();
+      if (!kw) return false;
+      // Apply to whichever result set is visible
+      const inp = document.getElementById('checksFilter');
+      if (inp) { inp.value = kw; inp.dispatchEvent(new Event('input')); }
+      // Also filter the results panel if present
+      if (typeof renderChecks === 'function' && window._lastAssessmentData) {
+        renderChecks(window._lastAssessmentData.checks || [], kw);
+      }
+      return true;
+    }
+
+    case 'explain': {
+      const cid = (p.check_id || '').toUpperCase();
+      const kw = p.keyword;
+      if (cid) {
+        showCheckExplanation(cid);
+      } else if (kw) {
+        // Downgrade to a filter
+        dispatchCommand({action: 'filter', params: {keyword: kw}});
+      }
+      return true;
+    }
+
+    case 'export': {
+      const fmt = (p.format || 'json').toLowerCase();
+      if (fmt === 'docx' || fmt === 'word' || fmt === 'doc') {
+        if (typeof downloadDocx === 'function') downloadDocx();
+      } else if (typeof downloadJSON === 'function') {
+        downloadJSON();
+      }
+      return true;
+    }
+
+    case 'validate_against_sdk':
+      openUpdateModal();
+      announce('Opening SDK update checker');
+      return true;
+
+    case 'unknown':
+    case 'noop':
+    default:
+      return false;
+  }
+}
+
+// ── Command help modal (rendered from the catalog) ───────────────
+let _commandCatalog = null;
+async function showCommandHelp() {
+  if (!_commandCatalog) {
+    try {
+      const r = await fetch('/api/commands');
+      _commandCatalog = (await r.json()).catalog || [];
+    } catch(e) { _commandCatalog = []; }
+  }
+  const rows = _commandCatalog.map(c => `
+    <tr>
+      <td style="padding:0.4rem 0.6rem;font-family:monospace;color:var(--accent);vertical-align:top;white-space:nowrap;">${escapeHtml(c.action)}</td>
+      <td style="padding:0.4rem 0.6rem;vertical-align:top;">${escapeHtml(c.description)}</td>
+      <td style="padding:0.4rem 0.6rem;vertical-align:top;">
+        ${(c.examples || []).map(e => `<code style="display:inline-block;background:rgba(59,130,246,0.08);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.75rem;margin:0.1rem 0.2rem 0.1rem 0;">${escapeHtml(e)}</code>`).join('')}
+      </td>
+    </tr>`).join('');
+  const banner = document.getElementById('promptResult');
+  banner.style.display = 'block';
+  banner.style.borderLeft = '3px solid var(--accent)';
+  banner.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
+      <strong>Available Commands</strong>
+      <button class="btn btn-ghost" onclick="document.getElementById('promptResult').style.display='none'"
+              aria-label="Close command help" style="padding:0.2rem 0.5rem;font-size:0.72rem;">✕</button>
+    </div>
+    <table style="width:100%;font-size:0.82rem;border-collapse:collapse;">
+      <thead><tr style="background:rgba(59,130,246,0.06);">
+        <th style="padding:0.35rem 0.6rem;text-align:left;">Action</th>
+        <th style="padding:0.35rem 0.6rem;text-align:left;">What it does</th>
+        <th style="padding:0.35rem 0.6rem;text-align:left;">Examples</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Explain a single check by ID (surfaces its current detail + BP) ──
+function showCheckExplanation(checkId) {
+  const all = (window._lastAssessmentData?.checks) || [];
+  const match = all.find(c => (c.id || '').toUpperCase() === checkId);
+  const banner = document.getElementById('promptResult');
+  banner.style.display = 'block';
+  if (!match) {
+    banner.innerHTML = `<span style="color:var(--warn);">No result for ${escapeHtml(checkId)} in this session. Run an assessment that covers this check first.</span>`;
+    return;
+  }
+  const detail = match.detail || '(no detail)';
+  const bpSplit = detail.split(/Best\s+Practice\s*[:\-]\s*/i);
+  const asIs = (bpSplit[0] || '').trim();
+  const bp = (bpSplit[1] || '').trim();
+  banner.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;margin-bottom:0.3rem;">
+      <strong>${escapeHtml(match.id)} — ${escapeHtml(match.label || '')}</strong>
+      <button class="btn btn-ghost" onclick="document.getElementById('promptResult').style.display='none'"
+              aria-label="Close explanation" style="padding:0.2rem 0.5rem;font-size:0.72rem;">✕</button>
+    </div>
+    <div style="font-size:0.8rem;color:var(--dim);">Section: ${escapeHtml(match.section || match.sec || '')}</div>
+    <div style="margin-top:0.4rem;"><strong>Actual:</strong> ${escapeHtml(asIs)}</div>
+    ${bp ? `<div style="margin-top:0.3rem;"><strong>Best Practice:</strong> ${escapeHtml(bp)}</div>` : ''}
+    <div style="margin-top:0.4rem;font-size:0.78rem;color:var(--dim);">Status: <code style="color:var(--accent);">${escapeHtml(match.status || '?')}</code></div>`;
+}
 
 // Step bar updater — call announce('<phase>') to highlight the current
 // step across the top-of-page nav. Also announces to screen readers
