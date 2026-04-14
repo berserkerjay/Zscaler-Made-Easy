@@ -212,6 +212,37 @@ class CommandParseRequest(BaseModel):
     llm_kind: str = "ollama"   # "ollama" | "openai"
 
 
+@app.get("/api/llm/status")
+async def llm_status():
+    """Probe the local Ollama instance. Reports whether it's running
+    and which models are available so the GUI can pre-fill the picker.
+    Loopback-only — calls 127.0.0.1:11434 directly."""
+    import requests
+    try:
+        r = requests.get("http://127.0.0.1:11434/api/tags", timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+            return {
+                "ollama_running": True,
+                "models": models,
+                "model_count": len(models),
+                "recommended_model": next(
+                    (m for m in models if m.startswith(("llama3.1", "llama3.2", "qwen2.5", "phi3"))),
+                    (models[0] if models else None),
+                ),
+                "endpoint": "http://127.0.0.1:11434/api/chat",
+            }
+    except Exception as e:
+        return {
+            "ollama_running": False,
+            "models": [],
+            "error": f"{type(e).__name__}: {str(e)[:100]}",
+            "hint": "Install Ollama from https://ollama.com/download, then `ollama pull llama3.2:3b`.",
+        }
+    return {"ollama_running": False, "models": []}
+
+
 @app.get("/api/commands")
 async def commands_catalog():
     """Return the list of supported commands so the GUI can render

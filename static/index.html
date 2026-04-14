@@ -455,12 +455,19 @@
               style="padding:0.1rem 0.5rem;font-size:0.72rem;display:inline;background:none;border:none;color:var(--accent);cursor:pointer;">help</button> for the command list ·
       <label style="display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer;margin-left:0.4rem;">
         <input type="checkbox" id="useLlmToggle" style="width:auto;cursor:pointer;"
-               aria-describedby="llmToggleNote">
-        <span>Use local LLM (Ollama)</span>
+               aria-describedby="llmStatusLine">
+        <span>Use local LLM</span>
       </label>
-      <span id="llmToggleNote" style="color:var(--warn);font-size:0.72rem;display:none;margin-left:0.4rem;">
-        ⚠ Loopback only — queries go to your local Ollama at 127.0.0.1:11434. Never sent to a cloud.
-      </span>
+      <select id="llmModelPicker" aria-label="Local LLM model"
+              style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
+      </select>
+      <button type="button" onclick="refreshLlmStatus()" class="btn btn-ghost"
+              style="padding:0.1rem 0.4rem;font-size:0.72rem;margin-left:0.2rem;background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;"
+              aria-label="Re-check Ollama status">↻</button>
+    </div>
+    <div id="llmStatusLine" role="status" aria-live="polite"
+         style="font-size:0.72rem;color:var(--dim);max-width:720px;margin:0.25rem auto 0;">
+      <span>Checking for local Ollama...</span>
     </div>
     <!-- Prompt result / feedback banner -->
     <div id="promptResult" role="status" aria-live="polite"
@@ -999,19 +1006,79 @@ fetch('/api/branding').then(r => r.json()).then(d => {
 // and the dispatch map is allowlisted client-side.
 // ══════════════════════════════════════════════════════════════════
 
-// Persist the LLM-toggle preference (session only — not a secret)
+// LLM toggle + status wiring
+let _llmStatus = {ollama_running: false, models: [], recommended_model: null};
+
 try {
   const saved = localStorage.getItem('zassess_use_llm');
-  if (saved === '1') {
-    document.getElementById('useLlmToggle').checked = true;
-    document.getElementById('llmToggleNote').style.display = 'inline';
-  }
+  if (saved === '1') document.getElementById('useLlmToggle').checked = true;
 } catch(e) {}
 
 document.getElementById('useLlmToggle')?.addEventListener('change', (e) => {
-  document.getElementById('llmToggleNote').style.display = e.target.checked ? 'inline' : 'none';
   try { localStorage.setItem('zassess_use_llm', e.target.checked ? '1' : '0'); } catch(e) {}
+  updateLlmUi();
 });
+
+document.getElementById('llmModelPicker')?.addEventListener('change', (e) => {
+  try { localStorage.setItem('zassess_llm_model', e.target.value || ''); } catch(e) {}
+});
+
+async function refreshLlmStatus() {
+  const line = document.getElementById('llmStatusLine');
+  line.innerHTML = '<span style="color:var(--dim);">⏳ Checking for local Ollama...</span>';
+  try {
+    const r = await fetch('/api/llm/status');
+    _llmStatus = await r.json();
+  } catch(e) {
+    _llmStatus = {ollama_running: false, models: [], error: String(e)};
+  }
+  updateLlmUi();
+}
+
+function updateLlmUi() {
+  const toggle = document.getElementById('useLlmToggle');
+  const line = document.getElementById('llmStatusLine');
+  const picker = document.getElementById('llmModelPicker');
+  const useLlm = toggle?.checked;
+
+  if (_llmStatus.ollama_running && _llmStatus.models?.length) {
+    // Populate picker
+    const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
+    const recommended = _llmStatus.recommended_model || _llmStatus.models[0];
+    picker.innerHTML = _llmStatus.models
+      .map(m => `<option value="${escapeHtml(m)}" ${m === (saved || recommended) ? 'selected' : ''}>${escapeHtml(m)}</option>`)
+      .join('');
+    picker.style.display = useLlm ? 'inline-block' : 'none';
+
+    line.innerHTML = useLlm
+      ? `<span style="color:var(--pass);">✓ Local LLM active — Ollama on 127.0.0.1:11434 · ${_llmStatus.models.length} model${_llmStatus.models.length===1?'':'s'} installed.</span> <span style="color:var(--dim);">Queries stay on this machine.</span>`
+      : `<span style="color:var(--dim);">Ollama detected (${_llmStatus.models.length} models). Tick the box to enable natural-language parsing.</span>`;
+  } else {
+    picker.style.display = 'none';
+    if (useLlm) {
+      // User wants it but Ollama isn't there — give them the install path
+      line.innerHTML = `
+        <span style="color:var(--warn);">⚠ Local LLM enabled but Ollama is not reachable at 127.0.0.1:11434.</span>
+        <span style="color:var(--dim);">Queries will fall back to the deterministic parser.</span>
+        <details style="display:inline-block;margin-left:0.3rem;">
+          <summary style="cursor:pointer;color:var(--accent);">How to install</summary>
+          <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
+            <ol style="margin-left:1.2rem;font-size:0.75rem;line-height:1.6;">
+              <li>Download Ollama from <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">ollama.com/download</a> (Win/macOS/Linux, &lt;5 min).</li>
+              <li>Open a terminal and run: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">ollama pull llama3.2:3b</code> <span style="color:var(--dim);">(~2 GB, fastest option)</span></li>
+              <li>Click <strong>↻</strong> next to the toggle here to re-check.</li>
+            </ol>
+            <div style="color:var(--dim);font-size:0.72rem;margin-top:0.3rem;">Full guide: <code>LLM_SETUP.md</code> in the repo.</div>
+          </div>
+        </details>`;
+    } else {
+      line.innerHTML = '<span style="color:var(--dim);">Using deterministic parser. Tick the box to enable natural-language parsing (requires local Ollama).</span>';
+    }
+  }
+}
+
+// Kick off initial status check
+refreshLlmStatus();
 
 // Press "/" anywhere to focus the prompt (except inside form inputs)
 document.addEventListener('keydown', (e) => {
@@ -1037,6 +1104,14 @@ async function runPrompt(overrideText) {
   banner.style.borderLeft = '3px solid var(--accent)';
   banner.innerHTML = `<span style="color:var(--dim);">⏳ Parsing: "${escapeHtml(text)}"${useLlm ? ' <span style="color:var(--warn);">[local LLM]</span>' : ''}...</span>`;
 
+  // Resolve the selected model — picker value, localStorage, or the
+  // status-probe's recommended model, in that order.
+  let llmModel = document.getElementById('llmModelPicker')?.value;
+  if (!llmModel) {
+    try { llmModel = localStorage.getItem('zassess_llm_model'); } catch(e) {}
+  }
+  if (!llmModel) llmModel = _llmStatus?.recommended_model || 'llama3.2:3b';
+
   let parsed;
   try {
     const resp = await fetch('/api/commands/parse', {
@@ -1045,7 +1120,7 @@ async function runPrompt(overrideText) {
         text,
         use_llm: useLlm,
         llm_endpoint: 'http://localhost:11434/api/chat',
-        llm_model: 'llama3.1',
+        llm_model: llmModel,
         llm_kind: 'ollama',
       }),
     });
