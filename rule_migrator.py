@@ -850,17 +850,135 @@ def optimize_for_eval_all_with_exceptions(
 # STEP 4 — Enable Evaluate All Rules
 # ════════════════════════════════════════════════════════════════════
 
+def _probe_eval_all_field(client) -> Dict[str, Any]:
+    """
+    Self-contained minimal probe: locates the 'Evaluate All DLP Rules'
+    field on the tenant WITHOUT fetching rules, computing order safety,
+    or doing any of Step 1's other work.
+
+    This exists so enable_evaluate_all_rules() (Step 4) is independent
+    of assess_current_status() (Step 1) — per the architectural rule
+    that the only shared dependency between actions is the tenant
+    Client itself.
+
+    Returns:
+      {
+        "evaluate_all_enabled": bool | None,
+        "feature_available":    bool | None,
+        "found_via":            "<endpoint> → <field> = <value>" | None,
+        "diagnostics":          [...]   # endpoint probe results
+      }
+    """
+    diagnostics: List[Dict[str, Any]] = []
+    evaluate_all = None
+    found_via = None
+    feature_available = None
+    feature_source = None
+
+    CAPABILITY_ENDPOINTS = {
+        "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
+        "/zia/accountFeatures", "/zia/tenantFeatures",
+        "/zia/visibility/features", "/zia/subscriptions/features",
+        "/zia/productFeatures", "/zia/featureCatalog",
+        "/zia/entitlement/features",
+    }
+    candidate_endpoints = [
+        "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
+        "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
+        "/zia/advancedSettings/dlp", "/zia/dlpSettings",
+        "/zia/dlp/advancedSettings", "/zia/dlp/settings",
+        "/zia/configuration/advanced",
+        "raw:/zia/api/v1/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlp/advancedSettings",
+        "raw:/zia/api/v1/dlp-advanced-settings",
+        "raw:/zia/api/v1/admin/dlpAdvancedSettings",
+        "raw:/zia/api/v1/dlpSettings/advanced",
+        "raw:/api/v1/dlpAdvancedSettings",
+        "raw:/zia/v1/dlpAdvancedSettings",
+        "raw:/zia/dlp/v1/advancedSettings",
+        "raw:/dlp/api/v1/advancedSettings",
+        "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
+        "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
+        "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
+        "/zia/accountFeatures", "/zia/tenantFeatures",
+        "/zia/visibility/features", "/zia/subscriptions/features",
+        "/zia/productFeatures", "/zia/featureCatalog",
+        "/zia/entitlement/features",
+    ]
+    candidate_fields = [
+        "evaluateAllRules", "dlpEvaluateAllRules", "enableDlpEvaluateAllRules",
+        "dlpEvaluateAll", "dlpEvaluateAllRulesEnabled",
+        "isDlpEvaluateAllRules", "evaluateAllDlpRules",
+        "dlpEvalAll", "evalAll", "evaluateAll",
+        "enableEvaluateAllRules", "enableEvaluateAllDlpRules",
+        "evalAllRulesForDlp", "evaluateAllDlp",
+        "inlineDlpRuleEvaluation", "inlineDlpRuleEvaluationType",
+        "dlpRuleEvaluation", "dlpRuleEvaluationType",
+        "ruleEvaluationType", "dlpEvaluationType",
+        "evaluationType", "evaluationMode", "dlpEvaluationMode",
+        "DLP_RULE_EVALUATE_ALL", "DLP_EVAL_ALL", "DLP_EVALUATE_ALL_RULES",
+        "FEATURE_DLP_EVALUATE_ALL", "FEATURE_EVALUATE_ALL_DLP",
+    ]
+
+    def _norm(s): return s.lower().replace("_", "").replace("-", "")
+
+    for ep in candidate_endpoints:
+        try:
+            data, code = client.get(ep)
+        except Exception as e:
+            diagnostics.append({"endpoint": ep, "status": 0, "error": str(e)[:100]})
+            continue
+        diagnostics.append({"endpoint": ep, "status": code,
+                            "type": type(data).__name__,
+                            "keys": (list(data.keys())[:30] if isinstance(data, dict) else None)})
+        if code != 200 or not isinstance(data, dict):
+            continue
+        is_capability = ep in CAPABILITY_ENDPOINTS
+        norm_keys = {_norm(k): k for k in data.keys()}
+        match_key = None
+        match_value = None
+        for fld in candidate_fields:
+            real = norm_keys.get(_norm(fld))
+            if real is not None:
+                match_key = real
+                match_value = data[real]
+                break
+        if match_key is None:
+            continue
+        path_str = f"{ep} → {match_key} = {match_value!r}"
+        if is_capability:
+            if feature_available is None:
+                feature_available = _is_truthy(match_value)
+                feature_source = path_str + " (capability flag)"
+            continue
+        evaluate_all = _is_truthy(match_value)
+        found_via = path_str
+        break
+
+    return {
+        "evaluate_all_enabled": evaluate_all,
+        "feature_available":    feature_available,
+        "found_via":            found_via,
+        "feature_source":       feature_source,
+        "diagnostics":          diagnostics,
+    }
+
+
 def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     """
     Toggle 'Evaluate All DLP Rules' ON via the ZIA API.
 
+    Self-contained: only depends on the Client (tenant credentials).
+    Does NOT call assess_current_status, does NOT fetch rules, does
+    NOT compute order safety. Uses _probe_eval_all_field() to locate
+    the toggle endpoint, then writes if asked.
+
     Strategy:
-      1. Run the same probe as Step 1 to find the field in GET responses.
+      1. _probe_eval_all_field finds the field in GET responses.
       2. If found, GET → modify → PUT to the same endpoint.
       3. If not found, try each candidate endpoint + field combination
          with a real PUT, verifying via follow-up GET.
-      4. Every attempt is recorded in `attempts[]` so auditors (and
-         future debuggers) see exactly what was tried.
+      4. Every attempt is recorded in `attempts[]`.
 
     SAFETY:
       - dry_run=True (default) returns the plan only.
@@ -868,10 +986,9 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         to actually call PUT.
     """
     import os
-    # Use the same comprehensive probe as Step 1 to find current state
-    status = assess_current_status(client)
-    current = status.get("evaluate_all_enabled")
-    found_via = status.get("found_via")
+    probe = _probe_eval_all_field(client)
+    current = probe["evaluate_all_enabled"]
+    found_via = probe["found_via"]
 
     if current is True:
         return {

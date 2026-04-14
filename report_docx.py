@@ -88,6 +88,105 @@ def _parse_detail_for_bp(detail: str):
     return detail.strip(), ""
 
 
+# Per-section / per-check fallback best-practice text + Zscaler help-
+# center link. Used when a check's detail string didn't carry a 'Best
+# Practice:' suffix (so _parse_detail_for_bp returned an empty bp).
+# The keys are matched as case-insensitive substrings against the
+# check's section AND label, so a single entry covers many checks.
+_BP_FALLBACKS = [
+    # (match-substring, best-practice text, help-center URL)
+    ("ssl",
+     "Decrypt and inspect TLS traffic for everything except a documented "
+     "exempt list (banking, healthcare, certain government domains). "
+     "Without TLS inspection, the majority of modern threats remain hidden.",
+     "https://help.zscaler.com/zia/about-ssl-inspection"),
+
+    ("dlp",
+     "Define DLP engines + dictionaries for every regulated data class your "
+     "policy covers (PII, PCI, PHI, IP). Apply Inline Web DLP rules with "
+     "explicit user/group scoping and prefer Evaluate-All-Rules mode for "
+     "comprehensive coverage.",
+     "https://help.zscaler.com/zia/about-data-loss-prevention"),
+
+    ("firewall",
+     "Default Cloud Firewall rule should be DENY. Allow rules must specify "
+     "users / groups / locations + destination categories. Avoid global "
+     "ANY-ANY allows. Enable IPS profiles on every cloud-firewall rule.",
+     "https://help.zscaler.com/zia/about-cloud-firewall-rules"),
+
+    ("url filter",
+     "Block known-bad and high-risk URL categories at the default rule. "
+     "Allow rules should be scoped to specific user populations with "
+     "documented business justification.",
+     "https://help.zscaler.com/zia/about-url-filtering-policy"),
+
+    ("sandbox",
+     "Enable Cloud Sandbox for unknown executables, archives, and "
+     "documents. Default action should be BLOCK pending sandbox verdict, "
+     "not ALLOW. Configure quarantine workflow for medium-confidence verdicts.",
+     "https://help.zscaler.com/zia/about-cloud-sandbox"),
+
+    ("location",
+     "Define one Location per office / branch / remote-aggregation point so "
+     "policy can be scoped geographically. Configure both primary and "
+     "secondary GRE/IPSec tunnels per location for failover.",
+     "https://help.zscaler.com/zia/about-locations"),
+
+    ("admin",
+     "Apply least-privilege admin roles. Separate read-only auditor roles "
+     "from change-capable admin roles. Federate admin login to your IdP "
+     "with MFA enforced.",
+     "https://help.zscaler.com/zia/about-admin-management"),
+
+    ("zpa",
+     "Use the smallest possible App Segment scope per application. Bind "
+     "Access Policy rules to SCIM groups (not individuals). Apply Posture "
+     "Profiles for any device-trust enforcement.",
+     "https://help.zscaler.com/zpa/about-application-segments"),
+
+    ("zcc",
+     "Enforce strict-enforcement on app profiles, enable tamper protection "
+     "(uninstall password), require posture profile for enrollment, and "
+     "auto-cleanup devices not seen in 90 days.",
+     "https://help.zscaler.com/zscaler-client-connector/about-zscaler-client-connector-app-profiles"),
+
+    ("genai",
+     "Categorize internal-approved AI services with explicit URL/cloud-app "
+     "rules. Apply DLP engines (PII, IP, source code) to every outbound "
+     "prompt. Block unsanctioned GenAI tools rather than alerting only.",
+     "https://help.zscaler.com/zia/about-ai-ml-controls"),
+
+    ("automation", "API client roles should be scoped per use case "
+     "(read-only auditor vs IaC executor). Audit log retention should be "
+     "≥ 90 days for reliable change-tracking by Terraform / Ansible runs.",
+     "https://github.com/zscaler"),
+
+    ("zdx", "Enable ZDX monitoring for every business-critical app (top 10 "
+     "minimum). Configure alert rules so the SOC sees app-score degradation "
+     "before users open tickets.",
+     "https://help.zscaler.com/zdx/about-zdx"),
+
+    ("zidentity", "Federate ZIdentity to your corporate IdP with MFA "
+     "required for every admin login. Bind roles to groups, not individual "
+     "users, so offboarding is automatic via IdP group membership.",
+     "https://help.zscaler.com/zidentity"),
+]
+
+
+def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
+    """Pick the most specific fallback BP text + link for a check that
+    didn't carry inline 'Best Practice:' guidance in its detail string."""
+    haystack = " ".join((label or "", section or "", check_id or "")).lower()
+    for needle, text, url in _BP_FALLBACKS:
+        if needle in haystack:
+            return f"{text} Reference: {url}"
+    return (
+        "Apply the Zscaler-recommended baseline for this control. Reference "
+        "https://help.zscaler.com/zscaler-deployments-operation for the "
+        "deployment-and-operations guide covering this feature area."
+    )
+
+
 def _generate_why_it_matters(check_id: str, label: str, as_is: str, best_practice: str, section: str = "") -> str:
     """
     Produce a business-impact 'why it matters' sentence. Explains the
@@ -577,6 +676,12 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 best_practice=best_practice,
                 section=r.get("sec") or r.get("section") or "",
             )
+            # Resolve a section/check-keyed BP fallback so the cell is
+            # never the generic "See Zscaler deployment guidance" string.
+            section_txt = r.get("sec") or r.get("section") or ""
+            resolved_bp = best_practice or _resolve_best_practice(
+                r.get("label", ""), section_txt, r.get("id", "")
+            )
             row = rv_table.add_row()
             # Column 0: Finding Name (id + label)
             name_cell = row.cells[0]
@@ -584,8 +689,8 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             np = name_cell.paragraphs[0]
             np.add_run(f"{r.get('id', '')}\n").bold = True
             np.add_run(r.get("label", ""))
-            # Column 1: Best Practice
-            row.cells[1].text = best_practice or "See Zscaler deployment guidance for this feature."
+            # Column 1: Best Practice (with section-aware fallback)
+            row.cells[1].text = resolved_bp
             # Column 2: Actual Configuration
             row.cells[2].text = as_is or "(not specified)"
             # Column 3: Why It Matters (bold)

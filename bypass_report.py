@@ -940,3 +940,291 @@ def to_markdown(report: Dict[str, Any]) -> str:
         out.append(f"- {g}")
 
     return "\n".join(out)
+
+
+# ── Word document export ─────────────────────────────────────────────
+
+def to_docx(report: Dict[str, Any], output_path: str) -> str:
+    """
+    Render the bypass inventory as a Word document with Zscaler branding
+    (accent blue #236BF5) matching the main assessment report style.
+
+    Structure:
+      1. Cover heading + generated-at + summary chip counts
+      2. Risk flags (if any) — red callout box
+      3. Aggregated Bypass Universe — the consolidated ALL-URLs-Bypassed
+         list plus per-dimension breakdowns
+      4. Per-section rule tables (SSL bypass, URL ALLOW, FW ALLOW, DLP allow)
+      5. SSL exemptions (flat table)
+      6. ZCC bypass sections (apps, processes, IPs, domains, trusted)
+      7. URL Category Expansion Detail (shows inherited URLs per category)
+      8. Guidance / best practices
+
+    Returns the output path so callers can re-send it as a FileResponse.
+    Raises ImportError if python-docx isn't installed.
+    """
+    from docx import Document
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    ACCENT = RGBColor(0x23, 0x6B, 0xF5)   # Zscaler blue
+    RED    = RGBColor(0xDC, 0x26, 0x26)
+    AMBER  = RGBColor(0xF5, 0x9E, 0x0B)
+    GREEN  = RGBColor(0x10, 0xB9, 0x81)
+    DIM    = RGBColor(0x64, 0x74, 0x8B)
+
+    def _safe_style(doc, candidates):
+        for name in candidates:
+            try:
+                return doc.styles[name]
+            except KeyError:
+                continue
+        return None
+
+    doc = Document()
+
+    # ── Cover ────────────────────────────────────────────────────
+    h = doc.add_heading("Zscaler Bypass / Non-Inspected Traffic Inventory", level=0)
+    if h.runs:
+        h.runs[0].font.color.rgb = ACCENT
+    p = doc.add_paragraph()
+    p.add_run(f"Generated: {report.get('generated_at','?')}").font.color.rgb = DIM
+    p.add_run(f"   ·   Scan time: {report.get('elapsed_seconds', 0)}s").font.color.rgb = DIM
+
+    # ── Summary chips ────────────────────────────────────────────
+    summary = report.get("summary") or {}
+    s_table = doc.add_table(rows=1, cols=2)
+    s_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Table Grid"])
+    s_table.rows[0].cells[0].text = "Dimension"
+    s_table.rows[0].cells[1].text = "Count"
+    for c in s_table.rows[0].cells:
+        if c.paragraphs[0].runs:
+            c.paragraphs[0].runs[0].bold = True
+    dim_labels = [
+        ("ssl_bypass_rules",  "SSL Inspection Bypass Rules"),
+        ("ssl_exemptions",    "SSL Exemptions (categories/URLs)"),
+        ("url_filter_allow",  "URL Filtering ALLOW Rules"),
+        ("firewall_allow",    "Firewall ALLOW Rules"),
+        ("dlp_allow",         "DLP ALLOW / BYPASS Rules"),
+        ("zcc_apps",          "ZCC — Bypassed Apps"),
+        ("zcc_processes",     "ZCC — Bypassed Processes"),
+        ("zcc_ips",           "ZCC — Bypassed IPs"),
+        ("zcc_domains",       "ZCC — Bypassed Domains"),
+        ("zcc_trusted_nets",  "ZCC — Trusted Networks"),
+    ]
+    for key, label in dim_labels:
+        r = s_table.add_row()
+        r.cells[0].text = label
+        r.cells[1].text = str(summary.get(key, 0))
+    r = s_table.add_row()
+    r.cells[0].text = "TOTAL BYPASS ITEMS"
+    r.cells[1].text = str(summary.get("total_bypass_items", 0))
+    for c in r.cells:
+        if c.paragraphs[0].runs:
+            c.paragraphs[0].runs[0].bold = True
+            c.paragraphs[0].runs[0].font.color.rgb = ACCENT
+
+    doc.add_paragraph()
+
+    # ── Risk flags ───────────────────────────────────────────────
+    risks = report.get("risk_flags") or []
+    if risks:
+        doc.add_heading(f"Risk Flags ({len(risks)})", level=1)
+        warn = doc.add_paragraph()
+        wrun = warn.add_run(
+            "Globally-scoped enabled bypass rules apply to every user. Auditors "
+            "flag these first — review for business justification and consider "
+            "scoping to specific users / groups / locations."
+        )
+        wrun.font.color.rgb = RED
+        wrun.bold = True
+        for rf in risks:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{rf.get('name','?')} ").bold = True
+            p.add_run(
+                f"— {rf.get('source','?')} #{rf.get('id','?')}, "
+                f"action {rf.get('action','?')}. {rf.get('reason','')}"
+            )
+
+    # ── Aggregated Bypass Universe ───────────────────────────────
+    agg = report.get("aggregated") or {}
+    doc.add_heading("Aggregated Bypass Universe", level=1)
+    intro = doc.add_paragraph()
+    intro.add_run(
+        "Every URL, cloud app, category, and IP exempted from Zscaler "
+        "inspection anywhere in the tenant — deduplicated and traced to "
+        "the rule that caused the exemption. URL category references are "
+        "expanded into their constituent URLs."
+    ).italic = True
+
+    def _add_agg_table(heading, bucket_key, value_label):
+        bucket = agg.get(bucket_key) or {}
+        items = bucket.get("items") or []
+        doc.add_heading(f"{heading} ({len(items)})", level=2)
+        if not items:
+            doc.add_paragraph("(no items)").runs[0].font.color.rgb = DIM
+            return
+        t = doc.add_table(rows=1, cols=4)
+        t.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Table Grid"])
+        t.rows[0].cells[0].text = "#"
+        t.rows[0].cells[1].text = value_label
+        t.rows[0].cells[2].text = "Refs"
+        t.rows[0].cells[3].text = "Referenced by (source#id)"
+        for c in t.rows[0].cells:
+            if c.paragraphs[0].runs:
+                c.paragraphs[0].runs[0].bold = True
+        for i, it in enumerate(items[:500], 1):
+            row = t.add_row()
+            row.cells[0].text = str(i)
+            row.cells[1].text = str(it.get("value", ""))[:200]
+            row.cells[2].text = str(it.get("count", 0))
+            refs = (it.get("rules") or [])[:6]
+            refs_str = ", ".join(
+                f"{(r.get('source') or '?').split('.')[-1]}#{r.get('id','?')}"
+                for r in refs
+            )
+            if len(it.get("rules") or []) > 6:
+                refs_str += f" (+{len(it['rules']) - 6} more)"
+            row.cells[3].text = refs_str
+        if len(items) > 500:
+            doc.add_paragraph(f"…and {len(items) - 500} more (see JSON/CSV export for the complete list).").runs[0].font.color.rgb = DIM
+
+    _add_agg_table("ALL URLs Bypassed (explicit + inherited + ZCC domain bypass)", "all_urls_bypassed", "URL")
+    _add_agg_table("Bypassed URL Categories", "url_categories", "Category")
+    _add_agg_table("Explicitly-Listed URLs (from rule.urls / destinations / hostnames)", "urls", "URL")
+    _add_agg_table("Inherited URLs (from URL Categories)", "inherited_urls", "URL (via category)")
+    _add_agg_table("Bypassed Cloud Applications", "cloud_applications", "Cloud App")
+    _add_agg_table("Bypassed Cloud App Categories", "cloud_app_categories", "Category")
+    _add_agg_table("Bypassed Destination IPs", "dest_ips", "IP / CIDR")
+    _add_agg_table("Bypassed Destination IP Groups", "dest_ip_groups", "Group")
+
+    doc.add_page_break()
+
+    # ── Per-section rule tables ──────────────────────────────────
+    doc.add_heading("Rule-Level Detail by Section", level=1)
+    rule_sections = [
+        ("ssl_bypass_rules", "SSL Inspection Bypass Rules"),
+        ("url_filter_allow", "URL Filtering ALLOW Rules"),
+        ("firewall_allow",   "Firewall ALLOW Rules"),
+        ("dlp_allow",        "DLP ALLOW / BYPASS Rules"),
+    ]
+    for key, label in rule_sections:
+        sec = (report.get("sections") or {}).get(key) or {}
+        items = sec.get("items") or []
+        count_display = f"{len(items)}"
+        total = sec.get("total_rules") or sec.get("total_ssl_rules")
+        if total is not None:
+            count_display = f"{len(items)} of {total}"
+        doc.add_heading(f"{label} ({count_display})", level=2)
+        if not items:
+            doc.add_paragraph("(no items)").runs[0].font.color.rgb = DIM
+            continue
+        t = doc.add_table(rows=1, cols=5)
+        t.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Table Grid"])
+        headers = ["Rule ID", "Name", "Action", "State", "Scope"]
+        for i, h_label in enumerate(headers):
+            t.rows[0].cells[i].text = h_label
+            if t.rows[0].cells[i].paragraphs[0].runs:
+                t.rows[0].cells[i].paragraphs[0].runs[0].bold = True
+        for it in items[:200]:
+            row = t.add_row()
+            row.cells[0].text = str(it.get("id", ""))
+            row.cells[1].text = str(it.get("name", ""))[:120]
+            row.cells[2].text = str(it.get("action", ""))
+            row.cells[3].text = str(it.get("state", ""))
+            row.cells[4].text = str(it.get("scope", ""))[:80]
+        if len(items) > 200:
+            doc.add_paragraph(f"…and {len(items) - 200} more.").runs[0].font.color.rgb = DIM
+
+    # ── SSL Exemptions (flat) ────────────────────────────────────
+    exm = (report.get("sections") or {}).get("ssl_exemptions") or {}
+    exm_items = exm.get("items") or []
+    doc.add_heading(f"SSL Exemptions / Do-Not-Inspect ({len(exm_items)})", level=2)
+    if exm_items:
+        t = doc.add_table(rows=1, cols=3)
+        t.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Table Grid"])
+        for i, h_label in enumerate(["Source Endpoint", "Field", "Value"]):
+            t.rows[0].cells[i].text = h_label
+            if t.rows[0].cells[i].paragraphs[0].runs:
+                t.rows[0].cells[i].paragraphs[0].runs[0].bold = True
+        for it in exm_items[:200]:
+            row = t.add_row()
+            row.cells[0].text = str(it.get("source", ""))[:80]
+            row.cells[1].text = str(it.get("field", "") or it.get("label", ""))
+            row.cells[2].text = str(it.get("value", ""))[:200]
+    else:
+        doc.add_paragraph("(none)").runs[0].font.color.rgb = DIM
+
+    # ── ZCC bypasses ─────────────────────────────────────────────
+    zcc = (report.get("sections") or {}).get("zcc") or {}
+    doc.add_heading("ZCC / Mobile Portal Bypass Lists", level=1)
+    zcc_sections = [
+        ("apps",             "App Bypass",         ["profile", "name", "path", "os"]),
+        ("processes",        "Process Bypass",     ["profile", "name"]),
+        ("ips",              "IP Bypass",          ["profile", "value"]),
+        ("domains",          "Domain Bypass",      ["profile", "value"]),
+        ("trusted_networks", "Trusted Networks",   ["profile", "value"]),
+    ]
+    for subkey, label, cols in zcc_sections:
+        sub = (zcc.get(subkey) or {})
+        items = sub.get("items") or []
+        doc.add_heading(f"ZCC — {label} ({len(items)})", level=2)
+        if not items:
+            doc.add_paragraph("(no items)").runs[0].font.color.rgb = DIM
+            continue
+        t = doc.add_table(rows=1, cols=len(cols))
+        t.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Table Grid"])
+        for i, col in enumerate(cols):
+            t.rows[0].cells[i].text = col.replace("_", " ").title()
+            if t.rows[0].cells[i].paragraphs[0].runs:
+                t.rows[0].cells[i].paragraphs[0].runs[0].bold = True
+        for it in items[:200]:
+            row = t.add_row()
+            for i, col in enumerate(cols):
+                row.cells[i].text = str(it.get(col, ""))[:150]
+
+    # ── Per-category expansion detail ────────────────────────────
+    cats = (agg.get("category_expansion") or [])
+    if cats:
+        doc.add_page_break()
+        doc.add_heading("URL Category Expansion Detail", level=1)
+        doc.add_paragraph(
+            "Per-category breakdown showing which URLs each referenced "
+            "category contributes to the effective bypass list. Custom "
+            "categories enumerate their URLs; predefined (Zscaler-maintained) "
+            "categories are marked and their URL lists are not API-accessible."
+        ).runs[0].italic = True
+        for cat in cats[:100]:
+            doc.add_heading(f"{cat.get('category','?')}  [{cat.get('type','?')}]", level=3)
+            rule = cat.get("referenced_by_rule") or {}
+            p = doc.add_paragraph()
+            p.add_run(
+                f"Referenced by {rule.get('source','?')}#{rule.get('id','?')} — "
+                f"{rule.get('name','?')} (action {rule.get('action','?')})"
+            ).font.color.rgb = DIM
+            if cat.get("note"):
+                np = doc.add_paragraph(cat["note"])
+                if np.runs:
+                    np.runs[0].font.color.rgb = AMBER
+            urls = (cat.get("urls") or []) + (cat.get("db_urls") or [])
+            if urls:
+                p = doc.add_paragraph()
+                p.add_run(f"URLs ({len(urls)}): ").bold = True
+                p.add_run(", ".join(urls[:80]))
+                if len(urls) > 80:
+                    p.add_run(f"  …and {len(urls) - 80} more").italic = True
+            kws = cat.get("keywords") or []
+            if kws:
+                p = doc.add_paragraph()
+                p.add_run(f"Keywords ({len(kws)}): ").bold = True
+                p.add_run(", ".join(str(k) for k in kws[:50]))
+        if len(cats) > 100:
+            doc.add_paragraph(f"…and {len(cats) - 100} more categories (see JSON export for the complete list).").runs[0].font.color.rgb = DIM
+
+    # ── Guidance ─────────────────────────────────────────────────
+    doc.add_heading("Guidance", level=1)
+    for g in (report.get("guidance") or []):
+        doc.add_paragraph(g, style="List Bullet")
+
+    doc.save(output_path)
+    return output_path

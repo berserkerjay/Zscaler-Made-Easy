@@ -455,12 +455,19 @@
               style="padding:0.1rem 0.5rem;font-size:0.72rem;display:inline;background:none;border:none;color:var(--accent);cursor:pointer;">help</button> for the command list ·
       <label style="display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer;margin-left:0.4rem;">
         <input type="checkbox" id="useLlmToggle" style="width:auto;cursor:pointer;"
-               aria-describedby="llmToggleNote">
-        <span>Use local LLM (Ollama)</span>
+               aria-describedby="llmStatusLine">
+        <span>Use local LLM</span>
       </label>
-      <span id="llmToggleNote" style="color:var(--warn);font-size:0.72rem;display:none;margin-left:0.4rem;">
-        ⚠ Loopback only — queries go to your local Ollama at 127.0.0.1:11434. Never sent to a cloud.
-      </span>
+      <select id="llmModelPicker" aria-label="Local LLM model"
+              style="margin-left:0.3rem;padding:0.1rem 0.3rem;font-size:0.72rem;background:rgba(15,23,42,0.7);border:1px solid var(--border);border-radius:4px;color:var(--text);display:none;">
+      </select>
+      <button type="button" onclick="refreshLlmStatus()" class="btn btn-ghost"
+              style="padding:0.1rem 0.4rem;font-size:0.72rem;margin-left:0.2rem;background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;"
+              aria-label="Re-check Ollama status">↻</button>
+    </div>
+    <div id="llmStatusLine" role="status" aria-live="polite"
+         style="font-size:0.72rem;color:var(--dim);max-width:720px;margin:0.25rem auto 0;">
+      <span>Checking for local Ollama...</span>
     </div>
     <!-- Prompt result / feedback banner -->
     <div id="promptResult" role="status" aria-live="polite"
@@ -481,6 +488,23 @@
   </div>
 
   <!-- Bypass inventory modal -->
+  <!-- Required API Access modal — rendered from /api/permissions/required -->
+  <div id="permissionsModal" role="dialog" aria-modal="true" aria-labelledby="permissionsModalTitle"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:960px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h2 id="permissionsModalTitle" style="margin:0;">
+          <span aria-hidden="true">🔑</span> Required API Access per Assessment Scope
+        </h2>
+        <button class="btn btn-ghost" onclick="closePermissionsModal()" aria-label="Close API access dialog"
+                style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <div id="permissionsContent" style="font-size:0.88rem;">
+        <div style="color:var(--dim);text-align:center;padding:1rem;">Loading…</div>
+      </div>
+    </div>
+  </div>
+
   <div id="bypassModal" role="dialog" aria-modal="true" aria-labelledby="bypassModalTitle" aria-describedby="bypassModalDesc" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
     <div style="max-width:1000px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
@@ -496,9 +520,10 @@
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
         <button class="btn btn-primary" id="bypassRunBtn" onclick="runBypassReport()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Generate Report</button>
         <span style="color:var(--dim);font-size:0.78rem;margin-right:0.5rem;">Export:</span>
-        <button class="btn btn-ghost" id="bypassExportCsv" onclick="exportBypass('csv')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📄 CSV</button>
-        <button class="btn btn-ghost" id="bypassExportMd"  onclick="exportBypass('markdown')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📝 Markdown</button>
-        <button class="btn btn-ghost" id="bypassExportJson" onclick="exportBypass('json')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">⚙ JSON</button>
+        <button class="btn btn-ghost" id="bypassExportCsv"  onclick="exportBypass('csv')"      disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📄 CSV</button>
+        <button class="btn btn-ghost" id="bypassExportMd"   onclick="exportBypass('markdown')" disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📝 Markdown</button>
+        <button class="btn btn-ghost" id="bypassExportDocx" onclick="exportBypass('docx')"     disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">📘 Word</button>
+        <button class="btn btn-ghost" id="bypassExportJson" onclick="exportBypass('json')"     disabled style="padding:0.55rem 0.9rem;font-size:0.82rem;">⚙ JSON</button>
       </div>
       <div id="bypassResult" style="font-size:0.88rem;"></div>
     </div>
@@ -632,7 +657,14 @@
         <div class="helper">From ZPA admin URL: /app/&lt;CUSTOMER_ID&gt;/dashboard</div>
       </div>
       <div class="field full">
-        <label>Assessment Scope <span class="required">*</span></label>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+          <label>Assessment Scope <span class="required">*</span></label>
+          <button type="button" onclick="openPermissionsModal()"
+                  aria-label="Show minimum API access required per scope"
+                  style="background:none;border:1px solid var(--accent);color:var(--accent);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;">
+            🔑 Required API Access
+          </button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
@@ -999,19 +1031,79 @@ fetch('/api/branding').then(r => r.json()).then(d => {
 // and the dispatch map is allowlisted client-side.
 // ══════════════════════════════════════════════════════════════════
 
-// Persist the LLM-toggle preference (session only — not a secret)
+// LLM toggle + status wiring
+let _llmStatus = {ollama_running: false, models: [], recommended_model: null};
+
 try {
   const saved = localStorage.getItem('zassess_use_llm');
-  if (saved === '1') {
-    document.getElementById('useLlmToggle').checked = true;
-    document.getElementById('llmToggleNote').style.display = 'inline';
-  }
+  if (saved === '1') document.getElementById('useLlmToggle').checked = true;
 } catch(e) {}
 
 document.getElementById('useLlmToggle')?.addEventListener('change', (e) => {
-  document.getElementById('llmToggleNote').style.display = e.target.checked ? 'inline' : 'none';
   try { localStorage.setItem('zassess_use_llm', e.target.checked ? '1' : '0'); } catch(e) {}
+  updateLlmUi();
 });
+
+document.getElementById('llmModelPicker')?.addEventListener('change', (e) => {
+  try { localStorage.setItem('zassess_llm_model', e.target.value || ''); } catch(e) {}
+});
+
+async function refreshLlmStatus() {
+  const line = document.getElementById('llmStatusLine');
+  line.innerHTML = '<span style="color:var(--dim);">⏳ Checking for local Ollama...</span>';
+  try {
+    const r = await fetch('/api/llm/status');
+    _llmStatus = await r.json();
+  } catch(e) {
+    _llmStatus = {ollama_running: false, models: [], error: String(e)};
+  }
+  updateLlmUi();
+}
+
+function updateLlmUi() {
+  const toggle = document.getElementById('useLlmToggle');
+  const line = document.getElementById('llmStatusLine');
+  const picker = document.getElementById('llmModelPicker');
+  const useLlm = toggle?.checked;
+
+  if (_llmStatus.ollama_running && _llmStatus.models?.length) {
+    // Populate picker
+    const saved = (() => { try { return localStorage.getItem('zassess_llm_model') || ''; } catch(e){ return '';}})();
+    const recommended = _llmStatus.recommended_model || _llmStatus.models[0];
+    picker.innerHTML = _llmStatus.models
+      .map(m => `<option value="${escapeHtml(m)}" ${m === (saved || recommended) ? 'selected' : ''}>${escapeHtml(m)}</option>`)
+      .join('');
+    picker.style.display = useLlm ? 'inline-block' : 'none';
+
+    line.innerHTML = useLlm
+      ? `<span style="color:var(--pass);">✓ Local LLM active — Ollama on 127.0.0.1:11434 · ${_llmStatus.models.length} model${_llmStatus.models.length===1?'':'s'} installed.</span> <span style="color:var(--dim);">Queries stay on this machine.</span>`
+      : `<span style="color:var(--dim);">Ollama detected (${_llmStatus.models.length} models). Tick the box to enable natural-language parsing.</span>`;
+  } else {
+    picker.style.display = 'none';
+    if (useLlm) {
+      // User wants it but Ollama isn't there — give them the install path
+      line.innerHTML = `
+        <span style="color:var(--warn);">⚠ Local LLM enabled but Ollama is not reachable at 127.0.0.1:11434.</span>
+        <span style="color:var(--dim);">Queries will fall back to the deterministic parser.</span>
+        <details style="display:inline-block;margin-left:0.3rem;">
+          <summary style="cursor:pointer;color:var(--accent);">How to install</summary>
+          <div style="margin-top:0.3rem;padding:0.4rem 0.5rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:4px;text-align:left;max-width:640px;">
+            <ol style="margin-left:1.2rem;font-size:0.75rem;line-height:1.6;">
+              <li>Download Ollama from <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">ollama.com/download</a> (Win/macOS/Linux, &lt;5 min).</li>
+              <li>Open a terminal and run: <code style="background:rgba(59,130,246,0.1);padding:0.1rem 0.35rem;border-radius:3px;">ollama pull llama3.2:3b</code> <span style="color:var(--dim);">(~2 GB, fastest option)</span></li>
+              <li>Click <strong>↻</strong> next to the toggle here to re-check.</li>
+            </ol>
+            <div style="color:var(--dim);font-size:0.72rem;margin-top:0.3rem;">Full guide: <code>LLM_SETUP.md</code> in the repo.</div>
+          </div>
+        </details>`;
+    } else {
+      line.innerHTML = '<span style="color:var(--dim);">Using deterministic parser. Tick the box to enable natural-language parsing (requires local Ollama).</span>';
+    }
+  }
+}
+
+// Kick off initial status check
+refreshLlmStatus();
 
 // Press "/" anywhere to focus the prompt (except inside form inputs)
 document.addEventListener('keydown', (e) => {
@@ -1037,6 +1129,14 @@ async function runPrompt(overrideText) {
   banner.style.borderLeft = '3px solid var(--accent)';
   banner.innerHTML = `<span style="color:var(--dim);">⏳ Parsing: "${escapeHtml(text)}"${useLlm ? ' <span style="color:var(--warn);">[local LLM]</span>' : ''}...</span>`;
 
+  // Resolve the selected model — picker value, localStorage, or the
+  // status-probe's recommended model, in that order.
+  let llmModel = document.getElementById('llmModelPicker')?.value;
+  if (!llmModel) {
+    try { llmModel = localStorage.getItem('zassess_llm_model'); } catch(e) {}
+  }
+  if (!llmModel) llmModel = _llmStatus?.recommended_model || 'llama3.2:3b';
+
   let parsed;
   try {
     const resp = await fetch('/api/commands/parse', {
@@ -1045,7 +1145,7 @@ async function runPrompt(overrideText) {
         text,
         use_llm: useLlm,
         llm_endpoint: 'http://localhost:11434/api/chat',
-        llm_model: 'llama3.1',
+        llm_model: llmModel,
         llm_kind: 'ollama',
       }),
     });
@@ -1648,6 +1748,9 @@ async function step3bDeleteAll(dryRun) {
     if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON Backup).\n\nThis cannot be undone via API. Continue?')) return;
   }
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step3b entry before re-running — keeps the pending
+  // banner accurate when the user re-runs the preview.
+  clearPendingAction('step3b');
   body.dry_run = dryRun;
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
@@ -1667,9 +1770,18 @@ async function step3bDeleteAll(dryRun) {
           <div class="activate-banner">
             <div style="color:#f59e0b;font-weight:600;">⚡ Review looks right? <span style="color:var(--dim);font-weight:400;">Click to delete all ${r.would_delete_count} rule(s) for real.</span></div>
             <button class="activate-btn" onclick="step3bDeleteAll(false)">⚠ Activate: Delete Now</button>
-          </div>` : ''}
+          </div>` : `
+          <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(16,185,129,0.06);border-left:3px solid var(--pass);border-radius:4px;font-size:0.8rem;color:var(--dim);">
+            Nothing to delete — your tenant has no Inline Web DLP rules matching this scope.
+          </div>`}
         ${updateActivationBanner() || ''}`;
-      registerPendingAction('step3b', `Delete ${r.would_delete_count} rule(s)`, () => step3bDeleteAll(false));
+      // Only register as a pending action if there's actually something
+      // to delete. An entry saying 'Delete 0 rule(s)' is pointless noise.
+      if (r.would_delete_count > 0) {
+        registerPendingAction('step3b', `Delete ${r.would_delete_count} rule(s)`, () => step3bDeleteAll(false));
+      } else {
+        clearPendingAction('step3b');
+      }
     } else if (r.status === 'blocked') {
       el.innerHTML = `<div style="color:var(--warn);font-weight:600;">Blocked.</div><div style="color:var(--dim);">${escapeHtml(r.reason || '')}</div>
         <div style="margin-top:0.4rem;padding:0.5rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.8rem;">
@@ -1731,18 +1843,44 @@ function updateActivationBanner() {
       `<li style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
         <code style="color:var(--dim);font-size:0.75rem;">${escapeHtml(key)}</code>
         <span style="flex:1;">${escapeHtml(v.label)}</span>
-        <button class="activate-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem;" onclick="(pendingActivations.get('${key}').activator)();">⚡ Activate</button>
+        <button class="activate-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem;" aria-label="Activate ${escapeHtml(v.label)}"
+                onclick="activatePending('${key}')">⚡ Activate</button>
+        <button class="btn btn-ghost" style="padding:0.25rem 0.55rem;font-size:0.75rem;border:1px solid var(--border);color:var(--dim);background:transparent;" aria-label="Dismiss ${escapeHtml(v.label)}"
+                onclick="clearPendingAction('${key}')">✕ Dismiss</button>
       </li>`).join('');
   banner.style.display = 'block';
   banner.innerHTML = `
     <div class="activate-banner" style="align-items:flex-start;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
         <div style="color:#f59e0b;font-weight:700;">⚡ ${pendingActivations.size} staged change${pendingActivations.size===1?'':'s'} awaiting activation</div>
-        <span style="color:var(--dim);font-size:0.75rem;">Review below or activate from the list.</span>
+        <button class="btn btn-ghost" onclick="clearAllPendingActions()" aria-label="Dismiss all staged changes"
+                style="padding:0.2rem 0.6rem;font-size:0.72rem;color:var(--dim);border:1px solid var(--border);background:transparent;">Dismiss all</button>
       </div>
       <ul style="list-style:none;padding:0;margin:0.4rem 0 0 0;width:100%;">${items}</ul>
     </div>`;
   return '';
+}
+
+// Safe-invoke wrapper — catches stale activators and reports cleanly
+function activatePending(key) {
+  const entry = pendingActivations.get(key);
+  if (!entry) {
+    updateActivationBanner();
+    return;
+  }
+  try {
+    entry.activator();
+  } catch (e) {
+    alert('Activation failed: ' + (e && e.message ? e.message : String(e)) +
+          '\n\nThe pending entry has been cleared. Re-run the step to try again.');
+    clearPendingAction(key);
+  }
+}
+
+function clearAllPendingActions() {
+  pendingActivations.clear();
+  updateActivationBanner();
+  announce('All pending activations dismissed');
 }
 
 // ── Step 4 — three-stage flow: Check → Enable (Dry-Run) → Activate ──
@@ -1751,6 +1889,10 @@ let _step4Plan = null;   // cached dry-run result for Activate to use
 
 async function step4Check() {
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step4 entry from the pending-activations banner —
+  // Check is a read-only stage, no activation is staged by it.
+  clearPendingAction('step4');
+  _step4Plan = null;
   body.dry_run = true;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">① Checking current state of Evaluate All Rules...</span>';
@@ -1776,6 +1918,9 @@ async function step4Check() {
 
 async function step4EnablePlan() {
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step4 entry before re-running — avoids duplicate
+  // 'Enable ... via API' rows piling up in the pending banner.
+  clearPendingAction('step4');
   body.dry_run = true;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">② Building enable plan (dry-run)...</span>';
@@ -1901,6 +2046,8 @@ async function step5Post(dryRun) {
     document.getElementById('migrateStatus').className='status-msg error'; return;
   }
   const body = migrateValidateCreds(); if (!body) return;
+  // Clear any stale step5 pending entry before re-running.
+  clearPendingAction('step5');
   body.proposed_rules = sourceRules;
   body.dry_run = !!dryRun;
   body.mode = document.getElementById('step5Mode').value || 'auto';
@@ -2591,8 +2738,108 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (document.getElementById('updateModal').style.display === 'block') closeUpdateModal();
     if (document.getElementById('bypassModal').style.display === 'block') closeBypassModal();
+    if (document.getElementById('permissionsModal').style.display === 'block') closePermissionsModal();
   }
 });
+
+// ── Required API Access modal ─────────────────────────────────────
+let _permissionsCache = null;
+
+async function openPermissionsModal() {
+  _lastFocus = document.activeElement;
+  const modal = document.getElementById('permissionsModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  announce('Required API Access dialog opened');
+  _focusFirstInModal(modal);
+
+  const host = document.getElementById('permissionsContent');
+  if (!_permissionsCache) {
+    host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading required permissions…</div>';
+    try {
+      const r = await fetch('/api/permissions/required');
+      _permissionsCache = await r.json();
+    } catch (e) {
+      host.innerHTML = '<div style="color:var(--fail);padding:1rem;">Failed to load: ' + escapeHtml(e.message) + '</div>';
+      return;
+    }
+  }
+  renderPermissions(_permissionsCache);
+}
+
+function closePermissionsModal() {
+  document.getElementById('permissionsModal').style.display = 'none';
+  document.body.style.overflow = '';
+  if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
+  announce('Dialog closed');
+}
+
+function renderPermissions(data) {
+  const scopes = data.scopes || {};
+  const notes  = data.global_notes || [];
+  const portal = data.portal_url || 'https://admin.zidentity.net/';
+
+  const notesHtml = `
+    <div style="padding:0.8rem 1rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.3);border-radius:8px;margin-bottom:1rem;">
+      <div style="font-weight:700;margin-bottom:0.4rem;">Before you start</div>
+      <ol style="margin-left:1.2rem;font-size:0.82rem;line-height:1.55;color:var(--dim);">
+        ${notes.map(n => `<li style="margin-bottom:0.3rem;">${escapeHtml(n)}</li>`).join('')}
+      </ol>
+      <div style="margin-top:0.5rem;font-size:0.82rem;">
+        <strong>ZIdentity admin portal:</strong>
+        <a href="${escapeHtml(portal)}" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);">${escapeHtml(portal)} ↗</a>
+      </div>
+    </div>`;
+
+  const cards = Object.entries(scopes).map(([key, s]) => {
+    const reads = (s.permissions_read || []).map(p =>
+      `<li style="margin-bottom:0.15rem;"><code style="background:rgba(59,130,246,0.08);padding:0.1rem 0.4rem;border-radius:3px;font-size:0.78rem;">${escapeHtml(p)}</code></li>`
+    ).join('');
+    const endpoints = (s.endpoints_used || []).map(e =>
+      `<code style="background:rgba(148,163,184,0.1);color:var(--dim);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.72rem;margin:0.1rem 0.15rem 0.1rem 0;display:inline-block;">${escapeHtml(e)}</code>`
+    ).join(' ');
+    const customerIdNote = s.customer_id_needed
+      ? `<div style="margin-top:0.4rem;padding:0.4rem 0.55rem;background:rgba(245,158,11,0.08);border-left:3px solid var(--warn);border-radius:4px;font-size:0.78rem;">
+           <strong>⚠ Customer ID required</strong>${s.customer_id_note ? ' — ' + escapeHtml(s.customer_id_note) : ''}
+         </div>`
+      : '';
+    const noteBlock = s.note
+      ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--dim);"><em>${escapeHtml(s.note)}</em></div>`
+      : '';
+
+    return `
+      <details open style="margin-bottom:0.6rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:8px;">
+        <summary style="padding:0.7rem 0.9rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <div>
+            <strong>${escapeHtml(s.label || key)}</strong>
+            <span style="color:var(--dim);font-size:0.78rem;margin-left:0.4rem;">· ${escapeHtml(s.service || '')}</span>
+          </div>
+          <code style="color:var(--accent);font-size:0.75rem;">scope=${escapeHtml(key)}</code>
+        </summary>
+        <div style="padding:0 0.9rem 0.9rem;">
+          <div style="color:var(--dim);font-size:0.82rem;margin-bottom:0.5rem;">${escapeHtml(s.description || '')}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+            <div>
+              <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">Minimum READ permissions</div>
+              <ul style="list-style:none;padding:0;margin:0;font-size:0.82rem;">${reads || '<li style="color:var(--dim);">(none specific)</li>'}</ul>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.3rem;">Endpoints used by the checks</div>
+              <div style="max-height:160px;overflow-y:auto;line-height:1.7;">${endpoints || '<span style="color:var(--dim);font-size:0.78rem;">(composite — no direct endpoints)</span>'}</div>
+            </div>
+          </div>
+          <div style="margin-top:0.5rem;font-size:0.8rem;">
+            <strong>License / subscription:</strong> <span style="color:var(--dim);">${escapeHtml(s.license_required || '—')}</span>
+          </div>
+          ${customerIdNote}
+          ${noteBlock}
+        </div>
+      </details>`;
+  }).join('');
+
+  document.getElementById('permissionsContent').innerHTML = notesHtml + cards;
+}
 
 // ══════════════════════════════════════════════════════════════════
 // Bypass / Non-Inspected Traffic Inventory
@@ -2626,14 +2873,14 @@ async function runBypassReport() {
   const originalBtnText = btn.textContent;
   btn.textContent = 'Generating...';
   r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">⏳ Querying ZIA + ZCC endpoints in parallel — this takes 5–15 seconds on a normal tenant.</div>';
-  ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
+  ['bypassExportCsv','bypassExportMd','bypassExportDocx','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
   try {
     const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     _bypassReportCache = data;
     renderBypassReport(data);
-    ['bypassExportCsv','bypassExportMd','bypassExportJson'].forEach(id => document.getElementById(id).disabled = false);
+    ['bypassExportCsv','bypassExportMd','bypassExportDocx','bypassExportJson'].forEach(id => document.getElementById(id).disabled = false);
   } catch(e) {
     r.innerHTML = `<div style="color:var(--fail);padding:1rem;">Report failed: ${escapeHtml(e.message)}</div>`;
   } finally {
@@ -2649,7 +2896,8 @@ async function exportBypass(fmt) {
     const resp = await fetch('/api/report/bypass/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const blob = await resp.blob();
-    const ext = fmt === 'markdown' ? 'md' : fmt;
+    const extMap = {markdown: 'md', docx: 'docx', word: 'docx', doc: 'docx', csv: 'csv', json: 'json'};
+    const ext = extMap[fmt] || fmt;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `zscaler_bypass_${new Date().toISOString().slice(0,10)}.${ext}`;

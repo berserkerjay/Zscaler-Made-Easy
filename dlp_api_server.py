@@ -212,6 +212,50 @@ class CommandParseRequest(BaseModel):
     llm_kind: str = "ollama"   # "ollama" | "openai"
 
 
+@app.get("/api/permissions/required")
+async def permissions_required():
+    """Return the minimum OneAPI role permissions required per scope.
+    Read-only; no tenant data involved. Used by the GUI's 'Required
+    API Access' quick-link modal so users can set up the API role
+    correctly before running an assessment."""
+    try:
+        from scope_permissions import get_all_permissions
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"scope_permissions unavailable: {e}")
+    return get_all_permissions()
+
+
+@app.get("/api/llm/status")
+async def llm_status():
+    """Probe the local Ollama instance. Reports whether it's running
+    and which models are available so the GUI can pre-fill the picker.
+    Loopback-only — calls 127.0.0.1:11434 directly."""
+    import requests
+    try:
+        r = requests.get("http://127.0.0.1:11434/api/tags", timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+            return {
+                "ollama_running": True,
+                "models": models,
+                "model_count": len(models),
+                "recommended_model": next(
+                    (m for m in models if m.startswith(("llama3.1", "llama3.2", "qwen2.5", "phi3"))),
+                    (models[0] if models else None),
+                ),
+                "endpoint": "http://127.0.0.1:11434/api/chat",
+            }
+    except Exception as e:
+        return {
+            "ollama_running": False,
+            "models": [],
+            "error": f"{type(e).__name__}: {str(e)[:100]}",
+            "hint": "Install Ollama from https://ollama.com/download, then `ollama pull llama3.2:3b`.",
+        }
+    return {"ollama_running": False, "models": []}
+
+
 @app.get("/api/commands")
 async def commands_catalog():
     """Return the list of supported commands so the GUI can render
@@ -988,23 +1032,23 @@ async def report_bypass(req: MigrateRequest):
 
 
 class BypassExportRequest(MigrateRequest):
-    format: str = "csv"  # csv | markdown | json
+    format: str = "csv"  # csv | markdown | json | docx
 
 
 @app.post("/api/report/bypass/export")
 async def report_bypass_export(req: BypassExportRequest):
-    """Generate and download the bypass report in csv / markdown / json."""
+    """Generate and download the bypass report in csv / markdown / json / docx."""
     try:
         from bypass_report import generate_bypass_report, to_csv, to_markdown
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
     fmt = (req.format or "csv").lower()
-    if fmt not in ("csv", "markdown", "md", "json"):
+    if fmt not in ("csv", "markdown", "md", "json", "docx", "word", "doc"):
         raise HTTPException(status_code=400, detail=f"Unsupported format: {req.format}")
     client = await asyncio.to_thread(_build_client, req)
     report = await asyncio.to_thread(generate_bypass_report, client)
 
-    from fastapi.responses import Response
+    from fastapi.responses import Response, FileResponse
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     if fmt == "csv":
         return Response(
@@ -1017,6 +1061,23 @@ async def report_bypass_export(req: BypassExportRequest):
             content=to_markdown(report),
             media_type="text/markdown",
             headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.md"},
+        )
+    if fmt in ("docx", "word", "doc"):
+        try:
+            from bypass_report import to_docx
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
+        output_path = os.path.join(tempfile.gettempdir(), f"zscaler_bypass_{ts}.docx")
+        try:
+            await asyncio.to_thread(to_docx, report, output_path)
+        except ImportError as e:
+            raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
+        return FileResponse(
+            output_path,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=f"zscaler_bypass_{ts}.docx",
         )
     # json
     return Response(
