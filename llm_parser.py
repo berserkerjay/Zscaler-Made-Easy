@@ -54,23 +54,43 @@ from urllib.parse import urlparse
 from commands import parse as deterministic_parse, ParseResult, COMMAND_CATALOG
 
 
-# Loopback allowlist — REQUIRED for any LLM endpoint
+# Loopback allowlist — REQUIRED for any local LLM endpoint
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 
+# Remote-endpoint allowlist for supported cloud providers. Expanding this
+# list is a deliberate act — it is the ONLY way this module will make a
+# non-loopback request, and it's scoped by the caller's `kind` argument
+# so a misconfigured local Ollama request can't accidentally egress.
+_REMOTE_HOSTS_BY_KIND = {
+    "anthropic": {"api.anthropic.com"},
+}
+
 # Hard caps
-LLM_TIMEOUT_SEC = 10
-LLM_MAX_RESPONSE_BYTES = 2048
+LLM_TIMEOUT_SEC = 15
+LLM_MAX_RESPONSE_BYTES = 4096
 
 
-def _is_loopback(url: str) -> bool:
+def _is_allowed_endpoint(url: str, kind: str) -> bool:
+    """
+    Local kinds (ollama / openai) require loopback host.
+    Named cloud kinds (anthropic) allow ONLY their documented host.
+    """
     try:
         p = urlparse(url)
         if p.scheme not in ("http", "https"):
             return False
         host = (p.hostname or "").lower()
-        return host in _LOOPBACK_HOSTS
     except Exception:
         return False
+    if host in _LOOPBACK_HOSTS:
+        return True
+    allowed = _REMOTE_HOSTS_BY_KIND.get(kind, set())
+    return host in allowed
+
+
+# Backwards-compat shim — existing callers still use _is_loopback()
+def _is_loopback(url: str) -> bool:
+    return _is_allowed_endpoint(url, kind="ollama")
 
 
 def _build_system_prompt() -> str:
@@ -116,6 +136,38 @@ def _call_ollama(endpoint: str, model: str, system: str, user: str) -> Optional[
     r.raise_for_status()
     data = r.json()
     msg = (data.get("message") or {}).get("content")
+    if not msg:
+        return None
+    return msg[:LLM_MAX_RESPONSE_BYTES]
+
+
+def _call_anthropic(endpoint: str, model: str, system: str, user: str, api_key: str) -> Optional[str]:
+    """Call Anthropic's Messages API. Requires an API key.
+    Endpoint defaults to https://api.anthropic.com/v1/messages.
+    Strict allowlist: only api.anthropic.com is reachable from this code path."""
+    import requests
+    if not api_key:
+        raise RuntimeError("Anthropic API key is required for kind='anthropic'.")
+    body = {
+        "model": model,
+        "max_tokens": 600,
+        "system": system,
+        "messages": [
+            {"role": "user", "content": user},
+        ],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    r = requests.post(endpoint, json=body, headers=headers, timeout=LLM_TIMEOUT_SEC)
+    r.raise_for_status()
+    data = r.json()
+    # content is a list of blocks: [{type: "text", text: "..."}]
+    parts = data.get("content") or []
+    text_parts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+    msg = "".join(text_parts).strip()
     if not msg:
         return None
     return msg[:LLM_MAX_RESPONSE_BYTES]
@@ -221,17 +273,22 @@ def parse_with_llm(
     endpoint: str,
     model: str = "llama3.1",
     kind: str = "ollama",
+    api_key: str = "",
 ) -> ParseResult:
     """
-    Parse a user query via a local LLM, with strict fallback to the
+    Parse a user query via an LLM, with strict fallback to the
     deterministic parser on any failure.
 
     Args:
       user_input: the user's query text (already length-capped upstream)
-      endpoint:   URL of the LOCAL LLM server (must be loopback)
-      model:      model name known to that server (e.g. "llama3.1", "phi3")
-      kind:       "ollama" for Ollama's /api/chat; "openai" for
-                  OpenAI-compatible /v1/chat/completions endpoints
+      endpoint:   URL of the LLM server. For kind=ollama/openai it MUST
+                  be loopback. For kind=anthropic it MUST be
+                  api.anthropic.com.
+      model:      model name (e.g. "llama3.1", "claude-sonnet-4-6").
+      kind:       "ollama" — local Ollama /api/chat
+                  "openai" — local OpenAI-compatible /v1/chat/completions
+                  "anthropic" — Anthropic Messages API (cloud, requires key)
+      api_key:    required for kind=anthropic; ignored otherwise.
 
     Returns:
       commands.ParseResult — same shape as commands.parse().
@@ -241,10 +298,17 @@ def parse_with_llm(
     # Always start with the deterministic parse as a safety net
     fallback = deterministic_parse(original)
 
-    # Loopback enforcement — refuse anything that could egress
-    if not _is_loopback(endpoint):
+    # Endpoint allowlist enforcement — refuse anything that could egress
+    # to an unintended host. The check is kind-aware: local kinds must be
+    # loopback; named cloud kinds (anthropic) must hit their documented host.
+    if not _is_allowed_endpoint(endpoint, kind):
+        kind_help = {
+            "ollama":    "must be loopback (127.0.0.1 / localhost)",
+            "openai":    "must be loopback (127.0.0.1 / localhost)",
+            "anthropic": "must be api.anthropic.com",
+        }.get(kind, "endpoint not in any allowlist for this kind")
         fallback.suggestion = (
-            "LLM endpoint refused: must be on loopback (127.0.0.1 / localhost). "
+            f"LLM endpoint refused for kind='{kind}': {kind_help}. "
             "Falling back to the deterministic parser."
         )
         return fallback
@@ -254,11 +318,14 @@ def parse_with_llm(
     try:
         if kind == "ollama":
             raw = _call_ollama(endpoint, model, system, original[:500])
+        elif kind == "anthropic":
+            raw = _call_anthropic(endpoint, model, system, original[:500], api_key)
         else:
             raw = _call_openai_compatible(endpoint, model, system, original[:500])
     except Exception as e:
+        kind_label = "Anthropic API" if kind == "anthropic" else "Local LLM"
         fallback.suggestion = (
-            f"Local LLM unreachable ({type(e).__name__}: {str(e)[:120]}). "
+            f"{kind_label} unreachable ({type(e).__name__}: {str(e)[:120]}). "
             "Used the deterministic parser instead."
         )
         return fallback
