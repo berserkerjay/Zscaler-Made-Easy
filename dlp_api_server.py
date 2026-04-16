@@ -1051,6 +1051,40 @@ async def dlp_efficacy(req: MigrateRequest):
     return await asyncio.to_thread(analyze, client)
 
 
+class DlpEfficacyExportRequest(MigrateRequest):
+    # csv | json | markdown | docx
+    format: str = "csv"
+
+
+@app.post("/api/dlp/efficacy/export")
+async def dlp_efficacy_export(req: DlpEfficacyExportRequest):
+    """Run the efficacy analysis and return it as a downloadable file.
+
+    Formats: csv (Excel-friendly flat table), json (full nuance graph),
+    markdown (pasteable report), docx (reviewer-friendly Word doc with
+    color-coded FP risk bands).
+    """
+    try:
+        from dlp_efficacy import analyze, export
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    analysis = await asyncio.to_thread(analyze, client)
+    try:
+        body, mime, filename = await asyncio.to_thread(export, analysis, req.format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        # python-docx missing, etc.
+        raise HTTPException(status_code=501, detail=str(e))
+    from fastapi.responses import Response
+    return Response(
+        content=body,
+        media_type=mime,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.post("/api/dlp/efficacy/test")
 async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
     """Test a user-supplied text sample against every custom

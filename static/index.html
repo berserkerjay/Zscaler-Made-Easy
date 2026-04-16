@@ -4217,29 +4217,66 @@ function toggleDlpEffCorpus() {
   if (p.style.display === 'block') document.getElementById('dlpEffCorpus').focus();
 }
 
-function _effGradeColor(grade) {
-  return ({A:'#4ade80', B:'#a3e635', C:'#facc15', D:'#fb923c', F:'#f87171'})[grade] || 'var(--dim)';
-}
 function _effEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// Color for the FP risk band — intentionally different from the
+// old letter-grade palette so stale screenshots don't confuse.
+function _effFpColor(band) {
+  return ({
+    'Low':      '#16a34a',   // green — precision is high
+    'Medium':   '#f59e0b',   // amber — some noise expected
+    'High':     '#f97316',   // orange — meaningful noise
+    'Critical': '#dc2626',   // red — flooding incidents
+  })[band] || 'var(--dim)';
+}
+// TP% chip color mirrors FP band: fewer noisy fires = greener chip.
+function _effTpColor(tp) {
+  if (tp == null) return 'var(--dim)';
+  if (tp >= 85) return '#16a34a';
+  if (tp >= 65) return '#65a30d';
+  if (tp >= 45) return '#f59e0b';
+  if (tp >= 25) return '#f97316';
+  return '#dc2626';
+}
+
 // Render one scored item (dictionary or engine) as a collapsible
-// <details> block — summary row shows grade chip + name + score;
-// body shows reasons + remediation + raw metadata.
+// <details> block — summary row leads with TP% and FP-risk band,
+// body shows nuances (signed TP/FP drivers), findings, remediation.
 function _renderEffItem(item, kind) {
-  const color = _effGradeColor(item.grade);
+  const tp = item.tp_estimate;
+  const fp = item.fp_risk || '—';
+  const tpColor = _effTpColor(tp);
+  const fpColor = _effFpColor(fp);
+
   const metaBits = [];
   if (kind === 'dict') {
     metaBits.push(`${item.phrases||0} phrase${item.phrases===1?'':'s'}`);
     metaBits.push(`${item.patterns||0} pattern${item.patterns===1?'':'s'}`);
     if (item.min_match_count) metaBits.push(`min match ${item.min_match_count}`);
+    if (item.has_edm) metaBits.push('EDM');
+    if (item.has_idm) metaBits.push('IDM');
   } else {
     metaBits.push(`${item.dictionary_count||0} dict ref${item.dictionary_count===1?'':'s'}`);
     if (item.expression) metaBits.push('has expression');
   }
-  if (item.orphan_engine) metaBits.push('⚠ orphan (no engine uses it)');
-  if (item.orphan_rule)   metaBits.push('⚠ orphan (no rule uses it)');
+  if (item.orphan_engine) metaBits.push('⚠ no engine uses it');
+  if (item.orphan_rule)   metaBits.push('⚠ no rule uses it');
+
+  const nuanceRows = (item.nuances || []).map(n => {
+    const sign = n.direction === 'tp' ? '+' : '−';
+    const chipColor = n.direction === 'tp' ? '#16a34a' : '#dc2626';
+    const delta = Math.abs(n.delta_pct || 0);
+    return `
+      <li style="margin:0.25rem 0;list-style:none;display:flex;gap:0.5rem;align-items:flex-start;">
+        <span style="flex:0 0 auto;background:${chipColor};color:#fff;padding:0.05rem 0.4rem;border-radius:4px;font-size:0.72rem;font-weight:700;font-family:monospace;">${sign}${delta}pp</span>
+        <span style="flex:1 1 auto;">
+          <span style="font-weight:600;color:var(--fg);">${_effEsc(n.driver||'')}</span>
+          <span style="color:var(--dim);"> — ${_effEsc(n.explanation||'')}</span>
+        </span>
+      </li>`;
+  }).join('');
 
   const reasons = (item.reasons||[]).map(r => `<li>${_effEsc(r)}</li>`).join('');
   const remediation = (item.remediation||[]).map(r => `<li>${_effEsc(r)}</li>`).join('');
@@ -4247,13 +4284,21 @@ function _renderEffItem(item, kind) {
   return `
     <details style="border:1px solid var(--border);border-radius:6px;margin:0.3rem 0;background:var(--bg);">
       <summary style="cursor:pointer;padding:0.5rem 0.7rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-        <span style="background:${color};color:#0b1220;padding:0.1rem 0.45rem;border-radius:4px;font-weight:700;font-size:0.8rem;min-width:1.5rem;text-align:center;">${_effEsc(item.grade)}</span>
+        <span title="True-positive probability estimate"
+              style="background:${tpColor};color:#0b1220;padding:0.15rem 0.55rem;border-radius:4px;font-weight:700;font-size:0.82rem;font-family:monospace;min-width:3.2rem;text-align:center;">
+          TP ${tp == null ? '—' : tp + '%'}
+        </span>
+        <span title="False-positive risk band"
+              style="border:1px solid ${fpColor};color:${fpColor};padding:0.1rem 0.45rem;border-radius:4px;font-size:0.75rem;font-weight:600;">
+          FP: ${_effEsc(fp)}
+        </span>
         <span style="font-weight:600;">${_effEsc(item.name)}</span>
-        <span style="color:var(--dim);font-size:0.78rem;">score ${item.score}/100</span>
-        <span style="color:var(--dim);font-size:0.78rem;">· ${_effEsc(metaBits.join(' · '))}</span>
+        <span style="color:var(--dim);font-size:0.76rem;">health ${item.score}/100</span>
+        <span style="color:var(--dim);font-size:0.76rem;">· ${_effEsc(metaBits.join(' · '))}</span>
         <span style="margin-left:auto;padding:0.08rem 0.4rem;border:1px solid var(--border);border-radius:4px;font-size:0.7rem;color:var(--dim);">${_effEsc(item.type)}</span>
       </summary>
       <div style="padding:0.5rem 0.9rem 0.8rem;font-size:0.82rem;">
+        ${nuanceRows ? `<div style="margin-bottom:0.5rem;"><strong>Nuances driving the score:</strong><ul style="margin:0.2rem 0 0 0;padding:0;">${nuanceRows}</ul></div>` : ''}
         ${reasons ? `<div style="margin-bottom:0.4rem;"><strong>Findings:</strong><ul style="margin:0.2rem 0 0 1.2rem;padding:0;">${reasons}</ul></div>` : ''}
         ${remediation ? `<div style="margin-bottom:0.3rem;"><strong>Remediation:</strong><ul style="margin:0.2rem 0 0 1.2rem;padding:0;">${remediation}</ul></div>` : ''}
         ${kind === 'engine' && item.expression ? `<div style="color:var(--dim);font-family:monospace;font-size:0.78rem;">expr: ${_effEsc(item.expression)}</div>` : ''}
@@ -4264,11 +4309,12 @@ function _renderEffItem(item, kind) {
 function _renderDlpEfficacy(data) {
   if (!data || !data.counts) return '<div style="color:var(--dim);">No data returned.</div>';
   const c = data.counts, a = data.averages || {}, o = data.orphans || {};
+  const dist = data.fp_risk_distribution || {};
   const dictSec = (data.dictionaries || []).map(d => _renderEffItem(d, 'dict')).join('');
   const engSec  = (data.engines || []).map(e => _renderEffItem(e, 'engine')).join('');
 
-  const avgDict = a.custom_dictionary_efficacy == null ? '—' : `${a.custom_dictionary_efficacy}/100`;
-  const avgEng  = a.custom_engine_efficacy == null    ? '—' : `${a.custom_engine_efficacy}/100`;
+  const avgDictTp = a.custom_dictionary_tp_pct == null ? '—' : `${a.custom_dictionary_tp_pct}%`;
+  const avgEngTp  = a.custom_engine_tp_pct == null    ? '—' : `${a.custom_engine_tp_pct}%`;
 
   const orphanBlock = (title, list) => {
     if (!list || !list.length) return '';
@@ -4281,6 +4327,16 @@ function _renderDlpEfficacy(data) {
           ${list.map(n => `<li>${_effEsc(n)}</li>`).join('')}
         </ul>
       </details>`;
+  };
+
+  const distRow = (label, vals) => {
+    const bands = ['Low','Medium','High','Critical'];
+    const chips = bands.map(b => {
+      const n = (vals && vals[b]) || 0;
+      const color = _effFpColor(b);
+      return `<span title="${b} FP risk" style="display:inline-block;padding:0.1rem 0.5rem;margin:0.1rem 0.25rem 0.1rem 0;border:1px solid ${color};color:${color};border-radius:4px;font-size:0.75rem;font-weight:600;">${b}: ${n}</span>`;
+    }).join('');
+    return `<div style="font-size:0.82rem;"><strong>${label}:</strong> ${chips}</div>`;
   };
 
   return `
@@ -4296,17 +4352,32 @@ function _renderDlpEfficacy(data) {
         <div style="color:var(--dim);font-size:0.72rem;">custom / total</div>
       </div>
       <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg Dict Score</div>
-        <div style="font-size:1.2rem;font-weight:700;">${_effEsc(avgDict)}</div>
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg TP% (dict)</div>
+        <div style="font-size:1.2rem;font-weight:700;color:${_effTpColor(a.custom_dictionary_tp_pct)};">${_effEsc(avgDictTp)}</div>
       </div>
       <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg Engine Score</div>
-        <div style="font-size:1.2rem;font-weight:700;">${_effEsc(avgEng)}</div>
+        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg TP% (engine)</div>
+        <div style="font-size:1.2rem;font-weight:700;color:${_effTpColor(a.custom_engine_tp_pct)};">${_effEsc(avgEngTp)}</div>
       </div>
       <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
         <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">DLP Rules</div>
         <div style="font-size:1.2rem;font-weight:700;">${c.rules}</div>
       </div>
+    </div>
+
+    <div style="padding:0.6rem 0.8rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:0.8rem;">
+      <div style="font-size:0.82rem;margin-bottom:0.3rem;"><strong>🎯 FP risk distribution (custom items)</strong></div>
+      ${distRow('Dictionaries', dist.dictionaries)}
+      ${distRow('Engines', dist.engines)}
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.8rem;align-items:center;">
+      <span style="color:var(--dim);font-size:0.78rem;margin-right:0.3rem;">Export:</span>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('csv')"      style="padding:0.4rem 0.8rem;font-size:0.78rem;">📄 CSV</button>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('markdown')" style="padding:0.4rem 0.8rem;font-size:0.78rem;">📝 Markdown</button>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('docx')"     style="padding:0.4rem 0.8rem;font-size:0.78rem;">📘 Word</button>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('json')"     style="padding:0.4rem 0.8rem;font-size:0.78rem;">⚙ JSON</button>
+      <span id="dlpEffExportStatus" style="color:var(--dim);font-size:0.75rem;margin-left:0.4rem;"></span>
     </div>
 
     <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.6rem;">
@@ -4355,6 +4426,44 @@ async function runDlpEfficacy() {
     r.innerHTML = `<div style="color:var(--bad);padding:0.8rem;">Failed: ${_effEsc(e.message || e)}</div>`;
   } finally {
     btn.disabled = false; btn.textContent = originalBtnText;
+  }
+}
+
+// Download the efficacy analysis in the requested format. The server
+// re-runs the analysis (rather than accepting a client-side blob) so
+// the export is always based on the live tenant state, not a stale
+// cached view the user might be looking at.
+async function exportDlpEfficacy(fmt) {
+  const body = migrateValidateCreds(); if (!body) return;
+  const status = document.getElementById('dlpEffExportStatus');
+  if (status) status.textContent = 'Preparing ' + fmt + '...';
+  try {
+    const resp = await fetch('/api/dlp/efficacy/export', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({...body, format: fmt}),
+    });
+    if (!resp.ok) {
+      let msg = 'HTTP ' + resp.status;
+      try { const j = await resp.json(); if (j && j.detail) msg = j.detail; } catch (_) {}
+      if (status) status.textContent = 'Export failed: ' + msg;
+      return;
+    }
+    const blob = await resp.blob();
+    // Filename from Content-Disposition if present, else a sensible default
+    let filename = 'dlp_efficacy.' + (fmt === 'markdown' ? 'md' : fmt);
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="([^"]+)"/);
+    if (m) filename = m[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    if (status) status.textContent = 'Downloaded ' + filename;
+    announce('Downloaded ' + filename);
+  } catch (e) {
+    if (status) status.textContent = 'Export failed: ' + (e.message || e);
   }
 }
 
