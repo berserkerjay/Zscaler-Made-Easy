@@ -170,6 +170,71 @@ SOURCES: List[Dict[str, Any]] = [
         "why": "AWS prescriptive-guidance write-ups for ZPA-on-AWS connector placement.",
     },
 
+    # ─── Tier 2 Authoritative — Ecosystem partners (SIEM / EDR / IdP)
+    {
+        "id": "splunk_lantern",
+        "name": "Splunk Lantern — Zscaler Recipes",
+        "host": "lantern.splunk.com",
+        "tier": "authoritative",
+        "credibility": TIER_AUTHORITATIVE,
+        "crawlable": True,
+        "seeds": [
+            "https://lantern.splunk.com/Search?q=zscaler",
+        ],
+        "article_patterns": ["zscaler"],
+        "why": "Splunk-authored use-case recipes for ingesting/searching ZIA + ZPA logs in Splunk ES.",
+    },
+    {
+        "id": "splunkbase",
+        "name": "Splunkbase — Zscaler Apps & TAs",
+        "host": "splunkbase.splunk.com",
+        "tier": "authoritative",
+        "credibility": TIER_AUTHORITATIVE,
+        "crawlable": False,  # Splunkbase is heavily JS-rendered; use curated entries.
+        "seeds": ["https://splunkbase.splunk.com/apps?keyword=zscaler"],
+        "article_patterns": [],
+        "why": "Official Splunk/Zscaler apps: CIM-compliant add-ons that define the canonical data model for Zscaler logs.",
+    },
+    {
+        "id": "crowdstrike_integrations",
+        "name": "CrowdStrike Marketplace — Zscaler Integrations",
+        "host": "www.crowdstrike.com",
+        "tier": "authoritative",
+        "credibility": TIER_AUTHORITATIVE,
+        "crawlable": True,
+        "seeds": [
+            "https://www.crowdstrike.com/partners/zscaler/",
+        ],
+        "article_patterns": ["zscaler"],
+        "why": "CrowdStrike-authored write-ups on Falcon + ZPA posture integration and ZIA + Falcon telemetry sharing.",
+    },
+    {
+        "id": "okta_help",
+        "name": "Okta Help — Zscaler Integrations",
+        "host": "help.okta.com",
+        "tier": "authoritative",
+        "credibility": TIER_AUTHORITATIVE,
+        "crawlable": True,
+        "seeds": [
+            "https://help.okta.com/oie/en-us/content/topics/apps/apps-overview-get-started.htm",
+        ],
+        "article_patterns": ["zscaler"],
+        "why": "Okta-authored SSO + SCIM provisioning guides for ZIA and ZPA (the second most common IdP pairing after Entra).",
+    },
+    {
+        "id": "ping_docs",
+        "name": "Ping Identity Docs — Zscaler SSO",
+        "host": "docs.pingidentity.com",
+        "tier": "authoritative",
+        "credibility": TIER_AUTHORITATIVE,
+        "crawlable": True,
+        "seeds": [
+            "https://docs.pingidentity.com/",
+        ],
+        "article_patterns": ["zscaler"],
+        "why": "PingFederate / PingOne SSO integration guides for ZIA and ZPA.",
+    },
+
     # ─── Tier 3: Community knowledge ────────────────────────────────
     {
         "id": "zscaler_community",

@@ -139,6 +139,13 @@ ALLOWED_HOSTS = {
     "docs.aws.amazon.com",
     "cloud.google.com",
     "registry.terraform.io",
+    # Ecosystem partners — SIEM / EDR / IdP integrations (Tier 2)
+    "lantern.splunk.com",
+    "splunkbase.splunk.com",
+    "docs.splunk.com",
+    "www.crowdstrike.com",
+    "help.okta.com",
+    "docs.pingidentity.com",
     # SDK release metadata
     "pypi.org",
 }

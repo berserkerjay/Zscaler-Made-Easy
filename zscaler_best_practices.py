@@ -354,6 +354,84 @@ BEST_PRACTICES: List[Dict[str, Any]] = [
         "source": "aws_docs",
     },
 
+    # ─── Tier 2 Authoritative — SIEM (Splunk) ───────────────────
+    {
+        "key": "splunk_zia_nss_deployment",
+        "service": "ZIA",
+        "title": "Best Practices for ZIA NSS + Splunk Deployment",
+        "url": "https://help.zscaler.com/zia/best-practices-deploying-nss-servers",
+        "topics": ["zia", "nss", "splunk", "siem", "logs"],
+        "source": "help_zscaler",
+    },
+    {
+        "key": "splunkbase_zscaler_ta",
+        "service": "ZIA",
+        "title": "Zscaler Technology Add-On for Splunk (Splunkbase)",
+        "url": "https://splunkbase.splunk.com/app/3866",
+        "topics": ["splunk", "siem", "cim", "logs", "zia", "zpa"],
+        "source": "splunkbase",
+    },
+    {
+        "key": "splunkbase_zscaler_app",
+        "service": "ZIA",
+        "title": "Zscaler App for Splunk (dashboards + ES content)",
+        "url": "https://splunkbase.splunk.com/app/3719",
+        "topics": ["splunk", "dashboard", "es", "zia"],
+        "source": "splunkbase",
+    },
+    {
+        "key": "splunk_lantern_zscaler",
+        "service": "Other",
+        "title": "Splunk Lantern — Zscaler use-case recipes",
+        "url": "https://lantern.splunk.com/Search?q=zscaler",
+        "topics": ["splunk", "lantern", "recipes", "siem"],
+        "source": "splunk_lantern",
+    },
+
+    # ─── Tier 2 Authoritative — EDR (CrowdStrike) ───────────────
+    {
+        "key": "cs_zscaler_partner",
+        "service": "ZPA",
+        "title": "CrowdStrike + Zscaler Partner Integration Overview",
+        "url": "https://www.crowdstrike.com/partners/zscaler/",
+        "topics": ["crowdstrike", "falcon", "edr", "zpa", "zia"],
+        "source": "crowdstrike_integrations",
+    },
+    {
+        "key": "zs_crowdstrike_ztna",
+        "service": "ZPA",
+        "title": "ZPA + CrowdStrike Falcon ZTA (device-posture integration)",
+        "url": "https://help.zscaler.com/zpa/integration-guide-crowdstrike",
+        "topics": ["zpa", "crowdstrike", "ztna", "posture", "device_trust"],
+        "source": "help_zscaler",
+    },
+
+    # ─── Tier 2 Authoritative — IdP (Okta, Ping) ────────────────
+    {
+        "key": "okta_zpa_sso",
+        "service": "ZPA",
+        "title": "Okta SSO + SCIM Integration with Zscaler Private Access",
+        "url": "https://help.zscaler.com/zpa/configuring-idp-okta",
+        "topics": ["zpa", "okta", "sso", "saml", "scim", "idp"],
+        "source": "help_zscaler",
+    },
+    {
+        "key": "okta_zia_sso",
+        "service": "ZIA",
+        "title": "Okta SSO Integration with Zscaler Internet Access",
+        "url": "https://help.zscaler.com/zia/configuring-okta-idp-sso-zscaler",
+        "topics": ["zia", "okta", "sso", "saml", "idp"],
+        "source": "help_zscaler",
+    },
+    {
+        "key": "ping_zpa_sso",
+        "service": "ZPA",
+        "title": "PingFederate SSO Integration with ZPA",
+        "url": "https://help.zscaler.com/zpa/configuring-pingfederate-idp",
+        "topics": ["zpa", "ping", "pingfederate", "sso", "saml", "idp"],
+        "source": "help_zscaler",
+    },
+
     # ─── Tier 3 Community — Zscaler Community ───────────────────
     {
         "key": "community_best_practices",
