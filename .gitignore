@@ -24,3 +24,6 @@ tenant_config.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local run artifacts
+*.log
