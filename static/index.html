@@ -252,9 +252,9 @@
   .card h2 { font-size: 1.4rem; margin-bottom: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
   .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--dim); font-weight: 500; }
 
-  /* Collapsible card sections — every .card top-level h2/h3 gets a
-     click-to-collapse twisty attached at runtime by _initCollapsibleCards().
-     Persisted per heading text in localStorage so reloads keep state. */
+  /* Pop-out card sections — every .card top-level h2/h3 gets a
+     click target that opens the section in a new browser tab.
+     Sections stay collapsed on the main page to reduce clutter. */
   .card h2.collapsible,
   .card h3.collapsible {
     cursor: pointer;
@@ -267,16 +267,16 @@
   .card h3.collapsible:hover { color: var(--accent); }
   .card h2.collapsible::before,
   .card h3.collapsible::before {
-    content: "▾";
+    content: "⧉";
     display: inline-block;
     font-size: 0.85em;
     color: var(--dim);
-    transition: transform 0.2s var(--ease);
+    transition: color 0.2s var(--ease);
     width: 0.9em;
     text-align: center;
   }
-  .card.collapsed h2.collapsible::before,
-  .card.collapsed h3.collapsible::before { transform: rotate(-90deg); }
+  .card h2.collapsible:hover::before,
+  .card h3.collapsible:hover::before { color: var(--accent); }
   .card.collapsed > :not(h2):not(h3):not(.card-header-row) { display: none !important; }
   .card.collapsed { padding-bottom: 1rem; }
 
@@ -5166,41 +5166,63 @@ function renderUpdateResults(data) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Collapsible card sections
+// Pop-out card sections
 // ══════════════════════════════════════════════════════════════════
-// Every top-level .card h2/h3 becomes a click target that hides every
-// sibling below it. Collapse state is keyed by the heading's text
-// content so reloads preserve user choice across sessions.
-function _initCollapsibleCards() {
-  const LS_KEY = 'zs_collapsed_sections_v1';
-  let state = {};
-  try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (_) {}
+// Every top-level .card h2/h3 becomes a click target that opens the
+// section content in a new browser tab. Sections stay collapsed on
+// the main page so they never overlap. The new tab inherits the
+// current theme (dark/light) and all styling.
+function _popOutSection(card, title) {
+  const styleEl = document.querySelector('style');
+  const themeClass = document.body.classList.contains('theme-light') ? 'theme-light' : '';
+  const content = card.innerHTML;
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title} — Zscaler Assessment</title>
+<style>${styleEl ? styleEl.textContent : ''}</style>
+</head>
+<body class="${themeClass}" style="padding:2rem;">
+<div style="max-width:1100px;margin:0 auto;">
+  <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
+    <a href="#" onclick="window.close();return false;"
+       style="color:var(--accent);font-size:0.85rem;text-decoration:none;">&larr; Back to Assessment</a>
+    <button onclick="window.print()" class="btn btn-ghost" style="padding:0.4rem 0.8rem;font-size:0.8rem;">Print</button>
+  </div>
+  <div class="card" style="padding:2rem;">${content}</div>
+</div>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+  }
+}
 
+function _initCollapsibleCards() {
   const cards = document.querySelectorAll('div.card');
   cards.forEach(card => {
-    // First heading in the card becomes the toggle target
     const h = card.querySelector(':scope > h2, :scope > h3');
     if (!h) return;
-    if (h.classList.contains('collapsible')) return; // idempotent
+    if (h.classList.contains('collapsible')) return;
     h.classList.add('collapsible');
     h.setAttribute('role', 'button');
     h.setAttribute('tabindex', '0');
-    h.setAttribute('aria-expanded', 'true');
-    const key = (h.textContent || '').trim().slice(0, 80);
-    if (state[key]) {
+    h.setAttribute('title', 'Open in new tab');
+    h.setAttribute('aria-expanded', 'false');
+    card.classList.add('collapsed');
+
+    const openTab = () => {
+      const title = (h.textContent || '').trim();
+      card.classList.remove('collapsed');
+      _popOutSection(card, title);
       card.classList.add('collapsed');
-      h.setAttribute('aria-expanded', 'false');
-    }
-    const toggle = () => {
-      const nowCollapsed = !card.classList.contains('collapsed');
-      card.classList.toggle('collapsed', nowCollapsed);
-      h.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
-      state[key] = nowCollapsed;
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (_) {}
     };
-    h.addEventListener('click', toggle);
+    h.addEventListener('click', openTab);
     h.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTab(); }
     });
   });
 }
