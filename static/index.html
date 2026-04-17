@@ -3920,42 +3920,65 @@ function _renderBestPractices(data, discoveredData) {
   for (const e of entries) (bySvc[e.service] ||= []).push(e);
   const svcOrder = services.length ? services : Object.keys(bySvc);
 
-  // Credibility badge — color-coded by tier so a glance tells you
-  // whether this is Zscaler-official, a supported-partner doc, or
-  // community guidance to treat with skepticism.
-  const tierBadge = (e) => {
+  // Credibility styling — gives each entry a colored left-border AND a
+  // prominent badge so the tier is obvious at a glance. Tooltip shows
+  // the full source name.
+  const tierStyle = (e) => {
     const cred = Number(e.credibility || 0);
     const tier = (e.tier || '').toLowerCase();
-    let label = 'Unverified', bg = 'rgba(107,114,128,0.15)', fg = 'var(--dim)', border = 'rgba(107,114,128,0.35)';
-    if (tier === 'official' || cred >= 100) {
-      label = 'Official'; bg = 'rgba(59,130,246,0.15)'; fg = '#60a5fa'; border = 'rgba(59,130,246,0.4)';
-    } else if (tier === 'authoritative' || cred >= 80) {
-      label = 'Authoritative'; bg = 'rgba(16,185,129,0.15)'; fg = 'var(--pass)'; border = 'rgba(16,185,129,0.4)';
-    } else if (tier === 'community' || cred >= 60) {
-      label = 'Community'; bg = 'rgba(245,158,11,0.15)'; fg = 'var(--warn)'; border = 'rgba(245,158,11,0.4)';
-    }
-    const srcName = e.source_name || e.source || '';
-    const title = srcName ? `${label} source: ${srcName} (credibility ${cred}/100)` : `${label} (credibility ${cred}/100)`;
-    return `<span title="${escapeHtml(title)}" style="display:inline-block;background:${bg};color:${fg};border:1px solid ${border};padding:0.05rem 0.4rem;border-radius:999px;font-size:0.65rem;font-weight:600;letter-spacing:0.04em;margin-left:0.3rem;vertical-align:middle;">${label} · ${cred}</span>`;
+    if (tier === 'official' || cred >= 100) return { label: 'Official', bg: 'rgba(59,130,246,0.10)', fg: '#60a5fa', border: '#3b82f6', borderBg: 'rgba(59,130,246,0.18)' };
+    if (tier === 'authoritative' || cred >= 80) return { label: 'Authoritative', bg: 'rgba(16,185,129,0.10)', fg: 'var(--pass)', border: '#10b981', borderBg: 'rgba(16,185,129,0.18)' };
+    if (tier === 'community' || cred >= 60) return { label: 'Community', bg: 'rgba(245,158,11,0.10)', fg: 'var(--warn)', border: '#f59e0b', borderBg: 'rgba(245,158,11,0.18)' };
+    return { label: 'Unverified', bg: 'rgba(107,114,128,0.10)', fg: 'var(--dim)', border: '#6b7280', borderBg: 'rgba(107,114,128,0.15)' };
   };
 
-  const renderEntry = (e, isDiscovered) => `
-    <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
-      <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
-         style="color:var(--accent);text-decoration:none;font-weight:600;">
-        ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
-      </a>
-      ${tierBadge(e)}
-      ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
+  const tierBadge = (e) => {
+    const ts = tierStyle(e);
+    const cred = Number(e.credibility || 0);
+    const srcName = e.source_name || e.source || '';
+    const title = srcName ? `${ts.label} source: ${srcName} (credibility ${cred}/100)` : `${ts.label} (credibility ${cred}/100)`;
+    return `<span title="${escapeHtml(title)}" style="display:inline-block;background:${ts.borderBg};color:${ts.fg};border:1px solid ${ts.border};padding:0.1rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;letter-spacing:0.04em;margin-left:0.35rem;vertical-align:middle;white-space:nowrap;">${ts.label}</span>`;
+  };
+
+  const sourceBadge = (e) => {
+    const src = e.source_name || e.source || '';
+    if (!src) return '';
+    return `<span style="color:var(--dim);font-size:0.68rem;margin-left:0.25rem;font-style:italic;">via ${escapeHtml(src)}</span>`;
+  };
+
+  const renderEntry = (e, isDiscovered) => {
+    const ts = tierStyle(e);
+    return `
+    <li style="padding:0.5rem 0.7rem 0.5rem 0.9rem;background:${ts.bg};border:1px solid var(--border);border-left:4px solid ${ts.border};border-radius:6px;margin-bottom:0.35rem;">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0.2rem;">
+        <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);text-decoration:none;font-weight:600;">
+          ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
+        </a>
+        ${tierBadge(e)}
+        ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
+      </div>
+      ${sourceBadge(e)}
       ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
       <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;word-break:break-all;">${escapeHtml(e.url)}</div>
     </li>`;
+  };
+
+  // Sort entries within each service section by tier so Official
+  // entries appear first, then Authoritative, then Community.
+  const tierRank = { official: 0, authoritative: 1, community: 2, unverified: 3 };
+  const sortByTier = (arr) => [...arr].sort((a, b) => {
+    const ra = tierRank[(a.tier || 'unverified').toLowerCase()] ?? 9;
+    const rb = tierRank[(b.tier || 'unverified').toLowerCase()] ?? 9;
+    return ra - rb;
+  });
 
   const curatedHtml = svcOrder.map(svc => {
-    const items = (bySvc[svc] || []).map(e => renderEntry(e, false)).join('');
+    const sorted = sortByTier(bySvc[svc] || []);
+    const items = sorted.map(e => renderEntry(e, !!e.discovered)).join('');
     return `
       <section style="margin-bottom:1rem;">
-        <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${(bySvc[svc] || []).length})</span></h3>
+        <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${sorted.length})</span></h3>
         <ul style="list-style:none;padding:0;margin:0;">${items}</ul>
       </section>`;
   }).join('');
