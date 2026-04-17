@@ -182,16 +182,23 @@
   .btn { min-height: 40px; }
 
   /* Main container shrinks to make room for the right-side prompt
-     sidebar. Collapsed via .sidebar-collapsed on body. The sidebar
-     stays interactive even on narrow viewports; it slides off-screen
-     ONLY when the user explicitly collapses it. */
+     sidebar. Collapsed via .sidebar-collapsed on body. On narrow
+     viewports (<=1200px) we auto-collapse so the fixed sidebar
+     never overlays expanded card content. Users reopen via the
+     edge rail (▶). */
   .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; padding-right: calc(1.5rem + 400px); animation: fadeInUp 0.6s var(--ease); transition: padding-right 200ms ease; }
   body.sidebar-collapsed .container { padding-right: 1.5rem; }
   body.sidebar-collapsed #promptSidebar { transform: translateX(100%); pointer-events: none; }
   body.sidebar-collapsed #sidebarOpenRail { display: block !important; }
+  /* Narrow viewport safeguard: sidebar becomes an overlay instead of
+     a squeeze. Content keeps full width; sidebar floats on top with
+     a visible shadow so it's clearly layered, not overlapping. */
+  @media (max-width: 1200px) {
+    .container { padding-right: 1.5rem !important; }
+    #promptSidebar { box-shadow: -12px 0 32px rgba(0,0,0,0.35); }
+  }
   @media (max-width: 960px) {
     #promptSidebar { width: min(380px, 100vw); }
-    .container { padding-right: 1.5rem !important; }
   }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -1852,8 +1859,21 @@ function toggleSidebar() {
 // Sidebar starts open on every load — the prompt is the primary
 // input surface now, so a stale 'collapsed' from a previous session
 // would strand the user. Users can still collapse via the ▶ button.
+// EXCEPTION: on viewports <=1200px we auto-collapse so the fixed
+// 380px panel doesn't overlay card content when sections expand.
 try { localStorage.removeItem('zassess_sidebar_collapsed'); } catch(e) {}
-document.body.classList.remove('sidebar-collapsed');
+if (window.innerWidth <= 1200) {
+  document.body.classList.add('sidebar-collapsed');
+} else {
+  document.body.classList.remove('sidebar-collapsed');
+}
+// Re-collapse on resize so rotating/resizing into a narrow viewport
+// doesn't leave the sidebar stranded on top of content.
+window.addEventListener('resize', () => {
+  if (window.innerWidth <= 1200 && !document.body.classList.contains('sidebar-collapsed')) {
+    document.body.classList.add('sidebar-collapsed');
+  }
+});
 
 // Wire sidebar input: Enter sends, Shift+Enter inserts newline
 document.getElementById('sidebarPromptInput')?.addEventListener('keydown', (e) => {
