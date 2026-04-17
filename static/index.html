@@ -3894,15 +3894,17 @@ async function openBestPracticesModal() {
   document.body.style.overflow = 'hidden';
   _lastFocus = document.activeElement;
   const host = document.getElementById('bestPracticesContent');
-  if (!_bestPracticesCache) {
-    host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
-    try {
-      const r = await fetch('/api/best-practices');
-      _bestPracticesCache = await r.json();
-    } catch(e) {
-      host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
-      return;
-    }
+  // Always re-fetch on open so newly-added curated entries and any
+  // server-side changes appear immediately. The payload is tiny (~40
+  // entries) so the cost is negligible and eliminates a whole class
+  // of "why aren't my new entries showing?" bugs.
+  host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
+  try {
+    const r = await fetch('/api/best-practices', { cache: 'no-store' });
+    _bestPracticesCache = await r.json();
+  } catch(e) {
+    host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
+    return;
   }
   _renderBestPractices(_bestPracticesCache);
 }
@@ -4105,7 +4107,7 @@ async function crawlBestPractices(force) {
     // the merged catalog so newly-promoted entries appear inline in
     // their service sections (with a DISCOVERED badge).
     try {
-      const r2 = await fetch('/api/best-practices');
+      const r2 = await fetch('/api/best-practices', { cache: 'no-store' });
       _bestPracticesCache = await r2.json();
     } catch(_) { /* keep previous cache */ }
     _renderBestPractices(_bestPracticesCache, data);
