@@ -2,17 +2,22 @@
 """
 Zscaler Best-Practices Discovery Crawler
 ==========================================
-Starts at https://help.zscaler.com/ and BFS-crawls every sub-site
-it links to (ZIA, ZPA, ZCC, ZDX, ZIdentity, Deception, Deployments,
-and anything else the portal adds in the future). Collects every URL
-whose path contains "best-practices" or "leading-practices",
-deduplicates against the curated catalog in zscaler_best_practices.py,
-and returns any new discoveries.
+Iterates the source registry in bp_sources.py (help.zscaler.com,
+Zscaler blogs, developer portal, community, Microsoft Learn, AWS docs,
+etc.) and BFS-crawls each crawlable source. Collects every URL whose
+path matches that source's article-patterns (best-practices /
+leading-practices / how-to / guide), tags each discovery with the
+source's credibility tier, deduplicates against the curated catalog
+in zscaler_best_practices.py, and returns any new discoveries.
 
 Secure-by-design
 ----------------
-- Allowlist: only help.zscaler.com. Any off-domain link is dropped
-  before fetch, regardless of how many hops deep we are.
+- Host allowlist: each crawled URL must match the host of a registered
+  source AND must be in zscaler_update_check.ALLOWED_HOSTS. Off-domain
+  links are dropped before fetch regardless of depth.
+- Per-source BFS: the crawler never jumps sources mid-walk. A link
+  from help.zscaler.com to www.zscaler.com is ignored; each source is
+  seeded independently so credibility attribution stays honest.
 - Extension blocklist: .pdf, .zip, images, media, archives, and
   script/style assets are never fetched.
 - Reuses the hardened HTTP path from zscaler_update_check._safe_get
@@ -21,9 +26,9 @@ Secure-by-design
   no external JS fetched, so a malicious page cannot run code against
   this process.
 - Polite throttle (CRAWL_POLITE_DELAY) between requests so we don't
-  hammer the help portal.
-- Hard caps on pages (MAX_PAGES), depth (MAX_DEPTH), and links per
-  page (MAX_LINKS_PER_PAGE) so a runaway crawl is impossible.
+  hammer any single source.
+- Hard caps on pages (MAX_PAGES_PER_SOURCE), depth (MAX_DEPTH), and
+  links per page (MAX_LINKS_PER_PAGE) so a runaway crawl is impossible.
 - Cached to disk at the OS-native cache path (default TTL 24h).
 """
 from __future__ import annotations
@@ -38,32 +43,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, urljoin
 
 
-# Seeds — start at the root plus every known sub-site landing page.
-# The root alone is sometimes a JS-rendered SPA with no static <a>
-# links (stdlib html.parser can't execute JS), which would starve
-# the BFS queue. Pairing the root with the curated sub-site landing
-# pages guarantees we always have extractable HTML to traverse, and
-# BFS still picks up any NEW sub-site the root links to.
-SEED_PAGES = [
-    "https://help.zscaler.com/",
-    "https://help.zscaler.com/zia",
-    "https://help.zscaler.com/zpa",
-    "https://help.zscaler.com/zscaler-client-connector",
-    "https://help.zscaler.com/zdx",
-    "https://help.zscaler.com/zidentity",
-    "https://help.zscaler.com/deception",
-    "https://help.zscaler.com/zscaler-deployments-operations",
-]
-
-# Host allowlist — ANY fetch outside this set is refused.
-ALLOWED_HOST = "help.zscaler.com"
-
-# URL-path patterns we keep as matches. These are substrings (case-insensitive).
-ARTICLE_PATTERNS = [
-    "best-practice",     # /best-practices-..., /best-practice-...
-    "leading-practice",  # /leading-practices-...
-]
-
 # File extensions we never fetch — attachments, media, archives.
 SKIP_EXTENSIONS = (
     ".pdf", ".zip", ".tar", ".gz", ".7z", ".rar",
@@ -74,10 +53,11 @@ SKIP_EXTENSIONS = (
 )
 
 # Caps so a buggy page can never turn this into a crawl-the-internet.
-MAX_PAGES = 250             # total pages we'll fetch per crawl
+MAX_PAGES_PER_SOURCE = 120  # pages we'll fetch from any single source
+MAX_PAGES_TOTAL = 500       # overall ceiling across every source
 MAX_LINKS_PER_PAGE = 400    # links inspected on any one page
-MAX_DEPTH = 4               # hops from the root seed
-CRAWL_POLITE_DELAY = 0.25   # seconds between requests
+MAX_DEPTH = 4               # hops from a source's seed
+CRAWL_POLITE_DELAY = 0.25   # seconds between requests to the same source
 CACHE_TTL_SECONDS = 86400   # 24h
 
 # Service guesser: infer ZIA/ZPA/ZCC/Deception from the URL path.
@@ -134,17 +114,31 @@ def _service_from_url(url: str) -> str:
     return "Other"
 
 
-def _is_allowed(url: str) -> bool:
+def _host_of(url: str) -> str:
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def _is_allowed_for_source(url: str, source_host: str) -> bool:
+    """A URL is crawlable within a source only if (a) scheme is http/s
+    and (b) its host matches the source's declared host exactly. This
+    keeps a help.zscaler.com crawl from wandering onto www.zscaler.com
+    (and vice versa) — each source is walked in isolation so the
+    credibility attribution stays honest."""
     try:
         p = urlparse(url)
-        return p.scheme in ("http", "https") and (p.hostname or "").lower() == ALLOWED_HOST
+        return p.scheme in ("http", "https") and (p.hostname or "").lower() == source_host
     except Exception:
         return False
 
 
-def _matches_article_pattern(url: str) -> bool:
+def _matches_article_patterns(url: str, patterns) -> bool:
+    if not patterns:
+        return False
     p = (urlparse(url).path or "").lower()
-    return any(pat in p for pat in ARTICLE_PATTERNS)
+    return any(pat in p for pat in patterns)
 
 
 def _has_skip_extension(url: str) -> bool:
@@ -223,84 +217,39 @@ def _extract_links(html: str, base_url: str) -> List[Tuple[str, str]]:
     return out
 
 
-def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
-    """
-    Discover Zscaler best-practice articles beyond the curated list.
+def _crawl_source(source: Dict[str, Any], safe_get, skip_tls_verify: bool,
+                  global_page_budget: int) -> Dict[str, Any]:
+    """BFS-walk a single source. Returns a per-source sub-report.
+    `global_page_budget` caps pages_fetched from THIS source to keep
+    the overall crawl bounded even when many sources are registered."""
+    source_host = source.get("host", "")
+    seeds = source.get("seeds") or []
+    patterns = [p.lower() for p in (source.get("article_patterns") or [])]
+    per_source_cap = min(MAX_PAGES_PER_SOURCE, max(1, global_page_budget))
 
-    Args:
-      skip_tls_verify: pass-through to the HTTP client for corporate
-        TLS-MITM environments (same as update-checker).
-      force: ignore the cache TTL and re-crawl.
-
-    Returns:
-      {
-        "started_at": ISO ts,
-        "elapsed_seconds": float,
-        "pages_fetched": N,
-        "pages_failed": N,
-        "total_matched": N,
-        "discovered": [
-          {"url", "title", "service", "source_page"}, ...
-        ],
-        "curated_count": N,
-        "new_since_curated": N,
-        "cache_age_seconds": float or None,
-        "from_cache": bool,
-        "errors": [{"url","error"}, ...],
-      }
-    """
-    started = time.time()
-
-    # Cache check
-    cache = _load_cache()
-    cache_ts = cache.get("timestamp") or 0
-    cache_age = time.time() - cache_ts if cache_ts else None
-    if not force and cache_ts and (time.time() - cache_ts) < CACHE_TTL_SECONDS:
-        cache["from_cache"] = True
-        cache["cache_age_seconds"] = round(time.time() - cache_ts, 1)
-        return cache
-
-    # Reuse the update-checker's HTTP path so proxy / TLS-bypass /
-    # timeout rules stay consistent with everything else in the app.
-    try:
-        from zscaler_update_check import _safe_get
-    except Exception as e:
-        return {"error": f"_safe_get unavailable: {e}", "discovered": []}
-
-    # Load curated list to dedupe against
-    try:
-        from zscaler_best_practices import BEST_PRACTICES
-        curated_urls = {entry["url"] for entry in BEST_PRACTICES}
-    except Exception:
-        curated_urls = set()
-
-    seen_urls: Set[str] = set()        # everything we've fetched or queued
-    matched: Dict[str, Dict[str, Any]] = {}  # url -> entry
-    link_titles: Dict[str, str] = {}   # preserve anchor text seen in-link for later
+    seen: Set[str] = set()
+    matched: Dict[str, Dict[str, Any]] = {}
     errors: List[Dict[str, Any]] = []
-    # Diagnostics: capture how many links we found on each fetched page,
-    # so if a crawl returns 0 matches we can see whether the pages were
-    # empty (SPA/JS-only) or full of non-matching links.
-    per_page_links: List[Dict[str, Any]] = []
+    per_page: List[Dict[str, Any]] = []
 
-    # BFS queue of (url, depth). Start at root seeds; every help.zscaler.com
-    # link discovered during a fetch gets enqueued up to MAX_DEPTH hops.
-    to_fetch: List[Tuple[str, int]] = [(u, 0) for u in SEED_PAGES]
-    for u, _ in to_fetch:
-        seen_urls.add(u)
+    to_fetch: List[Tuple[str, int]] = []
+    for u in seeds:
+        if u not in seen:
+            to_fetch.append((u, 0))
+            seen.add(u)
+
     pages_fetched = 0
     pages_failed = 0
 
-    while to_fetch and pages_fetched < MAX_PAGES:
+    while to_fetch and pages_fetched < per_source_cap:
         url, depth = to_fetch.pop(0)
-        if not _is_allowed(url) or _has_skip_extension(url):
+        if not _is_allowed_for_source(url, source_host) or _has_skip_extension(url):
             continue
 
-        # Polite throttle — don't hammer the help portal
         if pages_fetched > 0 and CRAWL_POLITE_DELAY > 0:
             time.sleep(CRAWL_POLITE_DELAY)
 
-        body, code, err = _safe_get(url, verify_tls=False if skip_tls_verify else None)
+        body, code, err = safe_get(url, verify_tls=False if skip_tls_verify else None)
         if err or code != 200 or not body:
             pages_failed += 1
             errors.append({"url": url, "error": err or f"HTTP {code}"})
@@ -316,12 +265,11 @@ def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
         allowed_links = 0
         bp_links_this_page = 0
         for abs_url, text in all_links:
-            if not _is_allowed(abs_url) or _has_skip_extension(abs_url):
+            if not _is_allowed_for_source(abs_url, source_host) or _has_skip_extension(abs_url):
                 continue
             allowed_links += 1
 
-            # Track anchor text for any BP article we see — used as title
-            if _matches_article_pattern(abs_url):
+            if _matches_article_patterns(abs_url, patterns):
                 bp_links_this_page += 1
                 if abs_url not in matched:
                     title = (text or _titleize_from_slug(abs_url)).strip()
@@ -331,16 +279,18 @@ def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
                         "title": title or _titleize_from_slug(abs_url),
                         "service": _service_from_url(abs_url),
                         "source_page": url,
+                        "source_id": source["id"],
+                        "source_name": source.get("name", source["id"]),
+                        "credibility": int(source.get("credibility", 0)),
+                        "tier": source.get("tier", "unverified"),
                     }
 
-            # Enqueue for deeper crawl if within depth budget
-            if depth + 1 <= MAX_DEPTH and abs_url not in seen_urls:
-                seen_urls.add(abs_url)
+            if depth + 1 <= MAX_DEPTH and abs_url not in seen:
+                seen.add(abs_url)
                 to_fetch.append((abs_url, depth + 1))
 
-        # Keep a small per-page breadcrumb for diagnostics
-        if len(per_page_links) < 25:
-            per_page_links.append({
+        if len(per_page) < 10:
+            per_page.append({
                 "url": url,
                 "depth": depth,
                 "bytes": len(body),
@@ -349,23 +299,129 @@ def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
                 "bp_links": bp_links_this_page,
             })
 
-    discovered = sorted(matched.values(), key=lambda e: (e["service"], e["title"].lower()))
+    return {
+        "source_id": source["id"],
+        "source_name": source.get("name", source["id"]),
+        "host": source_host,
+        "tier": source.get("tier", "unverified"),
+        "credibility": int(source.get("credibility", 0)),
+        "pages_fetched": pages_fetched,
+        "pages_failed": pages_failed,
+        "pages_seen": len(seen),
+        "matched": list(matched.values()),
+        "errors": errors[:10],
+        "per_page_sample": per_page,
+    }
+
+
+def crawl(skip_tls_verify: bool = False, force: bool = False,
+          source_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Discover Zscaler best-practice articles beyond the curated list.
+
+    Args:
+      skip_tls_verify: pass-through to the HTTP client for corporate
+        TLS-MITM environments (same as update-checker).
+      force: ignore the cache TTL and re-crawl.
+      source_ids: optional filter — only crawl these source ids. When
+        omitted, every crawlable source in bp_sources is visited.
+
+    Returns:
+      {
+        "started_at": ISO ts,
+        "elapsed_seconds": float,
+        "pages_fetched": N,            # total across all sources
+        "pages_failed": N,
+        "total_matched": N,
+        "discovered": [
+          {"url","title","service","source_page",
+           "source_id","source_name","credibility","tier"}, ...
+        ],
+        "new_entries": [...],          # subset not in curated catalog
+        "per_source": [ {...}, ... ],  # per-source rollup
+        "errors": [{"url","error"}, ...],
+        "from_cache": bool,
+      }
+    """
+    started = time.time()
+
+    cache = _load_cache()
+    cache_ts = cache.get("timestamp") or 0
+    if not force and cache_ts and (time.time() - cache_ts) < CACHE_TTL_SECONDS:
+        cache["from_cache"] = True
+        cache["cache_age_seconds"] = round(time.time() - cache_ts, 1)
+        return cache
+
+    try:
+        from zscaler_update_check import _safe_get
+    except Exception as e:
+        return {"error": f"_safe_get unavailable: {e}", "discovered": []}
+
+    try:
+        from bp_sources import crawlable_sources
+    except Exception as e:
+        return {"error": f"bp_sources unavailable: {e}", "discovered": []}
+
+    try:
+        from zscaler_best_practices import BEST_PRACTICES
+        curated_urls = {entry["url"] for entry in BEST_PRACTICES}
+    except Exception:
+        curated_urls = set()
+
+    sources = crawlable_sources()
+    if source_ids:
+        want = set(source_ids)
+        sources = [s for s in sources if s["id"] in want]
+
+    all_matched: Dict[str, Dict[str, Any]] = {}
+    per_source_reports: List[Dict[str, Any]] = []
+    total_pages_fetched = 0
+    total_pages_failed = 0
+    total_pages_seen = 0
+    all_errors: List[Dict[str, Any]] = []
+    per_page_sample: List[Dict[str, Any]] = []
+
+    for src in sources:
+        remaining = MAX_PAGES_TOTAL - total_pages_fetched
+        if remaining <= 0:
+            break
+        report = _crawl_source(src, _safe_get, skip_tls_verify, remaining)
+        per_source_reports.append({k: v for k, v in report.items() if k != "matched"})
+        total_pages_fetched += report["pages_fetched"]
+        total_pages_failed += report["pages_failed"]
+        total_pages_seen += report["pages_seen"]
+        all_errors.extend(report.get("errors") or [])
+        per_page_sample.extend(report.get("per_page_sample") or [])
+        # Dedup discoveries by URL across sources; highest-credibility
+        # source wins if the same URL appears twice (unlikely given
+        # per-source host isolation, but defensive).
+        for e in report.get("matched") or []:
+            prev = all_matched.get(e["url"])
+            if not prev or e.get("credibility", 0) > prev.get("credibility", 0):
+                all_matched[e["url"]] = e
+
+    discovered = sorted(
+        all_matched.values(),
+        key=lambda e: (-int(e.get("credibility", 0)), e.get("service", ""), e["title"].lower()),
+    )
     new_since_curated = [e for e in discovered if e["url"] not in curated_urls]
 
     result = {
         "started_at": datetime.now(timezone.utc).isoformat(),
         "elapsed_seconds": round(time.time() - started, 2),
-        "pages_fetched": pages_fetched,
-        "pages_failed": pages_failed,
-        "pages_seen": len(seen_urls),
+        "pages_fetched": total_pages_fetched,
+        "pages_failed": total_pages_failed,
+        "pages_seen": total_pages_seen,
         "max_depth": MAX_DEPTH,
+        "sources_crawled": len(per_source_reports),
+        "per_source": per_source_reports,
         "total_matched": len(discovered),
         "discovered": discovered,
         "curated_count": len(curated_urls),
         "new_since_curated": len(new_since_curated),
         "new_entries": new_since_curated,
-        "errors": errors[:20],
-        "per_page_sample": per_page_links,
+        "errors": all_errors[:30],
+        "per_page_sample": per_page_sample[:25],
         "from_cache": False,
         "cache_age_seconds": None,
         "timestamp": time.time(),
@@ -391,16 +447,21 @@ if __name__ == "__main__":
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--reset", action="store_true")
     ap.add_argument("--skip-tls", action="store_true")
+    ap.add_argument("--source", action="append",
+                    help="only crawl this source id (repeatable)")
     args = ap.parse_args()
     if args.reset:
         print("cache cleared:", reset_cache())
-    out = crawl(skip_tls_verify=args.skip_tls, force=args.force)
-    # Print a concise summary rather than the full blob
+    out = crawl(skip_tls_verify=args.skip_tls, force=args.force,
+                source_ids=args.source)
     print(f"pages: {out.get('pages_fetched')} fetched, {out.get('pages_failed')} failed, "
-          f"{out.get('pages_seen', 0)} seen (depth<={out.get('max_depth','?')}), "
+          f"{out.get('pages_seen', 0)} seen across {out.get('sources_crawled', 0)} source(s), "
           f"{out.get('elapsed_seconds')}s elapsed")
     print(f"total matched: {out.get('total_matched')}  "
           f"(curated: {out.get('curated_count')}, new: {out.get('new_since_curated')})")
+    for r in out.get('per_source') or []:
+        print(f"  {r['source_id']:<20} [{r['tier']:<13}] {r['pages_fetched']:>3} pages, "
+              f"{r['pages_failed']:>2} failed")
     for e in (out.get('new_entries') or [])[:20]:
-        print(f"  NEW  [{e['service']}] {e['title']}")
+        print(f"  NEW  [{e['service']}] ({e.get('tier','?')}) {e['title']}")
         print(f"       {e['url']}")

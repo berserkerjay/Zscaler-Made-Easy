@@ -3920,12 +3920,32 @@ function _renderBestPractices(data, discoveredData) {
   for (const e of entries) (bySvc[e.service] ||= []).push(e);
   const svcOrder = services.length ? services : Object.keys(bySvc);
 
+  // Credibility badge — color-coded by tier so a glance tells you
+  // whether this is Zscaler-official, a supported-partner doc, or
+  // community guidance to treat with skepticism.
+  const tierBadge = (e) => {
+    const cred = Number(e.credibility || 0);
+    const tier = (e.tier || '').toLowerCase();
+    let label = 'Unverified', bg = 'rgba(107,114,128,0.15)', fg = 'var(--dim)', border = 'rgba(107,114,128,0.35)';
+    if (tier === 'official' || cred >= 100) {
+      label = 'Official'; bg = 'rgba(59,130,246,0.15)'; fg = '#60a5fa'; border = 'rgba(59,130,246,0.4)';
+    } else if (tier === 'authoritative' || cred >= 80) {
+      label = 'Authoritative'; bg = 'rgba(16,185,129,0.15)'; fg = 'var(--pass)'; border = 'rgba(16,185,129,0.4)';
+    } else if (tier === 'community' || cred >= 60) {
+      label = 'Community'; bg = 'rgba(245,158,11,0.15)'; fg = 'var(--warn)'; border = 'rgba(245,158,11,0.4)';
+    }
+    const srcName = e.source_name || e.source || '';
+    const title = srcName ? `${label} source: ${srcName} (credibility ${cred}/100)` : `${label} (credibility ${cred}/100)`;
+    return `<span title="${escapeHtml(title)}" style="display:inline-block;background:${bg};color:${fg};border:1px solid ${border};padding:0.05rem 0.4rem;border-radius:999px;font-size:0.65rem;font-weight:600;letter-spacing:0.04em;margin-left:0.3rem;vertical-align:middle;">${label} · ${cred}</span>`;
+  };
+
   const renderEntry = (e, isDiscovered) => `
     <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
       <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
          style="color:var(--accent);text-decoration:none;font-weight:600;">
         ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
       </a>
+      ${tierBadge(e)}
       ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
       ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
       <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;word-break:break-all;">${escapeHtml(e.url)}</div>
@@ -3952,12 +3972,17 @@ function _renderBestPractices(data, discoveredData) {
       </section>`).join('');
     const addedCount = (typeof discoveredData.added_to_library === 'number')
       ? discoveredData.added_to_library : discoveredData.new_entries.length;
+    const perSource = (discoveredData.per_source || [])
+      .filter(s => s.pages_fetched > 0 || s.pages_failed > 0)
+      .map(s => `${escapeHtml(s.source_name || s.source_id)} (${s.pages_fetched}p)`)
+      .join(' · ');
     discoveredHtml = `
       <div style="padding:0.8rem 1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:8px;margin-bottom:1rem;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
           <strong style="color:var(--pass);">✨ ${addedCount} article${addedCount === 1 ? '' : 's'} added to the library</strong>
-          <span style="color:var(--dim);font-size:0.72rem;">scanned ${discoveredData.pages_fetched || 0} index page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
+          <span style="color:var(--dim);font-size:0.72rem;">${discoveredData.sources_crawled || 0} source${(discoveredData.sources_crawled||0) === 1 ? '' : 's'} · ${discoveredData.pages_fetched || 0} page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
         </div>
+        ${perSource ? `<div style="color:var(--dim);font-size:0.7rem;margin-bottom:0.5rem;">${perSource}</div>` : ''}
         ${newHtml}
         <div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">
           These are now persisted in your per-user data dir and will appear in future sessions alongside curated entries (badged DISCOVERED).
@@ -3996,11 +4021,34 @@ function _renderBestPractices(data, discoveredData) {
       </div>`;
   }
 
+  // Tier-distribution summary so the user sees the source mix at a glance.
+  const tierCounts = { official: 0, authoritative: 0, community: 0, unverified: 0 };
+  for (const e of entries) {
+    const t = (e.tier || 'unverified').toLowerCase();
+    tierCounts[t] = (tierCounts[t] || 0) + 1;
+  }
+  const tierLegend = `
+    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.8rem;font-size:0.72rem;">
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.55rem;border-radius:999px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);color:#60a5fa;" title="help.zscaler.com, developer.zscaler.com, Zscaler blogs, Zscaler GitHub — authored by Zscaler">
+        <strong>Official · 100</strong> <span style="color:var(--dim);">(${tierCounts.official || 0})</span>
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.55rem;border-radius:999px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);color:var(--pass);" title="Microsoft Learn, AWS docs, Terraform registry — authored by supported-partner platforms">
+        <strong>Authoritative · 80</strong> <span style="color:var(--dim);">(${tierCounts.authoritative || 0})</span>
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.55rem;border-radius:999px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);color:var(--warn);" title="Zscaler community, Reddit — unvetted crowd-sourced content">
+        <strong>Community · 60</strong> <span style="color:var(--dim);">(${tierCounts.community || 0})</span>
+      </span>
+    </div>`;
+
   document.getElementById('bestPracticesContent').innerHTML = `
-    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.8rem;">
-      Curated list of every Zscaler help-portal article titled "Best Practices" or "Leading Practices".
-      Click <strong>🔄 Check for new articles</strong> to crawl <code>help.zscaler.com</code> for anything added since this list was compiled.
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.6rem;">
+      Multi-source catalog of Zscaler best-practice guidance. Every entry is rated on a credibility tier —
+      <strong style="color:#60a5fa;">Official</strong> (Zscaler properties),
+      <strong style="color:var(--pass);">Authoritative</strong> (hyperscaler + Terraform docs), or
+      <strong style="color:var(--warn);">Community</strong> (forums) — so you can weight each link accordingly.
+      Click <strong>🔄 Update library</strong> to crawl all crawlable sources for new articles.
     </p>
+    ${tierLegend}
     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
       <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
               aria-label="Crawl help.zscaler.com for new Best Practices articles and add them to the library"
@@ -4013,7 +4061,7 @@ function _renderBestPractices(data, discoveredData) {
         <input type="checkbox" id="bpSkipTls" style="width:auto;cursor:pointer;">
         Skip TLS verify
       </label>
-      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · help.zscaler.com allowlisted</span>
+      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · crawls every registered source</span>
     </div>
     ${discoveredHtml}
     ${curatedHtml}`;
@@ -4021,7 +4069,7 @@ function _renderBestPractices(data, discoveredData) {
 
 async function crawlBestPractices(force) {
   const btn = document.getElementById('bpCrawlBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling help.zscaler.com…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling Zscaler sources…'; }
   const skipTls = !!(document.getElementById('bpSkipTls') || {}).checked;
   try {
     const r = await fetch('/api/best-practices/crawl', {

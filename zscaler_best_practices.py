@@ -1,8 +1,27 @@
 #!/usr/bin/env python3
 """
 Curated Zscaler Best-Practices + Leading-Practices reference list.
-Scope: titles explicitly containing "Best Practices" or "Leading Practices"
-on help.zscaler.com.
+
+Scope now spans MULTIPLE sources, each with a credibility tier from
+bp_sources.py:
+
+  - help.zscaler.com           Tier 1 Official      (credibility 100)
+  - www.zscaler.com/blogs      Tier 1 Official      (credibility 100)
+  - developer.zscaler.com      Tier 1 Official      (credibility 100)
+  - github.com/zscaler          Tier 1 Official      (credibility 100)
+  - registry.terraform.io       Tier 2 Authoritative (credibility  80)
+  - learn.microsoft.com         Tier 2 Authoritative (credibility  80)
+  - docs.aws.amazon.com         Tier 2 Authoritative (credibility  80)
+  - community.zscaler.com       Tier 3 Community     (credibility  60)
+
+Each entry carries:
+  key         unique identifier
+  service     ZIA | ZPA | ZCC | ZDX | ZIdentity | Deception | Deployment | Other
+  title       display title
+  url         canonical URL
+  topics      keyword list used by lookup_by_topic()
+  source      source id from bp_sources.SOURCES
+  credibility integer 0-100 (inherits from the source)
 
 This is the authoritative source the rest of the app uses when it needs
 to link to a specific Zscaler best-practice article — report generator,
@@ -12,7 +31,27 @@ Not a live fetch — static list curated by the user. Add / edit entries
 here; every consumer re-renders from this module.
 """
 from __future__ import annotations
+import os
 from typing import Any, Dict, List
+
+try:
+    from bp_sources import credibility_for, get_source
+except Exception:
+    # Defensive fallback so this module keeps working even if bp_sources
+    # is missing — everything gets tagged as the old help.zscaler.com default.
+    def credibility_for(_source_id: str) -> int:
+        return 100
+    def get_source(_source_id: str) -> Dict[str, Any]:
+        return {}
+
+
+def _tag(entry: Dict[str, Any], source_id: str = "help_zscaler") -> Dict[str, Any]:
+    """Apply `source` + `credibility` + `tier` to an entry if missing."""
+    entry.setdefault("source", source_id)
+    src = get_source(entry["source"])
+    entry.setdefault("credibility", src.get("credibility", credibility_for(entry["source"])))
+    entry.setdefault("tier", src.get("tier", "official"))
+    return entry
 
 
 BEST_PRACTICES: List[Dict[str, Any]] = [
@@ -182,7 +221,162 @@ BEST_PRACTICES: List[Dict[str, Any]] = [
         "topics": ["quic", "udp"],
         "note": "Not titled 'Best Practices' but recommends a best-practice action (block QUIC).",
     },
+
+    # ─── Tier 1 Official — Zscaler Blogs (www.zscaler.com) ──────
+    {
+        "key": "blog_zt_architecture",
+        "service": "ZPA",
+        "title": "Zero Trust Architecture Guide (Zscaler blog)",
+        "url": "https://www.zscaler.com/resources/security-terms-glossary/what-is-zero-trust-architecture",
+        "topics": ["zero_trust", "architecture", "zpa"],
+        "source": "zscaler_blogs",
+    },
+    {
+        "key": "blog_ssl_inspection_why",
+        "service": "ZIA",
+        "title": "Why SSL Inspection Matters (Zscaler blog)",
+        "url": "https://www.zscaler.com/blogs/product-insights/why-ssl-inspection-matters",
+        "topics": ["ssl", "tls", "inspection"],
+        "source": "zscaler_blogs",
+    },
+
+    # ─── Tier 1 Official — Developer Portal ─────────────────────
+    {
+        "key": "dev_oneapi_overview",
+        "service": "Other",
+        "title": "OneAPI Overview & Auth Best Practices",
+        "url": "https://developer.zscaler.com/oneapi",
+        "topics": ["oneapi", "api", "auth", "oauth"],
+        "source": "zscaler_developer",
+    },
+    {
+        "key": "dev_zia_api_ref",
+        "service": "ZIA",
+        "title": "ZIA API Reference (developer.zscaler.com)",
+        "url": "https://developer.zscaler.com/docs/zia",
+        "topics": ["zia", "api", "sdk"],
+        "source": "zscaler_developer",
+    },
+    {
+        "key": "dev_zpa_api_ref",
+        "service": "ZPA",
+        "title": "ZPA API Reference (developer.zscaler.com)",
+        "url": "https://developer.zscaler.com/docs/zpa",
+        "topics": ["zpa", "api", "sdk"],
+        "source": "zscaler_developer",
+    },
+
+    # ─── Tier 1 Official — Zscaler GitHub org ───────────────────
+    {
+        "key": "gh_sdk_python",
+        "service": "Other",
+        "title": "zscaler-sdk-python (official SDK, README + examples)",
+        "url": "https://github.com/zscaler/zscaler-sdk-python",
+        "topics": ["sdk", "python", "api"],
+        "source": "zscaler_github",
+    },
+    {
+        "key": "gh_terraform_zia",
+        "service": "ZIA",
+        "title": "terraform-provider-zia (official Terraform provider)",
+        "url": "https://github.com/zscaler/terraform-provider-zia",
+        "topics": ["zia", "terraform", "iac"],
+        "source": "zscaler_github",
+    },
+    {
+        "key": "gh_terraform_zpa",
+        "service": "ZPA",
+        "title": "terraform-provider-zpa (official Terraform provider)",
+        "url": "https://github.com/zscaler/terraform-provider-zpa",
+        "topics": ["zpa", "terraform", "iac"],
+        "source": "zscaler_github",
+    },
+    {
+        "key": "gh_zpcc_ansible",
+        "service": "Other",
+        "title": "zscaler.zpcc Ansible Collection (official)",
+        "url": "https://github.com/zscaler/zpcc-ansible",
+        "topics": ["ansible", "iac", "automation"],
+        "source": "zscaler_github",
+    },
+
+    # ─── Tier 2 Authoritative — Terraform Registry ──────────────
+    {
+        "key": "tf_zia_provider",
+        "service": "ZIA",
+        "title": "Zscaler ZIA Terraform Provider — resource-level best practices",
+        "url": "https://registry.terraform.io/providers/zscaler/zia/latest/docs",
+        "topics": ["zia", "terraform", "iac"],
+        "source": "terraform_registry",
+    },
+    {
+        "key": "tf_zpa_provider",
+        "service": "ZPA",
+        "title": "Zscaler ZPA Terraform Provider — resource-level best practices",
+        "url": "https://registry.terraform.io/providers/zscaler/zpa/latest/docs",
+        "topics": ["zpa", "terraform", "iac"],
+        "source": "terraform_registry",
+    },
+
+    # ─── Tier 2 Authoritative — Microsoft Learn ─────────────────
+    {
+        "key": "mslearn_zpa_sso",
+        "service": "ZPA",
+        "title": "Configure Zscaler Private Access SSO with Microsoft Entra ID",
+        "url": "https://learn.microsoft.com/en-us/entra/identity/saas-apps/zscalerprivateaccess-tutorial",
+        "topics": ["zpa", "entra", "azure_ad", "sso", "saml", "idp"],
+        "source": "ms_learn",
+    },
+    {
+        "key": "mslearn_zia_sso",
+        "service": "ZIA",
+        "title": "Configure Zscaler (ZIA) SSO with Microsoft Entra ID",
+        "url": "https://learn.microsoft.com/en-us/entra/identity/saas-apps/zscaler-tutorial",
+        "topics": ["zia", "entra", "azure_ad", "sso", "saml", "idp"],
+        "source": "ms_learn",
+    },
+    {
+        "key": "mslearn_zpa_scim",
+        "service": "ZPA",
+        "title": "Configure Zscaler Private Access Provisioning (SCIM) with Entra ID",
+        "url": "https://learn.microsoft.com/en-us/entra/identity/saas-apps/zscalerprivateaccess-provisioning-tutorial",
+        "topics": ["zpa", "scim", "entra", "provisioning"],
+        "source": "ms_learn",
+    },
+
+    # ─── Tier 2 Authoritative — AWS Documentation ───────────────
+    {
+        "key": "aws_zpa_connector",
+        "service": "ZPA",
+        "title": "AWS Prescriptive Guidance — Integrate ZPA with AWS (App Connector placement)",
+        "url": "https://docs.aws.amazon.com/prescriptive-guidance/latest/patterns/zscaler-private-access-zpa-integration-with-aws.html",
+        "topics": ["zpa", "aws", "connector", "cloud"],
+        "source": "aws_docs",
+    },
+
+    # ─── Tier 3 Community — Zscaler Community ───────────────────
+    {
+        "key": "community_best_practices",
+        "service": "Other",
+        "title": "Zscaler Community — Best Practices topic",
+        "url": "https://community.zscaler.com/s/topic/best-practices",
+        "topics": ["community", "best_practices"],
+        "source": "zscaler_community",
+        "note": "Mixed authorship; validate individual posts' authors before adopting.",
+    },
+    {
+        "key": "community_zcc_troubleshooting",
+        "service": "ZCC",
+        "title": "Zscaler Community — ZCC troubleshooting playbook",
+        "url": "https://community.zscaler.com/s/topic/zscaler-client-connector",
+        "topics": ["zcc", "troubleshooting", "client_connector"],
+        "source": "zscaler_community",
+    },
 ]
+
+# Backfill source/credibility/tier on every curated entry. Entries that
+# don't declare a `source` default to help_zscaler (the original scope).
+BEST_PRACTICES = [_tag(e, e.get("source", "help_zscaler")) for e in BEST_PRACTICES]
 
 
 def _discovered_store_path() -> str:
@@ -230,6 +424,8 @@ def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
         url = e.get("url")
         if not url or url in curated_urls or url in existing_urls:
             continue
+        source_id = e.get("source") or e.get("source_id") or "help_zscaler"
+        src_meta = get_source(source_id)
         # Defensive copy of just the fields we care about
         added.append({
             "key":     e.get("key") or f"discovered_{len(existing) + len(added) + 1}",
@@ -237,6 +433,9 @@ def save_discovered(new_entries: List[Dict[str, Any]]) -> int:
             "title":   e.get("title", ""),
             "url":     url,
             "topics":  e.get("topics", []),
+            "source":  source_id,
+            "credibility": int(e.get("credibility", src_meta.get("credibility", 0))),
+            "tier":    e.get("tier", src_meta.get("tier", "unverified")),
             "discovered": True,
             "first_seen": e.get("first_seen") or time.time(),
         })
@@ -263,12 +462,15 @@ def reset_discovered() -> bool:
 
 
 def _merged_catalog() -> List[Dict[str, Any]]:
-    """Curated + any previously-crawled discoveries, deduplicated."""
+    """Curated + any previously-crawled discoveries, deduplicated.
+    Discovered entries persisted before the multi-source refactor may
+    be missing source/credibility/tier — _tag() backfills them from
+    bp_sources so the UI can render a badge even for legacy discoveries."""
     discovered = _load_discovered()
     by_url = {e["url"]: e for e in BEST_PRACTICES}
     for d in discovered:
         if d.get("url") and d["url"] not in by_url:
-            by_url[d["url"]] = d
+            by_url[d["url"]] = _tag(dict(d), d.get("source", "help_zscaler"))
     return list(by_url.values())
 
 
