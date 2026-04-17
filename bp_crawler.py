@@ -38,12 +38,22 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, urljoin
 
 
-# Seed — start at the root of help.zscaler.com and BFS-crawl every
-# sub-site it links to. The crawler discovers sub-sites (zia, zpa,
-# zcc, zdx, zidentity, deception, deployments, etc.) dynamically
-# rather than hard-coding them, so new portal sections get picked
-# up automatically.
-SEED_PAGES = ["https://help.zscaler.com/"]
+# Seeds — start at the root plus every known sub-site landing page.
+# The root alone is sometimes a JS-rendered SPA with no static <a>
+# links (stdlib html.parser can't execute JS), which would starve
+# the BFS queue. Pairing the root with the curated sub-site landing
+# pages guarantees we always have extractable HTML to traverse, and
+# BFS still picks up any NEW sub-site the root links to.
+SEED_PAGES = [
+    "https://help.zscaler.com/",
+    "https://help.zscaler.com/zia",
+    "https://help.zscaler.com/zpa",
+    "https://help.zscaler.com/zscaler-client-connector",
+    "https://help.zscaler.com/zdx",
+    "https://help.zscaler.com/zidentity",
+    "https://help.zscaler.com/deception",
+    "https://help.zscaler.com/zscaler-deployments-operations",
+]
 
 # Host allowlist — ANY fetch outside this set is refused.
 ALLOWED_HOST = "help.zscaler.com"
@@ -268,6 +278,10 @@ def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
     matched: Dict[str, Dict[str, Any]] = {}  # url -> entry
     link_titles: Dict[str, str] = {}   # preserve anchor text seen in-link for later
     errors: List[Dict[str, Any]] = []
+    # Diagnostics: capture how many links we found on each fetched page,
+    # so if a crawl returns 0 matches we can see whether the pages were
+    # empty (SPA/JS-only) or full of non-matching links.
+    per_page_links: List[Dict[str, Any]] = []
 
     # BFS queue of (url, depth). Start at root seeds; every help.zscaler.com
     # link discovered during a fetch gets enqueued up to MAX_DEPTH hops.
@@ -298,25 +312,42 @@ def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
         except Exception:
             continue
 
-        for abs_url, text in _extract_links(html, url):
+        all_links = _extract_links(html, url)
+        allowed_links = 0
+        bp_links_this_page = 0
+        for abs_url, text in all_links:
             if not _is_allowed(abs_url) or _has_skip_extension(abs_url):
                 continue
+            allowed_links += 1
 
             # Track anchor text for any BP article we see — used as title
-            if _matches_article_pattern(abs_url) and abs_url not in matched:
-                title = (text or _titleize_from_slug(abs_url)).strip()
-                title = re.sub(r"\s*[›»→]\s*$", "", title)
-                matched[abs_url] = {
-                    "url": abs_url,
-                    "title": title or _titleize_from_slug(abs_url),
-                    "service": _service_from_url(abs_url),
-                    "source_page": url,
-                }
+            if _matches_article_pattern(abs_url):
+                bp_links_this_page += 1
+                if abs_url not in matched:
+                    title = (text or _titleize_from_slug(abs_url)).strip()
+                    title = re.sub(r"\s*[›»→]\s*$", "", title)
+                    matched[abs_url] = {
+                        "url": abs_url,
+                        "title": title or _titleize_from_slug(abs_url),
+                        "service": _service_from_url(abs_url),
+                        "source_page": url,
+                    }
 
             # Enqueue for deeper crawl if within depth budget
             if depth + 1 <= MAX_DEPTH and abs_url not in seen_urls:
                 seen_urls.add(abs_url)
                 to_fetch.append((abs_url, depth + 1))
+
+        # Keep a small per-page breadcrumb for diagnostics
+        if len(per_page_links) < 25:
+            per_page_links.append({
+                "url": url,
+                "depth": depth,
+                "bytes": len(body),
+                "total_links": len(all_links),
+                "allowed_links": allowed_links,
+                "bp_links": bp_links_this_page,
+            })
 
     discovered = sorted(matched.values(), key=lambda e: (e["service"], e["title"].lower()))
     new_since_curated = [e for e in discovered if e["url"] not in curated_urls]
@@ -334,6 +365,7 @@ def crawl(skip_tls_verify: bool = False, force: bool = False) -> Dict[str, Any]:
         "new_since_curated": len(new_since_curated),
         "new_entries": new_since_curated,
         "errors": errors[:20],
+        "per_page_sample": per_page_links,
         "from_cache": False,
         "cache_age_seconds": None,
         "timestamp": time.time(),

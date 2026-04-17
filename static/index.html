@@ -3967,9 +3967,32 @@ function _renderBestPractices(data, discoveredData) {
     const msg = discoveredData.total_matched
       ? `Crawl found ${discoveredData.total_matched} total article${discoveredData.total_matched === 1 ? '' : 's'} — all already in the curated list.`
       : 'Crawl completed but found no matching articles.';
+    const fetched = discoveredData.pages_fetched || 0;
+    const failed = discoveredData.pages_failed || 0;
+    const errs = discoveredData.errors || [];
+    // When 0 pages fetched, the crawl hit network errors (TLS/proxy/
+    // firewall). Surface the errors so the user can diagnose.
+    const errorBlock = (fetched === 0 && errs.length) ? `
+      <details style="margin-top:0.5rem;">
+        <summary style="cursor:pointer;color:var(--warn);font-size:0.8rem;">
+          ⚠ ${failed} fetch error${failed === 1 ? '' : 's'} — click to see why
+        </summary>
+        <ul style="margin:0.4rem 0 0 1rem;padding:0;font-size:0.75rem;font-family:monospace;color:var(--dim);line-height:1.5;">
+          ${errs.slice(0, 8).map(e => `<li style="margin-bottom:0.3rem;word-break:break-all;">
+            <span style="color:var(--text);">${escapeHtml(e.url || '')}</span><br>
+            <span style="color:var(--fail);">${escapeHtml(e.error || '')}</span>
+          </li>`).join('')}
+        </ul>
+        <div style="color:var(--dim);font-size:0.75rem;margin-top:0.4rem;line-height:1.5;">
+          Common fixes: corporate TLS inspection → set <code style="color:var(--accent);">ZSCALER_UPDATE_VERIFY_TLS=0</code>;
+          proxy required → set <code style="color:var(--accent);">HTTPS_PROXY=http://user:pass@proxy:port</code>;
+          firewall blocking help.zscaler.com → whitelist the host.
+        </div>
+      </details>` : '';
     discoveredHtml = `
       <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:6px;margin-bottom:1rem;font-size:0.82rem;color:var(--dim);">
-        ${msg} <span style="font-size:0.72rem;">(${discoveredData.pages_fetched || 0} pages · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+        ${msg} <span style="font-size:0.72rem;">(${fetched} pages · ${failed} failed · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+        ${errorBlock}
       </div>`;
   }
 
@@ -3985,6 +4008,11 @@ function _renderBestPractices(data, discoveredData) {
       <button type="button" class="btn btn-ghost" onclick="crawlBestPractices(true)"
               aria-label="Force a fresh crawl, bypassing the 24h cache"
               style="padding:0.5rem 0.9rem;font-size:0.8rem;">⟳ Force refresh</button>
+      <label style="display:inline-flex;align-items:center;gap:0.3rem;color:var(--dim);font-size:0.75rem;cursor:pointer;"
+             title="Enable if corporate TLS inspection is blocking the crawl">
+        <input type="checkbox" id="bpSkipTls" style="width:auto;cursor:pointer;">
+        Skip TLS verify
+      </label>
       <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · help.zscaler.com allowlisted</span>
     </div>
     ${discoveredHtml}
@@ -3994,10 +4022,11 @@ function _renderBestPractices(data, discoveredData) {
 async function crawlBestPractices(force) {
   const btn = document.getElementById('bpCrawlBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling help.zscaler.com…'; }
+  const skipTls = !!(document.getElementById('bpSkipTls') || {}).checked;
   try {
     const r = await fetch('/api/best-practices/crawl', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ force: !!force }),
+      body: JSON.stringify({ force: !!force, skip_tls_verify: skipTls }),
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
