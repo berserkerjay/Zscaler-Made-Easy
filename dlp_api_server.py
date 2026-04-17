@@ -17,9 +17,9 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, tempfile
+import json, asyncio, os, tempfile, time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -435,6 +435,11 @@ async def best_practices_list(service: Optional[str] = None):
     return {
         "entries": list_all(service or ""),
         "services": services(),
+        "last_refreshed_at": _BP_REFRESH_STATE.get("last_refreshed_at"),
+        "last_refresh_status": _BP_REFRESH_STATE.get("last_status"),
+        "last_refresh_error": _BP_REFRESH_STATE.get("last_error"),
+        "next_refresh_at": _BP_REFRESH_STATE.get("next_refresh_at"),
+        "auto_refresh_enabled": _BP_REFRESH_STATE.get("enabled", True),
     }
 
 
@@ -445,11 +450,11 @@ class BPCrawlRequest(BaseModel):
 
 @app.post("/api/best-practices/crawl")
 async def best_practices_crawl(req: BPCrawlRequest):
-    """Crawl help.zscaler.com for articles titled 'Best Practices' or
-    'Leading Practices' and report any NEW ones beyond the curated
-    catalog. Results are cached for 24h; force=true bypasses the cache.
-    skip_tls_verify=true opts into the corporate-TLS-MITM bypass (same
-    behavior as the update checker)."""
+    """Crawl every source in bp_sources.py for new Best/Leading-Practice
+    articles and report any NEW ones beyond the curated catalog. Results
+    are cached for 24h; force=true bypasses the cache. skip_tls_verify=true
+    opts into the corporate-TLS-MITM bypass (same behavior as the update
+    checker)."""
     try:
         from bp_crawler import crawl
         from zscaler_best_practices import save_discovered
@@ -461,7 +466,76 @@ async def best_practices_crawl(req: BPCrawlRequest):
     new_entries = result.get("new_entries") or []
     added = await asyncio.to_thread(save_discovered, new_entries)
     result["added_to_library"] = added
+    # Update the shared refresh state so /api/best-practices reflects
+    # this manual crawl's timestamp + status.
+    _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
+    _BP_REFRESH_STATE["last_status"] = "ok" if not result.get("error") else "error"
+    _BP_REFRESH_STATE["last_error"] = result.get("error")
     return result
+
+
+# ── Best-practices auto-refresh scheduler ────────────────────────────
+# The library is "dynamic": on startup we kick off a background crawl
+# if the cache is stale, and we then schedule periodic refreshes so
+# newly-published Zscaler best-practice articles surface without any
+# manual /api/best-practices/crawl call.
+_BP_REFRESH_INTERVAL_SECONDS = 6 * 3600   # 6h — well under the 24h crawler cache,
+                                          # so a fresh poll happens within a day
+                                          # but we don't re-hit sources too often.
+_BP_REFRESH_STATE: Dict[str, Any] = {
+    "enabled": True,
+    "last_refreshed_at": None,
+    "last_status": None,
+    "last_error": None,
+    "next_refresh_at": None,
+    "interval_seconds": _BP_REFRESH_INTERVAL_SECONDS,
+}
+
+
+async def _bp_auto_refresh_loop() -> None:
+    """Background task: crawl all BP sources, persist new discoveries,
+    then sleep until the next interval. Respects the crawler's own
+    24h cache (force=False) so we're not hammering sources."""
+    # First run: small startup delay so app finish booting cleanly
+    # before we kick off potentially slow HTTP fetches.
+    await asyncio.sleep(10)
+    while _BP_REFRESH_STATE.get("enabled", True):
+        try:
+            from bp_crawler import crawl
+            from zscaler_best_practices import save_discovered
+            # force=False honors the 24h cache → if something else
+            # already crawled today this is effectively a no-op.
+            result = await asyncio.to_thread(crawl, False, False)
+            new_entries = result.get("new_entries") or []
+            if new_entries:
+                await asyncio.to_thread(save_discovered, new_entries)
+            _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
+            _BP_REFRESH_STATE["last_status"] = "ok"
+            _BP_REFRESH_STATE["last_error"] = None
+        except Exception as e:
+            _BP_REFRESH_STATE["last_status"] = "error"
+            _BP_REFRESH_STATE["last_error"] = str(e)[:200]
+        next_at = time.time() + _BP_REFRESH_INTERVAL_SECONDS
+        _BP_REFRESH_STATE["next_refresh_at"] = next_at
+        try:
+            await asyncio.sleep(_BP_REFRESH_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            break
+
+
+@app.on_event("startup")
+async def _start_bp_refresh() -> None:
+    """Kick off the background auto-refresh task on app startup.
+    Runs forever; dies cleanly when the process exits."""
+    # Only enable when the module deps are importable — a deployment
+    # that strips bp_crawler shouldn't crash on boot.
+    try:
+        import bp_crawler  # noqa: F401
+        import zscaler_best_practices  # noqa: F401
+        asyncio.create_task(_bp_auto_refresh_loop())
+    except Exception:
+        _BP_REFRESH_STATE["enabled"] = False
+        _BP_REFRESH_STATE["last_status"] = "disabled"
 
 
 @app.get("/permissions")

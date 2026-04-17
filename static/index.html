@@ -3886,6 +3886,12 @@ function _showWizardSummary() {
 // 📚 Best Practices Library — curated Zscaler help-portal links
 // ══════════════════════════════════════════════════════════════════
 let _bestPracticesCache = null;
+let _bestPracticesPoll = null;   // setInterval handle for live re-fetch while open
+
+async function _fetchBestPractices() {
+  const r = await fetch('/api/best-practices', { cache: 'no-store' });
+  return await r.json();
+}
 
 async function openBestPracticesModal() {
   _ensureBestPracticesModal();
@@ -3900,18 +3906,36 @@ async function openBestPracticesModal() {
   // of "why aren't my new entries showing?" bugs.
   host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
   try {
-    const r = await fetch('/api/best-practices', { cache: 'no-store' });
-    _bestPracticesCache = await r.json();
+    _bestPracticesCache = await _fetchBestPractices();
   } catch(e) {
     host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
     return;
   }
   _renderBestPractices(_bestPracticesCache);
+  // Live dynamic updates: while the modal is open, re-fetch every
+  // 30s so the auto-refresh timestamp ticks and any newly-discovered
+  // entries from the background crawler surface without user action.
+  if (_bestPracticesPoll) clearInterval(_bestPracticesPoll);
+  _bestPracticesPoll = setInterval(async () => {
+    try {
+      const fresh = await _fetchBestPractices();
+      // Only re-render if the entry count or last_refreshed_at changed —
+      // avoids flicker on every tick.
+      const prev = _bestPracticesCache || {};
+      if (!prev.entries
+          || fresh.entries.length !== prev.entries.length
+          || fresh.last_refreshed_at !== prev.last_refreshed_at) {
+        _bestPracticesCache = fresh;
+        _renderBestPractices(_bestPracticesCache);
+      }
+    } catch (_) { /* swallow; next tick will try again */ }
+  }, 30000);
 }
 
 function closeBestPracticesModal() {
   document.getElementById('bestPracticesModal').style.display = 'none';
   document.body.style.overflow = '';
+  if (_bestPracticesPoll) { clearInterval(_bestPracticesPoll); _bestPracticesPoll = null; }
   if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
 }
 
@@ -4065,14 +4089,49 @@ function _renderBestPractices(data, discoveredData) {
       </span>
     </div>`;
 
+  // Last-refresh status — lets the user know the library is being
+  // auto-maintained and when the next poll will happen.
+  const fmtRelative = (ts) => {
+    if (!ts) return 'never';
+    const secs = Math.max(0, (Date.now() / 1000) - ts);
+    if (secs < 60) return `${Math.round(secs)}s ago`;
+    if (secs < 3600) return `${Math.round(secs/60)}m ago`;
+    if (secs < 86400) return `${Math.round(secs/3600)}h ago`;
+    return `${Math.round(secs/86400)}d ago`;
+  };
+  const fmtUntil = (ts) => {
+    if (!ts) return 'soon';
+    const secs = ts - (Date.now() / 1000);
+    if (secs <= 0) return 'any moment';
+    if (secs < 60) return `in ${Math.round(secs)}s`;
+    if (secs < 3600) return `in ${Math.round(secs/60)}m`;
+    return `in ${Math.round(secs/3600)}h`;
+  };
+  const autoEnabled = data.auto_refresh_enabled !== false;
+  const lastRefreshed = data.last_refreshed_at;
+  const nextRefresh = data.next_refresh_at;
+  const refreshStatus = data.last_refresh_status || 'pending';
+  const refreshErr = data.last_refresh_error;
+  const statusColor = refreshStatus === 'ok' ? 'var(--pass)'
+                     : refreshStatus === 'error' ? 'var(--fail)'
+                     : 'var(--dim)';
+  const refreshLine = autoEnabled
+    ? `<span style="color:${statusColor};">●</span>
+       <strong>Auto-refresh ${refreshStatus === 'ok' ? 'active' : refreshStatus}</strong> ·
+       last ${fmtRelative(lastRefreshed)} ·
+       next ${fmtUntil(nextRefresh)}${refreshErr ? ` · <span style="color:var(--fail);" title="${escapeHtml(refreshErr)}">⚠ error</span>` : ''}`
+    : '<span style="color:var(--dim);">Auto-refresh disabled</span>';
+
   document.getElementById('bestPracticesContent').innerHTML = `
-    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.6rem;">
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.5rem;">
       Multi-source catalog of Zscaler best-practice guidance. Every entry is rated on a credibility tier —
       <strong style="color:#60a5fa;">Official</strong> (Zscaler properties),
       <strong style="color:var(--pass);">Authoritative</strong> (hyperscalers, Terraform, ecosystem partners: Splunk, CrowdStrike, Okta, Ping, Microsoft, AWS), or
       <strong style="color:var(--warn);">Community</strong> (forums) — so you can weight each link accordingly.
-      Click <strong>🔄 Update library</strong> to crawl all crawlable sources for new articles.
     </p>
+    <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;color:var(--dim);margin-bottom:0.7rem;padding:0.4rem 0.7rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;">
+      ${refreshLine}
+    </div>
     ${tierLegend}
     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
       <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
