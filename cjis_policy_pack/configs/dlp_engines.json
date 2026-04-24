@@ -1,0 +1,52 @@
+[
+  {
+    "name": "CJIS Markings High Confidence",
+    "description": "Explicit CJIS / CHRI / LES banner or portion markings — high-confidence indicator that the content is CJI regardless of payload.",
+    "expression": "(D:CJIS Marking Pattern (High Confidence) OR D:Law Enforcement Sensitive (LES) Markings)"
+  },
+  {
+    "name": "CJIS Markings Medium Confidence",
+    "description": "Looser CJIS keyword match — pairs with content indicators in other engines to cut false positives from casual mentions.",
+    "expression": "D:CJIS Marking Pattern (Medium Confidence)"
+  },
+  {
+    "name": "CJIS Identifier Engine",
+    "description": "Structured CJIS identifiers — NCIC ORI, FBI UCN, State ID, NCIC Purpose Code. Any of these appearing in content is a strong signal.",
+    "expression": "(D:NCIC ORI Pattern OR D:FBI UCN / Universal Control Number OR D:State ID Number (SID) Reference OR D:NCIC Purpose Code Pattern)"
+  },
+  {
+    "name": "Criminal History / RAP Sheet Engine",
+    "description": "RAP-sheet / criminal-history terminology correlated with subject PII (SSN, DL, or DOB) within 500 chars. Suppresses matches on news articles that casually mention arrests.",
+    "expression": "(D:Criminal History / RAP Sheet Phrases AND (D:Social Security Numbers (US) - CJIS Prox 500 OR D:Drivers License (US) - CJIS Prox 500 OR D:Date of Birth - CJIS Prox 500))"
+  },
+  {
+    "name": "NCIC / III Data Engine",
+    "description": "NCIC or III query/response terminology correlated with subject PII — indicates a live CJI data transfer.",
+    "expression": "(D:NCIC / III Query Terminology AND (D:Social Security Numbers (US) - CJIS Prox 500 OR D:Drivers License (US) - CJIS Prox 500 OR D:Date of Birth - CJIS Prox 500))"
+  },
+  {
+    "name": "Warrant / Wanted-Person Engine",
+    "description": "Warrant/wanted terminology near subject PII — extradition, bench, arrest warrants referencing a named subject.",
+    "expression": "(D:Warrant / Wanted-Person Phrases AND (D:Social Security Numbers (US) - CJIS Prox 500 OR D:Drivers License (US) - CJIS Prox 500 OR D:Date of Birth - CJIS Prox 500))"
+  },
+  {
+    "name": "Biometric CJI Engine",
+    "description": "Biometric identifiers (fingerprint, palm, AFIS, NGI) with CJIS markings or any structured CJIS identifier — indicates fingerprint card or biometric record.",
+    "expression": "(D:Biometric / AFIS Terminology AND (D:CJIS Marking Pattern (High Confidence) OR D:NCIC ORI Pattern OR D:FBI UCN / Universal Control Number))"
+  },
+  {
+    "name": "NICS Firearms Background Engine",
+    "description": "NICS / firearm background-check terminology — ATF Form 4473, NICS denial, prohibited-person language.",
+    "expression": "D:NICS / Firearms Background Check Phrases"
+  },
+  {
+    "name": "Info-Sharing Portal Engine",
+    "description": "Exfil of N-DEx, LEEP, or Nlets derived content references — info-sharing-system terminology co-occurring with subject identifiers.",
+    "expression": "(D:N-DEx / Criminal-Justice Info Sharing AND (D:Social Security Numbers (US) - CJIS Prox 500 OR D:NCIC ORI Pattern OR D:FBI UCN / Universal Control Number))"
+  },
+  {
+    "name": "CJIS Any-Signal Engine",
+    "description": "Any strong CJIS signal — explicit markings, structured identifiers, or RAP/NCIC/warrant content engines. Catch-all for broad monitoring.",
+    "expression": "(D:CJIS Marking Pattern (High Confidence) OR D:Law Enforcement Sensitive (LES) Markings OR D:NCIC ORI Pattern OR D:FBI UCN / Universal Control Number OR D:NCIC Purpose Code Pattern)"
+  }
+]

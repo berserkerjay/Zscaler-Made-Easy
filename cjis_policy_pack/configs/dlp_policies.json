@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Z-CJIS Markings-Monitor",
+    "description": "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["CJIS Markings High Confidence"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS Identifier-Monitor",
+    "description": "Monitor structured CJIS identifiers — NCIC ORI, FBI UCN, SID, NCIC Purpose Code. Any such identifier leaving the tenant is logged for review.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["CJIS Identifier Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS Criminal History-Monitor",
+    "description": "Monitor transmission of criminal-history records (RAP sheets, booking reports, incident reports) when they co-occur with subject PII.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["Criminal History / RAP Sheet Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS NCIC III Data-Monitor",
+    "description": "Monitor NCIC / III query results (wanted persons, stolen property, missing persons) correlated with subject PII.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["NCIC / III Data Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS Warrants-Monitor",
+    "description": "Monitor wanted-person / warrant content near subject PII — flags accidental or intentional exfil of active-warrant data.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["Warrant / Wanted-Person Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS Biometric-Monitor",
+    "description": "Monitor biometric references (fingerprint, palm, AFIS/IAFIS/NGI, booking photo) that co-occur with CJIS markings or structured identifiers.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["Biometric CJI Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS NICS Firearms-Monitor",
+    "description": "Monitor NICS / firearm background-check terminology — ATF Form 4473, NICS denials, prohibited-person content.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["NICS Firearms Background Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_MEDIUM"
+  },
+  {
+    "name": "Z-CJIS Info-Sharing-Monitor",
+    "description": "Monitor egress of content derived from LE info-sharing portals (N-DEx, LEEP, Nlets, RISS) when coupled with subject identifiers.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["Info-Sharing Portal Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE"],
+    "severity": "RULE_SEVERITY_HIGH"
+  },
+  {
+    "name": "Z-CJIS Any-Signal-Monitor",
+    "description": "Broad catch-all — any high-signal CJIS marking or structured identifier. Useful as a safety net while tuning the narrower policies above.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": ["CJIS Any-Signal Engine"],
+    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"],
+    "severity": "RULE_SEVERITY_MEDIUM"
+  }
+]

@@ -101,25 +101,29 @@ def _load_json(configs_dir: str, filename: str) -> List[Dict[str, Any]]:
 
 
 def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
-    """Load pack.json if present, else infer metadata from dir name."""
+    """Load pack.json if present, merge with dir-inferred defaults.
+    Counts (dictionaries / engines / policies) are ALWAYS computed from
+    the on-disk JSON so the UI never shows a stale count from pack.json."""
+    meta: Dict[str, Any] = {}
     meta_path = os.path.join(pack_dir, "pack.json")
     if os.path.exists(meta_path):
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                meta = json.load(f) or {}
         except Exception:
-            pass
+            meta = {}
     configs = _resolve_configs(pack_dir)
     dicts = _load_json(configs, "dlp_dictionaries.json")
     engines = _load_json(configs, "dlp_engines.json")
     policies = _load_json(configs, "dlp_policies.json")
-    return {
-        "name": os.path.basename(pack_dir).replace("_", " ").title(),
-        "dir": pack_dir,
-        "dictionaries": len(dicts),
-        "engines": len(engines),
-        "policies": len(policies),
-    }
+    # Inferred defaults — pack.json values win for 'name'/'description'/etc,
+    # but counts are always authoritative from the on-disk files.
+    meta.setdefault("name", os.path.basename(pack_dir).replace("_", " ").title())
+    meta["dir"] = pack_dir
+    meta["dictionaries"] = len(dicts)
+    meta["engines"] = len(engines)
+    meta["policies"] = len(policies)
+    return meta
 
 
 def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
