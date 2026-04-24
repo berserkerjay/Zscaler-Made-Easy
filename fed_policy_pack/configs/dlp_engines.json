@@ -1,0 +1,73 @@
+[
+  {
+    "name": "FOUO Markings High Confidence",
+    "expression": "((D:FOUO Markings (High Confidence) > 0))"
+  },
+  {
+    "name": "FOUO Markings Medium Confidence",
+    "expression": "((D:FOUO Markings (Medium Confidence) > 0))"
+  },
+  {
+    "name": "AEA High Confidence",
+    "expression": "(((D:AEA RD-FRD-Admonishment Phrase > 0) AND (D:AEA RD-FRD-Literal Phrase > 1)) OR ((D:AEA RD-FRD-Literal Phrase > 0) AND (D:AEA RD-FRD-Contextual Phrase > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 2) AND (D:AEA RD-FRD Pattern (High Confidence) > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 2) AND (D:AEA RD-FRD-Contextual Phrase > 0)))"
+  },
+  {
+    "name": "AEA Medium Confidence",
+    "expression": "(((D:AEA RD-FRD-Admonishment Phrase > 0) AND (D:AEA RD-FRD-Literal Phrase > 0)) OR ((D:AEA RD-FRD-Literal Phrase > 0) AND (D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 0) AND (D:AEA RD-FRD Pattern (Medium Confidence) > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (Medium Confidence) > 0) AND (D:AEA RD-FRD-Contextual Phrase > 0)))"
+  },
+  {
+    "name": "Standard Forms",
+    "expression": "((D:Standard Forms > 3))"
+  },
+  {
+    "name": "US PII",
+    "expression": "((D:Social Security Numbers (US) - High > 4) OR (D:Social Security Numbers (US) - Prox 500 > 0) OR (D:Tax Identification Number (US) - High > 4) OR (D:Tax Identification Number (US) - Prox 500 > 0) OR (D:Alien Registration Number - High Confidence > 4) OR (D:Alien Registration Number - Prox 500 > 0) OR ((D:Date of Birth - High Confidence > 1) AND (D:Drivers License (United States) - High > 4)))"
+  },
+  {
+    "name": "Private Keys",
+    "expression": "((D:Private Keys-Plaintext Regex > 0) OR (D:JWK Private Key > 0) OR (D:Private Key > 0) OR (D:Encrypted or ASCII Armored PGP Keys > 0) OR (D:Encrypted Bouncy Castle Key Exports > 0))"
+  },
+  {
+    "name": "Financial Information",
+    "expression": "((D:ABA Bank Routing Number - High > 4) OR (D:ABA Bank Routing Number - Prox 500 > 1) OR (D:Credit Cards - High > 4) OR (D:Credit Cards - Prox 500 > 1) OR (D:Credit Card Magnetic Tracks > 0) OR (D:ML_TAX_LEAKAGE > 0) OR (D:Form K-1 > 3) OR (D:Form 1099-MISC and 1099-NEC > 4) OR (D:W2 or W4 or W9 Forms > 3) OR (D:Form 1040 and related schedules > 3) OR (D:FINANCIAL > 0) OR (D:ML_CORPORATE_FINANCE_LEAKAGE > 0))"
+  },
+  {
+    "name": "US PHI - Medium Confidence",
+    "expression": "(((D:ML_MEDICAL_DOC_LEAKAGE > 0) OR ((D:MEDICAL > 0) AND ((D:DRUGS_LEAKAGE > 9) OR (D:DISEASES_LEAKAGE > 9)))) AND ((D:Social Security Numbers (US) - High > 0) OR (D:US Passport - High Confidence > 0) OR (D:Alien Registration Number - High Confidence > 0) OR ((D:Date of Birth - High Confidence > 0) AND (D:Drivers License (United States) - Prox 500 > 0))))"
+  },
+  {
+    "name": "US PHI - High Confidence",
+    "expression": "(((D:ML_MEDICAL_DOC_LEAKAGE > 0) OR ((D:MEDICAL > 0) AND ((D:DRUGS_LEAKAGE > 14) OR (D:DISEASES_LEAKAGE > 14)))) AND ((D:Social Security Numbers (US) - High > 4) OR (D:US Passport - High Confidence > 4) OR (D:Alien Registration Number - High Confidence > 4) OR ((D:Date of Birth - Prox 500 > 1) AND (D:Drivers License (United States) - Prox 500 > 1)) OR (D:Social Security Numbers (US) - Prox 500 > 0) OR (D:US Passport - Prox 500 > 0) OR (D:Alien Registration Number - Prox 500 > 0)))"
+  },
+  {
+    "name": "ITAR Phrases",
+    "expression": "((D:ITAR Pattern > 0) OR (D:ITAR Phrase > 0))"
+  },
+  {
+    "name": "TLP Red",
+    "expression": "((D:TLP Red > 0))"
+  },
+  {
+    "name": "TLP Amber Strict",
+    "expression": "((D:TLP Amber Strict > 0))"
+  },
+  {
+    "name": "TLP Amber",
+    "expression": "((D:TLP Amber > 0))"
+  },
+  {
+    "name": "CUI Engine (High Confidence)",
+    "expression": "((D:CUI Registry Marking Pattern (High confidence) > 0) OR (D:CUI Portion Marking Pattern (High confidence) > 1) OR (D:Declassify Date Pattern (High Confidence) > 0))",
+    "description": "Engine created by automated script."
+  },
+  {
+    "name": "CUI Engine (Medium Confidence)",
+    "expression": "(((D:CUI Registry Marking Pattern (Medium confidence) > 0) AND ((D:CUI Portion Marking Pattern (Medium confidence) > 0) OR (D:CUI Contextual Phrases > 0) OR (D:CUI Category Phrase > 0))) OR ((D:CUI Portion Marking Pattern (Medium confidence) > 0) AND ((D:CUI Contextual Phrases > 2) OR (D:CUI Category Phrase > 1))) OR ((D:Declassify Date Pattern (Medium Confidence) > 0) AND ((D:CUI Portion Marking Pattern (Medium confidence) > 0) OR (D:CUI Contextual Phrases > 2) OR (D:CUI Category Phrase > 1))))",
+    "description": "Engine created by automated script."
+  },
+  {
+    "name": "CUI Engine (Low Confidence)",
+    "expression": "((D:CUI Contextual Phrases > 2) AND (D:CUI Category Phrase > 0))",
+    "description": "Engine created by automated script."
+  }
+]
