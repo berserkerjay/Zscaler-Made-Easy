@@ -17,9 +17,9 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, tempfile, time
+import json, asyncio, os, re, tempfile, time
 from datetime import datetime, timezone
-from typing import Optional, Any, Dict
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,7 +164,9 @@ async def _safe_exception_handler(request: Request, exc: Exception):
     )
 
 # Serve static files (web GUI)
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(_APP_DIR, "static")
+PACKS_ROOT = _APP_DIR
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -536,6 +538,129 @@ async def _start_bp_refresh() -> None:
     except Exception:
         _BP_REFRESH_STATE["enabled"] = False
         _BP_REFRESH_STATE["last_status"] = "disabled"
+
+
+# ── DLP Policy Pack Management ───────────────────────────────────────
+# Generic import/verify/list for any DLP pack (fed, custom, uploaded).
+
+@app.get("/api/dlp-packs")
+async def dlp_packs_list():
+    """Discover all DLP policy packs in the project directory."""
+    try:
+        from dlp_importer import discover_packs, load_pack_contents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = discover_packs()
+    return {"packs": packs}
+
+
+@app.get("/api/dlp-packs/{pack_id}")
+async def dlp_pack_detail(pack_id: str):
+    """Return full contents summary of a specific pack."""
+    try:
+        from dlp_importer import discover_packs, load_pack_contents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = {p["id"]: p for p in discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+    return load_pack_contents(packs[pack_id]["dir"])
+
+
+class DLPPackImportRequest(BaseModel):
+    use_rank_0: bool = False
+    apply_tweaks: bool = True
+    verify: bool = True
+
+
+@app.post("/api/dlp-packs/{pack_id}/import")
+async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
+    """Run the full import pipeline for a DLP pack against the
+    currently-connected ZIA tenant."""
+    try:
+        from dlp_importer import discover_packs, run_full_import
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = {p["id"]: p for p in discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+
+    try:
+        from sdk_client import SdkClient
+        client = SdkClient()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"ZIA client not available — configure tenant credentials first: {e}")
+
+    logs: list = []
+    def _log(msg: str):
+        logs.append(msg)
+
+    result = await asyncio.to_thread(
+        run_full_import, client, packs[pack_id]["dir"],
+        use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
+        verify=req.verify, log=_log,
+    )
+    result["logs"] = logs
+    return result
+
+
+@app.post("/api/dlp-packs/{pack_id}/verify")
+async def dlp_pack_verify(pack_id: str):
+    """Verify deployed tenant state matches a pack's definitions."""
+    try:
+        from dlp_importer import discover_packs, verify_deployment
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = {p["id"]: p for p in discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+
+    try:
+        from sdk_client import SdkClient
+        client = SdkClient()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"ZIA client not available: {e}")
+
+    result = await asyncio.to_thread(
+        verify_deployment, client.zia, packs[pack_id]["dir"],
+    )
+    return result
+
+
+class DLPPackUploadRequest(BaseModel):
+    pack_name: str
+    dictionaries: Optional[List[Dict[str, Any]]] = None
+    engines: Optional[List[Dict[str, Any]]] = None
+    policies: Optional[List[Dict[str, Any]]] = None
+
+
+@app.post("/api/dlp-packs/upload")
+async def dlp_pack_upload(req: DLPPackUploadRequest):
+    """Create a new DLP pack from uploaded JSON definitions. Persists
+    to disk so it survives server restarts."""
+    slug = re.sub(r"[^a-z0-9_]+", "_", req.pack_name.lower().strip()).strip("_")
+    if not slug:
+        raise HTTPException(status_code=400, detail="Invalid pack name")
+    pack_dir = os.path.join(PACKS_ROOT, slug)
+    if os.path.exists(pack_dir):
+        raise HTTPException(status_code=409, detail=f"Pack '{slug}' already exists")
+    configs_dir = os.path.join(pack_dir, "configs")
+    os.makedirs(configs_dir, exist_ok=True)
+    saved = {}
+    for fname, data in [
+        ("dlp_dictionaries.json", req.dictionaries),
+        ("dlp_engines.json", req.engines),
+        ("dlp_policies.json", req.policies),
+    ]:
+        if data:
+            with open(os.path.join(configs_dir, fname), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            saved[fname] = len(data)
+    # Write pack.json metadata
+    meta = {"name": req.pack_name, "version": "1.0", "description": f"Uploaded pack: {req.pack_name}"}
+    with open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    return {"id": slug, "dir": pack_dir, "files_saved": saved, "metadata": meta}
 
 
 @app.get("/permissions")
