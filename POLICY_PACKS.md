@@ -214,32 +214,68 @@ for p in dlp_importer.discover_packs():
 
 ---
 
-## 6. Import — Three Ways
+## 6. Deploy — Three Ways
 
-### Web UI (recommended)
+### Web UI: Deploy Studio (recommended)
 
 1. Drop the pack directory in the project root.
-2. Restart the server; hard-refresh browser (Ctrl+Shift+R).
-3. Click **📦 DLP Policy Packs** → your pack → **▶ Import to Tenant**.
-4. Click **Verify Deployment** to diff tenant state vs pack JSON.
+2. Start the server with **`START_Zscaler_Assessment_WRITES_ENABLED.bat`** (deploying writes to the tenant, so it is gated behind `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`). Hard-refresh the browser (Ctrl+Shift+R).
+3. Enter the tenant credentials at the top of the page, then click **📦 Deploy Policy Packs**.
+4. **Select** — toggle any number of packs. Options: *Apply confidence tweaks* and *Rank 0*.
+5. **Preflight** — the tenant is read and every item is cross-referenced. Nothing is written. You get a status (Ready / Review / Blocked) and, per dictionary, engine, policy and tweak:
+
+   | Status | Meaning |
+   |---|---|
+   | Will create | New object; will be created. |
+   | Will modify | A confidence tweak will change an **existing** tenant dictionary. |
+   | Already present | Exists with identical content — nothing to do. |
+   | Kept as-is | Exists with **different** content. The tenant's version is kept and everything below binds to it; the pack's version is not applied. |
+   | Conflict | Defined differently in two selected packs — skipped, with its dependents. |
+   | Skipped | A dependency (dictionary, engine, predefined template) is missing or blocked. |
+
+   Plus an **Impact** panel: rule-order shift (new rules go to order 1), the 127-rule API cap, enforcing vs monitor-only actions, rank-0 mode, and the activation reminder.
+6. **Approve** — the exact list of writes and every warning, restated. Deployment stays disabled until you tick the consent box. The plan hash shown is what the server will require.
+7. **Deploy** — dictionaries → engines → policies → tweaks → verification. Each item is isolated: a failure is reported and its dependents are skipped, never created half-wired. If the tenant changed since you approved, nothing is written and you are asked to re-run preflight.
 
 ### API (for scripting / CI)
 
 ```bash
-# List packs
+# List packs / preview one
 curl http://localhost:8080/api/dlp-packs
-
-# Preview a pack's contents
 curl http://localhost:8080/api/dlp-packs/my_pack_name
 
-# Run import
+# 1) Preflight — read-only plan for one or more packs. Credentials may be
+#    omitted to fall back to ZSCALER_* env vars, then tenant_config.json.
+curl -X POST http://localhost:8080/api/dlp-packs/preflight \
+  -H 'Content-Type: application/json' \
+  -d '{"pack_ids": ["fed_policy_pack", "cjis_policy_pack"],
+       "use_rank_0": false, "apply_tweaks": true,
+       "cloud": "production", "vanity_domain": "acme",
+       "client_id": "...", "client_secret": "..."}'
+# → {"status": "ready|warnings|blocked", "items": [...], "warnings": [...],
+#    "blockers": [...], "impacts": [...], "plan_hash": "<sha256>", ...}
+
+# 2) Apply — requires confirm=true and the plan_hash from step 1.
+#    409 {"status":"plan_changed"} if the tenant/selection drifted; nothing written.
+#    403 if the server was not started with writes enabled.
+curl -X POST http://localhost:8080/api/dlp-packs/apply \
+  -H 'Content-Type: application/json' \
+  -d '{"pack_ids": ["fed_policy_pack", "cjis_policy_pack"],
+       "plan_hash": "<sha256 from preflight>", "confirm": true,
+       "use_rank_0": false, "apply_tweaks": true, "verify": true,
+       "cloud": "production", "vanity_domain": "acme",
+       "client_id": "...", "client_secret": "..."}'
+
+# Single-pack legacy import (no cross-pack checks, no approval step)
 curl -X POST http://localhost:8080/api/dlp-packs/my_pack_name/import \
   -H 'Content-Type: application/json' \
   -d '{"use_rank_0": false, "apply_tweaks": true, "verify": true}'
 
-# Verify
+# Verify a pack against the tenant (read-only)
 curl -X POST http://localhost:8080/api/dlp-packs/my_pack_name/verify
 ```
+
+The planner lives in `pack_deploy.py` (`preflight()` / `apply()`); `tests/test_pack_deploy.py` exercises it against a fake tenant — run `python3 -m pytest tests/`.
 
 ### Standalone CLI (no server running)
 

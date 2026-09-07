@@ -1,0 +1,70 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Byte-compile Python sources
+        run: python -m py_compile $(git ls-files '*.py')
+
+      - name: Syntax-check GUI scripts
+        run: |
+          for f in static/*.js; do node --check "$f"; done
+
+      - name: Unit tests
+        run: python -m pytest -q tests
+
+      - name: Smoke-test API server and Deploy Studio injection
+        run: |
+          pip install httpx
+          pip install httpx2 || true
+          python - <<'EOF'
+          from fastapi.testclient import TestClient
+          import dlp_api_server as srv
+
+          c = TestClient(srv.app)
+          r = c.get("/")
+          assert r.status_code == 200, r.status_code
+          html = r.text
+          assert "deploy_studio.css" in html, "CSS add-on not injected"
+          assert "deploy_studio.js" in html, "JS add-on not injected"
+          for asset in ("/static/deploy_studio.js", "/static/deploy_studio.css"):
+              a = c.get(asset)
+              assert a.status_code == 200, f"{asset}: {a.status_code}"
+          packs = c.get("/api/dlp-packs")
+          assert packs.status_code == 200, packs.status_code
+          ids = sorted(p["id"] for p in packs.json().get("packs", []))
+          print("packs:", ids)
+          assert "fed_policy_pack" in ids and "cjis_policy_pack" in ids
+          # Writes must be disabled by default: apply endpoint refuses.
+          r = c.post("/api/dlp-packs/apply", json={"pack_ids": ids, "plan_hash": "x", "confirm": True})
+          assert r.status_code == 403, (r.status_code, r.text[:200])
+          print("smoke OK")
+          EOF
+
+      - name: Print file fingerprints
+        run: sha1sum $(git ls-files '*.py' 'static/*' 'tests/*' 'POLICY_PACKS.md')

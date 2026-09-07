@@ -45,7 +45,9 @@ from starlette.types import ASGIApp
 # fetch from an arbitrary host).
 ALLOWED_CLOUDS = {
     "production", "zscloud", "zscaler", "zscalerone",
-    "zscalertwo", "zscalerthree", "zspreview", "zscalerbeta",
+    "zscalertwo", "zscalerthree", "zscalerten", "zspreview", "zscalerbeta",
+    # OneAPI / Zidentity environment names (provider docs: beta, gov, govus)
+    "beta", "gov", "govus", "zscalergov",
 }
 
 # Browser-borne origins we trust for state-changing requests.
@@ -64,7 +66,7 @@ MAX_VANITY_LEN = 253           # full DNS name limit
 MAX_CUSTOMER_ID_LEN = 64
 
 
-# ── Configuration helpers ────────────────────────────────────────────
+# ── Configuration helpers ────────────────────────────────────────────────────
 
 def get_bind_host() -> str:
     """Default: localhost only. Operator must explicitly opt in."""
@@ -94,7 +96,7 @@ def writes_enabled() -> bool:
     return os.environ.get("ENABLE_WRITE_ACTIONS") == "YES_I_UNDERSTAND"
 
 
-# ── Validation helpers ───────────────────────────────────────────────
+# ── Validation helpers ───────────────────────────────────────────────────────
 
 def validate_cloud(cloud: str) -> str:
     cloud = (cloud or "production").strip().lower()
@@ -158,7 +160,7 @@ def scrub_dict(d: dict, secret_keys: Iterable[str] = ("client_secret", "secret",
     return out
 
 
-# ── Middleware ───────────────────────────────────────────────────────
+# ── Middleware ────────────────────────────────────────────────────────────────
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Apply hardening headers to every response."""

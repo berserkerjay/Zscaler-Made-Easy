@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -37,7 +37,7 @@ from security import (
     RateLimitMiddleware,
     get_bind_host, get_port, get_max_body_bytes, is_debug,
     validate_cloud, validate_vanity, validate_credential, validate_customer_id,
-    mask_secret, scrub_dict,
+    mask_secret, scrub_dict, writes_enabled,
 )
 
 # ── Import the assessment engine ─────────────────────────────────────
@@ -170,6 +170,29 @@ PACKS_ROOT = _APP_DIR
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# GUI add-ons: standalone assets under static/ that extend the single-file
+# GUI without editing index.html. Each is injected into the served page only
+# if the file exists — a <link> before </head>, a <script> before </body>.
+# Scripts run after index.html's inline script, so they can replace legacy
+# functions by redefining them. Same-origin, so the CSP ('self') allows them.
+GUI_ADDONS = [
+    ("deploy_studio.css", "style"),
+    ("deploy_studio.js", "script"),
+]
+
+
+def _inject_gui_addons(html: str) -> str:
+    for name, kind in GUI_ADDONS:
+        if not os.path.exists(os.path.join(STATIC_DIR, name)):
+            continue
+        if kind == "style":
+            tag, anchor = f'<link rel="stylesheet" href="/static/{name}">\n</head>', "</head>"
+        else:
+            tag, anchor = f'<script src="/static/{name}"></script>\n</body>', "</body>"
+        if anchor in html:
+            html = html.replace(anchor, tag, 1)
+    return html
+
 
 # ── Request Models ───────────────────────────────────────────────────
 
@@ -191,7 +214,7 @@ class UpdateCheckRequest(BaseModel):
     skip_tls_verify: bool = False     # corporate TLS MITM bypass (opt-in per request)
 
 
-# ── Routes ───────────────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def serve_gui():
@@ -203,13 +226,13 @@ async def serve_gui():
     index = os.path.join(STATIC_DIR, "index.html")
     if not os.path.exists(index):
         return JSONResponse({"error": "GUI not found. Place index.html in static/"}, status_code=404)
-    return FileResponse(
-        index,
-        headers={
-            "Cache-Control": "no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-        },
-    )
+    headers = {"Cache-Control": "no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"}
+    try:
+        with open(index, "r", encoding="utf-8") as f:
+            html = f.read()
+    except OSError:
+        return FileResponse(index, headers=headers)
+    return HTMLResponse(_inject_gui_addons(html), headers=headers)
 
 
 # ── Text-prompt command interface ────────────────────────────────
@@ -231,7 +254,7 @@ class CommandParseRequest(BaseModel):
     llm_api_key: str = ""      # required when llm_kind == "anthropic"
 
 
-# ── Guided Auto-Remediation ────────────────────────────────────
+# ── Guided Auto-Remediation ──────────────────────────────────────
 # Takes a finding + user-supplied criteria and generates the API
 # call that would fix it. Read-only by default (dry_run=True);
 # live writes gated by ENABLE_WRITE_ACTIONS env var per standard
@@ -295,7 +318,7 @@ async def remediation_execute(req: RemediationExecuteRequest):
     return result
 
 
-# ───────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
 # Tenant-credentials request model + client factory.
 #
 # Defined up here (instead of next to the rule-migration block where
@@ -307,7 +330,7 @@ async def remediation_execute(req: RemediationExecuteRequest):
 # class must exist before any referencing line is parsed. Moving
 # these definitions up eliminates the NameError that otherwise fires
 # on `class DlpEfficacyCorpusRequest(MigrateRequest)`.
-# ───────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
 class MigrateRequest(BaseModel):
     cloud: str = "production"
     vanity_domain: str = ""
@@ -476,7 +499,7 @@ async def best_practices_crawl(req: BPCrawlRequest):
     return result
 
 
-# ── Best-practices auto-refresh scheduler ────────────────────────────
+# ── Best-practices auto-refresh scheduler ────────────────────────────────
 # The library is "dynamic": on startup we kick off a background crawl
 # if the cache is stale, and we then schedule periodic refreshes so
 # newly-published Zscaler best-practice articles surface without any
@@ -540,7 +563,7 @@ async def _start_bp_refresh() -> None:
         _BP_REFRESH_STATE["last_status"] = "disabled"
 
 
-# ── DLP Policy Pack Management ───────────────────────────────────────
+# ── DLP Policy Pack Management ─────────────────────────────────────────
 # Generic import/verify/list for any DLP pack (fed, custom, uploaded).
 
 @app.get("/api/dlp-packs")
@@ -567,64 +590,210 @@ async def dlp_pack_detail(pack_id: str):
     return load_pack_contents(packs[pack_id]["dir"])
 
 
-class DLPPackImportRequest(BaseModel):
+class TenantCredsRequest(BaseModel):
+    """Tenant credentials for pack operations. All optional in the body —
+    when blank the server falls back to ZSCALER_* environment variables,
+    then to tenant_config.json next to this file."""
+    cloud: str = ""
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+
+
+class DLPPackImportRequest(TenantCredsRequest):
     use_rank_0: bool = False
     apply_tweaks: bool = True
     verify: bool = True
 
 
-@app.post("/api/dlp-packs/{pack_id}/import")
-async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
-    """Run the full import pipeline for a DLP pack against the
-    currently-connected ZIA tenant."""
-    try:
-        from dlp_importer import discover_packs, run_full_import
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
-    packs = {p["id"]: p for p in discover_packs()}
-    if pack_id not in packs:
-        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+class DLPPackDeployRequest(TenantCredsRequest):
+    pack_ids: List[str] = []
+    use_rank_0: bool = False
+    apply_tweaks: bool = True
+    verify: bool = True
+    # apply-only: the hash of the plan the user approved, plus explicit consent
+    plan_hash: str = ""
+    confirm: bool = False
 
+
+_WRITES_DISABLED_MSG = (
+    "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. "
+    "Relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat."
+)
+
+
+def _tenant_creds(req: TenantCredsRequest) -> Dict[str, str]:
+    """Resolve credentials: request body → environment → tenant_config.json."""
+    creds = {
+        "cloud": req.cloud, "vanity_domain": req.vanity_domain,
+        "client_id": req.client_id, "client_secret": req.client_secret,
+    }
+    if not (creds["client_id"] and creds["client_secret"]):
+        creds = {
+            "cloud": creds["cloud"] or os.environ.get("ZSCALER_CLOUD", ""),
+            "vanity_domain": creds["vanity_domain"] or os.environ.get("ZSCALER_VANITY_DOMAIN", ""),
+            "client_id": os.environ.get("ZSCALER_CLIENT_ID", ""),
+            "client_secret": os.environ.get("ZSCALER_CLIENT_SECRET", ""),
+        }
+    if not (creds["client_id"] and creds["client_secret"]):
+        cfg_path = os.path.join(_APP_DIR, "tenant_config.json")
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f) or {}
+                creds = {k: (creds[k] or str(cfg.get(k, ""))) for k in creds}
+            except Exception:
+                pass
+    return creds
+
+
+def _oneapi_cloud(cloud: str) -> Optional[str]:
+    """Map the GUI's cloud names onto the OneAPI `cloud` setting. Commercial
+    production tenants must NOT send a cloud value (the SDK builds the
+    Zidentity URL from the vanity domain alone); only beta and the
+    FedRAMP clouds need one."""
+    c = (cloud or "").strip().lower()
+    if c in ("beta", "zscalerbeta", "zspreview"):
+        return "beta"
+    if c in ("gov", "zscalergov"):
+        return "gov"
+    if c == "govus":
+        return "govus"
+    return None
+
+
+def _build_sdk_client(creds: Dict[str, str]):
+    """Build an authenticated zscaler-sdk-python OneAPI client (the object
+    with `.zia.*` services the importer and planner require). Validates
+    every input and never echoes the secret in an error."""
+    cloud = validate_cloud(creds.get("cloud") or "production")
+    vd = validate_vanity(creds.get("vanity_domain", ""))
+    cid = validate_credential("client_id", creds.get("client_id", ""), required=True)
+    sec = validate_credential("client_secret", creds.get("client_secret", ""), required=True)
+    if not vd:
+        raise HTTPException(status_code=400, detail="vanity_domain is required for OneAPI authentication.")
     try:
-        from sdk_client import SdkClient
-        client = SdkClient()
+        from zscaler import ZscalerClient
+    except ImportError:
+        raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
+    config: Dict[str, Any] = {"clientId": cid, "clientSecret": sec, "vanityDomain": vd}
+    oneapi_cloud = _oneapi_cloud(cloud)
+    if oneapi_cloud:
+        config["cloud"] = oneapi_cloud
+    try:
+        client = ZscalerClient(config)
+        auth = getattr(client, "authenticate", None)
+        if callable(auth):
+            auth()
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"ZIA client not available — configure tenant credentials first: {e}")
+        reason = str(e).replace(sec, mask_secret(sec))[:200]
+        raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
+    return client
+
+
+def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
+    """Map requested ids onto discovered packs. Ids are only ever matched
+    against the discovery list, so a request can't name an arbitrary path."""
+    from dlp_importer import discover_packs
+    known = {p["id"]: p for p in discover_packs()}
+    unknown = [pid for pid in pack_ids if pid not in known]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"Unknown pack(s): {', '.join(unknown)}")
+    return [{"id": pid, "dir": known[pid]["dir"]} for pid in pack_ids]
+
+
+@app.post("/api/dlp-packs/preflight")
+async def dlp_packs_preflight(req: DLPPackDeployRequest):
+    """Plan a deployment of one or more packs WITHOUT writing anything.
+    Cross-references the packs against each other and the live tenant:
+    dependency resolution, conflicts, existing objects that would be
+    reused rather than overwritten, rule-order and enforcement impact,
+    and modifications to existing tenant objects. Returns a plan_hash
+    that /apply requires, so approval is bound to exactly this plan."""
+    try:
+        import pack_deploy
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_deploy unavailable: {e}")
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack.")
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    report = await asyncio.to_thread(
+        pack_deploy.preflight, client, packs,
+        use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
+    )
+    out = pack_deploy.public_report(report)
+    out["writes_enabled"] = writes_enabled()
+    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    return out
+
+
+@app.post("/api/dlp-packs/apply")
+async def dlp_packs_apply(req: DLPPackDeployRequest):
+    """Execute an approved plan. Requires confirm=true and the plan_hash
+    returned by /preflight. If the tenant or selection changed since
+    approval the response is 409 with status 'plan_changed' and nothing
+    is written. Blocked or failed items never stop the others."""
+    try:
+        import pack_deploy
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_deploy unavailable: {e}")
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="plan_hash is required — run /api/dlp-packs/preflight first.")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
 
     logs: list = []
-    def _log(msg: str):
-        logs.append(msg)
-
     result = await asyncio.to_thread(
-        run_full_import, client, packs[pack_id]["dir"],
+        pack_deploy.apply, client, packs,
+        plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
+        verify=req.verify, writes_enabled=True, log=logs.append,
+    )
+    result["logs"] = logs
+    if result.get("status") in ("plan_changed", "blocked"):
+        return JSONResponse(result, status_code=409)
+    return result
+
+
+@app.post("/api/dlp-packs/{pack_id}/import")
+async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
+    """Single-pack import (legacy path). Prefer /api/dlp-packs/preflight
+    + /apply, which cross-reference packs and require approval."""
+    try:
+        from dlp_importer import run_full_import
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    pack = _resolve_pack_ids([pack_id])[0]
+    client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
+
+    logs: list = []
+    result = await asyncio.to_thread(
+        run_full_import, client, pack["dir"],
         use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
-        verify=req.verify, log=_log,
+        verify=req.verify, log=logs.append,
     )
     result["logs"] = logs
     return result
 
 
 @app.post("/api/dlp-packs/{pack_id}/verify")
-async def dlp_pack_verify(pack_id: str):
-    """Verify deployed tenant state matches a pack's definitions."""
+async def dlp_pack_verify(pack_id: str, req: TenantCredsRequest = TenantCredsRequest()):
+    """Verify deployed tenant state matches a pack's definitions (read-only)."""
     try:
-        from dlp_importer import discover_packs, verify_deployment
+        from dlp_importer import verify_deployment
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
-    packs = {p["id"]: p for p in discover_packs()}
-    if pack_id not in packs:
-        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
-
-    try:
-        from sdk_client import SdkClient
-        client = SdkClient()
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"ZIA client not available: {e}")
-
-    result = await asyncio.to_thread(
-        verify_deployment, client.zia, packs[pack_id]["dir"],
-    )
-    return result
+    pack = _resolve_pack_ids([pack_id])[0]
+    client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
+    return await asyncio.to_thread(verify_deployment, client.zia, pack["dir"])
 
 
 class DLPPackUploadRequest(BaseModel):
@@ -1211,16 +1380,16 @@ async def compliance_drilldown(request: Request):
     return get_control_drilldown(results)
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════
 # Rule Migration API (Evaluate All Rules mode)
-# ═══════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════
 # MigrateRequest + _build_client are defined earlier in the file now
 # (just above the /api/diagnose/zcc endpoint) so classes which
 # inherit from MigrateRequest above the rule-migration block don't
 # crash on import. See the comment next to the earlier definition.
 
 
-# ── DLP Efficacy: dictionary + engine quality scoring ────────────
+# ── DLP Efficacy: dictionary + engine quality scoring ────────────────
 # Declared here (not at the top of the route table) because
 # DlpEfficacyCorpusRequest inherits from MigrateRequest, which is
 # defined just above. Moving this block earlier caused a NameError
@@ -1349,7 +1518,7 @@ async def migrate_status_manual(req: ManualModeRequest):
     return base
 
 
-# ── Step 2: Download Current Rules ───────────────────────────────
+# ── Step 2: Download Current Rules ────────────────────────────────
 @app.post("/api/migrate/fetch")
 async def migrate_fetch(req: MigrateRequest):
     """Step 2: Download the current Inline Web DLP rules."""
@@ -1396,7 +1565,7 @@ async def migrate_enable(req: EnableRequest):
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
 
 
-# ── Step 4b: Delete All Existing Rules (gated) ───────────────────
+# ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
     dry_run: bool = True
 
@@ -1437,7 +1606,7 @@ async def migrate_post(req: PostRequest):
     return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
 
 
-# ── Upload rules (from a JSON backup file) ───────────────────────
+# ── Upload rules (from a JSON backup file) ───────────────────────────────
 class UploadRulesRequest(BaseModel):
     rules: list[dict] = []
 
@@ -1460,7 +1629,7 @@ async def migrate_upload(req: UploadRulesRequest):
     }
 
 
-# ── Manual reorder (accept any explicit ordering) ────────────────
+# ── Manual reorder (accept any explicit ordering) ────────────────────────────────
 class ReorderRequest(BaseModel):
     rules: list[dict] = []
     order: list = []  # list of rule IDs (or names) in desired order
@@ -1757,7 +1926,7 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
-# ── Bypass / Non-Inspected Traffic Inventory ────────────────────────
+# ── Bypass / Non-Inspected Traffic Inventory ────────────────────────────────────
 @app.post("/api/report/bypass")
 async def report_bypass(req: MigrateRequest):
     """Generate the bypass-inventory report (JSON). Read-only."""
@@ -1825,7 +1994,7 @@ async def report_bypass_export(req: BypassExportRequest):
     )
 
 
-# ── Updates: check for new Zscaler APIs / SDK / best practices ──────
+# ── Updates: check for new Zscaler APIs / SDK / best practices ──────────────────
 @app.get("/api/updates/sources")
 async def updates_sources():
     """Enumerate the sources the update-checker monitors."""
