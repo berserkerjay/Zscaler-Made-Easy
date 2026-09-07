@@ -182,16 +182,23 @@
   .btn { min-height: 40px; }
 
   /* Main container shrinks to make room for the right-side prompt
-     sidebar. Collapsed via .sidebar-collapsed on body. The sidebar
-     stays interactive even on narrow viewports; it slides off-screen
-     ONLY when the user explicitly collapses it. */
+     sidebar. Collapsed via .sidebar-collapsed on body. On narrow
+     viewports (<=1200px) we auto-collapse so the fixed sidebar
+     never overlays expanded card content. Users reopen via the
+     edge rail (▶). */
   .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; padding-right: calc(1.5rem + 400px); animation: fadeInUp 0.6s var(--ease); transition: padding-right 200ms ease; }
   body.sidebar-collapsed .container { padding-right: 1.5rem; }
   body.sidebar-collapsed #promptSidebar { transform: translateX(100%); pointer-events: none; }
   body.sidebar-collapsed #sidebarOpenRail { display: block !important; }
+  /* Narrow viewport safeguard: sidebar becomes an overlay instead of
+     a squeeze. Content keeps full width; sidebar floats on top with
+     a visible shadow so it's clearly layered, not overlapping. */
+  @media (max-width: 1200px) {
+    .container { padding-right: 1.5rem !important; }
+    #promptSidebar { box-shadow: -12px 0 32px rgba(0,0,0,0.35); }
+  }
   @media (max-width: 960px) {
     #promptSidebar { width: min(380px, 100vw); }
-    .container { padding-right: 1.5rem !important; }
   }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -245,9 +252,9 @@
   .card h2 { font-size: 1.4rem; margin-bottom: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
   .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--dim); font-weight: 500; }
 
-  /* Collapsible card sections — every .card top-level h2/h3 gets a
-     click-to-collapse twisty attached at runtime by _initCollapsibleCards().
-     Persisted per heading text in localStorage so reloads keep state. */
+  /* Pop-out card sections — every .card top-level h2/h3 gets a
+     click target that opens the section in a new browser tab.
+     Sections stay collapsed on the main page to reduce clutter. */
   .card h2.collapsible,
   .card h3.collapsible {
     cursor: pointer;
@@ -260,16 +267,16 @@
   .card h3.collapsible:hover { color: var(--accent); }
   .card h2.collapsible::before,
   .card h3.collapsible::before {
-    content: "▾";
+    content: "⧉";
     display: inline-block;
     font-size: 0.85em;
     color: var(--dim);
-    transition: transform 0.2s var(--ease);
+    transition: color 0.2s var(--ease);
     width: 0.9em;
     text-align: center;
   }
-  .card.collapsed h2.collapsible::before,
-  .card.collapsed h3.collapsible::before { transform: rotate(-90deg); }
+  .card h2.collapsible:hover::before,
+  .card h3.collapsible:hover::before { color: var(--accent); }
   .card.collapsed > :not(h2):not(h3):not(.card-header-row) { display: none !important; }
   .card.collapsed { padding-bottom: 1rem; }
 
@@ -487,11 +494,34 @@
   /* Download bar */
   .download-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 
+  /* Hero toolbar — grid prevents crowding and overlap */
+  .hero-toolbar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.4rem;
+    margin-top: 0.9rem;
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .hero-toolbar .btn {
+    width: 100%;
+    justify-content: center;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 0.5rem 0.6rem;
+    min-height: 38px;
+  }
+
   /* Responsive */
   @media (max-width: 768px) {
     .form-grid, .section-grid, .stats, .steps { grid-template-columns: 1fr; }
     .container { padding: 1rem; }
     .hero h1 { font-size: 1.7rem; }
+    .hero-toolbar { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 480px) {
+    .hero-toolbar { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -522,67 +552,76 @@
       <div id="promptResult"></div>
     </div>
 
-    <div style="margin-top:0.9rem;display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+    <div class="hero-toolbar">
       <button class="btn btn-ghost" onclick="openUpdateModal()"
-              aria-label="Check for Zscaler SDK and documentation updates"
-              style="padding:0.45rem 1rem;font-size:0.82rem;">
-        <span aria-hidden="true">🔄</span> Check for Zscaler Updates
+              aria-label="Check for Zscaler SDK and documentation updates">
+        <span aria-hidden="true">🔄</span> Zscaler Updates
       </button>
       <button class="btn btn-ghost" onclick="openBypassModal()"
-              aria-label="Open Bypass and Non-Inspected Traffic Inventory Report"
-              style="padding:0.45rem 1rem;font-size:0.82rem;">
-        <span aria-hidden="true">🔓</span> Bypass / Non-Inspected Traffic Report
+              aria-label="Open Bypass and Non-Inspected Traffic Inventory Report">
+        <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
       </button>
       <button class="btn btn-ghost" onclick="openBestPracticesModal()"
-              aria-label="Open curated Zscaler Best Practices reference library"
-              style="padding:0.45rem 1rem;font-size:0.82rem;">
-        <span aria-hidden="true">📚</span> Best Practices Library
+              aria-label="Open curated Zscaler Best Practices reference library">
+        <span aria-hidden="true">📚</span> Best Practices
       </button>
       <button class="btn btn-ghost" onclick="openDlpEfficacyModal()"
-              aria-label="Score every custom DLP dictionary and engine on detection efficacy"
-              style="padding:0.45rem 1rem;font-size:0.82rem;">
-        <span aria-hidden="true">📊</span> DLP Dictionary &amp; Engine Efficacy
+              aria-label="Score every custom DLP dictionary and engine on detection efficacy">
+        <span aria-hidden="true">📊</span> DLP Efficacy
+      </button>
+      <button class="btn btn-ghost" onclick="openDlpPacksModal()"
+              aria-label="Browse, import, and verify DLP policy packs (Fed, custom, uploaded)">
+        <span aria-hidden="true">📦</span> DLP Policy Packs
       </button>
     </div>
   </div>
 
   <!-- DLP Efficacy modal -->
   <div id="dlpEffModal" role="dialog" aria-modal="true" aria-labelledby="dlpEffModalTitle"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
-    <div style="max-width:1100px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <h2 id="dlpEffModalTitle" style="margin:0;">
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;">
+    <div style="max-width:960px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem 1.8rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+        <h2 id="dlpEffModalTitle" style="margin:0;font-size:1.2rem;">
           <span aria-hidden="true">📊</span> DLP Dictionary &amp; Engine Efficacy
         </h2>
         <button class="btn btn-ghost" onclick="closeDlpEffModal()" aria-label="Close DLP efficacy dialog"
-                style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+                style="padding:0.3rem 0.7rem;font-size:0.82rem;">✕ Close</button>
       </div>
-      <p style="color:var(--dim);font-size:0.88rem;margin-bottom:1rem;">
-        Scores every custom DLP dictionary and engine on likelihood of detecting real data without
-        flooding incidents with false positives. Static analysis (no user data required), plus an
-        optional <em>local corpus test</em> where you paste sample text and see which dictionaries
-        would fire. The corpus never leaves this server — we run regex locally with Python's stdlib.
+      <p style="color:var(--dim);font-size:0.82rem;margin-bottom:1rem;line-height:1.5;">
+        Scores every custom DLP dictionary and engine on detection precision.
+        Static analysis first, optional local corpus test second. No data leaves this server.
       </p>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+
+      <!-- Action buttons — clearly separated into two rows -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1rem;max-width:460px;">
         <button class="btn btn-primary" id="dlpEffRunBtn" onclick="runDlpEfficacy()"
-                style="padding:0.55rem 1.1rem;font-size:0.85rem;">Score Tenant</button>
+                style="padding:0.65rem 1rem;font-size:0.9rem;justify-content:center;">
+          <span aria-hidden="true" style="font-size:1rem;">&#9654;</span> Score Tenant
+        </button>
         <button class="btn btn-ghost" onclick="toggleDlpEffCorpus()"
-                style="padding:0.55rem 1.1rem;font-size:0.85rem;">🧪 Local Corpus Test</button>
+                style="padding:0.65rem 1rem;font-size:0.9rem;justify-content:center;">
+          <span aria-hidden="true">🧪</span> Local Corpus Test
+        </button>
       </div>
+
+      <!-- Corpus test panel -->
       <div id="dlpEffCorpusPanel" style="display:none;margin-bottom:1rem;padding:0.9rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
-        <label for="dlpEffCorpus" style="display:block;font-size:0.85rem;margin-bottom:0.4rem;">
-          Paste sample text (≤ 256 KB). Stays on this server — local regex only.
+        <label for="dlpEffCorpus" style="display:block;font-size:0.82rem;margin-bottom:0.4rem;color:var(--dim);">
+          Paste sample text (max 256 KB). Stays on this server — regex runs locally.
         </label>
-        <textarea id="dlpEffCorpus" rows="6" maxlength="262144"
-                  style="width:100%;font-family:monospace;font-size:0.8rem;background:#0b1220;color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:0.5rem;"
-                  placeholder="e.g. a few emails, a spreadsheet row, a chat transcript — whatever represents realistic data"></textarea>
-        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;">
+        <textarea id="dlpEffCorpus" rows="5" maxlength="262144"
+                  style="width:100%;font-family:monospace;font-size:0.8rem;background:rgba(15,23,42,0.6);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0.5rem;resize:vertical;"
+                  placeholder="e.g. a few emails, a spreadsheet row, or a chat transcript"></textarea>
+        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center;">
           <button class="btn btn-primary" onclick="runDlpEfficacyCorpus()"
-                  style="padding:0.4rem 0.9rem;font-size:0.8rem;">Run Corpus Test</button>
-          <span id="dlpEffCorpusStatus" style="color:var(--dim);font-size:0.78rem;align-self:center;"></span>
+                  style="padding:0.5rem 1rem;font-size:0.85rem;">
+            <span aria-hidden="true" style="font-size:0.95rem;">&#9654;</span> Run Corpus Test
+          </button>
+          <span id="dlpEffCorpusStatus" style="color:var(--dim);font-size:0.78rem;"></span>
         </div>
       </div>
-      <div id="dlpEffResult" style="font-size:0.88rem;"></div>
+
+      <div id="dlpEffResult" style="font-size:0.85rem;"></div>
     </div>
   </div>
 
@@ -1824,8 +1863,21 @@ function toggleSidebar() {
 // Sidebar starts open on every load — the prompt is the primary
 // input surface now, so a stale 'collapsed' from a previous session
 // would strand the user. Users can still collapse via the ▶ button.
+// EXCEPTION: on viewports <=1200px we auto-collapse so the fixed
+// 380px panel doesn't overlay card content when sections expand.
 try { localStorage.removeItem('zassess_sidebar_collapsed'); } catch(e) {}
-document.body.classList.remove('sidebar-collapsed');
+if (window.innerWidth <= 1200) {
+  document.body.classList.add('sidebar-collapsed');
+} else {
+  document.body.classList.remove('sidebar-collapsed');
+}
+// Re-collapse on resize so rotating/resizing into a narrow viewport
+// doesn't leave the sidebar stranded on top of content.
+window.addEventListener('resize', () => {
+  if (window.innerWidth <= 1200 && !document.body.classList.contains('sidebar-collapsed')) {
+    document.body.classList.add('sidebar-collapsed');
+  }
+});
 
 // Wire sidebar input: Enter sends, Shift+Enter inserts newline
 document.getElementById('sidebarPromptInput')?.addEventListener('keydown', (e) => {
@@ -3838,6 +3890,12 @@ function _showWizardSummary() {
 // 📚 Best Practices Library — curated Zscaler help-portal links
 // ══════════════════════════════════════════════════════════════════
 let _bestPracticesCache = null;
+let _bestPracticesPoll = null;   // setInterval handle for live re-fetch while open
+
+async function _fetchBestPractices() {
+  const r = await fetch('/api/best-practices', { cache: 'no-store' });
+  return await r.json();
+}
 
 async function openBestPracticesModal() {
   _ensureBestPracticesModal();
@@ -3846,22 +3904,42 @@ async function openBestPracticesModal() {
   document.body.style.overflow = 'hidden';
   _lastFocus = document.activeElement;
   const host = document.getElementById('bestPracticesContent');
-  if (!_bestPracticesCache) {
-    host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
-    try {
-      const r = await fetch('/api/best-practices');
-      _bestPracticesCache = await r.json();
-    } catch(e) {
-      host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
-      return;
-    }
+  // Always re-fetch on open so newly-added curated entries and any
+  // server-side changes appear immediately. The payload is tiny (~40
+  // entries) so the cost is negligible and eliminates a whole class
+  // of "why aren't my new entries showing?" bugs.
+  host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div>';
+  try {
+    _bestPracticesCache = await _fetchBestPractices();
+  } catch(e) {
+    host.innerHTML = `<div style="color:var(--fail);">Failed to load: ${escapeHtml(e.message)}</div>`;
+    return;
   }
   _renderBestPractices(_bestPracticesCache);
+  // Live dynamic updates: while the modal is open, re-fetch every
+  // 30s so the auto-refresh timestamp ticks and any newly-discovered
+  // entries from the background crawler surface without user action.
+  if (_bestPracticesPoll) clearInterval(_bestPracticesPoll);
+  _bestPracticesPoll = setInterval(async () => {
+    try {
+      const fresh = await _fetchBestPractices();
+      // Only re-render if the entry count or last_refreshed_at changed —
+      // avoids flicker on every tick.
+      const prev = _bestPracticesCache || {};
+      if (!prev.entries
+          || fresh.entries.length !== prev.entries.length
+          || fresh.last_refreshed_at !== prev.last_refreshed_at) {
+        _bestPracticesCache = fresh;
+        _renderBestPractices(_bestPracticesCache);
+      }
+    } catch (_) { /* swallow; next tick will try again */ }
+  }, 30000);
 }
 
 function closeBestPracticesModal() {
   document.getElementById('bestPracticesModal').style.display = 'none';
   document.body.style.overflow = '';
+  if (_bestPracticesPoll) { clearInterval(_bestPracticesPoll); _bestPracticesPoll = null; }
   if (_lastFocus && document.body.contains(_lastFocus)) _lastFocus.focus();
 }
 
@@ -3872,22 +3950,65 @@ function _renderBestPractices(data, discoveredData) {
   for (const e of entries) (bySvc[e.service] ||= []).push(e);
   const svcOrder = services.length ? services : Object.keys(bySvc);
 
-  const renderEntry = (e, isDiscovered) => `
-    <li style="padding:0.5rem 0.7rem;background:rgba(15,23,42,0.5);border:1px solid var(--border);border-radius:6px;margin-bottom:0.35rem;">
-      <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
-         style="color:var(--accent);text-decoration:none;font-weight:600;">
-        ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
-      </a>
-      ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
+  // Credibility styling — gives each entry a colored left-border AND a
+  // prominent badge so the tier is obvious at a glance. Tooltip shows
+  // the full source name.
+  const tierStyle = (e) => {
+    const cred = Number(e.credibility || 0);
+    const tier = (e.tier || '').toLowerCase();
+    if (tier === 'official' || cred >= 100) return { label: 'Official', bg: 'rgba(59,130,246,0.10)', fg: '#60a5fa', border: '#3b82f6', borderBg: 'rgba(59,130,246,0.18)' };
+    if (tier === 'authoritative' || cred >= 80) return { label: 'Authoritative', bg: 'rgba(16,185,129,0.10)', fg: 'var(--pass)', border: '#10b981', borderBg: 'rgba(16,185,129,0.18)' };
+    if (tier === 'community' || cred >= 60) return { label: 'Community', bg: 'rgba(245,158,11,0.10)', fg: 'var(--warn)', border: '#f59e0b', borderBg: 'rgba(245,158,11,0.18)' };
+    return { label: 'Unverified', bg: 'rgba(107,114,128,0.10)', fg: 'var(--dim)', border: '#6b7280', borderBg: 'rgba(107,114,128,0.15)' };
+  };
+
+  const tierBadge = (e) => {
+    const ts = tierStyle(e);
+    const cred = Number(e.credibility || 0);
+    const srcName = e.source_name || e.source || '';
+    const title = srcName ? `${ts.label} source: ${srcName} (credibility ${cred}/100)` : `${ts.label} (credibility ${cred}/100)`;
+    return `<span title="${escapeHtml(title)}" style="display:inline-block;background:${ts.borderBg};color:${ts.fg};border:1px solid ${ts.border};padding:0.1rem 0.5rem;border-radius:999px;font-size:0.68rem;font-weight:700;letter-spacing:0.04em;margin-left:0.35rem;vertical-align:middle;white-space:nowrap;">${ts.label}</span>`;
+  };
+
+  const sourceBadge = (e) => {
+    const src = e.source_name || e.source || '';
+    if (!src) return '';
+    return `<span style="color:var(--dim);font-size:0.68rem;margin-left:0.25rem;font-style:italic;">via ${escapeHtml(src)}</span>`;
+  };
+
+  const renderEntry = (e, isDiscovered) => {
+    const ts = tierStyle(e);
+    return `
+    <li style="padding:0.5rem 0.7rem 0.5rem 0.9rem;background:${ts.bg};border:1px solid var(--border);border-left:4px solid ${ts.border};border-radius:6px;margin-bottom:0.35rem;">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0.2rem;">
+        <a href="${escapeHtml(e.url)}" target="_blank" rel="noopener noreferrer"
+           style="color:var(--accent);text-decoration:none;font-weight:600;">
+          ${escapeHtml(e.title)} <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
+        </a>
+        ${tierBadge(e)}
+        ${isDiscovered ? '<span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.05rem 0.35rem;border-radius:3px;font-size:0.7rem;margin-left:0.3rem;">DISCOVERED</span>' : ''}
+      </div>
+      ${sourceBadge(e)}
       ${e.note ? `<div style="color:var(--warn);font-size:0.72rem;margin-top:0.2rem;">${escapeHtml(e.note)}</div>` : ''}
       <div style="color:var(--dim);font-size:0.72rem;margin-top:0.15rem;font-family:monospace;word-break:break-all;">${escapeHtml(e.url)}</div>
     </li>`;
+  };
+
+  // Sort entries within each service section by tier so Official
+  // entries appear first, then Authoritative, then Community.
+  const tierRank = { official: 0, authoritative: 1, community: 2, unverified: 3 };
+  const sortByTier = (arr) => [...arr].sort((a, b) => {
+    const ra = tierRank[(a.tier || 'unverified').toLowerCase()] ?? 9;
+    const rb = tierRank[(b.tier || 'unverified').toLowerCase()] ?? 9;
+    return ra - rb;
+  });
 
   const curatedHtml = svcOrder.map(svc => {
-    const items = (bySvc[svc] || []).map(e => renderEntry(e, false)).join('');
+    const sorted = sortByTier(bySvc[svc] || []);
+    const items = sorted.map(e => renderEntry(e, !!e.discovered)).join('');
     return `
       <section style="margin-bottom:1rem;">
-        <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${(bySvc[svc] || []).length})</span></h3>
+        <h3 style="font-size:0.82rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-size:0.72rem;font-weight:400;">(${sorted.length})</span></h3>
         <ul style="list-style:none;padding:0;margin:0;">${items}</ul>
       </section>`;
   }).join('');
@@ -3904,12 +4025,17 @@ function _renderBestPractices(data, discoveredData) {
       </section>`).join('');
     const addedCount = (typeof discoveredData.added_to_library === 'number')
       ? discoveredData.added_to_library : discoveredData.new_entries.length;
+    const perSource = (discoveredData.per_source || [])
+      .filter(s => s.pages_fetched > 0 || s.pages_failed > 0)
+      .map(s => `${escapeHtml(s.source_name || s.source_id)} (${s.pages_fetched}p)`)
+      .join(' · ');
     discoveredHtml = `
       <div style="padding:0.8rem 1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:8px;margin-bottom:1rem;">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
           <strong style="color:var(--pass);">✨ ${addedCount} article${addedCount === 1 ? '' : 's'} added to the library</strong>
-          <span style="color:var(--dim);font-size:0.72rem;">scanned ${discoveredData.pages_fetched || 0} index page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
+          <span style="color:var(--dim);font-size:0.72rem;">${discoveredData.sources_crawled || 0} source${(discoveredData.sources_crawled||0) === 1 ? '' : 's'} · ${discoveredData.pages_fetched || 0} page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
         </div>
+        ${perSource ? `<div style="color:var(--dim);font-size:0.7rem;margin-bottom:0.5rem;">${perSource}</div>` : ''}
         ${newHtml}
         <div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">
           These are now persisted in your per-user data dir and will appear in future sessions alongside curated entries (badged DISCOVERED).
@@ -3919,17 +4045,98 @@ function _renderBestPractices(data, discoveredData) {
     const msg = discoveredData.total_matched
       ? `Crawl found ${discoveredData.total_matched} total article${discoveredData.total_matched === 1 ? '' : 's'} — all already in the curated list.`
       : 'Crawl completed but found no matching articles.';
+    const fetched = discoveredData.pages_fetched || 0;
+    const failed = discoveredData.pages_failed || 0;
+    const errs = discoveredData.errors || [];
+    // When 0 pages fetched, the crawl hit network errors (TLS/proxy/
+    // firewall). Surface the errors so the user can diagnose.
+    const errorBlock = (fetched === 0 && errs.length) ? `
+      <details style="margin-top:0.5rem;">
+        <summary style="cursor:pointer;color:var(--warn);font-size:0.8rem;">
+          ⚠ ${failed} fetch error${failed === 1 ? '' : 's'} — click to see why
+        </summary>
+        <ul style="margin:0.4rem 0 0 1rem;padding:0;font-size:0.75rem;font-family:monospace;color:var(--dim);line-height:1.5;">
+          ${errs.slice(0, 8).map(e => `<li style="margin-bottom:0.3rem;word-break:break-all;">
+            <span style="color:var(--text);">${escapeHtml(e.url || '')}</span><br>
+            <span style="color:var(--fail);">${escapeHtml(e.error || '')}</span>
+          </li>`).join('')}
+        </ul>
+        <div style="color:var(--dim);font-size:0.75rem;margin-top:0.4rem;line-height:1.5;">
+          Common fixes: corporate TLS inspection → set <code style="color:var(--accent);">ZSCALER_UPDATE_VERIFY_TLS=0</code>;
+          proxy required → set <code style="color:var(--accent);">HTTPS_PROXY=http://user:pass@proxy:port</code>;
+          firewall blocking help.zscaler.com → whitelist the host.
+        </div>
+      </details>` : '';
     discoveredHtml = `
       <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:6px;margin-bottom:1rem;font-size:0.82rem;color:var(--dim);">
-        ${msg} <span style="font-size:0.72rem;">(${discoveredData.pages_fetched || 0} pages · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+        ${msg} <span style="font-size:0.72rem;">(${fetched} pages · ${failed} failed · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+        ${errorBlock}
       </div>`;
   }
 
+  // Tier-distribution summary so the user sees the source mix at a glance.
+  const tierCounts = { official: 0, authoritative: 0, community: 0, unverified: 0 };
+  for (const e of entries) {
+    const t = (e.tier || 'unverified').toLowerCase();
+    tierCounts[t] = (tierCounts[t] || 0) + 1;
+  }
+  const tierLegend = `
+    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.8rem;font-size:0.72rem;">
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.55rem;border-radius:999px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);color:#60a5fa;" title="help.zscaler.com, developer.zscaler.com, Zscaler blogs, Zscaler GitHub — authored by Zscaler">
+        <strong>Official · 100</strong> <span style="color:var(--dim);">(${tierCounts.official || 0})</span>
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.55rem;border-radius:999px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);color:var(--pass);" title="Microsoft Learn, AWS docs, Terraform registry — authored by supported-partner platforms">
+        <strong>Authoritative · 80</strong> <span style="color:var(--dim);">(${tierCounts.authoritative || 0})</span>
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.55rem;border-radius:999px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);color:var(--warn);" title="Zscaler community, Reddit — unvetted crowd-sourced content">
+        <strong>Community · 60</strong> <span style="color:var(--dim);">(${tierCounts.community || 0})</span>
+      </span>
+    </div>`;
+
+  // Last-refresh status — lets the user know the library is being
+  // auto-maintained and when the next poll will happen.
+  const fmtRelative = (ts) => {
+    if (!ts) return 'never';
+    const secs = Math.max(0, (Date.now() / 1000) - ts);
+    if (secs < 60) return `${Math.round(secs)}s ago`;
+    if (secs < 3600) return `${Math.round(secs/60)}m ago`;
+    if (secs < 86400) return `${Math.round(secs/3600)}h ago`;
+    return `${Math.round(secs/86400)}d ago`;
+  };
+  const fmtUntil = (ts) => {
+    if (!ts) return 'soon';
+    const secs = ts - (Date.now() / 1000);
+    if (secs <= 0) return 'any moment';
+    if (secs < 60) return `in ${Math.round(secs)}s`;
+    if (secs < 3600) return `in ${Math.round(secs/60)}m`;
+    return `in ${Math.round(secs/3600)}h`;
+  };
+  const autoEnabled = data.auto_refresh_enabled !== false;
+  const lastRefreshed = data.last_refreshed_at;
+  const nextRefresh = data.next_refresh_at;
+  const refreshStatus = data.last_refresh_status || 'pending';
+  const refreshErr = data.last_refresh_error;
+  const statusColor = refreshStatus === 'ok' ? 'var(--pass)'
+                     : refreshStatus === 'error' ? 'var(--fail)'
+                     : 'var(--dim)';
+  const refreshLine = autoEnabled
+    ? `<span style="color:${statusColor};">●</span>
+       <strong>Auto-refresh ${refreshStatus === 'ok' ? 'active' : refreshStatus}</strong> ·
+       last ${fmtRelative(lastRefreshed)} ·
+       next ${fmtUntil(nextRefresh)}${refreshErr ? ` · <span style="color:var(--fail);" title="${escapeHtml(refreshErr)}">⚠ error</span>` : ''}`
+    : '<span style="color:var(--dim);">Auto-refresh disabled</span>';
+
   document.getElementById('bestPracticesContent').innerHTML = `
-    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.8rem;">
-      Curated list of every Zscaler help-portal article titled "Best Practices" or "Leading Practices".
-      Click <strong>🔄 Check for new articles</strong> to crawl <code>help.zscaler.com</code> for anything added since this list was compiled.
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.5rem;">
+      Multi-source catalog of Zscaler best-practice guidance. Every entry is rated on a credibility tier —
+      <strong style="color:#60a5fa;">Official</strong> (Zscaler properties),
+      <strong style="color:var(--pass);">Authoritative</strong> (hyperscalers, Terraform, ecosystem partners: Splunk, CrowdStrike, Okta, Ping, Microsoft, AWS), or
+      <strong style="color:var(--warn);">Community</strong> (forums) — so you can weight each link accordingly.
     </p>
+    <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;color:var(--dim);margin-bottom:0.7rem;padding:0.4rem 0.7rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;">
+      ${refreshLine}
+    </div>
+    ${tierLegend}
     <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
       <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
               aria-label="Crawl help.zscaler.com for new Best Practices articles and add them to the library"
@@ -3937,7 +4144,12 @@ function _renderBestPractices(data, discoveredData) {
       <button type="button" class="btn btn-ghost" onclick="crawlBestPractices(true)"
               aria-label="Force a fresh crawl, bypassing the 24h cache"
               style="padding:0.5rem 0.9rem;font-size:0.8rem;">⟳ Force refresh</button>
-      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · help.zscaler.com allowlisted</span>
+      <label style="display:inline-flex;align-items:center;gap:0.3rem;color:var(--dim);font-size:0.75rem;cursor:pointer;"
+             title="Enable if corporate TLS inspection is blocking the crawl">
+        <input type="checkbox" id="bpSkipTls" style="width:auto;cursor:pointer;">
+        Skip TLS verify
+      </label>
+      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · crawls every registered source</span>
     </div>
     ${discoveredHtml}
     ${curatedHtml}`;
@@ -3945,11 +4157,12 @@ function _renderBestPractices(data, discoveredData) {
 
 async function crawlBestPractices(force) {
   const btn = document.getElementById('bpCrawlBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling help.zscaler.com…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling Zscaler sources…'; }
+  const skipTls = !!(document.getElementById('bpSkipTls') || {}).checked;
   try {
     const r = await fetch('/api/best-practices/crawl', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ force: !!force }),
+      body: JSON.stringify({ force: !!force, skip_tls_verify: skipTls }),
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
@@ -3957,7 +4170,7 @@ async function crawlBestPractices(force) {
     // the merged catalog so newly-promoted entries appear inline in
     // their service sections (with a DISCOVERED badge).
     try {
-      const r2 = await fetch('/api/best-practices');
+      const r2 = await fetch('/api/best-practices', { cache: 'no-store' });
       _bestPracticesCache = await r2.json();
     } catch(_) { /* keep previous cache */ }
     _renderBestPractices(_bestPracticesCache, data);
@@ -4200,7 +4413,10 @@ function openDlpEfficacyModal() {
   document.body.style.overflow = 'hidden';
   const r = document.getElementById('dlpEffResult');
   if (!r.innerHTML.trim()) {
-    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Score Tenant</strong> to grade every custom DLP dictionary and engine.</div>';
+    r.innerHTML = '<div style="color:var(--dim);padding:2rem 1rem;text-align:center;border:1px dashed var(--border);border-radius:8px;">'
+      + '<div style="font-size:1.5rem;margin-bottom:0.5rem;">&#9650;</div>'
+      + '<div>Click <strong>Score Tenant</strong> above to analyze every custom dictionary and engine,<br>'
+      + 'or <strong>Local Corpus Test</strong> to paste sample text and see which dictionaries fire.</div></div>';
   }
   announce('DLP efficacy dialog opened');
   _focusFirstInModal(modal);
@@ -4217,43 +4433,88 @@ function toggleDlpEffCorpus() {
   if (p.style.display === 'block') document.getElementById('dlpEffCorpus').focus();
 }
 
-function _effGradeColor(grade) {
-  return ({A:'#4ade80', B:'#a3e635', C:'#facc15', D:'#fb923c', F:'#f87171'})[grade] || 'var(--dim)';
-}
 function _effEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// Color for the FP risk band — intentionally different from the
+// old letter-grade palette so stale screenshots don't confuse.
+function _effFpColor(band) {
+  return ({
+    'Low':      '#16a34a',   // green — precision is high
+    'Medium':   '#f59e0b',   // amber — some noise expected
+    'High':     '#f97316',   // orange — meaningful noise
+    'Critical': '#dc2626',   // red — flooding incidents
+  })[band] || 'var(--dim)';
+}
+// TP% chip color mirrors FP band: fewer noisy fires = greener chip.
+function _effTpColor(tp) {
+  if (tp == null) return 'var(--dim)';
+  if (tp >= 85) return '#16a34a';
+  if (tp >= 65) return '#65a30d';
+  if (tp >= 45) return '#f59e0b';
+  if (tp >= 25) return '#f97316';
+  return '#dc2626';
+}
+
 // Render one scored item (dictionary or engine) as a collapsible
-// <details> block — summary row shows grade chip + name + score;
-// body shows reasons + remediation + raw metadata.
+// <details> block — summary row leads with TP% and FP-risk band,
+// body shows nuances (signed TP/FP drivers), findings, remediation.
 function _renderEffItem(item, kind) {
-  const color = _effGradeColor(item.grade);
+  const tp = item.tp_estimate;
+  const fp = item.fp_risk || '—';
+  const tpColor = _effTpColor(tp);
+  const fpColor = _effFpColor(fp);
+
   const metaBits = [];
   if (kind === 'dict') {
     metaBits.push(`${item.phrases||0} phrase${item.phrases===1?'':'s'}`);
     metaBits.push(`${item.patterns||0} pattern${item.patterns===1?'':'s'}`);
     if (item.min_match_count) metaBits.push(`min match ${item.min_match_count}`);
+    if (item.has_edm) metaBits.push('EDM');
+    if (item.has_idm) metaBits.push('IDM');
   } else {
     metaBits.push(`${item.dictionary_count||0} dict ref${item.dictionary_count===1?'':'s'}`);
     if (item.expression) metaBits.push('has expression');
   }
-  if (item.orphan_engine) metaBits.push('⚠ orphan (no engine uses it)');
-  if (item.orphan_rule)   metaBits.push('⚠ orphan (no rule uses it)');
+  if (item.orphan_engine) metaBits.push('⚠ no engine uses it');
+  if (item.orphan_rule)   metaBits.push('⚠ no rule uses it');
+
+  const nuanceRows = (item.nuances || []).map(n => {
+    const sign = n.direction === 'tp' ? '+' : '−';
+    const chipColor = n.direction === 'tp' ? '#16a34a' : '#dc2626';
+    const delta = Math.abs(n.delta_pct || 0);
+    return `
+      <li style="margin:0.25rem 0;list-style:none;display:flex;gap:0.5rem;align-items:flex-start;">
+        <span style="flex:0 0 auto;background:${chipColor};color:#fff;padding:0.05rem 0.4rem;border-radius:4px;font-size:0.72rem;font-weight:700;font-family:monospace;">${sign}${delta}pp</span>
+        <span style="flex:1 1 auto;">
+          <span style="font-weight:600;color:var(--fg);">${_effEsc(n.driver||'')}</span>
+          <span style="color:var(--dim);"> — ${_effEsc(n.explanation||'')}</span>
+        </span>
+      </li>`;
+  }).join('');
 
   const reasons = (item.reasons||[]).map(r => `<li>${_effEsc(r)}</li>`).join('');
   const remediation = (item.remediation||[]).map(r => `<li>${_effEsc(r)}</li>`).join('');
 
   return `
     <details style="border:1px solid var(--border);border-radius:6px;margin:0.3rem 0;background:var(--bg);">
-      <summary style="cursor:pointer;padding:0.5rem 0.7rem;display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-        <span style="background:${color};color:#0b1220;padding:0.1rem 0.45rem;border-radius:4px;font-weight:700;font-size:0.8rem;min-width:1.5rem;text-align:center;">${_effEsc(item.grade)}</span>
-        <span style="font-weight:600;">${_effEsc(item.name)}</span>
-        <span style="color:var(--dim);font-size:0.78rem;">score ${item.score}/100</span>
-        <span style="color:var(--dim);font-size:0.78rem;">· ${_effEsc(metaBits.join(' · '))}</span>
-        <span style="margin-left:auto;padding:0.08rem 0.4rem;border:1px solid var(--border);border-radius:4px;font-size:0.7rem;color:var(--dim);">${_effEsc(item.type)}</span>
+      <summary style="cursor:pointer;padding:0.45rem 0.6rem;display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;font-size:0.82rem;">
+        <span title="True-positive probability estimate"
+              style="flex:0 0 auto;background:${tpColor};color:#0b1220;padding:0.1rem 0.45rem;border-radius:4px;font-weight:700;font-size:0.78rem;font-family:monospace;min-width:2.8rem;text-align:center;">
+          TP ${tp == null ? '—' : tp + '%'}
+        </span>
+        <span title="False-positive risk band"
+              style="flex:0 0 auto;border:1px solid ${fpColor};color:${fpColor};padding:0.08rem 0.35rem;border-radius:4px;font-size:0.72rem;font-weight:600;">
+          FP: ${_effEsc(fp)}
+        </span>
+        <span style="font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;">${_effEsc(item.name)}</span>
+        <span style="color:var(--dim);font-size:0.72rem;white-space:nowrap;">health ${item.score}/100</span>
+        <span style="color:var(--dim);font-size:0.72rem;white-space:nowrap;">· ${_effEsc(metaBits.join(' · '))}</span>
+        <span style="margin-left:auto;flex:0 0 auto;padding:0.06rem 0.35rem;border:1px solid var(--border);border-radius:4px;font-size:0.68rem;color:var(--dim);">${_effEsc(item.type)}</span>
       </summary>
       <div style="padding:0.5rem 0.9rem 0.8rem;font-size:0.82rem;">
+        ${nuanceRows ? `<div style="margin-bottom:0.5rem;"><strong>Nuances driving the score:</strong><ul style="margin:0.2rem 0 0 0;padding:0;">${nuanceRows}</ul></div>` : ''}
         ${reasons ? `<div style="margin-bottom:0.4rem;"><strong>Findings:</strong><ul style="margin:0.2rem 0 0 1.2rem;padding:0;">${reasons}</ul></div>` : ''}
         ${remediation ? `<div style="margin-bottom:0.3rem;"><strong>Remediation:</strong><ul style="margin:0.2rem 0 0 1.2rem;padding:0;">${remediation}</ul></div>` : ''}
         ${kind === 'engine' && item.expression ? `<div style="color:var(--dim);font-family:monospace;font-size:0.78rem;">expr: ${_effEsc(item.expression)}</div>` : ''}
@@ -4264,11 +4525,12 @@ function _renderEffItem(item, kind) {
 function _renderDlpEfficacy(data) {
   if (!data || !data.counts) return '<div style="color:var(--dim);">No data returned.</div>';
   const c = data.counts, a = data.averages || {}, o = data.orphans || {};
+  const dist = data.fp_risk_distribution || {};
   const dictSec = (data.dictionaries || []).map(d => _renderEffItem(d, 'dict')).join('');
   const engSec  = (data.engines || []).map(e => _renderEffItem(e, 'engine')).join('');
 
-  const avgDict = a.custom_dictionary_efficacy == null ? '—' : `${a.custom_dictionary_efficacy}/100`;
-  const avgEng  = a.custom_engine_efficacy == null    ? '—' : `${a.custom_engine_efficacy}/100`;
+  const avgDictTp = a.custom_dictionary_tp_pct == null ? '—' : `${a.custom_dictionary_tp_pct}%`;
+  const avgEngTp  = a.custom_engine_tp_pct == null    ? '—' : `${a.custom_engine_tp_pct}%`;
 
   const orphanBlock = (title, list) => {
     if (!list || !list.length) return '';
@@ -4283,30 +4545,55 @@ function _renderDlpEfficacy(data) {
       </details>`;
   };
 
+  const distRow = (label, vals) => {
+    const bands = ['Low','Medium','High','Critical'];
+    const chips = bands.map(b => {
+      const n = (vals && vals[b]) || 0;
+      const color = _effFpColor(b);
+      return `<span title="${b} FP risk" style="display:inline-block;padding:0.1rem 0.5rem;margin:0.1rem 0.25rem 0.1rem 0;border:1px solid ${color};color:${color};border-radius:4px;font-size:0.75rem;font-weight:600;">${b}: ${n}</span>`;
+    }).join('');
+    return `<div style="font-size:0.82rem;"><strong>${label}:</strong> ${chips}</div>`;
+  };
+
   return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.5rem;margin-bottom:0.8rem;">
-      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Dictionaries</div>
-        <div style="font-size:1.2rem;font-weight:700;">${c.dictionaries_custom}/${c.dictionaries_total}</div>
-        <div style="color:var(--dim);font-size:0.72rem;">custom / total</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0.4rem;margin-bottom:0.7rem;">
+      <div style="padding:0.5rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-align:center;">
+        <div style="color:var(--dim);font-size:0.68rem;text-transform:uppercase;">Dictionaries</div>
+        <div style="font-size:1.1rem;font-weight:700;">${c.dictionaries_custom}/${c.dictionaries_total}</div>
+        <div style="color:var(--dim);font-size:0.68rem;">custom / total</div>
       </div>
-      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Engines</div>
-        <div style="font-size:1.2rem;font-weight:700;">${c.engines_custom}/${c.engines_total}</div>
-        <div style="color:var(--dim);font-size:0.72rem;">custom / total</div>
+      <div style="padding:0.5rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-align:center;">
+        <div style="color:var(--dim);font-size:0.68rem;text-transform:uppercase;">Engines</div>
+        <div style="font-size:1.1rem;font-weight:700;">${c.engines_custom}/${c.engines_total}</div>
+        <div style="color:var(--dim);font-size:0.68rem;">custom / total</div>
       </div>
-      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg Dict Score</div>
-        <div style="font-size:1.2rem;font-weight:700;">${_effEsc(avgDict)}</div>
+      <div style="padding:0.5rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-align:center;">
+        <div style="color:var(--dim);font-size:0.68rem;text-transform:uppercase;">Avg TP% (dict)</div>
+        <div style="font-size:1.1rem;font-weight:700;color:${_effTpColor(a.custom_dictionary_tp_pct)};">${_effEsc(avgDictTp)}</div>
       </div>
-      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">Avg Engine Score</div>
-        <div style="font-size:1.2rem;font-weight:700;">${_effEsc(avgEng)}</div>
+      <div style="padding:0.5rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-align:center;">
+        <div style="color:var(--dim);font-size:0.68rem;text-transform:uppercase;">Avg TP% (eng)</div>
+        <div style="font-size:1.1rem;font-weight:700;color:${_effTpColor(a.custom_engine_tp_pct)};">${_effEsc(avgEngTp)}</div>
       </div>
-      <div style="padding:0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;">
-        <div style="color:var(--dim);font-size:0.72rem;text-transform:uppercase;">DLP Rules</div>
-        <div style="font-size:1.2rem;font-weight:700;">${c.rules}</div>
+      <div style="padding:0.5rem 0.6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;text-align:center;">
+        <div style="color:var(--dim);font-size:0.68rem;text-transform:uppercase;">DLP Rules</div>
+        <div style="font-size:1.1rem;font-weight:700;">${c.rules}</div>
       </div>
+    </div>
+
+    <div style="padding:0.5rem 0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:0.7rem;">
+      <div style="font-size:0.78rem;margin-bottom:0.25rem;"><strong>FP risk distribution (custom items)</strong></div>
+      ${distRow('Dictionaries', dist.dictionaries)}
+      ${distRow('Engines', dist.engines)}
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.7rem;align-items:center;">
+      <span style="color:var(--dim);font-size:0.75rem;margin-right:0.2rem;">Export:</span>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('csv')"      style="padding:0.35rem 0.7rem;font-size:0.75rem;">CSV</button>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('markdown')" style="padding:0.35rem 0.7rem;font-size:0.75rem;">Markdown</button>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('docx')"     style="padding:0.35rem 0.7rem;font-size:0.75rem;">Word</button>
+      <button class="btn btn-ghost" onclick="exportDlpEfficacy('json')"     style="padding:0.35rem 0.7rem;font-size:0.75rem;">JSON</button>
+      <span id="dlpEffExportStatus" style="color:var(--dim);font-size:0.72rem;margin-left:0.3rem;"></span>
     </div>
 
     <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-bottom:0.6rem;">
@@ -4355,6 +4642,44 @@ async function runDlpEfficacy() {
     r.innerHTML = `<div style="color:var(--bad);padding:0.8rem;">Failed: ${_effEsc(e.message || e)}</div>`;
   } finally {
     btn.disabled = false; btn.textContent = originalBtnText;
+  }
+}
+
+// Download the efficacy analysis in the requested format. The server
+// re-runs the analysis (rather than accepting a client-side blob) so
+// the export is always based on the live tenant state, not a stale
+// cached view the user might be looking at.
+async function exportDlpEfficacy(fmt) {
+  const body = migrateValidateCreds(); if (!body) return;
+  const status = document.getElementById('dlpEffExportStatus');
+  if (status) status.textContent = 'Preparing ' + fmt + '...';
+  try {
+    const resp = await fetch('/api/dlp/efficacy/export', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({...body, format: fmt}),
+    });
+    if (!resp.ok) {
+      let msg = 'HTTP ' + resp.status;
+      try { const j = await resp.json(); if (j && j.detail) msg = j.detail; } catch (_) {}
+      if (status) status.textContent = 'Export failed: ' + msg;
+      return;
+    }
+    const blob = await resp.blob();
+    // Filename from Content-Disposition if present, else a sensible default
+    let filename = 'dlp_efficacy.' + (fmt === 'markdown' ? 'md' : fmt);
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="([^"]+)"/);
+    if (m) filename = m[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    if (status) status.textContent = 'Downloaded ' + filename;
+    announce('Downloaded ' + filename);
+  } catch (e) {
+    if (status) status.textContent = 'Export failed: ' + (e.message || e);
   }
 }
 
@@ -5006,41 +5331,63 @@ function renderUpdateResults(data) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Collapsible card sections
+// Pop-out card sections
 // ══════════════════════════════════════════════════════════════════
-// Every top-level .card h2/h3 becomes a click target that hides every
-// sibling below it. Collapse state is keyed by the heading's text
-// content so reloads preserve user choice across sessions.
-function _initCollapsibleCards() {
-  const LS_KEY = 'zs_collapsed_sections_v1';
-  let state = {};
-  try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (_) {}
+// Every top-level .card h2/h3 becomes a click target that opens the
+// section content in a new browser tab. Sections stay collapsed on
+// the main page so they never overlap. The new tab inherits the
+// current theme (dark/light) and all styling.
+function _popOutSection(card, title) {
+  const styleEl = document.querySelector('style');
+  const themeClass = document.body.classList.contains('theme-light') ? 'theme-light' : '';
+  const content = card.innerHTML;
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title} — Zscaler Assessment</title>
+<style>${styleEl ? styleEl.textContent : ''}</style>
+</head>
+<body class="${themeClass}" style="padding:2rem;">
+<div style="max-width:1100px;margin:0 auto;">
+  <div style="margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
+    <a href="#" onclick="window.close();return false;"
+       style="color:var(--accent);font-size:0.85rem;text-decoration:none;">&larr; Back to Assessment</a>
+    <button onclick="window.print()" class="btn btn-ghost" style="padding:0.4rem 0.8rem;font-size:0.8rem;">Print</button>
+  </div>
+  <div class="card" style="padding:2rem;">${content}</div>
+</div>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (w) {
+    w.document.write(html);
+    w.document.close();
+  }
+}
 
+function _initCollapsibleCards() {
   const cards = document.querySelectorAll('div.card');
   cards.forEach(card => {
-    // First heading in the card becomes the toggle target
     const h = card.querySelector(':scope > h2, :scope > h3');
     if (!h) return;
-    if (h.classList.contains('collapsible')) return; // idempotent
+    if (h.classList.contains('collapsible')) return;
     h.classList.add('collapsible');
     h.setAttribute('role', 'button');
     h.setAttribute('tabindex', '0');
-    h.setAttribute('aria-expanded', 'true');
-    const key = (h.textContent || '').trim().slice(0, 80);
-    if (state[key]) {
+    h.setAttribute('title', 'Open in new tab');
+    h.setAttribute('aria-expanded', 'false');
+    card.classList.add('collapsed');
+
+    const openTab = () => {
+      const title = (h.textContent || '').trim();
+      card.classList.remove('collapsed');
+      _popOutSection(card, title);
       card.classList.add('collapsed');
-      h.setAttribute('aria-expanded', 'false');
-    }
-    const toggle = () => {
-      const nowCollapsed = !card.classList.contains('collapsed');
-      card.classList.toggle('collapsed', nowCollapsed);
-      h.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
-      state[key] = nowCollapsed;
-      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (_) {}
     };
-    h.addEventListener('click', toggle);
+    h.addEventListener('click', openTab);
     h.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTab(); }
     });
   });
 }
@@ -5048,6 +5395,258 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', _initCollapsibleCards);
 } else {
   _initCollapsibleCards();
+}
+
+// ── DLP Policy Packs Modal ─────────────────────────────────────────
+function _ensureDlpPacksModal() {
+  if (document.getElementById('dlpPacksModal')) return;
+  const m = document.createElement('div');
+  m.id = 'dlpPacksModal';
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <h2 style="margin:0;"><span aria-hidden="true">📦</span> DLP Policy Packs</h2>
+        <button type="button" class="btn btn-ghost" onclick="closeDlpPacksModal()" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
+      </div>
+      <div id="dlpPacksContent"><div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading…</div></div>
+    </div>`;
+  document.body.appendChild(m);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && m.style.display === 'block') closeDlpPacksModal();
+  });
+}
+
+async function openDlpPacksModal() {
+  _ensureDlpPacksModal();
+  const modal = document.getElementById('dlpPacksModal');
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  const host = document.getElementById('dlpPacksContent');
+  host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1rem;">⏳ Loading packs…</div>';
+  try {
+    const r = await fetch('/api/dlp-packs', { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    _renderDlpPacks(data.packs);
+  } catch (e) {
+    host.innerHTML = `<div style="color:var(--fail);">Failed to load packs: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeDlpPacksModal() {
+  document.getElementById('dlpPacksModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function _loadPackDetail(packId) {
+  const host = document.getElementById('dlpPacksContent');
+  try {
+    const r = await fetch(`/api/dlp-packs/${encodeURIComponent(packId)}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    _renderPackDetail(data, packId);
+  } catch (e) {
+    host.innerHTML += `<div style="color:var(--fail);margin-top:0.5rem;">Error loading detail: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function _renderDlpPacks(packs) {
+  const host = document.getElementById('dlpPacksContent');
+  if (!packs || !packs.length) {
+    host.innerHTML = `<p style="color:var(--dim);">No DLP policy packs found. Drop a directory with <code>configs/dlp_*.json</code> files in the project root, or upload one below.</p>`;
+    return;
+  }
+  const cards = packs.map(p => {
+    const total = (p.dictionaries || 0) + (p.engines || 0) + (p.policies || 0);
+    return `
+    <div style="padding:0.8rem 1rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-left:4px solid #3b82f6;border-radius:8px;margin-bottom:0.5rem;cursor:pointer;" onclick="_loadPackDetail('${escapeHtml(p.id)}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;">
+        <strong style="color:var(--accent);font-size:0.95rem;">${escapeHtml(p.name || p.id)}</strong>
+        <span style="color:var(--dim);font-size:0.75rem;">${total} items</span>
+      </div>
+      <div style="display:flex;gap:0.8rem;margin-top:0.35rem;font-size:0.78rem;color:var(--dim);">
+        <span>${p.dictionaries || 0} dictionaries</span>
+        <span>${p.engines || 0} engines</span>
+        <span>${p.policies || 0} policies</span>
+      </div>
+      <div style="color:var(--dim);font-size:0.7rem;margin-top:0.2rem;">Click to view details and import</div>
+    </div>`;
+  }).join('');
+
+  host.innerHTML = `
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.8rem;">
+      DLP policy packs contain pre-built dictionaries, engines, and policies that can be imported
+      into any ZIA tenant. Click a pack to preview its contents or run an import.
+    </p>
+    ${cards}`;
+}
+
+function _renderPackDetail(data, packId) {
+  const host = document.getElementById('dlpPacksContent');
+  const meta = data.metadata || {};
+  const dicts = data.dictionaries || {};
+  const engines = data.engines || {};
+  const policies = data.policies || {};
+
+  const dictRows = (dicts.items || []).map(d => `
+    <tr>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);">${escapeHtml(d.name)}</td>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);text-align:center;"><span style="background:${d.type==='clone'?'rgba(245,158,11,0.15);color:var(--warn)':'rgba(59,130,246,0.15);color:#60a5fa'};padding:0.1rem 0.4rem;border-radius:4px;font-size:0.7rem;">${d.type}</span></td>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);text-align:center;">${d.patterns}</td>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);text-align:center;">${d.phrases}</td>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);text-align:center;">${d.proximity || '-'}</td>
+    </tr>`).join('');
+
+  const engineRows = (engines.items || []).map(e => `
+    <tr><td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);">${escapeHtml(e.name)}</td></tr>`).join('');
+
+  const policyRows = (policies.items || []).map(p => `
+    <tr>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);">${escapeHtml(p.name)}</td>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);text-align:center;"><span style="background:rgba(16,185,129,0.15);color:var(--pass);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.7rem;">${p.action}</span></td>
+      <td style="padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);text-align:center;">${(p.engines||[]).length}</td>
+    </tr>`).join('');
+
+  const tableStyle = 'width:100%;border-collapse:collapse;font-size:0.8rem;margin-bottom:1rem;';
+  const thStyle = 'padding:0.3rem 0.5rem;border-bottom:2px solid var(--border);text-align:left;color:var(--accent);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;';
+
+  host.innerHTML = `
+    <button class="btn btn-ghost" onclick="openDlpPacksModal()" style="margin-bottom:0.8rem;font-size:0.8rem;">← Back to packs</button>
+    <h3 style="margin:0 0 0.5rem 0;">${escapeHtml(meta.name || packId)}</h3>
+    ${meta.description ? `<p style="color:var(--dim);font-size:0.82rem;margin-bottom:0.8rem;">${escapeHtml(meta.description)}</p>` : ''}
+
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="packImportBtn" onclick="_runPackImport('${escapeHtml(packId)}', false)"
+              style="padding:0.5rem 1rem;font-size:0.85rem;">
+        <span aria-hidden="true">▶</span> Import to Tenant
+      </button>
+      <button class="btn btn-ghost" onclick="_runPackImport('${escapeHtml(packId)}', true)"
+              style="padding:0.5rem 0.9rem;font-size:0.8rem;"
+              title="Rank 0 = highest priority, resolves conflicts">
+        Import (Rank 0)
+      </button>
+      <button class="btn btn-ghost" onclick="_runPackVerify('${escapeHtml(packId)}')"
+              style="padding:0.5rem 0.9rem;font-size:0.8rem;">
+        Verify Deployment
+      </button>
+    </div>
+    <div id="packImportResult"></div>
+
+    <details open style="margin-bottom:0.8rem;">
+      <summary style="cursor:pointer;color:var(--accent);font-weight:600;font-size:0.85rem;">Dictionaries (${dicts.total || 0}) — ${dicts.custom || 0} custom, ${dicts.clones || 0} clones</summary>
+      <div style="max-height:300px;overflow:auto;margin-top:0.3rem;">
+        <table style="${tableStyle}">
+          <thead><tr><th style="${thStyle}">Name</th><th style="${thStyle}">Type</th><th style="${thStyle}">Patterns</th><th style="${thStyle}">Phrases</th><th style="${thStyle}">Proximity</th></tr></thead>
+          <tbody>${dictRows}</tbody>
+        </table>
+      </div>
+    </details>
+
+    <details style="margin-bottom:0.8rem;">
+      <summary style="cursor:pointer;color:var(--accent);font-weight:600;font-size:0.85rem;">Engines (${engines.total || 0})</summary>
+      <div style="max-height:200px;overflow:auto;margin-top:0.3rem;">
+        <table style="${tableStyle}">
+          <thead><tr><th style="${thStyle}">Name</th></tr></thead>
+          <tbody>${engineRows}</tbody>
+        </table>
+      </div>
+    </details>
+
+    <details style="margin-bottom:0.8rem;">
+      <summary style="cursor:pointer;color:var(--accent);font-weight:600;font-size:0.85rem;">Policies (${policies.total || 0})</summary>
+      <div style="max-height:200px;overflow:auto;margin-top:0.3rem;">
+        <table style="${tableStyle}">
+          <thead><tr><th style="${thStyle}">Name</th><th style="${thStyle}">Action</th><th style="${thStyle}">Engines</th></tr></thead>
+          <tbody>${policyRows}</tbody>
+        </table>
+      </div>
+    </details>`;
+}
+
+async function _runPackImport(packId, useRank0) {
+  const resultDiv = document.getElementById('packImportResult');
+  const btn = document.getElementById('packImportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Importing…'; }
+  resultDiv.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Running import pipeline…</div>';
+  try {
+    const r = await fetch(`/api/dlp-packs/${encodeURIComponent(packId)}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ use_rank_0: useRank0, apply_tweaks: true, verify: true }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+    const data = await r.json();
+    _renderImportResult(data);
+  } catch (e) {
+    resultDiv.innerHTML = `<div style="color:var(--fail);padding:0.5rem;border-left:3px solid var(--fail);background:rgba(239,68,68,0.08);border-radius:4px;">
+      <strong>Import failed:</strong> ${escapeHtml(e.message)}
+    </div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span aria-hidden="true">▶</span> Import to Tenant'; }
+  }
+}
+
+async function _runPackVerify(packId) {
+  const resultDiv = document.getElementById('packImportResult');
+  resultDiv.innerHTML = '<div style="color:var(--dim);padding:0.5rem;">⏳ Verifying deployment…</div>';
+  try {
+    const r = await fetch(`/api/dlp-packs/${encodeURIComponent(packId)}/verify`, { method: 'POST' });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+    const data = await r.json();
+    const ok = data.all_good;
+    const dicts = data.dictionaries || {};
+    const engines = data.engines || {};
+    resultDiv.innerHTML = `
+      <div style="padding:0.6rem 0.8rem;border-left:3px solid ${ok ? 'var(--pass)' : 'var(--warn)'};background:${ok ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)'};border-radius:4px;font-size:0.82rem;">
+        <strong style="color:${ok ? 'var(--pass)' : 'var(--warn)'};">${ok ? 'Verification Passed' : 'Verification Issues Found'}</strong>
+        <div style="margin-top:0.3rem;color:var(--dim);">
+          Dictionaries: ${dicts.ok || 0}/${dicts.total || 0} OK${(dicts.missing||[]).length ? `, ${dicts.missing.length} missing` : ''}${Object.keys(dicts.mismatched||{}).length ? `, ${Object.keys(dicts.mismatched).length} mismatched` : ''}<br>
+          Engines: ${engines.ok || 0}/${engines.total || 0} OK${(engines.missing||[]).length ? `, ${engines.missing.length} missing` : ''}
+        </div>
+        ${(dicts.missing||[]).length ? `<div style="margin-top:0.3rem;font-size:0.75rem;color:var(--fail);">Missing dicts: ${(dicts.missing||[]).map(n => escapeHtml(n)).join(', ')}</div>` : ''}
+        ${(engines.missing||[]).length ? `<div style="margin-top:0.3rem;font-size:0.75rem;color:var(--fail);">Missing engines: ${(engines.missing||[]).map(n => escapeHtml(n)).join(', ')}</div>` : ''}
+      </div>`;
+  } catch (e) {
+    resultDiv.innerHTML = `<div style="color:var(--fail);padding:0.5rem;">Verify failed: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function _renderImportResult(data) {
+  const resultDiv = document.getElementById('packImportResult');
+  const phases = data.phases || {};
+  const phaseHtml = (label, p) => {
+    if (!p) return '';
+    const ok = p.status === 'ok';
+    const skipped = p.status === 'skipped';
+    const color = skipped ? 'var(--dim)' : ok ? 'var(--pass)' : 'var(--fail)';
+    const summary = skipped ? `Skipped: ${p.reason || 'no file'}` :
+      ok ? `${p.created || 0} created, ${p.failed || 0} failed${p.skipped ? `, ${p.skipped} skipped` : ''}` :
+      `Error: ${p.error || 'unknown'}`;
+    return `<div style="margin-bottom:0.3rem;"><span style="color:${color};font-weight:600;">${label}:</span> ${summary}</div>`;
+  };
+
+  const verify = phases.verify || {};
+  const elapsed = data.elapsed_seconds || 0;
+  resultDiv.innerHTML = `
+    <div style="padding:0.8rem 1rem;border-left:3px solid var(--pass);background:rgba(16,185,129,0.08);border-radius:4px;font-size:0.82rem;margin-bottom:0.5rem;">
+      <strong style="color:var(--pass);">Import Complete</strong> <span style="color:var(--dim);font-size:0.72rem;">(${elapsed}s)</span>
+      <div style="margin-top:0.4rem;">
+        ${phaseHtml('Dictionaries', phases.dictionaries)}
+        ${phaseHtml('Engines', phases.engines)}
+        ${phaseHtml('Policies', phases.policies)}
+        ${phases.tweaks ? `<div style="margin-bottom:0.3rem;"><span style="font-weight:600;">Confidence tweaks:</span> ${(phases.tweaks||[]).map(t => `${t.label}: ${t.status}`).join(', ')}</div>` : ''}
+        ${verify.all_good !== undefined ? `<div><span style="color:${verify.all_good ? 'var(--pass)' : 'var(--warn)'};font-weight:600;">Verification:</span> ${verify.all_good ? 'Passed' : 'Issues found'}</div>` : ''}
+      </div>
+    </div>`;
 }
 </script>
 </body>

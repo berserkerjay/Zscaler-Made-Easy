@@ -121,10 +121,32 @@ SOURCES: List[Dict[str, Any]] = [
     },
 ]
 
-# Allowlisted domains — any fetch URL must match one of these
+# Allowlisted domains — any fetch URL must match one of these.
+# Extend via bp_sources.SOURCES for best-practice crawl targets; keep
+# the set tight for every other outbound call.
 ALLOWED_HOSTS = {
+    # Zscaler-official (Tier 1)
     "help.zscaler.com",
     "developer.zscaler.com",
+    "www.zscaler.com",
+    "trust.zscaler.com",
+    "community.zscaler.com",
+    # Zscaler GitHub org (read-only public repos)
+    "github.com",
+    "raw.githubusercontent.com",
+    # Authoritative integration docs (Tier 2)
+    "learn.microsoft.com",
+    "docs.aws.amazon.com",
+    "cloud.google.com",
+    "registry.terraform.io",
+    # Ecosystem partners — SIEM / EDR / IdP integrations (Tier 2)
+    "lantern.splunk.com",
+    "splunkbase.splunk.com",
+    "docs.splunk.com",
+    "www.crowdstrike.com",
+    "help.okta.com",
+    "docs.pingidentity.com",
+    # SDK release metadata
     "pypi.org",
 }
 

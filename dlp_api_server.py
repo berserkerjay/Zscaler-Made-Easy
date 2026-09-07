@@ -17,9 +17,9 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, tempfile
+import json, asyncio, os, re, tempfile, time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,7 +164,9 @@ async def _safe_exception_handler(request: Request, exc: Exception):
     )
 
 # Serve static files (web GUI)
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(_APP_DIR, "static")
+PACKS_ROOT = _APP_DIR
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -293,6 +295,57 @@ async def remediation_execute(req: RemediationExecuteRequest):
     return result
 
 
+# ───────────────────────────────────────────────────────────────────
+# Tenant-credentials request model + client factory.
+#
+# Defined up here (instead of next to the rule-migration block where
+# the rest of this class family lives) because MULTIPLE endpoints
+# above the migration block accept a MigrateRequest as their body —
+# specifically /api/diagnose/zcc, /api/dlp/efficacy, and
+# /api/dlp/efficacy/test. In plain Python, class-inheritance and
+# function annotations are evaluated at import time, so the base
+# class must exist before any referencing line is parsed. Moving
+# these definitions up eliminates the NameError that otherwise fires
+# on `class DlpEfficacyCorpusRequest(MigrateRequest)`.
+# ───────────────────────────────────────────────────────────────────
+class MigrateRequest(BaseModel):
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    customer_id: str = ""
+    # Inline Web DLP only — this tool's migration is scoped to the DLP
+    # Web Rules inline policy. Other rule types (SSL, URL, firewall,
+    # Cloud App) have different best-practice ordering rules and are
+    # out of scope here.
+    rule_type: str = "web_dlp"
+
+
+def _build_client(req: "MigrateRequest"):
+    """Build an authenticated Client from a migration request.
+    Validates every input first; never echoes the secret in any error.
+    """
+    cloud = validate_cloud(req.cloud)
+    vd = validate_vanity(req.vanity_domain)
+    cid = validate_credential("client_id", req.client_id, required=True)
+    sec = validate_credential("client_secret", req.client_secret, required=True)
+    cust = validate_customer_id(req.customer_id)
+
+    client = Client(cid, sec, vd, cloud, cust)
+    auth_result = client.auth()
+    if auth_result is not True:
+        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
+        reason = ""
+        if isinstance(auth_result, tuple) and len(auth_result) == 2:
+            reason = str(auth_result[1])
+        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
+        )
+    return client
+
+
 @app.post("/api/diagnose/zcc")
 async def diagnose_zcc(req: MigrateRequest):
     """Probe every ZCC endpoint the assessment relies on and return
@@ -372,48 +425,6 @@ async def diagnose_zcc(req: MigrateRequest):
     return {"summary": summary, "attempts": attempts}
 
 
-# ── DLP Efficacy: dictionary + engine quality scoring ─────────────
-class DlpEfficacyCorpusRequest(MigrateRequest):
-    # User-supplied sample text. Module caps at 256 KB before regex.
-    corpus: str = ""
-    max_dicts: int = 200
-
-
-@app.post("/api/dlp/efficacy")
-async def dlp_efficacy(req: MigrateRequest):
-    """Score every custom DLP dictionary and engine on the tenant.
-
-    Static analysis only — no user content, no outbound calls beyond
-    the three read-only endpoints the assessment already uses
-    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
-
-    Returns per-item 0–100 score + letter grade + specific reasons
-    + remediation steps, plus orphan detection and tenant-wide
-    efficacy averages."""
-    try:
-        from dlp_efficacy import analyze
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
-    client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(analyze, client)
-
-
-@app.post("/api/dlp/efficacy/test")
-async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
-    """Test a user-supplied text sample against every custom
-    dictionary's phrases + regex patterns. Runs locally with stdlib
-    re — the corpus never leaves this server, never reaches Zscaler,
-    never reaches any LLM. 256 KB hard cap on input."""
-    try:
-        from dlp_efficacy import corpus_test
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
-    client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(
-        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
-    )
-
-
 @app.get("/api/best-practices")
 async def best_practices_list(service: Optional[str] = None):
     """Return the curated Zscaler best-practices / leading-practices
@@ -426,6 +437,11 @@ async def best_practices_list(service: Optional[str] = None):
     return {
         "entries": list_all(service or ""),
         "services": services(),
+        "last_refreshed_at": _BP_REFRESH_STATE.get("last_refreshed_at"),
+        "last_refresh_status": _BP_REFRESH_STATE.get("last_status"),
+        "last_refresh_error": _BP_REFRESH_STATE.get("last_error"),
+        "next_refresh_at": _BP_REFRESH_STATE.get("next_refresh_at"),
+        "auto_refresh_enabled": _BP_REFRESH_STATE.get("enabled", True),
     }
 
 
@@ -436,11 +452,11 @@ class BPCrawlRequest(BaseModel):
 
 @app.post("/api/best-practices/crawl")
 async def best_practices_crawl(req: BPCrawlRequest):
-    """Crawl help.zscaler.com for articles titled 'Best Practices' or
-    'Leading Practices' and report any NEW ones beyond the curated
-    catalog. Results are cached for 24h; force=true bypasses the cache.
-    skip_tls_verify=true opts into the corporate-TLS-MITM bypass (same
-    behavior as the update checker)."""
+    """Crawl every source in bp_sources.py for new Best/Leading-Practice
+    articles and report any NEW ones beyond the curated catalog. Results
+    are cached for 24h; force=true bypasses the cache. skip_tls_verify=true
+    opts into the corporate-TLS-MITM bypass (same behavior as the update
+    checker)."""
     try:
         from bp_crawler import crawl
         from zscaler_best_practices import save_discovered
@@ -452,7 +468,199 @@ async def best_practices_crawl(req: BPCrawlRequest):
     new_entries = result.get("new_entries") or []
     added = await asyncio.to_thread(save_discovered, new_entries)
     result["added_to_library"] = added
+    # Update the shared refresh state so /api/best-practices reflects
+    # this manual crawl's timestamp + status.
+    _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
+    _BP_REFRESH_STATE["last_status"] = "ok" if not result.get("error") else "error"
+    _BP_REFRESH_STATE["last_error"] = result.get("error")
     return result
+
+
+# ── Best-practices auto-refresh scheduler ────────────────────────────
+# The library is "dynamic": on startup we kick off a background crawl
+# if the cache is stale, and we then schedule periodic refreshes so
+# newly-published Zscaler best-practice articles surface without any
+# manual /api/best-practices/crawl call.
+_BP_REFRESH_INTERVAL_SECONDS = 6 * 3600   # 6h — well under the 24h crawler cache,
+                                          # so a fresh poll happens within a day
+                                          # but we don't re-hit sources too often.
+_BP_REFRESH_STATE: Dict[str, Any] = {
+    "enabled": True,
+    "last_refreshed_at": None,
+    "last_status": None,
+    "last_error": None,
+    "next_refresh_at": None,
+    "interval_seconds": _BP_REFRESH_INTERVAL_SECONDS,
+}
+
+
+async def _bp_auto_refresh_loop() -> None:
+    """Background task: crawl all BP sources, persist new discoveries,
+    then sleep until the next interval. Respects the crawler's own
+    24h cache (force=False) so we're not hammering sources."""
+    # First run: small startup delay so app finish booting cleanly
+    # before we kick off potentially slow HTTP fetches.
+    await asyncio.sleep(10)
+    while _BP_REFRESH_STATE.get("enabled", True):
+        try:
+            from bp_crawler import crawl
+            from zscaler_best_practices import save_discovered
+            # force=False honors the 24h cache → if something else
+            # already crawled today this is effectively a no-op.
+            result = await asyncio.to_thread(crawl, False, False)
+            new_entries = result.get("new_entries") or []
+            if new_entries:
+                await asyncio.to_thread(save_discovered, new_entries)
+            _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
+            _BP_REFRESH_STATE["last_status"] = "ok"
+            _BP_REFRESH_STATE["last_error"] = None
+        except Exception as e:
+            _BP_REFRESH_STATE["last_status"] = "error"
+            _BP_REFRESH_STATE["last_error"] = str(e)[:200]
+        next_at = time.time() + _BP_REFRESH_INTERVAL_SECONDS
+        _BP_REFRESH_STATE["next_refresh_at"] = next_at
+        try:
+            await asyncio.sleep(_BP_REFRESH_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            break
+
+
+@app.on_event("startup")
+async def _start_bp_refresh() -> None:
+    """Kick off the background auto-refresh task on app startup.
+    Runs forever; dies cleanly when the process exits."""
+    # Only enable when the module deps are importable — a deployment
+    # that strips bp_crawler shouldn't crash on boot.
+    try:
+        import bp_crawler  # noqa: F401
+        import zscaler_best_practices  # noqa: F401
+        asyncio.create_task(_bp_auto_refresh_loop())
+    except Exception:
+        _BP_REFRESH_STATE["enabled"] = False
+        _BP_REFRESH_STATE["last_status"] = "disabled"
+
+
+# ── DLP Policy Pack Management ───────────────────────────────────────
+# Generic import/verify/list for any DLP pack (fed, custom, uploaded).
+
+@app.get("/api/dlp-packs")
+async def dlp_packs_list():
+    """Discover all DLP policy packs in the project directory."""
+    try:
+        from dlp_importer import discover_packs, load_pack_contents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = discover_packs()
+    return {"packs": packs}
+
+
+@app.get("/api/dlp-packs/{pack_id}")
+async def dlp_pack_detail(pack_id: str):
+    """Return full contents summary of a specific pack."""
+    try:
+        from dlp_importer import discover_packs, load_pack_contents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = {p["id"]: p for p in discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+    return load_pack_contents(packs[pack_id]["dir"])
+
+
+class DLPPackImportRequest(BaseModel):
+    use_rank_0: bool = False
+    apply_tweaks: bool = True
+    verify: bool = True
+
+
+@app.post("/api/dlp-packs/{pack_id}/import")
+async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
+    """Run the full import pipeline for a DLP pack against the
+    currently-connected ZIA tenant."""
+    try:
+        from dlp_importer import discover_packs, run_full_import
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = {p["id"]: p for p in discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+
+    try:
+        from sdk_client import SdkClient
+        client = SdkClient()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"ZIA client not available — configure tenant credentials first: {e}")
+
+    logs: list = []
+    def _log(msg: str):
+        logs.append(msg)
+
+    result = await asyncio.to_thread(
+        run_full_import, client, packs[pack_id]["dir"],
+        use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
+        verify=req.verify, log=_log,
+    )
+    result["logs"] = logs
+    return result
+
+
+@app.post("/api/dlp-packs/{pack_id}/verify")
+async def dlp_pack_verify(pack_id: str):
+    """Verify deployed tenant state matches a pack's definitions."""
+    try:
+        from dlp_importer import discover_packs, verify_deployment
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    packs = {p["id"]: p for p in discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Pack '{pack_id}' not found")
+
+    try:
+        from sdk_client import SdkClient
+        client = SdkClient()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"ZIA client not available: {e}")
+
+    result = await asyncio.to_thread(
+        verify_deployment, client.zia, packs[pack_id]["dir"],
+    )
+    return result
+
+
+class DLPPackUploadRequest(BaseModel):
+    pack_name: str
+    dictionaries: Optional[List[Dict[str, Any]]] = None
+    engines: Optional[List[Dict[str, Any]]] = None
+    policies: Optional[List[Dict[str, Any]]] = None
+
+
+@app.post("/api/dlp-packs/upload")
+async def dlp_pack_upload(req: DLPPackUploadRequest):
+    """Create a new DLP pack from uploaded JSON definitions. Persists
+    to disk so it survives server restarts."""
+    slug = re.sub(r"[^a-z0-9_]+", "_", req.pack_name.lower().strip()).strip("_")
+    if not slug:
+        raise HTTPException(status_code=400, detail="Invalid pack name")
+    pack_dir = os.path.join(PACKS_ROOT, slug)
+    if os.path.exists(pack_dir):
+        raise HTTPException(status_code=409, detail=f"Pack '{slug}' already exists")
+    configs_dir = os.path.join(pack_dir, "configs")
+    os.makedirs(configs_dir, exist_ok=True)
+    saved = {}
+    for fname, data in [
+        ("dlp_dictionaries.json", req.dictionaries),
+        ("dlp_engines.json", req.engines),
+        ("dlp_policies.json", req.policies),
+    ]:
+        if data:
+            with open(os.path.join(configs_dir, fname), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            saved[fname] = len(data)
+    # Write pack.json metadata
+    meta = {"name": req.pack_name, "version": "1.0", "description": f"Uploaded pack: {req.pack_name}"}
+    with open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    return {"id": slug, "dir": pack_dir, "files_saved": saved, "metadata": meta}
 
 
 @app.get("/permissions")
@@ -1006,42 +1214,90 @@ async def compliance_drilldown(request: Request):
 # ═══════════════════════════════════════════════════════════════════
 # Rule Migration API (Evaluate All Rules mode)
 # ═══════════════════════════════════════════════════════════════════
-
-class MigrateRequest(BaseModel):
-    cloud: str = "production"
-    vanity_domain: str = ""
-    client_id: str = ""
-    client_secret: str = ""
-    customer_id: str = ""
-    # Inline Web DLP only — this tool's migration is scoped to the DLP Web Rules
-    # inline policy. Other rule types (SSL, URL, firewall, Cloud App) have
-    # different best-practice ordering rules and are out of scope here.
-    rule_type: str = "web_dlp"
+# MigrateRequest + _build_client are defined earlier in the file now
+# (just above the /api/diagnose/zcc endpoint) so classes which
+# inherit from MigrateRequest above the rule-migration block don't
+# crash on import. See the comment next to the earlier definition.
 
 
-def _build_client(req: MigrateRequest):
-    """Build an authenticated Client from a migration request.
-    Validates every input first; never includes the secret in any error message.
+# ── DLP Efficacy: dictionary + engine quality scoring ────────────
+# Declared here (not at the top of the route table) because
+# DlpEfficacyCorpusRequest inherits from MigrateRequest, which is
+# defined just above. Moving this block earlier caused a NameError
+# at import time.
+class DlpEfficacyCorpusRequest(MigrateRequest):
+    # User-supplied sample text. Module caps at 256 KB before regex.
+    corpus: str = ""
+    max_dicts: int = 200
+
+
+@app.post("/api/dlp/efficacy")
+async def dlp_efficacy(req: MigrateRequest):
+    """Score every custom DLP dictionary and engine on the tenant.
+
+    Static analysis only — no user content, no outbound calls beyond
+    the three read-only endpoints the assessment already uses
+    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
+
+    Returns per-item 0–100 score + letter grade + specific reasons
+    + remediation steps, plus orphan detection and tenant-wide
+    efficacy averages."""
+    try:
+        from dlp_efficacy import analyze
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(analyze, client)
+
+
+class DlpEfficacyExportRequest(MigrateRequest):
+    # csv | json | markdown | docx
+    format: str = "csv"
+
+
+@app.post("/api/dlp/efficacy/export")
+async def dlp_efficacy_export(req: DlpEfficacyExportRequest):
+    """Run the efficacy analysis and return it as a downloadable file.
+
+    Formats: csv (Excel-friendly flat table), json (full nuance graph),
+    markdown (pasteable report), docx (reviewer-friendly Word doc with
+    color-coded FP risk bands).
     """
-    cloud = validate_cloud(req.cloud)
-    vd = validate_vanity(req.vanity_domain)
-    cid = validate_credential("client_id", req.client_id, required=True)
-    sec = validate_credential("client_secret", req.client_secret, required=True)
-    cust = validate_customer_id(req.customer_id)
+    try:
+        from dlp_efficacy import analyze, export
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    analysis = await asyncio.to_thread(analyze, client)
+    try:
+        body, mime, filename = await asyncio.to_thread(export, analysis, req.format)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        # python-docx missing, etc.
+        raise HTTPException(status_code=501, detail=str(e))
+    from fastapi.responses import Response
+    return Response(
+        content=body,
+        media_type=mime,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
-    client = Client(cid, sec, vd, cloud, cust)
-    auth_result = client.auth()
-    if auth_result is not True:
-        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
-        reason = ""
-        if isinstance(auth_result, tuple) and len(auth_result) == 2:
-            reason = str(auth_result[1])
-        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
-        raise HTTPException(
-            status_code=401,
-            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
-        )
-    return client
+
+@app.post("/api/dlp/efficacy/test")
+async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
+    """Test a user-supplied text sample against every custom
+    dictionary's phrases + regex patterns. Runs locally with stdlib
+    re — the corpus never leaves this server, never reaches Zscaler,
+    never reaches any LLM. 256 KB hard cap on input."""
+    try:
+        from dlp_efficacy import corpus_test
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    return await asyncio.to_thread(
+        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
+    )
 
 
 # ── Step 1: Assess Current Status ─────────────────────────────────

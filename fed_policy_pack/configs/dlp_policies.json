@@ -1,0 +1,187 @@
+[
+  {
+    "name": "Z-Atomic Energy Act Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "AEA High Confidence"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-Financial Information-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Financial Information"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-For Official Use Only Markings-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "FOUO Markings High Confidence",
+      "FOUO Markings Medium Confidence"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-ITAR International Traffic in Arms Regulations-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ITAR Phrases"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-Standard Forms-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Standard Forms"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-Traffic Light Protocol-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "TLP Red",
+      "TLP Amber Strict",
+      "TLP Amber"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-US PII-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "US PII"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-US PHI-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "US PHI - Medium Confidence",
+      "US PHI - High Confidence"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-Controlled Unclassified Information-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "CUI Engine (High Confidence)",
+      "CUI Engine (Medium Confidence)"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-Private Keys-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Private Keys"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  }
+]
