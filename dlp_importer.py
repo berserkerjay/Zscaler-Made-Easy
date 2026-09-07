@@ -33,7 +33,7 @@ import json
 import os
 import re
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +194,121 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Payload builders — shared by the per-pack importer below and by the
+# multi-pack planner in pack_deploy.py so both produce identical API calls.
+# ---------------------------------------------------------------------------
+
+EMPTY_DICT_REASON = "no patterns/phrases"
+
+
+def build_dict_kwargs(
+    d: Dict[str, Any], predefined_name_to_id: Dict[str, Any]
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Translate one pack dictionary definition into `add_dict` kwargs.
+
+    Returns (kwargs, error). `error` is EMPTY_DICT_REASON for a custom
+    dictionary with nothing to match on (importer skips it), or a message
+    when a clone's template can't be resolved in the tenant (importer
+    fails it)."""
+    is_clone = bool(d.get("predefined_clone"))
+    if is_clone:
+        template_id = d.get("dict_template_id")
+        template_name = d.get("dict_template_name")
+        if not template_id and template_name:
+            template_id = predefined_name_to_id.get(template_name)
+        if not template_id:
+            return None, f"No template ID for '{template_name}'"
+        kwargs: Dict[str, Any] = {
+            "description": d.get("description", ""),
+            "dict_template_id": int(template_id),
+            "custom": True,
+        }
+    else:
+        if not d.get("patterns") and not d.get("phrases"):
+            return None, EMPTY_DICT_REASON
+        kwargs = {"description": d.get("description", "")}
+
+    for opt in ("confidence_threshold", "confidence_level_for_predefined_dict", "hierarchical_identifiers"):
+        if d.get(opt):
+            kwargs[opt] = d[opt]
+    for flag in ("include_bin_numbers", "include_ssn_numbers"):
+        if d.get(flag):
+            kwargs[flag] = True
+
+    proximity = d.get("proximity") or 0
+    if proximity > 0:
+        kwargs["proximity"] = proximity
+        kwargs["proximity_length_enabled"] = True
+        if not is_clone:
+            kwargs["proximity_enabled_for_custom_dictionary"] = True
+
+    if d.get("patterns"):
+        kwargs["patterns"] = [(p["action"], p["pattern"]) for p in d["patterns"]]
+    if d.get("phrases"):
+        kwargs["phrases"] = [(p["action"], p["phrase"]) for p in d["phrases"]]
+    return kwargs, None
+
+
+def resolve_engine_expression(expr: str, dict_name_to_id: Dict[str, Any]) -> Tuple[str, List[str]]:
+    """Rewrite symbolic `D:<dictionary name>` references to the API's
+    `D<id>.S` form. Longest names are substituted first so a name that is
+    a prefix of another can't clobber it. Returns (expression, unresolved)
+    where `unresolved` lists any `D:` references that had no matching
+    dictionary."""
+    for dict_name in sorted(dict_name_to_id.keys(), key=len, reverse=True):
+        placeholder = f"D:{dict_name}"
+        if placeholder in expr:
+            expr = expr.replace(placeholder, f"D{dict_name_to_id[dict_name]}.S")
+    unresolved = [u.strip() for u in re.findall(_UNRESOLVED_REF_RE, expr) if u.strip()]
+    return expr, unresolved
+
+
+# A leftover `D:<name>` runs until the next boolean operator, closing paren,
+# proximity operator, or end of expression. (The original script's pattern
+# skipped any name beginning with "D", hiding e.g. "Date of Birth".)
+_UNRESOLVED_REF_RE = re.compile(r"D:([^&|>]+?)\s*(?=\bAND\b|\bOR\b|\)|>|$)")
+
+
+def engine_references(expr: str, candidate_names: Iterable[str]) -> List[str]:
+    """Return the candidate dictionary names an expression references as
+    `D:<name>`, requiring an operator/paren/end boundary after the name so
+    a name that is a prefix of another ("Alpha" vs "Alpha Dict") is not a
+    false hit."""
+    found = []
+    for name in candidate_names:
+        if re.search(r"D:" + re.escape(name) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|$))", expr):
+            found.append(name)
+    return found
+
+
+def build_policy_payload(
+    policy_def: Dict[str, Any], engine_ids: List[Any], *, use_rank_0: bool = False
+) -> Dict[str, Any]:
+    """Translate one pack policy definition into `add_rule` kwargs. New
+    rules are always inserted at order 1 (top of the policy), which is
+    why the planner reports an order shift for existing rules."""
+    payload: Dict[str, Any] = {
+        "name": policy_def["name"],
+        "order": "1",
+        "state": policy_def.get("state", "ENABLED"),
+        "action": policy_def.get("action", "ALLOW"),
+        "dlp_engines": engine_ids,
+        "protocols": policy_def.get("protocols", ["ANY_RULE"]),
+        "rank": 0 if use_rank_0 else policy_def.get("rank", 7),
+    }
+    for opt in ("description", "severity", "min_size", "file_types", "cloud_applications"):
+        if policy_def.get(opt):
+            payload[opt] = policy_def[opt]
+    for field in ("locations", "location_groups", "groups", "departments", "users", "url_categories", "labels"):
+        if policy_def.get(field):
+            payload[field] = policy_def[field]
+    for flag in ("match_only", "without_content_inspection"):
+        if policy_def.get(flag):
+            payload[flag] = True
+    return payload
+
+
+# ---------------------------------------------------------------------------
 # Import operations — each returns a structured result dict and calls an
 # optional `on_progress(msg: str)` callback for live streaming.
 # ---------------------------------------------------------------------------
@@ -236,46 +351,17 @@ def import_dictionaries(
     details: List[Dict[str, Any]] = []
 
     for d in missing:
-        is_clone = d.get("predefined_clone", False)
         name = d["name"]
         try:
-            if is_clone:
-                template_id = d.get("dict_template_id")
-                template_name = d.get("dict_template_name")
-                if not template_id and template_name:
-                    template_id = predefined_name_to_id.get(template_name)
-                if not template_id:
-                    failed += 1
-                    details.append({"name": name, "status": "failed", "error": f"No template ID for '{template_name}'"})
-                    continue
-                kwargs = {"description": d.get("description", ""), "dict_template_id": int(template_id), "custom": True}
-            else:
-                has_patterns = bool(d.get("patterns"))
-                has_phrases = bool(d.get("phrases"))
-                if not has_patterns and not has_phrases:
-                    skipped += 1
-                    details.append({"name": name, "status": "skipped", "reason": "no patterns/phrases"})
-                    continue
-                kwargs = {"description": d.get("description", "")}
-
-            for opt in ("confidence_threshold", "confidence_level_for_predefined_dict", "hierarchical_identifiers"):
-                if d.get(opt):
-                    kwargs[opt] = d[opt]
-            for flag in ("include_bin_numbers", "include_ssn_numbers"):
-                if d.get(flag):
-                    kwargs[flag] = True
-
-            proximity = d.get("proximity") or 0
-            if proximity > 0:
-                kwargs["proximity"] = proximity
-                kwargs["proximity_length_enabled"] = True
-                if not is_clone:
-                    kwargs["proximity_enabled_for_custom_dictionary"] = True
-
-            if d.get("patterns"):
-                kwargs["patterns"] = [(p["action"], p["pattern"]) for p in d["patterns"]]
-            if d.get("phrases"):
-                kwargs["phrases"] = [(p["action"], p["phrase"]) for p in d["phrases"]]
+            kwargs, build_err = build_dict_kwargs(d, predefined_name_to_id)
+            if build_err == EMPTY_DICT_REASON:
+                skipped += 1
+                details.append({"name": name, "status": "skipped", "reason": build_err})
+                continue
+            if build_err:
+                failed += 1
+                details.append({"name": name, "status": "failed", "error": build_err})
+                continue
 
             response = zia.dlp_dictionary.add_dict(
                 name, d["custom_phrase_match_type"], "PATTERNS_AND_PHRASES", **kwargs
@@ -327,17 +413,10 @@ def import_engines(
     created, failed = 0, 0
     details: List[Dict[str, Any]] = []
 
-    sorted_names = sorted(dict_name_to_id.keys(), key=len, reverse=True)
     for engine_def in missing:
         name = engine_def["name"]
         try:
-            expr = engine_def["expression"]
-            for dict_name in sorted_names:
-                placeholder = f"D:{dict_name}"
-                if placeholder in expr:
-                    expr = expr.replace(placeholder, f"D{dict_name_to_id[dict_name]}.S")
-
-            unresolved = re.findall(r"D:[^D\d][^&|>)]*", expr)
+            expr, unresolved = resolve_engine_expression(engine_def["expression"], dict_name_to_id)
             response = zia.dlp_engine.add_dlp_engine(
                 name=name,
                 engine_expression=expr,
@@ -404,25 +483,7 @@ def import_policies(
                 details.append({"name": name, "status": "failed", "error": "No valid engines found"})
                 continue
 
-            payload: Dict[str, Any] = {
-                "name": name,
-                "order": "1",
-                "state": policy_def.get("state", "ENABLED"),
-                "action": policy_def.get("action", "ALLOW"),
-                "dlp_engines": engine_ids,
-                "protocols": policy_def.get("protocols", ["ANY_RULE"]),
-                "rank": 0 if use_rank_0 else policy_def.get("rank", 7),
-            }
-            for opt in ("description", "severity", "min_size", "file_types", "cloud_applications"):
-                if policy_def.get(opt):
-                    payload[opt] = policy_def[opt]
-            for field in ("locations", "location_groups", "groups", "departments", "users", "url_categories", "labels"):
-                if policy_def.get(field):
-                    payload[field] = policy_def[field]
-            for flag in ("match_only", "without_content_inspection"):
-                if policy_def.get(flag):
-                    payload[flag] = True
-
+            payload = build_policy_payload(policy_def, engine_ids, use_rank_0=use_rank_0)
             response = client.zia.dlp_web_rules.add_rule(**payload)
             new_id = _extract_id(response)
             if new_id:
@@ -526,10 +587,11 @@ def apply_confidence_tweaks(
     zia, tweaks: Optional[List[Dict[str, Any]]] = None, *, log: LogFn = None
 ) -> List[Dict[str, Any]]:
     """Apply confidence-level overrides to named dictionaries.
-    Tweaks can come from pack.json's "confidence_tweaks" key or from
-    the DEFAULT_CONFIDENCE_TWEAKS fallback."""
+    `tweaks=None` means the pack didn't say, so DEFAULT_CONFIDENCE_TWEAKS
+    apply; an explicit empty list means the pack opted out."""
     _log = log or (lambda m: None)
-    tweaks = tweaks or DEFAULT_CONFIDENCE_TWEAKS
+    if tweaks is None:
+        tweaks = DEFAULT_CONFIDENCE_TWEAKS
     if not tweaks:
         return []
 
