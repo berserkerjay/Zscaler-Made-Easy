@@ -252,9 +252,10 @@
   .card h2 { font-size: 1.4rem; margin-bottom: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
   .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--dim); font-weight: 500; }
 
-  /* Pop-out card sections — every .card top-level h2/h3 gets a
-     click target that opens the section in a new browser tab.
-     Sections stay collapsed on the main page to reduce clutter. */
+  /* Collapsible card sections — every .card top-level h2/h3 toggles
+     its section in place (chevron shows the state). Read-only sections
+     also carry a small pop-out button that opens a printable copy in a
+     new tab; form sections never pop out because the copy has no script. */
   .card h2.collapsible,
   .card h3.collapsible {
     cursor: pointer;
@@ -267,16 +268,32 @@
   .card h3.collapsible:hover { color: var(--accent); }
   .card h2.collapsible::before,
   .card h3.collapsible::before {
-    content: "⧉";
+    content: "›";
     display: inline-block;
-    font-size: 0.85em;
+    font-size: 1em;
+    line-height: 1;
     color: var(--dim);
-    transition: color 0.2s var(--ease);
+    transition: transform 0.2s var(--ease), color 0.2s var(--ease);
     width: 0.9em;
     text-align: center;
   }
+  .card h2.collapsible[aria-expanded="true"]::before,
+  .card h3.collapsible[aria-expanded="true"]::before { transform: rotate(90deg); }
   .card h2.collapsible:hover::before,
   .card h3.collapsible:hover::before { color: var(--accent); }
+  .card-popout {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    border-radius: 6px;
+    font-size: 0.7em;
+    line-height: 1;
+    padding: 0.25rem 0.45rem;
+    cursor: pointer;
+    transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+  }
+  .card-popout:hover { color: var(--accent); border-color: var(--accent); }
   .card.collapsed > :not(h2):not(h3):not(.card-header-row) { display: none !important; }
   .card.collapsed { padding-bottom: 1rem; }
 
@@ -5334,13 +5351,19 @@ function renderUpdateResults(data) {
 // Pop-out card sections
 // ══════════════════════════════════════════════════════════════════
 // Every top-level .card h2/h3 becomes a click target that opens the
-// section content in a new browser tab. Sections stay collapsed on
-// the main page so they never overlap. The new tab inherits the
-// current theme (dark/light) and all styling.
+// section IN PLACE (expand/collapse). Read-only sections also get an
+// "open in new tab" button (pop-out). The pop-out copies the markup
+// without any script, so cards that contain form controls never pop
+// out: their inputs, Show/Hide toggles and Save Config only work on
+// the main page, where the script lives. (Popping out the Tenant
+// Configuration card used to leave users typing credentials into a
+// dead copy of the form.)
 function _popOutSection(card, title) {
   const styleEl = document.querySelector('style');
   const themeClass = document.body.classList.contains('theme-light') ? 'theme-light' : '';
-  const content = card.innerHTML;
+  const clone = card.cloneNode(true);
+  clone.querySelectorAll('.card-popout').forEach(b => b.remove());
+  const content = clone.innerHTML;
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5366,6 +5389,15 @@ function _popOutSection(card, title) {
   }
 }
 
+function _cardHasControls(card) {
+  return !!card.querySelector('input, select, textarea');
+}
+
+function _setCardOpen(card, h, open) {
+  card.classList.toggle('collapsed', !open);
+  h.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 function _initCollapsibleCards() {
   const cards = document.querySelectorAll('div.card');
   cards.forEach(card => {
@@ -5375,20 +5407,38 @@ function _initCollapsibleCards() {
     h.classList.add('collapsible');
     h.setAttribute('role', 'button');
     h.setAttribute('tabindex', '0');
-    h.setAttribute('title', 'Open in new tab');
-    h.setAttribute('aria-expanded', 'false');
-    card.classList.add('collapsed');
+    const interactive = _cardHasControls(card);
+    // Form sections start open (they are the input surface); report
+    // sections start collapsed to keep the page short.
+    _setCardOpen(card, h, interactive);
+    h.setAttribute('title', 'Click to expand or collapse');
 
-    const openTab = () => {
-      const title = (h.textContent || '').trim();
-      card.classList.remove('collapsed');
-      _popOutSection(card, title);
-      card.classList.add('collapsed');
-    };
-    h.addEventListener('click', openTab);
-    h.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTab(); }
+    const toggle = () => _setCardOpen(card, h, card.classList.contains('collapsed'));
+    h.addEventListener('click', (e) => {
+      if (e.target.closest('.card-popout')) return;
+      toggle();
     });
+    h.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+
+    if (!interactive) {
+      const label = (h.textContent || '').trim();
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'card-popout';
+      btn.title = 'Open this section in a new tab';
+      btn.setAttribute('aria-label', 'Open ' + label + ' in a new tab');
+      btn.innerHTML = '<span aria-hidden="true">&#8599;</span>';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const wasCollapsed = card.classList.contains('collapsed');
+        card.classList.remove('collapsed');
+        _popOutSection(card, label);
+        if (wasCollapsed) card.classList.add('collapsed');
+      });
+      h.appendChild(btn);
+    }
   });
 }
 if (document.readyState === 'loading') {
