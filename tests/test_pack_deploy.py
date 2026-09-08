@@ -47,7 +47,13 @@ class FakeDicts:
         if name in self.fail_names:
             return None, None, {"message": "simulated API error"}
         self._next += 1
-        obj = Obj(id=self._next, name=name, custom=True, **{k: v for k, v in kw.items() if k != "custom"})
+        # The SDK takes (action, value) tuples but the API returns objects;
+        # store the response shape so verification can read it back.
+        stored = {k: v for k, v in kw.items() if k != "custom"}
+        for key, field in (("patterns", "pattern"), ("phrases", "phrase")):
+            if stored.get(key):
+                stored[key] = [{"action": v[0], field: v[1]} if isinstance(v, (tuple, list)) else v for v in stored[key]]
+        obj = Obj(id=self._next, name=name, custom=True, **stored)
         self.items.append(obj)
         return obj, None, None
 
@@ -287,7 +293,7 @@ def test_rule_cap_blocks_and_order_shift_is_explained(tmp_path, base_pack):
     client = FakeClient(dicts=[PREDEF_SSN], rules=existing[:3])
     rep = pd.preflight(client, [base_pack, two], writes_enabled=True)
     shift = next(i for i in rep["impacts"] if i["type"] == "order_shift")
-    assert "2 new rules" in shift["title"]
+    assert "2 new Web DLP rules" in shift["title"]
     assert "'Existing 1' order 1 → 3" in shift["detail"]
     assert shift["severity"] == "warning"
 

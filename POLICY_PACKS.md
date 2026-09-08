@@ -190,6 +190,83 @@ An array of DLP web rules. Each policy points to one or more engines by **name**
 
 Set `match_only: true` to use match-only semantics (first-match-wins on a match without continuing rule evaluation). `without_content_inspection: true` matches on metadata (file name, MIME type) without opening the payload.
 
+### 4.1 Channels — Endpoint, SaaS Security API (CASB) and Email DLP
+
+A policy's `channel` decides which ZIA policy it lands in. Everything else about the pack stays the same: the rule references the pack's engines by name, engines reference dictionaries, and Deploy Studio resolves the whole chain before writing.
+
+| `channel` | ZIA policy | API (zscaler-sdk-python) | Monitor action | Enforcing actions |
+|---|---|---|---|---|
+| `web` (default) | Data Loss Prevention › Web DLP rules | `zia.dlp_web_rules` | `ALLOW` | `BLOCK`, `CONFIRM`, `ICAP_RESPONSE` |
+| `endpoint` | Endpoint DLP rules | `zia.endpoint_dlp_rules` | `ALLOW` | `BLOCK`, `CONFIRM` |
+| `saas` | SaaS Security API › DLP rules | `zia.casb_dlp_rules` | `OFLCASB_DLP_REPORT_INCIDENT` | anything else (`OFLCASB_DLP_QUARANTINE`, `OFLCASB_DLP_REMOVE_PUBLIC_LINK_SHARE`, `OFLCASB_DLP_BLOCK`, …) |
+| `email` | Email DLP rules | `zia.outbound_email_dlp_rules` | `ALLOW` | `BLOCK`, `CUSTOMHEADERINSERTION` |
+
+**Endpoint DLP**
+
+```json
+{
+  "name": "Z-CJIS Endpoint-Monitor",
+  "channel": "endpoint",
+  "action": "ALLOW",
+  "engines": ["CJIS Any-Signal Engine"],
+  "severity": "RULE_SEVERITY_HIGH",
+  "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"],
+  "file_types": [],
+  "user_risk_score_levels": [],
+  "notification_template": "DLP Notice",
+  "labels": []
+}
+```
+
+`device_trust_levels` defaults to all four levels. `notification_template` and `labels` are **names**; they must already exist in the tenant. `data_transfer_method` / `network_type` / `min_size` pass through when set.
+
+**SaaS Security API (CASB)**
+
+```json
+{
+  "name": "Z-CJIS SaaS File-Monitor",
+  "channel": "saas",
+  "saas_type": "OFLCASB_DLP_FILE",
+  "action": "OFLCASB_DLP_REPORT_INCIDENT",
+  "engines": ["CJIS Any-Signal Engine"],
+  "tenants": "any",
+  "collaboration_scope": ["ANY"],
+  "components": [],
+  "file_types": []
+}
+```
+
+`saas_type` is required: `OFLCASB_DLP_FILE` (Box, Google Drive, OneDrive, SharePoint…), `OFLCASB_DLP_EMAIL`, `OFLCASB_DLP_COLLAB` (Slack, Teams, Webex), `OFLCASB_DLP_CRM`, `OFLCASB_DLP_ITSM`, `OFLCASB_DLP_REPO`, `OFLCASB_DLP_STORAGE`, `OFLCASB_DLP_GENAI`. `tenants` is `"any"` (every onboarded SaaS tenant whose application matches the rule type) or a list of onboarded tenant **names** to pin. `components` and `content_location` pass through for collaboration/email/ITSM types.
+
+**Email DLP**
+
+```json
+{
+  "name": "Z-CJIS Email-Monitor",
+  "channel": "email",
+  "action": "ALLOW",
+  "engines": ["CJIS Any-Signal Engine"],
+  "tenants": "any",
+  "severity": "RULE_SEVERITY_HIGH",
+  "notification_template": "DLP Notice"
+}
+```
+
+`tenants` works as for SaaS but matches email applications (Microsoft 365 / Gmail) onboarded under SaaS Security. Email rules have no `rank`.
+
+**Dependencies per channel.** Preflight resolves every prerequisite against the live tenant and lists them under *Tenant prerequisites* in Deploy Studio (and in the `dependencies` array of `/api/dlp-packs/preflight`). A rule whose prerequisites are missing is skipped with the reason; the other channels still deploy.
+
+| Channel | Needs from the tenant | How it is checked |
+|---|---|---|
+| all | the dictionaries and engines the rule references (pack or tenant) | resolved per item; blocked items cascade |
+| `web` | fewer than 127 web DLP rules after the deployment | rule count vs. API cap |
+| `endpoint` | Endpoint DLP licensed (rule API answers); Zscaler Client Connector with Endpoint DLP enabled in the app profile | rule API read; ZCC rollout cannot be verified through the API and is listed as a note |
+| `saas` | SaaS Security API licensed; at least one onboarded SaaS application tenant matching `saas_type` (Administration › SaaS Application Tenants) | tenant list read and matched by application |
+| `email` | Email DLP licensed; an onboarded Microsoft 365 / Gmail tenant | tenant list read and matched to email applications |
+| any | `notification_template` / `labels` named in the rule | looked up by name in DLP Notification Templates / Rule Labels |
+
+Deploy Studio shows the resolved SaaS tenants a rule will be scoped to before you approve, and the post-deploy verification re-reads every channel's rule list to confirm each rule now exists.
+
 ---
 
 ## 5. Validate Locally Before Import

@@ -123,6 +123,11 @@ def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
     meta["dictionaries"] = len(dicts)
     meta["engines"] = len(engines)
     meta["policies"] = len(policies)
+    channels: Dict[str, int] = {}
+    for p in policies:
+        ch = str(p.get("channel") or "web").strip().lower()
+        channels[ch] = channels.get(ch, 0) + 1
+    meta["channels"] = channels
     return meta
 
 
@@ -186,6 +191,8 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
                     "action": p.get("action", "?"),
                     "severity": p.get("severity", "?"),
                     "engines": p.get("engines", []),
+                    "channel": str(p.get("channel") or "web").strip().lower(),
+                    "saas_type": p.get("saas_type"),
                 }
                 for p in policies
             ],
@@ -452,7 +459,13 @@ def import_policies(
     if not desired:
         return {"phase": "policies", "status": "skipped", "reason": "no file"}
 
-    _log(f"Loaded {len(desired)} policy definitions")
+    non_web = [p["name"] for p in desired if str(p.get("channel") or "web").lower() != "web"]
+    if non_web:
+        # The single-pack importer only handles inline web rules; endpoint /
+        # SaaS / email rules need the prerequisite checks in pack_deploy.
+        _log(f"Skipping {len(non_web)} non-web policies (use Deploy Studio / pack_deploy): {', '.join(non_web)}")
+        desired = [p for p in desired if str(p.get("channel") or "web").lower() == "web"]
+    _log(f"Loaded {len(desired)} web policy definitions")
 
     existing_rules, err = _nx(client.zia.dlp_web_rules.list_rules())
     if err:

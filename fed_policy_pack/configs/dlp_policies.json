@@ -183,5 +183,58 @@
       "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-Fed Endpoint-Monitor",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: monitor CUI, FOUO-marked and US PII content leaving managed devices via removable media, printing, network shares and application file access. Monitor-only.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "severity": "RULE_SEVERITY_HIGH",
+    "engines": [
+      "CUI Engine (High Confidence)",
+      "FOUO Markings High Confidence",
+      "US PII"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Z-Fed SaaS File-Monitor",
+    "channel": "saas",
+    "saas_type": "OFLCASB_DLP_FILE",
+    "description": "SaaS Security API: scan files at rest in onboarded file-storage tenants for CUI, FOUO markings and US PII; report incidents. Applies to every matching onboarded tenant.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "ENABLED",
+    "rank": 7,
+    "severity": "RULE_SEVERITY_HIGH",
+    "engines": [
+      "CUI Engine (High Confidence)",
+      "FOUO Markings High Confidence",
+      "US PII"
+    ],
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "Z-Fed Email-Monitor",
+    "channel": "email",
+    "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CUI, FOUO markings and US PII. Monitor-only.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "severity": "RULE_SEVERITY_HIGH",
+    "engines": [
+      "CUI Engine (High Confidence)",
+      "FOUO Markings High Confidence",
+      "US PII"
+    ],
+    "tenants": "any"
   }
 ]
