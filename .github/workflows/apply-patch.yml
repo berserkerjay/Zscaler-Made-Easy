@@ -1,0 +1,43 @@
+name: Apply patch
+
+# Byte-exact commits from environments that can only reach GitHub through
+# the API: push a commit that adds ONLY `patches/*.patch` (git format-patch
+# output). This job drops that carrier commit, applies the patch with
+# `git am` (author, date and message come from the patch) and force-pushes
+# the result in its place, so the branch history never shows the carrier.
+
+on:
+  push:
+    paths: ["patches/*.patch"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Replace carrier commit with the patch's commit
+        env:
+          BRANCH: ${{ github.ref_name }}
+          CARRIER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # The carrier commit must contain nothing but patches.
+          if git diff --name-only HEAD~1 HEAD | grep -v '^patches/.*\.patch$'; then
+            echo "carrier commit touches files other than patches/*.patch - refusing" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/patches"
+          cp patches/*.patch "$RUNNER_TEMP/patches/"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git reset --hard HEAD~1
+          git am --3way "$RUNNER_TEMP"/patches/*.patch
+          git log --oneline -3
+          git ls-tree -r HEAD --name-only | grep -v '^patches/' >/dev/null
+          git push --force-with-lease="refs/heads/$BRANCH:$CARRIER" origin "HEAD:refs/heads/$BRANCH"
