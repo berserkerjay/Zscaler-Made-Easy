@@ -23,7 +23,7 @@ echo       Done.
 echo.
 
 REM ----- Step 2: Pull latest code -----
-echo [2/4] Pulling latest code from claude/review-repo-xRk8y...
+echo [2/4] Pulling latest code from main...
 where git >nul 2>&1
 if errorlevel 1 (
     echo       ERROR: git is not installed or not on PATH.
@@ -32,8 +32,8 @@ if errorlevel 1 (
     exit /b 1
 )
 git fetch origin
-git checkout claude/review-repo-xRk8y
-git pull origin claude/review-repo-xRk8y
+git checkout main
+git pull origin main
 if errorlevel 1 (
     echo.
     echo       ERROR: git pull failed. Check your connection and credentials.
