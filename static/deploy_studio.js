@@ -399,7 +399,7 @@ const DZ_FLOW_COLS = [
   { key: 'engine',     title: 'Engines' },
   { key: 'policy',     title: 'Policies' },
 ];
-const DZ_FLOW_GEO = { w: 214, h: 46, gapY: 14, gapX: 96, pad: 22, head: 34 };
+const DZ_FLOW_GEO = { w: 224, h: 60, gapY: 14, gapX: 96, pad: 22, head: 34 };
 
 function _dzFlowGraph(items, results) {
   const nodes = new Map();
@@ -496,9 +496,10 @@ function _dzFlowHtml(items, results) {
       <title>${_dzE(tip)}</title>
       <rect class="box" width="${G.w}" height="${G.h}" rx="12"/>
       <rect class="bar" width="4" height="${G.h - 12}" x="6" y="6" rx="2"/>
-      <text class="kind" x="18" y="17">${_dzE((DZ_KIND[n.kind] || n.kind).toUpperCase())}${n.packs && n.packs.length ? ' · ' + _dzE(n.packs[0]) : ''}${n.tweak ? ' · TWEAK' : ''}</text>
-      <text class="name" x="18" y="35">${_dzE(trunc(n.name, 26))}</text>
-      <text class="st" x="${G.w - 10}" y="17" text-anchor="end">${_dzE(label)}</text>
+      <text class="kind" x="18" y="16">${_dzE((DZ_KIND[n.kind] || n.kind).toUpperCase())}${n.tweak ? ' · TWEAK' : ''}</text>
+      <text class="st" x="${G.w - 10}" y="16" text-anchor="end">${_dzE(label)}</text>
+      <text class="name" x="18" y="34">${_dzE(trunc(n.name, 27))}</text>
+      <text class="pk" x="18" y="50">${_dzE(trunc(n.packs && n.packs.length ? n.packs.join(', ') : (n.kind === 'template' ? 'Zscaler predefined' : 'existing in tenant'), 36))}</text>
     </g>`;
   }).join('');
   const counts = { create: 0, modify: 0, reuse: 0, blocked: 0, tenant: 0 };

@@ -182,15 +182,23 @@ GUI_ADDONS = [
 
 
 def _inject_gui_addons(html: str) -> str:
+    """Insert the add-on tags at the document's real </head> and </body>.
+
+    index.html's inline script builds other HTML documents inside template
+    literals, so the strings "</head>" and "</body>" also occur INSIDE the
+    JavaScript. The document's own </head> is always the first occurrence
+    (it precedes every script) and its own </body> is always the last
+    (nothing follows it), so anchor on those — a naive first-match replace
+    of </body> lands inside the script, truncates it, and kills the app."""
     for name, kind in GUI_ADDONS:
         if not os.path.exists(os.path.join(STATIC_DIR, name)):
             continue
         if kind == "style":
-            tag, anchor = f'<link rel="stylesheet" href="/static/{name}">\n</head>', "</head>"
+            tag, anchor, pos = f'<link rel="stylesheet" href="/static/{name}">\n', "</head>", html.find("</head>")
         else:
-            tag, anchor = f'<script src="/static/{name}"></script>\n</body>', "</body>"
-        if anchor in html:
-            html = html.replace(anchor, tag, 1)
+            tag, anchor, pos = f'<script src="/static/{name}"></script>\n', "</body>", html.rfind("</body>")
+        if pos >= 0:
+            html = html[:pos] + tag + html[pos:]
     return html
 
 

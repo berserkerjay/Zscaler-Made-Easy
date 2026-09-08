@@ -227,6 +227,7 @@
   .dz-node .kind { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; fill: var(--dim); }
   .dz-node .name { font-size: 12.5px; font-weight: 600; fill: var(--text); }
   .dz-node .st { font-size: 9.5px; font-weight: 700; fill: var(--dim); }
+  .dz-node .pk { font-size: 9.5px; font-weight: 500; fill: var(--dim); opacity: 0.85; }
   .dz-node.st-create .bar, .dz-node.st-ok .bar { fill: var(--accent); }
   .dz-node.st-create .st { fill: var(--accent-hover); }
   .dz-node.st-ok .bar { fill: var(--pass); } .dz-node.st-ok .st { fill: var(--pass); }
