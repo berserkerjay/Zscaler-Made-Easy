@@ -25,7 +25,15 @@ const DZ_STATUS = {
   skipped:  { label: 'Skipped',  cls: 'st-blocked', icon: '–' },
   failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕' },
 };
-const DZ_KIND = { dictionary: 'Dictionary', engine: 'Engine', policy: 'Policy', tweak: 'Tweak' };
+const DZ_KIND = { dictionary: 'Dictionary', engine: 'Engine', policy: 'Policy', tweak: 'Tweak', resource: 'Prerequisite', template: 'Template' };
+// Rule channels: which ZIA policy a pack rule lands in.
+const DZ_CHANNEL = { web: 'Web', endpoint: 'Endpoint', saas: 'SaaS', email: 'Email' };
+const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
+function _dzChannelChips(channels) {
+  if (!channels) return '';
+  return Object.keys(DZ_CHANNEL).filter(c => c !== 'web' && channels[c])
+    .map(c => `<span class="dz-chip kind-channel" title="${_dzChan(c)} DLP rules">${channels[c]} ${_dzChan(c)}</span>`).join('');
+}
 
 function _dzCreds() {
   if (typeof migrateCredBody === 'function') {
@@ -134,6 +142,7 @@ function _dzRenderSelect() {
           <span class="dz-chip kind-dictionary">${_dzN(p.dictionaries || 0, 'dictionary', 'dictionaries')}</span>
           <span class="dz-chip kind-engine">${_dzN(p.engines || 0, 'engine')}</span>
           <span class="dz-chip kind-policy">${_dzN(p.policies || 0, 'policy', 'policies')}</span>
+          ${_dzChannelChips(p.channels)}
         </div>
         <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
         ${det}
@@ -193,7 +202,7 @@ function _dzDetailHtml(id) {
   return `<div class="dz-detail" onclick="event.stopPropagation()">
     <div><strong>Dictionaries</strong><ul>${li(d.dictionaries.items, x => `<li><span>${_dzE(x.name)}</span><span>${x.type}${x.proximity ? ` · prox ${x.proximity}` : ''}</span></li>`)}</ul></div>
     <div><strong>Engines</strong><ul>${li(d.engines.items, x => `<li><span>${_dzE(x.name)}</span></li>`)}</ul></div>
-    <div><strong>Policies</strong><ul>${li(d.policies.items, x => `<li><span>${_dzE(x.name)}</span><span>${_dzE(x.action)}</span></li>`)}</ul></div>
+    <div><strong>Policies</strong><ul>${li(d.policies.items, x => `<li><span>${_dzE(x.name)}</span><span>${x.channel && x.channel !== 'web' ? _dzE(_dzChan(x.channel)) + ' · ' : ''}${_dzE(x.action)}</span></li>`)}</ul></div>
   </div>`;
 }
 
@@ -223,8 +232,33 @@ function _dzRow(i, statusKey, extra) {
   return `<div class="dz-row ${st.cls}">
     <span class="ic" aria-hidden="true">${st.icon}</span>
     <div><div class="nm">${_dzE(i.name)}</div>${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}</div>
-    <div class="tags"><span class="dz-chip kind-${i.kind}">${DZ_KIND[i.kind] || i.kind}</span><span class="dz-chip">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip">${_dzE(p)}</span>`).join('')}</div>
+    <div class="tags"><span class="dz-chip kind-${i.kind}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}<span class="dz-chip">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip">${_dzE(p)}</span>`).join('')}</div>
   </div>`;
+}
+
+// Tenant prerequisites per channel (SaaS tenants onboarded, feature APIs
+// answering, notification templates, labels...). Comes from the planner's
+// `dependencies` list; each row names the rules that need it.
+const DZ_DEP = {
+  ok:      { cls: 'st-ok',      icon: '✓', label: 'Present' },
+  missing: { cls: 'st-blocked', icon: '✕', label: 'Missing' },
+  error:   { cls: 'st-fail',    icon: '!', label: 'Unavailable' },
+  info:    { cls: 'st-reuse',   icon: 'i', label: 'Note' },
+};
+function _dzDepsHtml(deps) {
+  if (!deps || !deps.length) return '';
+  const missing = deps.filter(d => d.status === 'missing' || d.status === 'error').length;
+  const rows = deps.map(d => {
+    const s = DZ_DEP[d.status] || DZ_DEP.info;
+    return `<div class="dz-row ${s.cls}">
+      <span class="ic" aria-hidden="true">${s.icon}</span>
+      <div><div class="nm">${_dzE(d.requirement)}</div><div class="rs">${_dzE(d.detail || '')}${d.rules && d.rules.length ? ` — needed by ${_dzE(d.rules.slice(0, 4).join(', '))}${d.rules.length > 4 ? ` +${d.rules.length - 4} more` : ''}` : ''}</div></div>
+      <div class="tags"><span class="dz-chip kind-channel">${_dzE(_dzChan(d.channel))}</span><span class="dz-chip">${s.label}</span></div>
+    </div>`;
+  }).join('');
+  return `<details class="dz-fold" open><summary><div class="dz-h">Tenant prerequisites<span class="count">${deps.length}</span>${missing ? `<span class="dz-chip kind-missing">${missing} missing</span>` : ''}</div></summary>
+    <p class="dz-note">What each channel needs from the tenant before its rules can be created. Missing prerequisites skip only the rules that need them.</p>
+    <div class="dz-rows">${rows}</div></details>`;
 }
 function _dzSection(title, items, { open = true, fn } = {}) {
   if (!items.length) return '';
@@ -269,6 +303,7 @@ function _dzRenderReview() {
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
     ${(R.impacts || []).length ? `<div class="dz-h">Impact on this tenant</div>` : ''}
     ${(R.impacts || []).map(i => `<div class="dz-card sev-${_dzE(i.severity)}"><div class="bar"></div><div><div class="t">${_dzE(i.title)}</div><div class="d">${_dzE(i.detail)}</div></div></div>`).join('')}
+    ${_dzDepsHtml(R.dependencies)}
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml(items, null) : `
     ${_dzSection('Changes that will be written', creates)}
@@ -398,6 +433,7 @@ const DZ_FLOW_COLS = [
   { key: 'dictionary', title: 'Dictionaries' },
   { key: 'engine',     title: 'Engines' },
   { key: 'policy',     title: 'Policies' },
+  { key: 'resource',   title: 'Applies to / requires' },
 ];
 const DZ_FLOW_GEO = { w: 224, h: 60, gapY: 14, gapX: 96, pad: 22, head: 34 };
 
@@ -419,19 +455,30 @@ function _dzFlowGraph(items, results) {
       if (it.status === 'modify') { n.status = 'modify'; n.reason = it.reason; n.tweak = true; }
       continue;
     }
-    add(it.kind, it.name, it.status, { reason: it.reason, packs: it.packs, warnings: it.warnings, tenant: it.tenant });
+    add(it.kind, it.name, it.status, { reason: it.reason, packs: it.packs, warnings: it.warnings, tenant: it.tenant,
+                                       channel: it.detail && it.detail.channel });
   }
   for (const it of items) {
     if (it.kind === 'tweak') continue;
     for (const dep of (it.depends_on || [])) {
       const i = dep.indexOf(':');
       const dk = dep.slice(0, i), dn = dep.slice(i + 1);
-      const kind = dk === 'predefined' ? 'template' : dk;
-      const from = add(kind, dn, 'tenant', {
-        reason: kind === 'template' ? 'Predefined Zscaler dictionary used as a clone template.' : 'Already present in the tenant.',
+      const kind = dk === 'predefined' ? 'template' : (dk === 'missing' ? 'resource' : dk);
+      const from = add(kind, dn, dk === 'missing' ? 'missing' : 'tenant', {
+        reason: kind === 'template' ? 'Predefined Zscaler dictionary used as a clone template.'
+              : kind === 'resource' ? (dk === 'missing' ? 'Not present in the tenant — the rules that need it are skipped.' : 'Tenant prerequisite, resolved by name.')
+              : 'Already present in the tenant.',
         packs: [],
       });
+      if (dk === 'missing') from.status = 'missing';
       const to = nodes.get(`${it.kind}:${it.name}`);
+      if (kind === 'resource') {
+        // Tenant prerequisites sit to the RIGHT of policies: the policy
+        // "applies to" a SaaS tenant / "requires" a template or label.
+        edges.push({ from: to.key, to: from.key });
+        to.out.push(from.key); from.in.push(to.key);
+        continue;
+      }
       edges.push({ from: from.key, to: to.key });
       from.out.push(to.key); to.in.push(from.key);
     }
@@ -465,11 +512,13 @@ function _dzFlowGraph(items, results) {
 const DZ_FLOW_STATUS = {
   create: 'st-create', modify: 'st-modify', reuse: 'st-reuse', reuse_differs: 'st-differs',
   conflict: 'st-blocked', blocked_dependency: 'st-blocked', skip_empty: 'st-blocked', noop: 'st-reuse', tenant: 'st-tenant',
+  missing: 'st-fail',
   created: 'st-ok', modified: 'st-ok', reused: 'st-reuse', skipped: 'st-blocked', failed: 'st-fail',
 };
 const DZ_FLOW_LABEL = {
   create: 'will create', modify: 'will modify', reuse: 'already present', reuse_differs: 'kept as-is (differs)',
   conflict: 'conflict', blocked_dependency: 'skipped', skip_empty: 'skipped', noop: 'no change', tenant: 'in tenant',
+  missing: 'MISSING',
   created: 'created', modified: 'modified', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
 };
 
@@ -496,7 +545,7 @@ function _dzFlowHtml(items, results) {
       <title>${_dzE(tip)}</title>
       <rect class="box" width="${G.w}" height="${G.h}" rx="12"/>
       <rect class="bar" width="4" height="${G.h - 12}" x="6" y="6" rx="2"/>
-      <text class="kind" x="18" y="16">${_dzE((DZ_KIND[n.kind] || n.kind).toUpperCase())}${n.tweak ? ' · TWEAK' : ''}</text>
+      <text class="kind" x="18" y="16">${_dzE((DZ_KIND[n.kind] || n.kind).toUpperCase())}${n.channel ? ' · ' + _dzE(_dzChan(n.channel).toUpperCase()) : ''}${n.tweak ? ' · TWEAK' : ''}</text>
       <text class="st" x="${G.w - 10}" y="16" text-anchor="end">${_dzE(label)}</text>
       <text class="name" x="18" y="34">${_dzE(trunc(n.name, 27))}</text>
       <text class="pk" x="18" y="50">${_dzE(trunc(n.packs && n.packs.length ? n.packs.join(', ') : (n.kind === 'template' ? 'Zscaler predefined' : 'existing in tenant'), 36))}</text>
@@ -508,7 +557,7 @@ function _dzFlowHtml(items, results) {
     if (st === 'create' || st === 'created') counts.create++;
     else if (st === 'modify' || st === 'modified') counts.modify++;
     else if (st === 'tenant') counts.tenant++;
-    else if (['conflict', 'blocked_dependency', 'skip_empty', 'skipped', 'failed'].includes(st)) counts.blocked++;
+    else if (['conflict', 'blocked_dependency', 'skip_empty', 'skipped', 'failed', 'missing'].includes(st)) counts.blocked++;
     else counts.reuse++;
   }
   return `

@@ -31,12 +31,19 @@ Cross-referencing performed by preflight
   from the pack definition that is surfaced as a warning, because
   everything downstream will run against the tenant's version, not the
   pack's.
-* Impact analysis — new web DLP rules are inserted at order 1 and push
-  every existing rule down; the API caps web DLP rules at 127; policies
-  whose action enforces (BLOCK / CONFIRM / ICAP_RESPONSE) rather than
-  monitors are called out; confidence tweaks that would MODIFY an
-  existing tenant dictionary are listed as explicit modifications; and
-  ZIA changes always need activation afterwards.
+* Channels — a policy's `channel` (web, endpoint, saas, email) decides
+  which rule API it targets. Non-web channels have tenant prerequisites
+  a pack cannot ship (onboarded SaaS/email tenants, notification
+  templates, labels, the feature's API answering at all); these are
+  resolved by name in preflight, listed in the report's `dependencies`,
+  and a rule whose prerequisites are missing is blocked, not created.
+  See pack_channels.py.
+* Impact analysis — new rules are inserted at order 1 of their channel's
+  policy and push every existing rule down; the API caps web DLP rules
+  at 127; policies whose action enforces rather than monitors are called
+  out; confidence tweaks that would MODIFY an existing tenant dictionary
+  are listed as explicit modifications; and ZIA changes always need
+  activation afterwards.
 
 The report is plain data (dicts/lists) so the GUI can render it and the
 API can return it verbatim. `plan_hash` binds an approval to exactly the
@@ -49,6 +56,7 @@ import json
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+import pack_channels as pc
 from dlp_importer import (
     EMPTY_DICT_REASON,
     _extract_error,
@@ -198,14 +206,16 @@ def tenant_dict_signature(t: Any) -> Optional[Dict[str, Any]]:
 
 
 def policy_signature(p: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "action": p.get("action", "ALLOW"),
+    sig = {
+        "action": p.get("action", pc.default_action(pc.channel_of(p))),
         "state": p.get("state", "ENABLED"),
         "engines": sorted(p.get("engines", [])),
         "protocols": sorted(p.get("protocols", ["ANY_RULE"])),
         "severity": p.get("severity"),
         "rank": p.get("rank", 7),
     }
+    sig.update(pc.policy_signature_extra(p))
+    return sig
 
 
 def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict[str, Any]]]:
@@ -247,14 +257,21 @@ def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict
 # Tenant snapshot
 # ---------------------------------------------------------------------------
 
-def fetch_tenant(client) -> Dict[str, Any]:
-    """Read everything the plan needs from the tenant in three calls.
+def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Read everything the plan needs from the tenant: dictionaries,
+    engines and web DLP rules always; other channels' rules and their
+    prerequisites (SaaS tenants, notification templates, labels) only
+    when `need` (see pack_channels.needs) says the packs use them.
     Never raises: each failure is recorded and `reachable` reflects it."""
     snap: Dict[str, Any] = {
         "reachable": True, "errors": [],
         "dictionaries": {}, "predefined": {}, "engines": {}, "rules": [],
+        "channels": {"rules": {}, "errors": {}, "casb_tenants": None, "casb_error": None,
+                     "templates": None, "templates_error": None, "labels": None, "labels_error": None},
     }
     zia = client.zia
+    if need and (need["channels"] - {pc.WEB} or need["casb"] or need["templates"] or need["labels"]):
+        snap["channels"] = pc.fetch_channel_state(zia, need)
     try:
         dicts, err = _nx(zia.dlp_dictionary.list_dicts())
         if err:
@@ -399,12 +416,24 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
         item["reason"] = "Will be created as a new engine."
 
 
+def _tenant_rules_for(tenant: Dict[str, Any], channel: str) -> List[Dict[str, Any]]:
+    if channel == pc.WEB:
+        return tenant["rules"]
+    return tenant["channels"]["rules"].get(channel, [])
+
+
 def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any]) -> None:
-    tenant_rules = {r["name"]: r for r in tenant["rules"]}
     for name, item in items.items():
         if item["status"] == CONFLICT:
             continue
         p = item["definition"]
+        channel = pc.channel_of(p)
+        item["channel"] = channel
+        bad = pc.validate(p)
+        if bad:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = f"Invalid policy definition in the pack: {bad}."
+            continue
         engine_names = [e for e in p.get("engines", [])]
         item["depends_on"] = [("engine", e) for e in engine_names]
         missing = [e for e in engine_names if e not in engine_items and e not in tenant["engines"]]
@@ -422,22 +451,34 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
                 parts.append("depends on blocked engines: " + ", ".join(blocked))
             item["reason"] = "Can't be created — " + "; ".join(parts) + "."
             continue
+        # Channel prerequisites (SaaS/email tenants, templates, labels, API reachability).
+        res = pc.resolve(channel, p, tenant["channels"])
+        item["resolved"] = res["resolved"]
+        item["depends_on"].extend(res["depends"])
+        if res["missing"]:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = f"Can't be created ({pc.label(channel)}) — " + "; ".join(res["missing"]) + "."
+            continue
+        tenant_rules = {r["name"]: r for r in _tenant_rules_for(tenant, channel)}
         existing = tenant_rules.get(name)
+        pack_action = p.get("action", pc.default_action(channel))
         if existing is not None:
             item["tenant"] = existing
-            pack_action = p.get("action", "ALLOW")
             if existing.get("action") and existing["action"] != pack_action:
                 item["status"] = REUSE_DIFFERS
-                item["reason"] = (f"A rule with this name already exists with action {existing['action']} (pack says {pack_action}). "
+                item["reason"] = (f"A {pc.label(channel)} rule with this name already exists with action {existing['action']} (pack says {pack_action}). "
                                   "The existing rule is kept unchanged; the pack's settings will NOT be applied.")
                 item["warnings"].append("existing rule action differs from pack")
             else:
                 item["status"] = REUSE
-                item["reason"] = "A rule with this name already exists; it is kept unchanged."
+                item["reason"] = f"A {pc.label(channel)} rule with this name already exists; it is kept unchanged."
             continue
         item["status"] = CREATE
-        item["reason"] = f"Will be created as a new rule at the top of the policy (action {p.get('action', 'ALLOW')})."
-        if p.get("action", "ALLOW") in ENFORCING_ACTIONS:
+        scope = ""
+        if item["resolved"].get("tenants"):
+            scope = " scoped to " + ", ".join(t["name"] for t in item["resolved"]["tenants"])
+        item["reason"] = f"Will be created as a new {pc.label(channel)} rule at the top of that policy (action {pack_action}){scope}."
+        if pc.is_enforcing(channel, pack_action):
             item["warnings"].append("enforcing action")
 
 
@@ -486,22 +527,46 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
     blockers: List[str] = []
     new_rules = [i for i in policy_items.values() if i["status"] == CREATE]
     n_new = len(new_rules)
-    n_existing = len(tenant["rules"])
 
-    if n_new:
-        if n_existing + n_new > WEB_DLP_RULE_API_CAP:
+    by_channel: Dict[str, List[Dict[str, Any]]] = {}
+    for i in new_rules:
+        by_channel.setdefault(i.get("channel") or pc.channel_of(i["definition"]), []).append(i)
+
+    for channel in (pc.WEB, pc.ENDPOINT, pc.SAAS, pc.EMAIL):
+        rules = by_channel.get(channel)
+        if not rules:
+            continue
+        n_ch = len(rules)
+        existing_rules = _tenant_rules_for(tenant, channel)
+        n_existing = len(existing_rules)
+        cap = pc.CHANNELS[channel]["rule_cap"]
+        if cap and n_existing + n_ch > cap:
             blockers.append(
-                f"Web DLP rule limit: the tenant has {n_existing} rules and this plan adds {n_new}, "
-                f"exceeding the API cap of {WEB_DLP_RULE_API_CAP}. Remove rules or deselect packs.")
-        shifted = tenant["rules"][:5]
+                f"{pc.label(channel)} rule limit: the tenant has {n_existing} rules and this plan adds {n_ch}, "
+                f"exceeding the API cap of {cap}. Remove rules or deselect packs.")
+        shifted = existing_rules[:5]
         impacts.append({
             "type": "order_shift",
-            "title": f"{n_new} new rule{'s' if n_new != 1 else ''} will be inserted at the top of the DLP policy",
-            "detail": (f"Every existing rule moves down by {n_new}. Existing rules are evaluated after the new ones. "
-                       + (f"For example: " + "; ".join(f"'{r['name']}' order {r['order']} → {r['order'] + n_new}" for r in shifted) + "."
-                          if shifted else "The tenant currently has no web DLP rules.")),
+            "channel": channel,
+            "title": f"{n_ch} new {pc.label(channel)} rule{'s' if n_ch != 1 else ''} will be inserted at the top of that policy",
+            "detail": (f"Every existing {pc.label(channel)} rule moves down by {n_ch}. Existing rules are evaluated after the new ones. "
+                       + (f"For example: " + "; ".join(f"'{r['name']}' order {r['order']} → {r['order'] + n_ch}" for r in shifted) + "."
+                          if shifted else f"The tenant currently has no {pc.label(channel)} rules.")),
             "severity": "warning" if n_existing else "info",
         })
+        scoped = [i for i in rules if i.get("resolved", {}).get("tenants")]
+        if scoped:
+            tenants = sorted({t["name"] for i in scoped for t in i["resolved"]["tenants"]})
+            impacts.append({
+                "type": "saas_scope",
+                "channel": channel,
+                "title": f"{pc.label(channel)} rules will apply to {len(tenants)} onboarded SaaS tenant{'s' if len(tenants) != 1 else ''}",
+                "detail": "Content in these tenants will be scanned by the new rules: " + ", ".join(tenants)
+                          + ". Out-of-band scanning generates incidents for existing data at rest, not only new uploads.",
+                "severity": "info",
+            })
+
+    if n_new:
         if use_rank_0:
             impacts.append({
                 "type": "rank_0",
@@ -509,13 +574,15 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
                 "detail": "New rules get admin rank 0, which takes precedence over rules created by lower-ranked admins. Use only to resolve ordering conflicts.",
                 "severity": "warning",
             })
-        enforcing = [i["name"] for i in new_rules if i["definition"].get("action", "ALLOW") in ENFORCING_ACTIONS]
+        enforcing = [i["name"] for i in new_rules
+                     if pc.is_enforcing(i.get("channel") or pc.channel_of(i["definition"]),
+                                        i["definition"].get("action", pc.default_action(i.get("channel") or pc.WEB)))]
         if enforcing:
             impacts.append({
                 "type": "enforcement",
                 "title": f"{len(enforcing)} new rule{'s' if len(enforcing) != 1 else ''} will ENFORCE rather than monitor",
-                "detail": ("These rules block or challenge user traffic as soon as they are activated: " + ", ".join(enforcing)
-                           + ". Best practice is to deploy in monitor mode (ALLOW) first and switch to BLOCK after tuning."),
+                "detail": ("These rules block, quarantine or challenge user activity as soon as they are activated: " + ", ".join(enforcing)
+                           + ". Best practice is to deploy in monitor mode first and switch to an enforcing action after tuning."),
                 "severity": "warning",
             })
         else:
@@ -543,6 +610,8 @@ def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence
             "dictionaries": len(tenant["dictionaries"]),
             "engines": len(tenant["engines"]),
             "rules": len(tenant["rules"]),
+            "channel_rules": {ch: len(rs) for ch, rs in tenant["channels"]["rules"].items()},
+            "casb_tenants": sorted(t["name"] for t in (tenant["channels"].get("casb_tenants") or [])),
         },
     }
     return hashlib.sha256(_canonical(core).encode("utf-8")).hexdigest()
@@ -563,8 +632,15 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     elif item["kind"] == "engine":
         out["detail"] = {"expression": d.get("expression", "")}
     elif item["kind"] == "policy":
-        out["detail"] = {"action": d.get("action", "ALLOW"), "severity": d.get("severity"),
-                         "engines": d.get("engines", []), "protocols": d.get("protocols", ["ANY_RULE"])}
+        channel = item.get("channel") or pc.channel_of(d)
+        resolved = item.get("resolved") or {}
+        out["detail"] = {"action": d.get("action", pc.default_action(channel)), "severity": d.get("severity"),
+                         "engines": d.get("engines", []), "protocols": d.get("protocols", ["ANY_RULE"]),
+                         "channel": channel, "channel_label": pc.label(channel),
+                         "saas_type": d.get("saas_type"),
+                         "tenants": [t["name"] for t in resolved.get("tenants", [])],
+                         "notification_template": d.get("notification_template"),
+                         "labels": d.get("labels", [])}
     elif item["kind"] == "tweak":
         out["detail"] = {"target": d.get("target_confidence")}
     return out
@@ -590,7 +666,8 @@ def preflight(
 
     sources = load_sources(packs)
     merged = merge_sources(sources)
-    tenant = fetch_tenant(client)
+    need = pc.needs(i["definition"] for i in merged["policy"].values())
+    tenant = fetch_tenant(client, need)
     options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks)}
 
     blockers: List[str] = []
@@ -608,7 +685,9 @@ def preflight(
         tweak_items = _plan_tweaks(sources, tenant, apply_tweaks)
         impacts, impact_blockers = _impacts(merged["policy"], tenant, use_rank_0)
         blockers.extend(impact_blockers)
+        dependencies = pc.dependency_report(list(merged["policy"].values()), tenant["channels"], len(tenant["rules"]))
     else:
+        dependencies = []
         for kind in merged:
             for item in merged[kind].values():
                 if item["status"] != CONFLICT:
@@ -626,6 +705,12 @@ def preflight(
             if i["kind"] == kind:
                 counts[i["status"]] = counts.get(i["status"], 0) + 1
         summary[kind] = counts
+    channels: Dict[str, Dict[str, int]] = {}
+    for i in merged["policy"].values():
+        ch = i.get("channel") or pc.channel_of(i["definition"])
+        channels.setdefault(ch, {})
+        channels[ch][i["status"]] = channels[ch].get(i["status"], 0) + 1
+    summary["channels"] = channels
 
     warnings: List[str] = []
     for i in all_items:
@@ -656,12 +741,16 @@ def preflight(
         "options": options,
         "tenant": {"reachable": tenant["reachable"], "errors": tenant["errors"],
                    "dictionaries": len(tenant["dictionaries"]), "engines": len(tenant["engines"]),
-                   "rules": len(tenant["rules"]), "rule_cap": WEB_DLP_RULE_API_CAP},
+                   "rules": len(tenant["rules"]), "rule_cap": WEB_DLP_RULE_API_CAP,
+                   "channel_rules": {ch: len(rs) for ch, rs in tenant["channels"]["rules"].items()},
+                   "channel_errors": tenant["channels"]["errors"],
+                   "casb_tenants": [{"name": t["name"], "app": t["app"]} for t in (tenant["channels"].get("casb_tenants") or [])]},
         "summary": summary,
         "items": public_items,
         "warnings": warnings,
         "blockers": blockers,
         "impacts": impacts,
+        "dependencies": dependencies,
         "will_create": creates,
         "will_skip": sum(1 for i in all_items if i["status"] in BLOCKING_STATUSES),
         "plan_hash": _plan_hash([s["id"] for s in sources], options, all_items, tenant) if tenant["reachable"] else "",
@@ -803,15 +892,17 @@ def apply(
         if len(ids) != len(p.get("engines", [])):
             record(item, "skipped", reason="one or more engines could not be resolved to an ID")
             continue
+        channel = item.get("channel") or pc.channel_of(p)
         try:
-            resp = zia.dlp_web_rules.add_rule(**build_policy_payload(p, ids, use_rank_0=use_rank_0))
+            payload = pc.build_payload(channel, p, ids, item.get("resolved") or {}, use_rank_0=use_rank_0)
+            resp = pc.add_rule(zia, channel, payload)
             new_id = _extract_id(resp)
             if new_id:
-                record(item, "created", id=new_id)
+                record(item, "created", id=new_id, channel=channel)
             else:
-                record(item, "failed", error=_extract_error(resp))
+                record(item, "failed", error=_extract_error(resp), channel=channel)
         except Exception as ex:  # noqa: BLE001
-            record(item, "failed", error=str(ex)[:200])
+            record(item, "failed", error=str(ex)[:200], channel=channel)
 
     if apply_tweaks:
         _log("Phase 4: confidence tweaks")
@@ -844,6 +935,23 @@ def apply(
                 verification[src["id"]] = verify_deployment(zia, src["dir"], log=log)
             except Exception as ex:  # noqa: BLE001
                 verification[src["id"]] = {"phase": "verify", "all_good": False, "error": str(ex)[:200]}
+            # Rules: every policy that should now exist (created or reused) must be listed by its channel API.
+            expected: Dict[str, List[str]] = {}
+            for item in merged["policy"].values():
+                if src["id"] in item["packs"] and item["status"] in (CREATE, REUSE, REUSE_DIFFERS):
+                    expected.setdefault(item.get("channel") or pc.channel_of(item["definition"]), []).append(item["name"])
+            rules_check: Dict[str, Any] = {}
+            for channel, names in expected.items():
+                present, err = pc.list_rule_names(zia, channel)
+                if err or present is None:
+                    rules_check[channel] = {"total": len(names), "ok": 0, "missing": names, "error": err}
+                    verification[src["id"]]["all_good"] = False
+                    continue
+                missing_rules = [n for n in names if n not in present]
+                rules_check[channel] = {"total": len(names), "ok": len(names) - len(missing_rules), "missing": missing_rules}
+                if missing_rules:
+                    verification[src["id"]]["all_good"] = False
+            verification[src["id"]]["rules"] = rules_check
 
     counts: Dict[str, int] = {}
     for r in results:
