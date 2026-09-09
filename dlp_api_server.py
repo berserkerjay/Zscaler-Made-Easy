@@ -182,6 +182,7 @@ GUI_ADDONS = [
     ("deploy_studio.js", "script"),
     ("guide.js", "script"),
     ("bypass_report.js", "script"),
+    ("tool_tabs.js", "script"),
 ]
 
 
@@ -2299,6 +2300,16 @@ def _remember_report(kind: str, report: Dict[str, Any], label: str = "") -> str:
     while len(_REPORTS) > _REPORTS_MAX:
         _REPORTS.pop(next(iter(_REPORTS)))
     return rid
+
+
+@app.get("/report/view")
+async def report_view_page():
+    """Standalone tab that mirrors a tool dialog (see static/report_view.html)."""
+    page = os.path.join(STATIC_DIR, "report_view.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/report/bypass")

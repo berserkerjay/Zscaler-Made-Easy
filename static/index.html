@@ -571,20 +571,20 @@
     </div>
 
     <div class="hero-toolbar">
-      <button class="btn btn-ghost" onclick="openUpdateModal()"
-              aria-label="Check for Zscaler SDK and documentation updates">
+      <button class="btn btn-ghost" onclick="openToolTab('updates')"
+              aria-label="Check for Zscaler SDK and documentation updates (opens in a new tab)">
         <span aria-hidden="true">🔄</span> Zscaler Updates
       </button>
       <button class="btn btn-ghost" onclick="openBypassReportTab()"
               aria-label="Open Bypass and Non-Inspected Traffic Inventory Report in a new tab">
         <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
       </button>
-      <button class="btn btn-ghost" onclick="openBestPracticesModal()"
-              aria-label="Open curated Zscaler Best Practices reference library">
+      <button class="btn btn-ghost" onclick="openToolTab('bestpractices')"
+              aria-label="Open curated Zscaler Best Practices reference library (opens in a new tab)">
         <span aria-hidden="true">📚</span> Best Practices
       </button>
-      <button class="btn btn-ghost" onclick="openDlpEfficacyModal()"
-              aria-label="Score every custom DLP dictionary and engine on detection efficacy">
+      <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
+              aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)">
         <span aria-hidden="true">📊</span> DLP Efficacy
       </button>
       <button class="btn btn-ghost" onclick="openDlpPacksModal()"
@@ -818,8 +818,8 @@
              style="text-decoration:none;background:none;border:1px solid var(--accent);color:var(--accent);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;display:inline-block;">
             🔑 Required API Access <span aria-hidden="true" style="font-size:0.7rem;">↗</span>
           </a>
-          <button type="button" onclick="diagnoseZcc()"
-                  aria-label="Probe every ZCC endpoint and show which are readable"
+          <button type="button" onclick="openToolTab('zcc')"
+                  aria-label="Probe every ZCC endpoint and show which are readable (opens in a new tab)"
                   style="background:none;border:1px solid var(--border);color:var(--dim);padding:0.25rem 0.7rem;font-size:0.75rem;border-radius:6px;cursor:pointer;">
             🔍 Diagnose ZCC Access
           </button>

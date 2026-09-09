@@ -46,7 +46,7 @@ def test_real_index_html_survives_injection():
     out = srv._inject_gui_addons(html)
     assert _INLINE_SCRIPT.findall(out) == _INLINE_SCRIPT.findall(html), "inline script altered by injection"
     srcs = _SRC_SCRIPT.findall(out)
-    assert srcs == ["/static/deploy_studio.js", "/static/guide.js", "/static/bypass_report.js"], srcs
+    assert srcs == ["/static/deploy_studio.js", "/static/guide.js", "/static/bypass_report.js", "/static/tool_tabs.js"], srcs
     assert out.count("</body>") == html.count("</body>")
 
 

@@ -37,5 +37,8 @@ def test_index_loads_report_addons():
     html = c.get("/").text
     assert '<link rel="stylesheet" href="/static/reports.css">' in html
     assert '<script src="/static/bypass_report.js"></script>' in html
-    assert "openBypassReportTab()" in html
+    assert "openBypassReportTab()" in html and "openToolTab('updates')" in html and "openToolTab('efficacy')" in html
+    view = c.get("/report/view?tool=updates")
+    assert view.status_code == 200 and "Back to the assessment" in view.text and "__ttApply" in view.text
+    assert c.get("/static/tool_tabs.js").status_code == 200
     assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200
