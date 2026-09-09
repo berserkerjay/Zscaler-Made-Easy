@@ -184,6 +184,7 @@ it. Rule of thumb:
 | Any commercial enterprise with no DLP policy yet | **ZBP Enterprise Baseline** |
 | Worried about source code going into AI tools | add **ZBP Source Code to AI** |
 | Healthcare provider or payer | add **Healthcare PHI** |
+| Bank, card issuer, payment processor, wealth manager | **Global Banking Baseline** (PCI, payment instructions, customer PII across jurisdictions, KYC/AML, MNPI; it shares its US PII, financial and private-key objects with ZBP Enterprise, so the two can be deployed together) |
 | US federal agency or contractor | **Fed Policy Pack** instead of ZBP Enterprise (it contains it) |
 | Law enforcement, courts, CJI handlers | **CJIS Policy Pack** |
 

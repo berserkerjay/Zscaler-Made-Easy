@@ -1,0 +1,67 @@
+[
+  {
+    "name": "Bank-Payment Card Data",
+    "description": "PCI: several high-confidence card numbers, a card number near a card phrase, magnetic-track data, or one card number beside CVV/PIN/expiry fields.",
+    "expression": "((D:ZBP-Credit Cards - High > 4) OR (D:ZBP-Credit Cards - Prox 500 > 1) OR (D:ZBP-Credit Card Magnetic Tracks > 0) OR ((D:ZBP-Credit Cards - High > 0) AND (D:Bank-Card Security Data > 1)))"
+  },
+  {
+    "name": "Bank-Payment Card Data - Bulk",
+    "description": "PCI bulk export: 25 or more distinct high-confidence card numbers, or 5 or more magnetic-track records. Block-grade.",
+    "expression": "((D:ZBP-Credit Cards - High > 24) OR (D:ZBP-Credit Card Magnetic Tracks > 4))"
+  },
+  {
+    "name": "Bank-Account and Payment Instructions",
+    "description": "Bank account identifiers (ABA routing, EU IBAN with checksum, global IBAN, SWIFT/BIC) in payment context: several identifiers, or an identifier with wire-instruction vocabulary.",
+    "expression": "((D:ZBP-ABA Bank Routing Number - High > 4) OR (D:ZBP-ABA Bank Routing Number - Prox 500 > 1) OR (D:EUIBAN_LEAKAGE > 2) OR (D:Bank-IBAN (Global) > 1) OR ((D:Bank-SWIFT BIC Code > 0) AND (D:Bank-Wire Transfer Instructions > 2)) OR ((D:Bank-Wire Transfer Instructions > 4) AND ((D:ZBP-ABA Bank Routing Number - High > 0) OR (D:EUIBAN_LEAKAGE > 0) OR (D:Bank-IBAN (Global) > 0))))"
+  },
+  {
+    "name": "Bank-Customer Financial Records",
+    "description": "Account statements and customer records: statement vocabulary beside an account, card or personal identifier.",
+    "expression": "((D:Bank-Customer Account Statement > 4) AND (((D:ZBP-ABA Bank Routing Number - High > 0) OR (D:EUIBAN_LEAKAGE > 0) OR (D:Bank-IBAN (Global) > 0) OR (D:ZBP-Credit Cards - High > 0)) OR (D:ZBP-Date of Birth - High Confidence > 0) OR (D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0)))"
+  },
+  {
+    "name": "Bank-Customer PII (Global)",
+    "description": "Customer personal data across jurisdictions: US SSN/ITIN (high confidence or in proximity), UK/CA/AU/ZA and IN/SG/HK national IDs, EU and Asia-Pacific passports (Zscaler predefined), US passport, US driver licence with date of birth, or PII field labels beside any identifier.",
+    "expression": "((D:ZBP-Social Security Numbers (US) - High > 4) OR (D:ZBP-Social Security Numbers (US) - Prox 500 > 0) OR (D:ZBP-Tax Identification Number (US) - High > 4) OR (D:ZBP-Tax Identification Number (US) - Prox 500 > 0) OR (D:Bank-National ID (UK, Canada, Australia, South Africa) > 1) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 1) OR (D:PPEU_LEAKAGE > 1) OR (D:ASPP_LEAKAGE > 1) OR (D:ZBP-US Passport - Prox 500 > 0) OR ((D:ZBP-Date of Birth - High Confidence > 1) AND (D:ZBP-Drivers License (United States) - High > 4)) OR ((D:Bank-Customer PII Context > 3) AND ((D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
+  },
+  {
+    "name": "Bank-Customer PII - Bulk",
+    "description": "Customer-data bulk export: 25 or more distinct identifiers of one kind, or 50 or more dates of birth. Block-grade.",
+    "expression": "((D:ZBP-Social Security Numbers (US) - High > 24) OR (D:ZBP-Tax Identification Number (US) - High > 24) OR (D:Bank-National ID (UK, Canada, Australia, South Africa) > 24) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 24) OR (D:PPEU_LEAKAGE > 24) OR (D:ASPP_LEAKAGE > 24) OR (D:ZBP-Date of Birth - High Confidence > 49) OR (D:EUIBAN_LEAKAGE > 24) OR (D:Bank-IBAN (Global) > 24))"
+  },
+  {
+    "name": "Bank-KYC and AML Files",
+    "description": "Onboarding, due-diligence and AML case files: KYC/AML vocabulary beside a personal identifier or PII field labels.",
+    "expression": "((D:Bank-KYC and AML > 3) AND ((D:Bank-Customer PII Context > 1) OR ((D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
+  },
+  {
+    "name": "Bank-Credit and Loan Applications",
+    "description": "Lending files: loan/credit application vocabulary beside a personal identifier or PII field labels.",
+    "expression": "((D:Bank-Loan and Credit Application > 4) AND ((D:Bank-Customer PII Context > 2) OR ((D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
+  },
+  {
+    "name": "Bank-MNPI and Deal Information",
+    "description": "Material non-public information: deal vocabulary, Zscaler's corporate-finance ML dictionary, or a financial statement carrying a confidentiality marking.",
+    "expression": "((D:Bank-MNPI and Deal Information > 3) OR (D:ML_CORPORATE_FINANCE_LEAKAGE > 0) OR ((D:FINANCIAL > 0) AND (D:Bank-Confidentiality Markings > 0)))"
+  },
+  {
+    "name": "Bank-Confidential Markings",
+    "description": "Any bank confidentiality marking.",
+    "expression": "((D:Bank-Confidentiality Markings > 0))"
+  },
+  {
+    "name": "ZBP-US PII",
+    "description": "",
+    "expression": "((D:ZBP-Social Security Numbers (US) - High > 4) OR (D:ZBP-Social Security Numbers (US) - Prox 500 > 0) OR (D:ZBP-Tax Identification Number (US) - High > 4) OR (D:ZBP-Tax Identification Number (US) - Prox 500 > 0) OR (D:ZBP-Alien Registration Number - High Confidence > 4) OR (D:ZBP-Alien Registration Number - Prox 500 > 0) OR ((D:ZBP-Date of Birth - High Confidence > 1) AND (D:ZBP-Drivers License (United States) - High > 4)))"
+  },
+  {
+    "name": "ZBP-Financial Information",
+    "description": "",
+    "expression": "((D:ZBP-ABA Bank Routing Number - High > 4) OR (D:ZBP-ABA Bank Routing Number - Prox 500 > 1) OR (D:ZBP-Credit Cards - High > 4) OR (D:ZBP-Credit Cards - Prox 500 > 1) OR (D:ZBP-Credit Card Magnetic Tracks > 0) OR (D:ML_TAX_LEAKAGE > 0) OR (D:ZBP-Form K-1 > 3) OR (D:ZBP-Form 1099-MISC and 1099-NEC > 4) OR (D:ZBP-W2 or W4 or W9 Forms > 3) OR (D:ZBP-Form 1040 and related schedules > 3) OR (D:FINANCIAL > 0) OR (D:ML_CORPORATE_FINANCE_LEAKAGE > 0))"
+  },
+  {
+    "name": "ZBP-Private Keys",
+    "description": "",
+    "expression": "((D:ZBP-Private Keys-Plaintext Regex > 0) OR (D:ZBP-JWK Private Key > 0) OR (D:ZBP-Private Key > 0) OR (D:ZBP-Encrypted or ASCII Armored PGP Keys > 0) OR (D:ZBP-Encrypted Bouncy Castle Key Exports > 0))"
+  }
+]

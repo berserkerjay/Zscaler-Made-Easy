@@ -1,0 +1,2263 @@
+[
+  {
+    "name": "ZBP-US Passport - High Confidence",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{8,9}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\b[A-Z]\\d{8}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport Number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport No"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport#"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PassportID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportno"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportnumber "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. du Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. de Pasaporte"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pasaporte"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-US Passport - Prox 500",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{8,9}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\b[A-Z]\\d{8}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport Number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport No"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport#"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PassportID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportno"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportnumber "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. du Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. de Pasaporte"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pasaporte"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Alien Registration Number - Prox 500",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ARN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Registration"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'A-Number'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Immigrant data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "USCIS Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Employment Authorization"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Alien Registration Number - High Confidence",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ARN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Registration"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'A-Number'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Immigrant data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "USCIS Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Employment Authorization"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Date of Birth - High Confidence",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "year of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "month of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "day of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birthday"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth year"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth month"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "dob"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "d.o.b"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Social Security Numbers (US) - High",
+    "description": "Detect leakage of United States Social Security Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "SSN",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ssn"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Social Security Numbers (US) - Prox 500",
+    "description": "Detect leakage of United States Social Security Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "SSN",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ssn"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Tax Identification Number (US) - High",
+    "description": "Detect Leakage of US Tax Identification Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Tax Identification Number (US) - Prox 500",
+    "description": "Detect Leakage of US Tax Identification Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Drivers License (United States) - High",
+    "description": "Detect leakage of United States Driver’s Licenses",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USDL_LEAKAGE",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "hierarchical_identifiers": [
+      "USDL_AL",
+      "USDL_AK",
+      "USDL_AZ",
+      "USDL_AR",
+      "USDL_CA",
+      "USDL_CO",
+      "USDL_CT",
+      "USDL_DE",
+      "USDL_DC",
+      "USDL_FL",
+      "USDL_GA",
+      "USDL_HI",
+      "USDL_ID",
+      "USDL_IL",
+      "USDL_IN",
+      "USDL_IA",
+      "USDL_KS",
+      "USDL_KY",
+      "USDL_LA",
+      "USDL_ME",
+      "USDL_MD",
+      "USDL_MA",
+      "USDL_MI",
+      "USDL_MN",
+      "USDL_MS",
+      "USDL_MO",
+      "USDL_MT",
+      "USDL_NE",
+      "USDL_NV",
+      "USDL_NH",
+      "USDL_NJ",
+      "USDL_NM",
+      "USDL_NY",
+      "USDL_NC",
+      "USDL_ND",
+      "USDL_OH",
+      "USDL_OK",
+      "USDL_OR",
+      "USDL_PA",
+      "USDL_RI",
+      "USDL_SC",
+      "USDL_SD",
+      "USDL_TN",
+      "USDL_TX",
+      "USDL_VT",
+      "USDL_VA",
+      "USDL_WV",
+      "USDL_WI",
+      "USDL_WY",
+      "USDL_GU"
+    ],
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Driver License"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Private Keys-Plaintext Regex",
+    "description": "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when stored in plaintext",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "[- ]{4,5}BEGIN (EC|DSA|RSA|SSH2|OPENSSH|PGP|GPG) PRIVA"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-JWK Private Key",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\"kty\" ?: ?\"(EC|RSA)\""
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'\"d\"'"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Private Key",
+    "description": "Detect leakage of credentials and secrets",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CRED_LEAKAGE",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_MEDIUM",
+    "hierarchical_identifiers": [
+      "CRED_PRIVATE_KEY"
+    ],
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Encrypted or ASCII Armored PGP Keys",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "-{4,5}BEGIN (PGP|ENCRYPTED) PRIVATE\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Encrypted Bouncy Castle Key Exports",
+    "description": "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bProc-Type: 4,ENCRYPTED\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Private Key"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "DEK-Info"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Form K-1",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Schedule K-1 "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0123"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "A Partnership’s employer identification number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "F Name, address, city, state, and ZIP code for partner entered in"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Partner’s share of liabilities"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Partner’s Share of Current Year Income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "More than one activity for passive activity purposes"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Form 1099-MISC and 1099-NEC",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PAYER’S name, street address, city or town, state or province, country, ZIP"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1099-MISC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1099-NEC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Payer made direct sales totaling $5,000 or more of"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nonqualified deferred compensation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0115"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Excess golden parachute"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Gross proceeds paid to an"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PAYER’S TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "RECIPIENT’S TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "File with Form 1096."
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0116"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-W2 or W4 or W9 Forms",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "a Employee’s social security number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0008 "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Wage and Tax Statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "c Employer’s name, address, and ZIP code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "e Employee’s first name and initial"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "3 Social security wages"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-9"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Identification Number and Certification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Name of entity/individual. An entry is required"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "LLC. Enter the tax classification "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Exemptions (codes apply only to"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 10231X"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "List account number(s) here (optional)"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-4"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0074"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Single or Married filing separately"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Other income (not from jobs)."
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "If your total income will be $200,000 or less"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Deductions. If you expect to claim deductions other than the standard deduction "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 10220Q"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-Form 1040 and related schedules",
+    "description": "",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1040"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0074"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " or other tax year beginning"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Was born before January 2, 1959"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "If you checked the HOH or QSS box"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "I have examined this return and accompanying schedules and statements, and to the best of my knowledge"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Do you want to allow another person to discuss this return"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 11320B"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 1 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Additional Income and Adjustments to Income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Foreign earned income exclusion"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Activity not engaged in for profit income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nontaxable amount of Medicaid "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 71479F"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 2 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Alternative minimum tax. Attach Form"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Social security and Medicare tax on unreported tip income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Additional Medicare Tax. Attach Form 8959"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " tax due on installment income from the sale of certain residential lots"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " Cat. No. 71478U"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Recapture of federal mortgage subsidy"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Compensation you received from a nonqualified deferred"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Tax on non-effectively connected income for any part of"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Section 965 net tax liability installment from Form 965-A"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 3 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Foreign tax credit. Attach Form 1116 if required"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "General business credit. Attach Form 3800"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Mortgage interest credit. Attach Form 8396"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Credit to holders of tax credit bonds. Attach Form 8912"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Attach to Form 1040, 1040-SR, or 1040-NR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Excess social security and tier 1 RRTA tax withheld"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Credit for repayment of amounts included in income from earlier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Deferred amount of net 965 tax liability"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Add lines 9 through 12 and 14. Enter here and on Form 1040, 1040-SR, or 1040-NR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1040-ES"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Disclosure, Privacy Act, and Paperwork Reduction Act Notice"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "File only if you are making a payment of estimated tax by check"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Amount of estimated tax you are paying"
+      }
+    ]
+  },
+  {
+    "name": "ZBP-ABA Bank Routing Number - High",
+    "description": "Detect leakage of ABA Bank Routing Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "ABA_LEAKAGE",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-ABA Bank Routing Number - Prox 500",
+    "description": "Detect leakage of ABA Bank Routing Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "ABA_LEAKAGE",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Credit Cards - High",
+    "description": "Detect leakage of credit card information",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CREDIT_CARD",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "include_bin_numbers": true,
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Credit Cards - Prox 500",
+    "description": "Detect leakage of credit card information",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CREDIT_CARD",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "include_bin_numbers": true,
+    "patterns": [],
+    "phrases": []
+  },
+  {
+    "name": "ZBP-Credit Card Magnetic Tracks",
+    "description": "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "[%][B]\\d{12,19}[\\^][a-zA-Z\\/\\s.]{2,26}[\\^](\\d{7})([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "[;]\\d{12,19}[=]([\\dxX])([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "Bank-IBAN (Global)",
+    "description": "International Bank Account Numbers of any country (GB, CH, AE, SA, SG, BR, ... as well as the EU) written with or without spaces, only when a bank-account phrase is within 500 bytes. EUIBAN_LEAKAGE (Zscaler predefined) covers the EU with checksum validation; this dictionary catches the rest.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "IBAN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "International Bank Account Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "beneficiary account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account no"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "acct no"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "bank account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "BIC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SWIFT"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "sort code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "branch code"
+      }
+    ]
+  },
+  {
+    "name": "Bank-SWIFT BIC Code",
+    "description": "SWIFT / BIC bank identifier codes (8 or 11 characters) within 300 bytes of a SWIFT, BIC or correspondent-banking phrase. The pattern alone would match any 8-letter word, so the phrase anchor is required.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 300,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{4}(?:AE|AR|AT|AU|BE|BR|CA|CH|CN|CZ|DE|DK|ES|FI|FR|GB|HK|ID|IE|IL|IN|IT|JP|KR|LU|MX|MY|NL|NO|NZ|PL|PT|QA|RU|SA|SE|SG|TH|TR|TW|US|ZA)[A-Z0-9]{2}(?:[A-Z0-9]{3})?\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SWIFT"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "BIC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SWIFT code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "BIC code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "bank identifier code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SWIFT/BIC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MT103"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MT202"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MT940"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "correspondent bank"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "intermediary bank"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "beneficiary bank"
+      }
+    ]
+  },
+  {
+    "name": "Bank-Wire Transfer Instructions",
+    "description": "Payment-instruction vocabulary: wire, SWIFT MT messages, SEPA, Fedwire, CHIPS, beneficiary and intermediary bank fields. Counted, not matched alone: the engines pair it with an account identifier.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "wire transfer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "wire instructions"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "payment instructions"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "remittance advice"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "remittance information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "beneficiary bank"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "beneficiary name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "beneficiary account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "intermediary bank"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "correspondent bank"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ordering customer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ordering institution"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account with institution"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "value date"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MT103"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MT202"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MT940"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Fedwire"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CHIPS"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SEPA credit transfer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SEPA direct debit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ACH transfer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "payment order"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "standing order"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "direct debit mandate"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "sort code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "routing number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ABA number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "transit number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "BSB"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "IFSC code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CLABE"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "reference number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "amount to be transferred"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "currency"
+      }
+    ]
+  },
+  {
+    "name": "Bank-Card Security Data",
+    "description": "PCI DSS sensitive authentication data and cardholder fields: CVV/CVC, PIN, expiry, track data. Paired with a credit-card match in the engine so a lone card number in a receipt is not enough.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CVV"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CVV2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CVC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CVC2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CAV2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "card verification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "card security code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "security code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PIN block"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PIN number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "card PIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PVV"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "expiry date"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "expiration date"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "exp date"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "valid thru"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "cardholder name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "card holder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "primary account number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PAN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "card number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "track data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "track 1"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "track 2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "magnetic stripe"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "chip data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "EMV"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "issuer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "acquirer"
+      }
+    ]
+  },
+  {
+    "name": "Bank-Customer Account Statement",
+    "description": "Account-statement and customer-record vocabulary. Paired in the engine with an account, card or personal identifier.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "statement of account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "bank statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "statement period"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "opening balance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "closing balance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "available balance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "current balance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ledger balance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "transaction history"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "transaction details"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account holder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account holder name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "customer number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "customer ID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "customer id"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CIF number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "client number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "relationship number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account type"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "savings account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "current account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "checking account"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "overdraft"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "direct debit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "standing order"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "interest accrued"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "interest rate"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "withdrawal"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "deposit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "debit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "account summary"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "portfolio statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "custody account"
+      }
+    ]
+  },
+  {
+    "name": "Bank-KYC and AML",
+    "description": "Know-your-customer, due-diligence and anti-money-laundering vocabulary: CDD/EDD files, PEP and sanctions screening, SAR/STR filings, beneficial ownership.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "know your customer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "KYC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "customer due diligence"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CDD"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "enhanced due diligence"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "EDD"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "politically exposed person"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PEP"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "sanctions screening"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "sanctions list"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "OFAC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SDN list"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "suspicious activity report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SAR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "suspicious transaction report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "STR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "anti-money laundering"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "AML"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "counter-terrorist financing"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CTF"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "beneficial owner"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ultimate beneficial owner"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "UBO"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "source of funds"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "source of wealth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "FATF"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "FinCEN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "watchlist"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "adverse media"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "risk rating"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "onboarding"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "identity verification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "proof of address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "proof of identity"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "customer risk assessment"
+      }
+    ]
+  },
+  {
+    "name": "Bank-Loan and Credit Application",
+    "description": "Consumer and commercial lending vocabulary: applications, credit bureau reports and scores, income and collateral. Paired in the engine with a personal identifier.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "loan application"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit application"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "mortgage application"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit card application"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit score"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "FICO"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit bureau"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit history"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Equifax"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Experian"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "TransUnion"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Schufa"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "annual income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "gross income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "net income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "monthly income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "debt-to-income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "employment verification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "employer name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "collateral"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "co-signer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "guarantor"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "APR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "loan number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "loan amount"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "credit limit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "repayment schedule"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "amortization"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "underwriting"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "pre-approval"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "declined"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "approved"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "delinquent"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "default"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "charge-off"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "arrears"
+      }
+    ]
+  },
+  {
+    "name": "Bank-MNPI and Deal Information",
+    "description": "Material non-public information and deal-team vocabulary: M&A, capital markets, research embargoes, restricted lists.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "material non-public information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "MNPI"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "material nonpublic information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "insider information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "inside information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "price sensitive information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "deal team"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "confidential information memorandum"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CIM"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "term sheet"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "letter of intent"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "LOI"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "merger"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "acquisition"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "acquisition target"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "takeover"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "tender offer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "due diligence report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "data room"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "pre-announcement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "earnings release"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "earnings guidance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "pre-release"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "IPO"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "initial public offering"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "bookbuilding"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "syndicate"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Chinese wall"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "information barrier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "restricted list"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "watch list"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "grey list"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "project codename"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "wall crossing"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "wall-crossed"
+      }
+    ]
+  },
+  {
+    "name": "Bank-Confidentiality Markings",
+    "description": "Classification labels banks stamp on documents. Any single marking is a signal on its own.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Bank Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Strictly Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Highly Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Highly Restricted"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Restricted - Internal"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Internal Use Only"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "For Internal Use Only"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Internal Only"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Client Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Customer Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Confidential - Client"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Do Not Distribute"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Not for Distribution"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Not for External Distribution"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Privileged and Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Attorney-Client Privileged"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Board Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Regulatory Confidential"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Supervisory Information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Confidential Supervisory Information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CSI"
+      }
+    ]
+  },
+  {
+    "name": "Bank-Customer PII Context",
+    "description": "Personal-data field labels found on account-opening forms, KYC files and customer exports. Counted, then paired with a national ID, passport, date of birth or account number.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "customer name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "full name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "first name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "last name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "surname"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "place of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "nationality"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "citizenship"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "mother's maiden name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "maiden name"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "home address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "residential address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "postal address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "mailing address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "phone number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "mobile number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "telephone"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "email address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "occupation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "employer"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "marital status"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "gender"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "passport number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "national ID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ID number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "identification number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "tax residency"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "tax identification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "FATCA"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "CRS"
+      }
+    ]
+  },
+  {
+    "name": "Bank-National ID (UK, Canada, Australia, South Africa)",
+    "description": "National identifiers of the UK (National Insurance number), Canada (SIN), Australia (TFN) and South Africa (ID number), within 300 bytes of the identifier's name. Check your tenant for Zscaler's predefined dictionaries for these countries and prefer them when licensed.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 300,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-CEGHJ-PR-TW-Z]{2} ?\\d{2} ?\\d{2} ?\\d{2} ?[A-D]\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{3}[ -]\\d{3}[ -]\\d{3}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{3} ?\\d{3} ?\\d{3}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{2}[01]\\d[0-3]\\d ?\\d{4} ?[01] ?8 ?\\d\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "National Insurance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "National Insurance number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NINO"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NI number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NI no"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Social Insurance Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Tax File Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "TFN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "South African ID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SA ID number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "identity number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ID number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "national ID"
+      }
+    ]
+  },
+  {
+    "name": "Bank-National ID (India, Singapore, Hong Kong)",
+    "description": "National identifiers of India (PAN, Aadhaar), Singapore (NRIC/FIN) and Hong Kong (HKID), within 300 bytes of the identifier's name.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 300,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{3}[ABCFGHLJPT][A-Z]\\d{4}[A-Z]\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[2-9]\\d{3}[ -]?\\d{4}[ -]?\\d{4}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[STFGM]\\d{7}[A-Z]\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{1,2}\\d{6}\\(?[0-9A]\\)?"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PAN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Permanent Account Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PAN card"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Aadhaar"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Aadhar"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "UIDAI"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NRIC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "FIN number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NRIC/FIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "HKID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Hong Kong Identity Card"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "identity card"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ID number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "national ID"
+      }
+    ]
+  }
+]

@@ -615,6 +615,7 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
 | `healthcare_phi_baseline` | yes | Healthcare: PHI with clinical context, plus containment |
 | `cui_marking_baseline` | yes | Defense industrial base / federal contractors: CUI by its markings (28 dictionaries in six tiers, block/caution/monitor rules, SSL, AI upload block); see the pack's README for the tier table |
 | `zbp_endpoint_dlp_baseline` | yes | Any enterprise with Endpoint DLP: USB, private shares and desktop GenAI apps, graded by PCI confidence (three parent rules, five sub-rules, one application group) |
+| `global_banking_baseline` | yes | Banks, card issuers, payment processors: PCI, bank account and payment instructions (ABA, EU and global IBAN, SWIFT/BIC), customer PII across jurisdictions, KYC/AML and lending files, MNPI, confidentiality markings; premised on Zscaler's predefined dictionaries cloned at high confidence, reusing the ZBP Enterprise engines; web, endpoint, SaaS, email and containment rules; see the pack's README |
 | `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
 | `fed_policy_pack` | no | Federal agencies: content-based CUI categories (superset of ZBP Enterprise) |
 
