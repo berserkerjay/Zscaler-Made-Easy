@@ -1,6 +1,8 @@
-# CUI Marking Baseline — dictionary notes
+# CUI — dictionary notes
 
-Build metadata from the original design (tier, intended action, minimum match count, notes). The pack files carry the API fields only.
+Build metadata from the design file (tier, intended action, minimum match count, notes). The pack configs carry the API fields only; regenerate with `python tools/pack_from_design.py <pack_dir>`.
+
+**Documented ZIA limits:** 8 patterns per dictionary; 256 bytes per pattern; proximity 0-10000 bytes; PCRE syntax minus lookaround; phrases fuzzy-match unless quoted; Count Unique collapses repeated matches to a single count. Engine builder: 4 subexpressions / 4 operators / 16 dictionaries per operator per level; root accepts All, Any, Sum only.
 
 | Dictionary | Tier | Intended action | Min matches | Notes |
 |---|---|---|---|---|
@@ -18,26 +20,28 @@ Build metadata from the original design (tier, intended action, minimum match co
 | CUI-Code-NNPI | 2 | Block | 1 | Token has no plain-English collision - no CUI anchor needed. |
 | CUI-Code-PCII | 2 | Block | 1 | Token has no plain-English collision - no CUI anchor needed. |
 | CUI-Code-CVI | 2 | Block | 1 | Token has no plain-English collision - no CUI anchor needed. |
-| CUI-Prox-EXPT | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-TAX | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-LEI | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-CRIT | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-NUC | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-INTEL | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-LEGAL | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
-| CUI-Prox-PROCURE | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. |
+| CUI-Prox-EXPT | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-TAX | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-LEI | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-CRIT | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-NUC | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-INTEL | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-LEGAL | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
+| CUI-Prox-PROCURE | 3 | Caution | 1 | MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
 | Legacy-FOUO | 4 | Block | 1 |  |
 | Legacy-LES | 4 | Block | 1 | Bare LES is deliberately excluded - collides with French text, surnames, and unrelated acronyms. Spelled form or banner context only. |
 | Legacy-SBU | 4 | Block | 1 |  |
 | Legacy-Distribution-Statements | 4 | Block | 1 | Very high signal on CTI-bearing engineering documents. |
-| CUI-Designation-Indicator | 5 | Caution | 3 | MATCH_ANY with min count 3 enforced at the engine - a single field label is meaningless, three co-located is a designation block. |
+| CUI-Designation-Indicator | 5 | Caution | 3 | MATCH_ANY with min count 3 enforced at the engine - a single field label is meaningless, three co-located is a designation block. **VERIFY:** Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially. |
 | CUI-Decontrol-Context | 6 | Exclude | 1 | DOCUMENT-SCOPED exclusion. A genuine CUI document that cites its own marking guide will suppress. Record this in the residual-risk statement. |
 
 ## Engines
 
-- **CUI-Detect-All**: the full surface, as designed (two nested OR groups for the 16-dictionary ceiling, decontrol excluded).
-- **CUI-Detect-Block-Grade**: only dictionaries whose intended action is Block, with their minimum counts.
-- **CUI-Detect-Caution-Grade**: only dictionaries whose intended action is Caution, with their minimum counts.
+- **CUI-Detect-All**: Full CUI detection surface: banner grammar, category tokens, legacy markings, malformed-marking proximity, and designation blocks.
+- **CUI-Detect-Block-Grade**: High-precision signals intended to BLOCK (16 dictionaries with their minimum counts), minus the exclusion dictionaries.
+- **CUI-Detect-Caution-Grade**: Lower-precision signals intended to CAUTION (11 dictionaries with their minimum counts), minus the exclusion dictionaries. Never wire to BLOCK.
+
+CUI-Detect-All design note: Split into two nested Any groups solely because of the 16-dictionary-per-operator ceiling, not for logical reasons - the two groups are ORed and behave as one set. Validate the three-level nesting renders in Engine Builder before relying on it; if the builder rejects the depth, restructure as root Any(OR) over the two groups and move the decontrol exclusion into each group.
 
 ## Rules
 

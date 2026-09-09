@@ -41,14 +41,14 @@
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "patterns": [
       {
-        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "action": "PATTERN_COUNT_TYPE_ALL",
         "pattern": "\\bCUI\\b"
       }
     ],
     "phrases": [
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "CONTROLLED UNCLASSIFIED INFORMATION"
+        "phrase": "\"CONTROLLED UNCLASSIFIED INFORMATION\""
       }
     ]
   },
@@ -68,7 +68,7 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "FED ONLY"
+        "phrase": "\"FED ONLY\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
@@ -76,15 +76,15 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "DL ONLY"
+        "phrase": "\"DL ONLY\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "REL TO"
+        "phrase": "\"REL TO\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "DISPLAY ONLY"
+        "phrase": "\"DISPLAY ONLY\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
@@ -349,7 +349,7 @@
     "phrases": [
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "FOR OFFICIAL USE ONLY"
+        "phrase": "\"FOR OFFICIAL USE ONLY\""
       }
     ]
   },
@@ -382,7 +382,7 @@
     "phrases": [
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "SENSITIVE BUT UNCLASSIFIED"
+        "phrase": "\"SENSITIVE BUT UNCLASSIFIED\""
       }
     ]
   },
@@ -407,23 +407,23 @@
     "phrases": [
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "Controlled by"
+        "phrase": "\"Controlled by\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "CUI Category"
+        "phrase": "\"CUI Category\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "Limited Dissemination Control"
+        "phrase": "\"Limited Dissemination Control\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "Distribution Statement"
+        "phrase": "\"Distribution Statement\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "Controlled By"
+        "phrase": "\"Controlled By\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
@@ -443,23 +443,23 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "does not contain CUI"
+        "phrase": "\"does not contain CUI\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "no longer controlled"
+        "phrase": "\"no longer controlled\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "CUI Marking Guide"
+        "phrase": "\"CUI Marking Guide\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "sample marking"
+        "phrase": "\"sample marking\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_ALL",
-        "phrase": "for illustrative purposes"
+        "phrase": "\"for illustrative purposes\""
       }
     ]
   }

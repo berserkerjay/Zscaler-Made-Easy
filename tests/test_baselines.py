@@ -410,7 +410,8 @@ def test_cui_marking_baseline_deploys_and_measures():
     assert len(dicts) == 28 and all(len(d["description"].encode()) <= 255 for d in dicts)
     engines = {e["name"]: e for e in json.load(open(f"{cui['dir']}/configs/dlp_engines.json", encoding="utf-8"))}
     assert set(engines) == {"CUI-Detect-All", "CUI-Detect-Block-Grade", "CUI-Detect-Caution-Grade"}
-    assert all("AND NOT (D:CUI-Decontrol-Context > 0)" in e["expression"] for e in engines.values())
+    assert all("AND NOT" in e["expression"] and "(D:CUI-Decontrol-Context > 0)" in e["expression"] for e in engines.values())
+    assert all(p["phrase"].startswith('"') for d in dicts for p in d["phrases"] if " " in p["phrase"].strip('"'))  # exact, not fuzzy
     assert "D:CUI-Basic-Bare" not in engines["CUI-Detect-Block-Grade"]["expression"]      # never wired to block
     assert "(D:CUI-Basic-Bare > 2)" in engines["CUI-Detect-Caution-Grade"]["expression"]  # min 3 unique
     client = add_control_services(FakeClient(dicts=[]))
@@ -428,3 +429,21 @@ def test_cui_marking_baseline_deploys_and_measures():
     assert all(r["state"] == "DISABLED" and r["ocr_enabled"] for r in rules.values())
     j = pd.journey(pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True))["baselines"][0]
     assert j["stage"] == 2 and j["next_steps"][0].startswith("Enable rule 'CUI-SSL-Decrypt")
+
+
+def test_dictionary_limits_block_only_the_offending_dictionary(tmp_path):
+    from dlp_importer import dictionary_limit_problems
+    bad = dict(_dict("Too-Many"), patterns=[{"action": "PATTERN_COUNT_TYPE_ALL", "pattern": f"\\bX{i}\\b"} for i in range(9)])
+    look = dict(_dict("Lookaround", pattern=r"(?<=CUI//)[A-Z]+"))
+    far = dict(_dict("Far"), proximity=20000)
+    assert dictionary_limit_problems(bad) and dictionary_limit_problems(look) and dictionary_limit_problems(far)
+    assert dictionary_limit_problems(_dict("Fine", pattern=r"\bCUI//(SP-)?[A-Z]{2,10}\b")) == []
+    pack = write_pack(tmp_path, "limits", dicts=[bad, look, far, _dict("Fine")],
+                      engines=[_engine("E", "(D:Fine)")], policies=[_policy("R", ["E"])], meta=BASELINE_META)
+    rep = pd.preflight(FakeClient(dicts=[PREDEF_SSN]), [pack], writes_enabled=True)
+    d = items_by(rep, "dictionary")
+    assert d["Fine"]["status"] == pd.CREATE
+    assert d["Too-Many"]["status"] == pd.BLOCKED_DEPENDENCY and "at most 8" in d["Too-Many"]["reason"]
+    assert d["Lookaround"]["status"] == pd.BLOCKED_DEPENDENCY and "lookaround" in d["Lookaround"]["reason"]
+    assert d["Far"]["status"] == pd.BLOCKED_DEPENDENCY and "0-10000" in d["Far"]["reason"]
+    assert items_by(rep, "policy")["R"]["status"] == pd.CREATE

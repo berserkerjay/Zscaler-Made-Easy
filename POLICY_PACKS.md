@@ -576,6 +576,27 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
 | `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
 | `fed_policy_pack` | no | Federal agencies: content-based CUI categories (superset of ZBP Enterprise) |
 
+### From a design file to a pack
+
+A DLP engineer's design usually arrives as the ZIA `dlpDictionaries` JSON
+with `_`-prefixed build metadata (`_tier`, `_intended_action`,
+`_min_match_count`, `_notes`, `_VERIFY`). Keep that file as
+`<pack>/design.json` and generate the configs from it:
+
+```bash
+python tools/pack_from_design.py cui_marking_baseline
+```
+
+It writes `configs/dlp_dictionaries.json` and `dlp_engines.json` (the
+designed engines plus derived `<Prefix>-Detect-Block-Grade` and
+`<Prefix>-Detect-Caution-Grade` engines built from each dictionary's
+intended action and minimum count, with every Exclude dictionary as
+`AND NOT`), and the README tier table. It refuses designs outside the
+documented ZIA limits (8 patterns per dictionary, 256 bytes per pattern,
+proximity 0-10000, no lookaround, 255-byte descriptions); preflight
+enforces the same limits on every pack and blocks only the offending
+dictionary. Policies and `pack.json` are authored by hand.
+
 ## 12. Terraform — Own a Pack with State
 
 Every pack (baselines included) can be deployed with the official

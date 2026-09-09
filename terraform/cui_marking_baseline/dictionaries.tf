@@ -43,12 +43,12 @@ resource "zia_dlp_dictionaries" "cui_basic_bare" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   patterns {
-    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "CONTROLLED UNCLASSIFIED INFORMATION"
+    phrase = "\"CONTROLLED UNCLASSIFIED INFORMATION\""
   }
 }
 
@@ -68,7 +68,7 @@ resource "zia_dlp_dictionaries" "cui_ldc_standalone" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "FED ONLY"
+    phrase = "\"FED ONLY\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
@@ -76,15 +76,15 @@ resource "zia_dlp_dictionaries" "cui_ldc_standalone" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "DL ONLY"
+    phrase = "\"DL ONLY\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "REL TO"
+    phrase = "\"REL TO\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "DISPLAY ONLY"
+    phrase = "\"DISPLAY ONLY\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
@@ -356,7 +356,7 @@ resource "zia_dlp_dictionaries" "legacy_fouo" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "FOR OFFICIAL USE ONLY"
+    phrase = "\"FOR OFFICIAL USE ONLY\""
   }
 }
 
@@ -388,7 +388,7 @@ resource "zia_dlp_dictionaries" "legacy_sbu" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "SENSITIVE BUT UNCLASSIFIED"
+    phrase = "\"SENSITIVE BUT UNCLASSIFIED\""
   }
 }
 
@@ -414,23 +414,23 @@ resource "zia_dlp_dictionaries" "cui_designation_indicator" {
   proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "Controlled by"
+    phrase = "\"Controlled by\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "CUI Category"
+    phrase = "\"CUI Category\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "Limited Dissemination Control"
+    phrase = "\"Limited Dissemination Control\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "Distribution Statement"
+    phrase = "\"Distribution Statement\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "Controlled By"
+    phrase = "\"Controlled By\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
@@ -450,23 +450,23 @@ resource "zia_dlp_dictionaries" "cui_decontrol_context" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "does not contain CUI"
+    phrase = "\"does not contain CUI\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "no longer controlled"
+    phrase = "\"no longer controlled\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "CUI Marking Guide"
+    phrase = "\"CUI Marking Guide\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "sample marking"
+    phrase = "\"sample marking\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
-    phrase = "for illustrative purposes"
+    phrase = "\"for illustrative purposes\""
   }
 }
 

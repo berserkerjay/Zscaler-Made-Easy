@@ -1,0 +1,595 @@
+{
+  "dictionaries": [
+    {
+      "name": "CUI-Banner-Structural",
+      "description": "Well-formed CUI banner line with category marking (Basic or Specified).",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI//(SP-)?[A-Z]{2,10}\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 1,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Single pattern covers both Basic (CUI//PRVCY) and Specified (CUI//SP-CTI). Do not add a separate SP- pattern - it double-counts the same marking."
+    },
+    {
+      "name": "CUI-Banner-LDC",
+      "description": "CUI banner carrying a limited dissemination control segment.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI//([A-Z-]{2,12}//)?(NOFORN|FEDCON|NOCON|PROPIN|DISPLAY ONLY|REL TO|FED ONLY|DL ONLY)\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 1,
+      "_min_match_count": 1,
+      "_intended_action": "Block"
+    },
+    {
+      "name": "CUI-PortionMark-Structural",
+      "description": "CUI portion markings in parenthetical form.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\((CUI|CUI//(SP-)?[A-Z]{2,10})\\)"
+        }
+      ],
+      "phrases": [],
+      "_tier": 1,
+      "_min_match_count": 2,
+      "_intended_action": "Block",
+      "_notes": "Min count 2 at rule level - a single parenthetical is FP-prone."
+    },
+    {
+      "name": "CUI-Basic-Bare",
+      "description": "Bare CUI designation with no category segment (Basic CUI).",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        }
+      ],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"CONTROLLED UNCLASSIFIED INFORMATION\""
+        }
+      ],
+      "_tier": 1,
+      "_min_match_count": 3,
+      "_intended_action": "Caution",
+      "_notes": "Highest-volume / lowest-precision dictionary in the set. UNIQUE counting plus min count 3 at rule level. Never wire this one to Block."
+    },
+    {
+      "name": "CUI-LDC-Standalone",
+      "description": "Dissemination control markings appearing without an intact banner.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "NOFORN"
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "FEDCON"
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"FED ONLY\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "NOCON"
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"DL ONLY\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"REL TO\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"DISPLAY ONLY\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "PROPIN"
+        }
+      ],
+      "_tier": 1,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "Standalone value: LDCs survive in footers after banner stripping."
+    },
+    {
+      "name": "CUI-Code-CTI",
+      "description": "CUI category marking token for Controlled Technical Information.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-CTI\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-PRVCY",
+      "description": "CUI category marking token for Privacy.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bPRVCY\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-PROPIN",
+      "description": "CUI category marking token for Proprietary Business Information.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bPROPIN\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-SSEL",
+      "description": "CUI category marking token for Source Selection.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-SSEL\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-ISVI",
+      "description": "CUI category marking token for Information Systems Vulnerability Information.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-ISVI\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-OPSEC",
+      "description": "CUI category marking token for Operations Security.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-OPSEC\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-NNPI",
+      "description": "CUI category marking token for Naval Nuclear Propulsion Information.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-NNPI\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-PCII",
+      "description": "CUI category marking token for Protected Critical Infrastructure Information.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-PCII\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Code-CVI",
+      "description": "CUI category marking token for Chemical-terrorism Vulnerability Information.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-CVI\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 2,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Token has no plain-English collision - no CUI anchor needed."
+    },
+    {
+      "name": "CUI-Prox-EXPT",
+      "description": "CUI token co-located with Export Control category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-EXPT\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-TAX",
+      "description": "CUI token co-located with Tax category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-TAX\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-LEI",
+      "description": "CUI token co-located with Law Enforcement category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-LEI\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-CRIT",
+      "description": "CUI token co-located with Critical Infrastructure category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-CRIT\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-NUC",
+      "description": "CUI token co-located with Nuclear category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-NUC\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-INTEL",
+      "description": "CUI token co-located with Intelligence category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-INTEL\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-LEGAL",
+      "description": "CUI token co-located with Legal category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-LEGAL\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 300,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Prox-PROCURE",
+      "description": "CUI token co-located with Procurement and Acquisition category code (malformed marking).",
+      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSP-PROCURE\\b"
+        }
+      ],
+      "phrases": [],
+      "proximity": 400,
+      "_tier": 3,
+      "_min_match_count": 1,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "Legacy-FOUO",
+      "description": "Pre-CUI For Official Use Only marking.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bFOUO\\b"
+        }
+      ],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"FOR OFFICIAL USE ONLY\""
+        }
+      ],
+      "_tier": 4,
+      "_min_match_count": 1,
+      "_intended_action": "Block"
+    },
+    {
+      "name": "Legacy-LES",
+      "description": "Law Enforcement Sensitive marking.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bLAW ENFORCEMENT SENSITIVE\\b"
+        },
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\b(FOUO|LES)//LES\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 4,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Bare LES is deliberately excluded - collides with French text, surnames, and unrelated acronyms. Spelled form or banner context only."
+    },
+    {
+      "name": "Legacy-SBU",
+      "description": "Sensitive But Unclassified marking.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bSBU\\b"
+        }
+      ],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"SENSITIVE BUT UNCLASSIFIED\""
+        }
+      ],
+      "_tier": 4,
+      "_min_match_count": 1,
+      "_intended_action": "Block"
+    },
+    {
+      "name": "Legacy-Distribution-Statements",
+      "description": "DoW distribution statements B through F on technical documents.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bDISTRIBUTION STATEMENT [B-F]\\b"
+        }
+      ],
+      "phrases": [],
+      "_tier": 4,
+      "_min_match_count": 1,
+      "_intended_action": "Block",
+      "_notes": "Very high signal on CTI-bearing engineering documents."
+    },
+    {
+      "name": "CUI-Designation-Indicator",
+      "description": "CUI designation indicator block field labels in close proximity.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"Controlled by\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"CUI Category\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"Limited Dissemination Control\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"Distribution Statement\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"Controlled By\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "POC"
+        }
+      ],
+      "proximity": 600,
+      "_tier": 5,
+      "_min_match_count": 3,
+      "_intended_action": "Caution",
+      "_notes": "MATCH_ANY with min count 3 enforced at the engine - a single field label is meaningless, three co-located is a designation block.",
+      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+    },
+    {
+      "name": "CUI-Decontrol-Context",
+      "description": "Decontrol and marking-guidance language used as an engine-level exclusion.",
+      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "patterns": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "DECONTROLLED"
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"does not contain CUI\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"no longer controlled\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"CUI Marking Guide\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"sample marking\""
+        },
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "\"for illustrative purposes\""
+        }
+      ],
+      "_tier": 6,
+      "_min_match_count": 1,
+      "_intended_action": "Exclude",
+      "_notes": "DOCUMENT-SCOPED exclusion. A genuine CUI document that cites its own marking guide will suppress. Record this in the residual-risk statement."
+    }
+  ],
+  "_documented_limits": "8 patterns per dictionary; 256 bytes per pattern; proximity 0-10000 bytes; PCRE syntax minus lookaround; phrases fuzzy-match unless quoted; Count Unique collapses repeated matches to a single count. Engine builder: 4 subexpressions / 4 operators / 16 dictionaries per operator per level; root accepts All, Any, Sum only.",
+  "engines": [
+    {
+      "name": "CUI-Detect-All",
+      "description": "Full CUI detection surface: banner grammar, category tokens, legacy markings, malformed-marking proximity, and designation blocks.",
+      "engineExpression": "((((${CUI-Banner-Structural}.S > 0) OR (${CUI-Banner-LDC}.S > 0) OR (${CUI-PortionMark-Structural}.S > 1) OR (${CUI-Code-CTI}.S > 0) OR (${CUI-Code-PRVCY}.S > 0) OR (${CUI-Code-PROPIN}.S > 0) OR (${CUI-Code-SSEL}.S > 0) OR (${CUI-Code-ISVI}.S > 0) OR (${CUI-Code-OPSEC}.S > 0) OR (${CUI-Code-NNPI}.S > 0) OR (${CUI-Code-PCII}.S > 0) OR (${CUI-Code-CVI}.S > 0) OR (${Legacy-FOUO}.S > 0) OR (${Legacy-LES}.S > 0) OR (${Legacy-SBU}.S > 0) OR (${Legacy-Distribution-Statements}.S > 0)) OR ((${CUI-Prox-EXPT}.S > 0) OR (${CUI-Prox-TAX}.S > 0) OR (${CUI-Prox-LEI}.S > 0) OR (${CUI-Prox-CRIT}.S > 0) OR (${CUI-Prox-NUC}.S > 0) OR (${CUI-Prox-INTEL}.S > 0) OR (${CUI-Prox-LEGAL}.S > 0) OR (${CUI-Prox-PROCURE}.S > 0) OR (${CUI-LDC-Standalone}.S > 0) OR (${CUI-Designation-Indicator}.S > 2) OR (${CUI-Basic-Bare}.S > 2)))) AND NOT (${CUI-Decontrol-Context}.S > 0)",
+      "_notes": "Split into two nested Any groups solely because of the 16-dictionary-per-operator ceiling, not for logical reasons - the two groups are ORed and behave as one set. Validate the three-level nesting renders in Engine Builder before relying on it; if the builder rejects the depth, restructure as root Any(OR) over the two groups and move the decontrol exclusion into each group."
+    }
+  ]
+}
