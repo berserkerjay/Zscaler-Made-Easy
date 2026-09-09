@@ -215,7 +215,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         for name in sorted(dict_names, key=len, reverse=True):
             if f"D:{name}" in expr:
                 expr = expr.replace(f"D:{name}", f"D${{zia_dlp_dictionaries.{S.get('dict', name)}.id}}.S")
-        for name in {m.group(1).strip() for m in _REF_RE.finditer(expr)}:
+        for name in sorted({m.group(1).strip() for m in _REF_RE.finditer(expr)}, key=len, reverse=True):
             if name not in predefined_refs:
                 predefined_refs[name] = S.get("pre", name)
             expr = expr.replace(f"D:{name}", f"D${{data.zia_dlp_dictionaries.{predefined_refs[name]}.id}}.S")
