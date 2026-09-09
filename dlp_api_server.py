@@ -1516,6 +1516,10 @@ async def health():
         "version": "3.0",
         "git_commit": commit,
         "expected_min_commit": "870c737",
+        # Where this server runs from, so the operator can find the folder
+        # for the update / install / stop scripts without guessing.
+        "app_dir": _APP_DIR,
+        "is_git_checkout": os.path.isdir(os.path.join(_APP_DIR, ".git")),
     }
 
 
