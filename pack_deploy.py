@@ -1086,9 +1086,9 @@ def preflight(
     if not tenant["reachable"]:
         blockers.append("Could not read the tenant's current configuration, so overlaps and dependencies can't be checked: "
                         + "; ".join(tenant["errors"]))
-    if writes_enabled is False:
-        blockers.append("The server is running in read-only mode. Restart it with START_Zscaler_Assessment_WRITES_ENABLED.bat "
-                        "(ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND) to deploy.")
+    read_only_note = ("The server is in read-only mode: this plan can be reviewed and exported but not deployed. "
+                      "Click Enable write mode in Deploy Policy Packs (you type a confirmation phrase), or start the server with "
+                      "START_Zscaler_Assessment_WRITES_ENABLED.bat.") if writes_enabled is False else ""
 
     if tenant["reachable"]:
         _plan_dictionaries(merged["dictionary"], tenant, restore=restore_drift)
@@ -1147,6 +1147,8 @@ def preflight(
     for imp in impacts:
         if imp.get("severity") == "warning":
             warnings.append(imp["title"])
+    if read_only_note:
+        warnings.append(read_only_note)
 
     creates = sum(1 for i in all_items if i["status"] in WRITE_STATUSES)
     if tenant["reachable"] and creates == 0 and not blockers:
@@ -1177,6 +1179,7 @@ def preflight(
         "blockers": blockers,
         "impacts": impacts,
         "dependencies": dependencies,
+        "read_only": bool(read_only_note),
         "will_create": creates,
         "will_restore": sum(1 for i in all_items if i["status"] == RESTORE),
         "will_skip": sum(1 for i in all_items if i["status"] in BLOCKING_STATUSES),
@@ -1439,6 +1442,10 @@ def apply(
     started = time.time()
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
                        restore_drift=restore_drift)
+    if writes_enabled is False:
+        return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs, or start it with "
+                                                  "START_Zscaler_Assessment_WRITES_ENABLED.bat, then deploy."],
+                "report": public_report(report), "results": []}
     if report["status"] == "blocked":
         return {"status": "blocked", "blockers": report["blockers"], "report": public_report(report), "results": []}
     if not plan_hash or report["plan_hash"] != plan_hash:

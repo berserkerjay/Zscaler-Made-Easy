@@ -364,11 +364,11 @@ def test_confidence_tweak_is_explicit_modification(tmp_path):
     assert client.zia.dlp_dictionary.updated[0]["confidence_threshold"] == "CONFIDENCE_LEVEL_LOW"
 
 
-def test_writes_disabled_blocks_plan(base_pack):
+def test_writes_disabled_blocks_deploy_but_not_the_plan(base_pack):
     client = FakeClient(dicts=[PREDEF_SSN])
     rep = pd.preflight(client, [base_pack], writes_enabled=False)
-    assert rep["status"] == "blocked"
-    assert any("read-only" in b for b in rep["blockers"])
+    assert rep["status"] == "warnings" and rep["read_only"] is True     # the plan is still reviewable
+    assert any("read-only" in w and "Enable write mode" in w for w in rep["warnings"])
     res = pd.apply(client, [base_pack], plan_hash=rep["plan_hash"], writes_enabled=False)
     assert res["status"] == "blocked" and res["results"] == []
     assert client.zia.dlp_dictionary.added == []

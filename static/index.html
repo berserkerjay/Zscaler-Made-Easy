@@ -541,69 +541,6 @@
     .hero-toolbar { grid-template-columns: 1fr; }
   }
 
-  /* ── Report dialogs (bypass inventory) ───────────────────────── */
-  .bp-panel { max-width: 1040px; margin: 0 auto; background: var(--card-solid); border: 1px solid var(--border); border-radius: 16px;
-    box-shadow: 0 24px 70px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: calc(100vh - 3rem); overflow: hidden; }
-  .bp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.15rem 1.4rem 0.9rem; border-bottom: 1px solid var(--border); }
-  .bp-head h2 { margin: 0; font-size: 1.2rem; }
-  .bp-head p { margin: 0.3rem 0 0; color: var(--dim); font-size: 0.85rem; max-width: 78ch; }
-  .bp-toolbar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.7rem 1.4rem; border-bottom: 1px solid var(--border); background: rgba(148,163,184,0.05); }
-  .bp-toolbar .sep { flex: 1; }
-  .bp-toolbar .lbl { font-size: 0.75rem; color: var(--dim); letter-spacing: 0.06em; text-transform: uppercase; }
-  .bp-toolbar .btn { padding: 0.5rem 0.95rem; font-size: 0.82rem; }
-  .bp-body { padding: 1rem 1.4rem 1.4rem; overflow: auto; font-size: 0.86rem; }
-  .bp-empty { color: var(--dim); text-align: center; padding: 2rem 1rem; }
-  .bp-hero { display: grid; grid-template-columns: minmax(180px, 1fr) 2fr; gap: 0.8rem; margin-bottom: 0.9rem; }
-  .bp-total { padding: 0.9rem 1.1rem; border-radius: 12px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); }
-  .bp-total .n { font-size: 2rem; font-weight: 800; line-height: 1; color: var(--accent); }
-  .bp-total .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-top: 0.35rem; }
-  .bp-total.risk { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.35); }
-  .bp-total.risk .n { color: var(--fail); }
-  .bp-total.ok { background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.3); }
-  .bp-total.ok .n { color: var(--pass); }
-  .bp-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.6rem; }
-  .bp-group { padding: 0.65rem 0.8rem; border-radius: 12px; border: 1px solid var(--border); background: rgba(148,163,184,0.05); }
-  .bp-group .t { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 0.4rem; }
-  .bp-stats { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; }
-  .bp-stat { display: inline-flex; align-items: baseline; gap: 0.35rem; font-size: 0.82rem; color: var(--text); }
-  .bp-stat b { font-size: 1.05rem; }
-  .bp-stat.zero { color: var(--dim); } .bp-stat.zero b { font-weight: 500; }
-  .bp-stat.hot b { color: var(--fail); }
-  .bp-card { padding: 0.75rem 0.9rem; border-radius: 12px; border: 1px solid var(--border); border-left-width: 4px; margin-bottom: 0.8rem; background: rgba(148,163,184,0.04); }
-  .bp-card.risk { border-left-color: var(--fail); } .bp-card.warn { border-left-color: var(--warn); } .bp-card.info { border-left-color: var(--accent); }
-  .bp-card .t { font-weight: 700; margin-bottom: 0.4rem; }
-  .bp-card.risk .t { color: var(--fail); } .bp-card.warn .t { color: var(--warn); }
-  .bp-risks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
-  .bp-risks li { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.8rem; padding: 0.5rem 0.7rem; border-radius: 8px; background: rgba(15,23,42,0.35); border: 1px solid var(--border); align-items: center; }
-  .bp-risks .nm { font-weight: 600; }
-  .bp-risks .why { grid-column: 1 / -1; color: var(--dim); font-size: 0.8rem; }
-  .bp-chip { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px; background: rgba(148,163,184,0.15); color: var(--dim); white-space: nowrap; }
-  .bp-chip.act { background: rgba(245,158,11,0.15); color: var(--warn); }
-  .bp-chip.src { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: none; letter-spacing: 0; }
-  .bp-h { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin: 1.1rem 0 0.45rem; }
-  .bp-sec { margin-bottom: 0.45rem; border: 1px solid var(--border); border-radius: 10px; background: rgba(148,163,184,0.04); }
-  .bp-sec > summary { padding: 0.6rem 0.9rem; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; list-style: none; }
-  .bp-sec > summary::-webkit-details-marker { display: none; }
-  .bp-sec > summary::before { content: "›"; color: var(--dim); font-weight: 700; transition: transform 150ms ease; }
-  .bp-sec[open] > summary::before { transform: rotate(90deg); }
-  .bp-sec > summary .ct { margin-left: auto; font-weight: 500; color: var(--dim); font-size: 0.8rem; }
-  .bp-sec.has-items > summary .ct { color: var(--accent); font-weight: 700; }
-  .bp-sec.empty > summary { color: var(--dim); font-weight: 500; }
-  .bp-sec > div { padding: 0.2rem 0.9rem 0.7rem; }
-  .bp-sec .max { max-height: 420px; overflow: auto; }
-  .bp-table { width: 100%; font-size: 0.8rem; border-collapse: collapse; }
-  .bp-table th { text-align: left; padding: 0.4rem 0.55rem; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card-solid); }
-  .bp-table td { padding: 0.38rem 0.55rem; border-top: 1px solid var(--border); vertical-align: top; }
-  .bp-table td.mono, .bp-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; word-break: break-all; }
-  .bp-table td.num { text-align: right; color: var(--dim); }
-  .bp-table td.dim { color: var(--dim); }
-  .bp-none { color: var(--dim); font-size: 0.82rem; padding: 0.4rem 0; }
-  .bp-ref { display: inline-block; font-size: 0.7rem; background: rgba(59,130,246,0.1); color: var(--accent); padding: 0.1rem 0.4rem; border-radius: 4px; margin: 0.1rem 0.2rem 0.1rem 0; }
-  .bp-code { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; background: rgba(59,130,246,0.08); padding: 0.1rem 0.4rem; border-radius: 4px; margin: 0.1rem; word-break: break-all; }
-  .bp-guide ul { margin: 0.2rem 0 0 1.1rem; color: var(--dim); }
-  .bp-guide li { margin: 0.2rem 0; }
-  body.theme-light .bp-risks li { background: rgba(255,255,255,0.7); }
-  @media (max-width: 760px) { .bp-hero { grid-template-columns: 1fr; } .bp-panel { max-height: calc(100vh - 1.5rem); } }
 </style>
 </head>
 <body>
@@ -638,8 +575,8 @@
               aria-label="Check for Zscaler SDK and documentation updates">
         <span aria-hidden="true">🔄</span> Zscaler Updates
       </button>
-      <button class="btn btn-ghost" onclick="openBypassModal()"
-              aria-label="Open Bypass and Non-Inspected Traffic Inventory Report">
+      <button class="btn btn-ghost" onclick="openBypassReportTab()"
+              aria-label="Open Bypass and Non-Inspected Traffic Inventory Report in a new tab">
         <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
       </button>
       <button class="btn btn-ghost" onclick="openBestPracticesModal()"
@@ -1990,7 +1927,7 @@ function dispatchCommand(parsed) {
       return true;
 
     case 'open_bypass_report':
-      openBypassModal();
+      openBypassReportTab();
       return true;
 
     case 'open_update_check':
@@ -5052,6 +4989,26 @@ function closeBypassModal() {
   announce('Dialog closed');
 }
 
+// Reports open in their own tab (with a link back to the assessment) so
+// they never fight the page for space. The tab opens immediately (inside
+// the click, so popup blockers allow it) showing "generating", then is
+// pointed at the cached report once the server has built it. If the
+// browser blocks the tab, the dialog is used instead.
+async function openBypassReportTab() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const w = window.open('/report/bypass?pending=1', '_blank');
+  if (!w) { openBypassModal(); return; }
+  try {
+    const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+    _bypassReportCache = data;
+    w.location = `/report/bypass?id=${encodeURIComponent(data.report_id || '')}`;
+  } catch (e) {
+    w.location = `/report/bypass?error=${encodeURIComponent(e.message)}`;
+  }
+}
+
 async function runBypassReport() {
   const body = migrateValidateCreds(); if (!body) return;  // pops credential alert if missing
   const btn = document.getElementById('bypassRunBtn');
@@ -5094,117 +5051,8 @@ async function exportBypass(fmt) {
   }
 }
 
-function renderBypassReport(data) {
-  const E = escapeHtml;
-  const s = data.summary || {};
-  const risks = data.risk_flags || [];
-  const total = s.total_bypass_items || 0;
-  const stat = (n, label, hot) => `<span class="bp-stat ${n ? (hot ? 'hot' : '') : 'zero'}"><b>${n || 0}</b>${E(label)}</span>`;
-  const top = `
-    <div class="bp-hero">
-      <div class="bp-total ${risks.length ? 'risk' : (total ? '' : 'ok')}">
-        <div class="n">${total}</div><div class="k">bypass items in this tenant</div>
-        <div style="margin-top:0.5rem;font-size:0.82rem;color:${risks.length ? 'var(--fail)' : 'var(--dim)'};">${risks.length ? `${risks.length} high-risk` : 'no high-risk bypasses'}</div>
-      </div>
-      <div class="bp-groups">
-        <div class="bp-group"><div class="t">SSL inspection</div><div class="bp-stats">${stat(s.ssl_bypass_rules, 'bypass rules', true)}${stat(s.ssl_exemptions, 'exemptions')}</div></div>
-        <div class="bp-group"><div class="t">Policy allow rules</div><div class="bp-stats">${stat(s.url_filter_allow, 'URL')}${stat(s.firewall_allow, 'firewall')}${stat(s.dlp_allow, 'DLP', true)}</div></div>
-        <div class="bp-group"><div class="t">Client Connector</div><div class="bp-stats">${stat(s.zcc_apps, 'apps')}${stat(s.zcc_processes, 'processes')}${stat(s.zcc_ips, 'IPs')}${stat(s.zcc_domains, 'domains')}${stat(s.zcc_trusted_nets, 'trusted networks')}</div></div>
-      </div>
-    </div>`;
-
-  const risky = risks.length ? `
-    <div class="bp-card risk"><div class="t">${risks.length} high-risk bypass${risks.length === 1 ? '' : 'es'}</div>
-      <ul class="bp-risks">${risks.map(r => `<li>
-        <span class="nm">${E(r.name)}</span>
-        <span><span class="bp-chip src">${E(r.source)} #${E(String(r.id))}</span> <span class="bp-chip act">${E(r.action)}</span></span>
-        <span class="why">${E(r.reason)}</span></li>`).join('')}</ul></div>` : '';
-
-  const diag = (data.diagnostics || []).length ? `
-    <div class="bp-card warn"><div class="t">${data.diagnostics.length} section${data.diagnostics.length === 1 ? '' : 's'} could not be read; the rest rendered below</div>
-      <details><summary style="cursor:pointer;color:var(--accent);font-size:0.82rem;">Show details</summary>
-      <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.8rem;color:var(--dim);">${data.diagnostics.map(d => `<li><strong>${E(d.section)}</strong>: <code>${E(d.error_type || '?')}</code> ${E(d.error || '')}</li>`).join('')}</ul></details></div>` : '';
-
-  const table = (items, cols, opts = {}) => {
-    if (!items || !items.length) return '<div class="bp-none">Nothing here.</div>';
-    const cls = c => (opts.mono || []).includes(c) ? ' class="mono"' : ((opts.num || []).includes(c) ? ' class="num"' : '');
-    return `<div class="max"><table class="bp-table"><thead><tr>${cols.map(c => `<th>${E(c)}</th>`).join('')}</tr></thead><tbody>${items.map(it => `<tr>${cols.map(c => {
-      let v = it[c]; if (Array.isArray(v)) v = v.slice(0, 5).join(', ') + (v.length > 5 ? ` +${v.length - 5}` : '');
-      return `<td${cls(c)}>${E(String(v == null || v === '' ? '—' : v))}</td>`;
-    }).join('')}</tr>`).join('')}</tbody></table></div>`;
-  };
-  const section = (label, count, body, extra = '') => {
-    const n = count || 0;
-    return `<details class="bp-sec ${n ? 'has-items' : 'empty'}" ${n ? 'open' : ''}><summary>${E(label)}${extra}<span class="ct">${n}</span></summary><div>${body}</div></details>`;
-  };
-  const secs = data.sections || {};
-  const ruleCols = ['id', 'name', 'action', 'state', 'scope'];
-  const ruleOpts = { mono: ['id'] };
-  const ofTotal = sec => (sec.total_rules || sec.total_ssl_rules) ? `<span class="ct" style="margin-left:0.5rem;">of ${sec.total_rules || sec.total_ssl_rules}</span>` : '';
-  let rulesHtml = '<div class="bp-h">Rules that skip inspection</div>';
-  for (const [key, label] of [['ssl_bypass_rules', 'SSL inspection bypass rules'], ['url_filter_allow', 'URL Filtering allow rules'], ['firewall_allow', 'Firewall allow rules'], ['dlp_allow', 'DLP allow / bypass rules']]) {
-    const sec = secs[key] || {};
-    rulesHtml += section(label, sec.count, table(sec.items, ruleCols, ruleOpts), ofTotal(sec));
-  }
-  const exm = secs.ssl_exemptions || {};
-  rulesHtml += section('SSL exemptions and Do-Not-Inspect categories', exm.count, table(exm.items, ['source', 'field', 'value'], { mono: ['value'] }));
-
-  const zcc = secs.zcc || {};
-  let zccHtml = '<div class="bp-h">Client Connector bypasses</div>';
-  for (const [key, label, cols] of [['apps', 'App bypass', ['profile', 'name', 'path', 'os']], ['processes', 'Process bypass', ['profile', 'name']],
-                                    ['ips', 'IP bypass', ['profile', 'value']], ['domains', 'Domain bypass', ['profile', 'value']], ['trusted_networks', 'Trusted networks', ['profile', 'value']]]) {
-    const sec = zcc[key] || {};
-    zccHtml += section(label, sec.count, table(sec.items, cols, { mono: ['value', 'path'] }));
-  }
-  if (zcc.endpoints_probed && zcc.endpoints_probed.length) {
-    const rows = zcc.endpoints_probed.map(p => `<tr><td class="mono">${E(p.endpoint)}</td><td style="color:${p.status === 200 ? 'var(--pass)' : (p.status === 0 ? 'var(--fail)' : 'var(--warn)')};font-weight:600;">${p.status}</td><td class="dim">${p.item_count != null ? p.item_count + ' profile(s)' : (p.error ? E(p.error) : '—')}</td></tr>`).join('');
-    zccHtml += `<details class="bp-sec empty"><summary>Client Connector endpoints probed<span class="ct">${zcc.endpoints_probed.length}</span></summary><div><table class="bp-table"><thead><tr><th>Endpoint</th><th>Status</th><th>Response</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
-  }
-
-  const agg = data.aggregated || {};
-  const aggBlock = (title, key, valueLabel) => {
-    const items = (agg[key] || {}).items || [];
-    if (!items.length) return section(title, 0, '<div class="bp-none">Nothing here.</div>');
-    const rows = items.map((it, i) => `<tr><td class="num">${i + 1}</td><td class="mono">${E(String(it.value || ''))}</td><td class="num">${it.count}</td><td>${(it.rules || []).map(r => `<span class="bp-ref" title="${E(r.name || '')}">${E(r.source || '')}#${r.id != null ? r.id : '?'}</span>`).join('')}</td></tr>`).join('');
-    return section(title, items.length, `<div class="max"><table class="bp-table"><thead><tr><th>#</th><th>${E(valueLabel)}</th><th>Refs</th><th>Referenced by</th></tr></thead><tbody>${rows}</tbody></table></div>`);
-  };
-  const aggHtml = `
-    <div class="bp-h">Effective bypass universe</div>
-    <p style="color:var(--dim);font-size:0.82rem;margin:0 0 0.5rem;">Every URL, cloud application, category and IP exempted anywhere in the tenant, deduplicated and traced back to the rule that exempted it. URL categories are expanded into their URLs.</p>
-    ${aggBlock('All URLs bypassed (explicit, inherited from categories, and Client Connector domains)', 'all_urls_bypassed', 'URL')}
-    ${aggBlock('Bypassed URL categories', 'url_categories', 'URL category')}
-    ${aggBlock('Explicitly listed URLs', 'urls', 'URL')}
-    ${aggBlock('URLs inherited from categories', 'inherited_urls', 'URL (via category)')}
-    ${aggBlock('Bypassed cloud applications', 'cloud_applications', 'Cloud app')}
-    ${aggBlock('Bypassed cloud app categories', 'cloud_app_categories', 'Cloud app category')}
-    ${aggBlock('Bypassed destination IPs', 'dest_ips', 'IP / CIDR')}
-    ${aggBlock('Bypassed destination IP groups', 'dest_ip_groups', 'IP group')}
-    ${aggBlock('Client Connector apps', 'zcc_apps', 'App')}
-    ${aggBlock('Client Connector processes', 'zcc_processes', 'Process')}
-    ${aggBlock('Client Connector IPs', 'zcc_ips', 'IP / CIDR')}
-    ${aggBlock('Client Connector domains', 'zcc_domains', 'Domain')}
-    ${aggBlock('Client Connector trusted networks', 'zcc_trusted_networks', 'Network')}`;
-
-  let catHtml = '';
-  const cats = agg.category_expansion || [];
-  if (cats.length) {
-    const rows = cats.map(c => {
-      const urls = (c.urls || []).concat(c.db_urls || []);
-      const chips = urls.slice(0, 50).map(u => `<span class="bp-code">${E(u)}</span>`).join(' ');
-      const more = urls.length > 50 ? `<div class="bp-none">…and ${urls.length - 50} more (the export has the full list)</div>` : '';
-      const note = c.note ? `<div style="color:var(--warn);font-size:0.8rem;margin-bottom:0.3rem;">${E(c.note)}</div>` : '';
-      const rule = c.referenced_by_rule || {};
-      return `<details class="bp-sec has-items"><summary>${E(c.category || '?')} <span class="bp-chip">${E(c.type || '?')}</span> <span class="bp-ref">${E(rule.source || '?')}#${rule.id != null ? rule.id : '?'} ${E(rule.name || '')}</span><span class="ct">${urls.length} URLs</span></summary><div>${note}${chips || '<div class="bp-none">No enumerable URLs.</div>'}${more}</div></details>`;
-    }).join('');
-    catHtml = `<div class="bp-h">What each URL category contributes</div>${rows}`;
-  }
-
-  const guidance = (data.guidance || []).length ? `<div class="bp-card info bp-guide" style="margin-top:1rem;"><div class="t">Guidance</div><ul>${data.guidance.map(g => `<li>${E(g)}</li>`).join('')}</ul></div>` : '';
-
-  document.getElementById('bypassResult').innerHTML = top + diag + risky + rulesHtml + zccHtml + aggHtml + catHtml + guidance;
-}
-
-
+// The bypass report renderer lives in /static/bypass_report.js (shared with
+// the standalone /report/bypass tab); it renders into #bypassResult by default.
 async function runUpdateCheck(reset, skipTlsVerify) {
   const btn = document.getElementById('updateRunBtn');
   const r = document.getElementById('updateResult');

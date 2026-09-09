@@ -178,8 +178,10 @@ if os.path.isdir(STATIC_DIR):
 GUI_ADDONS = [
     ("deploy_studio.css", "style"),
     ("guide.css", "style"),
+    ("reports.css", "style"),
     ("deploy_studio.js", "script"),
     ("guide.js", "script"),
+    ("bypass_report.js", "script"),
 ]
 
 
@@ -2279,48 +2281,83 @@ def _sse(event: str, data: dict) -> str:
 
 
 # ── Bypass / Non-Inspected Traffic Inventory ────────────────────────────────────
+# Generated reports are kept in memory (last 20) so a report can open in
+# its own tab and be exported without sending credentials again.
+_REPORTS: Dict[str, Dict[str, Any]] = {}
+_REPORTS_MAX = 20
+
+
+def _remember_report(kind: str, report: Dict[str, Any], label: str = "") -> str:
+    import secrets
+    rid = f"{kind}-{secrets.token_urlsafe(9)}"
+    report = dict(report)
+    report["report_id"] = rid
+    report["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if label:
+        report["tenant_label"] = label
+    _REPORTS[rid] = report
+    while len(_REPORTS) > _REPORTS_MAX:
+        _REPORTS.pop(next(iter(_REPORTS)))
+    return rid
+
+
+@app.get("/report/bypass")
+async def report_bypass_page():
+    """Standalone tab for the bypass report (see static/report_bypass.html)."""
+    page = os.path.join(STATIC_DIR, "report_bypass.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/api/report/bypass/{report_id}")
+async def report_bypass_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep:
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.get("/api/report/bypass/export/{report_id}")
+async def report_bypass_export_cached(report_id: str, format: str = "csv"):
+    rep = _REPORTS.get(report_id)
+    if not rep:
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    return await _bypass_export_response(rep, format)
+
+
 @app.post("/api/report/bypass")
 async def report_bypass(req: MigrateRequest):
-    """Generate the bypass-inventory report (JSON). Read-only."""
+    """Generate the bypass-inventory report (JSON). Read-only. The response
+    carries report_id for /report/bypass?id=... and the export links."""
     try:
         from bypass_report import generate_bypass_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(generate_bypass_report, client)
+    report = await asyncio.to_thread(generate_bypass_report, client)
+    rid = _remember_report("bypass", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    return _REPORTS[rid]
 
 
 class BypassExportRequest(MigrateRequest):
     format: str = "csv"  # csv | markdown | json | docx
 
 
-@app.post("/api/report/bypass/export")
-async def report_bypass_export(req: BypassExportRequest):
-    """Generate and download the bypass report in csv / markdown / json / docx."""
-    try:
-        from bypass_report import generate_bypass_report, to_csv, to_markdown
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
-    fmt = (req.format or "csv").lower()
-    if fmt not in ("csv", "markdown", "md", "json", "docx", "word", "doc"):
-        raise HTTPException(status_code=400, detail=f"Unsupported format: {req.format}")
-    client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_bypass_report, client)
-
+async def _bypass_export_response(report: Dict[str, Any], fmt: str):
+    from bypass_report import to_csv, to_markdown
     from fastapi.responses import Response, FileResponse
+    fmt = (fmt or "csv").lower()
+    if fmt not in ("csv", "markdown", "md", "json", "docx", "word", "doc"):
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     if fmt == "csv":
-        return Response(
-            content=to_csv(report),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.csv"},
-        )
+        return Response(content=to_csv(report), media_type="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.csv"})
     if fmt in ("markdown", "md"):
-        return Response(
-            content=to_markdown(report),
-            media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.md"},
-        )
+        return Response(content=to_markdown(report), media_type="text/markdown",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.md"})
     if fmt in ("docx", "word", "doc"):
         try:
             from bypass_report import to_docx
@@ -2333,17 +2370,22 @@ async def report_bypass_export(req: BypassExportRequest):
             raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
-        return FileResponse(
-            output_path,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            filename=f"zscaler_bypass_{ts}.docx",
-        )
-    # json
-    return Response(
-        content=json.dumps(report, indent=2, default=str),
-        media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"},
-    )
+        return FileResponse(output_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            filename=f"zscaler_bypass_{ts}.docx")
+    return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"})
+
+
+@app.post("/api/report/bypass/export")
+async def report_bypass_export(req: BypassExportRequest):
+    """Generate and download the bypass report in csv / markdown / json / docx."""
+    try:
+        from bypass_report import generate_bypass_report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    report = await asyncio.to_thread(generate_bypass_report, client)
+    return await _bypass_export_response(report, req.format)
 
 
 # ── Updates: check for new Zscaler APIs / SDK / best practices ──────────────────
