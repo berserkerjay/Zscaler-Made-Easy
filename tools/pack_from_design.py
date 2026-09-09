@@ -35,7 +35,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from dlp_importer import DICT_DESCRIPTION_MAX, dictionary_limit_problems  # noqa: E402
+from dlp_importer import DICT_DESCRIPTION_MAX, dictionary_limit_problems, engine_limit_problems  # noqa: E402
 
 TIER_LABEL = {1: "Tier 1 structural marking", 2: "Tier 2 category token", 3: "Tier 3 malformed marking (proximity)",
               4: "Tier 4 legacy marking", 5: "Tier 5 designation block", 6: "Tier 6 exclusion"}
@@ -72,6 +72,8 @@ def convert(design: dict, prefix: str) -> tuple[list, list, str]:
         o = {"name": d["name"], "description": desc, "custom_phrase_match_type": d["customPhraseMatchType"]}
         if d.get("proximity"):
             o["proximity"] = int(d["proximity"])
+            # ZIA needs both the window and the enable flag on custom dictionaries.
+            o["proximity_enabled_for_custom_dictionary"] = bool(d.get("proximityEnabledForCustomDictionary", True))
         o["patterns"] = list(d.get("patterns") or [])
         o["phrases"] = list(d.get("phrases") or [])
         if len(desc.encode("utf-8")) > DICT_DESCRIPTION_MAX:
@@ -104,12 +106,18 @@ def convert(design: dict, prefix: str) -> tuple[list, list, str]:
     for e in engines:
         if len(e["description"].encode("utf-8")) > DICT_DESCRIPTION_MAX:
             raise SystemExit(f"engine {e['name']}: description too long")
+        if engine_limit_problems(e["expression"]):
+            raise SystemExit(f"engine {e['name']}: " + "; ".join(engine_limit_problems(e["expression"])))
 
     lines = [f"# {design.get('_title') or prefix} — dictionary notes\n\n",
              "Build metadata from the design file (tier, intended action, minimum match count, notes). "
              "The pack configs carry the API fields only; regenerate with `python tools/pack_from_design.py <pack_dir>`.\n\n"]
     if design.get("_documented_limits"):
         lines.append(f"**Documented ZIA limits:** {design['_documented_limits']}\n\n")
+    if design.get("_proximity_semantics"):
+        lines.append(f"**Proximity semantics:** {design['_proximity_semantics']}\n\n")
+    if design.get("_phrase_semantics"):
+        lines.append(f"**Phrase semantics:** {design['_phrase_semantics']}\n\n")
     lines.append("| Dictionary | Tier | Intended action | Min matches | Notes |\n|---|---|---|---|---|\n")
     for n, t, a, m, no, v in rows:
         note = no + (f" **VERIFY:** {v}" if v else "")

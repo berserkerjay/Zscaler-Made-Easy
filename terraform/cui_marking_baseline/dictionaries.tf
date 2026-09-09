@@ -205,16 +205,16 @@ resource "zia_dlp_dictionaries" "cui_prox_expt" {
   description                  = "CUI token co-located with Export Control category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-EXPT\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-EXPT"
   }
 }
 
@@ -223,16 +223,16 @@ resource "zia_dlp_dictionaries" "cui_prox_tax" {
   description                  = "CUI token co-located with Tax category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-TAX\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-TAX"
   }
 }
 
@@ -241,16 +241,16 @@ resource "zia_dlp_dictionaries" "cui_prox_lei" {
   description                  = "CUI token co-located with Law Enforcement category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-LEI\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-LEI"
   }
 }
 
@@ -259,16 +259,16 @@ resource "zia_dlp_dictionaries" "cui_prox_crit" {
   description                  = "CUI token co-located with Critical Infrastructure category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-CRIT\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-CRIT"
   }
 }
 
@@ -277,16 +277,16 @@ resource "zia_dlp_dictionaries" "cui_prox_nuc" {
   description                  = "CUI token co-located with Nuclear category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-NUC\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-NUC"
   }
 }
 
@@ -295,16 +295,16 @@ resource "zia_dlp_dictionaries" "cui_prox_intel" {
   description                  = "CUI token co-located with Intelligence category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-INTEL\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-INTEL"
   }
 }
 
@@ -313,16 +313,16 @@ resource "zia_dlp_dictionaries" "cui_prox_legal" {
   description                  = "CUI token co-located with Legal category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 300
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-LEGAL\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-LEGAL"
   }
 }
 
@@ -331,16 +331,16 @@ resource "zia_dlp_dictionaries" "cui_prox_procure" {
   description                  = "CUI token co-located with Procurement and Acquisition category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 400
   proximity_enabled_for_custom_dictionary = true
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "\\bCUI\\b"
   }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bSP-PROCURE\\b"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-PROCURE"
   }
 }
 
@@ -409,9 +409,13 @@ resource "zia_dlp_dictionaries" "cui_designation_indicator" {
   description                  = "CUI designation indicator block field labels in close proximity. Tier 5 designation block; intended action Caution; min matches 3. [DLP-Check baseline cui_marking_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 600
   proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
     phrase = "\"Controlled by\""

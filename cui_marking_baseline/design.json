@@ -259,178 +259,186 @@
     {
       "name": "CUI-Prox-EXPT",
       "description": "CUI token co-located with Export Control category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-EXPT\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-EXPT"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-TAX",
       "description": "CUI token co-located with Tax category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-TAX\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-TAX"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-LEI",
       "description": "CUI token co-located with Law Enforcement category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-LEI\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-LEI"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-CRIT",
       "description": "CUI token co-located with Critical Infrastructure category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-CRIT\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-CRIT"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-NUC",
       "description": "CUI token co-located with Nuclear category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-NUC\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-NUC"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-INTEL",
       "description": "CUI token co-located with Intelligence category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-INTEL\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-INTEL"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-LEGAL",
       "description": "CUI token co-located with Legal category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-LEGAL\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-LEGAL"
+        }
+      ],
       "proximity": 300,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Prox-PROCURE",
       "description": "CUI token co-located with Procurement and Acquisition category code (malformed marking).",
-      "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
       "patterns": [
         {
           "action": "PATTERN_COUNT_TYPE_ALL",
           "pattern": "\\bCUI\\b"
-        },
-        {
-          "action": "PATTERN_COUNT_TYPE_ALL",
-          "pattern": "\\bSP-PROCURE\\b"
         }
       ],
-      "phrases": [],
+      "phrases": [
+        {
+          "action": "PHRASE_COUNT_TYPE_ALL",
+          "phrase": "SP-PROCURE"
+        }
+      ],
       "proximity": 400,
       "_tier": 3,
       "_min_match_count": 1,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ALL + proximity: both patterns must fall inside the window. Window is bidirectional and byte-measured over extracted text.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Proximity anchors on the pattern (CUI) and measures to the phrase (category code). Window is bidirectional and byte-measured over extracted text, so OOXML part boundaries inflate distance.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "Legacy-FOUO",
@@ -511,8 +519,13 @@
     {
       "name": "CUI-Designation-Indicator",
       "description": "CUI designation indicator block field labels in close proximity.",
-      "customPhraseMatchType": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
-      "patterns": [],
+      "customPhraseMatchType": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+      "patterns": [
+        {
+          "action": "PATTERN_COUNT_TYPE_ALL",
+          "pattern": "\\bCUI\\b"
+        }
+      ],
       "phrases": [
         {
           "action": "PHRASE_COUNT_TYPE_ALL",
@@ -543,8 +556,8 @@
       "_tier": 5,
       "_min_match_count": 3,
       "_intended_action": "Caution",
-      "_notes": "MATCH_ANY with min count 3 enforced at the engine - a single field label is meaningless, three co-located is a designation block.",
-      "_VERIFY": "Pattern-to-pattern proximity in a custom dictionary is NOT described in Zscaler docs - proximity is documented as pattern-to-high-confidence-phrase on predefined dictionaries with Confidence Score Threshold = High. Test before relying on this. If unsupported, MATCH_ALL degrades to document-scoped co-occurrence and this tier's false-positive profile changes materially."
+      "_notes": "Rebuilt with a CUI pattern anchor - a phrases-only dictionary has nothing for proximity to measure from. ANY_PATTERN_WITH_ANY_PHRASE gives anchor + at least one label; the 3-of-6 requirement is enforced by the engine threshold (> 2), not the dictionary.",
+      "proximityEnabledForCustomDictionary": true
     },
     {
       "name": "CUI-Decontrol-Context",
@@ -583,7 +596,7 @@
       "_notes": "DOCUMENT-SCOPED exclusion. A genuine CUI document that cites its own marking guide will suppress. Record this in the residual-risk statement."
     }
   ],
-  "_documented_limits": "8 patterns per dictionary; 256 bytes per pattern; proximity 0-10000 bytes; PCRE syntax minus lookaround; phrases fuzzy-match unless quoted; Count Unique collapses repeated matches to a single count. Engine builder: 4 subexpressions / 4 operators / 16 dictionaries per operator per level; root accepts All, Any, Sum only.",
+  "_documented_limits": "8 patterns per dictionary; 256 bytes per pattern; proximity 0-10000 bytes; PCRE syntax minus lookaround; phrases fuzzy-match unless quoted; Count Unique collapses repeated matches to a single count. Engine builder: 4 subexpressions / 4 operators / 16 dictionaries per operator per level; root accepts All, Any, Sum only. Proximity requires BOTH the proximity integer AND proximityEnabledForCustomDictionary = true on custom dictionaries. Engine match counts accept any value under 1000.",
   "engines": [
     {
       "name": "CUI-Detect-All",
@@ -591,5 +604,7 @@
       "engineExpression": "((((${CUI-Banner-Structural}.S > 0) OR (${CUI-Banner-LDC}.S > 0) OR (${CUI-PortionMark-Structural}.S > 1) OR (${CUI-Code-CTI}.S > 0) OR (${CUI-Code-PRVCY}.S > 0) OR (${CUI-Code-PROPIN}.S > 0) OR (${CUI-Code-SSEL}.S > 0) OR (${CUI-Code-ISVI}.S > 0) OR (${CUI-Code-OPSEC}.S > 0) OR (${CUI-Code-NNPI}.S > 0) OR (${CUI-Code-PCII}.S > 0) OR (${CUI-Code-CVI}.S > 0) OR (${Legacy-FOUO}.S > 0) OR (${Legacy-LES}.S > 0) OR (${Legacy-SBU}.S > 0) OR (${Legacy-Distribution-Statements}.S > 0)) OR ((${CUI-Prox-EXPT}.S > 0) OR (${CUI-Prox-TAX}.S > 0) OR (${CUI-Prox-LEI}.S > 0) OR (${CUI-Prox-CRIT}.S > 0) OR (${CUI-Prox-NUC}.S > 0) OR (${CUI-Prox-INTEL}.S > 0) OR (${CUI-Prox-LEGAL}.S > 0) OR (${CUI-Prox-PROCURE}.S > 0) OR (${CUI-LDC-Standalone}.S > 0) OR (${CUI-Designation-Indicator}.S > 2) OR (${CUI-Basic-Bare}.S > 2)))) AND NOT (${CUI-Decontrol-Context}.S > 0)",
       "_notes": "Split into two nested Any groups solely because of the 16-dictionary-per-operator ceiling, not for logical reasons - the two groups are ORed and behave as one set. Validate the three-level nesting renders in Engine Builder before relying on it; if the builder rejects the depth, restructure as root Any(OR) over the two groups and move the decontrol exclusion into each group."
     }
-  ]
+  ],
+  "_proximity_semantics": "Proximity measures between a PATTERN and a PHRASE within a custom dictionary. Pattern-to-pattern proximity is not available - any design needing a window must place one term in the pattern slot and the other in a phrase.",
+  "_phrase_semantics": "Phrase matching is case-insensitive and ignores punctuation - always, and quotes do not change this (quotes only force exact word order and disable noise-word tolerance). A phrase of SP-EXPT therefore also matches lowercase and hyphen-absent variants. Patterns are case-sensitive by default with (?i)/(?-i) tokens available. Phrases: 3-128 bytes, up to 256 per dictionary."
 }
