@@ -88,3 +88,31 @@ def test_api_roundtrip_and_credential_fill():
     assert c.post("/api/tenant-profiles", json={"vanity_domain": "bad domain!"}).status_code == 400
     assert c.delete("/api/tenant-profiles/acme-health").status_code == 200
     assert c.get("/api/tenant-profiles/acme-health").status_code == 404
+
+
+def test_write_mode_switch_requires_phrase_and_localhost(monkeypatch):
+    from fastapi.testclient import TestClient
+    import security
+    import dlp_api_server as srv
+
+    monkeypatch.delenv("ENABLE_WRITE_ACTIONS", raising=False)
+    monkeypatch.setenv("ZSCALER_BIND_HOST", "127.0.0.1")
+    monkeypatch.setattr(security, "_write_override", None)
+    c = TestClient(srv.app)
+    st = c.get("/api/write-mode").json()
+    assert st["enabled"] is False and st["source"] == "default" and st["can_toggle"] is True
+    assert c.post("/api/write-mode", json={"enable": True, "confirm": "yes"}).status_code == 403
+    assert security.writes_enabled() is False
+    on = c.post("/api/write-mode", json={"enable": True, "confirm": "YES_I_UNDERSTAND"})
+    assert on.status_code == 200 and on.json()["enabled"] is True and on.json()["source"] == "session"
+    assert security.writes_enabled() is True
+    off = c.post("/api/write-mode", json={"enable": False}).json()
+    assert off["enabled"] is False and security.writes_enabled() is False
+    # Bound to the network: the browser switch is refused, the env var still works.
+    monkeypatch.setenv("ZSCALER_BIND_HOST", "0.0.0.0")
+    monkeypatch.setattr(security, "_write_override", None)
+    r = c.post("/api/write-mode", json={"enable": True, "confirm": "YES_I_UNDERSTAND"})
+    assert r.status_code == 403 and "bound to 0.0.0.0" in r.json()["detail"]
+    assert c.get("/api/write-mode").json()["can_toggle"] is False
+    monkeypatch.setenv("ENABLE_WRITE_ACTIONS", "YES_I_UNDERSTAND")
+    assert security.writes_enabled() is True and c.get("/api/write-mode").json()["source"] == "environment"

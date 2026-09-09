@@ -72,7 +72,7 @@ function _gdSteps() {
       n: 4, title: 'Close the gaps with a policy pack',
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
       what: 'A policy pack is a ready-made set of DLP dictionaries, engines and rules for a regulation or a best practice. Deploy Studio checks the pack against the tenant first and shows exactly what would be created before you approve anything. Every rule ships disabled, so deploying never affects users.',
-      need: 'The server must be started with START_Zscaler_Assessment_WRITES_ENABLED.bat to actually write. In read-only mode you can still run the preflight and show the customer the plan.',
+      need: 'The server starts read-only, so preflight and the plan always work. To actually deploy, click Enable write mode inside Deploy Policy Packs (you type a confirmation phrase; it lasts until the server restarts), or start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.',
       status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, pick a pack, run preflight, review, approve.',
       actions: [{ label: 'Open Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
@@ -204,7 +204,7 @@ const GD_GLOSSARY = [
   ['Journey (where is this tenant?)', 'The data-governance journey has five stages: Foundation (dictionaries and engines exist), Policies deployed (every rule exists), Visibility (SSL decrypts the risky app classes and DLP rules are enabled), Containment (Cloud App Control, File Type and URL rules are enabled), Enforcement (DLP rules block). The assessment and the pack card place the tenant on that ladder and list the exact rules to enable or harden next.'],
   ['Customized', 'A baseline object the customer changed: a rule they enabled, an action they hardened from ALLOW to BLOCK, a dictionary they tuned. That is progress, not drift. It is kept as-is and shown as customized; converge mode (an explicit API option) is the only thing that overwrites it.'],
   ['Activation', 'ZIA saves changes as pending. After a deploy, an admin must click Activate in the ZIA Admin Portal for the new rules to take effect for users.'],
-  ['Read-only vs writes enabled', 'START_Zscaler_Assessment.bat runs read-only: assessment, preflight and journey checks all work, deploying does not. START_Zscaler_Assessment_WRITES_ENABLED.bat allows deploys. Use read-only when you only want to show the customer the plan.'],
+  ['Read-only vs write mode', 'The server starts read-only: assessment, preflight and journey checks all work, deploying is refused. Deploy Policy Packs shows the current mode and an Enable write mode button (type the confirmation phrase; it lasts until the server restarts). START_Zscaler_Assessment_WRITES_ENABLED.bat starts in write mode from the outset. Stay read-only when you only want to show the customer the plan.'],
   ['OneAPI credentials', 'The client ID and secret of an API client created in ZIdentity, plus the vanity domain (the short name in the login URL, acme for acme.zslogin.net) and the cloud (Production for almost everyone).'],
   ['Terraform export', 'The same plan as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Existing objects are imported, so the first plan shows exactly the gap.'],
 ];
@@ -230,7 +230,7 @@ function _gdHelp(open) {
         <li><strong>"Could not connect"</strong> under step 1 tells you the cause and the fix. Nine times out of ten it is a pasted secret that was not the real secret, or a machine behind TLS inspection.</li>
         <li><strong>"0 endpoints probed" or empty results</strong>: the credentials were rejected; test the connection.</li>
         <li><strong>Preflight says blocked</strong>: read the red card. It names the object and the missing prerequisite (a predefined dictionary, an onboarded SaaS tenant, a licensed feature).</li>
-        <li><strong>"Write actions require ENABLE_WRITE_ACTIONS"</strong>: you are in read-only mode. Close the server window and start it with START_Zscaler_Assessment_WRITES_ENABLED.bat.</li>
+        <li><strong>"Write actions require ENABLE_WRITE_ACTIONS"</strong> or a read-only banner in Deploy Policy Packs: click <em>Enable write mode</em> there and type the phrase, or start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.</li>
       </ul>
       <p class="gd-dim">Full walkthrough: GETTING_STARTED.md in the project folder.</p>
     </div>`;

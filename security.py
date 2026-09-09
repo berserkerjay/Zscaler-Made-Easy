@@ -92,8 +92,51 @@ def is_debug() -> bool:
     return os.environ.get("ZSCALER_DEBUG", "0").strip() in ("1", "true", "yes")
 
 
+WRITE_CONFIRM_PHRASE = "YES_I_UNDERSTAND"
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+# Session override set from the GUI (Deploy Studio > Enable write mode).
+# Only honoured while the server is bound to localhost, and never
+# persisted: a restart returns to whatever the environment says.
+_write_override: "bool | None" = None
+
+
 def writes_enabled() -> bool:
-    return os.environ.get("ENABLE_WRITE_ACTIONS") == "YES_I_UNDERSTAND"
+    if _write_override is not None:
+        return _write_override
+    return os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
+
+
+def write_mode_status() -> dict:
+    """What the GUI shows: whether writes are on, where that comes from,
+    and whether the operator may toggle it from the browser."""
+    env_on = os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
+    local = get_bind_host() in _LOCAL_HOSTS
+    return {
+        "enabled": writes_enabled(),
+        "source": ("session" if _write_override is not None else ("environment" if env_on else "default")),
+        "bind_host": get_bind_host(),
+        "can_toggle": local,
+        "confirm_phrase": WRITE_CONFIRM_PHRASE,
+        "reason": ("" if local else
+                   f"The server is bound to {get_bind_host()}, so write mode can only be enabled by starting it with "
+                   f"ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} (START_Zscaler_Assessment_WRITES_ENABLED.bat)."),
+    }
+
+
+def set_write_mode(enable: bool, confirm: str = "") -> dict:
+    """Toggle writes for this server process. Enabling needs the typed
+    confirmation phrase and a localhost bind; disabling is always allowed.
+    Raises ValueError with a plain-language reason."""
+    global _write_override
+    if not enable:
+        _write_override = False
+        return write_mode_status()
+    if get_bind_host() not in _LOCAL_HOSTS:
+        raise ValueError(write_mode_status()["reason"])
+    if (confirm or "").strip() != WRITE_CONFIRM_PHRASE:
+        raise ValueError(f"Type {WRITE_CONFIRM_PHRASE} exactly to enable write mode.")
+    _write_override = True
+    return write_mode_status()
 
 
 # ── Validation helpers ───────────────────────────────────────────────────────
