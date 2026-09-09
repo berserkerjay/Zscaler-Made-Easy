@@ -1,0 +1,17 @@
+[
+  {
+    "name": "ZBP-Python Code Detection Engine",
+    "description": "ZBP managed source-code DLP engine for Python.",
+    "expression": "((D:ZBP-Python Code Detection > 0))"
+  },
+  {
+    "name": "ZBP-JavaScript Code Detection Engine",
+    "description": "ZBP managed source-code DLP engine for JavaScript.",
+    "expression": "((D:ZBP-JavaScript Code Detection > 0))"
+  },
+  {
+    "name": "ZBP-Shell Script Detection Engine",
+    "description": "ZBP managed source-code DLP engine for shell scripts.",
+    "expression": "((D:ZBP-Shell Script Detection > 0))"
+  }
+]

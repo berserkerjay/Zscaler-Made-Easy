@@ -165,6 +165,17 @@ def _field(obj: Any, *keys: str, default: Any = None) -> Any:
     return default
 
 
+def engine_ids_of(r: Any) -> List[Any]:
+    """IDs of the DLP engines a tenant rule references, whatever shape the
+    SDK returned them in ([{id}], [Obj], or bare ids)."""
+    out = []
+    for e in _field(r, "dlp_engines", "dlpEngines", default=[]) or []:
+        eid = e if isinstance(e, (int, str)) else _field(e, "id")
+        if eid is not None:
+            out.append(eid)
+    return sorted(out, key=str)
+
+
 def _rule_summary(r: Any) -> Dict[str, Any]:
     return {
         "id": _field(r, "id"),
@@ -174,12 +185,16 @@ def _rule_summary(r: Any) -> Dict[str, Any]:
         "action": _field(r, "action"),
         "state": _field(r, "state"),
         "type": _field(r, "type"),
+        # Content fields used for baseline drift detection.
+        "engine_ids": engine_ids_of(r),
+        "severity": _field(r, "severity"),
+        "description": _field(r, "description"),
     }
 
 
 def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     """What tenant state the plan has to read for these policies."""
-    out = {"channels": set(), "casb": False, "templates": False, "labels": False}
+    out = {"channels": set(), "casb": False, "templates": False, "labels": False, "app_classes": set()}
     for p in policy_defs:
         ch = channel_of(p)
         out["channels"].add(ch)
@@ -189,6 +204,8 @@ def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
             out["templates"] = True
         if p.get("labels"):
             out["labels"] = True
+        for cls in p.get("cloud_app_classes") or []:
+            out["app_classes"].add(str(cls).upper())
     return out
 
 
@@ -206,7 +223,26 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
         "templates_error": None,
         "labels": None,       # name -> id
         "labels_error": None,
+        "app_classes": {},    # class -> [application identifiers] (dynamic scoping, e.g. AI_ML)
+        "app_class_errors": {},
     }
+    for cls in sorted(need.get("app_classes") or ()):
+        try:
+            svc = getattr(zia, "cloud_applications", None)
+            if svc is None:
+                raise RuntimeError("cloud_applications is not available in the installed zscaler-sdk-python")
+            data, err = _nx(svc.list_cloud_app_policy(query_params={"app_class": cls, "page_size": 1000}))
+            if err:
+                raise RuntimeError(str(err))
+            apps = []
+            for a in data or []:
+                ident = _field(a, "app", "app_name", "appName", "name")
+                if ident:
+                    apps.append(str(ident))
+            state["app_classes"][cls] = sorted(set(apps))
+        except Exception as e:  # noqa: BLE001
+            state["app_classes"][cls] = []
+            state["app_class_errors"][cls] = str(e)[:200]
     for ch in sorted(need["channels"]):
         if ch == WEB or ch not in CHANNELS:
             continue
@@ -350,6 +386,26 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
             missing.append(f"notification template '{tpl}' does not exist in the tenant (Administration > DLP Notification Templates)")
             depends.append(("missing", f"Notification template: {tpl}"))
 
+    # Dynamic cloud-application scope by application class (e.g. AI_ML):
+    # resolved against the tenant's current catalogue at plan time, so new
+    # applications Zscaler classifies later are picked up on the next deploy.
+    classes = [str(c).upper() for c in (policy_def.get("cloud_app_classes") or [])]
+    if classes:
+        apps: List[str] = []
+        for cls in classes:
+            err = (state.get("app_class_errors") or {}).get(cls)
+            found = (state.get("app_classes") or {}).get(cls) or []
+            if err:
+                missing.append(f"cloud applications of class {cls} could not be listed ({err})")
+                depends.append(("missing", f"Cloud applications: {cls}"))
+            elif not found:
+                missing.append(f"the tenant exposes no cloud applications of class {cls}; set \"cloud_applications\" explicitly instead")
+                depends.append(("missing", f"Cloud applications: {cls}"))
+            else:
+                apps.extend(found)
+                depends.append(("resource", f"Cloud applications: {cls} ({len(found)})"))
+        resolved["cloud_applications"] = sorted(set(apps))
+
     # Rule labels by name.
     labels = policy_def.get("labels") or []
     if labels:
@@ -469,6 +525,8 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
     New rules always go to order 1 (top of the policy)."""
     if channel == WEB:
         from dlp_importer import build_policy_payload
+        if resolved.get("cloud_applications") and not p.get("cloud_applications"):
+            p = dict(p, cloud_applications=list(resolved["cloud_applications"]))
         return build_policy_payload(p, engine_ids, use_rank_0=use_rank_0)
 
     body: Dict[str, Any] = {
@@ -517,6 +575,12 @@ def add_rule(zia, channel: str, payload: Dict[str, Any]):
     return svc.add_rule(**payload)
 
 
+def update_rule(zia, channel: str, rule_id: Any, payload: Dict[str, Any]):
+    """Overwrite an existing rule with a full baseline payload (PUT semantics)."""
+    svc = getattr(zia, CHANNELS[channel]["service"])
+    return svc.update_rule(rule_id, **payload)
+
+
 def list_rule_names(zia, channel: str) -> Tuple[Optional[set], Optional[str]]:
     """Fresh name set for post-deploy verification."""
     svc = getattr(zia, CHANNELS[channel]["service"], None)
@@ -553,4 +617,6 @@ def policy_signature_extra(p: Dict[str, Any]) -> Dict[str, Any]:
         extra["labels"] = sorted(p["labels"])
     if p.get("file_types"):
         extra["file_types"] = sorted(p["file_types"])
+    if p.get("cloud_app_classes"):
+        extra["cloud_app_classes"] = sorted(str(c).upper() for c in p["cloud_app_classes"])
     return extra

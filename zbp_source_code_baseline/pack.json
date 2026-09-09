@@ -1,0 +1,15 @@
+{
+  "name": "ZBP Source Code to AI Baseline",
+  "version": "1.0",
+  "description": "Zscaler Best Practice baseline that blocks uploads of Python, JavaScript and shell-script source code to AI/ML applications. The rule's application scope is resolved from the tenant's AI_ML cloud-application catalogue at deploy time, so applications Zscaler classifies later are covered on the next deploy. Immutable: objects that drift from this definition are restored. The rule ENFORCES (BLOCK); deploy in a pilot scope first if you need to tune the dictionaries.",
+  "source": "mkoyfman/zbp-automation zbp-source-code-dlp-zia",
+  "references": [
+    "Zscaler Best Practices: Data Protection for Generative AI"
+  ],
+  "confidence_tweaks": [],
+  "baseline": {
+    "immutable": true,
+    "prefix": "ZBP-",
+    "version": "1.0"
+  }
+}

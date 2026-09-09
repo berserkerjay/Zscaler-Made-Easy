@@ -737,6 +737,36 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     return out
 
 
+@app.post("/api/dlp-packs/baseline-status")
+async def dlp_packs_baseline_status(req: DLPPackDeployRequest):
+    """Read-only drift check for immutable baseline packs: every object
+    each baseline defines is reported as in_sync, drifted, missing or
+    blocked against the live tenant. Works without the write gate — it
+    is the same planner as /preflight with nothing written. With no
+    pack_ids, every baseline pack in the project is checked."""
+    try:
+        import pack_deploy
+        from dlp_importer import discover_packs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_deploy unavailable: {e}")
+    if req.pack_ids:
+        packs = _resolve_pack_ids(req.pack_ids)
+    else:
+        packs = [{"id": p["id"], "dir": p["dir"]} for p in discover_packs()
+                 if pack_deploy.baseline_meta(p, p["id"])]
+    if not packs:
+        raise HTTPException(status_code=404, detail="No baseline packs found (pack.json needs a \"baseline\" section).")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    report = await asyncio.to_thread(
+        pack_deploy.preflight, client, packs,
+        use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
+    )
+    out = pack_deploy.baseline_status(report)
+    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    return out
+
+
 @app.post("/api/dlp-packs/apply")
 async def dlp_packs_apply(req: DLPPackDeployRequest):
     """Execute an approved plan. Requires confirm=true and the plan_hash

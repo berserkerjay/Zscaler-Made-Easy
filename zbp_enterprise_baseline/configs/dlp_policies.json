@@ -1,0 +1,89 @@
+[
+  {
+    "name": "ZBP-Financial Information-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "protocols": [
+      "ANY_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-ITAR International Traffic in Arms Regulations-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-ITAR Phrases"
+    ],
+    "protocols": [
+      "ANY_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-Traffic Light Protocol-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-TLP Red",
+      "ZBP-TLP Amber Strict",
+      "ZBP-TLP Amber"
+    ],
+    "protocols": [
+      "ANY_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-US PII-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "protocols": [
+      "ANY_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-US PHI-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-US PHI - Medium Confidence",
+      "ZBP-US PHI - High Confidence"
+    ],
+    "protocols": [
+      "ANY_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-Private Keys-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "protocols": [
+      "ANY_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  }
+]

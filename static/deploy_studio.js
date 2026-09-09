@@ -4,7 +4,7 @@
 // State lives in DZ; every step re-renders from it.
 
 const DZ = {
-  packs: [], selected: new Set(), details: {}, open: new Set(),
+  packs: [], selected: new Set(), details: {}, open: new Set(), drift: {},
   options: { use_rank_0: false, apply_tweaks: true },
   step: 1, report: null, result: null, busy: false, consent: false, error: '',
 };
@@ -12,6 +12,7 @@ const DZ_STEPS = ['Select packs', 'Preflight', 'Approve', 'Deploy'];
 const DZ_STATUS = {
   create:             { label: 'Will create',     cls: 'st-create',  icon: '+' },
   modify:             { label: 'Will modify',     cls: 'st-modify',  icon: '✎' },
+  restore:            { label: 'Will restore',    cls: 'st-modify',  icon: '↺' },
   reuse:              { label: 'Already present', cls: 'st-reuse',   icon: '✓' },
   reuse_differs:      { label: 'Kept as-is',      cls: 'st-differs', icon: '≠' },
   conflict:           { label: 'Conflict',        cls: 'st-blocked', icon: '!' },
@@ -21,6 +22,7 @@ const DZ_STATUS = {
   // apply results
   created:  { label: 'Created',  cls: 'st-ok',      icon: '✓' },
   modified: { label: 'Modified', cls: 'st-ok',      icon: '✓' },
+  restored: { label: 'Restored', cls: 'st-ok',      icon: '↺' },
   reused:   { label: 'Reused',   cls: 'st-reuse',   icon: '✓' },
   skipped:  { label: 'Skipped',  cls: 'st-blocked', icon: '–' },
   failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕' },
@@ -137,6 +139,9 @@ function _dzRenderSelect() {
             <span class="track"><span class="knob"></span></span>
           </label>
         </div>
+        ${p.baseline ? `<div class="dz-baseline" title="Immutable baseline: objects that drift from this definition are restored on deploy; objects it does not define are never touched.">
+          <span class="dz-chip kind-baseline">Immutable baseline</span>${p.baseline.prefix ? `<span class="dz-chip">prefix ${_dzE(p.baseline.prefix)}</span>` : ''}
+          <span class="d">Authoritative: drift is restored on deploy.</span></div>` : ''}
         <p>${_dzE(p.description || 'No description provided.')}</p>
         <div class="dz-meta">
           <span class="dz-chip kind-dictionary">${_dzN(p.dictionaries || 0, 'dictionary', 'dictionaries')}</span>
@@ -144,8 +149,12 @@ function _dzRenderSelect() {
           <span class="dz-chip kind-policy">${_dzN(p.policies || 0, 'policy', 'policies')}</span>
           ${_dzChannelChips(p.channels)}
         </div>
-        <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
+        <div class="dz-links">
+          <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
+          ${p.baseline ? `<button type="button" class="dz-link" onclick="event.stopPropagation(); _dzCheckDrift('${_dzE(p.id)}')">${(DZ.drift[p.id] || {}).busy ? 'Checking…' : 'Check drift'}</button>` : ''}
+        </div>
         ${det}
+        ${p.baseline ? _dzDriftHtml(p.id) : ''}
       </div>`;
     }).join('');
     body.innerHTML = `
@@ -194,6 +203,49 @@ async function _dzToggleDetail(id) {
   }
   _dzRenderSelect();
 }
+// Read-only baseline drift check: same planner as preflight, nothing
+// written, works without the write gate. Renders inline on the card.
+async function _dzCheckDrift(id) {
+  DZ.drift[id] = { busy: true };
+  _dzRenderSelect();
+  try {
+    const r = await fetch('/api/dlp-packs/baseline-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack_ids: [id], ..._dzCreds() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    DZ.drift[id] = { data, at: new Date() };
+    const b = (data.baselines || [])[0] || {};
+    announce(`Baseline ${id}: ${b.in_sync || 0} in sync, ${b.drifted || 0} drifted, ${b.missing || 0} missing.`);
+  } catch (e) {
+    DZ.drift[id] = { error: e.message };
+  }
+  _dzRenderSelect();
+}
+const DZ_DRIFT = {
+  in_sync: { label: 'In sync',  cls: 'ok' },
+  drifted: { label: 'Drifted',  cls: 'warn' },
+  missing: { label: 'Missing',  cls: 'info' },
+  blocked: { label: 'Blocked',  cls: 'fail' },
+};
+function _dzDriftHtml(id) {
+  const s = DZ.drift[id];
+  if (!s || s.busy) return s && s.busy ? `<div class="dz-drift" onclick="event.stopPropagation()"><span class="dz-status busy">Checking</span> Reading the tenant…</div>` : '';
+  if (s.error) return `<div class="dz-drift is-error" onclick="event.stopPropagation()"><strong>Drift check failed.</strong> ${_dzE(s.error)}</div>`;
+  const b = (s.data.baselines || [])[0];
+  if (!b) return '';
+  const st = DZ_DRIFT[b.state] || DZ_DRIFT.blocked;
+  const objs = (b.objects || []).slice(0, 8);
+  return `<div class="dz-drift ${st.cls}" onclick="event.stopPropagation()">
+    <div class="dz-drift-top"><span class="dz-status ${b.state === 'in_sync' ? 'ready' : (b.state === 'blocked' ? 'blocked' : 'warnings')}">${st.label}</span>
+      <span class="counts"><b>${b.in_sync}</b> in sync · <b>${b.drifted}</b> drifted · <b>${b.missing}</b> missing${b.blocked ? ` · <b>${b.blocked}</b> blocked` : ''}</span>
+      <span class="when">${_dzE(s.data.tenant_label || '')}</span></div>
+    ${objs.length ? `<ul>${objs.map(o => `<li><span class="dz-chip kind-${_dzE(o.kind)}">${DZ_KIND[o.kind] || o.kind}</span> <span class="nm">${_dzE(o.name)}</span> <span class="st">${_dzE((DZ_DRIFT[o.state] || {}).label || o.state)}${o.drift && o.drift.length ? ` · ${_dzE(o.drift.join(', '))}` : ''}${o.adopt ? ' · not created by DLP-Check' : ''}</span></li>`).join('')}${(b.objects || []).length > 8 ? `<li class="more">+${b.objects.length - 8} more</li>` : ''}</ul>` : `<div class="d">Every object this baseline defines matches the tenant.</div>`}
+    ${b.state !== 'in_sync' && b.state !== 'blocked' ? `<div class="d">Select the pack and run preflight to restore drift and create what is missing.</div>` : ''}
+  </div>`;
+}
+
 function _dzDetailHtml(id) {
   const d = DZ.details[id];
   if (!d) return `<div class="dz-detail">Loading…</div>`;
@@ -282,12 +334,13 @@ function _dzRenderReview() {
   const R = DZ.report;
   const items = R.items || [];
   const by = s => items.filter(i => i.status === s);
-  const creates = [...by('create'), ...by('modify')];
+  const restores = by('restore');
+  const creates = [...by('create'), ...by('modify'), ...restores];
   const differs = by('reuse_differs');
   const blocked = [...by('conflict'), ...by('blocked_dependency'), ...by('skip_empty')];
   const reused = [...by('reuse'), ...by('noop')];
   const lead = { ready: 'Ready to deploy', warnings: 'Ready, with things to review', blocked: 'Deployment is blocked' }[R.status];
-  const sub = `${_dzN(creates.length, 'change')} · ${_dzN(differs.length, 'existing object')} kept as-is · ${_dzN(blocked.length, 'item')} skipped · ${_dzN(reused.length, 'item')} already in place`;
+  const sub = `${_dzN(creates.length, 'change')}${restores.length ? ` (${_dzN(restores.length, 'baseline restore')})` : ''} · ${_dzN(differs.length, 'existing object')} kept as-is · ${_dzN(blocked.length, 'item')} skipped · ${_dzN(reused.length, 'item')} already in place`;
   const t = R.tenant || {};
   body.innerHTML = `
     <div class="dz-hero">
@@ -296,7 +349,7 @@ function _dzRenderReview() {
     </div>
     <div class="dz-kv">
       <div><div class="k">Will create</div><div class="v">${creates.filter(i => i.status === 'create').length}</div></div>
-      <div><div class="k">Will modify</div><div class="v">${creates.filter(i => i.status === 'modify').length}</div></div>
+      <div><div class="k">${restores.length ? 'Will restore / modify' : 'Will modify'}</div><div class="v">${creates.filter(i => i.status === 'modify' || i.status === 'restore').length}</div></div>
       <div><div class="k">Skipped</div><div class="v">${blocked.length}</div></div>
       <div><div class="k">Tenant rules</div><div class="v">${t.rules ?? '–'}<span style="font-size:0.75rem;color:var(--dim);font-weight:500;"> / ${t.rule_cap || 127}</span></div></div>
     </div>
@@ -306,7 +359,8 @@ function _dzRenderReview() {
     ${_dzDepsHtml(R.dependencies)}
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml(items, null) : `
-    ${_dzSection('Changes that will be written', creates)}
+    ${_dzSection('Drifted from baseline — will be restored', restores)}
+    ${_dzSection('Changes that will be written', creates.filter(i => i.status !== 'restore'))}
     ${_dzSection('Already exist with different content — tenant version kept', differs)}
     ${_dzSection('Skipped — dependency or conflict', blocked)}
     ${_dzSection('Already in place — nothing to do', reused, { open: false })}`}`;
@@ -324,7 +378,8 @@ function _dzRenderReview() {
 function _dzRenderApprove() {
   const R = DZ.report;
   const items = R.items || [];
-  const writes = items.filter(i => i.status === 'create' || i.status === 'modify');
+  const writes = items.filter(i => i.status === 'create' || i.status === 'modify' || i.status === 'restore');
+  const restores = items.filter(i => i.status === 'restore');
   const warns = R.warnings || [];
   const body = document.getElementById('dzBody');
   body.innerHTML = `
@@ -337,7 +392,9 @@ function _dzRenderApprove() {
     ${_dzSection('Exactly what will be written', writes)}
     <div class="dz-consent">
       <input type="checkbox" id="dzConsent" ${DZ.consent ? 'checked' : ''} onchange="DZ.consent=this.checked;_dzRenderApprove()">
-      <label for="dzConsent">I've reviewed this plan and the warnings above, and I authorize these changes to <strong>${_dzE(R.tenant_label || 'the tenant')}</strong>. Existing objects are never overwritten; changes still need activation in ZIA afterwards.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
+      <label for="dzConsent">I've reviewed this plan and the warnings above, and I authorize these changes to <strong>${_dzE(R.tenant_label || 'the tenant')}</strong>. ${restores.length
+        ? `<strong>${_dzN(restores.length, 'drifted baseline object')} will be overwritten</strong> with the baseline definition; every other existing object is left untouched.`
+        : 'Existing objects are never overwritten;'} Changes still need activation in ZIA afterwards.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
     </div>`;
   document.getElementById('dzFoot').innerHTML = `
     <div class="dz-summary">${DZ.consent ? 'Ready when you are.' : 'Tick the box to enable deployment.'}</div>
@@ -400,11 +457,12 @@ function _dzRenderDeploy() {
     return _dzRow({ name: id, kind: 'policy', packs: [] }, ok ? 'created' : 'failed', (ok ? 'Verified — tenant matches the pack. ' : 'Verification found differences. ') + detail).replace('kind-policy">Policy', 'kind-policy">Pack');
   }).join('');
   body.innerHTML = `
-    <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
+    <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created · ${s.restored || 0} restored · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
     ${X.activation_required ? `<div class="dz-card sev-warning" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activate to take effect</div><div class="d">ZIA saved these changes as pending. Open the ZIA Admin Portal and click Activate (or run ziaActivator) — users are unaffected until you do.</div></div></div>` : ''}
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml((DZ.report || {}).items || [], results) : `
     ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.error) })}
+    ${_dzSection('Restored to baseline', results.filter(r => r.status === 'restored'), { fn: r => _dzRow(r, 'restored', `${r.id ? `ID ${r.id}` : ''}${r.drift && r.drift.length ? ` · ${r.drift.join(', ')}` : ''}`) })}
     ${_dzSection('Created & modified', results.filter(r => r.status === 'created' || r.status === 'modified'), { fn: r => _dzRow(r, r.status, r.id ? `ID ${r.id}` : '') })}
     ${_dzSection('Skipped', results.filter(r => r.status === 'skipped'), { fn: r => _dzRow(r, 'skipped', r.reason) })}
     ${_dzSection('Reused from tenant', results.filter(r => r.status === 'reused'), { open: false, fn: r => _dzRow(r, 'reused', r.id ? `ID ${r.id}` : '') })}`}
@@ -510,16 +568,16 @@ function _dzFlowGraph(items, results) {
 }
 
 const DZ_FLOW_STATUS = {
-  create: 'st-create', modify: 'st-modify', reuse: 'st-reuse', reuse_differs: 'st-differs',
+  create: 'st-create', modify: 'st-modify', restore: 'st-modify', reuse: 'st-reuse', reuse_differs: 'st-differs',
   conflict: 'st-blocked', blocked_dependency: 'st-blocked', skip_empty: 'st-blocked', noop: 'st-reuse', tenant: 'st-tenant',
   missing: 'st-fail',
-  created: 'st-ok', modified: 'st-ok', reused: 'st-reuse', skipped: 'st-blocked', failed: 'st-fail',
+  created: 'st-ok', modified: 'st-ok', restored: 'st-ok', reused: 'st-reuse', skipped: 'st-blocked', failed: 'st-fail',
 };
 const DZ_FLOW_LABEL = {
-  create: 'will create', modify: 'will modify', reuse: 'already present', reuse_differs: 'kept as-is (differs)',
+  create: 'will create', modify: 'will modify', restore: 'will restore', reuse: 'already present', reuse_differs: 'kept as-is (differs)',
   conflict: 'conflict', blocked_dependency: 'skipped', skip_empty: 'skipped', noop: 'no change', tenant: 'in tenant',
   missing: 'MISSING',
-  created: 'created', modified: 'modified', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
+  created: 'created', modified: 'modified', restored: 'restored', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
 };
 
 function _dzFlowHtml(items, results) {
@@ -532,7 +590,7 @@ function _dzFlowHtml(items, results) {
     const a = g.nodes.get(e.from), b = g.nodes.get(e.to);
     const x1 = a.x + G.w, y1 = a.y + G.h / 2, x2 = b.x, y2 = b.y + G.h / 2, dx = G.gapX * 0.55;
     const st = b.result || b.status;
-    const flow = (st === 'create' || st === 'modify' || st === 'created' || st === 'modified') ? ' flow' : '';
+    const flow = (st === 'create' || st === 'modify' || st === 'restore' || st === 'created' || st === 'modified' || st === 'restored') ? ' flow' : '';
     const bad = (st === 'conflict' || st === 'blocked_dependency' || st === 'skip_empty' || st === 'skipped' || st === 'failed') ? ' bad' : '';
     return `<path class="dz-edge${flow}${bad}" data-from="${_dzE(e.from)}" data-to="${_dzE(e.to)}" d="M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>`;
   }).join('');
@@ -555,7 +613,7 @@ function _dzFlowHtml(items, results) {
   for (const n of g.nodes.values()) {
     const st = n.result || n.status;
     if (st === 'create' || st === 'created') counts.create++;
-    else if (st === 'modify' || st === 'modified') counts.modify++;
+    else if (st === 'modify' || st === 'modified' || st === 'restore' || st === 'restored') counts.modify++;
     else if (st === 'tenant') counts.tenant++;
     else if (['conflict', 'blocked_dependency', 'skip_empty', 'skipped', 'failed', 'missing'].includes(st)) counts.blocked++;
     else counts.reuse++;
@@ -565,7 +623,7 @@ function _dzFlowHtml(items, results) {
       <div class="dz-flow-bar">
         <div class="dz-flow-legend">
           <span><i class="sw st-create"></i>${results ? 'created' : 'will create'} ${counts.create}</span>
-          <span><i class="sw st-modify"></i>modify ${counts.modify}</span>
+          <span><i class="sw st-modify"></i>${results ? 'modified/restored' : 'modify/restore'} ${counts.modify}</span>
           <span><i class="sw st-reuse"></i>reuse ${counts.reuse}</span>
           <span><i class="sw st-tenant"></i>tenant ${counts.tenant}</span>
           <span><i class="sw st-blocked"></i>skipped/blocked ${counts.blocked}</span>
