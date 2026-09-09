@@ -34,6 +34,9 @@ function _gdSave() {
 function _gdSteps() {
   const creds = !!(_gdVal('vd') && _gdVal('cid') && (_gdVal('csec') || (GD.profile && GD.profileHasSecret)));
   const sameTenant = GD.conn && GD.conn.vd === _gdVal('vd');
+  const connected = !!(sameTenant && GD.conn.ok);
+  const runBtn = document.getElementById('runBtn');
+  const running = !!(runBtn && runBtn.disabled);
   const results = document.getElementById('results');
   const assessed = !!(results && results.offsetParent !== null && results.textContent.trim().length > 50);
   let deployed = null;
@@ -42,23 +45,23 @@ function _gdSteps() {
     {
       n: 1, title: 'Connect to the tenant',
       state: sameTenant && GD.conn.ok ? 'done' : (creds ? 'ready' : 'todo'),
-      what: 'Enter the customer\'s cloud, vanity domain, API client ID and client secret in Tenant Configuration, then test the connection. Nothing is changed in the tenant; the tool only reads.',
+      what: 'Enter the customer\'s cloud, vanity domain, API client ID and client secret in Tenant Configuration and click Authenticate. Nothing is changed in the tenant; the tool only reads.',
       need: 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values.',
       status: sameTenant && GD.conn.ok
         ? `Connected to ${_gdE(GD.conn.label)}: ${GD.conn.dictionaries} dictionaries, ${GD.conn.engines} engines, ${GD.conn.web_rules} web DLP rules.`
-        : (creds ? 'Details entered. Test the connection before going further.' : 'Fill in the four tenant fields to begin.'),
+        : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the four tenant fields, then click Authenticate.'),
       actions: [
         { label: 'Go to tenant details', fn: '_gdGoConfig()', kind: creds ? 'quiet' : 'primary' },
-        { label: GD.testing ? 'Testing…' : 'Test connection', fn: '_gdTest()', kind: creds ? 'primary' : 'quiet', disabled: !creds || GD.testing },
+        { label: GD.testing ? 'Authenticating…' : 'Authenticate', fn: '_gdTest()', kind: creds ? 'primary' : 'quiet', disabled: !creds || GD.testing },
       ],
     },
     {
       n: 2, title: 'Assess the tenant',
-      state: assessed ? 'done' : (sameTenant && GD.conn && GD.conn.ok ? 'ready' : 'todo'),
+      state: assessed ? 'done' : (connected ? 'ready' : 'todo'),
       what: 'Runs 300+ automated checks against the tenant and produces a maturity score with a list of findings. Takes about 90 seconds. Read-only.',
-      need: 'Organisation name, your name, and a scope. For a DLP engagement keep the default scopes ticked.',
-      status: assessed ? 'Assessment complete. Results are below.' : 'Choose a scope and click Run Assessment.',
-      actions: [{ label: 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !creds }],
+      need: 'A successful Authenticate in step 1, your organisation and assessor names, and a scope. For a DLP engagement keep the default scopes ticked.',
+      status: running ? 'Running… the progress card below shows each check as it completes.' : (assessed ? 'Assessment complete. Results are below.' : (connected ? 'Choose a scope in Tenant Configuration, then click Run assessment here.' : 'Authenticate in step 1 first.')),
+      actions: [{ label: running ? 'Running…' : 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !connected || running }],
     },
     {
       n: 3, title: 'Read the results',
@@ -114,11 +117,12 @@ function _gdTlsNote(t) {
   if (!t) return '';
   if (t.ca_bundle && !t.ca_bundle_exists) return ` · <strong>CA bundle not found</strong>: REQUESTS_CA_BUNDLE points at <code>${_gdE(t.ca_bundle)}</code> but that file does not exist; connections will fail with a certificate error.`;
   if (t.ca_bundle) return ` · TLS inspection CA bundle: <code>${_gdE(t.ca_bundle)}</code>${t.local_settings_bat || t.local_settings_env ? ' (from local_settings)' : ''}.`;
-  return ' · No corporate CA bundle configured. If Test connection reports a certificate error, copy local_settings.bat.example to local_settings.bat and set REQUESTS_CA_BUNDLE; it survives updates.';
+  return ' · No corporate CA bundle configured. If Authenticate reports a certificate error, copy local_settings.bat.example to local_settings.bat and set REQUESTS_CA_BUNDLE; it survives updates.';
 }
 
 // ── Rendering ──────────────────────────────────────────────────────
 function _gdRender() {
+  _gdAuthStatus();
   const host = document.getElementById('gdPanel');
   if (!host) return;
   const steps = _gdSteps();
@@ -156,6 +160,15 @@ function _gdRender() {
     </ol>`;
 }
 
+function _gdAuthStatus() {
+  const st = document.getElementById('authStatus');
+  if (!st) return;
+  const c = GD.conn;
+  if (GD.testing) { st.textContent = 'Authenticating…'; st.className = 'auth-status'; return; }
+  if (!c || c.vd !== _gdVal('vd')) { st.textContent = ''; st.className = 'auth-status'; return; }
+  st.className = 'auth-status ' + (c.ok ? 'ok' : 'bad');
+  st.textContent = c.ok ? `Connected to ${c.label}. Now run the assessment from Start here, step 2.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
+}
 function _gdConnHtml() {
   const c = GD.conn;
   if (!c || c.vd !== _gdVal('vd')) return '';
@@ -182,10 +195,9 @@ function _gdGoResults() {
 }
 function _gdRun() {
   const btn = document.getElementById('runBtn');
-  if (!btn) return;
-  if (btn.disabled) { alert('Run Assessment is disabled: an assessment is already running.'); return; }
-  btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  btn.click();
+  if (btn && btn.disabled) { alert('An assessment is already running.'); return; }
+  if (typeof runAssessment === 'function') runAssessment(); else if (btn) btn.click();
+  _gdRender();
 }
 async function _gdTest() {
   if (typeof migrateCredBody !== 'function') return;
