@@ -99,8 +99,9 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     result: Dict[str, Any] = {"ok": False, "updated": False, "before": None, "after": None, "steps": steps, "error": None,
                               "deps_ok": None, "restart_required": False}
 
-    def step(name: str, ok: bool, detail: str = "") -> None:
-        steps.append({"name": name, "ok": ok, "detail": detail[-1500:]})
+    def step(name: str, ok: bool, detail: str = "", soft: bool = False) -> None:
+        # soft: a failure here does not stop the update (dependencies).
+        steps.append({"name": name, "ok": ok, "detail": detail[-1500:], "soft": soft})
 
     st = status(app_dir)
     result["before"] = st.get("local_commit")
@@ -150,13 +151,15 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
                                     cwd=app_dir, capture_output=True, text=True, timeout=PIP_TIMEOUT)
                 result["deps_ok"] = cp.returncode == 0
                 step("Install Python dependencies", cp.returncode == 0,
-                     "requirements.txt installed" if cp.returncode == 0 else (cp.stderr or cp.stdout or "").strip()[-600:])
+                     "requirements.txt installed" if cp.returncode == 0
+                     else "pip reported a problem; the app still runs. If a feature fails to import, run INSTALL_Zscaler_Assessment.bat once. "
+                          + (cp.stderr or cp.stdout or "").strip()[-400:], soft=True)
             except subprocess.TimeoutExpired:
                 result["deps_ok"] = False
-                step("Install Python dependencies", False, "pip did not finish within 5 minutes; run INSTALL_Zscaler_Assessment.bat once.")
+                step("Install Python dependencies", False, "pip did not finish within 5 minutes; run INSTALL_Zscaler_Assessment.bat once.", soft=True)
             except Exception as e:  # noqa: BLE001
                 result["deps_ok"] = False
-                step("Install Python dependencies", False, str(e)[:300])
+                step("Install Python dependencies", False, str(e)[:300], soft=True)
     result["ok"] = True
     result["restart_required"] = result["updated"]
     return result

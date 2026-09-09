@@ -116,7 +116,7 @@ body.gd-guided .gd-advanced { display: none !important; }
 .gd-update { margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: rgba(148,163,184,0.05); font-size: 0.82rem; }
 .gd-update[hidden] { display: none; }
 .gd-upd-line { padding: 0.15rem 0; }
-.gd-upd-line.ok { color: var(--pass); } .gd-upd-line.warn { color: var(--fail); }
+.gd-upd-line.ok { color: var(--pass); } .gd-upd-line.warn { color: var(--fail); } .gd-upd-line.soft { color: var(--warn); }
 .gd-upd-line .dim { color: var(--dim); }
 .gd-upd-cmd { white-space: pre-wrap; word-break: break-all; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.74rem; padding: 0.5rem 0.7rem; margin: 0.4rem 0; border-radius: 8px; background: rgba(15,23,42,0.5); border: 1px solid var(--border); color: var(--text); }
 body.theme-light .gd-upd-cmd { background: rgba(15,23,42,0.05); }

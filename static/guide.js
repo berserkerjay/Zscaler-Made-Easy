@@ -164,7 +164,7 @@ function _gdUpdateHelp() {
 async function _gdUpdateApp() {
   const btn = document.querySelector('#gdWhere .gd-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   const lines = [];
-  const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? 'warn' : l.ok ? 'ok' : ''}">${l.ok === false ? '✗' : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);
+  const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'warn') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✗') : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);
   lines.push({ name: 'Pulling the latest code from GitHub', ok: null }); show();
   let res;
   try {
@@ -177,7 +177,7 @@ async function _gdUpdateApp() {
     return;
   }
   lines.length = 0;
-  for (const s of res.steps || []) lines.push({ name: s.name, ok: s.ok, detail: s.detail });
+  for (const s of res.steps || []) lines.push({ name: s.name, ok: s.ok, detail: s.detail, soft: !!s.soft });
   if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; } return; }
   if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; } _gdUpdateCheck(); return; }
   lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
