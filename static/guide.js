@@ -5,7 +5,9 @@
 // them in plain language so a first-time operator can follow the four
 // steps without knowing ZIA DLP internals.
 
-const GD = { conn: null, testing: false, mode: 'guided', helpOpen: false, timer: null };
+const GD = { conn: null, testing: false, mode: 'guided', helpOpen: false, timer: null,
+             profile: '', profileHasSecret: false, profiles: [], profileDetail: null, profileBusy: false, packs: [] };
+const GD_LS_PROFILE = 'zassess_profile';
 const GD_LS_MODE = 'zassess_guide_mode';
 const GD_LS_CONN = 'zassess_guide_conn';
 const GD_LS_DEPLOY = 'zassess_last_deploy';
@@ -16,19 +18,21 @@ const _gdVal = id => ((document.getElementById(id) || {}).value || '').trim();
 function _gdLoad() {
   try {
     GD.mode = localStorage.getItem(GD_LS_MODE) || 'guided';
+    GD.profile = localStorage.getItem(GD_LS_PROFILE) || '';
     const c = localStorage.getItem(GD_LS_CONN); if (c) GD.conn = JSON.parse(c);
   } catch (e) { /* storage may be unavailable */ }
 }
 function _gdSave() {
   try {
     localStorage.setItem(GD_LS_MODE, GD.mode);
+    localStorage.setItem(GD_LS_PROFILE, GD.profile || '');
     if (GD.conn) localStorage.setItem(GD_LS_CONN, JSON.stringify(GD.conn));
   } catch (e) { /* ignore */ }
 }
 
 // ── Step state ────────────────────────────────────────────────────
 function _gdSteps() {
-  const creds = !!(_gdVal('vd') && _gdVal('cid') && _gdVal('csec'));
+  const creds = !!(_gdVal('vd') && _gdVal('cid') && (_gdVal('csec') || (GD.profile && GD.profileHasSecret)));
   const sameTenant = GD.conn && GD.conn.vd === _gdVal('vd');
   const results = document.getElementById('results');
   const assessed = !!(results && results.offsetParent !== null && results.textContent.trim().length > 50);
@@ -69,7 +73,7 @@ function _gdSteps() {
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
       what: 'A policy pack is a ready-made set of DLP dictionaries, engines and rules for a regulation or a best practice. Deploy Studio checks the pack against the tenant first and shows exactly what would be created before you approve anything. Every rule ships disabled, so deploying never affects users.',
       need: 'The server must be started with START_Zscaler_Assessment_WRITES_ENABLED.bat to actually write. In read-only mode you can still run the preflight and show the customer the plan.',
-      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created, ${deployed.restored || 0} restored.` : 'Open Deploy Policy Packs, pick a pack, run preflight, review, approve.',
+      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, pick a pack, run preflight, review, approve.',
       actions: [{ label: 'Open Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
   ];
@@ -255,9 +259,19 @@ function _gdJourneyCard(j) {
   const stages = (j.stages || []).map(s => `<li><b>${E(s.name)}</b> — ${E(s.what)}</li>`).join('');
   const rows = (j.baselines || []).map(b => `<div class="dz-journey ${b.state === 'governed' ? 'ok' : (b.state === 'blocked' ? 'fail' : (b.state === 'not_started' ? 'info' : 'warn'))}"><h3>${E(b.name)}${b.version ? ` <span class="gd-dim">v${E(b.version)}</span>` : ''}</h3>${typeof _dzJourneyRowHtml === 'function' ? _dzJourneyRowHtml(b, { max: 6 }) : `Stage ${b.stage} of 5 (${E(b.stage_name)})`}</div>`).join('');
   const overall = { not_started: 'Not started: none of the baselines has been deployed yet.', in_progress: 'In progress: baselines are deployed but not yet fully enabled and enforcing.', governed: 'Governed: every baseline is deployed, enabled and enforcing.', blocked: 'Blocked: something a baseline needs is missing from the tenant.' }[j.status] || j.status;
+  const hist = ((GD.lastReport || {}).profile || {}).history || [];
+  const prev = hist.length >= 2 ? hist[hist.length - 2] : null;
+  let trend = '';
+  if (prev && prev.journey) {
+    const d = (j.stage || 0) - (prev.journey.stage || 0), ds = (j.score || 0) - (prev.journey.score || 0);
+    trend = `<div class="gd-journey-mode">Since the previous assessment on ${E(new Date(prev.at).toLocaleDateString())}: stage ${prev.journey.stage || 0} → ${j.stage || 0} (${d > 0 ? '+' + d : d}), journey score ${prev.journey.score || 0}% → ${j.score || 0}% (${ds > 0 ? '+' + ds : ds}), assessment score ${prev.score ?? '?'}% → ${(GD.lastReport || {}).score ?? '?'}%.</div>`;
+  } else if (GD.profile && hist.length === 1) {
+    trend = `<div class="gd-journey-mode">First recorded assessment for this tenant profile. The next run will show the movement.</div>`;
+  }
   card.innerHTML = `
     <h2>Data governance journey</h2>
     <p class="gd-sub">Where this tenant stands against each baseline pack, measured read-only during the assessment. <strong>${E(overall)}</strong> Overall stage ${j.stage || 0} of 5, ${j.score || 0}% of the way. Deploying a baseline (Deploy Studio) creates what is missing and keeps everything the customer already has; enabling and hardening rules in the ZIA portal moves the tenant up the ladder.</p>
+    ${trend}
     <details class="dz-fold"><summary>The five stages</summary><ol class="dz-next">${stages}</ol></details>
     ${rows || '<p class="gd-sub">No baseline packs are installed.</p>'}`;
 }
@@ -266,9 +280,138 @@ function _gdJourneyCard(j) {
   if (typeof orig !== 'function') return;
   window.showResults = function (data) {
     orig.apply(this, arguments);
+    GD.lastReport = data || null;
     try { _gdJourneyCard(data && data.journey); } catch (e) { console.warn('journey card', e); }
+    try { if (data && data.profile) { _gdProfilesLoad(); } } catch (e) { /* ignore */ }
   };
 })();
+
+// ── Tenant profiles ─────────────────────────────────────────────────
+// One saved record per customer tenant (server-side, git-ignored file):
+// details, scopes, applicable baselines, optional remembered secret, and
+// the history of every assessment run against it.
+const GD_INDUSTRIES = ['Healthcare', 'Federal', 'State & local government', 'Law enforcement (CJIS)', 'Financial services', 'Education', 'Manufacturing', 'Technology', 'Other'];
+function _gdProfileSel() { return (GD.profiles || []).find(p => p.id === GD.profile) || null; }
+async function _gdProfilesLoad() {
+  try {
+    const r = await fetch('/api/tenant-profiles', { cache: 'no-store' });
+    const data = await r.json();
+    GD.profiles = data.profiles || [];
+    if (!GD.packs.length) {
+      const pr = await fetch('/api/dlp-packs', { cache: 'no-store' }).then(x => x.json()).catch(() => ({}));
+      GD.packs = (pr.packs || []).filter(p => p.baseline);
+    }
+    const sel = _gdProfileSel();
+    GD.profileHasSecret = !!(sel && sel.has_secret);
+    if (GD.profile && sel) {
+      const d = await fetch(`/api/tenant-profiles/${encodeURIComponent(GD.profile)}`, { cache: 'no-store' }).then(x => x.json()).catch(() => null);
+      GD.profileDetail = d;
+    } else { GD.profileDetail = null; if (!sel) GD.profile = ''; }
+  } catch (e) { GD.profiles = GD.profiles || []; }
+  _gdProfilesRender();
+}
+function _gdProfileFill(p) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  set('org', p.org_name || ''); set('assessor', p.assessor || ''); set('cloud', p.cloud || 'production');
+  set('vd', p.vanity_domain || ''); set('cid', p.client_id || ''); set('custid', p.customer_id || '');
+  set('csec', '');
+  if (Array.isArray(p.scopes) && p.scopes.length && typeof setSelectedScopes === 'function') setSelectedScopes(p.scopes);
+  if (Array.isArray(p.frameworks) && p.frameworks.length) document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = p.frameworks.includes(cb.value); });
+}
+async function _gdProfileSelect(id) {
+  GD.profile = id || ''; _gdSave();
+  await _gdProfilesLoad();
+  const p = GD.profileDetail;
+  if (p) { _gdProfileFill(p); if (typeof setStatus === 'function') setStatus(`Profile "${p.name}" loaded${p.has_secret ? ' (secret remembered on this laptop)' : ' — paste the client secret'}.`, 'success'); }
+  _gdRender();
+}
+function _gdProfileFormValues() {
+  const sel = _gdProfileSel() || {};
+  const q = id => document.getElementById(id);
+  return {
+    id: GD.profile || '',
+    name: (q('gdProfName') || {}).value || sel.name || _gdVal('org') || _gdVal('vd'),
+    org_name: _gdVal('org'), assessor: _gdVal('assessor'), cloud: _gdVal('cloud') || 'production',
+    vanity_domain: _gdVal('vd'), client_id: _gdVal('cid'), client_secret: _gdVal('csec'),
+    remember_secret: !!((q('gdProfRemember') || {}).checked),
+    customer_id: _gdVal('custid'),
+    industry: (q('gdProfIndustry') || {}).value || sel.industry || '',
+    baseline_packs: Array.from(document.querySelectorAll('.gd-prof-pack:checked')).map(x => x.value),
+    scopes: typeof getSelectedScopes === 'function' ? getSelectedScopes() : [],
+    frameworks: typeof getSelectedFrameworks === 'function' ? getSelectedFrameworks() : [],
+    notes: (q('gdProfNotes') || {}).value || '',
+  };
+}
+async function _gdProfileSave(asNew) {
+  const body = _gdProfileFormValues();
+  if (asNew) { body.id = ''; body.name = prompt('Profile name (usually the customer name):', body.org_name || body.name || '') || ''; if (!body.name) return; }
+  if (!(body.name || body.org_name || body.vanity_domain)) { alert('Give the profile a name, or fill in the organisation or vanity domain first.'); return; }
+  GD.profileBusy = true; _gdProfilesRender();
+  try {
+    const r = await fetch('/api/tenant-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    GD.profile = data.id; _gdSave();
+    if (typeof setStatus === 'function') setStatus(`Profile "${data.name}" saved${data.has_secret ? ' with the secret remembered on this laptop' : ' (secret not stored)'}.`, 'success');
+  } catch (e) { alert(`Could not save the profile: ${e.message}`); }
+  GD.profileBusy = false;
+  await _gdProfilesLoad(); _gdRender();
+}
+async function _gdProfileDelete() {
+  const sel = _gdProfileSel(); if (!sel) return;
+  if (!confirm(`Forget profile "${sel.name}" and its assessment history? The tenant itself is not touched.`)) return;
+  await fetch(`/api/tenant-profiles/${encodeURIComponent(sel.id)}`, { method: 'DELETE' }).catch(() => null);
+  GD.profile = ''; GD.profileHasSecret = false; _gdSave();
+  await _gdProfilesLoad(); _gdRender();
+}
+function _gdHistoryHtml(p) {
+  const hist = (p && p.history) || [];
+  if (!hist.length) return `<div class="gd-need">No assessment recorded for this profile yet. Run the assessment with the profile selected and it will appear here.</div>`;
+  const rows = hist.slice(-8).reverse().map(h => {
+    const j = h.journey || {};
+    const bl = (j.baselines || []).map(b => `${_gdE(b.name || b.id)}: stage ${b.stage || 0}${b.stage_name ? ` (${_gdE(b.stage_name)})` : ''}, ${b.score ?? 0}%`).join(' · ');
+    return `<tr><td>${_gdE(new Date(h.at).toLocaleString())}</td><td>${h.score ?? '–'}%${h.maturity ? ` <span class="gd-dim">${_gdE(h.maturity)}</span>` : ''}</td><td>${j.stage != null ? `Stage ${j.stage} of 5 · ${j.score ?? 0}%` : '<span class="gd-dim">not measured</span>'}</td><td class="gd-dim">${bl || ''}</td></tr>`;
+  }).join('');
+  return `<table class="gd-hist"><thead><tr><th>When</th><th>Assessment</th><th>Journey</th><th>Per baseline</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function _gdProfilesRender() {
+  const card = document.getElementById('configCard');
+  if (!card) return;
+  let bar = document.getElementById('gdProfiles');
+  if (!bar) {
+    bar = document.createElement('div'); bar.id = 'gdProfiles'; bar.className = 'gd-profiles';
+    const h = card.querySelector(':scope > h2');
+    (h || card).insertAdjacentElement(h ? 'afterend' : 'afterbegin', bar);
+  }
+  const sel = _gdProfileSel();
+  const det = GD.profileDetail || sel || {};
+  const last = det.last_assessed || (det.history || []).slice(-1)[0];
+  const opts = ['<option value="">— no profile (type the details below) —</option>']
+    .concat((GD.profiles || []).map(p => `<option value="${_gdE(p.id)}" ${p.id === GD.profile ? 'selected' : ''}>${_gdE(p.name)}${p.industry ? ` · ${_gdE(p.industry)}` : ''}${p.last_assessed ? ` · last ${_gdE(new Date(p.last_assessed.at).toLocaleDateString())}, ${p.last_assessed.score ?? '?'}%` : ''}</option>`)).join('');
+  const packs = (GD.packs || []).map(p => `<label class="gd-prof-pack-l"><input type="checkbox" class="gd-prof-pack" value="${_gdE(p.id)}" ${(det.baseline_packs || []).includes(p.id) ? 'checked' : ''}> ${_gdE(p.name || p.id)}</label>`).join('');
+  bar.innerHTML = `
+    <div class="gd-prof-top">
+      <div class="gd-prof-title"><span class="gd-eyebrow">Tenant profiles</span>
+        <div class="gd-need">Pick a saved customer and the form fills itself. Assessments run with a profile selected are recorded in its history, so the next visit shows movement on the journey.</div></div>
+      <div class="gd-prof-controls">
+        <select id="gdProfSelect" aria-label="Tenant profile" onchange="_gdProfileSelect(this.value)">${opts}</select>
+        <button type="button" class="gd-btn quiet" onclick="_gdProfileSave(true)" ${GD.profileBusy ? 'disabled' : ''}>Save as new profile</button>
+        ${sel ? `<button type="button" class="gd-btn primary" onclick="_gdProfileSave(false)" ${GD.profileBusy ? 'disabled' : ''}>Update "${_gdE(sel.name)}"</button><button type="button" class="gd-btn quiet" onclick="_gdProfileDelete()">Forget</button>` : ''}
+      </div>
+    </div>
+    <details class="gd-prof-more" ${sel ? 'open' : ''}>
+      <summary>${sel ? `Profile details${det.has_secret ? ' · secret remembered on this laptop' : ' · secret not stored (paste it below)'}` : 'Profile details (industry, applicable baselines, notes, secret)'}</summary>
+      <div class="gd-prof-grid">
+        <label>Profile name<input id="gdProfName" value="${_gdE(det.name || '')}" placeholder="Acme Health"><span class="gd-need">Usually the customer name. Sample: <code>Acme Health</code></span></label>
+        <label>Industry<select id="gdProfIndustry"><option value="">—</option>${GD_INDUSTRIES.map(i => `<option ${det.industry === i ? 'selected' : ''}>${i}</option>`).join('')}</select><span class="gd-need">Helps you pick the right baseline; it does not change any check.</span></label>
+        <div class="gd-prof-packs"><span class="lbl">Baselines that apply to this customer</span>${packs || '<span class="gd-need">No baseline packs installed.</span>'}<span class="gd-need">The journey is measured only against the ticked baselines. Leave all unticked to measure against every baseline.</span></div>
+        <label class="gd-prof-wide">Notes<textarea id="gdProfNotes" rows="2" placeholder="Kickoff 12 May; admin contact: Pat Lee; PHI pack agreed, enable SSL rule after change window.">${_gdE(det.notes || '')}</textarea></label>
+        <label class="gd-prof-remember"><input type="checkbox" id="gdProfRemember" ${det.has_secret ? 'checked' : ''}> Remember the client secret on this laptop
+          <span class="gd-need">Stored in <code>tenant_profiles.json</code> next to the app (owner-only file, never sent back to the browser). Leave unticked on a shared machine.</span></label>
+      </div>
+      ${sel ? `<div class="gd-prof-hist"><span class="lbl">History${last ? ` · last assessed ${_gdE(new Date(last.at).toLocaleString())}, ${last.score ?? '?'}%${last.journey ? `, journey stage ${last.journey.stage || 0} of 5` : ''}` : ''}</span>${_gdHistoryHtml(det)}</div>` : ''}
+    </details>`;
+}
 
 // ── Boot ───────────────────────────────────────────────────────────
 (function () {
@@ -280,6 +423,7 @@ function _gdJourneyCard(j) {
   anchor.insertAdjacentElement('afterend', panel);
   _gdApplyMode();
   _gdRender();
+  _gdProfilesLoad().then(() => { const p = GD.profileDetail; if (p && !_gdVal('vd')) _gdProfileFill(p); _gdRender(); });
   // Keep the step chips honest as the operator types, runs, and deploys.
   ['vd', 'cid', 'csec', 'cloud'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('input', _gdRender); });
   GD.timer = setInterval(_gdRender, 2500);
