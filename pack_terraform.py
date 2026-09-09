@@ -16,7 +16,7 @@ Two modes:
   after assessing a live tenant), objects that already exist get
   ``import {}`` blocks (Terraform >= 1.5) with their tenant IDs, so the
   first ``terraform plan`` shows exactly the gap: in-sync objects import
-  with no change, drifted objects import and are updated in place, and
+  with no change, customized objects import and would be updated in place, and
   missing objects are created. Nothing is destroyed. After apply the whole
   baseline is in state.
 
@@ -561,8 +561,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         imports = ["# Generated from a DLP-Check preflight against " + hcl_str(report.get("tenant_label", "the tenant"))[1:-1] + ".\n"
                    "# Objects that already exist are imported into state on the first apply, so\n"
                    "# `terraform plan` shows exactly the gap: in-sync objects import with no change,\n"
-                   "# drifted objects import and are updated in place, missing objects are created.\n\n"]
-        counts = {"in_sync": 0, "drifted": 0, "missing": 0, "blocked": 0}
+                   "# customized objects import too (apply would overwrite them: delete their import block to keep the customer's version),\n# missing objects are created.\n\n"]
+        counts = {"in_sync": 0, "customized": 0, "missing": 0, "blocked": 0}
         for kind, key_kind, res in (("dictionary", "dict", "zia_dlp_dictionaries"), ("engine", "engine", "zia_dlp_engines")):
             for obj in (src["dictionaries"] if kind == "dictionary" else src["engines"]):
                 it = plan.get((kind, obj["name"]))
@@ -597,9 +597,11 @@ def _gap_import(imports: List[str], counts: Dict[str, int], item: Optional[Dict[
     status = item.get("status")
     tid = (item.get("tenant") or {}).get("id")
     if status in ("reuse", "reuse_differs", "restore", "noop") and tid is not None:
-        state = "drifted" if status == "restore" else "in_sync"
-        counts[state] += 1
-        note = "drifted: " + ", ".join(item.get("drift") or []) if status == "restore" else "in sync"
+        customized = bool(item.get("drift")) or status == "restore"
+        counts["customized" if customized else "in_sync"] += 1
+        note = ("customized in the tenant: " + ", ".join(item.get("drift") or ["content"])
+                + " — terraform apply would overwrite this with the baseline; delete this import block to leave the customer's version alone"
+                if customized else "in sync")
         imports.append(f"# {item['name']} — {note}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
     elif status == "create":
         counts["missing"] += 1
@@ -655,17 +657,21 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
              + (f" v{meta.get('version')}" if meta.get("version") else "") + " for the official "
              f"[zscaler/zia]({REGISTRY_URL}) provider ({PROVIDER_VERSION}).\n\n",
              f"{len(src['dictionaries'])} dictionaries · {len(src['engines'])} engines · {len(src['policies'])} rules"
-             + (" · **immutable baseline**" if b else "") + "\n\n"]
+             + (" · **baseline**" if b else "") + "\n\n"]
     if b:
-        lines.append("This pack is an immutable baseline: with the objects in Terraform state, `terraform plan` "
-                     "reports any drift and `terraform apply` restores it. Objects the baseline does not define are never touched.\n\n")
+        lines.append("This pack is a baseline: the reference a tenant is measured against on its data-governance journey. "
+                     "Terraform is convergent by nature, so once objects are in state `terraform plan` shows every way the tenant "
+                     "differs from the reference and `terraform apply` would make them match. Use `plan` to assess; `apply` only "
+                     "when the customer wants the tenant converged (an enabled rule or a hardened action is usually progress to keep, "
+                     "not something to revert — update the pack instead). Objects the baseline does not define are never touched.\n\n")
     if gap:
         lines.append(f"## Gap against {report.get('tenant_label', 'the tenant') if report else 'the tenant'}\n\n"
-                     f"| In sync | Drifted | Missing | Blocked |\n|---|---|---|---|\n"
-                     f"| {counts.get('in_sync', 0)} | {counts.get('drifted', 0)} | {counts.get('missing', 0)} | {counts.get('blocked', 0)} |\n\n"
+                     f"| In sync | Customized | Missing | Blocked |\n|---|---|---|---|\n"
+                     f"| {counts.get('in_sync', 0)} | {counts.get('customized', 0)} | {counts.get('missing', 0)} | {counts.get('blocked', 0)} |\n\n"
                      "`imports.tf` adopts every existing object into state on the first apply. In-sync objects import with no "
-                     "change, drifted objects import and are updated in place, missing objects are created, and blocked objects are "
-                     "listed as comments with their reason. The first `terraform plan` is the gap.\n\n")
+                     "change; customized objects import and would be updated in place (delete their import block to keep the "
+                     "customer's version); missing objects are created; blocked objects are listed as comments with their reason. "
+                     "The first `terraform plan` is the gap.\n\n")
     lines.append("## Use\n\n```bash\nterraform init\nterraform plan      # review: creates, in-place updates, imports\nterraform apply\n```\n\n"
                  "Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables. "
                  "The client needs a ZIA role with write access to DLP dictionaries, engines and the rule types in this pack.\n\n"

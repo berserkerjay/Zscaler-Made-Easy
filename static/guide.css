@@ -75,3 +75,12 @@ body.gd-guided .gd-advanced { display: none !important; }
 .gd-dim { color: var(--dim, #94a3b8); font-size: 0.8rem; }
 @media (prefers-reduced-motion: reduce) { .gd-progress .bar, .gd-switch .knob, .gd-switch .track { transition: none; } }
 @media (max-width: 760px) { .gd-step { grid-template-columns: 1fr; } .gd-step-n { display: none; } }
+
+/* Data-governance journey card on the assessment results */
+.gd-journey { margin: 0 0 1rem; }
+.gd-journey h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.gd-journey .gd-sub { margin-bottom: 0.6rem; }
+.gd-journey .dz-journey { margin-top: 0.7rem; font-size: 0.86rem; }
+.gd-journey .dz-journey h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+.gd-journey-mode { font-size: 0.86rem; color: var(--text, #e2e8f0); padding: 0.55rem 0.75rem; border-radius: 10px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); }
+.gd-journey-mode b { text-transform: capitalize; }

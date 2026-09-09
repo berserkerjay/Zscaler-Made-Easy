@@ -96,13 +96,13 @@ def test_gap_mode_imports_existing_objects(tmp_path):
     files = pt.generate(pack, report=pt.split_report(rep, "alpha_baseline"))
     imp = files["imports.tf"]
     assert "to = zia_dlp_dictionaries.zbp_alpha_dict" in imp and 'id = "4100"' in imp
-    assert "drifted: patterns" in imp
+    assert "customized in the tenant: patterns" in imp
     assert "to = zia_dlp_engines.zbp_alpha_engine" in imp and 'id = "5100"' in imp
     assert "to = zia_dlp_web_rules.zbp_alpha_monitor" in imp and 'id = "7100"' in imp
     assert "zbp_new_dict" not in imp                                            # missing → created, not imported
     # An existing rule keeps its tenant order instead of the starting-order variable.
     assert "order                        = 3" in files["rules.tf"]
-    assert "| 2 | 1 | 1 | 0 |" in files["README.md"]                            # in sync, drifted, missing, blocked
+    assert "| 2 | 1 | 1 | 0 |" in files["README.md"]                            # in sync, customized, missing, blocked
 
 
 def test_saas_import_id_uses_rule_type(tmp_path):

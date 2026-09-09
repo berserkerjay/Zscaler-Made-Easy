@@ -53,7 +53,7 @@ class FakeDicts:
         for key, field in (("patterns", "pattern"), ("phrases", "phrase")):
             if stored.get(key):
                 stored[key] = [{"action": v[0], field: v[1]} if isinstance(v, (tuple, list)) else v for v in stored[key]]
-        obj = Obj(id=self._next, name=name, custom=True, **stored)
+        obj = Obj(id=self._next, name=name, custom=True, custom_phrase_match_type=match_type, dictionary_type=dict_type, **stored)
         self.items.append(obj)
         return obj, None, None
 

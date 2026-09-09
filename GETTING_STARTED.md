@@ -13,7 +13,10 @@ a **policy pack** — a ready-made set of DLP dictionaries, engines and rules
 for a regulation (CJIS, Fed, HIPAA PHI) or for Zscaler's own best practice —
 after showing you exactly what would change and asking you to approve it.
 Every rule in every pack ships **disabled**, so deploying never affects the
-customer's users. Baselines keep the configuration from drifting afterwards.
+customer's users. It works in an empty tenant and on top of an existing one:
+whatever the customer already has is kept. Afterwards, the assessment tells
+you where the tenant is on the data-governance journey and what to enable
+next.
 
 ## 1. Install (once per laptop)
 
@@ -95,7 +98,8 @@ objects under different names.
 1. Toggle the pack(s) on and click **Run preflight**. Nothing is written.
 2. Read the **Impact on this tenant** cards. They tell you how many rules
    are inserted at the top of the policy, whether any would enforce
-   rather than monitor, and whether anything drifted from a baseline.
+   rather than monitor, and whether this is a greenfield deploy (nothing
+   exists yet) or brownfield (some objects exist and are kept as they are).
 3. Check **Tenant prerequisites**. A missing prerequisite (for example, no
    SaaS tenant onboarded) skips only the rules that need it.
 4. Open **How to read this plan** if any term is unfamiliar. Hover any
@@ -112,8 +116,11 @@ says so. Close the console window and start
 1. An admin must click **Activate** in the ZIA Admin Portal.
 2. Enable rules one at a time in **Policy → Data Loss Prevention**,
    monitor-only ones first, and raise severity once incidents look right.
-3. On the next visit, click **Check drift** on the baseline card. Anything
-   changed by hand is listed and can be restored with another deploy.
+3. On the next visit, run the assessment again (or click **Where is this
+   tenant?** on the baseline card). The *Data governance journey* card shows
+   the stage reached — Foundation, Policies deployed, Visibility,
+   Containment, Enforcement — and names the exact rules to enable or harden
+   next. Nothing the customer changed is ever reverted.
 4. If the customer's platform team uses Terraform, click **Export
    Terraform** on the review step and hand them the zip. Its first
    `terraform plan` shows exactly the gap.
@@ -136,5 +143,5 @@ The **? Help** button in the app has the full glossary. The five words that
 matter: a **dictionary** is what to look for; an **engine** combines
 dictionaries into a decision; a **rule** says where the engine applies and
 whether to monitor (ALLOW) or stop (BLOCK); a **pack** is a folder of all
-three for one purpose; a **baseline** is a pack the tenant is held to, with
-drift detected and restored.
+three for one purpose; a **baseline** is a pack the tenant is measured
+against on its journey from deployed to enforcing.

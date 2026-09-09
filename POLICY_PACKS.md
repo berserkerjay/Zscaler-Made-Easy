@@ -455,51 +455,92 @@ starter_pack/
 
 Drop this at the project root, restart the server, and you have a working pack.
 
-## 11. Immutable Baselines
+## 11. Baselines and the Data-Governance Journey
 
-A pack can declare itself a **baseline**: the authoritative definition of
-the objects it names. Add a `baseline` section to `pack.json`:
+A pack can declare itself a **baseline**: the reference a tenant is
+measured against. Add a `baseline` section to `pack.json`:
 
 ```json
 {
   "name": "ZBP Enterprise Baseline",
   "version": "1.0",
-  "baseline": { "immutable": true, "prefix": "ZBP-", "version": "1.0" }
+  "baseline": { "prefix": "ZBP-", "version": "1.0" }
 }
 ```
 
-Deploying a baseline is **convergent** rather than additive:
+A baseline is deployed **greenfield** (an empty tenant: everything is
+created) or **brownfield** (an existing tenant: whatever already exists is
+kept exactly as the customer has it, only what is missing is created).
+Nothing is ever overwritten by default. An enabled rule, an action
+hardened from ALLOW to BLOCK, a tuned dictionary — those are the
+customer's progress, not drift to revert.
 
 | Tenant state of a baseline object | Plan status | What apply does |
 |---|---|---|
-| Missing | `create` | Creates it |
-| Exists with identical content | `reuse` (in sync) | Nothing |
-| Exists with different content | `restore` | **Overwrites** it with the baseline definition (dictionaries, engines and rules; a rule keeps its position in the policy) |
+| Missing | `create` | Creates it, DISABLED, with a provenance tag |
+| Exists as the baseline defines it | `reuse` | Nothing |
+| Exists, changed by the customer | `reuse_differs` (customized) | Nothing; the customer's version is kept |
 | Same name as a predefined Zscaler dictionary | `conflict` | Nothing; rename the baseline object |
 
-Objects the baseline does not define are never touched, and ordinary
-packs keep their never-overwrite behaviour. Every object a baseline
-creates or restores gets a provenance tag in its description
-(`[DLP-Check baseline <pack> v<version>] Immutable: drift is reverted on
-the next deploy.`), so admins can see what is baseline-managed. A drifted
-object without the tag was not created by DLP-Check; the plan says so and
-brings it under management when restored.
+Preflight adds a **Greenfield** or **Brownfield** impact card per baseline
+saying how many objects exist, how many are customized, and how many will
+be created. Objects the baseline does not define are never touched.
 
-**Drift check (read-only).** Each baseline card in Deploy Studio has a
-*Check drift* action, and the API exposes the same thing:
+**Converge mode (explicit, off by default).** `restore_drift: true` on
+`/preflight` and `/apply` turns customized objects into `restore`
+(overwrite with the baseline definition, a rule keeps its position). It is
+an API option only; Deploy Studio never selects it. Use it when the
+customer has asked for the tenant to be reset to the reference.
+
+### Where is this tenant on the journey?
+
+After deployment the same comparison places every baseline object:
+
+| Position | Meaning |
+|---|---|
+| `missing` | Not in the tenant |
+| `deployed` | Present as the baseline defines it; rule still DISABLED |
+| `monitoring` | Rule ENABLED with a non-enforcing action (ALLOW, report) |
+| `enforcing` | Rule ENABLED with an enforcing action (BLOCK, DECRYPT, CAUTION…) |
+| `customized` | Present but content differs (kept) |
+| `relaxed` | The baseline ships it enabled, the tenant disabled it |
+| `blocked` | Cannot be created (missing prerequisite, conflict) |
+
+and rolls them up into five stages. A stage is reached when every object
+it needs is at or beyond the required position; the tenant's stage is the
+highest one with all earlier stages reached.
+
+| Stage | Reached when |
+|---|---|
+| 1 Foundation | every dictionary and engine exists |
+| 2 Policies deployed | every rule exists (disabled is fine) |
+| 3 Visibility | SSL Inspection rules and DLP rules are enabled |
+| 4 Containment | Cloud App Control, File Type Control and URL Filtering rules are enabled |
+| 5 Enforcement | DLP rules use an enforcing action |
+
+The score is the share of required objects in place, averaged over the
+stages. The **assessment** runs this for every baseline pack and shows a
+*Data governance journey* card; each baseline card in Deploy Studio has a
+*Where is this tenant?* action; and the API exposes the same thing:
 
 ```bash
-curl -s -X POST http://localhost:8000/api/dlp-packs/baseline-status \
+curl -s -X POST http://localhost:8000/api/dlp-packs/journey \
   -H "Content-Type: application/json" \
-  -d '{"pack_ids": ["zbp_enterprise_baseline"], "cloud": "production", "vanity_domain": "acme",
+  -d '{"pack_ids": ["healthcare_phi_baseline"], "cloud": "production", "vanity_domain": "acme",
        "client_id": "...", "client_secret": "..."}'
-# → {"status": "in_sync|drifted|blocked", "baselines": [{"id", "version", "in_sync", "drifted",
-#    "missing", "blocked", "objects": [{"kind","name","state","drift","adopt"}...]}], ...}
+# → {"status": "not_started|in_progress|governed|blocked", "stage": 3, "score": 72,
+#    "baselines": [{"id", "version", "stage", "stage_name", "score", "state",
+#                   "missing", "deployed", "monitoring", "enforcing", "customized", "relaxed", "blocked",
+#                   "stages": [{"n","name","what","required","met","done","todo"}...],
+#                   "next_steps": ["Enable rule 'R_PHI_SSL_...' in Policy > SSL Inspection after reviewing its scope.", ...],
+#                   "objects": [{"kind","name","position","channel","drift","action","state"}...]}], ...}
 ```
 
-It runs without the write gate (nothing is written). Restoring drift is a
-normal deploy: select the baseline, run preflight (drifted objects show as
-*Will restore*, with an impact card listing them), approve, apply.
+It runs without the write gate (nothing is written). `next_steps` names
+the exact rules to enable or harden, and where in the ZIA Admin Portal.
+Every object a baseline creates carries a provenance tag in its
+description (`[DLP-Check baseline <pack> v<version>]`), so admins can see
+which baseline version it came from.
 
 **Dynamic application scope.** A web rule may carry
 `"cloud_app_classes": ["AI_ML"]` instead of a fixed `cloud_applications`
@@ -555,7 +596,8 @@ curl -s -X POST http://localhost:8000/api/dlp-packs/terraform \
 The workspace then contains `imports.tf` with an `import {}` block (Terraform
 1.5+) for every object that already exists in the tenant, so the first
 `terraform plan` is exactly the gap: in-sync objects import with no change,
-drifted objects import and are updated in place, missing objects are
+customized objects import and would be updated in place (delete their
+import block to keep the customer's version), missing objects are
 created, blocked objects are listed as comments with their reason. Existing
 rules keep their current order; new rules start at `rule_starting_order`.
 Without credentials the endpoint (and the *Terraform* link on each pack
@@ -584,9 +626,9 @@ Zscaler delivers its Fed pack. Deploying creates the dictionaries, engines
 and rules without changing what users experience; you enable each rule and
 raise its severity in the portal (or in the pack) once it is tuned. Actions
 are authored as intended (ALLOW to monitor, BLOCK to enforce), so enabling a
-rule never changes its meaning. For a baseline this is also the definition
-the tenant is held to: enabling a baseline rule in the portal counts as
-drift unless the pack is updated to match.
+rule never changes its meaning. For a baseline, enabling a rule in the
+portal is exactly the expected next step: the journey check reports it as
+*monitoring* or *enforcing*, never as drift, and nothing reverts it.
 
 ## 13. Containment Rules — Cloud App Control, File Type Control, URL Filtering, SSL Inspection
 
@@ -714,8 +756,9 @@ Preflight lists each channel's API reachability under *Tenant
 prerequisites*, resolves application classes and Cloud App Control actions
 against the live tenant, blocks only the rules whose prerequisites are
 missing, and adds an impact card reminding that containment rules run
-before DLP. Baselines detect drift on action, state, applications, URL
-categories, file types and operation. Terraform export emits
+before DLP. The journey check compares action, state, applications, URL
+categories, file types and operation and reports customized rules without
+reverting them. Terraform export emits
 `zia_cloud_app_control_rule` (actions via the
 `zia_cloud_app_control_rule_actions` data source), `zia_file_type_control_rules`,
 `zia_url_filtering_rules` and `zia_ssl_inspection_rules`.

@@ -1,9 +1,10 @@
 """
-Immutable baselines: a pack whose pack.json declares `baseline` is the
-authoritative definition of the objects it names. Preflight classifies
-each one as in sync / drifted / missing, apply RESTORES drifted objects
-(the one case where the planner overwrites), every write carries a
-provenance tag, and ordinary packs keep their never-overwrite behaviour.
+Baselines and the data-governance journey: a pack whose pack.json declares
+`baseline` is the reference a tenant is measured against. Deploying it is
+greenfield (nothing exists: create it all) or brownfield (keep what exists
+exactly as the customer has it, create the rest). Nothing is overwritten
+unless converge mode (`restore_drift=True`) is asked for explicitly. The
+journey check reports each object's position and the stage reached.
 """
 from __future__ import annotations
 
@@ -74,8 +75,10 @@ def test_missing_baseline_objects_are_created_with_provenance(baseline_pack):
     assert rep["status"] == "ready"
     assert all(i["status"] == pd.CREATE for i in rep["items"])
     assert all(i["baseline"] == "alpha_baseline" for i in rep["items"])
-    assert rep["baselines"][0]["state"] == "missing"
+    assert rep["baselines"][0]["state"] == "not_started"
     assert rep["baselines"][0]["missing"] == 3
+    assert rep["tenant_mode"]["mode"] == "greenfield"
+    assert any(i["type"] == "greenfield" for i in rep["impacts"])
 
     res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True)
     assert res["status"] == "applied"
@@ -91,62 +94,164 @@ def test_in_sync_baseline_has_nothing_to_deploy(baseline_pack):
     assert {i["name"]: i["status"] for i in rep["items"]} == {
         "ZBP-Alpha Dict": pd.REUSE, "ZBP-Alpha Engine": pd.REUSE, "ZBP-Alpha-Monitor": pd.REUSE}
     assert rep["status"] == "blocked"
-    assert any("every baseline object is already in sync" in b for b in rep["blockers"])
-    assert rep["baselines"][0]["state"] == "in_sync"
-    assert rep["baselines"][0]["in_sync"] == 3
-    status = pd.baseline_status(rep)
-    assert status["status"] == "in_sync"
-    assert status["blockers"] == []  # the "nothing to deploy" blocker is not a drift problem
+    assert any("every baseline object already exists" in b for b in rep["blockers"])
+    assert rep["tenant_mode"]["mode"] == "brownfield"
+    row = rep["baselines"][0]
+    assert row["state"] == "in_progress"                                  # deployed and monitoring, not yet enforcing
+    assert row["in_sync"] == 3
+    j = pd.journey(rep)
+    assert j["status"] == "in_progress"
+    assert j["blockers"] == []                                            # "nothing to deploy" is not a journey problem
 
 
-def test_drifted_baseline_objects_are_restored(baseline_pack):
+def test_customized_baseline_objects_are_kept_by_default(baseline_pack):
+    """Brownfield: the customer tuned a dictionary and hardened a rule.
+    Both are progress; the plan keeps them and says so."""
     client = FakeClient(
-        dicts=[PREDEF_SSN, tenant_dict(pattern=r"\bTAMPERED\b")],       # content drifted
-        engines=[tenant_engine()],                                       # in sync (same ID-resolved expression)
-        rules=[tenant_rule(action="BLOCK", order=3)],                    # action drifted
+        dicts=[PREDEF_SSN, tenant_dict(pattern=r"\bTAMPERED\b")],       # content differs
+        engines=[tenant_engine()],                                       # matches
+        rules=[tenant_rule(action="BLOCK", order=3)],                    # hardened to BLOCK
     )
     rep = pd.preflight(client, [baseline_pack], writes_enabled=True)
     d, e, p = items_by(rep, "dictionary"), items_by(rep, "engine"), items_by(rep, "policy")
+    assert d["ZBP-Alpha Dict"]["status"] == pd.REUSE_DIFFERS and d["ZBP-Alpha Dict"]["drift"] == ["patterns"]
+    assert d["ZBP-Alpha Dict"]["position"] == "customized"
+    assert e["ZBP-Alpha Engine"]["status"] == pd.REUSE
+    assert p["ZBP-Alpha-Monitor"]["status"] == pd.REUSE_DIFFERS and p["ZBP-Alpha-Monitor"]["drift"] == ["action"]
+    assert p["ZBP-Alpha-Monitor"]["position"] == "enforcing"
+    assert "Kept exactly as the customer has it" in p["ZBP-Alpha-Monitor"]["reason"]
+    assert rep["will_restore"] == 0
+    assert not any(i["type"] == "baseline_restore" for i in rep["impacts"])
+    assert any(i["type"] == "brownfield" and "customized" in i["detail"] for i in rep["impacts"])
+    assert rep["status"] == "blocked"                                     # nothing to write
+    assert any("customized in the tenant" in w for w in rep["warnings"])
+    assert client.zia.dlp_dictionary.updated == [] and client.zia.dlp_web_rules.updated == []
+
+
+def test_converge_mode_restores_when_asked_explicitly(baseline_pack):
+    client = FakeClient(
+        dicts=[PREDEF_SSN, tenant_dict(pattern=r"\bTAMPERED\b")],
+        engines=[tenant_engine()],
+        rules=[tenant_rule(action="BLOCK", order=3)],
+    )
+    rep = pd.preflight(client, [baseline_pack], writes_enabled=True, restore_drift=True)
+    d, e, p = items_by(rep, "dictionary"), items_by(rep, "engine"), items_by(rep, "policy")
     assert d["ZBP-Alpha Dict"]["status"] == pd.RESTORE and d["ZBP-Alpha Dict"]["drift"] == ["patterns"]
-    assert d["ZBP-Alpha Dict"]["adopt"] is True                          # no provenance tag on the tenant copy
-    assert e["ZBP-Alpha Engine"]["status"] == pd.REUSE                   # a restore keeps its ID, so the engine stays valid
+    assert e["ZBP-Alpha Engine"]["status"] == pd.REUSE
     assert p["ZBP-Alpha-Monitor"]["status"] == pd.RESTORE and p["ZBP-Alpha-Monitor"]["drift"] == ["action"]
     assert rep["will_restore"] == 2
     assert rep["status"] == "warnings"
     assert any(i["type"] == "baseline_restore" for i in rep["impacts"])
-    assert any("drifted from baseline" in w for w in rep["warnings"])
-    assert rep["baselines"][0]["state"] == "drifted"
-    assert {o["name"] for o in rep["baselines"][0]["objects"]} == {"ZBP-Alpha Dict", "ZBP-Alpha-Monitor"}
+    assert rep["options"]["restore_drift"] is True
 
-    res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True, restore_drift=True)
     assert res["status"] == "applied"
     assert res["summary"] == {"restored": 2, "reused": 1}
-    assert res["activation_required"] is True
     z = client.zia
     upd = z.dlp_dictionary.updated[-1]
     assert upd["id"] == 4100 and upd["patterns"] == [("PATTERN_COUNT_TYPE_ALL", r"\bZ\d{4}\b")]
     assert pd.BASELINE_MARK in upd["description"]
     rule = z.dlp_web_rules.updated[-1]
-    assert rule["id"] == 7100 and rule["action"] == "ALLOW"
-    assert rule["order"] == 3                                            # position kept, content restored
-    assert pd.BASELINE_MARK in rule["description"]
-    # A second preflight now sees everything in sync.
-    again = pd.preflight(client, [baseline_pack], writes_enabled=True)
-    assert again["baselines"][0]["state"] == "in_sync"
+    assert rule["id"] == 7100 and rule["action"] == "ALLOW" and rule["order"] == 3
+    # Without the option the same plan hash is rejected (options are part of it).
+    again = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    assert again["status"] in ("plan_changed", "blocked")
 
 
-def test_missing_dictionary_forces_engine_rewrite(baseline_pack):
-    # Dictionary gone, engine still points at the old ID: the engine must be restored too.
+def test_missing_dictionary_leaves_existing_engine_alone_unless_converging(baseline_pack):
+    # Dictionary gone, engine still points at the old ID.
     client = FakeClient(dicts=[PREDEF_SSN], engines=[tenant_engine(expr="(D4100.S > 0)")], rules=[tenant_rule()])
     rep = pd.preflight(client, [baseline_pack], writes_enabled=True)
     d, e, p = items_by(rep, "dictionary"), items_by(rep, "engine"), items_by(rep, "policy")
     assert d["ZBP-Alpha Dict"]["status"] == pd.CREATE
-    assert e["ZBP-Alpha Engine"]["status"] == pd.RESTORE and e["ZBP-Alpha Engine"]["drift"] == ["dictionaries"]
-    assert p["ZBP-Alpha-Monitor"]["status"] == pd.REUSE                  # engine keeps its ID, rule still valid
+    assert e["ZBP-Alpha Engine"]["status"] == pd.REUSE_DIFFERS and e["ZBP-Alpha Engine"]["drift"] == ["dictionaries"]
+    assert p["ZBP-Alpha-Monitor"]["status"] == pd.REUSE
     res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    assert res["summary"] == {"created": 1, "reused": 2}
+    assert getattr(client.zia.dlp_engine, "updated", []) == []
+    # Converge mode rewrites the engine against the new dictionary.
+    client = FakeClient(dicts=[PREDEF_SSN], engines=[tenant_engine(expr="(D4100.S > 0)")], rules=[tenant_rule()])
+    rep = pd.preflight(client, [baseline_pack], writes_enabled=True, restore_drift=True)
+    assert items_by(rep, "engine")["ZBP-Alpha Engine"]["status"] == pd.RESTORE
+    res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True, restore_drift=True)
     assert res["summary"] == {"created": 1, "restored": 1, "reused": 1}
     new_dict_id = client.zia.dlp_dictionary.items[-1].id
     assert client.zia.dlp_engine.updated[-1]["engine_expression"] == f"(D{new_dict_id}.S > 0)"
+
+
+# ---------------------------------------------------------------------------
+# The journey: positions, stages, next steps
+# ---------------------------------------------------------------------------
+
+def journey_pack(tmp_path):
+    """One DLP rule, one SSL rule, one Cloud App Control rule — enough to
+    exercise every stage."""
+    from test_pack_channels import add_control_services
+    policies = [
+        dict(_policy("ZBP-PHI-Monitor", ["ZBP-Alpha Engine"], action="ALLOW"), state="DISABLED"),
+        {"name": "ZBP-SSL-Decrypt", "channel": "ssl", "state": "DISABLED", "cloud_app_classes": ["AI_ML"],
+         "action": {"type": "DECRYPT", "ssl_interception_cert": {"id": 1}}},
+        {"name": "ZBP-CAC-AI", "channel": "cloud_app", "type": "AI_ML", "state": "DISABLED",
+         "actions_by_verb": {"UPLOAD": "BLOCK", "*": "ALLOW"}},
+    ]
+    pack = write_pack(tmp_path, "journey", dicts=[_dict("ZBP-Alpha Dict", pattern=r"\bZ\d{4}\b")],
+                      engines=[_engine("ZBP-Alpha Engine", "(D:ZBP-Alpha Dict)")], policies=policies, meta=BASELINE_META)
+    return pack, add_control_services
+
+
+def _journey(client, pack):
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    return pd.journey(rep)["baselines"][0], rep
+
+
+def test_journey_greenfield_is_stage_zero(tmp_path):
+    pack, add = journey_pack(tmp_path)
+    row, rep = _journey(add(FakeClient(dicts=[PREDEF_SSN])), pack)
+    assert row["state"] == "not_started" and row["stage"] == 0 and row["stage_name"] == "Not started"
+    assert row["missing"] == 5 and row["score"] == 0
+    assert [s["done"] for s in row["stages"]] == [False, False, False, False, False]
+    assert row["next_steps"][0].startswith("Deploy dictionary 'ZBP-Alpha Dict'")
+    assert rep["tenant_mode"]["mode"] == "greenfield"
+
+
+def test_journey_advances_as_rules_are_enabled_and_hardened(tmp_path):
+    pack, add = journey_pack(tmp_path)
+    ssl_off = Obj(id=9801, name="ZBP-SSL-Decrypt", order=1, rank=7, state="DISABLED", action={"type": "DECRYPT"}, applications=["CHATGPT_AI", "GEMINI"], description="")
+    cac_off = Obj(id=9501, name="ZBP-CAC-AI", type="AI_ML", order=1, rank=7, state="DISABLED",
+                  actions=["BLOCK_AI_ML_UPLOAD", "ALLOW_AI_ML_WEB_USE"], applications=["CHATGPT_AI", "GEMINI"], description="")
+
+    def client(rule_state="DISABLED", rule_action="ALLOW", ssl_state="DISABLED", cac_state="DISABLED"):
+        ssl = Obj(**{**ssl_off.__dict__, "state": ssl_state})
+        cac = Obj(**{**cac_off.__dict__, "state": cac_state})
+        c = FakeClient(dicts=[PREDEF_SSN, tenant_dict()], engines=[tenant_engine()],
+                       rules=[Obj(id=7100, name="ZBP-PHI-Monitor", order=1, rank=7, action=rule_action, state=rule_state,
+                                  dlp_engines=[{"id": 5100}], protocols=["HTTPS_RULE"], severity="RULE_SEVERITY_HIGH", description="")])
+        c = add(c, cac_rules=[cac])
+        c.zia.ssl_inspection_rules.items.append(ssl)
+        return c
+
+    # Everything deployed, nothing enabled: stage 2.
+    row, _ = _journey(client(), pack)
+    assert row["stage"] == 2 and row["stage_name"] == "Policies deployed"
+    assert row["deployed"] == 5 and row["state"] == "in_progress"
+    assert any("Enable rule 'ZBP-SSL-Decrypt'" in n for n in row["next_steps"])
+    assert any("Enable rule 'ZBP-PHI-Monitor'" in n for n in row["next_steps"])
+    # SSL and DLP rule enabled (monitor): stage 3, containment is next.
+    row, _ = _journey(client(rule_state="ENABLED", ssl_state="ENABLED"), pack)
+    assert row["stage"] == 3 and row["stage_name"] == "Visibility"
+    assert row["monitoring"] == 1 and row["enforcing"] == 1
+    assert row["next_steps"] == ["Enable rule 'ZBP-CAC-AI' in Policy > Cloud App Control after reviewing its scope."]
+    # Containment on: stage 4; enforcement next.
+    row, _ = _journey(client(rule_state="ENABLED", ssl_state="ENABLED", cac_state="ENABLED"), pack)
+    assert row["stage"] == 4 and row["next_steps"][0].startswith("Switch rule 'ZBP-PHI-Monitor'")
+    # DLP rule hardened to BLOCK: governed. The hardened action is a customization, kept.
+    row, rep = _journey(client(rule_state="ENABLED", rule_action="BLOCK", ssl_state="ENABLED", cac_state="ENABLED"), pack)
+    assert row["stage"] == 5 and row["state"] == "governed" and row["score"] == 100
+    assert items_by(rep, "policy")["ZBP-PHI-Monitor"]["status"] == pd.REUSE_DIFFERS
+    assert items_by(rep, "policy")["ZBP-PHI-Monitor"]["position"] == "enforcing"
+    assert pd.journey(rep)["status"] == "governed"
+    # Enabling the rule while the pack ships it disabled is never reported as drift to revert.
+    assert rep["will_restore"] == 0
 
 
 def test_plain_pack_keeps_never_overwrite_behaviour(plain_pack):

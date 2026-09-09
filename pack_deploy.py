@@ -93,34 +93,42 @@ BLOCKED_DEPENDENCY = "blocked_dependency"  # needs something that is missing or 
 SKIP_EMPTY = "skip_empty"                # custom dictionary with nothing to match on
 MODIFY = "modify"                        # will change an existing tenant object (tweaks)
 NOOP = "noop"                            # tweak whose target is already at the desired value
-RESTORE = "restore"                      # baseline object drifted in the tenant — will be overwritten with the baseline
+RESTORE = "restore"                      # converge mode only: baseline object differs and will be overwritten
 
 BLOCKING_STATUSES = {CONFLICT, BLOCKED_DEPENDENCY, SKIP_EMPTY}
 AVAILABLE_STATUSES = {CREATE, REUSE, REUSE_DIFFERS, RESTORE}
 WRITE_STATUSES = {CREATE, MODIFY, RESTORE}
 
-# Provenance marker stamped into the description of every object an
-# immutable baseline creates or restores. Lets admins (and the next
-# preflight) see that the object is baseline-managed.
+# Provenance marker stamped into the description of every object a
+# baseline creates. Lets admins (and the next journey check) see which
+# objects came from which baseline version.
 BASELINE_MARK = "[DLP-Check baseline"
 
 LogFn = Optional[Callable[[str], None]]
 
 
 # ---------------------------------------------------------------------------
-# Immutable baselines
+# Baselines and the data-governance journey
 # ---------------------------------------------------------------------------
 #
 # A pack whose pack.json carries `"baseline": {...}` is a BASELINE: the
-# authoritative definition of the objects it names. Deploying it is
-# convergent rather than additive —
-#   * objects it defines that are missing are created,
-#   * objects that exist with identical content are left alone (in sync),
-#   * objects that exist with DIFFERENT content are RESTORED to the
-#     baseline definition (this is the one case where the planner
-#     overwrites; it is listed for approval like any other write),
-#   * objects the baseline does not define are never touched.
-# Every object it writes gets a provenance tag in its description.
+# reference definition a tenant is measured against. Deploying it works
+# in a GREENFIELD tenant (nothing exists: the whole pack is created) and
+# in a BROWNFIELD tenant (some objects exist: they are kept exactly as the
+# customer has them, only what is missing is created). Nothing the
+# customer changed is ever overwritten by default — an enabled rule, a
+# hardened action or a tuned dictionary is the customer's progress, not
+# drift to revert.
+#
+# After deployment the same comparison answers "where is this tenant on
+# the journey?": every baseline object is missing, deployed (present but
+# off), monitoring (on, non-enforcing), enforcing, or customized, and the
+# stages below roll that up into one position plus the next steps.
+#
+# `restore_drift=True` (explicit, off by default, not offered in the
+# guided UI) switches a deploy to CONVERGE mode, where differing objects
+# are overwritten with the baseline definition. Use it only when the
+# customer has asked for the tenant to be reset to the reference.
 
 def baseline_meta(meta: Dict[str, Any], pack_id: str) -> Optional[Dict[str, Any]]:
     """Normalise pack.json's `baseline` field. Returns None for ordinary packs."""
@@ -145,7 +153,7 @@ def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Op
     """Description with the provenance tag appended (idempotent). `limit`
     clamps the total length (dictionaries: 255) without losing the tag."""
     b = item.get("baseline") or {}
-    tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Immutable: drift is reverted on the next deploy."
+    tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Deployed by DLP-Check; measured on every journey check, never overwritten."
     base = (base or "").strip()
     if BASELINE_MARK in base:
         base = base.split(BASELINE_MARK, 1)[0].strip()
@@ -393,7 +401,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
 # Planning
 # ---------------------------------------------------------------------------
 
-def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any]) -> None:
+def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
     predefined = tenant["predefined"]
     for name, item in items.items():
         if item["status"] == CONFLICT:
@@ -424,16 +432,24 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any])
                 item["status"] = REUSE
                 item["reason"] = ("In sync with the baseline; nothing to do." if baseline
                                   else "Already in the tenant with identical content; nothing to do.")
-            elif baseline:
+            elif baseline and restore:
                 diffs = [k for k in pack_sig if pack_sig.get(k) != ten_sig.get(k)]
                 item["status"] = RESTORE
                 item["drift"] = diffs
                 item["reason"] = (
-                    f"Drifted from the baseline ({', '.join(diffs) or 'content'}). "
-                    "The dictionary will be overwritten with the baseline definition."
-                    + (" It was not created by DLP-Check and will be brought under baseline management." if item["adopt"] else "")
+                    f"Differs from the baseline ({', '.join(diffs) or 'content'}). Converge mode: "
+                    "the dictionary will be overwritten with the baseline definition."
                 )
-                item["warnings"].append("drifted from baseline")
+                item["warnings"].append("differs from baseline")
+            elif baseline:
+                diffs = [k for k in pack_sig if pack_sig.get(k) != ten_sig.get(k)]
+                item["status"] = REUSE_DIFFERS
+                item["drift"] = diffs
+                item["reason"] = (
+                    f"Customized in the tenant ({', '.join(diffs) or 'content'} differ from the baseline). "
+                    "Kept exactly as the customer has it; the baseline version is NOT applied."
+                )
+                item["warnings"].append("customized in tenant")
             else:
                 item["status"] = REUSE_DIFFERS
                 diffs = [k for k in pack_sig if pack_sig.get(k) != ten_sig.get(k)]
@@ -459,7 +475,7 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any])
             item["reason"] = "Will be created as a new dictionary."
 
 
-def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any]) -> None:
+def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
     # Every dictionary name that could satisfy a D:<name> reference.
     candidates: Dict[str, Any] = {n: n for n in tenant["dictionaries"]}
     candidates.update({n: n for n in dict_items})
@@ -500,22 +516,33 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
                     item["status"] = REUSE
                     item["reason"] = ("In sync with the baseline; nothing to do." if baseline
                                       else "Already in the tenant with the same expression; nothing to do.")
-                elif baseline:
+                elif baseline and restore:
                     item["status"] = RESTORE
                     item["drift"] = ["expression"]
-                    item["reason"] = ("Drifted from the baseline (expression). The engine will be overwritten with the baseline expression."
-                                      + (" It was not created by DLP-Check and will be brought under baseline management." if item["adopt"] else ""))
-                    item["warnings"].append("drifted from baseline")
+                    item["reason"] = "Differs from the baseline (expression). Converge mode: the engine will be overwritten with the baseline expression."
+                    item["warnings"].append("differs from baseline")
+                elif baseline:
+                    item["status"] = REUSE_DIFFERS
+                    item["drift"] = ["expression"]
+                    item["reason"] = ("Customized in the tenant (expression differs from the baseline). Kept exactly as the customer "
+                                      "has it and used by the rules below; the baseline expression is NOT applied.")
+                    item["warnings"].append("customized in tenant")
                 else:
                     item["status"] = REUSE_DIFFERS
                     item["reason"] = ("Already in the tenant with a different expression. The tenant's engine will be kept "
                                       "and used by the policies below; the pack's expression will NOT be applied.")
                     item["warnings"].append("tenant version differs from pack")
-            elif baseline and deps_changing:
+            elif baseline and deps_changing and restore:
                 item["status"] = RESTORE
                 item["drift"] = ["dictionaries"]
-                item["reason"] = ("References dictionaries the baseline is creating or restoring; the engine will be "
+                item["reason"] = ("References dictionaries the baseline is creating; converge mode: the engine will be "
                                   "rewritten against the baseline dictionaries.")
+            elif baseline and deps_changing:
+                item["status"] = REUSE_DIFFERS
+                item["drift"] = ["dictionaries"]
+                item["reason"] = ("Exists in the tenant but references dictionaries the baseline is about to create. Kept as-is; "
+                                  "point it at the new dictionaries in the portal once they exist, or re-run in converge mode.")
+                item["warnings"].append("customized in tenant")
             else:
                 item["status"] = REUSE
                 item["reason"] = "Already in the tenant; existing engine will be used (expression not compared)."
@@ -530,7 +557,7 @@ def _tenant_rules_for(tenant: Dict[str, Any], channel: str) -> List[Dict[str, An
     return tenant["channels"]["rules"].get(channel, [])
 
 
-def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any]) -> None:
+def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
     for name, item in items.items():
         if item["status"] == CONFLICT:
             continue
@@ -579,18 +606,23 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
                 item["adopt"] = BASELINE_MARK not in str(existing.get("description") or "")
                 drift = _policy_drift(p, channel, existing, engine_items, tenant, pack_action=pack_action,
                                       resolved=item.get("resolved") or {})
-                if drift:
+                if drift and restore:
                     item["status"] = RESTORE
                     item["drift"] = drift
-                    item["reason"] = (f"Drifted from the baseline ({', '.join(drift)}). The {pc.label(channel)} rule will be "
-                                      "overwritten with the baseline definition; its position in the policy is kept."
-                                      + (" It was not created by DLP-Check and will be brought under baseline management." if item["adopt"] else ""))
-                    item["warnings"].append("drifted from baseline")
+                    item["reason"] = (f"Differs from the baseline ({', '.join(drift)}). Converge mode: the {pc.label(channel)} rule "
+                                      "will be overwritten with the baseline definition; its position in the policy is kept.")
+                    item["warnings"].append("differs from baseline")
                     if pc.is_enforcing(channel, pack_action):
                         item["warnings"].append("enforcing action")
+                elif drift:
+                    item["status"] = REUSE_DIFFERS
+                    item["drift"] = drift
+                    item["reason"] = (f"Customized in the tenant ({', '.join(drift)} differ from the baseline): "
+                                      f"{_journey_phrase(item, channel, existing, p)} Kept exactly as the customer has it.")
+                    item["warnings"].append("customized in tenant")
                 else:
                     item["status"] = REUSE
-                    item["reason"] = "In sync with the baseline; nothing to do."
+                    item["reason"] = f"Deployed as the baseline defines it ({_journey_phrase(item, channel, existing, p)})."
                 continue
             if existing.get("action") and existing["action"] != pack_action:
                 item["status"] = REUSE_DIFFERS
@@ -611,6 +643,31 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
         item["reason"] = f"Will be created as a new {pc.label(channel)} rule at the top of that policy (action {shown_action}){scope}."
         if pc.is_enforcing(channel, pack_action):
             item["warnings"].append("enforcing action")
+
+
+def _rule_position(channel: str, existing: Dict[str, Any], p: Dict[str, Any]) -> str:
+    """Journey position of an existing rule: deployed (present but off),
+    monitoring (on, non-enforcing), enforcing (on, enforcing), relaxed
+    (the pack ships it on but the tenant turned it off)."""
+    state = str(existing.get("state") or "").upper()
+    action = existing.get("action") or pc.policy_action(p)
+    if state and state != "ENABLED":
+        return "relaxed" if str(p.get("state", "ENABLED")).upper() == "ENABLED" else "deployed"
+    return "enforcing" if pc.is_enforcing(channel, str(action)) else "monitoring"
+
+
+_POSITION_PHRASE = {
+    "deployed": "present but still disabled",
+    "monitoring": "enabled in monitor mode",
+    "enforcing": "enabled and enforcing",
+    "relaxed": "the baseline ships it enabled but the tenant has disabled it",
+}
+
+
+def _journey_phrase(item: Dict[str, Any], channel: str, existing: Dict[str, Any], p: Dict[str, Any]) -> str:
+    pos = _rule_position(channel, existing, p)
+    item["position"] = pos
+    return _POSITION_PHRASE[pos] + (f", action {existing['action']}" if existing.get("action") and pos != "deployed" and len(str(existing["action"])) <= 60 else "")
 
 
 def _policy_drift(p: Dict[str, Any], channel: str, existing: Dict[str, Any],
@@ -699,52 +756,65 @@ def _plan_tweaks(sources: Sequence[Dict[str, Any]], tenant: Dict[str, Any], appl
     return out
 
 
-def _baseline_impacts(all_items: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """One card per baseline pack: how many of its objects are in sync,
-    drifted (will be restored) or missing (will be created)."""
+def _baseline_impacts(all_items: Sequence[Dict[str, Any]], restore: bool = False) -> List[Dict[str, Any]]:
+    """One card per baseline pack: greenfield (nothing exists yet, the
+    whole pack is created) or brownfield (some objects exist and are kept
+    as the customer has them; only what is missing is created)."""
     per: Dict[str, Dict[str, Any]] = {}
     for i in all_items:
         b = i.get("baseline")
         if not b:
             continue
-        row = per.setdefault(b["pack"], {"meta": b, "in_sync": 0, "drifted": 0, "missing": 0, "blocked": 0,
-                                          "drifted_names": [], "adopted": 0})
+        row = per.setdefault(b["pack"], {"meta": b, "present": 0, "customized": 0, "missing": 0, "blocked": 0,
+                                          "restore": 0, "customized_names": [], "restore_names": []})
         st = i["status"]
         if st == RESTORE:
-            row["drifted"] += 1
-            row["drifted_names"].append(i["name"])
-            if i.get("adopt"):
-                row["adopted"] += 1
+            row["restore"] += 1
+            row["restore_names"].append(i["name"])
         elif st == CREATE:
             row["missing"] += 1
-        elif st in (REUSE, REUSE_DIFFERS, NOOP):
-            row["in_sync"] += 1
+        elif st == REUSE_DIFFERS:
+            row["present"] += 1
+            row["customized"] += 1
+            row["customized_names"].append(i["name"])
+        elif st in (REUSE, NOOP):
+            row["present"] += 1
         else:
             row["blocked"] += 1
     out: List[Dict[str, Any]] = []
     for pack_id, row in per.items():
         b = row["meta"]
         label = f"{b.get('name') or pack_id}{(' v' + b['version']) if b.get('version') else ''}"
-        if row["drifted"]:
-            names = ", ".join(row["drifted_names"][:6]) + (f" +{len(row['drifted_names']) - 6} more" if len(row["drifted_names"]) > 6 else "")
+        total = row["present"] + row["missing"] + row["blocked"] + row["restore"]
+        if row["restore"]:
+            names = ", ".join(row["restore_names"][:6]) + (f" +{len(row['restore_names']) - 6} more" if len(row["restore_names"]) > 6 else "")
             out.append({
                 "type": "baseline_restore", "baseline": pack_id,
-                "title": f"{row['drifted']} object{'s' if row['drifted'] != 1 else ''} drifted from baseline {label} and will be restored",
-                "detail": (f"Baselines are immutable: dictionaries, engines and rules whose content differs from the baseline are "
-                           f"overwritten with the baseline definition. Drifted: {names}."
-                           + (f" {row['adopted']} of them were not created by DLP-Check and will be brought under baseline management."
-                              if row["adopted"] else "")
-                           + " Objects the baseline does not define are never touched."),
+                "title": f"Converge mode: {row['restore']} object{'s' if row['restore'] != 1 else ''} will be overwritten with baseline {label}",
+                "detail": (f"You asked for the tenant to be reset to the reference. These objects differ from the baseline and will be "
+                           f"overwritten: {names}. If the customer changed any of them on purpose, stop and deploy without converge mode."),
                 "severity": "warning",
             })
-        else:
+        elif row["present"] == 0 and row["blocked"] == 0:
             out.append({
-                "type": "baseline_in_sync", "baseline": pack_id,
-                "title": f"Baseline {label}: {row['in_sync']} in sync, {row['missing']} missing"
+                "type": "greenfield", "baseline": pack_id,
+                "title": f"Greenfield for baseline {label}: none of its {total} objects exist yet",
+                "detail": ("The whole baseline will be created from scratch, every rule DISABLED. This is the starting point of the "
+                           "data governance journey; enabling rules moves the tenant along it."),
+                "severity": "ok",
+            })
+        else:
+            cust = (f" {row['customized']} of them {'has' if row['customized'] == 1 else 'have'} been customized by the customer "
+                    f"({', '.join(row['customized_names'][:6])}{' +' + str(len(row['customized_names']) - 6) + ' more' if len(row['customized_names']) > 6 else ''}) "
+                    "and stay exactly as they are." if row["customized"] else "")
+            out.append({
+                "type": "brownfield", "baseline": pack_id,
+                "title": f"Brownfield for baseline {label}: {row['present']} of {total} objects already exist, {row['missing']} will be created"
                          + (f", {row['blocked']} blocked" if row["blocked"] else ""),
-                "detail": ("Nothing in the tenant deviates from this baseline. Missing objects will be created with a provenance "
-                           "tag; future deploys restore any drift."),
-                "severity": "ok" if not row["blocked"] else "info",
+                "detail": ("Existing objects are kept as the customer has them (enabled rules, hardened actions and tuned dictionaries "
+                           "are progress, not drift)." + cust + " Only the missing objects are created, DISABLED. Objects the baseline "
+                           "does not define are never touched."),
+                "severity": "info" if not row["blocked"] else "warning",
             })
     return out
 
@@ -875,6 +945,7 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "baseline": (item.get("baseline") or {}).get("pack"),
         "drift": item.get("drift"),
         "adopt": bool(item.get("adopt")),
+        "position": journey_position(item),
     }
     if item["kind"] == "dictionary":
         out["detail"] = {"type": "clone" if d.get("predefined_clone") else "custom",
@@ -910,8 +981,13 @@ def preflight(
     use_rank_0: bool = False,
     apply_tweaks: bool = True,
     writes_enabled: Optional[bool] = None,
+    restore_drift: bool = False,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
+
+    `restore_drift` (converge mode) makes baseline objects that differ from
+    the reference RESTORE (overwrite) instead of being kept; it is off by
+    default and never chosen for the user.
 
     `packs` items need `id` and `dir` (as returned by
     dlp_importer.discover_packs). `writes_enabled` is the server's write
@@ -925,7 +1001,7 @@ def preflight(
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
     tenant = fetch_tenant(client, need)
-    options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks)}
+    options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift)}
 
     blockers: List[str] = []
     if not tenant["reachable"]:
@@ -936,13 +1012,13 @@ def preflight(
                         "(ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND) to deploy.")
 
     if tenant["reachable"]:
-        _plan_dictionaries(merged["dictionary"], tenant)
-        _plan_engines(merged["engine"], merged["dictionary"], tenant)
-        _plan_policies(merged["policy"], merged["engine"], tenant)
+        _plan_dictionaries(merged["dictionary"], tenant, restore=restore_drift)
+        _plan_engines(merged["engine"], merged["dictionary"], tenant, restore=restore_drift)
+        _plan_policies(merged["policy"], merged["engine"], tenant, restore=restore_drift)
         tweak_items = _plan_tweaks(sources, tenant, apply_tweaks)
         impacts, impact_blockers = _impacts(merged["policy"], tenant, use_rank_0)
         impacts = _baseline_impacts(list(merged["dictionary"].values()) + list(merged["engine"].values())
-                                    + list(merged["policy"].values())) + impacts
+                                    + list(merged["policy"].values()), restore_drift) + impacts
         blockers.extend(impact_blockers)
         dependencies = pc.dependency_report(list(merged["policy"].values()), tenant["channels"], len(tenant["rules"]))
     else:
@@ -977,10 +1053,12 @@ def preflight(
             warnings.append(f"{i['kind'].title()} '{i['name']}' is defined differently in {', '.join(i['packs'])} — it and everything that depends on it will be skipped.")
         elif i["status"] == BLOCKED_DEPENDENCY:
             warnings.append(f"{i['kind'].title()} '{i['name']}' will be skipped: {i['reason']}")
+        elif i["status"] == REUSE_DIFFERS and i.get("baseline"):
+            warnings.append(f"{i['kind'].title()} '{i['name']}' is customized in the tenant ({', '.join(i.get('drift') or ['content'])}) — kept as-is.")
         elif i["status"] == REUSE_DIFFERS:
             warnings.append(f"{i['kind'].title()} '{i['name']}' already exists with different content — the tenant's version is kept.")
         elif i["status"] == RESTORE:
-            warnings.append(f"{i['kind'].title()} '{i['name']}' drifted from baseline ({', '.join(i.get('drift') or ['content'])}) — it will be restored.")
+            warnings.append(f"{i['kind'].title()} '{i['name']}' differs from the baseline ({', '.join(i.get('drift') or ['content'])}) — converge mode will overwrite it.")
         elif i["status"] == MODIFY:
             warnings.append(f"{i['name']}: {i['reason']}")
         elif i["status"] == SKIP_EMPTY:
@@ -992,7 +1070,7 @@ def preflight(
     creates = sum(1 for i in all_items if i["status"] in WRITE_STATUSES)
     if tenant["reachable"] and creates == 0 and not blockers:
         if any(s.get("baseline") for s in sources):
-            blockers.append("Nothing to deploy: every baseline object is already in sync with the tenant.")
+            blockers.append("Nothing to deploy: every baseline object already exists in the tenant. Use the journey check to see how far the tenant has taken them.")
         else:
             blockers.append("Nothing to deploy: everything in the selected packs already exists in the tenant or is blocked.")
 
@@ -1004,6 +1082,7 @@ def preflight(
                    "engines": len(s["engines"]), "policies": len(s["policies"]),
                    "baseline": s.get("baseline")} for s in sources],
         "baselines": baseline_status_rows(all_items, sources),
+        "tenant_mode": tenant_mode(all_items, sources, tenant) if tenant["reachable"] else None,
         "options": options,
         "tenant": {"reachable": tenant["reachable"], "errors": tenant["errors"],
                    "dictionaries": len(tenant["dictionaries"]), "engines": len(tenant["engines"]),
@@ -1033,55 +1112,220 @@ def public_report(report: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in report.items() if not k.startswith("_")}
 
 
-# Plan status → baseline drift vocabulary.
-_DRIFT_STATUS = {REUSE: "in_sync", REUSE_DIFFERS: "in_sync", NOOP: "in_sync", RESTORE: "drifted", CREATE: "missing"}
+# ---------------------------------------------------------------------------
+# The data-governance journey
+# ---------------------------------------------------------------------------
+#
+# Every baseline object has a POSITION in the tenant:
+#   missing     not there yet (plan will create it)
+#   deployed    present, matches the baseline, rule still DISABLED
+#   monitoring  rule ENABLED with a non-enforcing action (ALLOW, report)
+#   enforcing   rule ENABLED with an enforcing action (BLOCK, DECRYPT, ...)
+#   customized  present but content differs from the baseline (kept)
+#   relaxed     the baseline ships it enabled, the tenant turned it off
+#   blocked     cannot be created (missing prerequisite / conflict)
+# Stages roll those up. A stage is reached when every object it needs is
+# at or beyond the required position; the tenant's stage is the highest
+# one with every earlier stage also reached.
+
+POSITIONS = ("missing", "deployed", "monitoring", "enforcing", "customized", "relaxed", "blocked")
+
+STAGES = [
+    {"n": 1, "key": "foundation", "name": "Foundation",
+     "what": "Dictionaries and engines exist, so the tenant can recognise the data the baseline is about."},
+    {"n": 2, "key": "deployed", "name": "Policies deployed",
+     "what": "Every rule of the baseline exists in the tenant (still disabled is fine)."},
+    {"n": 3, "key": "visibility", "name": "Visibility",
+     "what": "SSL Inspection decrypts the risky application classes and the DLP rules are enabled, so incidents are being logged."},
+    {"n": 4, "key": "containment", "name": "Containment",
+     "what": "Cloud App Control, File Type Control and URL Filtering rules are enabled: risky uploads, shares and unknown destinations are stopped before content inspection."},
+    {"n": 5, "key": "enforcement", "name": "Enforcement",
+     "what": "DLP rules block rather than monitor: sensitive data cannot leave through the inspected channels."},
+]
 
 
-def baseline_status_rows(all_items: Sequence[Dict[str, Any]], sources: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Per-baseline drift summary derived from a plan: every object of a
-    baseline pack is in_sync, drifted, missing or blocked. Read-only; the
-    same numbers the review step shows, in a shape the drift check and
-    the assessment can consume."""
+def journey_position(item: Dict[str, Any]) -> Optional[str]:
+    """Position of one planned item (None for tweaks / non-baseline items)."""
+    if item.get("kind") == "tweak" or not item.get("baseline"):
+        return None
+    st = item["status"]
+    if st == CREATE:
+        return "missing"
+    if st in BLOCKING_STATUSES:
+        return "blocked"
+    if st == RESTORE:
+        return "customized"
+    if item["kind"] != "policy":
+        return "customized" if st == REUSE_DIFFERS else "deployed"
+    pos = item.get("position")
+    if pos is None and item.get("tenant"):
+        pos = _rule_position(item.get("channel") or pc.channel_of(item["definition"]), item["tenant"], item["definition"])
+    if st == REUSE_DIFFERS and pos in (None, "deployed"):
+        return "customized"
+    return pos or "deployed"
+
+
+def _needed_for(stage_key: str, item: Dict[str, Any]) -> Optional[str]:
+    """Minimum position an item must reach for a stage, or None if the
+    stage does not care about this item."""
+    kind = item["kind"]
+    ch = item.get("channel") or (pc.channel_of(item["definition"]) if kind == "policy" else None)
+    if stage_key == "foundation":
+        return "present" if kind in ("dictionary", "engine") else None
+    if kind != "policy":
+        return None
+    if stage_key == "deployed":
+        return "present"
+    if stage_key == "visibility":
+        return "enabled" if ch == pc.SSL or pc.has_engines(ch) else None
+    if stage_key == "containment":
+        return "enabled" if ch in (pc.CLOUD_APP, pc.FILE_TYPE, pc.URL) else None
+    if stage_key == "enforcement":
+        return "enforcing" if pc.has_engines(ch) else None
+    return None
+
+
+def _meets(position: str, need: str) -> bool:
+    if position == "blocked":
+        return False
+    if need == "present":
+        return position != "missing"
+    if need == "enabled":
+        return position in ("monitoring", "enforcing")
+    if need == "enforcing":
+        return position == "enforcing"
+    return False
+
+
+def _next_step(item: Dict[str, Any], position: str, need: str) -> str:
+    kind, name = item["kind"], item["name"]
+    ch = item.get("channel") or (pc.channel_of(item["definition"]) if kind == "policy" else None)
+    portal = {pc.WEB: "Policy > Data Loss Prevention", pc.ENDPOINT: "Policy > Endpoint DLP",
+              pc.SAAS: "Policy > SaaS Security API", pc.EMAIL: "Policy > Email DLP",
+              pc.CLOUD_APP: "Policy > Cloud App Control", pc.FILE_TYPE: "Policy > File Type Control",
+              pc.URL: "Policy > URL Filtering", pc.SSL: "Policy > SSL Inspection"}.get(ch or "", "the ZIA Admin Portal")
+    if position == "blocked":
+        return f"Unblock {kind} '{name}': {item.get('reason', '')}".strip()
+    if position == "missing":
+        return f"Deploy {kind} '{name}' (select the baseline and run preflight)."
+    if need == "enabled":
+        if position == "customized":
+            return f"Enable rule '{name}' in {portal} (it is customized; check the action still fits)."
+        return f"Enable rule '{name}' in {portal} after reviewing its scope."
+    if need == "enforcing":
+        want = pc.policy_action(item["definition"])
+        return (f"Switch rule '{name}' in {portal} from monitor to an enforcing action ({want if pc.is_enforcing(ch or pc.WEB, want) else 'BLOCK'}) "
+                "once incidents have been reviewed and tuned.")
+    return f"Review {kind} '{name}'."
+
+
+def journey_rows(all_items: Sequence[Dict[str, Any]], sources: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Per-baseline journey: position of every object, stage ladder,
+    score and the concrete next steps. Read-only; derived from a plan."""
     rows: List[Dict[str, Any]] = []
     for src in sources:
         b = src.get("baseline")
         if not b:
             continue
+        items = [i for i in all_items if i.get("kind") != "tweak" and src["id"] in (i.get("packs") or [])]
+        counts = {p: 0 for p in POSITIONS}
+        objects = []
+        for i in items:
+            pos = journey_position(i) or "deployed"
+            counts[pos] += 1
+            objects.append({"kind": i["kind"], "name": i["name"], "position": pos,
+                            "channel": i.get("channel") or (pc.channel_of(i["definition"]) if i["kind"] == "policy" else None),
+                            "drift": i.get("drift"), "reason": i.get("reason", ""),
+                            "action": (i.get("tenant") or {}).get("action") if i["kind"] == "policy" and i.get("tenant") else None,
+                            "state": (i.get("tenant") or {}).get("state") if i["kind"] == "policy" and i.get("tenant") else None})
+        stages = []
+        reached = 0
+        chain_ok = True
+        next_steps: List[str] = []
+        for st in STAGES:
+            needed = [(i, _needed_for(st["key"], i)) for i in items]
+            needed = [(i, n) for i, n in needed if n]
+            met = [(i, n) for i, n in needed if _meets(journey_position(i) or "deployed", n)]
+            todo = [(i, n) for i, n in needed if not _meets(journey_position(i) or "deployed", n)]
+            done = not todo  # a stage with nothing to require is trivially done
+            if done and chain_ok:
+                reached = st["n"]
+            elif not done:
+                chain_ok = False
+            stages.append({"n": st["n"], "key": st["key"], "name": st["name"], "what": st["what"],
+                           "required": len(needed), "met": len(met), "done": done,
+                           "todo": [i["name"] for i, _ in todo]})
+            if todo and not next_steps:
+                next_steps = [_next_step(i, journey_position(i) or "deployed", n) for i, n in todo][:8]
+        applicable = [s for s in stages if s["required"]]
+        score = round(100 * sum(s["met"] / s["required"] for s in applicable) / len(applicable)) if applicable else 100
         row = {"id": src["id"], "name": src["name"], "version": b.get("version", ""), "prefix": b.get("prefix", ""),
-               "in_sync": 0, "drifted": 0, "missing": 0, "blocked": 0, "total": 0, "objects": []}
-        for i in all_items:
-            if i.get("kind") == "tweak" or src["id"] not in (i.get("packs") or []):
-                continue
-            st = _DRIFT_STATUS.get(i["status"], "blocked")
-            row[st] += 1
-            row["total"] += 1
-            if st != "in_sync":
-                row["objects"].append({"kind": i["kind"], "name": i["name"], "state": st,
-                                       "drift": i.get("drift"), "adopt": bool(i.get("adopt")), "reason": i.get("reason", "")})
-        row["state"] = "blocked" if row["blocked"] else ("drifted" if row["drifted"] else ("missing" if row["missing"] else "in_sync"))
+               "total": len(items), **counts,
+               # legacy keys kept for older callers
+               "in_sync": counts["deployed"] + counts["monitoring"] + counts["enforcing"],
+               "drifted": counts["customized"] + counts["relaxed"],
+               "stage": reached, "stage_name": (STAGES[reached - 1]["name"] if reached else "Not started"),
+               "stages": stages, "score": score, "next_steps": next_steps, "objects": objects}
+        if counts["blocked"]:
+            row["state"] = "blocked"
+        elif reached == len(STAGES):
+            row["state"] = "governed"
+        elif counts["missing"] == len(items):
+            row["state"] = "not_started"
+        else:
+            row["state"] = "in_progress"
         rows.append(row)
     return rows
 
 
-def baseline_status(report: Dict[str, Any]) -> Dict[str, Any]:
-    """Compact, read-only drift report for the baselines in a preflight."""
+# Kept name: preflight reports and older callers use "baselines".
+baseline_status_rows = journey_rows
+
+
+def tenant_mode(all_items: Sequence[Dict[str, Any]], sources: Sequence[Dict[str, Any]], tenant: Dict[str, Any]) -> Dict[str, Any]:
+    """Greenfield (none of the selected packs' objects exist) or brownfield."""
+    items = [i for i in all_items if i.get("kind") != "tweak"]
+    present = [i for i in items if i["status"] in (REUSE, REUSE_DIFFERS, RESTORE, NOOP)]
+    customized = [i for i in present if i["status"] in (REUSE_DIFFERS, RESTORE)]
+    custom_dicts = sum(1 for d in tenant["dictionaries"].values() if _field(d, "custom", default=False))
+    own = (f"The tenant has {custom_dicts} custom dictionar{'y' if custom_dicts == 1 else 'ies'}, {len(tenant['engines'])} engines and "
+           f"{len(tenant['rules'])} web DLP rules of its own; nothing outside the selected packs is touched.")
+    if not present:
+        return {"mode": "greenfield", "present": 0, "customized": 0, "total": len(items),
+                "detail": "None of the selected packs' objects exist yet: the whole selection is created from scratch. " + own}
+    return {"mode": "brownfield", "present": len(present), "customized": len(customized), "total": len(items),
+            "detail": (f"{len(present)} of {len(items)} objects already exist and are kept as the customer has them"
+                       + (f" ({len(customized)} customized)" if customized else "") + "; only the missing ones are created. " + own)}
+
+
+def journey(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact, read-only journey report for the baselines in a preflight:
+    where the tenant is, what the next steps are. Nothing is written."""
     rows = report.get("baselines") or []
-    overall = "in_sync"
-    for r in rows:
-        if r["state"] == "blocked":
-            overall = "blocked"
-            break
-        if r["state"] in ("drifted", "missing"):
-            overall = "drifted"
+    if any(r["state"] == "blocked" for r in rows):
+        overall = "blocked"
+    elif rows and all(r["state"] == "governed" for r in rows):
+        overall = "governed"
+    elif rows and all(r["state"] == "not_started" for r in rows):
+        overall = "not_started"
+    else:
+        overall = "in_progress"
     return {
         "status": overall,
+        "stage": min((r["stage"] for r in rows), default=0),
+        "score": round(sum(r["score"] for r in rows) / len(rows)) if rows else 0,
+        "stages": [{"n": st["n"], "key": st["key"], "name": st["name"], "what": st["what"]} for st in STAGES],
         "baselines": rows,
+        "tenant_mode": report.get("tenant_mode"),
         "tenant": report.get("tenant"),
         "blockers": [b for b in report.get("blockers", []) if not b.startswith("Nothing to deploy")
                      and not b.startswith("The server is running in read-only mode")],
         "plan_hash": report.get("plan_hash", ""),
         "elapsed_seconds": report.get("elapsed_seconds"),
     }
+
+
+baseline_status = journey
 
 
 # ---------------------------------------------------------------------------
@@ -1097,6 +1341,7 @@ def apply(
     apply_tweaks: bool = True,
     verify: bool = True,
     writes_enabled: Optional[bool] = None,
+    restore_drift: bool = False,
     log: LogFn = None,
 ) -> Dict[str, Any]:
     """Execute a previously approved plan.
@@ -1109,7 +1354,8 @@ def apply(
     than created against a missing dependency."""
     _log = log or (lambda m: None)
     started = time.time()
-    report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled)
+    report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
+                       restore_drift=restore_drift)
     if report["status"] == "blocked":
         return {"status": "blocked", "blockers": report["blockers"], "report": public_report(report), "results": []}
     if not plan_hash or report["plan_hash"] != plan_hash:
