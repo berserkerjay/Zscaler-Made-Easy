@@ -46,6 +46,25 @@ def test_index_loads_report_addons():
     assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200
 
 
+def test_report_tabs_share_the_app_stylesheet_and_theme():
+    """Every report tab loads the assessment page's own stylesheet and the
+    shared theme script, so it looks the same and follows the saved theme."""
+    c = TestClient(srv.app)
+    css = c.get("/app.css")
+    assert css.status_code == 200 and "text/css" in css.headers["content-type"] and "no-cache" in css.headers["cache-control"]
+    assert "--bg: #0a0e1a" in css.text and "body.theme-light" in css.text and ".hero h1 .accent" in css.text and "<style>" not in css.text
+    for path in ("/report/bypass?id=x", "/report/sslflow?id=x", "/report/view?tool=updates"):
+        html = c.get(path).text
+        assert '<link rel="stylesheet" href="/app.css">' in html, path
+        assert '<script src="/static/report_theme.js"></script>' in html, path
+        assert 'class="hero rp-hero"' in html and 'class="rp-btn" href="/"' in html, path
+        assert "prefers-color-scheme" not in html, path
+    theme = c.get("/static/report_theme.js")
+    assert theme.status_code == 200 and "zassess_theme" in theme.text and "themeToggleBtn" in theme.text
+    rcss = c.get("/static/reports.css").text
+    assert "prefers-color-scheme" not in rcss and "body.theme-light" in rcss
+
+
 def test_terraform_summary_endpoint():
     c = TestClient(srv.app)
     r = c.get("/api/dlp-packs/healthcare_phi_baseline/terraform")

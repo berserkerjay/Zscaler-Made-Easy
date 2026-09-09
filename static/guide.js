@@ -501,3 +501,9 @@ function _gdProfilesRender() {
   fab.setAttribute('aria-label', 'Open help and glossary'); fab.onclick = () => _gdHelp(true);
   document.body.appendChild(fab);
 })();
+
+// The report tabs share the saved theme; when it is switched there, follow here.
+window.addEventListener('storage', e => {
+  if (e.key !== 'zassess_theme' || typeof _applyTheme !== 'function') return;
+  _applyTheme(e.newValue === 'light' ? 'light' : 'dark');
+});

@@ -4,36 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
 <style id="appStyle"></style>
 <link rel="stylesheet" href="/static/deploy_studio.css">
 <link rel="stylesheet" href="/static/guide.css">
 <link rel="stylesheet" href="/static/reports.css">
 <style>
-  body.tool-tab { margin: 0; padding: 0; }
-  .tt-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.4rem; background: var(--card-solid, #111a2e); border-bottom: 1px solid var(--border, rgba(148,163,184,0.18)); }
-  .tt-top a.back { color: var(--accent, #3b82f6); text-decoration: none; font-weight: 600; white-space: nowrap; }
-  .tt-top a.back:hover { text-decoration: underline; }
-  .tt-top h1 { margin: 0; font-size: 1.15rem; flex: 1; color: var(--text, #e2e8f0); }
-  .tt-top .meta { color: var(--dim, #94a3b8); font-size: 0.8rem; }
-  .tt-main { max-width: 1120px; margin: 0 auto; padding: 1rem 1.4rem 3rem; }
-  .tt-main > .tt-panel { background: var(--card-solid, #111a2e); border: 1px solid var(--border, rgba(148,163,184,0.18)); border-radius: 14px; padding: 1.2rem 1.5rem; }
-  .tt-wait { text-align: center; padding: 4rem 1rem; color: var(--dim, #94a3b8); }
-  .tt-wait .spin { width: 28px; height: 28px; border: 3px solid var(--border, #334155); border-top-color: var(--accent, #3b82f6); border-radius: 50%; margin: 0 auto 1rem; animation: tt-spin 0.9s linear infinite; }
-  @keyframes tt-spin { to { transform: rotate(360deg); } }
-  .tt-gone { padding: 1rem 1.2rem; border-radius: 12px; border: 1px solid rgba(245,158,11,0.45); color: var(--text, #e2e8f0); }
+  .tt-gone { padding: 1rem 1.2rem; border-radius: 12px; border: 1px solid rgba(245,158,11,0.45); color: var(--text); }
 </style>
 </head>
-<body class="tool-tab">
-  <header class="tt-top">
-    <a class="back" href="/" id="ttBack">← Back to the assessment</a>
-    <h1 id="rpTitle">Loading…</h1>
-    <span class="meta" id="rpMeta"></span>
-  </header>
-  <main class="tt-main">
-    <div class="tt-panel" id="rpBody">
-      <div class="tt-wait"><div class="spin"></div>Working… this tab fills in as the assessment tab finishes. Keep the assessment tab open.</div>
+<body class="tool-tab report-page">
+  <div class="rp-page">
+    <div class="hero rp-hero">
+      <h1 id="rpTitle">Loading…</h1>
+      <span class="badge" id="rpMeta"></span>
     </div>
-  </main>
+    <div class="rp-bar">
+      <a class="rp-btn" href="/" id="ttBack">← Back to the assessment</a>
+      <span class="sep"></span>
+    </div>
+    <main class="rp-card">
+      <div class="tt-panel" id="rpBody">
+        <div class="rp-wait"><div class="spin"></div>Working… this tab fills in as the assessment tab finishes. Keep the assessment tab open.</div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/report_theme.js"></script>
   <script>
   // This tab is a live mirror of a tool dialog in the assessment tab: the
   // dialog's content is copied here whenever it changes, clicks on its

@@ -142,7 +142,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/report/view", "/report/bypass", "/report/sslflow"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -316,6 +316,27 @@ async def serve_gui():
     except OSError:
         return FileResponse(index, headers=headers)
     return HTMLResponse(_inject_gui_addons(html), headers=headers)
+
+
+@app.get("/app.css")
+async def serve_app_css():
+    """The GUI's own stylesheet (the first <style> block of index.html), so
+    the report tabs (/report/bypass, /report/sslflow, /report/view) look
+    exactly like the assessment page: same tokens, fonts, theme, buttons."""
+    from fastapi.responses import Response
+    index = os.path.join(STATIC_DIR, "index.html")
+    css = ""
+    try:
+        with open(index, "r", encoding="utf-8") as f:
+            html = f.read()
+        start = html.find("<style>")
+        end = html.find("</style>", start)
+        if start >= 0 and end > start:
+            css = html[start + len("<style>"):end]
+    except OSError:
+        css = ""
+    return Response(content=css, media_type="text/css",
+                    headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 # ── Text-prompt command interface ────────────────────────────────

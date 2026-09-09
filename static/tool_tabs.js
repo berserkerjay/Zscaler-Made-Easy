@@ -17,6 +17,7 @@ const TOOL_TABS = {
   terraform:     { title: 'Terraform hand-off',     open: 'openTerraformModal',     modal: 'terraformModal' },
 };
 const _TT = {};   // kind -> { win, panel, observer, timer }
+function _ttE(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function _ttPanel(kind) {
   const modal = document.getElementById(TOOL_TABS[kind].modal);
@@ -67,9 +68,13 @@ async function openToolTab(kind, arg) {
     try {
       if (!win.document || !win.document.getElementById('rpBody') || typeof win.__ttApply !== 'function') return false;
       win.document.title = `${spec.title} — Zscaler Assessment`;
-      win.document.getElementById('rpTitle').textContent = spec.title;
-      win.document.getElementById('appStyle').textContent = styleEl ? styleEl.textContent : '';
-      win.document.body.className = 'tool-tab ' + (document.body.classList.contains('theme-light') ? 'theme-light' : '');
+      const h = win.document.getElementById('rpTitle');
+      const words = spec.title.split(' ');
+      h.innerHTML = `<span class="accent">${_ttE(words[0])}</span> ${_ttE(words.slice(1).join(' '))}`;
+      // The tab links /app.css itself; the copy is a fallback for old tabs.
+      const st = win.document.getElementById('appStyle');
+      if (st && !st.textContent && !win.document.querySelector('link[href="/app.css"]')) st.textContent = styleEl ? styleEl.textContent : '';
+      win.document.body.classList.toggle('theme-light', document.body.classList.contains('theme-light'));
       return true;
     } catch (e) { return false; }
   };

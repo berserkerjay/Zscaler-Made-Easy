@@ -1,25 +1,28 @@
-/* Report pages and dialogs (bypass inventory). Loaded by index.html (dialog)
-   and by /report/bypass (standalone tab). Tokens fall back to the app's. */
-body.report-page { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
-body.report-page {
-  --bg: #0b1220; --card: rgba(30,41,59,0.6); --card-solid: #111a2e; --border: rgba(148,163,184,0.18); --text: #e2e8f0; --dim: #94a3b8;
-  --accent: #3b82f6; --accent-hover: #60a5fa; --pass: #10b981; --warn: #f59e0b; --fail: #ef4444;
-}
-@media (prefers-color-scheme: light) {
-  body.report-page { --bg: #f4f6fb; --card: rgba(255,255,255,0.85); --card-solid: #ffffff; --border: rgba(100,116,139,0.2); --text: #0f172a; --dim: #475569; --accent-hover: #2563eb; }
-}
-.rp-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.4rem; background: var(--card-solid); border-bottom: 1px solid var(--border); }
-.rp-top a.back { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; }
-.rp-top a.back:hover { text-decoration: underline; }
-.rp-top h1 { margin: 0; font-size: 1.15rem; flex: 1; }
-.rp-top .meta { color: var(--dim); font-size: 0.8rem; }
-.rp-main { max-width: 1120px; margin: 0 auto; padding: 1rem 1.4rem 3rem; }
+/* Report tabs (/report/bypass, /report/sslflow, /report/view) and the
+   bypass dialog. The tabs load /app.css first (the assessment page's own
+   stylesheet), so every token, font, theme and button below is the app's;
+   this file only adds the report layout and components. */
+.rp-page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3.5rem; position: relative; z-index: 1; animation: fadeInUp 0.6s var(--ease, ease); }
+.rp-hero { text-align: center; margin-bottom: 1.4rem; padding: 0.5rem 0 0; }
+.rp-hero h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.5rem; }
+.rp-hero h1 .accent { background: linear-gradient(135deg, #3b82f6, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.rp-hero p { color: var(--dim); font-size: 1rem; max-width: 70ch; margin: 0 auto; }
+.rp-hero .badge { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(59,130,246,0.1); color: var(--accent); padding: 0.35rem 1rem; border-radius: 100px; font-size: 0.78rem; font-weight: 500; margin-top: 0.75rem; border: 1px solid rgba(59,130,246,0.2); }
+.rp-hero .badge:empty { display: none; }
+.rp-hero .badge::before { content: '●'; color: var(--pass); font-size: 0.6rem; }
+.rp-bar { position: sticky; top: 0.5rem; z-index: 5; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.5rem 0.6rem; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card); backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%); box-shadow: var(--shadow-sm); }
+.rp-bar .sep { flex: 1; }
+.rp-bar .lbl { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 0 0.3rem; }
+.rp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 38px; padding: 0.5rem 0.9rem; border-radius: 10px; font-size: 0.8rem; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--dim); text-decoration: none; white-space: nowrap; transition: all 0.2s var(--ease, ease); }
+.rp-btn:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255,255,255,0.04); }
+.rp-btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.rp-btn.primary:hover { background: var(--accent-hover); }
+.rp-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+.rp-card { background: var(--card); backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%); border: 1px solid var(--border); border-radius: 16px; padding: 1.4rem 1.5rem; box-shadow: var(--shadow-md); }
 .rp-wait { text-align: center; padding: 4rem 1rem; color: var(--dim); }
 .rp-wait .spin { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 1rem; animation: rp-spin 0.9s linear infinite; }
 @keyframes rp-spin { to { transform: rotate(360deg); } }
-.rp-btn { border-radius: 999px; padding: 0.45rem 0.95rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text); text-decoration: none; }
-.rp-btn:hover { border-color: var(--accent); }
-.rp-btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+@media (max-width: 760px) { .rp-hero h1 { font-size: 1.6rem; } .rp-bar { position: static; } }
   .bp-panel { max-width: 1040px; margin: 0 auto; background: var(--card-solid); border: 1px solid var(--border); border-radius: 16px;
     box-shadow: 0 24px 70px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: calc(100vh - 3rem); overflow: hidden; }
   .bp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.15rem 1.4rem 0.9rem; border-bottom: 1px solid var(--border); }
@@ -82,10 +85,8 @@ body.report-page {
   .bp-guide li { margin: 0.2rem 0; }
   body.theme-light .bp-risks li { background: rgba(255,255,255,0.7); }
   @media (max-width: 760px) { .bp-hero { grid-template-columns: 1fr; } .bp-panel { max-height: calc(100vh - 1.5rem); } }
-@media (prefers-color-scheme: light) {
-  body.report-page .bp-risks li { background: rgba(255,255,255,0.75); }
-  body.report-page .bp-table th { background: #fff; }
-}
+body.theme-light .bp-table th { background: #fff; }
+body.theme-light .rp-btn:hover { background: rgba(15,23,42,0.04); }
 
 /* ── SSL Inspection Flow (/report/sslflow) ── */
 .sf-live { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.6rem; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pass); vertical-align: middle; }
