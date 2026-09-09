@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zscaler Assessment</title>
+<style id="appStyle"></style>
+<link rel="stylesheet" href="/static/deploy_studio.css">
+<link rel="stylesheet" href="/static/guide.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  body.tool-tab { margin: 0; padding: 0; }
+  .tt-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.4rem; background: var(--card-solid, #111a2e); border-bottom: 1px solid var(--border, rgba(148,163,184,0.18)); }
+  .tt-top a.back { color: var(--accent, #3b82f6); text-decoration: none; font-weight: 600; white-space: nowrap; }
+  .tt-top a.back:hover { text-decoration: underline; }
+  .tt-top h1 { margin: 0; font-size: 1.15rem; flex: 1; color: var(--text, #e2e8f0); }
+  .tt-top .meta { color: var(--dim, #94a3b8); font-size: 0.8rem; }
+  .tt-main { max-width: 1120px; margin: 0 auto; padding: 1rem 1.4rem 3rem; }
+  .tt-main > .tt-panel { background: var(--card-solid, #111a2e); border: 1px solid var(--border, rgba(148,163,184,0.18)); border-radius: 14px; padding: 1.2rem 1.5rem; }
+  .tt-wait { text-align: center; padding: 4rem 1rem; color: var(--dim, #94a3b8); }
+  .tt-wait .spin { width: 28px; height: 28px; border: 3px solid var(--border, #334155); border-top-color: var(--accent, #3b82f6); border-radius: 50%; margin: 0 auto 1rem; animation: tt-spin 0.9s linear infinite; }
+  @keyframes tt-spin { to { transform: rotate(360deg); } }
+  .tt-gone { padding: 1rem 1.2rem; border-radius: 12px; border: 1px solid rgba(245,158,11,0.45); color: var(--text, #e2e8f0); }
+</style>
+</head>
+<body class="tool-tab">
+  <header class="tt-top">
+    <a class="back" href="/" id="ttBack">← Back to the assessment</a>
+    <h1 id="rpTitle">Loading…</h1>
+    <span class="meta" id="rpMeta"></span>
+  </header>
+  <main class="tt-main">
+    <div class="tt-panel" id="rpBody">
+      <div class="tt-wait"><div class="spin"></div>Working… this tab fills in as the assessment tab finishes. Keep the assessment tab open.</div>
+    </div>
+  </main>
+  <script>
+  // This tab is a live mirror of a tool dialog in the assessment tab: the
+  // dialog's content is copied here whenever it changes, clicks on its
+  // buttons are forwarded to the real buttons, and typed values flow back.
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const kind = q.get('tool') || '';
+    const body = document.getElementById('rpBody');
+    const gone = () => {
+      body.innerHTML = '<div class="tt-gone"><strong>The assessment tab was closed.</strong> This report was generated there; open the assessment again and run the tool once more.</div>';
+    };
+    window.__ttApply = function (html, inputs) {
+      body.innerHTML = html;
+      // Forward clicks: every element that had an onclick in the dialog is
+      // matched to the same element (by index) in the assessment tab.
+      body.querySelectorAll('[onclick]').forEach((el, i) => {
+        const code = el.getAttribute('onclick') || '';
+        el.removeAttribute('onclick');
+        if (/close[A-Za-z]*Modal\(/.test(code)) { el.remove(); return; }
+        el.dataset.call = String(i);
+      });
+      // Mirror current input values from the dialog.
+      const mine = body.querySelectorAll('input, textarea, select');
+      (inputs || []).forEach((v, i) => { const el = mine[i]; if (!el) return; if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v.checked; else if (v.value != null) el.value = v.value; });
+    };
+    body.addEventListener('click', e => {
+      const el = e.target.closest('[data-call]');
+      if (!el) return;
+      e.preventDefault();
+      if (!window.opener || window.opener.closed) { gone(); return; }
+      try { window.opener.__toolTabClick(kind, Number(el.dataset.call)); } catch (err) { gone(); }
+    });
+    const forward = e => {
+      const el = e.target;
+      if (!el.matches || !el.matches('input, textarea, select')) return;
+      const idx = Array.from(body.querySelectorAll('input, textarea, select')).indexOf(el);
+      if (!window.opener || window.opener.closed) return;
+      try { window.opener.__toolTabInput(kind, idx, el.value, el.checked); } catch (err) { /* ignore */ }
+    };
+    body.addEventListener('input', forward);
+    body.addEventListener('change', forward);
+    if (!window.opener) { gone(); }
+    setInterval(() => { if (window.opener && window.opener.closed && !body.querySelector('.tt-gone')) gone(); }, 2000);
+  })();
+  </script>
+</body>
+</html>

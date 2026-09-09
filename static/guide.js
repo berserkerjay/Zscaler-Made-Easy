@@ -192,7 +192,7 @@ function _gdSetMode(mode) {
 // Guided mode hides the advanced tools. Cards are found by their heading
 // text so index.html needs no markup changes.
 const GD_ADVANCED_HEADINGS = ['Compliance Coverage'];
-const GD_ADVANCED_BUTTONS = ['openUpdateModal()', 'openBypassModal()', 'openDlpEfficacyModal()'];
+const GD_ADVANCED_BUTTONS = ["openToolTab('updates')", 'openBypassReportTab()', "openToolTab('efficacy')"];
 function _gdApplyMode() {
   document.body.classList.toggle('gd-guided', GD.mode === 'guided');
   document.querySelectorAll('div.card').forEach(card => {
