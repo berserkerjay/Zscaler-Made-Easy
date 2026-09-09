@@ -53,7 +53,7 @@ the start scripts (an update or a fresh clone replaces them). Instead:
 3. Stop and start the server (`STOP_Zscaler_Assessment.bat`, then the
    desktop shortcut). Start here shows the CA bundle in use.
 
-Test connection tells you when this is the problem: "intercepted by TLS
+Authenticate tells you when this is the problem: "intercepted by TLS
 inspection" means the CA bundle is missing or wrong; "rejected the client
 ID or client secret" means the credentials themselves.
 
@@ -80,7 +80,8 @@ placeholder and will not work. They must generate a new one.
 
 1. Open **Tenant Configuration** and enter the four values plus your
    organisation and assessor name.
-2. In the **Start here** panel click **Test connection**. You should see
+2. Click **Authenticate** at the bottom of Tenant Configuration (or in the
+   **Start here** panel, step 1). You should see
    "Connected: N dictionaries, N engines, N web DLP rules".
 3. If it fails, the panel says why and what to do. The two common causes:
    - *Zscaler rejected the client ID or client secret* → regenerate the secret.
@@ -197,7 +198,7 @@ the outset, for scripted use.)
 |---|---|---|
 | "Could not connect … rejected the client ID or client secret" | Bad credentials | Regenerate the secret in ZIdentity, paste it fresh |
 | "… intercepted by TLS inspection" | Laptop behind ZCC/proxy | `REQUESTS_CA_BUNDLE` to the corporate root CA, or another machine |
-| "0 endpoints probed" in ZCC diagnostics | Credentials rejected | Test connection first |
+| "0 endpoints probed" in ZCC diagnostics | Credentials rejected | Authenticate first |
 | Preflight **Blocked** card | A named prerequisite is missing | Read the card; onboard the SaaS tenant, or deselect that rule's pack |
 | "Write actions require ENABLE_WRITE_ACTIONS" | Read-only mode | Start with `START_Zscaler_Assessment_WRITES_ENABLED.bat` |
 | "The tenant changed since you approved" | Someone edited the tenant mid-flow | Re-run preflight and approve the new plan |

@@ -531,6 +531,8 @@
   }
   .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
   .tool-group { display: grid; gap: 0.35rem; padding: 0.55rem 0.6rem 0.6rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card); text-align: left; }
+  .auth-status { font-size: 0.85rem; color: var(--dim); }
+  .auth-status.ok { color: var(--pass); } .auth-status.bad { color: var(--fail); }
   .tool-group-l { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 0 0.2rem; }
 
   /* Responsive */
@@ -929,7 +931,11 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="runBtn" onclick="runAssessment()">Run Assessment</button>
+      <button class="btn btn-primary" id="authBtn" onclick="authenticateTenant()" title="Checks the four tenant values against Zscaler without changing anything. Run the assessment from Start here, step 2.">Authenticate</button>
+      <span id="authStatus" class="auth-status" aria-live="polite"></span>
+      <!-- The assessment itself starts from Start here (step 2); this hidden
+           button keeps the existing run/complete handlers wired. -->
+      <button id="runBtn" onclick="runAssessment()" hidden aria-hidden="true">Run Assessment</button>
       <button class="btn btn-ghost" id="saveBtn" onclick="saveConfig()" title="Save config locally (except secret)">Save Config</button>
       <button class="btn btn-ghost" id="clearBtn" onclick="clearConfig()" title="Clear saved config">Clear</button>
       <span class="status-msg" id="statusMsg"></span>
@@ -2137,6 +2143,20 @@ function exportChecks(scope, format) {
 
 let migrateRules = null;
 let optimizedRules = null;
+
+// Authenticate only: the same read-only connection test the Start-here
+// panel uses. The assessment is started from Start here, step 2.
+async function authenticateTenant() {
+  const st = document.getElementById('authStatus');
+  if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); return; }
+  const body = migrateValidateCreds(); if (!body) return;
+  if (st) st.textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (st) st.textContent = r.ok ? `Connected to ${d.tenant_label}.` : `Could not connect: ${(d.detail && d.detail.cause) || d.detail || r.status}`;
+  } catch (e) { if (st) st.textContent = `Could not connect: ${e.message}`; }
+}
 
 function migrateCredBody() {
   return {
