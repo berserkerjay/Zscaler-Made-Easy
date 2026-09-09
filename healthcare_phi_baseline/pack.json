@@ -10,7 +10,8 @@
   "notes": [
     "E_PHI_BULK_EXPORT is expressed as 'any identifier dictionary with 10 or more matches' rather than a Sum across dictionaries, because the engine expression language exposed through the API uses per-dictionary counts. If you want a true Sum, rebuild that engine in the portal's Engine Builder; the baseline will then report it as drifted, so remove it from dlp_engines.json first.",
     "Proximity values are bytes across the extracted text stream. They are unreliable for spreadsheets, multi-column PDFs and OCR output; Branch B (two distinct identifiers) and the Medical Document ML dictionary cover those cases.",
-    "The rule sets no file_types, so it applies to every inspectable type; set file_types in dlp_policies.json to narrow it."
+    "The rule sets no file_types, so it applies to every inspectable type; set file_types in dlp_policies.json to narrow it.",
+    "Predefined dictionaries are referenced by their API names as a tenant exports them (MEDICAL = Medical Information, ML_MEDICAL_DOC_LEAKAGE = Medical Document). If preflight reports them missing, list the tenant's dictionaries and adjust the names in dlp_engines.json."
   ],
   "confidence_tweaks": [],
   "baseline": {

@@ -94,11 +94,20 @@ def convert(tf: Dict[str, Any], *, enable_rules: bool = False, rank: int = 7) ->
             if ref not in dict_names:
                 raise SystemExit(f"engine {key}: references unknown dictionary resource {ref}")
             return "D:" + dict_names[ref]
+
+        def _sub_data(m: re.Match) -> str:
+            ref = m.group(1)
+            if ref not in template_names:
+                raise SystemExit(f"engine {key}: references unknown data source {ref}")
+            return "D:" + template_names[ref]
         # Terraform form is `D${ref}.S`; pack form is `D:<name>` (the `.S`
         # suffix is added back when the expression is resolved to IDs).
-        expr = re.sub(r"D\$\{zia_dlp_dictionaries\.([A-Za-z0-9_]+)\.id\}\.S", lambda m: _sub(m), expr)
-        if _DICT_REF.search(expr):
-            raise SystemExit(f"engine {key}: unexpected dictionary reference form in {expr!r}")
+        # Resource refs name pack dictionaries; data refs name predefined
+        # Zscaler dictionaries, resolved against the tenant at deploy time.
+        expr = re.sub(r"D\$\{zia_dlp_dictionaries\.([A-Za-z0-9_]+)\.id\}\.S", _sub, expr)
+        expr = re.sub(r"D\$\{data\.zia_dlp_dictionaries\.([A-Za-z0-9_]+)\.id\}\.S", _sub_data, expr)
+        if "${" in expr:
+            raise SystemExit(f"engine {key}: unexpected reference form in {expr!r}")
         engines.append({"name": e["name"], "description": _clean_desc(e.get("description", "")), "expression": expr})
 
     policies: List[Dict[str, Any]] = []

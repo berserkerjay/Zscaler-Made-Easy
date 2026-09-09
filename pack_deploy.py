@@ -58,7 +58,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set,
 
 import pack_channels as pc
 from dlp_importer import (
+    DICT_DESCRIPTION_MAX,
     EMPTY_DICT_REASON,
+    fit_description,
     _extract_error,
     _extract_id,
     _load_json,
@@ -139,13 +141,16 @@ def baseline_meta(meta: Dict[str, Any], pack_id: str) -> Optional[Dict[str, Any]
     }
 
 
-def baseline_description(item: Dict[str, Any], base: Optional[str]) -> str:
-    """Description with the provenance tag appended (idempotent)."""
+def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None) -> str:
+    """Description with the provenance tag appended (idempotent). `limit`
+    clamps the total length (dictionaries: 255) without losing the tag."""
     b = item.get("baseline") or {}
     tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Immutable: drift is reverted on the next deploy."
     base = (base or "").strip()
     if BASELINE_MARK in base:
         base = base.split(BASELINE_MARK, 1)[0].strip()
+    if limit:
+        return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
 
 
@@ -1082,10 +1087,12 @@ def apply(
     engine_ids: Dict[str, Any] = {n: _field(t, "id") for n, t in tenant["engines"].items()}
 
     def described(item: Dict[str, Any], definition: Dict[str, Any], fallback: str = "") -> Dict[str, Any]:
-        """Definition with the baseline provenance tag in its description."""
+        """Definition with the baseline provenance tag in its description
+        (clamped to the API limit for dictionaries)."""
         if not item.get("baseline"):
             return definition
-        return dict(definition, description=baseline_description(item, definition.get("description") or fallback))
+        limit = DICT_DESCRIPTION_MAX if item["kind"] == "dictionary" else None
+        return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit))
 
     _log("Phase 1: dictionaries")
     for item in merged["dictionary"].values():

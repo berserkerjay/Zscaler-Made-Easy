@@ -150,7 +150,7 @@ resource "zia_dlp_dictionaries" "state_id_number_sid_reference" {
 
 resource "zia_dlp_dictionaries" "ncic_purpose_code_pattern" {
   name                         = "NCIC Purpose Code Pattern"
-  description                  = "NCIC query purpose codes — C (criminal justice), J (criminal justice employment), S (national security), F (firearms), X (exigent), etc. Valid codes appearing in message headers indicate a lawful NCIC lookup result. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
+  description                  = "NCIC query purpose codes — C (criminal justice), J (criminal justice employment), S (national security), F (firearms), X (exigent), etc. Valid codes appearing in message headers indicate a law... [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"

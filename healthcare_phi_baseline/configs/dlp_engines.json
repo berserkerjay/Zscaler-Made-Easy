@@ -1,8 +1,8 @@
 [
   {
     "name": "E_HEALTHCARE_PHI",
-    "description": "Presence-based PHI. Branch A: clinical context (predefined Medical Information or Medical Document, or the custom clinical phrases) AND at least one strong identifier. Branch B: two distinct strong identifiers. Branch C: the legal-sex booster beside a strong identifier.",
-    "expression": "((((D:Medical Information > 0) OR (D:Medical Document > 0) OR (D:D_CLINICAL_PHRASES > 0)) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))) OR (((D:D_MRN > 0) AND (D:D_ACCT > 0)) OR ((D:D_MRN > 0) AND (D:D_DOB > 0)) OR ((D:D_ACCT > 0) AND (D:D_DOB > 0))) OR ((D:D_LEGAL_SEX > 0) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))))"
+    "description": "Presence-based PHI. Branch A: clinical context (predefined MEDICAL (Medical Information) or ML_MEDICAL_DOC_LEAKAGE (Medical Document), or the custom clinical phrases) AND at least one strong identifier. Branch B: two distinct strong identifiers. Branch C: the legal-sex booster beside a strong identifier.",
+    "expression": "((((D:MEDICAL > 0) OR (D:ML_MEDICAL_DOC_LEAKAGE > 0) OR (D:D_CLINICAL_PHRASES > 0)) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))) OR (((D:D_MRN > 0) AND (D:D_ACCT > 0)) OR ((D:D_MRN > 0) AND (D:D_DOB > 0)) OR ((D:D_ACCT > 0) AND (D:D_DOB > 0))) OR ((D:D_LEGAL_SEX > 0) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))))"
   },
   {
     "name": "E_PHI_BULK_EXPORT",

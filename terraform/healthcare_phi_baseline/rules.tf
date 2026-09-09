@@ -11,7 +11,7 @@ resource "zia_dlp_web_rules" "r_healthcare_phi_mrn_acct_dob" {
   without_content_inspection   = false
   min_size                     = 10
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
-  ocr_enabled                  = true
+  # ocr_enabled = true  (not in provider 4.8.x schema; enable OCR on this rule in the portal)
   dlp_engines {
     id = [zia_dlp_engines.e_healthcare_phi.id, zia_dlp_engines.e_phi_bulk_export.id]
   }

@@ -43,7 +43,7 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
-from dlp_importer import _load_json, _resolve_configs, load_pack_metadata
+from dlp_importer import DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, fit_description, load_pack_metadata
 
 PROVIDER_SOURCE = "zscaler/zia"
 PROVIDER_VERSION = "~> 4.8"
@@ -132,9 +132,11 @@ def load_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _provenance(meta: Dict[str, Any], pack_id: str, base: str) -> str:
+def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optional[int] = None) -> str:
     b = meta.get("baseline")
     tag = f"[DLP-Check {'baseline' if b else 'pack'} {pack_id}{(' v' + str(meta.get('version'))) if meta.get('version') else ''}] Terraform-managed."
+    if limit:
+        return fit_description(base, tag, limit)
     base = (base or "").strip()
     return f"{base} {tag}".strip()
 
@@ -169,7 +171,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         label = S.get("dict", d["name"])
         out.append(f'resource "zia_dlp_dictionaries" "{label}" {{\n')
         out.append(_attr("name", hcl_str(d["name"])))
-        out.append(_attr("description", hcl_str(_provenance(meta, pack_id, d.get("description", "")))))
+        out.append(_attr("description", hcl_str(_provenance(meta, pack_id, d.get("description", ""), limit=DICT_DESCRIPTION_MAX))))
         out.append(_attr("dictionary_type", hcl_str("PATTERNS_AND_PHRASES")))
         out.append(_attr("custom", "true"))
         out.append(_attr("custom_phrase_match_type", hcl_str(d.get("custom_phrase_match_type", "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"))))
@@ -188,9 +190,11 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
             out.append(_attr("proximity", str(prox)))
             if not d.get("predefined_clone"):
                 out.append(_attr("proximity_enabled_for_custom_dictionary", "true"))
-        for flag in ("include_bin_numbers", "include_ssn_numbers"):
-            if d.get(flag):
-                out.append(_attr(flag, "true"))
+        if d.get("include_bin_numbers"):
+            out.append(_attr("include_bin_numbers", "true"))
+        if d.get("include_ssn_numbers"):
+            # Accepted by the ZIA API (and the in-app deploy) but not exposed by provider 4.8.x.
+            out.append("  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)\n")
         if d.get("hierarchical_identifiers"):
             out.append(_attr("hierarchical_identifiers", hcl_list(d["hierarchical_identifiers"])))
         for p in d.get("patterns") or []:
@@ -279,9 +283,12 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
 
         if channel == pc.WEB:
             r.append(_attr("protocols", hcl_list(p.get("protocols", ["ANY_RULE"]))))
-            for flag in ("match_only", "ocr_enabled", "zscaler_incident_receiver"):
+            for flag in ("match_only", "zscaler_incident_receiver"):
                 if p.get(flag):
                     r.append(_attr(flag, "true"))
+            if p.get("ocr_enabled"):
+                # Documented for zia_dlp_web_rules but absent from the 4.8.x schema; the API path applies it.
+                r.append("  # ocr_enabled = true  (not in provider 4.8.x schema; enable OCR on this rule in the portal)\n")
             classes = [str(c).upper() for c in (p.get("cloud_app_classes") or [])]
             if p.get("cloud_applications"):
                 r.append(_attr("cloud_applications", hcl_list(p["cloud_applications"])))

@@ -1,11 +1,11 @@
 # Dictionaries — generated from the pack; predefined Zscaler dictionaries are looked up by name.
 
-data "zia_dlp_dictionaries" "medical_information" {
-  name = "Medical Information"
+data "zia_dlp_dictionaries" "medical" {
+  name = "MEDICAL"
 }
 
-data "zia_dlp_dictionaries" "medical_document" {
-  name = "Medical Document"
+data "zia_dlp_dictionaries" "ml_medical_doc_leakage" {
+  name = "ML_MEDICAL_DOC_LEAKAGE"
 }
 
 resource "zia_dlp_dictionaries" "d_mrn" {

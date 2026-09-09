@@ -620,7 +620,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_high" {
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
     phrase = "ssn"
@@ -638,7 +638,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_prox_500" {
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
     phrase = "ssn"
@@ -655,7 +655,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_high" {
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
 }
 
 resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
@@ -669,7 +669,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
 }
 
 resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
@@ -683,7 +683,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
   hierarchical_identifiers     = ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL", "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME", "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH", "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI", "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"]
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
@@ -701,7 +701,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
   hierarchical_identifiers     = ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL", "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME", "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH", "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI", "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"]
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
@@ -711,7 +711,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
 
 resource "zia_dlp_dictionaries" "private_keys_plaintext_regex" {
   name                         = "Private Keys-Plaintext Regex"
-  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when stored in plaintext [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when store... [DLP-Check pack fed_policy_pack] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -749,7 +749,7 @@ resource "zia_dlp_dictionaries" "private_key" {
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_MEDIUM"
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
   hierarchical_identifiers     = ["CRED_PRIVATE_KEY"]
 }
 
@@ -1141,7 +1141,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_high" {
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
 }
 
 resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
@@ -1155,7 +1155,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
 }
 
 resource "zia_dlp_dictionaries" "credit_cards_high" {
@@ -1168,7 +1168,7 @@ resource "zia_dlp_dictionaries" "credit_cards_high" {
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
 }
 
 resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
@@ -1182,7 +1182,7 @@ resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
   include_bin_numbers          = true
-  include_ssn_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
 }
 
 resource "zia_dlp_dictionaries" "credit_card_magnetic_tracks" {

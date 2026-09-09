@@ -68,7 +68,7 @@ def test_static_workspace_shapes(tmp_path):
     assert 'resource "zia_dlp_web_rules" "web_monitor"' in r
     assert 'data "zia_cloud_applications" "apps_ai_ml"' in r and "app_class   = [\"AI_ML\"]" in r
     assert "cloud_applications           = sort(distinct(concat([for a in data.zia_cloud_applications.apps_ai_ml.applications : a.app])))" in r
-    assert "ocr_enabled                  = true" in r and "min_size                     = 10" in r
+    assert "# ocr_enabled = true" in r and "min_size                     = 10" in r   # OCR is not in the 4.8.x schema
     assert "id = [zia_dlp_engines.alpha_engine.id]" in r
     assert 'resource "zia_endpoint_dlp_rules" "ep_monitor"' in r and "device_trust_levels" in r
     assert 'resource "zia_casb_dlp_rules" "saas_file"' in r and 'type                         = "OFLCASB_DLP_FILE"' in r

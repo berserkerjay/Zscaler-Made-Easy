@@ -24,6 +24,34 @@ data "zia_dlp_dictionaries" "credit_card" {
   name = "CREDIT_CARD"
 }
 
+data "zia_dlp_dictionaries" "ml_tax_leakage" {
+  name = "ML_TAX_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "financial" {
+  name = "FINANCIAL"
+}
+
+data "zia_dlp_dictionaries" "ml_corporate_finance_leakage" {
+  name = "ML_CORPORATE_FINANCE_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "ml_medical_doc_leakage" {
+  name = "ML_MEDICAL_DOC_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "medical" {
+  name = "MEDICAL"
+}
+
+data "zia_dlp_dictionaries" "drugs_leakage" {
+  name = "DRUGS_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "diseases_leakage" {
+  name = "DISEASES_LEAKAGE"
+}
+
 resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
   name                         = "ZBP-US Passport - High Confidence"
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
@@ -423,7 +451,7 @@ resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_high" {
 
 resource "zia_dlp_dictionaries" "zbp_private_keys_plaintext_regex" {
   name                         = "ZBP-Private Keys-Plaintext Regex"
-  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when stored in plaintext [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key... [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"

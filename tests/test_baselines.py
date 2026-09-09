@@ -260,7 +260,7 @@ def test_shipped_baselines_are_discoverable_and_plan():
         assert pid in packs and pd.baseline_meta(packs[pid], pid), pid
     # Healthcare PHI: engines reference the tenant's predefined medical dictionaries by name.
     phi = packs["healthcare_phi_baseline"]
-    client = FakeClient(dicts=[Obj(id=1, name="Medical Information", custom=False), Obj(id=2, name="Medical Document", custom=False)])
+    client = FakeClient(dicts=[Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)])
     rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"]
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
@@ -270,7 +270,10 @@ def test_shipped_baselines_are_discoverable_and_plan():
     assert client.zia.dlp_engine.added[0]["engine_expression"].startswith("((((D1.S > 0) OR (D2.S > 0)")
     ent = packs["zbp_enterprise_baseline"]
     templates = sorted({d["dict_template_name"] for d in json.load(open(f"{ent['dir']}/configs/dlp_dictionaries.json")) if d.get("predefined_clone")})
-    client = FakeClient(dicts=[Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(templates)])
+    # Predefined dictionaries the engines reference directly (API names, as a tenant exports them).
+    predefined = templates + ["DISEASES_LEAKAGE", "DRUGS_LEAKAGE", "FINANCIAL", "MEDICAL",
+                              "ML_CORPORATE_FINANCE_LEAKAGE", "ML_MEDICAL_DOC_LEAKAGE", "ML_TAX_LEAKAGE"]
+    client = FakeClient(dicts=[Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(predefined)])
     rep = pd.preflight(client, [{"id": ent["id"], "dir": ent["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"]
     assert rep["baselines"][0]["missing"] == 46

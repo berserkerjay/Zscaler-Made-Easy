@@ -207,6 +207,39 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
 
 EMPTY_DICT_REASON = "no patterns/phrases"
 
+# ZIA caps a DLP dictionary description at 255 characters (the Terraform
+# provider validates the same range). Rule and engine descriptions allow
+# far more, so only dictionaries are clamped.
+DICT_DESCRIPTION_MAX = 255
+
+
+def _blen(s: str) -> int:
+    return len(s.encode("utf-8"))
+
+
+def _cut_bytes(s: str, limit: int) -> str:
+    """Longest prefix of s that fits in `limit` UTF-8 bytes, ending with '...'."""
+    if limit <= 3:
+        return ""
+    out = s.encode("utf-8")[: limit - 3].decode("utf-8", errors="ignore").rstrip()
+    return out + "..."
+
+
+def fit_description(base: Optional[str], tag: str = "", limit: int = DICT_DESCRIPTION_MAX) -> str:
+    """Join a description and a provenance tag within `limit` UTF-8 BYTES
+    (ZIA and the provider measure bytes), shortening the description —
+    never the tag — with an ASCII ellipsis."""
+    base = (base or "").strip()
+    tag = (tag or "").strip()
+    if not tag:
+        return base if _blen(base) <= limit else _cut_bytes(base, limit)
+    room = limit - _blen(tag) - 1
+    if room <= 0:
+        return tag.encode("utf-8")[:limit].decode("utf-8", errors="ignore")
+    if _blen(base) > room:
+        base = _cut_bytes(base, room)
+    return f"{base} {tag}".strip()
+
 
 def build_dict_kwargs(
     d: Dict[str, Any], predefined_name_to_id: Dict[str, Any]
@@ -226,14 +259,14 @@ def build_dict_kwargs(
         if not template_id:
             return None, f"No template ID for '{template_name}'"
         kwargs: Dict[str, Any] = {
-            "description": d.get("description", ""),
+            "description": fit_description(d.get("description", "")),
             "dict_template_id": int(template_id),
             "custom": True,
         }
     else:
         if not d.get("patterns") and not d.get("phrases"):
             return None, EMPTY_DICT_REASON
-        kwargs = {"description": d.get("description", "")}
+        kwargs = {"description": fit_description(d.get("description", ""))}
 
     for opt in ("confidence_threshold", "confidence_level_for_predefined_dict", "hierarchical_identifiers"):
         if d.get(opt):
