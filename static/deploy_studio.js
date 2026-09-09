@@ -4,7 +4,7 @@
 // State lives in DZ; every step re-renders from it.
 
 const DZ = {
-  packs: [], selected: new Set(), details: {}, open: new Set(), drift: {},
+  packs: [], selected: new Set(), details: {}, open: new Set(), journey: {},
   options: { use_rank_0: false, apply_tweaks: true },
   step: 1, report: null, result: null, busy: false, consent: false, error: '',
 };
@@ -14,9 +14,9 @@ const DZ_STEPS = ['Select packs', 'Preflight', 'Approve', 'Deploy'];
 const DZ_STATUS = {
   create:             { label: 'Will create',     cls: 'st-create',  icon: '+', help: 'This object does not exist in the tenant yet. Deploying creates it exactly as the pack defines it.' },
   modify:             { label: 'Will modify',     cls: 'st-modify',  icon: '✎', help: 'An existing tenant object will be changed (a confidence tweak). The change is listed so you can approve it.' },
-  restore:            { label: 'Will restore',    cls: 'st-modify',  icon: '↺', help: 'This baseline object exists in the tenant but its content was changed. Deploying overwrites it with the baseline definition.' },
+  restore:            { label: 'Will overwrite',  cls: 'st-modify',  icon: '↺', help: 'Converge mode only: this baseline object was changed in the tenant and you asked for it to be reset to the baseline definition.' },
   reuse:              { label: 'Already present', cls: 'st-reuse',   icon: '✓', help: 'The tenant already has this object with the same content. Nothing is written; the pack simply uses it.' },
-  reuse_differs:      { label: 'Kept as-is',      cls: 'st-differs', icon: '≠', help: 'The tenant has an object with this name but different content. The tenant version is kept and used; the pack version is not applied.' },
+  reuse_differs:      { label: 'Kept as-is',      cls: 'st-differs', icon: '≠', help: 'The tenant has an object with this name but different content (for a baseline: the customer customized it, for example enabled the rule or hardened its action). The tenant version is kept and used; the pack version is not applied.' },
   conflict:           { label: 'Conflict',        cls: 'st-blocked', icon: '!', help: 'Two selected packs define this name differently, or it clashes with a predefined Zscaler object. Deselect one pack or rename it.' },
   blocked_dependency: { label: 'Skipped',         cls: 'st-blocked', icon: '–', help: 'Something this object needs is missing (a dictionary, an engine, an onboarded SaaS tenant, a licensed feature). It will not be created until that exists.' },
   skip_empty:         { label: 'Skipped',         cls: 'st-blocked', icon: '–', help: 'This dictionary has no phrases or patterns, so it could never match anything and is not created.' },
@@ -24,7 +24,7 @@ const DZ_STATUS = {
   // apply results
   created:  { label: 'Created',  cls: 'st-ok',      icon: '✓', help: 'Created in the tenant. It becomes active for users only after ZIA activation.' },
   modified: { label: 'Modified', cls: 'st-ok',      icon: '✓', help: 'The existing object was changed as planned.' },
-  restored: { label: 'Restored', cls: 'st-ok',      icon: '↺', help: 'The drifted baseline object was overwritten with the baseline definition.' },
+  restored: { label: 'Overwritten', cls: 'st-ok',   icon: '↺', help: 'Converge mode: the object was reset to the baseline definition.' },
   reused:   { label: 'Reused',   cls: 'st-reuse',   icon: '✓', help: 'Already existed; nothing was written.' },
   skipped:  { label: 'Skipped',  cls: 'st-blocked', icon: '–', help: 'Not written, for the reason shown.' },
   failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕', help: 'The API refused this write. The error text is shown; other objects were not affected.' },
@@ -160,9 +160,9 @@ function _dzRenderSelect() {
             <span class="track"><span class="knob"></span></span>
           </label>
         </div>
-        ${p.baseline ? `<div class="dz-baseline" title="Immutable baseline: objects that drift from this definition are restored on deploy; objects it does not define are never touched.">
-          <span class="dz-chip kind-baseline">Immutable baseline</span>${p.baseline.prefix ? `<span class="dz-chip">prefix ${_dzE(p.baseline.prefix)}</span>` : ''}
-          <span class="d">Authoritative: drift is restored on deploy.</span></div>` : ''}
+        ${p.baseline ? `<div class="dz-baseline" title="Baseline: the reference this tenant is measured against. Deploy it into an empty (greenfield) tenant or on top of an existing (brownfield) one; whatever already exists is kept exactly as the customer has it. Afterwards, Where is this tenant? shows the stage reached and the next steps.">
+          <span class="dz-chip kind-baseline">Baseline</span>${p.baseline.prefix ? `<span class="dz-chip">prefix ${_dzE(p.baseline.prefix)}</span>` : ''}
+          <span class="d">Greenfield or brownfield: creates what is missing, never overwrites. Then measures the journey.</span></div>` : ''}
         <p>${_dzE(p.description || 'No description provided.')}</p>
         ${p.audience || p.when_to_use ? `<div class="dz-fit">${p.audience ? `<div><span class="k">Who it's for</span>${_dzE(p.audience)}</div>` : ''}${p.when_to_use ? `<div><span class="k">Use it when</span>${_dzE(p.when_to_use)}</div>` : ''}</div>` : ''}
         <div class="dz-meta">
@@ -173,11 +173,11 @@ function _dzRenderSelect() {
         </div>
         <div class="dz-links">
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
-          ${p.baseline ? `<button type="button" class="dz-link" onclick="event.stopPropagation(); _dzCheckDrift('${_dzE(p.id)}')">${(DZ.drift[p.id] || {}).busy ? 'Checking…' : 'Check drift'}</button>` : ''}
+          ${p.baseline ? `<button type="button" class="dz-link" title="Read-only: places every object of this baseline in the tenant (missing, deployed, monitoring, enforcing, customized) and shows the stage reached and the next steps." onclick="event.stopPropagation(); _dzJourney('${_dzE(p.id)}')">${(DZ.journey[p.id] || {}).busy ? 'Measuring…' : 'Where is this tenant?'}</button>` : ''}
           <button type="button" class="dz-link" title="Download a Terraform workspace for this pack (official zscaler/zia provider). With tenant credentials filled in, it is generated against the tenant with import blocks for everything that already exists." onclick="event.stopPropagation(); _dzTerraform(['${_dzE(p.id)}'])">${DZ.tfBusy === p.id ? 'Generating…' : 'Terraform'}</button>
         </div>
         ${det}
-        ${p.baseline ? _dzDriftHtml(p.id) : ''}
+        ${p.baseline ? _dzJourneyHtml(p.id) : ''}
       </div>`;
     }).join('');
     body.innerHTML = `
@@ -226,23 +226,23 @@ async function _dzToggleDetail(id) {
   }
   _dzRenderSelect();
 }
-// Read-only baseline drift check: same planner as preflight, nothing
-// written, works without the write gate. Renders inline on the card.
-async function _dzCheckDrift(id) {
-  DZ.drift[id] = { busy: true };
+// Read-only journey check: same planner as preflight, nothing written,
+// works without the write gate. Renders inline on the card.
+async function _dzJourney(id) {
+  DZ.journey[id] = { busy: true };
   _dzRenderSelect();
   try {
-    const r = await fetch('/api/dlp-packs/baseline-status', {
+    const r = await fetch('/api/dlp-packs/journey', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pack_ids: [id], ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
-    DZ.drift[id] = { data, at: new Date() };
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    DZ.journey[id] = { data, at: new Date() };
     const b = (data.baselines || [])[0] || {};
-    announce(`Baseline ${id}: ${b.in_sync || 0} in sync, ${b.drifted || 0} drifted, ${b.missing || 0} missing.`);
+    announce(`Baseline ${id}: stage ${b.stage || 0} of 5, ${b.stage_name || 'not started'}.`);
   } catch (e) {
-    DZ.drift[id] = { error: e.message };
+    DZ.journey[id] = { error: e.message };
   }
   _dzRenderSelect();
 }
@@ -281,26 +281,52 @@ async function _dzTerraform(ids) {
   }
 }
 
-const DZ_DRIFT = {
-  in_sync: { label: 'In sync',  cls: 'ok' },
-  drifted: { label: 'Drifted',  cls: 'warn' },
-  missing: { label: 'Missing',  cls: 'info' },
-  blocked: { label: 'Blocked',  cls: 'fail' },
+const DZ_POSITION = {
+  missing:    { label: 'Missing',     cls: 'info', help: 'Not in the tenant yet. Deploying the baseline creates it.' },
+  deployed:   { label: 'Deployed',    cls: 'ok',   help: 'Present as the baseline defines it; the rule is still disabled.' },
+  monitoring: { label: 'Monitoring',  cls: 'ok',   help: 'Enabled with a non-enforcing action: incidents are logged, users are not blocked.' },
+  enforcing:  { label: 'Enforcing',   cls: 'ok',   help: 'Enabled with an enforcing action (BLOCK, DECRYPT, CAUTION…).' },
+  customized: { label: 'Customized',  cls: 'warn', help: 'Present but changed by the customer. Kept exactly as it is; the change is not reverted.' },
+  relaxed:    { label: 'Relaxed',     cls: 'warn', help: 'The baseline ships this rule enabled but the tenant has disabled it.' },
+  blocked:    { label: 'Blocked',     cls: 'fail', help: 'Cannot be created: a prerequisite is missing or there is a conflict.' },
 };
-function _dzDriftHtml(id) {
-  const s = DZ.drift[id];
-  if (!s || s.busy) return s && s.busy ? `<div class="dz-drift" onclick="event.stopPropagation()"><span class="dz-status busy">Checking</span> Reading the tenant…</div>` : '';
-  if (s.error) return `<div class="dz-drift is-error" onclick="event.stopPropagation()"><strong>Drift check failed.</strong> ${_dzE(s.error)}</div>`;
+const DZ_JOURNEY_STATE = {
+  not_started: { label: 'Not started', cls: 'info' },
+  in_progress: { label: 'In progress', cls: 'warn' },
+  governed:    { label: 'Governed',    cls: 'ok' },
+  blocked:     { label: 'Blocked',     cls: 'fail' },
+};
+// Stage ladder + counts + next steps for one baseline row (shared by the
+// pack card and the assessment card).
+function _dzJourneyRowHtml(b, opts = {}) {
+  const st = DZ_JOURNEY_STATE[b.state] || DZ_JOURNEY_STATE.blocked;
+  const ladder = (b.stages || []).map(sg => {
+    const cur = !sg.done && (b.stages.slice(0, sg.n - 1).every(x => x.done));
+    return `<li class="dz-stage ${sg.done ? 'done' : (cur ? 'cur' : '')}" title="${_dzE(sg.what)}${sg.required ? ` (${sg.met} of ${sg.required} objects ready)` : ' (nothing in this baseline needs it)'}">
+      <span class="n">${sg.done ? '✓' : sg.n}</span><span class="nm">${_dzE(sg.name)}</span>${sg.required ? `<span class="ct">${sg.met}/${sg.required}</span>` : ''}</li>`;
+  }).join('');
+  const counts = ['missing', 'deployed', 'monitoring', 'enforcing', 'customized', 'relaxed', 'blocked']
+    .filter(k => b[k]).map(k => `<span title="${_dzE(DZ_POSITION[k].help)}"><b>${b[k]}</b> ${DZ_POSITION[k].label.toLowerCase()}</span>`).join(' · ');
+  const objs = (b.objects || []).filter(o => o.position !== 'deployed' && o.position !== 'monitoring' && o.position !== 'enforcing').slice(0, opts.max || 8);
+  return `
+    <div class="dz-journey-top"><span class="dz-status ${b.state === 'governed' ? 'ready' : (b.state === 'blocked' ? 'blocked' : 'warnings')}">${st.label}</span>
+      <span class="lead">Stage ${b.stage || 0} of 5${b.stage ? `: ${_dzE(b.stage_name)}` : ''}</span>
+      <span class="score" title="Share of the objects each stage needs that are already where they should be, averaged over the stages.">${b.score ?? 0}%</span>
+      ${opts.label ? `<span class="when">${_dzE(opts.label)}</span>` : ''}</div>
+    <ol class="dz-stages">${ladder}</ol>
+    <div class="counts">${counts || 'No objects.'}</div>
+    ${(b.next_steps || []).length ? `<div class="dz-next-h">Next steps</div><ol class="dz-next">${b.next_steps.map(n => `<li>${_dzE(n)}</li>`).join('')}</ol>` : (b.state === 'governed' ? `<div class="d">Every object of this baseline is deployed, enabled and enforcing. Keep reviewing incidents; update the pack when the customer tunes something.</div>` : '')}
+    ${objs.length ? `<details class="dz-fold"><summary>Objects not yet in place (${objs.length}${(b.objects || []).length > objs.length ? ' shown' : ''})</summary><ul class="dz-objs">${objs.map(o => `<li><span class="dz-chip kind-${_dzE(o.kind)}">${DZ_KIND[o.kind] || o.kind}</span> <span class="nm">${_dzE(o.name)}</span> <span class="st ${_dzE((DZ_POSITION[o.position] || {}).cls || '')}" title="${_dzE((DZ_POSITION[o.position] || {}).help || '')}">${_dzE((DZ_POSITION[o.position] || {}).label || o.position)}${o.drift && o.drift.length ? ` · ${_dzE(o.drift.join(', '))}` : ''}${o.action && o.position !== 'missing' && String(o.action).length <= 40 ? ` · ${_dzE(o.action)}` : ''}</span></li>`).join('')}</ul></details>` : ''}`;
+}
+function _dzJourneyHtml(id) {
+  const s = DZ.journey[id];
+  if (!s || s.busy) return s && s.busy ? `<div class="dz-journey" onclick="event.stopPropagation()"><span class="dz-status busy">Measuring</span> Reading the tenant…</div>` : '';
+  if (s.error) return `<div class="dz-journey is-error" onclick="event.stopPropagation()"><strong>Could not measure the journey.</strong> ${_dzE(s.error)}</div>`;
   const b = (s.data.baselines || [])[0];
   if (!b) return '';
-  const st = DZ_DRIFT[b.state] || DZ_DRIFT.blocked;
-  const objs = (b.objects || []).slice(0, 8);
-  return `<div class="dz-drift ${st.cls}" onclick="event.stopPropagation()">
-    <div class="dz-drift-top"><span class="dz-status ${b.state === 'in_sync' ? 'ready' : (b.state === 'blocked' ? 'blocked' : 'warnings')}">${st.label}</span>
-      <span class="counts"><b>${b.in_sync}</b> in sync · <b>${b.drifted}</b> drifted · <b>${b.missing}</b> missing${b.blocked ? ` · <b>${b.blocked}</b> blocked` : ''}</span>
-      <span class="when">${_dzE(s.data.tenant_label || '')}</span></div>
-    ${objs.length ? `<ul>${objs.map(o => `<li><span class="dz-chip kind-${_dzE(o.kind)}">${DZ_KIND[o.kind] || o.kind}</span> <span class="nm">${_dzE(o.name)}</span> <span class="st">${_dzE((DZ_DRIFT[o.state] || {}).label || o.state)}${o.drift && o.drift.length ? ` · ${_dzE(o.drift.join(', '))}` : ''}${o.adopt ? ' · not created by DLP-Check' : ''}</span></li>`).join('')}${(b.objects || []).length > 8 ? `<li class="more">+${b.objects.length - 8} more</li>` : ''}</ul>` : `<div class="d">Every object this baseline defines matches the tenant.</div>`}
-    ${b.state !== 'in_sync' && b.state !== 'blocked' ? `<div class="d">Select the pack and run preflight to restore drift and create what is missing.</div>` : ''}
+  const st = DZ_JOURNEY_STATE[b.state] || DZ_JOURNEY_STATE.blocked;
+  return `<div class="dz-journey ${st.cls}" onclick="event.stopPropagation()">${_dzJourneyRowHtml(b, { label: s.data.tenant_label || '' })}
+    ${b.missing ? `<div class="d">Select the pack and run preflight to create the ${_dzN(b.missing, 'missing object')}; everything that exists stays as it is.</div>` : ''}
   </div>`;
 }
 
@@ -398,7 +424,7 @@ function _dzRenderReview() {
   const blocked = [...by('conflict'), ...by('blocked_dependency'), ...by('skip_empty')];
   const reused = [...by('reuse'), ...by('noop')];
   const lead = { ready: 'Ready to deploy', warnings: 'Ready, with things to review', blocked: 'Deployment is blocked' }[R.status];
-  const sub = `${_dzN(creates.length, 'change')}${restores.length ? ` (${_dzN(restores.length, 'baseline restore')})` : ''} · ${_dzN(differs.length, 'existing object')} kept as-is · ${_dzN(blocked.length, 'item')} skipped · ${_dzN(reused.length, 'item')} already in place`;
+  const sub = `${_dzN(creates.length, 'change')}${restores.length ? ` (${_dzN(restores.length, 'converge overwrite')})` : ''} · ${_dzN(differs.length, 'existing object')} kept as-is · ${_dzN(blocked.length, 'item')} skipped · ${_dzN(reused.length, 'item')} already in place`;
   const t = R.tenant || {};
   body.innerHTML = `
     <div class="dz-hero">
@@ -407,7 +433,7 @@ function _dzRenderReview() {
     </div>
     <div class="dz-kv">
       <div><div class="k">Will create</div><div class="v">${creates.filter(i => i.status === 'create').length}</div></div>
-      <div><div class="k">${restores.length ? 'Will restore / modify' : 'Will modify'}</div><div class="v">${creates.filter(i => i.status === 'modify' || i.status === 'restore').length}</div></div>
+      <div><div class="k">${restores.length ? 'Will overwrite / modify' : 'Will modify'}</div><div class="v">${creates.filter(i => i.status === 'modify' || i.status === 'restore').length}</div></div>
       <div><div class="k">Skipped</div><div class="v">${blocked.length}</div></div>
       <div><div class="k">Tenant rules</div><div class="v">${t.rules ?? '–'}<span style="font-size:0.75rem;color:var(--dim);font-weight:500;"> / ${t.rule_cap || 127}</span></div></div>
     </div>
@@ -415,7 +441,8 @@ function _dzRenderReview() {
     <details class="dz-fold dz-howto"><summary><div class="dz-h">How to read this plan</div></summary>
       <ul class="dz-note">
         <li><strong>Nothing has been written.</strong> This is a dry run against the live tenant.</li>
-        <li><strong>Impact cards</strong> say what changes for the tenant as a whole: rules inserted at the top of the policy, enforcing actions, drift being restored, activation.</li>
+        <li><strong>Impact cards</strong> say what changes for the tenant as a whole: greenfield or brownfield, rules inserted at the top of the policy, enforcing actions, activation.</li>
+        <li><strong>Existing objects are never overwritten.</strong> A rule the customer enabled or hardened, or a dictionary they tuned, is kept exactly as it is and shown as <em>Kept as-is</em>. Only what is missing gets created.</li>
         <li><strong>Tenant prerequisites</strong> are things the tenant must already have (a predefined dictionary, an onboarded SaaS tenant, a licensed feature). Missing ones skip only the rules that need them.</li>
         <li><strong>Flow</strong> shows how dictionaries feed engines feed rules; hover any box to trace it. <strong>List</strong> groups the same objects by what will happen to them. Hover any status chip for what it means.</li>
         <li>Every rule ships <strong>DISABLED</strong>, so deploying never affects users. Enable rules in the portal after tuning.</li>
@@ -425,9 +452,9 @@ function _dzRenderReview() {
     ${_dzDepsHtml(R.dependencies)}
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml(items, null) : `
-    ${_dzSection('Drifted from baseline — will be restored', restores)}
+    ${_dzSection('Converge mode — will be overwritten with the baseline', restores)}
     ${_dzSection('Changes that will be written', creates.filter(i => i.status !== 'restore'))}
-    ${_dzSection('Already exist with different content — tenant version kept', differs)}
+    ${_dzSection('Already exist, customized by the customer — kept as-is', differs)}
     ${_dzSection('Skipped — dependency or conflict', blocked)}
     ${_dzSection('Already in place — nothing to do', reused, { open: false })}`}`;
   if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
@@ -459,12 +486,12 @@ function _dzRenderApprove() {
     ${_dzSection('Exactly what will be written', writes)}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Before you approve, confirm with the customer</div><div class="d">
       1. The tenant name above is the right tenant. &nbsp;2. The customer has seen this list and agreed. &nbsp;3. The customer knows an admin must activate changes in the ZIA portal afterwards, and that every new rule arrives disabled.
-      ${restores.length ? ' &nbsp;4. The drifted baseline objects listed above will be overwritten; if the customer changed them on purpose, stop and update the pack instead.' : ''}
+      ${restores.length ? ' &nbsp;4. Converge mode is on: the objects listed above will be overwritten with the baseline. If the customer changed any of them on purpose, stop and deploy without converge mode.' : ''}
     </div></div></div>
     <div class="dz-consent">
       <input type="checkbox" id="dzConsent" ${DZ.consent ? 'checked' : ''} onchange="DZ.consent=this.checked;_dzRenderApprove()">
       <label for="dzConsent">I've reviewed this plan and the warnings above, and I authorize these changes to <strong>${_dzE(R.tenant_label || 'the tenant')}</strong>. ${restores.length
-        ? `<strong>${_dzN(restores.length, 'drifted baseline object')} will be overwritten</strong> with the baseline definition; every other existing object is left untouched.`
+        ? `<strong>${_dzN(restores.length, 'customized object')} will be overwritten</strong> with the baseline definition (converge mode); every other existing object is left untouched.`
         : 'Existing objects are never overwritten;'} Changes still need activation in ZIA afterwards.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
     </div>`;
   document.getElementById('dzFoot').innerHTML = `
@@ -532,20 +559,20 @@ function _dzRenderDeploy() {
     return _dzRow({ name: id, kind: 'policy', packs: [] }, ok ? 'created' : 'failed', (ok ? 'Verified — tenant matches the pack. ' : 'Verification found differences. ') + detail).replace('kind-policy">Policy', 'kind-policy">Pack');
   }).join('');
   body.innerHTML = `
-    <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created · ${s.restored || 0} restored · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
+    <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created${s.restored ? ` · ${s.restored} overwritten` : ''} · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
     ${X.activation_required ? `<div class="dz-card sev-warning" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activate to take effect</div><div class="d">ZIA saved these changes as pending. Open the ZIA Admin Portal and click Activate (or run ziaActivator) — users are unaffected until you do.</div></div></div>` : ''}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What to do next</div><div class="d">
       <ol class="dz-next">
         <li><strong>Activate</strong> in the ZIA Admin Portal so the objects exist for traffic (they are still disabled).</li>
         <li><strong>Enable rules one at a time</strong> in Policy &gt; Data Loss Prevention, starting with the monitor-only ones, and raise their severity once incidents look right.</li>
-        <li><strong>Review incidents</strong> after a few days and tune dictionaries or thresholds in the pack, not in the portal, so the baseline stays the source of truth.</li>
-        <li><strong>Check drift</strong> from the pack card on the next visit; anything changed by hand is listed and can be restored.</li>
+        <li><strong>Review incidents</strong> after a few days, then tune. Changes the customer makes in the portal are kept; fold the good ones back into the pack so the next tenant starts from them.</li>
+        <li><strong>Measure the journey</strong> on the next visit: run the assessment, or click <em>Where is this tenant?</em> on the pack card. It shows the stage reached (Foundation → Policies deployed → Visibility → Containment → Enforcement) and exactly which rules to enable or harden next.</li>
         <li>If the customer manages Zscaler with Terraform, use <strong>Export Terraform</strong> on the review step to hand them the same configuration with state.</li>
       </ol></div></div></div>
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml((DZ.report || {}).items || [], results) : `
     ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.error) })}
-    ${_dzSection('Restored to baseline', results.filter(r => r.status === 'restored'), { fn: r => _dzRow(r, 'restored', `${r.id ? `ID ${r.id}` : ''}${r.drift && r.drift.length ? ` · ${r.drift.join(', ')}` : ''}`) })}
+    ${_dzSection('Overwritten with the baseline (converge mode)', results.filter(r => r.status === 'restored'), { fn: r => _dzRow(r, 'restored', `${r.id ? `ID ${r.id}` : ''}${r.drift && r.drift.length ? ` · ${r.drift.join(', ')}` : ''}`) })}
     ${_dzSection('Created & modified', results.filter(r => r.status === 'created' || r.status === 'modified'), { fn: r => _dzRow(r, r.status, r.id ? `ID ${r.id}` : '') })}
     ${_dzSection('Skipped', results.filter(r => r.status === 'skipped'), { fn: r => _dzRow(r, 'skipped', r.reason) })}
     ${_dzSection('Reused from tenant', results.filter(r => r.status === 'reused'), { open: false, fn: r => _dzRow(r, 'reused', r.id ? `ID ${r.id}` : '') })}`}
@@ -657,10 +684,10 @@ const DZ_FLOW_STATUS = {
   created: 'st-ok', modified: 'st-ok', restored: 'st-ok', reused: 'st-reuse', skipped: 'st-blocked', failed: 'st-fail',
 };
 const DZ_FLOW_LABEL = {
-  create: 'will create', modify: 'will modify', restore: 'will restore', reuse: 'already present', reuse_differs: 'kept as-is (differs)',
+  create: 'will create', modify: 'will modify', restore: 'will overwrite', reuse: 'already present', reuse_differs: 'kept as-is (differs)',
   conflict: 'conflict', blocked_dependency: 'skipped', skip_empty: 'skipped', noop: 'no change', tenant: 'in tenant',
   missing: 'MISSING',
-  created: 'created', modified: 'modified', restored: 'restored', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
+  created: 'created', modified: 'modified', restored: 'overwritten', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
 };
 
 function _dzFlowHtml(items, results) {
@@ -706,7 +733,7 @@ function _dzFlowHtml(items, results) {
       <div class="dz-flow-bar">
         <div class="dz-flow-legend">
           <span><i class="sw st-create"></i>${results ? 'created' : 'will create'} ${counts.create}</span>
-          <span><i class="sw st-modify"></i>${results ? 'modified/restored' : 'modify/restore'} ${counts.modify}</span>
+          <span><i class="sw st-modify"></i>${results ? 'modified' : 'modify'} ${counts.modify}</span>
           <span><i class="sw st-reuse"></i>reuse ${counts.reuse}</span>
           <span><i class="sw st-tenant"></i>tenant ${counts.tenant}</span>
           <span><i class="sw st-blocked"></i>skipped/blocked ${counts.blocked}</span>

@@ -621,6 +621,9 @@ class DLPPackDeployRequest(TenantCredsRequest):
     use_rank_0: bool = False
     apply_tweaks: bool = True
     verify: bool = True
+    # Converge mode: overwrite baseline objects the customer changed. Off by
+    # default and never chosen for the user; the journey check reports them.
+    restore_drift: bool = False
     # apply-only: the hash of the plan the user approved, plus explicit consent
     plan_hash: str = ""
     confirm: bool = False
@@ -732,6 +735,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     report = await asyncio.to_thread(
         pack_deploy.preflight, client, packs,
         use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
+        restore_drift=req.restore_drift,
     )
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
@@ -809,32 +813,54 @@ async def tenant_check(req: TenantCredsRequest):
         raise HTTPException(status_code=502, detail={"tenant_label": label, **_explain_connection_error(str(e))})
 
 
-@app.post("/api/dlp-packs/baseline-status")
-async def dlp_packs_baseline_status(req: DLPPackDeployRequest):
-    """Read-only drift check for immutable baseline packs: every object
-    each baseline defines is reported as in_sync, drifted, missing or
-    blocked against the live tenant. Works without the write gate — it
-    is the same planner as /preflight with nothing written. With no
-    pack_ids, every baseline pack in the project is checked."""
+def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
+    import pack_deploy
+    from dlp_importer import discover_packs
+    if pack_ids:
+        return _resolve_pack_ids(pack_ids)
+    return [{"id": p["id"], "dir": p["dir"]} for p in discover_packs() if pack_deploy.baseline_meta(p, p["id"])]
+
+
+def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False) -> Dict[str, Any]:
+    """Read-only journey check: one preflight per baseline pack (so each
+    pack is measured on its own), rolled up with pack_deploy.journey."""
+    import pack_deploy
+    rows: List[Dict[str, Any]] = []
+    tenant = None
+    blockers: List[str] = []
+    for pk in packs:
+        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None)
+        j = pack_deploy.journey(rep)
+        rows.extend(j["baselines"])
+        tenant = j.get("tenant") or tenant
+        blockers.extend(j.get("blockers") or [])
+    combined = {"baselines": rows, "tenant": tenant, "blockers": blockers,
+                "tenant_mode": None, "plan_hash": "", "elapsed_seconds": None}
+    out = pack_deploy.journey(combined)
+    out["blockers"] = blockers
+    return out
+
+
+@app.post("/api/dlp-packs/journey")
+@app.post("/api/dlp-packs/baseline-status")   # older name, same answer
+async def dlp_packs_journey(req: DLPPackDeployRequest):
+    """Where is this tenant on the data-governance journey? For every
+    baseline pack (or the ones in pack_ids), every object is placed as
+    missing / deployed / monitoring / enforcing / customized / relaxed /
+    blocked, the stage ladder (Foundation → Policies deployed →
+    Visibility → Containment → Enforcement) is evaluated and the concrete
+    next steps are listed. Read-only: nothing is written and the write
+    gate is not needed."""
     try:
-        import pack_deploy
-        from dlp_importer import discover_packs
+        import pack_deploy  # noqa: F401
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_deploy unavailable: {e}")
-    if req.pack_ids:
-        packs = _resolve_pack_ids(req.pack_ids)
-    else:
-        packs = [{"id": p["id"], "dir": p["dir"]} for p in discover_packs()
-                 if pack_deploy.baseline_meta(p, p["id"])]
+    packs = _journey_packs(req.pack_ids)
     if not packs:
         raise HTTPException(status_code=404, detail="No baseline packs found (pack.json needs a \"baseline\" section).")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    report = await asyncio.to_thread(
-        pack_deploy.preflight, client, packs,
-        use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
-    )
-    out = pack_deploy.baseline_status(report)
+    out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0)
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
 
@@ -904,7 +930,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     result = await asyncio.to_thread(
         pack_deploy.apply, client, packs,
         plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
-        verify=req.verify, writes_enabled=True, log=logs.append,
+        verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift, log=logs.append,
     )
     result["logs"] = logs
     if result.get("status") in ("plan_changed", "blocked"):
@@ -2000,6 +2026,21 @@ async def assess_stream(req: AssessRequest):
                     # Client disconnected; just keep collecting results
                     pass
 
+            # Data-governance journey: where the tenant stands against every
+            # baseline pack. Read-only, best effort; never fails the assessment.
+            journey = None
+            if not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"):
+                try:
+                    yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                                            "current": "Data governance journey: measuring the tenant against the baselines"})
+                    packs = _journey_packs([])
+                    if packs:
+                        sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
+                        journey = await asyncio.wait_for(asyncio.to_thread(_journey_for, sdk, packs), timeout=180)
+                        journey["tenant_label"] = f"{vd} ({cloud})"
+                except Exception as ex:  # noqa: BLE001
+                    journey = {"status": "error", "error": str(ex).replace(sec, mask_secret(sec))[:200] if sec else str(ex)[:200]}
+
             # Always send the complete event, even if some checks failed
             try:
                 secs, overall = compute(results)
@@ -2023,6 +2064,7 @@ async def assess_stream(req: AssessRequest):
                 "checks": results,
                 "critical": [r for r in results if r["status"] == "FAIL"],
                 "review": [r for r in results if r["status"] == "REVIEW"],
+                "journey": journey,
             }
 
             yield _sse("complete", report)

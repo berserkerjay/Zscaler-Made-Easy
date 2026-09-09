@@ -93,16 +93,21 @@ def test_control_rules_plan_resolve_and_apply(tmp_path):
     assert "dlp_engines" not in ssl and "dlp_engines" not in url
 
 
-def test_control_rules_drift_and_restore_in_baseline(tmp_path):
+def test_control_rules_customized_kept_unless_converging(tmp_path):
     existing = Obj(id=9501, name="CAC-FileShare", type="FILE_SHARE", order=2, rank=7, state="DISABLED",
                    actions=["ALLOW_FILE_SHARE_UPLOAD", "ALLOW_FILE_SHARE_SHARE", "ALLOW_FILE_SHARE_VIEW"],  # someone allowed upload
                    applications=["BOX", "DROPBOX", "GOOGLE_DRIVE"], description="")
     client = control_client(cac_rules=[existing])
     pack = control_pack(tmp_path, meta=dict(BASELINE_META, name="Containment Baseline"))
+    # Default: the customer's version is kept and reported as customized.
     rep = pd.preflight(client, [pack], writes_enabled=True)
     cac = items_by(rep, "policy")["CAC-FileShare"]
+    assert cac["status"] == pd.REUSE_DIFFERS and cac["drift"] == ["action"] and cac["position"] == "customized"
+    # Converge mode restores it.
+    rep = pd.preflight(client, [pack], writes_enabled=True, restore_drift=True)
+    cac = items_by(rep, "policy")["CAC-FileShare"]
     assert cac["status"] == pd.RESTORE and cac["drift"] == ["action"]
-    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, restore_drift=True)
     assert res["summary"]["restored"] == 1
     rtype, rid, kw = client.zia.cloudappcontrol.updated[0]
     assert (rtype, rid) == ("FILE_SHARE", 9501) and kw["order"] == 2

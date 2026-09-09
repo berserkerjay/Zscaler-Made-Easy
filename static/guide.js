@@ -193,12 +193,14 @@ const GD_GLOSSARY = [
   ['Action: ALLOW vs BLOCK', 'ALLOW means monitor: the transaction goes through and an incident is logged. BLOCK stops it. CONFIRM asks the user first. Every pack ships its rules in ALLOW or BLOCK as designed, but DISABLED, so nothing happens until you enable a rule.'],
   ['Severity', 'The label an incident gets in reports (INFO, LOW, MEDIUM, HIGH). It does not change what the rule does. Packs ship at INFO; raise it once a rule is tuned.'],
   ['Policy pack', 'A folder of dictionaries, engines and rules for one purpose: CJIS, the Fed pack, Zscaler\'s enterprise best practice, healthcare PHI. Deploying a pack creates those objects in the tenant.'],
-  ['Baseline (immutable)', 'A pack that is the reference the tenant is held to. If someone changes one of its objects in the portal, the next preflight reports it as drifted and a deploy restores it. Objects the baseline does not define are never touched.'],
+  ['Baseline', 'A pack that is the reference a tenant is measured against. Deploy it greenfield (empty tenant: everything is created) or brownfield (existing tenant: what exists is kept exactly as the customer has it, the rest is created). Nothing is ever overwritten. Objects the baseline does not define are never touched.'],
+  ['Greenfield / brownfield', 'Greenfield: none of the pack\'s objects exist yet, so the whole pack is created from scratch. Brownfield: some already exist (perhaps from an earlier deploy, perhaps built by hand); they are kept, only the missing ones are created.'],
   ['Preflight', 'The read-only check Deploy Studio runs before anything is written: it reads the tenant, works out what is missing, what already exists, what conflicts, and what the impact would be. You approve that exact plan.'],
   ['Plan hash', 'A fingerprint of the plan you approved. If the tenant changes between approval and deploy, the fingerprint no longer matches and nothing is written until you review again.'],
-  ['Drift', 'A difference between a baseline object and what is in the tenant. "Check drift" on a baseline card lists in-sync, drifted and missing objects without writing anything.'],
+  ['Journey (where is this tenant?)', 'The data-governance journey has five stages: Foundation (dictionaries and engines exist), Policies deployed (every rule exists), Visibility (SSL decrypts the risky app classes and DLP rules are enabled), Containment (Cloud App Control, File Type and URL rules are enabled), Enforcement (DLP rules block). The assessment and the pack card place the tenant on that ladder and list the exact rules to enable or harden next.'],
+  ['Customized', 'A baseline object the customer changed: a rule they enabled, an action they hardened from ALLOW to BLOCK, a dictionary they tuned. That is progress, not drift. It is kept as-is and shown as customized; converge mode (an explicit API option) is the only thing that overwrites it.'],
   ['Activation', 'ZIA saves changes as pending. After a deploy, an admin must click Activate in the ZIA Admin Portal for the new rules to take effect for users.'],
-  ['Read-only vs writes enabled', 'START_Zscaler_Assessment.bat runs read-only: assessment, preflight and drift checks all work, deploying does not. START_Zscaler_Assessment_WRITES_ENABLED.bat allows deploys. Use read-only when you only want to show the customer the plan.'],
+  ['Read-only vs writes enabled', 'START_Zscaler_Assessment.bat runs read-only: assessment, preflight and journey checks all work, deploying does not. START_Zscaler_Assessment_WRITES_ENABLED.bat allows deploys. Use read-only when you only want to show the customer the plan.'],
   ['OneAPI credentials', 'The client ID and secret of an API client created in ZIdentity, plus the vanity domain (the short name in the login URL, acme for acme.zslogin.net) and the cloud (Production for almost everyone).'],
   ['Terraform export', 'The same plan as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Existing objects are imported, so the first plan shows exactly the gap.'],
 ];
@@ -215,7 +217,7 @@ function _gdHelp(open) {
   d.innerHTML = `
     <div class="gd-help-sheet">
       <header><h2>How this tool works</h2><button type="button" class="gd-btn quiet" onclick="_gdHelp(false)" aria-label="Close help">✕</button></header>
-      <p>DLP-Check does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP configuration that is checked against the tenant and approved by you before anything is written. Baselines keep the configuration from drifting afterwards.</p>
+      <p>DLP-Check does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP and containment configuration that is checked against the tenant and approved by you before anything is written, into an empty tenant or on top of what is already there. Afterwards it <strong>measures the journey</strong>: how far the tenant has taken that baseline, from deployed to monitoring to enforcing, and what to enable next.</p>
       <p>A good first engagement: connect, run the assessment, walk the customer through the critical findings, then run a preflight for the pack that matches their regulation and show them the plan. Deploy only when the customer has agreed and the server is running with writes enabled.</p>
       <h3>Glossary</h3>
       <dl>${GD_GLOSSARY.map(([t, d2]) => `<dt>${_gdE(t)}</dt><dd>${_gdE(d2)}</dd>`).join('')}</dl>
@@ -230,6 +232,43 @@ function _gdHelp(open) {
     </div>`;
   d.querySelector('.gd-help-sheet').focus?.();
 }
+
+// ── Journey card on the assessment results ─────────────────────────
+// The assessment measures the tenant against every baseline pack; this
+// renders that as a card above the compliance section.
+function _gdJourneyCard(j) {
+  let card = document.getElementById('gdJourney');
+  const anchor = document.getElementById('complianceCard') || document.getElementById('sectionGrid');
+  if (!card) {
+    if (!anchor) return;
+    card = document.createElement('section'); card.id = 'gdJourney'; card.className = 'card gd-journey';
+    card.setAttribute('aria-label', 'Data governance journey');
+    (document.getElementById('complianceCard') ? anchor : anchor.closest('.card') || anchor).insertAdjacentElement(document.getElementById('complianceCard') ? 'beforebegin' : 'afterend', card);
+  }
+  if (!j) { card.hidden = true; return; }
+  card.hidden = false;
+  const E = _gdE;
+  if (j.status === 'error') {
+    card.innerHTML = `<h2>Data governance journey</h2><p class="gd-sub">Could not measure the tenant against the baselines: ${E(j.error || 'unknown error')}. The assessment itself is complete.</p>`;
+    return;
+  }
+  const stages = (j.stages || []).map(s => `<li><b>${E(s.name)}</b> — ${E(s.what)}</li>`).join('');
+  const rows = (j.baselines || []).map(b => `<div class="dz-journey ${b.state === 'governed' ? 'ok' : (b.state === 'blocked' ? 'fail' : (b.state === 'not_started' ? 'info' : 'warn'))}"><h3>${E(b.name)}${b.version ? ` <span class="gd-dim">v${E(b.version)}</span>` : ''}</h3>${typeof _dzJourneyRowHtml === 'function' ? _dzJourneyRowHtml(b, { max: 6 }) : `Stage ${b.stage} of 5 (${E(b.stage_name)})`}</div>`).join('');
+  const overall = { not_started: 'Not started: none of the baselines has been deployed yet.', in_progress: 'In progress: baselines are deployed but not yet fully enabled and enforcing.', governed: 'Governed: every baseline is deployed, enabled and enforcing.', blocked: 'Blocked: something a baseline needs is missing from the tenant.' }[j.status] || j.status;
+  card.innerHTML = `
+    <h2>Data governance journey</h2>
+    <p class="gd-sub">Where this tenant stands against each baseline pack, measured read-only during the assessment. <strong>${E(overall)}</strong> Overall stage ${j.stage || 0} of 5, ${j.score || 0}% of the way. Deploying a baseline (Deploy Studio) creates what is missing and keeps everything the customer already has; enabling and hardening rules in the ZIA portal moves the tenant up the ladder.</p>
+    <details class="dz-fold"><summary>The five stages</summary><ol class="dz-next">${stages}</ol></details>
+    ${rows || '<p class="gd-sub">No baseline packs are installed.</p>'}`;
+}
+(function () {
+  const orig = window.showResults;
+  if (typeof orig !== 'function') return;
+  window.showResults = function (data) {
+    orig.apply(this, arguments);
+    try { _gdJourneyCard(data && data.journey); } catch (e) { console.warn('journey card', e); }
+  };
+})();
 
 // ── Boot ───────────────────────────────────────────────────────────
 (function () {
