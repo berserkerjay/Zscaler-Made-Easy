@@ -587,3 +587,135 @@ are authored as intended (ALLOW to monitor, BLOCK to enforce), so enabling a
 rule never changes its meaning. For a baseline this is also the definition
 the tenant is held to: enabling a baseline rule in the portal counts as
 drift unless the pack is updated to match.
+
+## 13. Containment Rules — Cloud App Control, File Type Control, URL Filtering, SSL Inspection
+
+DLP inspects **content**. These four rule types restrict the **channel**
+and the **payload** and run **before** DLP in ZIA's policy order, so a
+block here stops a transaction whether or not DLP would have matched. A
+pack lists them in `configs/dlp_policies.json` alongside DLP rules; they
+have no `engines`. Every field below names the ZIA value to enter and
+shows a sample. Anything not listed is passed through untouched.
+
+### Fields shared by all four
+
+| Field | Enter | Sample |
+|---|---|---|
+| `name` | Rule name as it will appear in the ZIA portal (max 31 chars for SSL rules) | `"R_PHI_CAC_FILE_SHARE_NO_UPLOAD"` |
+| `channel` | `cloud_app`, `file_type`, `url` or `ssl` | `"cloud_app"` |
+| `description` | Free text; the tool appends a provenance tag | `"Block upload to personal storage"` |
+| `state` | `ENABLED` or `DISABLED` (packs ship DISABLED) | `"DISABLED"` |
+| `rank` | Admin rank 0–7; 7 is normal | `7` |
+| `cloud_app_classes` | Application classes resolved from the tenant catalogue at deploy time. Values match the Cloud App Control types below | `["FILE_SHARE", "WEBMAIL"]` |
+| `applications` | Explicit application identifiers instead of classes | `["BOX", "DROPBOX", "GOOGLE_DRIVE"]` |
+| `device_trust_levels` | Which ZCC trust levels the rule applies to | `["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]` |
+
+### `cloud_app` — Cloud App Control
+
+| Field | Enter | Sample |
+|---|---|---|
+| `type` | The application category: `AI_ML`, `BUSINESS_PRODUCTIVITY`, `CONSUMER`, `CUSTOM_CAPP`, `DNS_OVER_HTTPS`, `ENTERPRISE_COLLABORATION`, `FILE_SHARE`, `FINANCE`, `HEALTH_CARE`, `HOSTING_PROVIDER`, `HUMAN_RESOURCES`, `INSTANT_MESSAGING`, `IT_SERVICES`, `LEGAL`, `SALES_AND_MARKETING`, `SOCIAL_NETWORKING`, `STREAMING_MEDIA`, `SYSTEM_AND_DEVELOPMENT`, `WEBMAIL` | `"FILE_SHARE"` |
+| `actions_by_verb` | What to do per action family. Keys are the end of the action name (`UPLOAD`, `SHARE`, `SEND`, `ATTACHMENT_SEND`, `VIEW`, `DOWNLOAD`, `CREATE`, `EDIT`...); `*` is the default. Preflight reads the tenant's available actions for the type and applications and picks the matching `ALLOW_`/`BLOCK_` variant, so the exact enums never have to be typed | `{"UPLOAD": "BLOCK", "SHARE": "BLOCK", "*": "ALLOW"}` |
+| `actions` | Explicit action enums instead of `actions_by_verb` (use `list_available_actions` or the portal to see them) | `["BLOCK_FILE_SHARE_UPLOAD", "ALLOW_FILE_SHARE_VIEW"]` |
+| `user_agent_types` | Optional browsers | `["CHROME", "FIREFOX", "MSEDGE", "SAFARI"]` |
+
+```json
+{
+  "name": "R_PHI_CAC_FILE_SHARE_NO_UPLOAD",
+  "channel": "cloud_app",
+  "type": "FILE_SHARE",
+  "cloud_app_classes": ["FILE_SHARE"],
+  "actions_by_verb": {"UPLOAD": "BLOCK", "SHARE": "BLOCK", "*": "ALLOW"},
+  "state": "DISABLED",
+  "rank": 7
+}
+```
+
+### `file_type` — File Type Control
+
+| Field | Enter | Sample |
+|---|---|---|
+| `filtering_action` | `ALLOW`, `CAUTION` (warn, then allow) or `BLOCK` | `"BLOCK"` |
+| `operation` | `UPLOAD`, `DOWNLOAD` or `UPLOAD_DOWNLOAD` | `"UPLOAD"` |
+| `file_types` | File type categories as ZIA names them (Administration > File Type Control) | `["FTCATEGORY_MS_EXCEL", "FTCATEGORY_ZIP", "FTCATEGORY_RAR", "FTCATEGORY_ACCDB"]` |
+| `protocols` | `HTTP_RULE`, `HTTPS_RULE`, `FTP_RULE`, `FOHTTP_RULE` or `ANY_RULE` | `["HTTP_RULE", "HTTPS_RULE"]` |
+| `url_categories` | Optional URL categories to scope to | `["OTHER_MISCELLANEOUS"]` |
+| `min_size` / `max_size` | Optional size bounds in KB (0–409600) | `10` |
+| `active_content` / `unscannable` | Optional booleans | `true` |
+
+```json
+{
+  "name": "R_PHI_FTC_BLOCK_BULK_EXPORT_UPLOAD",
+  "channel": "file_type",
+  "filtering_action": "BLOCK",
+  "operation": "UPLOAD",
+  "file_types": ["FTCATEGORY_MS_EXCEL", "FTCATEGORY_ZIP", "FTCATEGORY_RAR", "FTCATEGORY_TAR", "FTCATEGORY_GZIP"],
+  "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE"],
+  "cloud_app_classes": ["FILE_SHARE"],
+  "state": "DISABLED",
+  "rank": 7
+}
+```
+
+### `url` — URL Filtering
+
+| Field | Enter | Sample |
+|---|---|---|
+| `action` | `ALLOW`, `CAUTION`, `BLOCK`, `ISOLATE` (needs a CBI profile) or `ICAP_RESPONSE` | `"BLOCK"` |
+| `url_categories` | ZIA URL category names, or `["ANY"]` | `["OTHER_MISCELLANEOUS", "GAMBLING"]` |
+| `protocols` | `HTTP_RULE`, `HTTPS_RULE`, `FTP_RULE`, `WEBSOCKET_RULE`, `WEBSOCKETSSL_RULE`, `ANY_RULE`... | `["HTTP_RULE", "HTTPS_RULE"]` |
+| `request_methods` | Optional HTTP methods; `POST` and `PUT` are uploads | `["POST", "PUT"]` |
+| `user_agent_types`, `user_risk_score_levels` | Optional | `["HIGH", "CRITICAL"]` |
+| `end_user_notification_url`, `block_override` | Optional | `"https://caution.acme.com"` |
+
+```json
+{
+  "name": "R_PHI_URL_BLOCK_POST_TO_UNKNOWN",
+  "channel": "url",
+  "action": "BLOCK",
+  "url_categories": ["OTHER_MISCELLANEOUS", "GAMBLING"],
+  "protocols": ["HTTP_RULE", "HTTPS_RULE"],
+  "request_methods": ["POST", "PUT"],
+  "state": "DISABLED",
+  "rank": 7
+}
+```
+
+### `ssl` — SSL Inspection
+
+| Field | Enter | Sample |
+|---|---|---|
+| `action.type` | `DECRYPT`, `DO_NOT_DECRYPT` or `BLOCK` | `"DECRYPT"` |
+| `action.ssl_interception_cert.id` | Certificate to sign with; `1` is the tenant's default Zscaler intermediate CA | `{"id": 1, "default_certificate": true}` |
+| `action.decrypt_sub_actions` | For DECRYPT: `server_certificates` (`ALLOW`/`BLOCK`/`PASS_THRU`), `ocsp_check`, `block_ssl_traffic_with_no_sni_enabled`, `min_client_tls_version` (`CLIENT_TLS_1_2`...), `min_server_tls_version` (`SERVER_TLS_1_2`...), `block_undecrypt`, `http2_enabled` | see below |
+| `action.do_not_decrypt_sub_actions` | For DO_NOT_DECRYPT: `bypass_other_policies`, `server_certificates`, `ocsp_check`, `block_ssl_traffic_with_no_sni_enabled`, `min_tls_version` | `{"bypass_other_policies": false}` |
+| `platforms` | Device platforms: `SCAN_WINDOWS`, `SCAN_MACOS`, `SCAN_LINUX`, `SCAN_IOS`, `SCAN_ANDROID`, `NO_CLIENT_CONNECTOR` | all six |
+| `road_warrior_for_kerberos` | Apply to remote users with PAC/Kerberos | `true` |
+| `cloud_app_classes` / `url_categories` | Scope; classes are resolved against the SSL application catalogue | `["FILE_SHARE", "WEBMAIL", "AI_ML"]` |
+
+```json
+{
+  "name": "R_PHI_SSL_DECRYPT_FILE_SHARE_WEBMAIL_AI",
+  "channel": "ssl",
+  "action": {
+    "type": "DECRYPT",
+    "ssl_interception_cert": {"id": 1, "default_certificate": true},
+    "decrypt_sub_actions": {"server_certificates": "ALLOW", "ocsp_check": true, "min_client_tls_version": "CLIENT_TLS_1_2", "min_server_tls_version": "SERVER_TLS_1_2", "http2_enabled": true}
+  },
+  "cloud_app_classes": ["FILE_SHARE", "WEBMAIL", "AI_ML"],
+  "platforms": ["SCAN_WINDOWS", "SCAN_MACOS", "SCAN_LINUX", "SCAN_IOS", "SCAN_ANDROID", "NO_CLIENT_CONNECTOR"],
+  "road_warrior_for_kerberos": true,
+  "state": "DISABLED",
+  "rank": 7
+}
+```
+
+Preflight lists each channel's API reachability under *Tenant
+prerequisites*, resolves application classes and Cloud App Control actions
+against the live tenant, blocks only the rules whose prerequisites are
+missing, and adds an impact card reminding that containment rules run
+before DLP. Baselines detect drift on action, state, applications, URL
+categories, file types and operation. Terraform export emits
+`zia_cloud_app_control_rule` (actions via the
+`zia_cloud_app_control_rule_actions` data source), `zia_file_type_control_rules`,
+`zia_url_filtering_rules` and `zia_ssl_inspection_rules`.

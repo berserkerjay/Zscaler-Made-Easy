@@ -17,9 +17,42 @@
       "HTTPS_RULE",
       "HTTP_RULE"
     ],
-    "cloud_app_classes": [
-      "AI_ML"
-    ],
+    "cloud_app_classes": ["AI_ML"],
     "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-[CAC] AI Apps: Block File Upload",
+    "channel": "cloud_app",
+    "description": "Cloud App Control: on AI & ML applications, allow browsing and prompts but block file upload regardless of content. The containment layer in front of the DLP rule above.",
+    "state": "DISABLED",
+    "rank": 7,
+    "type": "AI_ML",
+    "cloud_app_classes": ["AI_ML"],
+    "actions_by_verb": {"UPLOAD": "BLOCK", "*": "ALLOW"},
+    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  },
+  {
+    "name": "ZBP-[SSL] Decrypt AI Apps",
+    "channel": "ssl",
+    "description": "SSL Inspection: decrypt traffic to AI & ML applications so the source-code DLP rule can inspect uploads.",
+    "state": "DISABLED",
+    "rank": 7,
+    "action": {
+      "type": "DECRYPT",
+      "override_default_certificate": false,
+      "ssl_interception_cert": {"id": 1, "default_certificate": true},
+      "decrypt_sub_actions": {
+        "server_certificates": "ALLOW",
+        "ocsp_check": true,
+        "block_ssl_traffic_with_no_sni_enabled": false,
+        "min_client_tls_version": "CLIENT_TLS_1_2",
+        "min_server_tls_version": "SERVER_TLS_1_2",
+        "block_undecrypt": false,
+        "http2_enabled": true
+      }
+    },
+    "cloud_app_classes": ["AI_ML"],
+    "platforms": ["SCAN_WINDOWS", "SCAN_MACOS", "SCAN_LINUX", "SCAN_IOS", "SCAN_ANDROID", "NO_CLIENT_CONNECTOR"],
+    "road_warrior_for_kerberos": true
   }
 ]

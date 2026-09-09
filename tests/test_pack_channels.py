@@ -86,6 +86,68 @@ class FakeNamed:
         return list(self.items), None, None
 
 
+# ---------------------------------------------------------------------------
+# Containment channels (Cloud App Control, File Type Control, URL Filtering, SSL)
+# ---------------------------------------------------------------------------
+
+AVAILABLE = {
+    "FILE_SHARE": ["ALLOW_FILE_SHARE_VIEW", "BLOCK_FILE_SHARE_VIEW", "ALLOW_FILE_SHARE_UPLOAD", "BLOCK_FILE_SHARE_UPLOAD",
+                   "ALLOW_FILE_SHARE_SHARE", "BLOCK_FILE_SHARE_SHARE", "ISOLATE_FILE_SHARE_VIEW"],
+    "WEBMAIL": ["ALLOW_WEBMAIL_VIEW", "BLOCK_WEBMAIL_VIEW", "ALLOW_WEBMAIL_SEND", "BLOCK_WEBMAIL_SEND",
+                "ALLOW_WEBMAIL_ATTACHMENT_SEND", "BLOCK_WEBMAIL_ATTACHMENT_SEND"],
+    "AI_ML": ["ALLOW_AI_ML_WEB_USE", "BLOCK_AI_ML_WEB_USE", "ALLOW_AI_ML_UPLOAD", "BLOCK_AI_ML_UPLOAD"],
+}
+APPS = {"FILE_SHARE": ["BOX", "DROPBOX", "GOOGLE_DRIVE"], "WEBMAIL": ["GMAIL", "YAHOO_WEBMAIL"], "AI_ML": ["CHATGPT_AI", "GEMINI"]}
+
+
+class FakeCloudAppControl:
+    def __init__(self, items=None):
+        self.items = list(items or [])
+        self.added, self.updated, self.calls = [], [], []
+        self._next = 9500
+
+    def list_rules(self, rule_type, query_params=None):
+        return [r for r in self.items if getattr(r, "type", None) == rule_type], None, None
+
+    def list_available_actions(self, rule_type, cloud_apps):
+        self.calls.append((rule_type, list(cloud_apps)))
+        return list(AVAILABLE.get(rule_type, [])), None, None
+
+    def add_rule(self, rule_type, **kw):
+        self.added.append((rule_type, kw))
+        self._next += 1
+        obj = Obj(id=self._next, **kw)
+        self.items.append(obj)
+        return obj, None, None
+
+    def update_rule(self, rule_type, rule_id, **kw):
+        self.updated.append((rule_type, rule_id, kw))
+        for i, it in enumerate(self.items):
+            if it.id == rule_id:
+                self.items[i] = Obj(id=rule_id, **kw)
+                return self.items[i], None, None
+        return None, None, {"message": "not found"}
+
+
+class FakeClassApps:
+    def list_cloud_app_policy(self, query_params=None):
+        cls = (query_params or {}).get("app_class")
+        return [Obj(app=a) for a in APPS.get(cls, [])], None, None
+
+
+def add_control_services(client, cac_rules=None):
+    """Give a fake client the four containment-channel services plus the
+    cloud-application catalogue they scope by."""
+    z = client.zia
+    z.cloudappcontrol = FakeCloudAppControl(cac_rules)
+    z.file_type_control_rule = FakeChannelRules(start=9600)
+    z.url_filtering = FakeChannelRules(start=9700)
+    z.ssl_inspection_rules = FakeChannelRules(start=9800)
+    z.cloud_applications = FakeClassApps()
+    return client
+
+
+
 def tenant(name, app, tid):
     return Obj(tenant_id=tid, tenant_name=name, saas_application=app, status=["ACTIVE"])
 

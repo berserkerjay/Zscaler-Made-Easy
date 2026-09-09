@@ -43,9 +43,14 @@ const DZ_CHANNEL_HELP = {
   endpoint: 'Endpoint DLP: files moving off managed devices (USB, printing, network shares, app access) via Zscaler Client Connector.',
   saas: 'SaaS Security API: data already at rest in onboarded SaaS tenants (Box, Google Drive, Slack…), scanned out of band.',
   email: 'Outbound email DLP for onboarded Microsoft 365 / Gmail tenants.',
+  cloud_app: 'Cloud App Control: per-application actions (allow view, block upload/share/send) for a category such as File Sharing, Webmail or AI & ML. Runs before DLP.',
+  file_type: 'File Type Control: allow, caution or block uploads/downloads of file categories (spreadsheets, archives, images). Runs before DLP.',
+  url: 'URL Filtering: allow, caution, block or isolate by URL category, protocol and request method. Runs before DLP.',
+  ssl: 'SSL Inspection: decrypt, do not decrypt, or block TLS traffic for applications or categories. Without decryption, DLP cannot inspect HTTPS uploads.',
 };
 // Rule channels: which ZIA policy a pack rule lands in.
-const DZ_CHANNEL = { web: 'Web', endpoint: 'Endpoint', saas: 'SaaS', email: 'Email' };
+const DZ_CHANNEL = { web: 'Web', endpoint: 'Endpoint', saas: 'SaaS', email: 'Email',
+                     cloud_app: 'Cloud App Control', file_type: 'File Type Control', url: 'URL Filtering', ssl: 'SSL Inspection' };
 const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
 function _dzChannelChips(channels) {
   if (!channels) return '';

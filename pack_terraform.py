@@ -55,7 +55,159 @@ RESOURCE_BY_CHANNEL = {
     pc.ENDPOINT: "zia_endpoint_dlp_rules",
     pc.SAAS: "zia_casb_dlp_rules",
     pc.EMAIL: "zia_outbound_email_dlp",
+    pc.CLOUD_APP: "zia_cloud_app_control_rule",
+    pc.FILE_TYPE: "zia_file_type_control_rules",
+    pc.URL: "zia_url_filtering_rules",
+    pc.SSL: "zia_ssl_inspection_rules",
 }
+
+
+def _hcl_value(v: Any, indent: int) -> str:
+    """Render a JSON-ish value as HCL (scalars, lists, nested blocks)."""
+    pad = "  " * indent
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, list):
+        return hcl_list(v)
+    if isinstance(v, dict):
+        inner = "".join(f"{pad}  {k.ljust(22)} = {_hcl_value(val, indent + 1)}\n" if not isinstance(val, dict)
+                        else f"{pad}  {k} {_hcl_value(val, indent + 1)}" for k, val in v.items())
+        return "{\n" + inner + pad + "}\n"
+    return hcl_str(v)
+
+
+# Attributes the zscaler/zia provider accepts inside an SSL Inspection rule's
+# ``action`` block (checked against the 4.8 schema). Other keys a pack may
+# carry from the API (``default_certificate`` on the certificate reference,
+# for example) are emitted as comments so the workspace validates.
+SSL_ACTION_SCHEMA: Dict[str, Any] = {
+    "type": None, "override_default_certificate": None, "show_eun": None, "show_eunatp": None,
+    "ssl_interception_cert": {"id": None},
+    "decrypt_sub_actions": {"server_certificates": None, "ocsp_check": None, "block_ssl_traffic_with_no_sni_enabled": None,
+                            "min_client_tls_version": None, "min_server_tls_version": None, "block_undecrypt": None,
+                            "http2_enabled": None},
+    "do_not_decrypt_sub_actions": {"server_certificates": None, "ocsp_check": None, "block_ssl_traffic_with_no_sni_enabled": None,
+                                   "min_tls_version": None, "bypass_other_policies": None},
+}
+
+
+def _filter_schema(value: Dict[str, Any], schema: Dict[str, Any], path: str = "action") -> Tuple[Dict[str, Any], List[str]]:
+    """Keep only keys the provider schema knows; report the dropped ones."""
+    clean: Dict[str, Any] = {}
+    dropped: List[str] = []
+    for k, v in value.items():
+        if k not in schema:
+            dropped.append(f"{path}.{k} = {json.dumps(v)}")
+            continue
+        sub = schema[k]
+        if isinstance(sub, dict) and isinstance(v, dict):
+            inner, d2 = _filter_schema(v, sub, f"{path}.{k}")
+            clean[k] = inner
+            dropped.extend(d2)
+        else:
+            clean[k] = v
+    return clean, dropped
+
+
+def _apps_expr(p: Dict[str, Any], lookups: List[str], app_classes: Dict[str, str], *, ssl: bool = False,
+               default_classes: Optional[List[str]] = None) -> Optional[str]:
+    """HCL expression for a rule's cloud applications: explicit list, or a
+    live lookup by application class. None when the rule has neither."""
+    if p.get("applications") or p.get("cloud_applications"):
+        return hcl_list(p.get("applications") or p.get("cloud_applications"))
+    classes = [str(c).upper() for c in (p.get("cloud_app_classes") or default_classes or [])]
+    if not classes:
+        return None
+    refs = []
+    policy_type = "cloud_application_ssl_policy" if ssl else "cloud_application_policy"
+    for cls in classes:
+        key = ("ssl_" if ssl else "") + cls
+        if key not in app_classes:
+            app_classes[key] = slug(cls, "apps_ssl_" if ssl else "apps_")
+            lookups.append(f'data "zia_cloud_applications" "{app_classes[key]}" {{\n  policy_type = "{policy_type}"\n  app_class   = [{hcl_str(cls)}]\n}}\n\n')
+        refs.append(f"[for a in data.zia_cloud_applications.{app_classes[key]}.applications : a.app]")
+    return "sort(distinct(concat(" + ", ".join(refs) + ")))"
+
+
+def _control_rule_hcl(channel: str, res: str, label: str, p: Dict[str, Any], meta: Dict[str, Any], pack_id: str,
+                      order_expr: str, lookups: List[str], app_classes: Dict[str, str]) -> str:
+    """Terraform for a containment rule (Cloud App Control, File Type
+    Control, URL Filtering, SSL Inspection)."""
+    r = [f'resource "{res}" "{label}" {{\n']
+    r.append(_attr("name", hcl_str(p["name"])))
+    r.append(_attr("description", hcl_str(_provenance(meta, pack_id, p.get("description", "")))))
+    r.append(_attr("order", order_expr))
+    r.append(_attr("rank", "var.policy_rank"))
+    r.append(_attr("state", hcl_str(p.get("state", "ENABLED"))))
+    if channel == pc.CLOUD_APP:
+        apps = _apps_expr(p, lookups, app_classes, default_classes=[str(p["type"]).upper()])
+        r.append(_attr("type", hcl_str(str(p["type"]).upper())))
+        r.append(_attr("applications", apps or "[]"))
+        if p.get("actions"):
+            r.append(_attr("actions", hcl_list(p["actions"])))
+        else:
+            verbs = {str(k).upper(): str(v).upper() for k, v in (p.get("actions_by_verb") or {}).items()}
+            default = verbs.pop("*", "ALLOW")
+            block = [f"_{v}" for v, want in verbs.items() if want == "BLOCK"]
+            allow = [f"_{v}" for v, want in verbs.items() if want == "ALLOW"]
+            alabel = f"{label}_actions"
+            lookups.append(f'data "zia_cloud_app_control_rule_actions" "{alabel}" {{\n  type       = {hcl_str(str(p["type"]).upper())}\n  cloud_apps = {apps or "[]"}\n}}\n\n')
+            cond = (f"(anytrue([for v in {hcl_list(block)} : endswith(a, v)]) ? startswith(a, \"BLOCK_\") : "
+                    f"(anytrue([for v in {hcl_list(allow)} : endswith(a, v)]) ? startswith(a, \"ALLOW_\") : startswith(a, \"{default}_\")))")
+            r.append(_attr("actions", f"[for a in data.zia_cloud_app_control_rule_actions.{alabel}.available_actions_without_isolate : a if {cond}]"))
+        r.append(_attr("device_trust_levels", hcl_list(p.get("device_trust_levels") or list(pc.CLOUD_APP_TRUST_LEVELS))))
+        for opt in ("user_agent_types", "user_risk_score_levels"):
+            if p.get(opt):
+                r.append(_attr(opt, hcl_list(p[opt])))
+        for opt in ("time_quota", "size_quota"):
+            if p.get(opt):
+                r.append(_attr(opt, str(int(p[opt]))))
+    elif channel == pc.FILE_TYPE:
+        r.append(_attr("filtering_action", hcl_str(p.get("filtering_action", "ALLOW"))))
+        r.append(_attr("operation", hcl_str(p.get("operation", "UPLOAD"))))
+        r.append(_attr("file_types", hcl_list(p["file_types"])))
+        r.append(_attr("protocols", hcl_list(p.get("protocols") or ["ANY_RULE"])))
+        apps = _apps_expr(p, lookups, app_classes)
+        if apps:
+            r.append(_attr("cloud_applications", apps))
+        for opt in ("url_categories", "device_trust_levels"):
+            if p.get(opt):
+                r.append(_attr(opt, hcl_list(p[opt])))
+        for opt in ("min_size", "max_size"):
+            if p.get(opt):
+                r.append(_attr(opt, str(int(p[opt]))))
+        for opt in ("active_content", "unscannable"):
+            if p.get(opt) is not None:
+                r.append(_attr(opt, "true" if p[opt] else "false"))
+    elif channel == pc.URL:
+        r.append(_attr("action", hcl_str(p.get("action", "ALLOW"))))
+        r.append(_attr("protocols", hcl_list(p.get("protocols") or ["ANY_RULE"])))
+        r.append(_attr("url_categories", hcl_list(p["url_categories"])))
+        for opt in ("request_methods", "device_trust_levels", "user_agent_types", "user_risk_score_levels"):
+            if p.get(opt):
+                r.append(_attr(opt, hcl_list(p[opt])))
+        if p.get("end_user_notification_url"):
+            r.append(_attr("end_user_notification_url", hcl_str(p["end_user_notification_url"])))
+        if p.get("block_override") is not None:
+            r.append(_attr("block_override", "true" if p["block_override"] else "false"))
+    elif channel == pc.SSL:
+        r.append(_attr("platforms", hcl_list(p.get("platforms") or list(pc.SSL_PLATFORMS))))
+        if p.get("road_warrior_for_kerberos") is not None:
+            r.append(_attr("road_warrior_for_kerberos", "true" if p["road_warrior_for_kerberos"] else "false"))
+        apps = _apps_expr(p, lookups, app_classes, ssl=True)
+        if apps:
+            r.append(_attr("cloud_applications", apps))
+        for opt in ("url_categories", "device_trust_levels", "user_agent_types"):
+            if p.get(opt):
+                r.append(_attr(opt, hcl_list(p[opt])))
+        action, dropped = _filter_schema(p["action"], SSL_ACTION_SCHEMA)
+        for d in dropped:
+            r.append(f"  # not in the zscaler/zia provider schema (set in the Admin Portal if needed): {d}\n")
+        r.append("  action " + _hcl_value(action, 1))
+    r.append("}\n\n")
+    return "".join(r)
 
 # Matches a symbolic `D:<name>` reference. The name may contain parentheses
 # ("Social Security Numbers (US)"); it ends at the comparison operator that
@@ -255,7 +407,12 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         idx = per_channel_index.get(channel, 0)
         per_channel_index[channel] = idx + 1
         item = plan.get(("policy", p["name"]))
-        existing_order = (item or {}).get("tenant", {}).get("order") if item else None
+        existing_order = ((item or {}).get("tenant") or {}).get("order")
+        order_expr = str(int(existing_order)) if existing_order else f"var.rule_starting_order + {idx}"
+
+        if channel in pc.CONTROL_CHANNELS:
+            rules.append(_control_rule_hcl(channel, res, label, p, meta, pack_id, order_expr, lookups, app_classes))
+            continue
 
         engine_ids = []
         for n in p.get("engines", []):
@@ -419,7 +576,12 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
             import_id = None
             if it and (it.get("tenant") or {}).get("id") is not None:
                 tid = it["tenant"]["id"]
-                import_id = f"{p['saas_type']}:{tid}" if channel == pc.SAAS else str(tid)
+                if channel == pc.SAAS:
+                    import_id = f"{p['saas_type']}:{tid}"
+                elif channel == pc.CLOUD_APP:
+                    import_id = f"{str(p['type']).upper()}:{tid}"
+                else:
+                    import_id = str(tid)
             _gap_import(imports, counts, it, res, S.get("rule", p["name"]), import_id=import_id)
         files["imports.tf"] = "".join(imports)
         gap_summary = counts

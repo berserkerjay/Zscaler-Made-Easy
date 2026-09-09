@@ -759,14 +759,14 @@
     <div class="form-grid">
       <div class="field">
         <label>Organization Name <span class="required">*</span></label>
-        <input id="org" placeholder="e.g., Acme Corporation">
-        <div class="helper">Appears on the report title page</div>
+        <input id="org" placeholder="Acme Health System">
+        <div class="helper">The customer's company or agency name exactly as it should print on the report cover. Sample: <code>Acme Health System</code></div>
         <div class="err-msg">Organization name is required</div>
       </div>
       <div class="field">
         <label>Assessor Name <span class="required">*</span></label>
-        <input id="assessor" placeholder="Your name">
-        <div class="helper">Who is running this assessment</div>
+        <input id="assessor" placeholder="Jane Doe, Zscaler DS Engineer">
+        <div class="helper">Your name and role; it appears on the report as the person who ran it. Sample: <code>Jane Doe, Zscaler DS Engineer</code></div>
         <div class="err-msg">Assessor name is required</div>
       </div>
       <div class="field">
@@ -780,36 +780,36 @@
           <option value="zscalerthree">zscalerthree</option>
           <option value="zscalerbeta">zscalerbeta (preview)</option>
         </select>
-        <div class="helper">Find this in your admin portal URL (admin.zscalerthree.net = zscalerthree). Most tenants use Production.</div>
+        <div class="helper">Leave on <strong>Production</strong> unless the customer's ZIA admin URL is on another cloud: <code>admin.zscalerthree.net</code> → zscalerthree, <code>admin.zscloud.net</code> → zscloud. Government tenants use beta/gov/govus.</div>
       </div>
       <div class="field">
         <label>Vanity Domain <span class="required">*</span></label>
-        <input id="vd" placeholder="e.g., acme">
-        <div class="helper">Your org's unique Zscaler subdomain (from zslogin URL)</div>
+        <input id="vd" placeholder="acme" autocomplete="off" spellcheck="false">
+        <div class="helper">Only the short name before <code>.zslogin.net</code> in the customer's ZIdentity login URL. For <code>https://acme.zslogin.net</code> enter <code>acme</code>. No https://, no dots.</div>
         <div class="err-msg">Vanity domain is required</div>
       </div>
       <div class="field">
         <label>API Client ID <span class="required">*</span></label>
         <div style="position:relative;">
-          <input id="cid" type="password" placeholder="OAuth2 client identifier" style="padding-right:60px;">
+          <input id="cid" type="password" placeholder="Client ID from ZIdentity, e.g. 3f9c2a1b7d8e4f0a9b6c1d2e3f4a5b6c" autocomplete="off" spellcheck="false" style="padding-right:60px;">
           <button type="button" id="toggleCid" onclick="toggleField('cid','toggleCid')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
         </div>
-        <div class="helper">From Admin &rarr; API Key Management &rarr; OneAPI Credentials</div>
+        <div class="helper">From <strong>ZIdentity &rarr; Integration &rarr; API Clients</strong>, the Client ID of the API client created for this engagement. Letters and digits only, no spaces. The client needs a ZIA role that can read (and, to deploy, write) DLP dictionaries, engines and policy.</div>
         <div class="err-msg">Client ID is required</div>
       </div>
       <div class="field">
         <label>API Client Secret <span class="required">*</span></label>
         <div style="position:relative;">
-          <input id="csec" type="password" placeholder="OAuth2 client secret" style="padding-right:60px;">
+          <input id="csec" type="password" placeholder="Client secret shown once when the API client was created" autocomplete="off" spellcheck="false" style="padding-right:60px;">
           <button type="button" id="toggleSecret" onclick="toggleField('csec','toggleSecret')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
         </div>
-        <div class="helper">Keep this private — never share or commit to source control</div>
+        <div class="helper">The secret ZIdentity displayed <strong>once</strong> when the API client was created (a long random string). If it looks like <code>••••••</code> or was copied from the portal later, it is a placeholder: generate a new secret. Never stored by this tool, never share it.</div>
         <div class="err-msg">Client secret is required</div>
       </div>
       <div class="field">
         <label>ZPA Customer ID <span style="color:var(--dim);font-size:0.7rem;">(optional)</span></label>
-        <input id="custid" placeholder="Numeric ID (only needed for ZPA checks)">
-        <div class="helper">From ZPA admin URL: /app/&lt;CUSTOMER_ID&gt;/dashboard</div>
+        <input id="custid" placeholder="216196257331281920" inputmode="numeric" autocomplete="off">
+        <div class="helper">Digits only, needed only when the ZPA scope is ticked. Copy it from the ZPA admin URL: <code>https://admin.private.zscaler.com/app/<strong>216196257331281920</strong>/dashboard</code>.</div>
       </div>
       <div class="field full">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
