@@ -572,6 +572,7 @@ function _dzRenderReview() {
     ${_dzSection('Skipped — dependency or conflict', blocked)}
     ${_dzSection('Already in place — nothing to do', reused, { open: false })}`}`;
   if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
+  _dzFlowSyncTab(items, null);
   foot.innerHTML = `
     <div class="dz-summary">${R.status === 'blocked' ? 'Resolve the blockers above, then run preflight again.' : 'Nothing has been written yet.'}</div>
     <div class="dz-actions">
@@ -697,6 +698,7 @@ function _dzRenderDeploy() {
     ${verRows ? `<div class="dz-h">Post-deploy verification</div><div class="dz-rows">${verRows}</div>` : ''}
     ${(X.logs || []).length ? `<details class="dz-fold"><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(X.logs.join('\n'))}</div></details>` : ''}`;
   if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
+  _dzFlowSyncTab((DZ.report || {}).items || [], results);
   foot.innerHTML = `
     <div class="dz-summary">plan ${_dzE((X.plan_hash || '').slice(0, 12))}${X.deployment_id ? ' · recorded for undo' : ''}${X.deployment_error ? ` · ${_dzE(X.deployment_error)}` : ''}</div>
     <div class="dz-actions">
@@ -881,9 +883,13 @@ const DZ_FLOW_LABEL = {
   created: 'created', modified: 'modified', restored: 'overwritten', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
 };
 
-function _dzFlowHtml(items, results) {
+// opts.standalone: drawn in its own tab (/report/flow) — no "open in new
+// tab" button and no hint, the page has its own.
+function _dzFlowHtml(items, results, opts) {
   if (!items || !items.length) return `<div class="dz-empty">Nothing to draw.</div>`;
+  const standalone = !!(opts && opts.standalone);
   const g = _dzFlowGraph(items, results);
+  DZ_FLOW.graph = g;
   const G = DZ_FLOW_GEO;
   const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
   const heads = g.used.map((u, ci) => `<text class="dz-flow-head" x="${G.pad + ci * (G.w + G.gapX)}" y="${G.pad + 14}">${_dzE(DZ_FLOW_COLS[u.i].title.toUpperCase())}</text>`).join('');
@@ -933,6 +939,7 @@ function _dzFlowHtml(items, results) {
           <button type="button" class="dz-btn quiet" onclick="_dzFlowZoom(-0.15)" aria-label="Zoom out">−</button>
           <button type="button" class="dz-btn quiet" onclick="_dzFlowZoom(0)" aria-label="Fit to width">Fit</button>
           <button type="button" class="dz-btn quiet" onclick="_dzFlowZoom(0.15)" aria-label="Zoom in">+</button>
+          ${standalone ? '' : `<button type="button" class="dz-btn quiet dz-flow-open" onclick="_dzFlowOpenTab()" title="Open this flow in its own tab, full width, with a details panel. It stays live while this window is open.">↗ Open in new tab</button>`}
         </div>
       </div>
       <div class="dz-flow-wrap" id="dzFlowWrap" onmouseover="_dzFlowOver(event)" onmouseout="_dzFlowOut(event)" onclick="_dzFlowClick(event)" onkeydown="_dzFlowKey(event)">
@@ -942,9 +949,50 @@ function _dzFlowHtml(items, results) {
           <g class="dz-nodes">${nodeHtml}</g>
         </svg>
       </div>
-      <div class="dz-flow-hint">Hover a node to trace what it depends on and what depends on it. Click to pin. Names are truncated — hover for the full name and reason.</div>
+      ${standalone ? '' : `<div class="dz-flow-hint">Hover a node to trace what it depends on and what depends on it. Click to pin. Names are truncated — hover for the full name and reason, or open the flow in its own tab for the full-width view with a details panel.</div>`}
     </div>`;
 }
+
+// ── The flow in its own tab (/report/flow) ──────────────────────────
+// The tab draws the same diagram itself (deploy_studio.js is loaded there
+// too), so hover, pin, keyboard and zoom all work natively; this window
+// just hands it the plan and keeps it current. The last plan is also kept
+// in localStorage so the tab survives a reload after this window is gone.
+const DZ_FLOW_LS = 'zassess_flow_last';
+function _dzFlowPayload(items, results) {
+  const R = DZ.report || {}, X = DZ.result || {};
+  return {
+    items: items || [], results: results || null, stage: results ? 'deployed' : 'plan',
+    tenant_label: R.tenant_label || '', packs: [...(DZ.selected || [])],
+    plan_hash: (results ? X.plan_hash : R.plan_hash) || '', status: results ? (X.status || '') : (R.status || ''),
+    at: new Date().toISOString(),
+  };
+}
+// Remember the plan currently drawn and push it to the flow tab if one is open.
+function _dzFlowSyncTab(items, results) {
+  const payload = _dzFlowPayload(items, results);
+  DZ_FLOW.last = payload;
+  try { localStorage.setItem(DZ_FLOW_LS, JSON.stringify(payload)); } catch (e) { /* storage unavailable or full */ }
+  const win = DZ_FLOW.win;
+  if (!win || win.closed) { DZ_FLOW.win = null; return; }
+  try { if (typeof win.__flowApply === 'function') win.__flowApply(payload); } catch (e) { /* the tab is still loading; it reads the plan itself */ }
+}
+function _dzFlowOpenTab() {
+  if (!DZ_FLOW.last) return;
+  const win = window.open('/report/flow', '_blank');
+  if (!win) return;   // popup blocked: the inline flow is still there
+  DZ_FLOW.win = win;
+  let tries = 0;
+  const push = setInterval(() => {
+    if (win.closed || tries++ > 100) { clearInterval(push); return; }
+    try {
+      if (typeof win.__flowApply !== 'function') return;
+      win.__flowApply(DZ_FLOW.last); clearInterval(push);
+    } catch (e) { /* not ready yet */ }
+  }, 120);
+}
+// Lets the tab ask for the latest plan (after a reload, for example).
+window.__flowCurrent = () => DZ_FLOW.last || null;
 
 function _dzViewToggle() {
   const v = DZ.view || 'flow';
@@ -980,8 +1028,10 @@ function _dzFlowRelated(key) {
 function _dzFlowTrace(key) {
   const svg = document.getElementById('dzFlowSvg');
   if (!svg) return;
+  const notify = () => { if (typeof DZ_FLOW.onTrace === 'function') DZ_FLOW.onTrace(key, key && DZ_FLOW.graph ? DZ_FLOW.graph.nodes.get(key) : null); };
   if (!key) {
     svg.querySelectorAll('.is-dim, .is-hi').forEach(el => el.classList.remove('is-dim', 'is-hi'));
+    notify();
     return;
   }
   const { keep, edges } = _dzFlowRelated(key);
@@ -990,6 +1040,7 @@ function _dzFlowTrace(key) {
     const on = keep.has(e.from) && keep.has(e.to);
     e.el.classList.toggle('is-hi', on); e.el.classList.toggle('is-dim', !on);
   }
+  notify();
 }
 function _dzFlowOver(ev) { const n = ev.target.closest('.dz-node'); if (n && !DZ_FLOW.pinned) _dzFlowTrace(n.dataset.key); }
 function _dzFlowOut(ev) { if (!DZ_FLOW.pinned && ev.target.closest('.dz-node')) _dzFlowTrace(null); }

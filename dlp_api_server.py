@@ -142,7 +142,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -2624,6 +2624,17 @@ def _remember_report(kind: str, report: Dict[str, Any], label: str = "") -> str:
 async def report_view_page():
     """Standalone tab that mirrors a tool dialog (see static/report_view.html)."""
     page = os.path.join(STATIC_DIR, "report_view.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/report/flow")
+async def report_flow_page():
+    """Standalone tab for the Deploy Policy Packs dependency flow (static/report_flow.html).
+    The page draws the diagram itself from the plan the assessment tab hands it."""
+    page = os.path.join(STATIC_DIR, "report_flow.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:

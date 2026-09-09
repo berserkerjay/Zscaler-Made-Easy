@@ -1,0 +1,406 @@
+[
+  {
+    "name": "Bank-Payment Card Data-Monitor",
+    "description": "Inline Web DLP: payment card data (PAN with CVV/PIN/expiry, several card numbers, magnetic tracks). Monitor-only to start; OCR on so photographed cards and scanned forms are inspected. Move to BLOCK after tuning.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Payment Card Data"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Payment Card Data-Bulk-Block",
+    "description": "Inline Web DLP: block bulk card-number exports (25+ distinct PANs or 5+ track records). Enforcing by design; ships disabled so you choose when.",
+    "action": "BLOCK",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Payment Card Data - Bulk"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Payment Instructions-Monitor",
+    "description": "Inline Web DLP: bank account identifiers (ABA, EU IBAN, global IBAN, SWIFT/BIC) in payment context. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Account and Payment Instructions"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Customer PII-Monitor",
+    "description": "Inline Web DLP: customer personal data across jurisdictions (US SSN/ITIN, UK/CA/AU/ZA and IN/SG/HK national IDs, EU/APAC passports, DOB with US licence) plus Zscaler's US PII engine. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Customer PII (Global)",
+      "ZBP-US PII"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Customer PII-Bulk-Block",
+    "description": "Inline Web DLP: block bulk customer-data exports (25+ distinct identifiers or 50+ dates of birth). Enforcing by design; ships disabled.",
+    "action": "BLOCK",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Customer PII - Bulk"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Customer Records-Monitor",
+    "description": "Inline Web DLP: account statements, KYC/AML case files and loan applications that carry an identifier. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Customer Financial Records",
+      "Bank-KYC and AML Files",
+      "Bank-Credit and Loan Applications"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-MNPI-Monitor",
+    "description": "Inline Web DLP: material non-public information, deal documents and tax forms (Zscaler's Financial Information engine). Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-MNPI and Deal Information",
+      "ZBP-Financial Information"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Confidential Markings-Monitor",
+    "description": "Inline Web DLP: any document stamped with a bank confidentiality marking. Monitor-only; a good first rule to enable because it has almost no false positives.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "Bank-Confidential Markings"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "Bank-Credentials-Monitor",
+    "description": "Inline Web DLP: private keys and secrets (Zscaler's Private Keys engine). Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": false
+  },
+  {
+    "name": "Bank-Endpoint-Monitor",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: card data, payment instructions, customer PII and customer records leaving managed devices via removable media, printing, network shares and application file access. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data",
+      "Bank-Account and Payment Instructions",
+      "Bank-Customer PII (Global)",
+      "Bank-Customer Financial Records"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Bank-Endpoint-Bulk-Block-USB",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: block bulk card-number or customer-data exports copied to removable drives. Enforcing by design; ships disabled.",
+    "action": "BLOCK",
+    "state": "DISABLED",
+    "rank": 7,
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data - Bulk",
+      "Bank-Customer PII - Bulk"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Bank-SaaS File-Monitor",
+    "channel": "saas",
+    "saas_type": "OFLCASB_DLP_FILE",
+    "description": "SaaS Security API: scan files at rest in onboarded file-storage tenants (OneDrive, SharePoint, Box, Google Drive) for card data, payment instructions, customer PII and customer records; report incidents. Applies to every matching onboarded tenant.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "rank": 7,
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data",
+      "Bank-Account and Payment Instructions",
+      "Bank-Customer PII (Global)",
+      "Bank-Customer Financial Records"
+    ],
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ]
+  },
+  {
+    "name": "Bank-Email-Monitor",
+    "channel": "email",
+    "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for card data, payment instructions, customer PII, customer records and KYC files. Monitor-only; needs an email tenant under Administration > SaaS Application Tenants.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data",
+      "Bank-Account and Payment Instructions",
+      "Bank-Customer PII (Global)",
+      "Bank-Customer Financial Records",
+      "Bank-KYC and AML Files"
+    ],
+    "tenants": "any"
+  },
+  {
+    "name": "Bank-SSL-Decrypt-File-Share-Webmail-AI",
+    "channel": "ssl",
+    "description": "SSL Inspection: decrypt traffic to file-sharing, webmail and AI/ML applications so the DLP rules can inspect HTTPS uploads. Without this, content inspection never sees the payload. Applications are resolved from the tenant catalogue at deploy time.",
+    "state": "DISABLED",
+    "rank": 7,
+    "action": {
+      "type": "DECRYPT",
+      "override_default_certificate": false,
+      "ssl_interception_cert": {
+        "id": 1,
+        "default_certificate": true
+      },
+      "decrypt_sub_actions": {
+        "server_certificates": "ALLOW",
+        "ocsp_check": true,
+        "block_ssl_traffic_with_no_sni_enabled": false,
+        "min_client_tls_version": "CLIENT_TLS_1_2",
+        "min_server_tls_version": "SERVER_TLS_1_2",
+        "block_undecrypt": false,
+        "http2_enabled": true
+      }
+    },
+    "cloud_app_classes": [
+      "FILE_SHARE",
+      "WEBMAIL",
+      "AI_ML"
+    ],
+    "platforms": [
+      "SCAN_WINDOWS",
+      "SCAN_MACOS",
+      "SCAN_LINUX",
+      "SCAN_IOS",
+      "SCAN_ANDROID",
+      "NO_CLIENT_CONNECTOR"
+    ],
+    "road_warrior_for_kerberos": true
+  },
+  {
+    "name": "Bank-CAC-File-Share-No-Upload",
+    "channel": "cloud_app",
+    "description": "Cloud App Control: on personal file-sharing applications, allow viewing and downloading but block upload and share. Stops bulk exports of customer data to personal cloud storage before content inspection is needed.",
+    "state": "DISABLED",
+    "rank": 7,
+    "type": "FILE_SHARE",
+    "cloud_app_classes": [
+      "FILE_SHARE"
+    ],
+    "actions_by_verb": {
+      "UPLOAD": "BLOCK",
+      "SHARE": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Bank-CAC-Webmail-No-Send",
+    "channel": "cloud_app",
+    "description": "Cloud App Control: on personal webmail (Gmail, Yahoo, ...), allow reading but block sending and attachments.",
+    "state": "DISABLED",
+    "rank": 7,
+    "type": "WEBMAIL",
+    "cloud_app_classes": [
+      "WEBMAIL"
+    ],
+    "actions_by_verb": {
+      "SEND": "BLOCK",
+      "ATTACHMENT_SEND": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Bank-CAC-AI-No-Upload",
+    "channel": "cloud_app",
+    "description": "Cloud App Control: on AI & ML applications (ChatGPT and similar), allow browsing but block upload and file submission. Customer data and MNPI must not be pasted into public models.",
+    "state": "DISABLED",
+    "rank": 7,
+    "type": "AI_ML",
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
+    "actions_by_verb": {
+      "UPLOAD": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Bank-FTC-Block-Bulk-Export-Upload",
+    "channel": "file_type",
+    "description": "File Type Control: block upload of spreadsheets, databases and archives to file-sharing applications. These are the bulk-export formats where DLP byte proximity is least reliable. Adjust file_types to the category names your tenant shows under Administration > File Type Control.",
+    "state": "DISABLED",
+    "rank": 7,
+    "filtering_action": "BLOCK",
+    "operation": "UPLOAD",
+    "file_types": [
+      "FTCATEGORY_MS_EXCEL",
+      "FTCATEGORY_ZIP",
+      "FTCATEGORY_RAR",
+      "FTCATEGORY_TAR",
+      "FTCATEGORY_GZIP",
+      "FTCATEGORY_ACCDB",
+      "FTCATEGORY_SQL"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE"
+    ],
+    "cloud_app_classes": [
+      "FILE_SHARE"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "Bank-URL-Block-Post-To-Unknown",
+    "channel": "url",
+    "description": "URL Filtering: block POST/PUT (uploads and form submissions) to uncategorised and gambling sites. Closes the unknown-destination channel; adjust url_categories to your tenant's category names.",
+    "state": "DISABLED",
+    "rank": 7,
+    "action": "BLOCK",
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE"
+    ],
+    "request_methods": [
+      "POST",
+      "PUT"
+    ],
+    "url_categories": [
+      "OTHER_MISCELLANEOUS",
+      "GAMBLING"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  }
+]

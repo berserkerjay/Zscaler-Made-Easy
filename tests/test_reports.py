@@ -42,7 +42,12 @@ def test_index_loads_report_addons():
     assert "openBypassReportTab()" in html and "openToolTab('updates')" in html and "openToolTab('efficacy')" in html
     view = c.get("/report/view?tool=updates")
     assert view.status_code == 200 and "Back to the assessment" in view.text and "__ttApply" in view.text
-    assert c.get("/static/tool_tabs.js").status_code == 200
+    tabs = c.get("/static/tool_tabs.js")
+    assert tabs.status_code == 200
+    # The assessment results open in their own tab: progress card first, then the report, both kept on the page.
+    assert "results:" in tabs.text and "panels: ['progressCard', 'results']" in tabs.text and "_openResultsPanel" in tabs.text
+    assert "openToolTab('results', 'run')" in c.get("/static/guide.js").text
+    assert "openToolTab('results', 'view')" in html and "Open in new tab" in html
     assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200
 
 
@@ -53,7 +58,7 @@ def test_report_tabs_share_the_app_stylesheet_and_theme():
     css = c.get("/app.css")
     assert css.status_code == 200 and "text/css" in css.headers["content-type"] and "no-cache" in css.headers["cache-control"]
     assert "--bg: #0a0e1a" in css.text and "body.theme-light" in css.text and ".hero h1 .accent" in css.text and "<style>" not in css.text
-    for path in ("/report/bypass?id=x", "/report/sslflow?id=x", "/report/view?tool=updates"):
+    for path in ("/report/bypass?id=x", "/report/sslflow?id=x", "/report/view?tool=updates", "/report/flow"):
         html = c.get(path).text
         assert '<link rel="stylesheet" href="/app.css">' in html, path
         assert '<script src="/static/report_theme.js"></script>' in html, path
@@ -77,3 +82,21 @@ def test_terraform_summary_endpoint():
     assert c.get("/api/dlp-packs/nope/terraform").status_code == 404
     html = c.get("/").text
     assert "openToolTab('terraform')" in html and "Terraform hand-off" in html
+
+
+def test_deploy_flow_has_its_own_tab():
+    """The Deploy Policy Packs dependency flow opens in /report/flow, which
+    draws the diagram itself from the plan the assessment tab hands it."""
+    c = TestClient(srv.app)
+    html = c.get("/report/flow").text
+    assert '<script src="/static/deploy_studio.js"></script>' in html
+    assert '<link rel="stylesheet" href="/static/deploy_studio.css">' in html
+    assert "window.__flowApply" in html and "zassess_flow_last" in html and 'id="flSide"' in html
+    assert "no-cache" in c.get("/report/flow").headers.get("cache-control", "")
+    js = c.get("/static/deploy_studio.js").text
+    assert "function _dzFlowOpenTab" in js and "window.open('/report/flow'" in js
+    assert "function _dzFlowSyncTab" in js and "window.__flowCurrent" in js
+    assert "_dzFlowHtml(items, results, opts)" in js and "standalone" in js
+    assert "DZ_FLOW.onTrace" in js
+    css = c.get("/static/reports.css").text
+    assert "body.flow-page .dz-flow-wrap" in css and ".fl-side" in css

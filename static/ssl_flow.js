@@ -35,10 +35,32 @@ function _sfSvg(data) {
   const classes = data.classes || [];
   const W = { a: 268, b: 236, c: 250 }, GAP = 78, ROW = 64, PAD = 16, TOP = 42, H = 50;
   const xA = PAD, xB = xA + W.a + GAP, xC = xB + W.b + GAP;
-  const width = xC + W.c + PAD, height = TOP + classes.length * ROW + PAD;
+  const width = xC + W.c + PAD, height = TOP + (classes.length + 1) * ROW + PAD;
   const head = (x, w, t) => `<text class="sf-head" x="${x + w / 2}" y="${TOP - 18}" text-anchor="middle">${E(t)}</text>`;
   let edges = '', nodes = '';
-  classes.forEach((c, i) => {
+  // Row 0: traffic that bypasses Client Connector never reaches Zscaler at all.
+  const zcc = data.zcc || {};
+  const zTotal = zcc.total || 0;
+  {
+    const y = TOP, cy = y + H / 2;
+    const cls = zcc.available ? (zTotal ? 'bad' : 'ok') : 'mute';
+    const curve = (x1, x2, k) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${k}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
+    edges += curve(xA + W.a, xB, zTotal ? 'bad' : 'mute') + curve(xB + W.b, xC, zTotal ? 'bad' : 'mute');
+    const cc = zcc.counts || {};
+    const meta = zcc.available ? `${cc.apps || 0} apps · ${cc.domains || 0} domains · ${cc.ips || 0} IPs · ${cc.trusted_networks || 0} trusted nets` : 'Client Connector profiles not readable';
+    nodes += `<g class="sf-node sev-${zTotal ? 'high' : 'none'}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xA},${y})" tabindex="0" role="button" aria-label="Client Connector bypasses">
+      <rect class="box" width="${W.a}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
+      <text class="name" x="14" y="21">Bypasses Client Connector</text><text class="sub" x="14" y="38">${E(meta)}</text>
+      ${zTotal ? `<g transform="translate(${W.a - 46},-8)"><rect class="sf-badge high" width="44" height="16" rx="8"/><text class="sf-badge-t" x="22" y="11.5" text-anchor="middle">GAP</text></g>` : ''}</g>`;
+    nodes += `<g class="sf-node dec-${cls}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xB},${y})" tabindex="0" role="button">
+      <rect class="box" width="${W.b}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
+      <text class="st" x="14" y="20">${zTotal ? 'NEVER REACHES ZSCALER' : (zcc.available ? 'NO BYPASSES' : 'UNKNOWN')}</text><text class="sub" x="14" y="37">${zTotal ? `${zTotal} bypass entr${zTotal === 1 ? 'y' : 'ies'} in ${zcc.profiles || 0} profile(s)` : (zcc.available ? 'every device sends traffic through ZIA' : 'read the Bypass report')}</text></g>`;
+    nodes += `<g class="sf-node dec-${cls}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xC},${y})" tabindex="0" role="button">
+      <rect class="box" width="${W.c}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
+      <text class="st" x="14" y="20">${zTotal ? 'DLP blind (bypassed)' : (zcc.available ? 'Nothing bypassed' : 'Unknown')}</text><text class="sub" x="14" y="37">${zTotal ? 'no SSL rule, no DLP rule ever sees it' : ''}</text></g>`;
+  }
+  classes.forEach((c, i0) => {
+    const i = i0 + 1;
     const y = TOP + i * ROW, cy = y + H / 2;
     const dec = SF_DECISION[c.decision] || SF_DECISION.no_rule;
     const dlp = SF_DLP[c.dlp_status] || SF_DLP.none;
@@ -71,8 +93,35 @@ function _sfSvg(data) {
     <g class="sf-edges">${edges}</g><g class="sf-nodes">${nodes}</g></svg>`;
 }
 
+function _sfZccDetail(z) {
+  const E = _sfE;
+  const c = z.counts || {};
+  const rows = (z.items || []).slice(0, 60).map(it => `<tr><td>${E(it.kind_label)}</td><td>${E(it.profile || '')}</td><td class="mono">${E(it.value || '')}</td><td class="dim">${E(it.detail || '')}</td></tr>`).join('');
+  const gap = (SF.data.gaps || []).find(g => g.type === 'zcc_bypass');
+  return `
+    <div class="sf-detail-head"><div><div class="sf-detail-t">Bypasses Client Connector <span class="bp-chip">live</span></div>
+      <div class="dim">App and forwarding profiles can send applications, processes, domains and IP ranges around the Zscaler tunnel, and trusted networks switch the tunnel off. That traffic never reaches ZIA: no SSL inspection rule and no inline DLP rule ever sees it, whatever the rows below say.</div></div>
+      <div class="sf-detail-dec dec-${z.total ? 'bad' : (z.available ? 'ok' : 'mute')}">${z.total ? 'NEVER REACHES ZSCALER' : (z.available ? 'NO BYPASSES' : 'UNKNOWN')}<small>${z.available ? `${z.total} entr${z.total === 1 ? 'y' : 'ies'} across ${z.profiles || 0} profile(s)` : E(z.error || 'Client Connector profiles could not be read')}</small></div></div>
+    <div class="sf-kvs"><div class="sf-kv"><div class="k">Counts</div><div class="v">${['apps', 'processes', 'domains', 'ips', 'trusted_networks'].map(k => `<span class="bp-code">${c[k] || 0} ${k.replace('_', ' ')}</span>`).join('')}</div></div>
+      <div class="sf-kv"><div class="k">Full report</div><div class="v"><a class="rp-btn" href="#" id="sfOpenBypass">Open the Bypass &amp; Non-Inspected report in a new tab</a> <span class="dim">every SSL bypass, allow rule and Client Connector exemption, with exports</span></div></div></div>
+    ${rows ? `<div class="bp-h">Bypass entries (${(z.items || []).length}${(z.items || []).length > 60 ? ', first 60 shown' : ''})</div><div class="max"><table class="bp-table"><thead><tr><th>Kind</th><th>Profile</th><th>Value</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div>` : (z.available ? '<div class="bp-none">No bypass entries in any profile.</div>' : '')}
+    ${gap ? `<div class="bp-h">Gap</div><div class="bp-card risk"><div class="t"><span class="bp-chip act">high</span> ${E(gap.title)}</div><div>${E(gap.detail)}</div><div class="sf-fix"><b>Fix:</b> ${E(gap.fix)}</div></div>` : ''}`;
+}
+// The Bypass report needs tenant credentials, which only the assessment
+// tab holds: open the report tab here (inside the click) and ask the
+// opener to generate it.
+async function _sfOpenBypass(ev) {
+  ev.preventDefault();
+  const op = window.opener;
+  if (!op || op.closed || typeof op.__bypassGenerate !== 'function') { alert('Open the assessment tab and click Bypass / Non-Inspected there; this tab has no tenant credentials.'); return; }
+  const w = window.open('/report/bypass?pending=1', '_blank');
+  if (!w) return;
+  try { const id = await op.__bypassGenerate(); w.location = `/report/bypass?id=${encodeURIComponent(id)}`; }
+  catch (e) { w.location = `/report/bypass?error=${encodeURIComponent(e.message)}`; }
+}
 function _sfDetail(c) {
   const E = _sfE;
+  if (c === 'zcc') return _sfZccDetail(SF.data.zcc || {});
   if (!c) return '<div class="sf-detail-empty">Click a row in the diagram to see which rule decides, who is exempt, which DLP rules apply and how to close the gap.</div>';
   const dec = SF_DECISION[c.decision] || SF_DECISION.no_rule;
   const d = c.decided_by;
@@ -97,9 +146,9 @@ function _sfDetail(c) {
 
 function _sfSelect(key) {
   SF.selected = key;
-  const c = (SF.data.classes || []).find(x => x.key === key);
+  const c = key === 'zcc' ? 'zcc' : (SF.data.classes || []).find(x => x.key === key);
   const det = document.getElementById('sfDetail');
-  if (det) det.innerHTML = _sfDetail(c);
+  if (det) { det.innerHTML = _sfDetail(c); const b = document.getElementById('sfOpenBypass'); if (b) b.addEventListener('click', _sfOpenBypass); }
   document.querySelectorAll('.sf-node').forEach(n => n.classList.toggle('is-sel', n.dataset.key === key));
 }
 
@@ -120,7 +169,7 @@ window.renderSslFlow = function renderSslFlow(data, container) {
   container.innerHTML = `
     <div class="sf-hero">
       ${stat(s.inspected, 'classes decrypted', 'ok')}${stat(s.not_inspected, 'classes not decrypted', s.not_inspected ? 'bad' : '')}${stat(s.blocked, 'classes blocked', 'mute')}
-      ${stat(s.dlp_covered, 'decrypted and DLP-covered', s.dlp_covered ? 'ok' : '')}${stat(s.gaps, 'gaps', s.high ? 'bad' : s.gaps ? 'warn' : 'ok')}${stat(s.high, 'high severity', s.high ? 'bad' : '')}
+      ${stat(s.dlp_covered, 'decrypted and DLP-covered', s.dlp_covered ? 'ok' : '')}${stat(s.zcc_bypasses || 0, 'Client Connector bypasses', (s.zcc_bypasses || 0) ? 'bad' : ((data.zcc || {}).available ? 'ok' : 'mute'))}${stat(s.gaps, 'gaps', s.high ? 'bad' : s.gaps ? 'warn' : 'ok')}${stat(s.high, 'high severity', s.high ? 'bad' : '')}
     </div>
     ${diag}
     <div class="sf-flow">
@@ -129,7 +178,7 @@ window.renderSslFlow = function renderSslFlow(data, container) {
         <div class="dim" style="font-size:0.75rem;">${E(s.ssl_rules_enabled)} of ${E(s.ssl_rules)} SSL rules enabled · ${E(s.dlp_rules_enabled)} of ${E(s.dlp_rules)} Web DLP rules enabled</div>
       </div>
       <div class="sf-flow-wrap" id="sfFlowWrap">${_sfSvg(data)}</div>
-      <div class="sf-hint">Rows are DLP-relevant traffic classes. Middle column: the first enabled SSL rule that matches (top-down, first match wins). Right column: what inline Web DLP can do with it. Click a row for the detail and the fix.</div>
+      <div class="sf-hint">Top row: traffic that bypasses Client Connector and never reaches Zscaler (live from the app and forwarding profiles). Other rows are DLP-relevant traffic classes. Middle column: the first enabled SSL rule that matches (top-down, first match wins). Right column: what inline Web DLP can do with it. Click a row for the detail and the fix.</div>
     </div>
     <div class="sf-detail" id="sfDetail">${_sfDetail(null)}</div>
     <div class="bp-h">Gaps in relation to inline DLP (${gaps.length})</div>

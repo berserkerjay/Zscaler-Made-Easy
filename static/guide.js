@@ -282,7 +282,10 @@ function _gdGoResults() {
 function _gdRun() {
   const btn = document.getElementById('runBtn');
   if (btn && btn.disabled) { alert('An assessment is already running.'); return; }
-  if (typeof runAssessment === 'function') runAssessment(); else if (btn) btn.click();
+  // The results open in their own tab (progress first, then the report),
+  // with a link back here; they stay on this page as well.
+  if (typeof openToolTab === 'function') openToolTab('results', 'run');
+  else if (typeof runAssessment === 'function') runAssessment(); else if (btn) btn.click();
   _gdRender();
 }
 async function _gdTest() {

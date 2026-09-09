@@ -1,12 +1,17 @@
 // ── Tools open in their own tab ─────────────────────────────────────
 // Every report / tool dialog (Zscaler Updates, Best Practices, DLP
-// Efficacy, ZCC diagnostics, Required API Access) opens in a new browser
-// tab with a link back to the assessment, instead of a dialog that has to
-// fight the page for space. The tool itself still runs in this page: the
-// dialog is kept hidden and its content is mirrored into the tab whenever
-// it changes; clicks in the tab are forwarded to the real buttons here
-// and typed values flow back. (The Bypass report has its own server-side
-// tab, see openBypassReportTab.)
+// Efficacy, ZCC diagnostics, Required API Access, Terraform hand-off) and
+// the assessment results open in a new browser tab with a link back to
+// the assessment, instead of a dialog that has to fight the page for
+// space. The tool itself still runs in this page: the dialog is kept
+// hidden and its content is mirrored into the tab whenever it changes;
+// clicks in the tab are forwarded to the real buttons here and typed
+// values flow back. (The Bypass and SSL flow reports have their own
+// server-side tabs, see openBypassReportTab / openSslFlowTab.)
+//
+// A spec either names a dialog (`modal`, mirrored from its first child and
+// hidden here) or a list of page `panels` (mirrored in order, only the
+// visible ones, and left visible on this page — the assessment results).
 
 const TOOL_TABS = {
   updates:       { title: 'Zscaler Update Check',   open: 'openUpdateModal',        modal: 'updateModal' },
@@ -15,36 +20,54 @@ const TOOL_TABS = {
   zcc:           { title: 'ZCC Endpoint Diagnostics', open: 'diagnoseZcc',          modal: 'zccDiagModal' },
   permissions:   { title: 'Required API Access',    open: 'openPermissionsModal',   modal: 'permissionsModal' },
   terraform:     { title: 'Terraform hand-off',     open: 'openTerraformModal',     modal: 'terraformModal' },
+  results:       { title: 'Assessment Results',     open: '_openResultsPanel',      panels: ['progressCard', 'results'], keep: true },
 };
-const _TT = {};   // kind -> { win, panel, observer, timer }
-function _ttE(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+const _TT = {};   // kind -> { win, observers, timer, poll }
 
-function _ttPanel(kind) {
-  const modal = document.getElementById(TOOL_TABS[kind].modal);
-  return modal ? modal.firstElementChild : null;
+function _ttE(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function _ttVisible(el) { return !!el && getComputedStyle(el).display !== 'none'; }
+// The elements mirrored into the tab, in order. Dialogs: the panel inside
+// the overlay. Page panels: each element, but only while it is shown.
+function _ttPanels(kind, all) {
+  const spec = TOOL_TABS[kind];
+  if (spec.panels) {
+    const els = spec.panels.map(id => document.getElementById(id)).filter(Boolean);
+    return all ? els : els.filter(_ttVisible);
+  }
+  const modal = document.getElementById(spec.modal);
+  return modal && modal.firstElementChild ? [modal.firstElementChild] : [];
 }
-function _ttInputs(panel) {
-  return Array.from(panel.querySelectorAll('input, textarea, select')).map(el => ({ value: el.value, checked: el.checked }));
+function _ttInputs(panels) {
+  const out = [];
+  for (const p of panels) for (const el of p.querySelectorAll('input, textarea, select')) out.push({ value: el.value, checked: el.checked });
+  return out;
+}
+function _ttClickables(panels) {
+  const out = [];
+  for (const p of panels) out.push(...p.querySelectorAll('[onclick]'));
+  return out;
 }
 function _ttSync(kind) {
   const t = _TT[kind];
   if (!t || !t.win || t.win.closed) return _ttStop(kind);
-  const panel = _ttPanel(kind);
-  if (!panel) return;
+  const panels = _ttPanels(kind);
+  if (!panels.length) return;   // nothing shown yet (assessment not started): the tab keeps its waiting note
   try {
     if (typeof t.win.__ttApply !== 'function') return;   // tab not ready yet
-    t.win.__ttApply(panel.innerHTML, _ttInputs(panel));
+    t.win.__ttApply(panels.map(p => p.innerHTML).join(''), _ttInputs(panels));
   } catch (e) { /* cross-tab hiccup; next mutation retries */ }
 }
 function _ttStop(kind) {
   const t = _TT[kind];
   if (!t) return;
-  if (t.observer) t.observer.disconnect();
+  for (const o of t.observers || []) o.disconnect();
   clearInterval(t.poll);
   delete _TT[kind];
 }
 function _ttHideModal(kind) {
-  const modal = document.getElementById(TOOL_TABS[kind].modal);
+  const spec = TOOL_TABS[kind];
+  if (spec.keep) return;
+  const modal = document.getElementById(spec.modal);
   if (modal) modal.style.display = 'none';
   document.body.style.overflow = '';
 }
@@ -54,14 +77,14 @@ async function openToolTab(kind, arg) {
   if (!spec || typeof window[spec.open] !== 'function') return;
   // Open the tab inside the click (popup blockers allow that), then run the tool here.
   const win = window.open(`/report/view?tool=${encodeURIComponent(kind)}`, '_blank');
-  if (!win) { window[spec.open](arg); return; }   // blocked: fall back to the dialog
+  if (!win) { window[spec.open](arg); return; }   // blocked: fall back to the dialog / the page
   _ttStop(kind);
   const p = window[spec.open](arg);
-  const modal = document.getElementById(spec.modal);
-  if (!modal) { win.close(); return; }          // the tool refused to start (missing credentials, for example)
+  if (p === false) { win.close(); return; }       // the tool refused to start (missing credentials, for example)
+  const panels = _ttPanels(kind, true);
+  if (!panels.length) { win.close(); return; }
   _ttHideModal(kind);
-  const t = _TT[kind] = { win, observer: null, timer: null, poll: null };
-  const panel = _ttPanel(kind);
+  const t = _TT[kind] = { win, observers: [], timer: null, poll: null };
   // Wait for the tab to load, then push styles, title and content; keep it in sync.
   const styleEl = document.querySelector('style');
   const ready = () => {
@@ -82,24 +105,39 @@ async function openToolTab(kind, arg) {
     if (win.closed) return _ttStop(kind);
     if (ready()) { clearInterval(t.poll); t.poll = null; _ttSync(kind); }
   }, 120);
-  if (panel) {
-    t.observer = new MutationObserver(() => { clearTimeout(t.timer); t.timer = setTimeout(() => _ttSync(kind), 80); });
-    t.observer.observe(panel, { subtree: true, childList: true, characterData: true, attributes: true });
+  for (const panel of panels) {
+    const o = new MutationObserver(() => { clearTimeout(t.timer); t.timer = setTimeout(() => _ttSync(kind), 80); });
+    o.observe(panel, { subtree: true, childList: true, characterData: true, attributes: true });
+    t.observers.push(o);
   }
   if (p && typeof p.then === 'function') { try { await p; } catch (e) { /* the dialog shows the error */ } _ttHideModal(kind); _ttSync(kind); }
 }
 
+// Assessment results in their own tab. 'run' starts the assessment from
+// here (the tab mirrors the progress card, then the results); 'view'
+// shows results that already exist. Returns false when nothing is shown,
+// so the tab is closed again.
+window._openResultsPanel = function (mode) {
+  const results = document.getElementById('results');
+  const progress = document.getElementById('progressCard');
+  if (mode === 'run') {
+    if (typeof runAssessment !== 'function') return false;
+    runAssessment();
+    const btn = document.getElementById('runBtn');
+    return !!(btn && btn.disabled);   // the run only starts after the credential and scope checks
+  }
+  return _ttVisible(results) || _ttVisible(progress);
+};
+
 // Called from the tab.
 window.__toolTabClick = function (kind, idx) {
-  const panel = _ttPanel(kind);
-  if (!panel) return;
-  const el = panel.querySelectorAll('[onclick]')[idx];
+  const el = _ttClickables(_ttPanels(kind))[idx];
   if (el) { el.click(); setTimeout(() => { _ttHideModal(kind); _ttSync(kind); }, 50); }
 };
 window.__toolTabInput = function (kind, idx, value, checked) {
-  const panel = _ttPanel(kind);
-  if (!panel) return;
-  const el = panel.querySelectorAll('input, textarea, select')[idx];
+  const els = [];
+  for (const p of _ttPanels(kind)) els.push(...p.querySelectorAll('input, textarea, select'));
+  const el = els[idx];
   if (!el) return;
   if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!checked; else el.value = value;
   el.dispatchEvent(new Event('input', { bubbles: true }));

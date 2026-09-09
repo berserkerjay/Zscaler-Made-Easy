@@ -478,6 +478,54 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
     }
 
 
+ZCC_KINDS = (("apps", "application"), ("processes", "process"), ("domains", "domain"), ("ips", "IP / subnet"), ("trusted_networks", "trusted network"))
+
+
+def zcc_bypass_summary(client) -> Dict[str, Any]:
+    """Client Connector bypasses, read live from the app / forwarding
+    profiles: traffic sent around the Zscaler tunnel never reaches ZIA,
+    so no SSL rule and no inline DLP rule ever sees it. Same reader as the
+    Bypass report (bypass_report._fetch_zcc_bypasses)."""
+    out: Dict[str, Any] = {"available": False, "profiles": 0, "total": 0, "counts": {}, "items": [], "endpoints": [], "error": None}
+    try:
+        from bypass_report import _fetch_zcc_bypasses
+        z = _fetch_zcc_bypasses(client)
+    except Exception as e:  # noqa: BLE001
+        out["error"] = str(e)[:200]
+        return out
+    out["endpoints"] = z.get("endpoints_probed") or []
+    out["profiles"] = z.get("profile_count") or 0
+    reachable = any(int(e.get("status") or 0) == 200 for e in out["endpoints"])
+    out["available"] = reachable
+    if not reachable:
+        errs = [f"{e.get('endpoint')}: {e.get('error') or 'HTTP ' + str(e.get('status'))}" for e in out["endpoints"]]
+        out["error"] = "Client Connector profiles could not be read (" + "; ".join(errs)[:300] + ")"
+    items: List[Dict[str, Any]] = []
+    for key, label in ZCC_KINDS:
+        sec = z.get(key) or {}
+        out["counts"][key] = int(sec.get("count") or 0)
+        for it in (sec.get("items") or []):
+            items.append({"kind": key, "kind_label": label, "profile": it.get("profile"), "value": it.get("value") or it.get("name"),
+                          "detail": it.get("path") or it.get("os") or ""})
+    out["total"] = sum(out["counts"].values())
+    out["items"] = items[:200]
+    return out
+
+
+def zcc_gap(zcc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The gap entry for Client Connector bypasses, when there are any."""
+    if not zcc.get("available") or not zcc.get("total"):
+        return None
+    c = zcc["counts"]
+    parts = [f"{c[k]} {lbl}{'' if c[k] == 1 else 's'}" for k, lbl in ZCC_KINDS if c.get(k)]
+    return {"type": "zcc_bypass", "severity": "high", "class": "zcc", "class_label": "Client Connector bypasses", "class_index": -1,
+            "title": "Client Connector bypasses: traffic that never reaches Zscaler",
+            "detail": f"{zcc['profiles']} profile(s) send traffic around the tunnel: " + ", ".join(parts)
+                      + ". Nothing sent this way is decrypted or inspected, whatever the SSL and DLP rules say; trusted networks switch the tunnel off entirely.",
+            "fix": "Open the Bypass report for every entry and keep only the bypasses that are required (certificate-pinned or latency-critical apps). "
+                   "Cover bypassed destinations with Endpoint DLP or a SaaS Security API scan, and review trusted-network definitions."}
+
+
 def generate_ssl_flow_report(client) -> Dict[str, Any]:
     """Read the tenant and build the report. Never raises for a missing
     section; problems are listed under diagnostics."""
@@ -492,9 +540,21 @@ def generate_ssl_flow_report(client) -> Dict[str, Any]:
         lookup = {}
         diagnostics.append({"section": "URL categories", "endpoint": "/zia/urlCategories", "error_type": type(e).__name__, "error": str(e)[:200]})
     report = analyse(ssl_rules, dlp_rules, catalogue, lookup)
+    zcc = zcc_bypass_summary(client)
+    report["zcc"] = zcc
+    if zcc.get("error"):
+        diagnostics.append({"section": "Client Connector bypasses", "endpoint": "/zcc/webPolicies", "error_type": "unavailable", "error": zcc["error"]})
+    gap = zcc_gap(zcc)
+    if gap:
+        report["gaps"].insert(0, gap)
+        s = report["summary"]
+        s["gaps"] = s.get("gaps", 0) + 1
+        s["high"] = s.get("high", 0) + 1
+    report["summary"]["zcc_bypasses"] = zcc.get("total", 0)
     report["diagnostics"] = diagnostics
     report["sources"] = {"ssl_rules": "/zia/sslInspectionRules", "dlp_rules": "/zia/webDlpRules",
-                         "applications": "/zia/cloudApplications/policy", "url_categories": "/zia/urlCategories"}
+                         "applications": "/zia/cloudApplications/policy", "url_categories": "/zia/urlCategories",
+                         "zcc_bypasses": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks, /zcc/webAppService"}
     return report
 
 
@@ -526,6 +586,11 @@ def to_markdown(report: Dict[str, Any]) -> str:
     for c in report.get("classes", []):
         d = c.get("decided_by") or {}
         lines.append(f"| {c['label']} | {c['decision'].replace('_', ' ')} | {d.get('name', '—')} | {', '.join(r['name'] for r in c.get('dlp_rules', [])) or '—'} | {c.get('dlp_status', '')} |")
+    zcc = report.get("zcc") or {}
+    if zcc.get("available"):
+        c = zcc.get("counts") or {}
+        lines += ["", f"Client Connector bypasses (never reach Zscaler): {zcc.get('total', 0)} across {zcc.get('profiles', 0)} profile(s) — "
+                  + ", ".join(f"{c.get(k, 0)} {lbl}" for k, lbl in ZCC_KINDS)]
     lines += ["", "## Gaps", ""]
     if not report.get("gaps"):
         lines.append("No gaps found.")

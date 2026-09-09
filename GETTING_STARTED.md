@@ -109,6 +109,13 @@ placeholder and will not work. They must generate a new one.
    configurations that leak data today. Use **Export** to give them the
    report as Word or CSV.
 
+## 4a. Results in their own tab
+
+**Run assessment** (Start here, step 2) opens the results in a new tab
+with a link back to this page: the progress card while it runs, then the
+score, summary, findings and exports. The results stay on the main page
+too; **Open in new tab** above them opens them again later.
+
 ## 4b. SSL Inspection Flow (what inline DLP can actually see)
 
 Inline Web DLP only reads HTTPS content that an SSL inspection
@@ -125,6 +132,12 @@ Inline Web DLP only reads HTTPS content that an SSL inspection
   find it in the portal.
 - **Right column** is what inline Web DLP can do with it: enforcing,
   monitor only, no rule, or *blind* because the traffic stayed encrypted.
+
+The **top row** is different: traffic that bypasses Client Connector (app
+and forwarding profile bypasses, trusted networks) never reaches Zscaler
+at all, so no SSL rule and no DLP rule ever sees it. It is read live from
+the profiles; click the row for every entry and a link that opens the full
+Bypass & Non-Inspected report in its own tab.
 
 Red dashed lines and the **GAP** badge mark traffic DLP cannot see. Click
 a row for the deciding rule, the scoped exceptions that run before it
@@ -171,6 +184,7 @@ it. Rule of thumb:
 | Any commercial enterprise with no DLP policy yet | **ZBP Enterprise Baseline** |
 | Worried about source code going into AI tools | add **ZBP Source Code to AI** |
 | Healthcare provider or payer | add **Healthcare PHI** |
+| Bank, card issuer, payment processor, wealth manager | **Global Banking Baseline** (PCI, payment instructions, customer PII across jurisdictions, KYC/AML, MNPI; it shares its US PII, financial and private-key objects with ZBP Enterprise, so the two can be deployed together) |
 | US federal agency or contractor | **Fed Policy Pack** instead of ZBP Enterprise (it contains it) |
 | Law enforcement, courts, CJI handlers | **CJIS Policy Pack** |
 
@@ -260,7 +274,17 @@ need activation in ZIA like any change.
    SaaS tenant onboarded) skips only the rules that need it.
 4. Open **How to read this plan** if any term is unfamiliar. Hover any
    status chip for a one-line explanation.
-5. Click **Review & approve**. Read the checklist, tick the consent box,
+5. Read the **Flow** diagram: predefined templates feed dictionaries,
+   dictionaries feed engines, engines feed rules, and rules apply to what
+   the tenant already has. Hover a box to trace it, click to pin. For a
+   full-width view click **↗ Open in new tab**: the Deployment Flow tab has
+   a **Details** panel with the full name, the reason each object is in the
+   plan and clickable links to what it depends on and what it feeds, plus a
+   **Find** box. It stays live while the assessment tab is open (it
+   redraws after every preflight and after the deploy), and **← Back to the
+   assessment** returns you here. **List** shows the same objects grouped by
+   what will happen to them.
+6. Click **Review & approve**. Read the checklist, tick the consent box,
    click **Deploy to tenant**.
 
 The server starts **read-only**, so preflight and the plan always work but
