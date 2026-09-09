@@ -565,6 +565,17 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
   --name "My Baseline" --version 1.0 --prefix ZBP- --baseline --enable-rules
 ```
 
+### Shipped baselines
+
+| Pack | Baseline | Who it is for |
+|---|---|---|
+| `zbp_enterprise_baseline` | yes | Any enterprise: Zscaler's best-practice DLP set |
+| `zbp_source_code_baseline` | yes | Engineering organisations: source code to AI apps |
+| `healthcare_phi_baseline` | yes | Healthcare: PHI with clinical context, plus containment |
+| `cui_marking_baseline` | yes | Defense industrial base / federal contractors: CUI by its markings (28 dictionaries in six tiers, block/caution/monitor rules, SSL, AI upload block); see the pack's README for the tier table |
+| `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
+| `fed_policy_pack` | no | Federal agencies: content-based CUI categories (superset of ZBP Enterprise) |
+
 ## 12. Terraform — Own a Pack with State
 
 Every pack (baselines included) can be deployed with the official

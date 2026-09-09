@@ -361,7 +361,7 @@ def test_pack_from_terraform_converts_references():
 def test_shipped_baselines_are_discoverable_and_plan():
     from dlp_importer import discover_packs
     packs = {p["id"]: p for p in discover_packs()}
-    for pid in ("zbp_enterprise_baseline", "zbp_source_code_baseline", "healthcare_phi_baseline"):
+    for pid in ("zbp_enterprise_baseline", "zbp_source_code_baseline", "healthcare_phi_baseline", "cui_marking_baseline"):
         assert pid in packs and pd.baseline_meta(packs[pid], pid), pid
     # Healthcare PHI: engines reference the tenant's predefined medical dictionaries by name.
     phi = packs["healthcare_phi_baseline"]
@@ -397,3 +397,34 @@ def test_shipped_packs_ship_disabled_at_info():
             # SSL Inspection) carry no DLP severity field in the API.
             if pc.has_engines(pc.channel_of(pol)):
                 assert pol.get("severity") == "RULE_SEVERITY_INFO", f"{p['id']}: {pol['name']} ships {pol.get('severity')}"
+
+
+def test_cui_marking_baseline_deploys_and_measures():
+    """28 marking dictionaries, three engines (full surface, block-grade,
+    caution-grade with an AND NOT decontrol exclusion), three web rules,
+    SSL decrypt and an AI upload block; the journey lists SSL first."""
+    from dlp_importer import discover_packs
+    from test_pack_channels import add_control_services
+    cui = next(p for p in discover_packs() if p["id"] == "cui_marking_baseline")
+    dicts = json.load(open(f"{cui['dir']}/configs/dlp_dictionaries.json", encoding="utf-8"))
+    assert len(dicts) == 28 and all(len(d["description"].encode()) <= 255 for d in dicts)
+    engines = {e["name"]: e for e in json.load(open(f"{cui['dir']}/configs/dlp_engines.json", encoding="utf-8"))}
+    assert set(engines) == {"CUI-Detect-All", "CUI-Detect-Block-Grade", "CUI-Detect-Caution-Grade"}
+    assert all("AND NOT (D:CUI-Decontrol-Context > 0)" in e["expression"] for e in engines.values())
+    assert "D:CUI-Basic-Bare" not in engines["CUI-Detect-Block-Grade"]["expression"]      # never wired to block
+    assert "(D:CUI-Basic-Bare > 2)" in engines["CUI-Detect-Caution-Grade"]["expression"]  # min 3 unique
+    client = add_control_services(FakeClient(dicts=[]))
+    rep = pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True)
+    assert rep["status"] == "ready", rep["blockers"] + rep["warnings"]
+    assert rep["tenant_mode"]["mode"] == "greenfield"
+    res = pd.apply(client, [{"id": cui["id"], "dir": cui["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
+    assert res["summary"] == {"created": 36}
+    full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
+    assert "D:" not in full and full.count(".S") == 28 and full.endswith("AND NOT (D9028.S > 0)")
+    prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")
+    assert prox["proximity"] == 300 and prox["match"] == "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+    rules = {r["name"]: r for r in client.zia.dlp_web_rules.added}
+    assert rules["CUI-Block-Marked-Documents"]["action"] == "BLOCK" and rules["CUI-Caution-Weak-Markings"]["action"] == "CONFIRM"
+    assert all(r["state"] == "DISABLED" and r["ocr_enabled"] for r in rules.values())
+    j = pd.journey(pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True))["baselines"][0]
+    assert j["stage"] == 2 and j["next_steps"][0].startswith("Enable rule 'CUI-SSL-Decrypt")

@@ -1256,7 +1256,9 @@ def journey_rows(all_items: Sequence[Dict[str, Any]], sources: Sequence[Dict[str
                            "required": len(needed), "met": len(met), "done": done,
                            "todo": [i["name"] for i, _ in todo]})
             if todo and not next_steps:
-                next_steps = [_next_step(i, journey_position(i) or "deployed", n) for i, n in todo][:8]
+                # SSL first: nothing else can inspect HTTPS until it is on.
+                todo_sorted = sorted(todo, key=lambda t: 0 if (t[0].get("channel") or "") == pc.SSL else 1)
+                next_steps = [_next_step(i, journey_position(i) or "deployed", n) for i, n in todo_sorted][:8]
         applicable = [s for s in stages if s["required"]]
         score = round(100 * sum(s["met"] / s["required"] for s in applicable) / len(applicable)) if applicable else 100
         row = {"id": src["id"], "name": src["name"], "version": b.get("version", ""), "prefix": b.get("prefix", ""),

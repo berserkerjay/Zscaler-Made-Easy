@@ -1,0 +1,17 @@
+[
+  {
+    "name": "CUI-Detect-All",
+    "description": "Full CUI surface: banner grammar, category tokens, legacy markings, malformed-marking proximity and designation blocks, minus decontrol context. Two nested OR groups only for the 16-dictionaries-per-operator ceiling.",
+    "expression": "((((D:CUI-Banner-Structural > 0) OR (D:CUI-Banner-LDC > 0) OR (D:CUI-PortionMark-Structural > 1) OR (D:CUI-Code-CTI > 0) OR (D:CUI-Code-PRVCY > 0) OR (D:CUI-Code-PROPIN > 0) OR (D:CUI-Code-SSEL > 0) OR (D:CUI-Code-ISVI > 0) OR (D:CUI-Code-OPSEC > 0) OR (D:CUI-Code-NNPI > 0) OR (D:CUI-Code-PCII > 0) OR (D:CUI-Code-CVI > 0) OR (D:Legacy-FOUO > 0) OR (D:Legacy-LES > 0) OR (D:Legacy-SBU > 0) OR (D:Legacy-Distribution-Statements > 0)) OR ((D:CUI-Prox-EXPT > 0) OR (D:CUI-Prox-TAX > 0) OR (D:CUI-Prox-LEI > 0) OR (D:CUI-Prox-CRIT > 0) OR (D:CUI-Prox-NUC > 0) OR (D:CUI-Prox-INTEL > 0) OR (D:CUI-Prox-LEGAL > 0) OR (D:CUI-Prox-PROCURE > 0) OR (D:CUI-LDC-Standalone > 0) OR (D:CUI-Designation-Indicator > 2) OR (D:CUI-Basic-Bare > 2)))) AND NOT (D:CUI-Decontrol-Context > 0)"
+  },
+  {
+    "name": "CUI-Detect-Block-Grade",
+    "description": "High-precision CUI signals intended to BLOCK: banners, LDC banners, 2+ portion marks, category tokens (SP-CTI, PRVCY, PROPIN, SP-SSEL, SP-ISVI, SP-OPSEC, SP-NNPI, SP-PCII, SP-CVI), legacy FOUO/LES/SBU/distribution statements; minus decontrol.",
+    "expression": "(((D:CUI-Banner-Structural > 0) OR (D:CUI-Banner-LDC > 0) OR (D:CUI-PortionMark-Structural > 1) OR (D:CUI-Code-CTI > 0) OR (D:CUI-Code-PRVCY > 0) OR (D:CUI-Code-PROPIN > 0) OR (D:CUI-Code-SSEL > 0) OR (D:CUI-Code-ISVI > 0) OR (D:CUI-Code-OPSEC > 0) OR (D:CUI-Code-NNPI > 0) OR (D:CUI-Code-PCII > 0) OR (D:CUI-Code-CVI > 0) OR (D:Legacy-FOUO > 0) OR (D:Legacy-LES > 0) OR (D:Legacy-SBU > 0) OR (D:Legacy-Distribution-Statements > 0))) AND NOT (D:CUI-Decontrol-Context > 0)"
+  },
+  {
+    "name": "CUI-Detect-Caution-Grade",
+    "description": "Lower-precision CUI signals intended to CAUTION: bare CUI (3+ unique), standalone LDCs, CUI near a category code (malformed marking), designation-block labels (3+); minus decontrol. Never wire to BLOCK.",
+    "expression": "(((D:CUI-Basic-Bare > 2) OR (D:CUI-LDC-Standalone > 0) OR (D:CUI-Prox-EXPT > 0) OR (D:CUI-Prox-TAX > 0) OR (D:CUI-Prox-LEI > 0) OR (D:CUI-Prox-CRIT > 0) OR (D:CUI-Prox-NUC > 0) OR (D:CUI-Prox-INTEL > 0) OR (D:CUI-Prox-LEGAL > 0) OR (D:CUI-Prox-PROCURE > 0) OR (D:CUI-Designation-Indicator > 2))) AND NOT (D:CUI-Decontrol-Context > 0)"
+  }
+]

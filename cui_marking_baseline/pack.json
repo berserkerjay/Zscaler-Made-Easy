@@ -1,0 +1,27 @@
+{
+  "name": "CUI Marking Baseline",
+  "version": "1.0",
+  "description": "Detection of Controlled Unclassified Information by its markings: 28 custom dictionaries in six tiers (structural banners and portion marks, category tokens, malformed-marking proximity, legacy FOUO/LES/SBU/distribution statements, designation blocks, decontrol exclusion), one full-surface engine plus block-grade and caution-grade engines, three Web DLP rules (block, caution, monitor) with OCR, SSL decryption for file-share/webmail/AI, and an AI upload block. All rules ship DISABLED at INFO.",
+  "references": [
+    "32 CFR Part 2002 (Controlled Unclassified Information)",
+    "NARA CUI Registry and CUI Marking Handbook",
+    "NIST SP 800-171 r3 / CMMC 2.0 Level 2",
+    "DoDI 5200.48 (CUI within DoD)"
+  ],
+  "notes": [
+    "Engine expressions are the API form: ((Dn.S > 0) OR ...) AND NOT (Dm.S > 0); .S sums match counts. Per-dictionary minimum counts live in the engine (> 1 means at least two matches).",
+    "Engine Builder limits: max 4 subexpressions and 4 operators per level, 16 dictionaries per operator; Exclude must sit in a subexpression. CUI-Detect-All uses two nested OR groups solely for the 16-dictionary ceiling. Validate that the nesting renders in the portal's Engine Builder; if it is rejected, restructure as a root OR over the two groups and repeat the decontrol exclusion in each.",
+    "CUI-Basic-Bare is the highest-volume, lowest-precision dictionary (UNIQUE counting, min 3). It is wired only to the caution and monitor engines; never to block.",
+    "Bare LES is deliberately excluded from Legacy-LES (collides with French text, surnames and unrelated acronyms); only the spelled form or banner context matches.",
+    "CUI-Decontrol-Context is a document-scoped exclusion: a genuine CUI document that cites its own marking guide is suppressed. Record this in the residual-risk statement.",
+    "Proximity windows (300-600 bytes) are bidirectional and measured over extracted text; they are unreliable for spreadsheets, multi-column PDFs and OCR output.",
+    "Deploy order for a customer: enable CUI-Monitor-All first, review incidents for a week, then enable CUI-Block-Marked-Documents, then CUI-Caution-Weak-Markings. The SSL rule must be enabled before any of them can see HTTPS uploads."
+  ],
+  "confidence_tweaks": [],
+  "baseline": {
+    "prefix": "CUI-",
+    "version": "1.0"
+  },
+  "audience": "Defense industrial base and federal contractors handling CUI under NIST SP 800-171 / CMMC, and agencies marking CUI under 32 CFR 2002.",
+  "when_to_use": "The customer marks documents with CUI banners, portion marks or category codes (SP-CTI, PRVCY, ...), or still has legacy FOUO/LES/SBU material, and needs marking-based detection rather than content-based. Combine with the Fed Policy Pack for content-based CUI categories."
+}

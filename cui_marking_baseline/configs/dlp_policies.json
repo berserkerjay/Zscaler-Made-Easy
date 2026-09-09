@@ -1,0 +1,114 @@
+[
+  {
+    "name": "CUI-Block-Marked-Documents",
+    "description": "Inline Web DLP: block uploads carrying high-precision CUI markings (banners, category tokens, legacy FOUO/LES/SBU, distribution statements) via CUI-Detect-Block-Grade. Ships DISABLED at INFO; enable after reviewing monitor incidents from CUI-Monitor-All.",
+    "action": "BLOCK",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CUI-Detect-Block-Grade"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "CUI-Caution-Weak-Markings",
+    "description": "Inline Web DLP: caution (user must confirm) on lower-precision CUI signals: bare CUI, standalone LDCs, malformed markings, designation blocks, via CUI-Detect-Caution-Grade. Never BLOCK on these.",
+    "action": "CONFIRM",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CUI-Detect-Caution-Grade"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "CUI-Monitor-All",
+    "description": "Inline Web DLP: monitor-only rule over the full CUI-Detect-All surface. Enable this first to size incident volume and tune before enabling the block and caution rules above it.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CUI-Detect-All"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "CUI-SSL-Decrypt-File-Share-Webmail-AI",
+    "channel": "ssl",
+    "description": "SSL Inspection: decrypt file-sharing, webmail and AI/ML applications so CUI markings inside HTTPS uploads can be inspected.",
+    "state": "DISABLED",
+    "rank": 7,
+    "action": {
+      "type": "DECRYPT",
+      "override_default_certificate": false,
+      "ssl_interception_cert": {
+        "id": 1
+      },
+      "decrypt_sub_actions": {
+        "server_certificates": "ALLOW",
+        "ocsp_check": true,
+        "block_ssl_traffic_with_no_sni_enabled": false,
+        "min_client_tls_version": "CLIENT_TLS_1_2",
+        "min_server_tls_version": "SERVER_TLS_1_2",
+        "block_undecrypt": false,
+        "http2_enabled": true
+      }
+    },
+    "cloud_app_classes": [
+      "FILE_SHARE",
+      "WEBMAIL",
+      "AI_ML"
+    ],
+    "platforms": [
+      "SCAN_WINDOWS",
+      "SCAN_MACOS",
+      "SCAN_LINUX",
+      "SCAN_IOS",
+      "SCAN_ANDROID",
+      "NO_CLIENT_CONNECTOR"
+    ],
+    "road_warrior_for_kerberos": true
+  },
+  {
+    "name": "CUI-CAC-AI-No-Upload",
+    "channel": "cloud_app",
+    "description": "Cloud App Control: on AI & ML applications allow browsing but block upload and file submission, so marked documents cannot be pasted into public models regardless of content inspection.",
+    "state": "DISABLED",
+    "rank": 7,
+    "type": "AI_ML",
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
+    "actions_by_verb": {
+      "UPLOAD": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  }
+]
