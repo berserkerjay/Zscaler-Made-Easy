@@ -167,3 +167,19 @@ resource "zia_url_filtering_rules" "r_phi_url_block_post_to_unknown" {
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
 }
 
+resource "zia_outbound_email_dlp" "r_phi_email_monitor" {
+  name                         = "R_PHI_EMAIL_MONITOR"
+  description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for PHI (E_HEALTHCARE_PHI) and bulk exports (E_PHI_BULK_EXPORT). Monitor-only; needs an email tenant under Administration > SaaS Application Tenants. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  dlp_engines {
+    id = [zia_dlp_engines.e_healthcare_phi.id, zia_dlp_engines.e_phi_bulk_export.id]
+  }
+  email_tenants {
+    id = var.saas_tenant_ids_r_phi_email_monitor
+  }
+}
+

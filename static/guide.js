@@ -69,20 +69,36 @@ function _gdSteps() {
       actions: [{ label: 'Jump to results', fn: '_gdGoResults()', kind: 'quiet', disabled: !assessed }],
     },
     {
-      n: 4, title: 'Close the gaps with a policy pack',
+      n: 4, title: 'Pick a baseline and run the preflight',
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
-      what: 'A policy pack is a ready-made set of DLP dictionaries, engines and rules for a regulation or a best practice. Deploy Studio checks the pack against the tenant first and shows exactly what would be created before you approve anything. Every rule ships disabled, so deploying never affects users.',
-      need: 'The server starts read-only, so preflight and the plan always work. To actually deploy, click Enable write mode inside Deploy Policy Packs (you type a confirmation phrase; it lasts until the server restarts), or start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.',
-      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, pick a pack, run preflight, review, approve.',
+      what: 'A baseline is a complete, layered policy design for one situation: Healthcare PHI, CUI markings, Zscaler\'s enterprise best practice, Endpoint DLP, and so on. Each card says who it is for and when to use it. Preflight reads the tenant and shows exactly what would be created, what already exists and is kept, and what the impact is. Nothing is written.',
+      need: 'A connected tenant. Preflight works in read-only mode; it is the plan you show the customer.',
+      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, tick a baseline, click Run preflight, then read the Impact cards and the plan.',
       actions: [{ label: 'Open Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
     {
-      n: 5, title: 'Move the tenant to Evaluate All Rules',
+      n: 5, title: 'Close the gap: deploy from here, or hand off as Terraform',
+      state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
+      what: 'Two ways to create the missing objects. <strong>Deploy from here</strong>: enable write mode in Deploy Policy Packs, review, tick the consent box, deploy; every rule arrives disabled and nothing the customer already has is overwritten. <strong>Hand off as Terraform</strong>: for customers whose platform team manages Zscaler as code, download the same baseline as a Terraform workspace; in gap mode it imports what exists so their first plan is exactly the gap.',
+      need: 'Deploying from here needs write mode (a confirmation phrase, until the server restarts). The Terraform route needs nothing from this tool after the download; the platform team needs an API client with write access.',
+      status: deployed ? 'Deployed. Activate in the ZIA portal, then enable rules one by one.' : 'Choose the route the customer prefers. Both start from the same preflight.',
+      actions: [{ label: 'Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }, { label: 'Terraform hand-off', fn: "openToolTab('terraform')", kind: 'quiet' }],
+    },
+    {
+      n: 6, title: 'Move the tenant to Evaluate All Rules',
       state: assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo',
       what: 'By default ZIA stops at the first matching DLP rule, so a broad monitor rule near the top silently shadows every block rule below it. Evaluate All Rules lets every matching rule fire and log its own incident, which is what a layered policy (monitor + block + caution) needs. The Inline DLP Rule Migration wizard reads the current mode, reorders the rules so the switch is safe, and shows you the plan before anything changes.',
       need: 'Check 5.20 in the assessment says whether the tenant is already in Evaluate All Rules mode and whether the current order is safe to switch. The switch itself is made in the ZIA Admin Portal under Policy > Data Loss Prevention > Advanced Settings.',
       status: 'Open the Inline DLP Rule Migration card below the results and follow its five steps.',
       actions: [{ label: 'Open Rule Migration', fn: '_gdGoMigration()', kind: 'primary' }],
+    },
+    {
+      n: 7, title: 'Come back and measure the journey',
+      state: deployed ? 'ready' : 'todo',
+      what: 'On the next visit, run the assessment again with the same tenant profile. The Data governance journey card places the tenant on the five-stage ladder (Foundation, Policies deployed, Visibility, Containment, Enforcement), names the exact rules to enable or harden next, and compares with the previous visit. Nothing the customer changed is reverted; an enabled rule or a hardened action is progress.',
+      need: 'The tenant profile you saved in step 1, so the history lines up.',
+      status: GD.profile ? 'Profile selected: the next assessment is recorded against it.' : 'Save a tenant profile in Tenant Configuration so history is kept.',
+      actions: [{ label: 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !creds }, { label: 'Where is this tenant?', fn: 'openDlpPacksModal()', kind: 'quiet' }],
     },
   ];
 }
@@ -104,19 +120,19 @@ function _gdRender() {
     <div class="gd-head">
       <div>
         <div class="gd-eyebrow">Start here</div>
-        <h2 class="gd-title">Five steps from "unknown tenant" to "gaps closed"</h2>
-        <p class="gd-sub">Follow the steps in order. Each one explains what it does, what you need, and what to click. Nothing is written to the customer's tenant until step 4, and only after you approve a plan.</p>
+        <h2 class="gd-title">Seven steps from "unknown tenant" to "governed data"</h2>
+        <p class="gd-sub">Follow the steps in order. Each one explains what it does, what you need, and what to click. Nothing is written to the customer's tenant until step 5, and only after you approve a plan or hand it off as Terraform.</p>
         <p class="gd-sub gd-where" id="gdWhere">${GD.about && GD.about.app_dir ? `Installed at <code>${_gdE(GD.about.app_dir)}</code>${GD.about.git_commit && GD.about.git_commit !== 'unknown' ? ` · build ${_gdE(GD.about.git_commit)}` : ''}${GD.about.is_git_checkout === false ? ' · <strong>not a git checkout</strong>: the update script cannot pull here; clone the repository and run the installer from the clone.' : ' · run UPDATE_Zscaler_Assessment.bat in this folder to update.'}` : ''}</p>
       </div>
       <div class="gd-controls">
-        <label class="gd-switch" title="Guided mode hides the advanced tools (rule migration, bypass inventory, efficacy scoring, update checks) so only the four steps are on screen.">
+        <label class="gd-switch" title="Guided mode hides the Compliance Coverage card so the seven steps stay in focus. Every tool stays available in the toolbar above.">
           <input type="checkbox" ${GD.mode === 'guided' ? 'checked' : ''} onchange="_gdSetMode(this.checked ? 'guided' : 'advanced')" aria-label="Guided mode">
           <span class="track"><span class="knob"></span></span><span class="lbl">Guided mode</span>
         </label>
         <button type="button" class="gd-btn quiet" onclick="_gdHelp(true)">? Help &amp; glossary</button>
       </div>
     </div>
-    <div class="gd-progress" aria-label="${doneCount} of 4 steps done"><div class="bar" style="width:${(doneCount / 4) * 100}%"></div></div>
+    <div class="gd-progress" aria-label="${doneCount} of ${steps.length} steps done"><div class="bar" style="width:${(doneCount / steps.length) * 100}%"></div></div>
     <ol class="gd-steps">
       ${steps.map(s => `
       <li class="gd-step is-${s.state}">
@@ -192,7 +208,10 @@ function _gdSetMode(mode) {
 // Guided mode hides the advanced tools. Cards are found by their heading
 // text so index.html needs no markup changes.
 const GD_ADVANCED_HEADINGS = ['Compliance Coverage'];
-const GD_ADVANCED_BUTTONS = ["openToolTab('updates')", 'openBypassReportTab()', "openToolTab('efficacy')"];
+// The toolbar is grouped (Find the gaps / Close the gaps / Reference) with a
+// tooltip per tool, so guided mode leaves it intact and only hides the
+// Compliance Coverage card.
+const GD_ADVANCED_BUTTONS = [];
 function _gdApplyMode() {
   document.body.classList.toggle('gd-guided', GD.mode === 'guided');
   document.querySelectorAll('div.card').forEach(card => {
@@ -222,7 +241,8 @@ const GD_GLOSSARY = [
   ['Activation', 'ZIA saves changes as pending. After a deploy, an admin must click Activate in the ZIA Admin Portal for the new rules to take effect for users.'],
   ['Read-only vs write mode', 'The server starts read-only: assessment, preflight and journey checks all work, deploying is refused. Deploy Policy Packs shows the current mode and an Enable write mode button (type the confirmation phrase; it lasts until the server restarts). START_Zscaler_Assessment_WRITES_ENABLED.bat starts in write mode from the outset. Stay read-only when you only want to show the customer the plan.'],
   ['OneAPI credentials', 'The client ID and secret of an API client created in ZIdentity, plus the vanity domain (the short name in the login URL, acme for acme.zslogin.net) and the cloud (Production for almost everyone).'],
-  ['Terraform export', 'The same plan as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Existing objects are imported, so the first plan shows exactly the gap.'],
+  ['Terraform hand-off', 'The same pack as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Gap mode reads the tenant and imports existing objects so the first plan shows exactly the gap; static mode needs no credentials. Terraform then owns the objects: a later plan shows how the tenant moved, and apply would converge it, so use plan to assess and apply deliberately.'],
+  ['Outbound Email DLP', 'Rules that inspect mail leaving onboarded Microsoft 365 / Gmail tenants (Administration > SaaS Application Tenants). The baselines ship a monitor-only email rule; preflight skips it, with the reason, when no email tenant is onboarded.'],
 ];
 function _gdHelp(open) {
   GD.helpOpen = open;
@@ -239,6 +259,18 @@ function _gdHelp(open) {
       <header><h2>How this tool works</h2><button type="button" class="gd-btn quiet" onclick="_gdHelp(false)" aria-label="Close help">✕</button></header>
       <p>DLP-Check does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP and containment configuration that is checked against the tenant and approved by you before anything is written, into an empty tenant or on top of what is already there. Afterwards it <strong>measures the journey</strong>: how far the tenant has taken that baseline, from deployed to monitoring to enforcing, and what to enable next.</p>
       <p>A good first engagement: connect, run the assessment, walk the customer through the critical findings, then run a preflight for the pack that matches their regulation and show them the plan. Deploy only when the customer has agreed and the server is running with writes enabled.</p>
+      <h3>Tools at a glance</h3>
+      <dl>
+        <dt>Assessment (Run Assessment)</dt><dd>300+ read-only checks against the tenant, a score, findings with fixes, and the Data governance journey card for every baseline pack.</dd>
+        <dt>Tenant profiles</dt><dd>One saved record per customer (details, scopes, applicable baselines, optional remembered secret) with the history of every assessment.</dd>
+        <dt>Deploy Policy Packs</dt><dd>Pick a baseline, preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a baseline card measures the journey.</dd>
+        <dt>Terraform hand-off</dt><dd>The same baseline as a Terraform workspace for the official zscaler/zia provider, for platform teams that manage Zscaler as code. Gap mode imports what already exists so the first plan is exactly the gap. The repository also carries a validated workspace per pack under terraform/.</dd>
+        <dt>Evaluate All Rules (Inline DLP Rule Migration)</dt><dd>Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely; check 5.20 in the assessment says whether it is needed.</dd>
+        <dt>Bypass / Non-Inspected</dt><dd>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection, with exports. Opens in its own tab.</dd>
+        <dt>DLP Efficacy</dt><dd>Scores every custom dictionary and engine for false-positive risk and lets you test sample text against them.</dd>
+        <dt>Best Practices, Zscaler Updates</dt><dd>Curated reference articles, and a check of PyPI and help.zscaler.com for SDK and documentation changes since last time.</dd>
+        <dt>Packs from a design file (command line)</dt><dd><code>python tools/pack_from_design.py &lt;pack&gt;</code> turns a DLP engineer's dictionary/engine design into a pack, enforcing ZIA's documented limits.</dd>
+      </dl>
       <h3>Glossary</h3>
       <dl>${GD_GLOSSARY.map(([t, d2]) => `<dt>${_gdE(t)}</dt><dd>${_gdE(d2)}</dd>`).join('')}</dl>
       <h3>If something goes wrong</h3>

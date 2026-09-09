@@ -85,5 +85,20 @@
       "ANY_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-Email-Monitor",
+    "channel": "email",
+    "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for the baseline's PII, PCI and health data engines. Monitor-only; needs an email tenant under Administration > SaaS Application Tenants.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII",
+      "ZBP-Financial Information",
+      "ZBP-US PHI - Medium Confidence",
+      "ZBP-US PHI - High Confidence"
+    ],
+    "tenants": "any"
   }
 ]

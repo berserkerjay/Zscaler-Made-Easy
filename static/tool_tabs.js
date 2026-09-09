@@ -14,6 +14,7 @@ const TOOL_TABS = {
   efficacy:      { title: 'DLP Efficacy',           open: 'openDlpEfficacyModal',   modal: 'dlpEffModal' },
   zcc:           { title: 'ZCC Endpoint Diagnostics', open: 'diagnoseZcc',          modal: 'zccDiagModal' },
   permissions:   { title: 'Required API Access',    open: 'openPermissionsModal',   modal: 'permissionsModal' },
+  terraform:     { title: 'Terraform hand-off',     open: 'openTerraformModal',     modal: 'terraformModal' },
 };
 const _TT = {};   // kind -> { win, panel, observer, timer }
 
@@ -47,14 +48,14 @@ function _ttHideModal(kind) {
   document.body.style.overflow = '';
 }
 
-async function openToolTab(kind) {
+async function openToolTab(kind, arg) {
   const spec = TOOL_TABS[kind];
   if (!spec || typeof window[spec.open] !== 'function') return;
   // Open the tab inside the click (popup blockers allow that), then run the tool here.
   const win = window.open(`/report/view?tool=${encodeURIComponent(kind)}`, '_blank');
-  if (!win) { window[spec.open](); return; }   // blocked: fall back to the dialog
+  if (!win) { window[spec.open](arg); return; }   // blocked: fall back to the dialog
   _ttStop(kind);
-  const p = window[spec.open]();
+  const p = window[spec.open](arg);
   const modal = document.getElementById(spec.modal);
   if (!modal) { win.close(); return; }          // the tool refused to start (missing credentials, for example)
   _ttHideModal(kind);

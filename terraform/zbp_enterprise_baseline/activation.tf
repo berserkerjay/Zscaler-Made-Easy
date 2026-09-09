@@ -11,5 +11,6 @@ resource "zia_activation_status" "this" {
     zia_dlp_web_rules.zbp_us_pii_monitor,
     zia_dlp_web_rules.zbp_us_phi_monitor,
     zia_dlp_web_rules.zbp_private_keys_monitor,
+    zia_outbound_email_dlp.zbp_email_monitor,
   ]
 }

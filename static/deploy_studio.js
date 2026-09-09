@@ -219,7 +219,7 @@ function _dzRenderSelect() {
         <div class="dz-links">
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
           ${p.baseline ? `<button type="button" class="dz-link" title="Read-only: places every object of this baseline in the tenant (missing, deployed, monitoring, enforcing, customized) and shows the stage reached and the next steps." onclick="event.stopPropagation(); _dzJourney('${_dzE(p.id)}')">${(DZ.journey[p.id] || {}).busy ? 'Measuring…' : 'Where is this tenant?'}</button>` : ''}
-          <button type="button" class="dz-link" title="Download a Terraform workspace for this pack (official zscaler/zia provider). With tenant credentials filled in, it is generated against the tenant with import blocks for everything that already exists." onclick="event.stopPropagation(); _dzTerraform(['${_dzE(p.id)}'])">${DZ.tfBusy === p.id ? 'Generating…' : 'Terraform'}</button>
+          <button type="button" class="dz-link" title="Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab." onclick="event.stopPropagation(); openToolTab('terraform', '${_dzE(p.id)}')">Terraform hand-off</button>
         </div>
         ${det}
         ${p.baseline ? _dzJourneyHtml(p.id) : ''}
@@ -492,6 +492,7 @@ function _dzRenderReview() {
         <li><strong>Tenant prerequisites</strong> are things the tenant must already have (a predefined dictionary, an onboarded SaaS tenant, a licensed feature). Missing ones skip only the rules that need them.</li>
         <li><strong>Flow</strong> shows how dictionaries feed engines feed rules; hover any box to trace it. <strong>List</strong> groups the same objects by what will happen to them. Hover any status chip for what it means.</li>
         <li>Every rule ships <strong>DISABLED</strong>, so deploying never affects users. Enable rules in the portal after tuning.</li>
+        <li><strong>Two ways to close the gap.</strong> <em>Review &amp; approve</em> creates the missing objects from here (write mode needed). <em>Hand off as Terraform</em> gives a platform team the same objects as a Terraform workspace whose first <code>terraform plan</code> is exactly this list.</li>
       </ul></details>
     ${(R.impacts || []).length ? `<div class="dz-h">Impact on this tenant</div>` : ''}
     ${(R.impacts || []).map(i => `<div class="dz-card sev-${_dzE(i.severity)}"><div class="bar"></div><div><div class="t">${_dzE(i.title)}</div><div class="d">${_dzE(i.detail)}</div></div></div>`).join('')}
@@ -509,7 +510,7 @@ function _dzRenderReview() {
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=1;_dzRender()">← Back</button>
       <button type="button" class="dz-btn" onclick="_dzRunPreflight()">Re-run</button>
-      <button type="button" class="dz-btn" title="Close this gap with Terraform instead: downloads a workspace with import blocks for everything that already exists, so terraform plan shows exactly these changes." onclick="_dzTerraform([...DZ.selected])">Export Terraform</button>
+      <button type="button" class="dz-btn" title="Close this gap with Terraform instead: opens the hand-off page for the selected packs (what you get, how to run it, download in gap mode so terraform plan shows exactly these changes)." onclick="openToolTab('terraform', [...DZ.selected].join(','))">Hand off as Terraform</button>
       <button type="button" class="dz-btn primary" ${R.status === 'blocked' ? 'disabled' : ''} onclick="DZ.step=3;DZ.consent=false;_dzRender()">Review &amp; approve <span aria-hidden="true">→</span></button>
     </div>`;
 }
@@ -868,3 +869,114 @@ function _dzFlowKey(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.prevent
   btn.innerHTML = '<span aria-hidden="true">\u{1F4E6}</span> Deploy Policy Packs';
   btn.setAttribute('aria-label', 'Deploy DLP policy packs with dependency checks, impact review, and approval');
 })();
+
+
+// ── Terraform hand-off ──────────────────────────────────────────────
+// The same pack as a Terraform workspace for the official zscaler/zia
+// provider, for customers whose platform team manages Zscaler as code.
+// Opened through openToolTab('terraform', packIds) so it lives in its own
+// tab like the other tools; the dialog below is what gets mirrored.
+const TF = { packs: [], selected: new Set(), summaries: {}, busy: false, error: '' };
+function _tfEnsureModal() {
+  if (document.getElementById('terraformModal')) return;
+  const m = document.createElement('div');
+  m.id = 'terraformModal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'terraformModalTitle');
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;';
+  m.innerHTML = `<div style="max-width:1040px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.4rem 1.6rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:0.6rem;">
+      <div><h2 id="terraformModalTitle" style="margin:0;">Terraform hand-off</h2>
+        <p style="color:var(--dim);font-size:0.88rem;margin:0.3rem 0 0;max-width:80ch;">For customers whose platform team manages Zscaler as code. You get the same dictionaries, engines and rules as a Terraform workspace for the official zscaler/zia provider; they run it in their pipeline, and Terraform keeps it in state from then on.</p></div>
+      <button class="btn btn-ghost" onclick="closeTerraformModal()" aria-label="Close" style="padding:0.4rem 0.8rem;font-size:0.85rem;white-space:nowrap;">✕ Close</button>
+    </div>
+    <div id="terraformBody"></div></div>`;
+  document.body.appendChild(m);
+}
+async function openTerraformModal(packIds) {
+  _tfEnsureModal();
+  const m = document.getElementById('terraformModal');
+  m.style.display = 'block'; document.body.style.overflow = 'hidden';
+  TF.error = '';
+  _tfRender();
+  try {
+    if (!TF.packs.length) {
+      const r = await fetch('/api/dlp-packs', { cache: 'no-store' });
+      TF.packs = ((await r.json()).packs || []);
+    }
+    const want = (typeof packIds === 'string' ? packIds.split(',') : (packIds || [])).filter(Boolean);
+    if (want.length) TF.selected = new Set(want.filter(id => TF.packs.some(p => p.id === id)));
+    if (!TF.selected.size) TF.selected = new Set(TF.packs.filter(p => p.baseline).map(p => p.id));
+    await Promise.all([...TF.selected].map(_tfLoadSummary));
+  } catch (e) { TF.error = e.message; }
+  _tfRender();
+}
+function closeTerraformModal() {
+  const m = document.getElementById('terraformModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+}
+async function _tfLoadSummary(id) {
+  if (TF.summaries[id]) return;
+  try {
+    const r = await fetch(`/api/dlp-packs/${encodeURIComponent(id)}/terraform`, { cache: 'no-store' });
+    TF.summaries[id] = r.ok ? await r.json() : { error: `HTTP ${r.status}` };
+  } catch (e) { TF.summaries[id] = { error: e.message }; }
+}
+async function _tfToggle(id, on) {
+  if (on) { TF.selected.add(id); await _tfLoadSummary(id); } else TF.selected.delete(id);
+  _tfRender();
+}
+function _tfMode() {
+  const c = _dzCreds();
+  const prof = (window.GD && GD.profile && GD.profileHasSecret);
+  return (c.client_id && (c.client_secret || prof)) || (c.client_id && prof) ? 'gap' : 'static';
+}
+async function _tfDownload() {
+  const ids = [...TF.selected];
+  if (!ids.length) return;
+  TF.busy = true; _tfRender();
+  try { await _dzTerraform(ids); } finally { TF.busy = false; _tfRender(); }
+}
+function _tfRender() {
+  const host = document.getElementById('terraformBody');
+  if (!host) return;
+  const mode = _tfMode();
+  const sel = [...TF.selected];
+  const packs = TF.packs.map(p => `<label class="tf-pack ${TF.selected.has(p.id) ? 'on' : ''}"><input type="checkbox" ${TF.selected.has(p.id) ? 'checked' : ''} onchange="_tfToggle('${_dzE(p.id)}', this.checked)"> <span><b>${_dzE(p.name || p.id)}</b>${p.baseline ? ' <span class="dz-chip kind-baseline">Baseline</span>' : ''}<br><span class="d">${_dzN(p.dictionaries || 0, 'dictionary', 'dictionaries')} · ${_dzN(p.engines || 0, 'engine')} · ${_dzN(p.policies || 0, 'rule')}</span></span></label>`).join('');
+  const sums = sel.map(id => {
+    const s = TF.summaries[id];
+    if (!s) return `<div class="tf-sum"><b>${_dzE(id)}</b> · loading…</div>`;
+    if (s.error) return `<div class="tf-sum"><b>${_dzE(id)}</b> · ${_dzE(s.error)}</div>`;
+    const ch = Object.entries(s.counts.channels || {}).map(([k, v]) => `${v} ${_dzChan(k)}`).join(', ');
+    const files = (s.files || []).filter(f => !f.name.startsWith('.')).map(f => `<li><code>${_dzE(f.name)}</code> <span class="d">${_dzE(f.purpose)}</span></li>`).join('');
+    return `<div class="tf-sum"><div class="tf-sum-h"><b>${_dzE(s.name)}</b> <span class="d">${s.counts.dictionaries} dictionaries · ${s.counts.engines} engines · ${s.counts.rules} rules (${_dzE(ch)})${s.counts.app_groups ? ` · ${s.counts.app_groups} app group(s)` : ''}</span></div>
+      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
+      <details class="dz-fold"><summary>What is in the workspace (${(s.files || []).length} files)</summary><ul class="tf-files">${files}</ul></details></div>`;
+  }).join('');
+  host.innerHTML = `
+    ${TF.error ? `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">Could not load packs</div><div class="d">${_dzE(TF.error)}</div></div></div>` : ''}
+    <div class="dz-h">1 · Which packs</div>
+    <div class="tf-packs">${packs || '<span class="d">Loading packs…</span>'}</div>
+    <div class="dz-h">2 · Which mode</div>
+    <div class="tf-modes">
+      <div class="tf-mode ${mode === 'gap' ? 'on' : ''}"><div class="t">Gap mode ${mode === 'gap' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</div>
+        <div class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest. Choose this when you have credentials.</div></div>
+      <div class="tf-mode ${mode === 'static' ? 'on' : ''}"><div class="t">Static ${mode === 'static' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</div>
+        <div class="d">No tenant access needed. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. Choose this to hand over a reference before you have credentials.</div></div>
+    </div>
+    ${mode === 'static' ? '<div class="d" style="margin:0.3rem 0 0.6rem;">To get gap mode, fill in the tenant fields (or pick a profile with a remembered secret) on the assessment page and reopen this page.</div>' : ''}
+    <div class="dz-h">3 · What you get</div>
+    ${sums || '<div class="d">Select at least one pack.</div>'}
+    <div class="dz-h">4 · Download and hand over</div>
+    <div class="tf-actions">
+      <button type="button" class="dz-btn primary" ${sel.length && !TF.busy ? '' : 'disabled'} onclick="_tfDownload()">${TF.busy ? 'Generating…' : `Download workspace (${mode} mode, ${_dzN(sel.length, 'pack')})`}</button>
+      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.</span>
+    </div>
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What to tell the platform team</div><div class="d">
+      <ol class="dz-next">
+        <li>Unzip, open the pack folder, copy <code>terraform.tfvars.example</code> to <code>terraform.tfvars</code> and fill in the OneAPI client (or export <code>ZSCALER_CLIENT_ID</code>, <code>ZSCALER_CLIENT_SECRET</code>, <code>ZSCALER_VANITY_DOMAIN</code>). The client needs write access to DLP dictionaries, engines and the rule types in the pack.</li>
+        <li>Run <code>terraform init</code>, then <code>terraform plan</code>. The plan is the review: it must list only creates (and imports in gap mode). Anything marked <em>update in place</em> is an object the customer customized; delete its import block to keep their version.</li>
+        <li>Run <code>terraform apply</code>. Every rule arrives DISABLED; enabling is a deliberate, per-rule step in the ZIA portal or in the pack.</li>
+        <li>From then on Terraform owns these objects. <code>terraform plan</code> later shows how the tenant has moved away from the reference; treat an enabled rule or a hardened action as progress to fold back into the pack, not as drift to revert.</li>
+        <li>Requirements: Terraform ${_dzE((TF.summaries[sel[0]] || {}).terraform_version || '>= 1.5')}, provider ${_dzE((TF.summaries[sel[0]] || {}).provider || 'zscaler/zia')} ${_dzE((TF.summaries[sel[0]] || {}).provider_version || '~> 4.8')}.</li>
+      </ol></div></div></div>`;
+}

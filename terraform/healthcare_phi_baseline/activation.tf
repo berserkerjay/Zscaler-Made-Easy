@@ -13,5 +13,6 @@ resource "zia_activation_status" "this" {
     zia_file_type_control_rules.r_phi_ftc_block_bulk_export_upload,
     zia_file_type_control_rules.r_phi_ftc_caution_image_upload,
     zia_url_filtering_rules.r_phi_url_block_post_to_unknown,
+    zia_outbound_email_dlp.r_phi_email_monitor,
   ]
 }

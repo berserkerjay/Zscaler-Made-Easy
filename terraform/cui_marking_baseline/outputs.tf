@@ -46,5 +46,6 @@ output "rules" {
     zia_dlp_web_rules.cui_monitor_all.name,
     zia_ssl_inspection_rules.cui_ssl_decrypt_file_share_webmail_ai.name,
     zia_cloud_app_control_rule.cui_cac_ai_no_upload.name,
+    zia_outbound_email_dlp.cui_email_monitor.name,
   ]
 }

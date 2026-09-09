@@ -12,7 +12,7 @@ import pack_channels as pc
 import pack_deploy as pd
 import pack_terraform as pt
 from test_baselines import BASELINE_META, FakeCloudApps  # noqa: F401
-from test_pack_channels import AVAILABLE, APPS, FakeChannelRules, FakeCloudAppControl, FakeClassApps, add_control_services, make_client  # noqa: F401
+from test_pack_channels import AVAILABLE, APPS, FakeChannelRules, FakeCloudAppControl, FakeClassApps, add_control_services, make_client, tenant as casb_tenant  # noqa: F401
 from test_pack_deploy import PREDEF_SSN, FakeClient, Obj, _dict, _engine, _policy, write_pack, items_by  # noqa: F401
 
 def control_client(**kw):
@@ -153,7 +153,7 @@ def test_shipped_phi_and_source_code_baselines_include_containment():
     phi = packs["healthcare_phi_baseline"]
     assert phi["channels"].get("cloud_app") == 3 and phi["channels"].get("file_type") == 2
     assert phi["channels"].get("url") == 1 and phi["channels"].get("ssl") == 1
-    client = control_client()
+    client = control_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503)])   # the baseline also ships an email rule
     client.zia.dlp_dictionary.items += [Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)]
     rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
     assert rep["status"] in ("ready", "warnings"), rep["blockers"]

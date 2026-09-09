@@ -90,3 +90,19 @@ resource "zia_dlp_web_rules" "zbp_private_keys_monitor" {
   }
 }
 
+resource "zia_outbound_email_dlp" "zbp_email_monitor" {
+  name                         = "ZBP-Email-Monitor"
+  description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for the baseline's PII, PCI and health data engines. Monitor-only; needs an email tenant under Administration > SaaS Application Tenants. [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  dlp_engines {
+    id = [zia_dlp_engines.zbp_us_pii.id, zia_dlp_engines.zbp_financial_information.id, zia_dlp_engines.zbp_us_phi_medium_confidence.id, zia_dlp_engines.zbp_us_phi_high_confidence.id]
+  }
+  email_tenants {
+    id = var.saas_tenant_ids_zbp_email_monitor
+  }
+}
+
