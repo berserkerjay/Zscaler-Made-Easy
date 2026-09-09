@@ -46,6 +46,15 @@ class FakeChannelRules:
         self.items.append(obj)
         return obj, None, None
 
+    def update_rule(self, rule_id, **kw):
+        self.updated = getattr(self, "updated", [])
+        self.updated.append({"id": rule_id, **kw})
+        for i, it in enumerate(self.items):
+            if it.id == rule_id:
+                self.items[i] = Obj(id=rule_id, **kw)
+                return self.items[i], None, None
+        return None, None, {"message": "not found"}
+
 
 class FakeCasbRules(FakeChannelRules):
     def list_all_rules(self):

@@ -107,6 +107,24 @@
   .dz-chip.kind-missing { background: rgba(239,68,68,0.14); color: var(--fail); margin-left: 0.4rem; }
   .dz-note { color: var(--dim); font-size: 0.8rem; margin: 0.35rem 0 0.6rem; line-height: 1.45; }
   .dz-link { background: none; border: 0; color: var(--accent); font-size: 0.78rem; font-weight: 600; cursor: pointer; padding: 0.35rem 0; }
+  .dz-links { display: flex; gap: 1rem; align-items: center; }
+  /* Immutable baselines */
+  .dz-chip.kind-baseline { background: rgba(168,85,247,0.14); color: #7e22ce; }
+  .dz-baseline { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 0.15rem 0 0.5rem; }
+  .dz-baseline .d { font-size: 0.75rem; color: var(--dim); }
+  .dz-drift { margin-top: 0.6rem; padding: 0.6rem 0.75rem; border-radius: 10px; background: rgba(148,163,184,0.08); border: 1px solid var(--border); font-size: 0.8rem; cursor: default; }
+  .dz-drift.ok { border-color: rgba(16,185,129,0.35); }
+  .dz-drift.warn { border-color: rgba(245,158,11,0.45); }
+  .dz-drift.fail, .dz-drift.is-error { border-color: rgba(239,68,68,0.45); color: var(--fail); }
+  .dz-drift-top { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .dz-drift-top .counts { color: var(--text); }
+  .dz-drift-top .when { margin-left: auto; color: var(--dim); font-size: 0.72rem; }
+  .dz-drift ul { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.25rem; }
+  .dz-drift li { display: grid; grid-template-columns: auto 1fr; column-gap: 0.45rem; align-items: baseline; }
+  .dz-drift li .nm { font-weight: 600; color: var(--text); }
+  .dz-drift li .st { grid-column: 2; color: var(--dim); font-size: 0.74rem; }
+  .dz-drift li.more { color: var(--dim); }
+  .dz-drift .d { margin-top: 0.4rem; color: var(--dim); }
   .dz-link:hover { text-decoration: underline; }
   .dz-detail { margin-top: 0.7rem; border-top: 1px solid var(--border); padding-top: 0.6rem; font-size: 0.76rem; color: var(--dim); display: grid; gap: 0.45rem; }
   .dz-detail strong { color: var(--text); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; }

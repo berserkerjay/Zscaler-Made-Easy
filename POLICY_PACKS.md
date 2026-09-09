@@ -454,3 +454,72 @@ starter_pack/
 ```
 
 Drop this at the project root, restart the server, and you have a working pack.
+
+## 11. Immutable Baselines
+
+A pack can declare itself a **baseline**: the authoritative definition of
+the objects it names. Add a `baseline` section to `pack.json`:
+
+```json
+{
+  "name": "ZBP Enterprise Baseline",
+  "version": "1.0",
+  "baseline": { "immutable": true, "prefix": "ZBP-", "version": "1.0" }
+}
+```
+
+Deploying a baseline is **convergent** rather than additive:
+
+| Tenant state of a baseline object | Plan status | What apply does |
+|---|---|---|
+| Missing | `create` | Creates it |
+| Exists with identical content | `reuse` (in sync) | Nothing |
+| Exists with different content | `restore` | **Overwrites** it with the baseline definition (dictionaries, engines and rules; a rule keeps its position in the policy) |
+| Same name as a predefined Zscaler dictionary | `conflict` | Nothing; rename the baseline object |
+
+Objects the baseline does not define are never touched, and ordinary
+packs keep their never-overwrite behaviour. Every object a baseline
+creates or restores gets a provenance tag in its description
+(`[DLP-Check baseline <pack> v<version>] Immutable: drift is reverted on
+the next deploy.`), so admins can see what is baseline-managed. A drifted
+object without the tag was not created by DLP-Check; the plan says so and
+brings it under management when restored.
+
+**Drift check (read-only).** Each baseline card in Deploy Studio has a
+*Check drift* action, and the API exposes the same thing:
+
+```bash
+curl -s -X POST http://localhost:8000/api/dlp-packs/baseline-status \
+  -H "Content-Type: application/json" \
+  -d '{"pack_ids": ["zbp_enterprise_baseline"], "cloud": "production", "vanity_domain": "acme",
+       "client_id": "...", "client_secret": "..."}'
+# → {"status": "in_sync|drifted|blocked", "baselines": [{"id", "version", "in_sync", "drifted",
+#    "missing", "blocked", "objects": [{"kind","name","state","drift","adopt"}...]}], ...}
+```
+
+It runs without the write gate (nothing is written). Restoring drift is a
+normal deploy: select the baseline, run preflight (drifted objects show as
+*Will restore*, with an impact card listing them), approve, apply.
+
+**Dynamic application scope.** A web rule may carry
+`"cloud_app_classes": ["AI_ML"]` instead of a fixed `cloud_applications`
+list. Preflight resolves the class against the tenant's current cloud
+application catalogue, lists the count as a prerequisite, blocks the rule
+if the class resolves to nothing, and applies the resolved list. Newly
+classified applications are picked up on the next deploy.
+
+**Shipped baselines.**
+
+| Pack | Contents | Source |
+|---|---|---|
+| `zbp_enterprise_baseline` | 31 dictionaries, 9 engines, 6 monitor-only web DLP rules (US PII, US PHI, financial, ITAR, TLP markings, private keys), `ZBP-` prefix | Converted from `mkoyfman/zbp-automation` (`zbp-enterprise-zia`) with `tools/pack_from_terraform.py`; rules enabled here (upstream ships them disabled) |
+| `zbp_source_code_baseline` | 3 dictionaries, 3 engines, 1 **BLOCK** rule for Python/JavaScript/shell source uploads to AI/ML applications, scope resolved from the `AI_ML` class at deploy time | `zbp-source-code-dlp-zia` |
+
+**Converting a Terraform template.** `tools/pack_from_terraform.py` turns
+a `.tf.json` with `zia_dlp_dictionaries` / `zia_dlp_engines` /
+`zia_dlp_web_rules` resources into a pack:
+
+```bash
+python tools/pack_from_terraform.py template.tf.json my_baseline \
+  --name "My Baseline" --version 1.0 --prefix ZBP- --baseline --enable-rules
+```

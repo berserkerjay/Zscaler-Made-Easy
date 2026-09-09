@@ -59,7 +59,18 @@ class FakeDicts:
 
     def update_dict(self, id_, **kw):
         self.updated.append({"id": id_, **kw})
-        return Obj(id=id_, **kw), None, None
+        # PUT semantics: the stored object becomes the new payload (API shape).
+        stored = {k: v for k, v in kw.items() if k != "custom"}
+        for key, field in (("patterns", "pattern"), ("phrases", "phrase")):
+            if stored.get(key):
+                stored[key] = [{"action": v[0], field: v[1]} if isinstance(v, (tuple, list)) else v for v in stored[key]]
+        for i, it in enumerate(self.items):
+            if it.id == id_:
+                merged = dict(it.as_dict())
+                merged.update(stored)
+                self.items[i] = Obj(**merged)
+                return self.items[i], None, None
+        return Obj(id=id_, **stored), None, None
 
 
 class FakeEngines:
@@ -80,15 +91,28 @@ class FakeEngines:
         if kw["name"] in self.fail_names:
             return None, None, {"message": "simulated engine failure"}
         self._next += 1
-        obj = Obj(id=self._next, name=kw["name"], engine_expression=kw["engine_expression"])
+        obj = Obj(id=self._next, name=kw["name"], engine_expression=kw["engine_expression"],
+                  description=kw.get("description"))
         self.items.append(obj)
         return obj, None, None
+
+    def update_dlp_engine(self, engine_id, **kw):
+        self.updated = getattr(self, "updated", [])
+        self.updated.append({"id": engine_id, **kw})
+        for i, it in enumerate(self.items):
+            if it.id == engine_id:
+                self.items[i] = Obj(id=engine_id, name=kw.get("name", it.name),
+                                    engine_expression=kw.get("engine_expression", it.engine_expression),
+                                    description=kw.get("description"))
+                return self.items[i], None, None
+        return None, None, {"message": "not found"}
 
 
 class FakeRules:
     def __init__(self, items=None):
         self.items = list(items or [])
         self.added = []
+        self.updated = []
         self._next = 7000
 
     def list_rules(self):
@@ -100,6 +124,14 @@ class FakeRules:
         obj = Obj(id=self._next, **kw)
         self.items.append(obj)
         return obj, None, None
+
+    def update_rule(self, rule_id, **kw):
+        self.updated.append({"id": rule_id, **kw})
+        for i, it in enumerate(self.items):
+            if it.id == rule_id:
+                self.items[i] = Obj(id=rule_id, **kw)
+                return self.items[i], None, None
+        return None, None, {"message": "not found"}
 
 
 class FakeZia:

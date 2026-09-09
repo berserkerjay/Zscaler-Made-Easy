@@ -1,0 +1,71 @@
+[
+  {
+    "name": "ZBP-Python Code Detection",
+    "description": "Detects Python source code by unambiguous Python-only patterns. Trimmed to reduce false positives.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "from\\s+[a-zA-Z_][a-zA-Z0-9_.]*\\s+import\\s+"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "class\\s+[A-Z][a-zA-Z0-9_]*\\s*:"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "def\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*\\(self"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "def\\s+__[a-zA-Z_]+__\\s*\\("}
+    ],
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "#!/usr/bin/python"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "#!/usr/bin/env python"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "if __name__ == '__main__':"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "if __name__ == \"__main__\":"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "def __init__(self"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "raise ValueError("},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "raise TypeError("}
+    ]
+  },
+  {
+    "name": "ZBP-JavaScript Code Detection",
+    "description": "Detects JavaScript source code by unambiguous JavaScript-only patterns. Trimmed to reduce false positives.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "=\\s*\\([^)]*\\)\\s*=>\\s*\\{"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "import\\s+.*\\s+from\\s+['\"]"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "export\\s+(default|const|function|class)"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "\\.forEach\\(\\s*(function|[a-zA-Z_$])"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "class\\s+[A-Z][a-zA-Z0-9_]*\\s*(\\{|extends)"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "function\\s+[a-zA-Z_$][a-zA-Z0-9_$]*\\s*\\("},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "this\\.[a-zA-Z_$][a-zA-Z0-9_$]*\\s*="}
+    ],
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "constructor() {"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "module.exports"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "JSON.stringify("},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "JSON.parse("},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "throw new Error("},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "document.querySelector"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "addEventListener("},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "export default"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "Promise.resolve("},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "require('"}
+    ]
+  },
+  {
+    "name": "ZBP-Shell Script Detection",
+    "description": "Detects bash and shell scripts by shebangs and unambiguous shell-only syntax. Trimmed to reduce false positives.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "#!\\s*/bin/(bash|sh|zsh|ksh)"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "#!\\s*/usr/bin/env\\s+(bash|sh|zsh)"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "\\[\\[\\s+\\$[A-Z_]+\\s+-[gl]t\\s+\\$"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "for\\s+\\w+\\s+in\\s+\\$"},
+      {"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "while\\s+read\\s+\\w+"}
+    ],
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "#!/bin/bash"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "#!/bin/sh"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "#!/usr/bin/env bash"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "set -Eeuo pipefail"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "set -euo pipefail"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "echo \"[$(date"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "main \"$@\""},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": ">> \"$LOG"},
+      {"action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "mtime +"}
+    ]
+  }
+]
