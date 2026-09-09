@@ -142,7 +142,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/report/view", "/report/bypass"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/report/view", "/report/bypass", "/report/sslflow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -2512,6 +2512,61 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
                             filename=f"zscaler_bypass_{ts}.docx")
     return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",
                     headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"})
+
+
+# ── SSL Inspection Flow (what inline DLP can and cannot see) ───────────────────
+@app.get("/report/sslflow")
+async def report_sslflow_page():
+    """Standalone tab for the SSL inspection flow diagram (static/report_sslflow.html)."""
+    page = os.path.join(STATIC_DIR, "report_sslflow.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/report/ssl-flow")
+async def report_ssl_flow(req: MigrateRequest):
+    """Walk the SSL inspection rules per DLP-relevant traffic class, map the
+    inline Web DLP rules over them and list the gaps. Read-only; the
+    response carries report_id for /report/sslflow?id=... and exports."""
+    try:
+        from ssl_flow import generate_ssl_flow_report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ssl_flow unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    report = await asyncio.to_thread(generate_ssl_flow_report, client)
+    rid = _remember_report("sslflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    return _REPORTS[rid]
+
+
+@app.get("/api/report/ssl-flow/{report_id}")
+async def report_ssl_flow_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("sslflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.get("/api/report/ssl-flow/export/{report_id}")
+async def report_ssl_flow_export(report_id: str, format: str = "csv"):
+    from fastapi.responses import Response
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("sslflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    from ssl_flow import to_csv as sf_csv, to_markdown as sf_md
+    fmt = (format or "csv").lower()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if fmt == "csv":
+        return Response(content=sf_csv(rep), media_type="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_flow_{ts}.csv"})
+    if fmt in ("markdown", "md"):
+        return Response(content=sf_md(rep), media_type="text/markdown",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_flow_{ts}.md"})
+    if fmt == "json":
+        return Response(content=json.dumps(rep, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_ssl_flow_{ts}.json"})
+    raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
 
 
 @app.post("/api/report/bypass/export")

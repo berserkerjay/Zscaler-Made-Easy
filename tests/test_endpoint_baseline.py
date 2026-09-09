@@ -185,6 +185,9 @@ def test_shipped_zbp_endpoint_baseline(raw):
     pols = json.load(open(f"{ep['dir']}/configs/dlp_policies.json", encoding="utf-8"))
     assert [p["name"] for p in pols] == ["zbp-Sensitive Data to USB", "zbp-Unapproved GenAI Applications", "zbp-Sensitive Data Private Share"]
     assert sum(len(p.get("sub_rules") or []) for p in pols) == 5
+    # Endpoint DLP only: no SaaS, web, email or other channel rides along.
+    assert {pc.channel_of(p) for p in pc.expand_sub_rules(pols)} == {"endpoint"}
+    assert not any(k in ("saas", "casb") for k in json.load(open(f"{ep['dir']}/pack.json", encoding="utf-8")).get("channels", []))
     assert all(p["state"] == "DISABLED" for p in pols) and all(s.get("state", "DISABLED") == "DISABLED" for p in pols for s in p.get("sub_rules") or [])
     groups = json.load(open(f"{ep['dir']}/configs/endpoint_application_groups.json", encoding="utf-8"))
     assert groups[0]["name"] == "zbp-GenAI Applications" and len(groups[0]["resources"]) == 6

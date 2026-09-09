@@ -84,6 +84,8 @@ See `docs/DLP_Assessment_Step_by_Step_Guide.docx` for the complete walkthrough.
 | `POST` | `/api/assess/json` | Full JSON response (cURL/Postman) |
 | `GET` | `/api/health` | Health check |
 | `GET` | `/api/checks` | List all check IDs and labels |
+| `POST` | `/api/report/bypass` | Bypass / non-inspected traffic inventory (opens at `/report/bypass?id=`) |
+| `POST` | `/api/report/ssl-flow` | SSL Inspection Flow: per traffic class, which SSL rule decides and whether inline DLP can see it (opens at `/report/sslflow?id=`; exports via `/api/report/ssl-flow/export/{id}`) |
 
 ### Request Body
 
