@@ -1139,6 +1139,7 @@
         🔧 Review &amp; Remediate
       </button>
       <button class="btn btn-ghost" onclick="resetForm()">Run Another Assessment</button>
+      <button class="btn btn-ghost" onclick="openToolTab('results', 'view')" title="Show these results in their own tab, with a link back to this page">↗ Open in new tab</button>
     </div>
 
     <div class="score-hero">
@@ -5090,15 +5091,22 @@ async function openBypassReportTab() {
   const w = window.open('/report/bypass?pending=1', '_blank');
   if (!w) { openBypassModal(); return; }
   try {
-    const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
-    _bypassReportCache = data;
-    w.location = `/report/bypass?id=${encodeURIComponent(data.report_id || '')}`;
+    const id = await window.__bypassGenerate();
+    w.location = `/report/bypass?id=${encodeURIComponent(id)}`;
   } catch (e) {
     w.location = `/report/bypass?error=${encodeURIComponent(e.message)}`;
   }
 }
+// Generates the bypass report with this page's credentials and returns its
+// id; the SSL Inspection Flow tab calls this to open the full report.
+window.__bypassGenerate = async function () {
+  const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
+  const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  _bypassReportCache = data;
+  return data.report_id || '';
+};
 
 // SSL Inspection Flow: same pattern as the bypass report, in its own tab.
 // The tab can ask this page for a fresh report (__sslFlowGenerate) so it

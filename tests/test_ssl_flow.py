@@ -133,16 +133,17 @@ class FakeCl:
 
 
 def test_generate_reads_tenant_and_records_diagnostics():
-    cl = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP,
+    cl = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP, "/zcc/webPolicies": [],
                  "/zia/urlCategories": [{"id": "FILE_HOST", "configuredName": "File Host"}]}, apps=CATALOGUE)
     rep = sf.generate_ssl_flow_report(cl)
     assert rep["summary"]["ssl_rules"] == 9 and rep["summary"]["catalogue_classes"] == ["AI_ML", "FILE_SHARE"]
     assert rep["diagnostics"] == [] and rep["sources"]["ssl_rules"] == "/zia/sslInspectionRules"
+    assert rep["zcc"]["available"] and rep["zcc"]["total"] == 0
     # Missing catalogue and a failing endpoint are diagnostics, not exceptions.
     cl2 = FakeCl({"/zia/sslInspectionRules": SSL})
     rep2 = sf.generate_ssl_flow_report(cl2)
     sections = {d["section"] for d in rep2["diagnostics"]}
-    assert "Web DLP rules" in sections and "cloud application catalogue" in sections
+    assert "Web DLP rules" in sections and "cloud application catalogue" in sections and "Client Connector bypasses" in sections
     assert rep2["summary"]["dlp_rules"] == 0
 
 
@@ -171,3 +172,30 @@ def test_exports_and_endpoints():
     assert c.get("/static/ssl_flow.js").status_code == 200
     html = c.get("/").text
     assert "openSslFlowTab()" in html and "SSL Inspection Flow" in html and "__sslFlowGenerate" in html
+
+
+def test_client_connector_bypasses_are_a_gap_of_their_own():
+    profiles = [{"id": 1, "name": "Default", "bypassApps": [{"name": "Zoom", "path": "C:\\Zoom\\Zoom.exe", "os": "windows"}],
+                 "tunnelBypassDomains": ["*.internal.corp", "updates.vendor.com"], "bypassIps": [{"ip": "10.0.0.0/8"}]},
+                {"id": 2, "name": "Contractors", "trustedNetworks": ["HQ-WiFi"]}]
+    cl = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP, "/zcc/webPolicies": profiles})
+    rep = sf.generate_ssl_flow_report(cl)
+    z = rep["zcc"]
+    assert z["available"] and z["profiles"] == 2 and z["total"] == 5
+    assert z["counts"] == {"apps": 1, "processes": 0, "domains": 2, "ips": 1, "trusted_networks": 1}
+    assert {(i["kind"], i["value"]) for i in z["items"]} == {("apps", "Zoom"), ("domains", "*.internal.corp"), ("domains", "updates.vendor.com"), ("ips", "10.0.0.0/8"), ("trusted_networks", "HQ-WiFi")}
+    g = rep["gaps"][0]
+    assert g["type"] == "zcc_bypass" and g["severity"] == "high" and g["class"] == "zcc" and "2 domains" in g["detail"] and "1 trusted network" in g["detail"]
+    assert rep["summary"]["zcc_bypasses"] == 5 and rep["summary"]["high"] == 10 and "Client Connector bypasses (never reach Zscaler): 5" in sf.to_markdown(rep)
+    assert not any(d["section"] == "Client Connector bypasses" for d in rep["diagnostics"])
+    # Profiles unreadable: no gap invented, but the reason is a diagnostic.
+    cl2 = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP})
+    rep2 = sf.generate_ssl_flow_report(cl2)
+    assert not rep2["zcc"]["available"] and rep2["zcc"]["error"] and rep2["gaps"][0]["type"] != "zcc_bypass" and rep2["summary"]["zcc_bypasses"] == 0
+    assert any(d["section"] == "Client Connector bypasses" for d in rep2["diagnostics"])
+    # Readable but empty: fine, no gap.
+    cl3 = FakeCl({"/zia/sslInspectionRules": SSL, "/zia/webDlpRules": DLP, "/zcc/webPolicies": [{"id": 1, "name": "Default"}]})
+    rep3 = sf.generate_ssl_flow_report(cl3)
+    assert rep3["zcc"]["available"] and rep3["zcc"]["total"] == 0 and sf.zcc_gap(rep3["zcc"]) is None
+    html = TestClient(srv.app).get("/").text
+    assert "__bypassGenerate" in html

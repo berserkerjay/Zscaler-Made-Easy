@@ -42,7 +42,12 @@ def test_index_loads_report_addons():
     assert "openBypassReportTab()" in html and "openToolTab('updates')" in html and "openToolTab('efficacy')" in html
     view = c.get("/report/view?tool=updates")
     assert view.status_code == 200 and "Back to the assessment" in view.text and "__ttApply" in view.text
-    assert c.get("/static/tool_tabs.js").status_code == 200
+    tabs = c.get("/static/tool_tabs.js")
+    assert tabs.status_code == 200
+    # The assessment results open in their own tab: progress card first, then the report, both kept on the page.
+    assert "results:" in tabs.text and "panels: ['progressCard', 'results']" in tabs.text and "_openResultsPanel" in tabs.text
+    assert "openToolTab('results', 'run')" in c.get("/static/guide.js").text
+    assert "openToolTab('results', 'view')" in html and "Open in new tab" in html
     assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200
 
 

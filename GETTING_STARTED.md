@@ -109,6 +109,13 @@ placeholder and will not work. They must generate a new one.
    configurations that leak data today. Use **Export** to give them the
    report as Word or CSV.
 
+## 4a. Results in their own tab
+
+**Run assessment** (Start here, step 2) opens the results in a new tab
+with a link back to this page: the progress card while it runs, then the
+score, summary, findings and exports. The results stay on the main page
+too; **Open in new tab** above them opens them again later.
+
 ## 4b. SSL Inspection Flow (what inline DLP can actually see)
 
 Inline Web DLP only reads HTTPS content that an SSL inspection
@@ -125,6 +132,12 @@ Inline Web DLP only reads HTTPS content that an SSL inspection
   find it in the portal.
 - **Right column** is what inline Web DLP can do with it: enforcing,
   monitor only, no rule, or *blind* because the traffic stayed encrypted.
+
+The **top row** is different: traffic that bypasses Client Connector (app
+and forwarding profile bypasses, trusted networks) never reaches Zscaler
+at all, so no SSL rule and no DLP rule ever sees it. It is read live from
+the profiles; click the row for every entry and a link that opens the full
+Bypass & Non-Inspected report in its own tab.
 
 Red dashed lines and the **GAP** badge mark traffic DLP cannot see. Click
 a row for the deciding rule, the scoped exceptions that run before it
