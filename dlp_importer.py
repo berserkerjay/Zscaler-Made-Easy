@@ -207,6 +207,39 @@ def load_pack_contents(pack_dir: str) -> Dict[str, Any]:
 
 EMPTY_DICT_REASON = "no patterns/phrases"
 
+# Documented ZIA custom-dictionary limits (Zscaler help: Configuring DLP
+# Dictionaries): 8 patterns per dictionary, 256 bytes per pattern, proximity
+# 0-10000 bytes, PCRE syntax without lookaround. Phrases fuzzy-match unless
+# quoted, which is a design choice rather than a limit.
+DICT_MAX_PATTERNS = 8
+DICT_PATTERN_MAX_BYTES = 256
+DICT_PROXIMITY_MAX = 10000
+_LOOKAROUND_RE = re.compile(r"\(\?<?[=!]")
+
+
+def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
+    """Plain-language reasons a custom dictionary would be rejected by ZIA
+    (empty list when it is within the documented limits)."""
+    out: List[str] = []
+    pats = d.get("patterns") or []
+    if len(pats) > DICT_MAX_PATTERNS:
+        out.append(f"{len(pats)} patterns; ZIA allows at most {DICT_MAX_PATTERNS} per dictionary")
+    for p in pats:
+        pat = p.get("pattern", "") if isinstance(p, dict) else (p[1] if isinstance(p, (list, tuple)) and len(p) > 1 else str(p))
+        if len(str(pat).encode("utf-8")) > DICT_PATTERN_MAX_BYTES:
+            out.append(f"pattern longer than {DICT_PATTERN_MAX_BYTES} bytes: {str(pat)[:40]}…")
+        if _LOOKAROUND_RE.search(str(pat)):
+            out.append(f"pattern uses lookaround, which ZIA's PCRE does not support: {str(pat)[:40]}…")
+    prox = d.get("proximity") or 0
+    try:
+        prox = int(prox)
+    except (TypeError, ValueError):
+        out.append(f"proximity is not a number: {prox!r}")
+        prox = 0
+    if prox < 0 or prox > DICT_PROXIMITY_MAX:
+        out.append(f"proximity {prox} is outside 0-{DICT_PROXIMITY_MAX} bytes")
+    return out
+
 # ZIA caps a DLP dictionary description at 255 characters (the Terraform
 # provider validates the same range). Rule and engine descriptions allow
 # far more, so only dictionaries are clamped.
@@ -266,6 +299,9 @@ def build_dict_kwargs(
     else:
         if not d.get("patterns") and not d.get("phrases"):
             return None, EMPTY_DICT_REASON
+        limit_problems = dictionary_limit_problems(d)
+        if limit_problems:
+            return None, "outside ZIA's documented dictionary limits: " + "; ".join(limit_problems)
         kwargs = {"description": fit_description(d.get("description", ""))}
 
     for opt in ("confidence_threshold", "confidence_level_for_predefined_dict", "hierarchical_identifiers"):
