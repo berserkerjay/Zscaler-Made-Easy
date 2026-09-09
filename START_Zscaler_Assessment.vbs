@@ -24,6 +24,8 @@ On Error GoTo 0
 
 If Not running Then
   ' Run the normal start script hidden (window style 0), output to server.log.
+  ' DLPCHECK_HIDDEN tells the script it is already running silently.
+  sh.Environment("PROCESS")("DLPCHECK_HIDDEN") = "1"
   sh.CurrentDirectory = dir
   sh.Run "cmd /c """"" & dir & "\START_Zscaler_Assessment.bat"" > """ & logPath & """ 2>&1""", 0, False
   WScript.Sleep 4000
