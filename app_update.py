@@ -76,7 +76,18 @@ def _auth_hint(msg: str) -> str:
 
 
 def is_checkout(app_dir: str) -> bool:
-    return os.path.isdir(os.path.join(app_dir, ".git"))
+    """True when git manages this folder: a normal clone (.git directory),
+    a worktree (.git file), or a folder inside a larger checkout. Asking
+    git is the only reliable test."""
+    if os.path.exists(os.path.join(app_dir, ".git")):
+        return True
+    if not shutil.which("git"):
+        return False
+    try:
+        cp = _git(app_dir, "rev-parse", "--is-inside-work-tree", timeout=15)
+        return cp.returncode == 0 and _out(cp).lower() == "true"
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def dirty_files(app_dir: str) -> List[str]:

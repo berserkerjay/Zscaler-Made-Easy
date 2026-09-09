@@ -1684,7 +1684,7 @@ async def health():
         # Where this server runs from, so the operator can find the folder
         # for the update / install / stop scripts without guessing.
         "app_dir": _APP_DIR,
-        "is_git_checkout": os.path.isdir(os.path.join(_APP_DIR, ".git")),
+        "is_git_checkout": _is_git_checkout(),
         "tls": _tls_status(),
         "latest_commit": _latest_remote_commit(),
         "latest_commit_error": _LATEST.get("error"),
@@ -1692,6 +1692,16 @@ async def health():
 
 
 _LATEST: Dict[str, Any] = {"at": 0.0, "sha": None, "error": None}
+
+
+def _is_git_checkout() -> bool:
+    """Ask git whether it manages the app folder (a .git directory, a
+    worktree's .git file, or a folder inside a checkout all count)."""
+    try:
+        import app_update
+        return app_update.is_checkout(_APP_DIR)
+    except Exception:
+        return os.path.exists(os.path.join(_APP_DIR, ".git"))
 
 
 def _latest_remote_commit() -> Optional[str]:
