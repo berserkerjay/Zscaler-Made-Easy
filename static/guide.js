@@ -153,8 +153,9 @@ async function _gdUpdateCheck() {
     const st = await (await fetch('/api/app/update/status?refresh=1', { cache: 'no-store' })).json();
     GD.about = Object.assign({}, GD.about, { git_commit: st.local_commit || GD.about.git_commit, latest_commit: st.remote_commit, latest_commit_error: st.remote_error || null, is_git_checkout: st.is_git_checkout });
     _gdRender();
+    const note = st.reason && st.can_update ? `<div class="gd-upd-line soft">${_gdE(st.reason)}</div>` : '';
     if (st.reason && !st.can_update) _gdUpdateBox(`<span class="gd-upd-line warn">${_gdE(st.reason)}</span>`);
-    else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">GitHub is on build ${_gdE(st.remote_commit)}; this install is on ${_gdE(st.local_commit)}.</span>`);
+    else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">GitHub is on build ${_gdE(st.remote_commit)}; this install is on ${_gdE(st.local_commit)}.</span>${note}`);
     else _gdUpdateBox(`<span class="gd-upd-line ok">Up to date (build ${_gdE(st.local_commit || '?')}).</span>`);
   } catch (e) { _gdUpdateBox(`<span class="gd-upd-line warn">Could not check: ${_gdE(e.message)}</span>`); }
 }
