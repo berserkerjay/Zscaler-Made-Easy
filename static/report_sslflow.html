@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSL Inspection Flow — Zscaler Assessment</title>
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page">
+  <header class="rp-top">
+    <a class="back" href="/">← Back to the assessment</a>
+    <h1>SSL Inspection Flow <span class="sf-live" id="sfLive" hidden><i></i>live</span></h1>
+    <span class="meta" id="rpMeta"></span>
+    <span id="rpControls" hidden>
+      <label class="sf-auto"><input type="checkbox" id="sfAuto"> auto-refresh (2 min)</label>
+      <a class="rp-btn" id="sfRefresh" href="#">Refresh</a>
+      <a class="rp-btn" id="expCsv">CSV</a>
+      <a class="rp-btn" id="expMd">Markdown</a>
+      <a class="rp-btn" id="expJson">JSON</a>
+    </span>
+  </header>
+  <main class="rp-main">
+    <div id="rpBody" class="bp-body" style="padding:0;">
+      <div class="rp-wait"><div class="spin"></div>Reading SSL inspection rules, Web DLP rules and the cloud application catalogue… this tab fills in when the report is ready (5–15 seconds). Keep the assessment tab open.</div>
+    </div>
+  </main>
+  <script src="/static/ssl_flow.js"></script>
+  <script>
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const body = document.getElementById('rpBody');
+    const meta = document.getElementById('rpMeta');
+    let timer = null;
+    const fail = (title, msg) => {
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${_sfE(title)}</div><div>${_sfE(msg)}</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`;
+    };
+    async function load(id) {
+      const r = await fetch(`/api/report/ssl-flow/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
+      renderSslFlow(data, body);
+      meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · refreshed ' + new Date(data.generated_at).toLocaleTimeString() : ''}`;
+      const ctl = document.getElementById('rpControls'); ctl.hidden = false;
+      document.getElementById('sfLive').hidden = !(window.opener && !window.opener.closed);
+      for (const [el, fmt] of [['expCsv', 'csv'], ['expMd', 'markdown'], ['expJson', 'json']]) {
+        document.getElementById(el).href = `/api/report/ssl-flow/export/${encodeURIComponent(id)}?format=${fmt}`;
+      }
+      history.replaceState(null, '', `/report/sslflow?id=${encodeURIComponent(id)}`);
+    }
+    // Live refresh: the assessment tab holds the credentials, so it
+    // generates a fresh report and hands the id back.
+    async function refresh() {
+      const btn = document.getElementById('sfRefresh');
+      if (!window.opener || window.opener.closed || typeof window.opener.__sslFlowGenerate !== 'function') {
+        meta.textContent = 'Open the assessment tab and run the report again to refresh.'; return;
+      }
+      btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Refreshing…';
+      try {
+        const id = await window.opener.__sslFlowGenerate();
+        await load(id);
+      } catch (e) {
+        meta.textContent = `Refresh failed: ${e.message}`;
+      } finally { btn.removeAttribute('aria-disabled'); btn.textContent = 'Refresh'; }
+    }
+    document.getElementById('sfRefresh').addEventListener('click', ev => { ev.preventDefault(); refresh(); });
+    document.getElementById('sfAuto').addEventListener('change', ev => {
+      clearInterval(timer); timer = null;
+      if (ev.target.checked) timer = setInterval(refresh, 120000);
+    });
+    if (q.get('error')) { fail('The report could not be generated', q.get('error')); return; }
+    const id = q.get('id');
+    if (!id) return;  // pending: the assessment tab points this tab at the report when it is ready
+    load(id).catch(e => fail('This report is no longer available', `${e.message}. Reports are kept in memory while the server runs; generate it again from the assessment page.`));
+  })();
+  </script>
+</body>
+</html>

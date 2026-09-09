@@ -101,6 +101,32 @@ placeholder and will not work. They must generate a new one.
    configurations that leak data today. Use **Export** to give them the
    report as Word or CSV.
 
+## 4b. SSL Inspection Flow (what inline DLP can actually see)
+
+Inline Web DLP only reads HTTPS content that an SSL inspection
+**Decrypt** rule has opened. The **SSL Inspection Flow** button under
+*Find the gaps* opens a live diagram in its own tab:
+
+- **Left column** is a traffic class that matters to DLP: file sharing,
+  personal webmail, generative AI, social, collaboration, forums and paste
+  sites, uncategorised sites, remote access, the finance/health/government
+  privacy set, and everything else.
+- **Middle column** is the first enabled SSL rule that matches that class
+  (rules run top-down, first match wins): *decrypted*, *not decrypted*,
+  *blocked*, or *no rule*. The rule name and order are printed so you can
+  find it in the portal.
+- **Right column** is what inline Web DLP can do with it: enforcing,
+  monitor only, no rule, or *blind* because the traffic stayed encrypted.
+
+Red dashed lines and the **GAP** badge mark traffic DLP cannot see. Click
+a row for the deciding rule, the scoped exceptions that run before it
+(an executive bypass group, for example), shadowed decrypt rules, the
+DLP rules that target the traffic, and the fix. The gap list below the
+diagram is sorted by severity. **Refresh** (or the auto-refresh box)
+re-reads the tenant through the assessment tab, so keep that tab open.
+Zscaler's own *Recommended Exemptions* are recognised and listed
+separately: they cover certificate-pinned apps and should stay enabled.
+
 ## 5. Choose a policy pack (step 4)
 
 Click **Deploy Policy Packs**. Each card says who it is for and when to use

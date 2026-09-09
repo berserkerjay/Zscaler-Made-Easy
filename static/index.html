@@ -583,6 +583,11 @@
                 title="Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection. Opens in a new tab.">
           <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
         </button>
+        <button class="btn btn-ghost" onclick="openSslFlowTab()"
+                aria-label="Open the live SSL Inspection Flow diagram: what is decrypted, what is not, and where inline DLP is blind (opens in a new tab)"
+                title="Live flow diagram: for each DLP-relevant traffic class, which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps highlighted. Opens in a new tab.">
+          <span aria-hidden="true">🔐</span> SSL Inspection Flow
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -5055,6 +5060,28 @@ async function openBypassReportTab() {
     w.location = `/report/bypass?error=${encodeURIComponent(e.message)}`;
   }
 }
+
+// SSL Inspection Flow: same pattern as the bypass report, in its own tab.
+// The tab can ask this page for a fresh report (__sslFlowGenerate) so it
+// stays live without ever holding the credentials itself.
+async function openSslFlowTab() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const w = window.open('/report/sslflow?pending=1', '_blank');
+  if (!w) { alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.'); return; }
+  try {
+    const id = await window.__sslFlowGenerate();
+    w.location = `/report/sslflow?id=${encodeURIComponent(id)}`;
+  } catch (e) {
+    w.location = `/report/sslflow?error=${encodeURIComponent(e.message)}`;
+  }
+}
+window.__sslFlowGenerate = async function () {
+  const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
+  const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  return data.report_id;
+};
 
 async function runBypassReport() {
   const body = migrateValidateCreds(); if (!body) return;  // pops credential alert if missing
