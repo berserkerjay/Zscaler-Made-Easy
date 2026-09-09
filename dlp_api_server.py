@@ -134,6 +134,17 @@ app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 app.add_middleware(OriginCheckMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+@app.middleware("http")
+async def _no_stale_static(request, call_next):
+    """The GUI is updated in place by UPDATE_Zscaler_Assessment.bat; make
+    browsers revalidate every static file so an update shows up on the next
+    load instead of after a hard refresh."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/report/view", "/report/bypass"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
+    return response
 app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(ALLOWED_ORIGINS),  # No wildcard. Localhost only.
@@ -196,12 +207,16 @@ def _inject_gui_addons(html: str) -> str:
     (nothing follows it), so anchor on those — a naive first-match replace
     of </body> lands inside the script, truncates it, and kills the app."""
     for name, kind in GUI_ADDONS:
-        if not os.path.exists(os.path.join(STATIC_DIR, name)):
+        path = os.path.join(STATIC_DIR, name)
+        if not os.path.exists(path):
             continue
+        # Cache-buster: the file's mtime, so a browser that cached the old
+        # add-on after an update fetches the new one without Ctrl+F5.
+        v = int(os.path.getmtime(path))
         if kind == "style":
-            tag, anchor, pos = f'<link rel="stylesheet" href="/static/{name}">\n', "</head>", html.find("</head>")
+            tag, anchor, pos = f'<link rel="stylesheet" href="/static/{name}?v={v}">\n', "</head>", html.find("</head>")
         else:
-            tag, anchor, pos = f'<script src="/static/{name}"></script>\n', "</body>", html.rfind("</body>")
+            tag, anchor, pos = f'<script src="/static/{name}?v={v}"></script>\n', "</body>", html.rfind("</body>")
         if pos >= 0:
             html = html[:pos] + tag + html[pos:]
     return html
@@ -1573,7 +1588,28 @@ async def health():
         # for the update / install / stop scripts without guessing.
         "app_dir": _APP_DIR,
         "is_git_checkout": os.path.isdir(os.path.join(_APP_DIR, ".git")),
+        "latest_commit": _latest_remote_commit(),
     }
+
+
+_LATEST: Dict[str, Any] = {"at": 0.0, "sha": None}
+
+
+def _latest_remote_commit() -> Optional[str]:
+    """Short sha of origin/main on GitHub (best effort, cached 10 minutes),
+    so the GUI can say whether this install is behind."""
+    import subprocess, time as _t
+    if _t.time() - _LATEST["at"] < 600:
+        return _LATEST["sha"]
+    _LATEST["at"] = _t.time()
+    try:
+        out = subprocess.check_output(["git", "ls-remote", "origin", "-h", "refs/heads/main"],
+                                      cwd=_APP_DIR, stderr=subprocess.DEVNULL, timeout=4).decode()
+        sha = out.split()[0][:7] if out.strip() else None
+    except Exception:
+        sha = None
+    _LATEST["sha"] = sha
+    return sha
 
 
 @app.get("/api/checks")

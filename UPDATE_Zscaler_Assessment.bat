@@ -31,17 +31,36 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-git fetch origin
-git checkout main
-git pull origin main
+git rev-parse --is-inside-work-tree >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo       ERROR: git pull failed. Check your connection and credentials.
+    echo       ERROR: this folder is not a git checkout, so it cannot be updated in place:
+    echo       %CD%
+    echo       Clone the repository and run INSTALL_Zscaler_Assessment.bat from the clone:
+    echo         git clone https://github.com/berserkerjay/DLP-Check.git
     pause
     exit /b 1
 )
+git fetch origin
+if errorlevel 1 (
+    echo       ERROR: could not reach GitHub. Check your connection or proxy.
+    pause
+    exit /b 1
+)
+git checkout main
+git pull --ff-only origin main
+if errorlevel 1 (
+    echo.
+    echo       ERROR: git pull failed. Usually a file in this folder was edited by hand.
+    echo       Run:  git status   to see which, then  git checkout -- ^<file^>  to discard, and try again.
+    pause
+    exit /b 1
+)
+for /f "delims=" %%h in ('git rev-parse --short HEAD') do set "LOCAL_SHA=%%h"
+for /f "delims=" %%h in ('git rev-parse --short origin/main') do set "REMOTE_SHA=%%h"
 echo.
-echo       Current commit:
+echo       Now on build %LOCAL_SHA% (latest on GitHub: %REMOTE_SHA%)
+if not "%LOCAL_SHA%"=="%REMOTE_SHA%" echo       WARNING: the folder is not on the latest build. Check the messages above.
 git log --oneline -1
 echo.
 
