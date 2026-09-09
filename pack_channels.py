@@ -250,6 +250,104 @@ def expand_sub_rules(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Channel targets: which DLP channels a pack is deployed into
+# ---------------------------------------------------------------------------
+# The operator can decide per pack which of the four DLP channels receive
+# the pack's engines. A channel the pack already has rules for is deployed
+# as packed; a channel the pack has no rules for gets one monitor-only
+# extension rule carrying every engine of the pack; a channel that is
+# deselected is skipped. Containment rules (Cloud App Control, File Type,
+# URL, SSL) carry no engines and are not part of the choice.
+
+DLP_CHANNELS = (WEB, ENDPOINT, SAAS, EMAIL)
+EXTENSION_TAG = {WEB: "Web DLP Monitor", ENDPOINT: "Endpoint DLP Monitor", SAAS: "SaaS DLP Monitor", EMAIL: "Email DLP Monitor"}
+
+
+def normalize_targets(targets: Any) -> Optional[List[str]]:
+    """A list of DLP channel names, or None when no choice was made
+    (deploy the pack exactly as packed)."""
+    if targets is None:
+        return None
+    out: List[str] = []
+    for t in targets or []:
+        t = str(t).strip().lower()
+        if t in DLP_CHANNELS and t not in out:
+            out.append(t)
+    return out
+
+
+def extension_name(channel: str, prefix: str, pack_name: str) -> str:
+    tag = EXTENSION_TAG[channel]
+    prefix = prefix or ""
+    if prefix.endswith("_"):
+        return prefix + tag.upper().replace(" ", "_")
+    if prefix:
+        return prefix + tag
+    stem = "".join(ch for ch in (pack_name or "Pack") if ch.isalnum() or ch in " -")[:24].strip()
+    return f"{stem} {tag}".strip()
+
+
+def extension_policy(channel: str, *, pack_name: str, prefix: str, engine_names: Sequence[str],
+                     pack_id: str = "") -> Dict[str, Any]:
+    """A monitor-only rule that puts the pack's engines into a channel the
+    pack has no rules for. Disabled, INFO severity, monitor action, so it
+    only ever adds visibility until the operator enables it."""
+    p: Dict[str, Any] = {
+        "name": extension_name(channel, prefix, pack_name),
+        "channel": channel,
+        "description": (f"{label(channel)}: monitor the {pack_name} engines on this channel. Added by the channel selection "
+                        f"in Deploy Policy Packs (the pack ships no {label(channel)} rule). Monitor-only; enable when incidents look right."),
+        "action": default_action(channel),
+        "state": "DISABLED",
+        "severity": "RULE_SEVERITY_INFO",
+        "engines": list(engine_names),
+        "extension": True,
+    }
+    if channel == WEB:
+        p["protocols"] = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
+        p["rank"] = 7
+    elif channel == ENDPOINT:
+        p.update({"data_transfer_method": "ANY", "device_trust_levels": list(ENDPOINT_TRUST_LEVELS),
+                  "user_risk_score_levels": list(ENDPOINT_RISK_LEVELS), "without_content_inspection": False, "eun_enabled": False, "rank": 7})
+    elif channel == SAAS:
+        p.update({"saas_type": "OFLCASB_DLP_FILE", "tenants": "any", "collaboration_scope": ["ANY"], "rank": 7})
+    elif channel == EMAIL:
+        p.update({"tenants": "any"})
+    return p
+
+
+def apply_channel_targets(policies: List[Dict[str, Any]], targets: Optional[Sequence[str]], *, pack_name: str,
+                          prefix: str, engine_names: Sequence[str], pack_id: str = "") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Filter a pack's policies to the chosen DLP channels and add an
+    extension rule for every chosen channel the pack has no rule for.
+    Returns (policies, note) where note lists what was skipped and added."""
+    norm = normalize_targets(targets)
+    note: Dict[str, Any] = {"targets": norm, "skipped_channels": [], "skipped_rules": [], "extended": [], "warnings": []}
+    if norm is None:
+        return list(policies), note
+    present = {channel_of(p) for p in policies}
+    kept: List[Dict[str, Any]] = []
+    for p in policies:
+        ch = channel_of(p)
+        if ch in DLP_CHANNELS and ch not in norm:
+            note["skipped_rules"].append(p.get("name", "?"))
+            if ch not in note["skipped_channels"]:
+                note["skipped_channels"].append(ch)
+            continue
+        kept.append(p)
+    for ch in norm:
+        if ch in present:
+            continue
+        if not engine_names:
+            note["warnings"].append(f"{label(ch)} was selected but the pack has no engines to put on that channel; nothing added.")
+            continue
+        p = extension_policy(ch, pack_name=pack_name, prefix=prefix, engine_names=engine_names, pack_id=pack_id)
+        kept.append(p)
+        note["extended"].append({"name": p["name"], "channel": ch})
+    return kept, note
+
+
 def has_engines(channel: str) -> bool:
     return bool(CHANNELS.get(channel, {}).get("engines", True))
 

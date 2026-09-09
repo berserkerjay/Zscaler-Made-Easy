@@ -217,6 +217,38 @@ from a tool. Give them the same baseline as a Terraform workspace instead:
 The repository also carries a ready workspace per pack under
 `terraform/<pack>/`, validated against the real provider on every commit.
 
+## 5d. Choose the channels a pack goes into
+
+Every pack card has a **Deploy the engines into** row with four boxes:
+Inline Web DLP, Endpoint DLP, SaaS Security, Outbound Email DLP. Boxes
+are ticked for the channels the pack ships rules for.
+
+- **Tick a channel the pack has no rule for** and the deploy adds one
+  monitor-only rule on that channel carrying every engine of the pack
+  (for example *ZBP-Endpoint DLP Monitor*). It arrives disabled at INFO
+  severity, so it only adds visibility until you enable it. It needs the
+  same prerequisites as any rule on that channel (Endpoint DLP licensed,
+  a SaaS or email tenant onboarded); preflight says so if they are
+  missing.
+- **Untick a channel the pack has rules for** and those rules are
+  skipped. Containment rules (Cloud App Control, File Type, URL, SSL) are
+  not part of the choice and deploy as packed.
+- The choice is part of the approved plan, is remembered per pack on
+  this laptop, and is used by *Where is this tenant?* and the Terraform
+  hand-off too.
+
+## 5e. Undo a deployment
+
+Every deployment made from this app is recorded under **Previous
+deployments** at the bottom of the pack list, and the Deploy step ends
+with an **Undo this deployment** button. Undo deletes exactly the objects
+that deployment created, in order: rules (sub-rules first), endpoint
+application groups, engines, dictionaries. It never touches objects that
+already existed, and it leaves alone anything the customer renamed or
+that another rule still uses, listing those so you can decide. Undo needs
+write mode and the tenant fields set to the same tenant; the deletions
+need activation in ZIA like any change.
+
 ## 6. Preflight, review, approve
 
 1. Toggle the pack(s) on and click **Run preflight**. Nothing is written.

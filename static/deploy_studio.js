@@ -6,6 +6,8 @@
 const DZ = {
   packs: [], selected: new Set(), details: {}, open: new Set(), journey: {}, write: null,
   options: { use_rank_0: false, apply_tweaks: true },
+  channels: {},            // pack id -> DLP channels to deploy into (web/endpoint/saas/email)
+  deployments: null, undoBusy: null, undoResult: null,
   step: 1, report: null, result: null, busy: false, consent: false, error: '',
 };
 const DZ_STEPS = ['Select packs', 'Preflight', 'Approve', 'Deploy'];
@@ -30,6 +32,7 @@ const DZ_STATUS = {
   failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕', help: 'The API refused this write. The error text is shown; other objects were not affected.' },
 };
 const DZ_KIND = { dictionary: 'Dictionary', engine: 'Engine', app_group: 'App group', policy: 'Policy', tweak: 'Tweak', resource: 'Prerequisite', template: 'Template' };
+const DZ_KIND_PLURAL = { dictionary: ['dictionary', 'dictionaries'], engine: ['engine'], app_group: ['app group'], policy: ['rule'], tweak: ['tweak'] };
 const DZ_KIND_HELP = {
   dictionary: 'What to look for: phrases and/or patterns (for example "MRN" near a 7-digit number).',
   engine: 'How dictionaries combine into a decision with AND / OR and match counts. Rules point at engines.',
@@ -57,6 +60,66 @@ function _dzChannelChips(channels) {
   if (!channels) return '';
   return Object.keys(DZ_CHANNEL).filter(c => c !== 'web' && channels[c])
     .map(c => `<span class="dz-chip kind-channel" title="${_dzChan(c)} DLP rules">${channels[c]} ${_dzChan(c)}</span>`).join('');
+}
+
+// ── Channel targets ───────────────────────────────────────────────
+// Which DLP channels a pack is deployed into. Default: the channels the
+// pack ships rules for. A ticked channel the pack has no rule for gets a
+// monitor-only extension rule carrying the pack's engines; an unticked
+// channel is skipped. Containment rules (Cloud App Control, File Type,
+// URL, SSL) are not part of the choice.
+const DZ_DLP = ['web', 'endpoint', 'saas', 'email'];
+const DZ_DLP_LABEL = { web: 'Inline Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security', email: 'Outbound Email DLP' };
+const DZ_LS_CHANNELS = 'zassess_pack_channels';
+function _dzLoadChannels() {
+  try { DZ.channels = JSON.parse(localStorage.getItem(DZ_LS_CHANNELS) || '{}') || {}; } catch (e) { DZ.channels = {}; }
+}
+function _dzSaveChannels() {
+  try { localStorage.setItem(DZ_LS_CHANNELS, JSON.stringify(DZ.channels)); } catch (e) { /* storage unavailable */ }
+}
+function _dzDefaultChannels(p) { return DZ_DLP.filter(c => (p.channels || {})[c]); }
+function _dzChannelsFor(id) {
+  const p = DZ.packs.find(x => x.id === id);
+  if (!p) return [];
+  if (!Array.isArray(DZ.channels[id])) return _dzDefaultChannels(p);
+  return DZ.channels[id].filter(c => DZ_DLP.includes(c));
+}
+function _dzSetChannel(id, ch, on) {
+  const cur = new Set(_dzChannelsFor(id));
+  if (on) cur.add(ch); else cur.delete(ch);
+  DZ.channels[id] = DZ_DLP.filter(c => cur.has(c));
+  _dzSaveChannels();
+  _dzRenderSelect();
+}
+function _dzTargets(ids) {
+  const out = {};
+  for (const id of ids) out[id] = _dzChannelsFor(id);
+  return out;
+}
+function _dzChannelsHtml(p) {
+  const chosen = new Set(_dzChannelsFor(p.id));
+  const has = c => (p.channels || {})[c] || 0;
+  const engines = p.engines || 0;
+  const boxes = DZ_DLP.map(c => {
+    const n = has(c);
+    const disabled = !n && !engines;
+    const hint = n ? `${_dzN(n, 'rule')} in the pack` : (engines ? `adds a monitor-only rule with the pack's ${_dzN(engines, 'engine')}` : 'no engines in this pack to put here');
+    return `<label class="dz-chan ${chosen.has(c) ? 'on' : ''} ${disabled ? 'off' : ''}" title="${_dzE(DZ_CHANNEL_HELP[c] || '')}" onclick="event.stopPropagation()">
+      <input type="checkbox" ${chosen.has(c) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="_dzSetChannel('${_dzE(p.id)}', '${c}', this.checked)" aria-label="${_dzE(DZ_DLP_LABEL[c])}">
+      <span class="nm">${_dzE(DZ_DLP_LABEL[c])}</span><span class="hint">${_dzE(hint)}</span></label>`;
+  }).join('');
+  const added = DZ_DLP.filter(c => chosen.has(c) && !has(c) && engines).length;
+  const skipped = DZ_DLP.filter(c => !chosen.has(c) && has(c)).length;
+  return `<div class="dz-channels" onclick="event.stopPropagation()">
+    <div class="dz-channels-h">Deploy the engines into <span class="d">${added ? `· ${_dzN(added, 'channel')} added with a monitor rule` : ''}${skipped ? ` · ${_dzN(skipped, 'packed channel')} skipped` : ''}</span></div>
+    <div class="dz-chans">${boxes}</div></div>`;
+}
+function _dzTargetsSummary(ids) {
+  return ids.map(id => {
+    const p = DZ.packs.find(x => x.id === id) || { id };
+    const ch = _dzChannelsFor(id);
+    return `${_dzE(p.name || id)}: ${ch.length ? ch.map(c => _dzE(DZ_DLP_LABEL[c])).join(', ') : 'containment rules only'}`;
+  }).join(' · ');
 }
 
 function _dzCreds() {
@@ -102,8 +165,10 @@ async function openDlpPacksModal() {
   m.classList.add('is-open');
   document.body.style.overflow = 'hidden';
   DZ.step = 1; DZ.report = null; DZ.result = null; DZ.consent = false; DZ.error = '';
+  _dzLoadChannels();
   _dzRender();
   _dzLoadWriteMode();
+  _dzLoadDeployments();
   try {
     const r = await fetch('/api/dlp-packs', { cache: 'no-store' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -216,6 +281,7 @@ function _dzRenderSelect() {
           <span class="dz-chip kind-policy">${_dzN(p.policies || 0, 'policy', 'policies')}</span>
           ${_dzChannelChips(p.channels)}
         </div>
+        ${_dzChannelsHtml(p)}
         <div class="dz-links">
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
           ${p.baseline ? `<button type="button" class="dz-link" title="Read-only: places every object of this baseline in the tenant (missing, deployed, monitoring, enforcing, customized) and shows the stage reached and the next steps." onclick="event.stopPropagation(); _dzJourney('${_dzE(p.id)}')">${(DZ.journey[p.id] || {}).busy ? 'Measuring…' : 'Where is this tenant?'}</button>` : ''}
@@ -237,7 +303,8 @@ function _dzRenderSelect() {
           <div><div class="t">Rank 0 (override rule ordering)</div><div class="d">New rules take precedence over rules made by lower-ranked admins. Only for resolving ordering conflicts.</div></div>
           <label class="dz-switch"><input type="checkbox" ${DZ.options.use_rank_0 ? 'checked' : ''} onchange="DZ.options.use_rank_0=this.checked" aria-label="Use rank 0"><span class="track"><span class="knob"></span></span></label>
         </div>
-      </div>`;
+      </div>
+      ${_dzDeploymentsHtml()}`;
   }
   const sel = DZ.packs.filter(p => DZ.selected.has(p.id));
   const tot = k => sel.reduce((a, p) => a + (p[k] || 0), 0);
@@ -280,7 +347,7 @@ async function _dzJourney(id) {
   try {
     const r = await fetch('/api/dlp-packs/journey', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [id], ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: [id], channel_targets: _dzTargets([id]), ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
@@ -303,7 +370,7 @@ async function _dzTerraform(ids) {
     const creds = _dzCreds();
     const r = await fetch('/api/dlp-packs/terraform', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: ids, use_rank_0: DZ.options.use_rank_0, ...creds }),
+      body: JSON.stringify({ pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), ...creds }),
     });
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
@@ -395,7 +462,7 @@ async function _dzRunPreflight() {
   try {
     const r = await fetch('/api/dlp-packs/preflight', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
@@ -414,7 +481,7 @@ function _dzRow(i, statusKey, extra) {
   return `<div class="dz-row ${st.cls}">
     <span class="ic" aria-hidden="true">${st.icon}</span>
     <div><div class="nm">${_dzE(i.name)}</div>${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}</div>
-    <div class="tags"><span class="dz-chip kind-${i.kind}" title="${_dzE(DZ_KIND_HELP[i.kind] || '')}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel" title="${_dzE(DZ_CHANNEL_HELP[i.detail.channel] || '')}">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}<span class="dz-chip" title="${_dzE(st.help || '')}">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip" title="Defined by pack ${_dzE(p)}">${_dzE(p)}</span>`).join('')}</div>
+    <div class="tags"><span class="dz-chip kind-${i.kind}" title="${_dzE(DZ_KIND_HELP[i.kind] || '')}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel" title="${_dzE(DZ_CHANNEL_HELP[i.detail.channel] || '')}">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}${i.extension ? `<span class="dz-chip kind-baseline" title="Added by your channel selection: a monitor-only rule carrying the pack's engines on a channel the pack ships no rule for.">channel add-on</span>` : ''}<span class="dz-chip" title="${_dzE(st.help || '')}">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip" title="Defined by pack ${_dzE(p)}">${_dzE(p)}</span>`).join('')}</div>
   </div>`;
 }
 
@@ -527,7 +594,8 @@ function _dzRenderApprove() {
     <div class="dz-hero">
       <span class="dz-status ${R.status}">${R.status === 'warnings' ? 'Review the warnings' : 'Ready'}</span>
       <div><div class="lead">${_dzN(writes.length, 'change')} to ${_dzE(R.tenant_label || 'your tenant')}</div>
-      <div class="sub">${_dzN([...DZ.selected].length, 'pack')} · ${R.options.use_rank_0 ? 'rank 0 on' : 'standard ranking'} · ${R.options.apply_tweaks ? 'confidence tweaks on' : 'no confidence tweaks'}</div></div>
+      <div class="sub">${_dzN([...DZ.selected].length, 'pack')} · ${R.options.use_rank_0 ? 'rank 0 on' : 'standard ranking'} · ${R.options.apply_tweaks ? 'confidence tweaks on' : 'no confidence tweaks'}</div>
+      <div class="sub">Channels — ${_dzTargetsSummary([...DZ.selected])}</div></div>
     </div>
     ${DZ.write && !DZ.write.enabled ? _dzWriteBanner() : ''}
     ${warns.length ? `<div class="dz-h">Warnings<span class="count">${warns.length}</span></div><div class="dz-rows">${warns.map(w => `<div class="dz-row st-differs"><span class="ic" aria-hidden="true">!</span><div class="rs" style="margin-top:0.25rem;color:var(--text);">${_dzE(w)}</div><div></div></div>`).join('')}</div>` : ''}
@@ -559,7 +627,7 @@ async function _dzApply() {
   try {
     const r = await fetch('/api/dlp-packs/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (r.status === 409 && data.status) { DZ.result = data; }
@@ -630,13 +698,85 @@ function _dzRenderDeploy() {
     ${(X.logs || []).length ? `<details class="dz-fold"><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(X.logs.join('\n'))}</div></details>` : ''}`;
   if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
   foot.innerHTML = `
-    <div class="dz-summary">plan ${_dzE((X.plan_hash || '').slice(0, 12))}</div>
+    <div class="dz-summary">plan ${_dzE((X.plan_hash || '').slice(0, 12))}${X.deployment_id ? ' · recorded for undo' : ''}${X.deployment_error ? ` · ${_dzE(X.deployment_error)}` : ''}</div>
     <div class="dz-actions">
+      ${X.deployment_id ? `<button type="button" class="dz-btn" title="Delete everything this deployment just created" onclick="_dzUndoLast()">Undo this deployment</button>` : ''}
       <button type="button" class="dz-btn" onclick="DZ.step=1;DZ.report=null;DZ.result=null;_dzRender()">Deploy more</button>
       <button type="button" class="dz-btn primary" onclick="closeDlpPacksModal()">Done</button>
     </div>`;
 }
 
+
+// ── Previous deployments and undo ─────────────────────────────────
+// Every deploy made from here is recorded (what was created, where).
+// Undo deletes exactly those objects, newest first in dependency order,
+// and leaves alone anything the customer renamed or that is still in use.
+async function _dzLoadDeployments() {
+  try {
+    const r = await fetch('/api/deployments', { cache: 'no-store' });
+    DZ.deployments = r.ok ? ((await r.json()).deployments || []) : [];
+  } catch (e) { DZ.deployments = []; }
+  if (DZ.step === 1) _dzRenderSelect();
+}
+function _dzDeploymentsHtml() {
+  const rows = DZ.deployments;
+  if (rows === null) return '';
+  const writeOn = !!(DZ.write && DZ.write.enabled);
+  const fmt = iso => { try { return new Date(iso).toLocaleString(); } catch (e) { return iso || ''; } };
+  const kinds = k => Object.entries(k || {}).map(([kind, n]) => _dzN(n, ...(DZ_KIND_PLURAL[kind] || [kind]))).join(', ');
+  const chans = ct => Object.entries(ct || {}).map(([pid, chs]) => `${_dzE(pid)}: ${(chs || []).map(c => DZ_DLP_LABEL[c] || c).join(', ') || 'as packed'}`).join(' · ');
+  const list = rows.slice(0, 12).map(d => {
+    const done = d.remaining === 0 && d.created > 0;
+    const busy = DZ.undoBusy === d.id;
+    const res = DZ.undoResult && DZ.undoResult.id === d.id ? DZ.undoResult : null;
+    return `<div class="dz-row ${done ? 'st-reuse' : 'st-ok'}">
+      <span class="ic" aria-hidden="true">${done ? '↺' : '✓'}</span>
+      <div><div class="nm">${_dzE(fmt(d.at))} · ${_dzE(d.tenant_label || '')} · ${_dzE((d.packs || []).join(', '))}</div>
+        <div class="rs">${_dzE(kinds(d.created_by_kind))} created${d.remaining !== d.created ? ` · ${d.created - d.remaining} already undone` : ''}${d.channel_targets && Object.keys(d.channel_targets).length ? ` · ${chans(d.channel_targets)}` : ''}${done ? ` · undone ${_dzE(fmt(d.undone_at))}` : ''}</div>
+        ${res ? `<div class="rs">${_dzE(res.text)}</div>` : ''}</div>
+      <div class="tags">${done ? '<span class="dz-chip">Undone</span>' : `<button type="button" class="dz-btn quiet dz-btn-sm" ${busy || !writeOn ? 'disabled' : ''} title="${writeOn ? 'Delete what this deployment created' : 'Enable write mode to undo'}" onclick="event.stopPropagation(); _dzUndo('${_dzE(d.id)}')">${busy ? 'Undoing…' : `Undo (${d.remaining})`}</button>`}</div>
+    </div>`;
+  }).join('');
+  return `<div class="dz-h" style="margin-top:1rem;">Previous deployments from this app<span class="count">${rows.length}</span></div>
+    ${rows.length ? `<div class="dz-rows">${list}</div><div class="dz-flow-hint">Undo deletes only the objects a deployment created here, in order (rules, application groups, engines, dictionaries). Objects the customer renamed or that another rule still uses are left alone and listed. Deletions need activation in ZIA like any change.${writeOn ? '' : ' Enable write mode to undo.'}</div>`
+              : `<div class="dz-flow-hint">Nothing deployed from this app yet. Every deploy is recorded here so it can be undone.</div>`}`;
+}
+async function _dzUndo(id) {
+  const d = (DZ.deployments || []).find(x => x.id === id);
+  if (!d) return;
+  const kinds = Object.entries(d.created_by_kind || {}).map(([k, n]) => _dzN(n, ...(DZ_KIND_PLURAL[k] || [k]))).join(', ');
+  if (!window.confirm(`Undo the deployment of ${(d.packs || []).join(', ')} made ${new Date(d.at).toLocaleString()} in ${d.tenant_label}?\n\nThis DELETES the ${d.remaining} object${d.remaining === 1 ? '' : 's'} it created (${kinds}) from the tenant, in dependency order. Objects the customer renamed, and engines or dictionaries another rule still uses, are left alone and reported.\n\nThe tenant fields on the page must be for ${d.tenant_label}.`)) return;
+  DZ.undoBusy = id; DZ.undoResult = null; _dzRenderSelect();
+  try {
+    const r = await fetch(`/api/deployments/${encodeURIComponent(id)}/undo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true, ..._dzCreds() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    const s = data.summary || {};
+    const parts = [];
+    if (s.deleted) parts.push(`${s.deleted} deleted`);
+    if (s.gone) parts.push(`${s.gone} already gone`);
+    if (s.skipped) parts.push(`${s.skipped} left alone (renamed)`);
+    if (s.failed) parts.push(`${s.failed} could not be deleted`);
+    const detail = (data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped').map(x => `${x.name}: ${x.error || x.reason}`).join('; ');
+    DZ.undoResult = { id, text: `Undo ${data.status}: ${parts.join(', ') || 'nothing to do'}.${detail ? ' ' + detail : ''}${data.activation_required ? ' Activate in ZIA to make the deletions live.' : ''}` };
+    announce(`Undo ${data.status}.`);
+    await _dzLoadDeployments();
+  } catch (e) {
+    DZ.undoResult = { id, text: `Undo failed: ${e.message}` };
+  } finally {
+    DZ.undoBusy = null; if (DZ.step === 1) _dzRenderSelect();
+  }
+}
+async function _dzUndoLast() {
+  const id = DZ.result && DZ.result.deployment_id;
+  if (!id) return;
+  await _dzLoadDeployments();
+  DZ.step = 1; DZ.report = null; DZ.result = null; _dzRender();
+  _dzUndo(id);
+}
 
 // ── Flow diagram ────────────────────────────────────────────────
 // Visualises how the selected packs wire into the tenant:
