@@ -177,6 +177,42 @@ async def _safe_exception_handler(request: Request, exc: Exception):
 # Serve static files (web GUI)
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(_APP_DIR, "static")
+
+
+def _load_local_settings() -> None:
+    """local_settings.env next to the app (git-ignored): KEY=VALUE lines for
+    REQUESTS_CA_BUNDLE, HTTPS_PROXY, ZSCALER_* and the like. Values already
+    in the environment win. The .bat launchers do the same with
+    local_settings.bat; this covers running the server directly."""
+    path = os.path.join(_APP_DIR, "local_settings.env")
+    if not os.path.exists(path):
+        return
+    try:
+        for line in open(path, encoding="utf-8"):
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip('"').strip("'")
+            if k and k not in os.environ:
+                os.environ[k] = v
+    except OSError:
+        pass
+
+
+_load_local_settings()
+
+
+def _tls_status() -> Dict[str, Any]:
+    """What the operator needs to know about TLS inspection and proxies."""
+    ca = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE") or ""
+    return {
+        "ca_bundle": ca,
+        "ca_bundle_exists": bool(ca) and os.path.exists(ca),
+        "https_proxy": bool(os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")),
+        "local_settings_bat": os.path.exists(os.path.join(_APP_DIR, "local_settings.bat")),
+        "local_settings_env": os.path.exists(os.path.join(_APP_DIR, "local_settings.env")),
+    }
 PACKS_ROOT = _APP_DIR
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -809,9 +845,13 @@ def _explain_connection_error(detail: str) -> Dict[str, Any]:
         fix = ("Check the client ID for typos. The secret is shown only once when the API client is created; if you copied it later, "
                "generate a new secret in ZIdentity > Integration > API Clients and paste it fresh.")
     elif "certificate" in low or "ssl" in low or "tls" in low:
+        tls = _tls_status()
         cause = "The connection to Zscaler was intercepted by TLS inspection (usually Zscaler Client Connector or a proxy on this machine)."
-        fix = ("Export your organisation's root CA certificate as a .pem file and start the tool with "
-               "REQUESTS_CA_BUNDLE=<path to that file>, or run from a machine that is not being inspected.")
+        fix = ("Export your organisation's root CA certificate as a .pem file, then put "
+               "set REQUESTS_CA_BUNDLE=C:\\path\\to\\root-ca.pem in local_settings.bat next to the app (copy local_settings.bat.example; "
+               "it is git-ignored, so it survives updates and fresh clones) and restart the server. "
+               + ("A CA bundle is configured but the file does not exist: " + tls["ca_bundle"] if tls["ca_bundle"] and not tls["ca_bundle_exists"]
+                  else ("No CA bundle is configured right now." if not tls["ca_bundle"] else "")))
     elif "tunnel connection failed" in low or "proxyerror" in low or "max retries" in low or "name resolution" in low or "nodename" in low:
         cause = "This machine could not reach Zscaler's login service at all (network, proxy or DNS)."
         fix = ("Confirm the vanity domain is the short name from your login URL (acme for acme.zslogin.net). "
@@ -1588,6 +1628,7 @@ async def health():
         # for the update / install / stop scripts without guessing.
         "app_dir": _APP_DIR,
         "is_git_checkout": os.path.isdir(os.path.join(_APP_DIR, ".git")),
+        "tls": _tls_status(),
         "latest_commit": _latest_remote_commit(),
     }
 
