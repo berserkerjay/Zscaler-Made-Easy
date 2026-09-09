@@ -280,7 +280,8 @@ def load_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         "meta": meta,
         "dictionaries": _load_json(configs, "dlp_dictionaries.json"),
         "engines": _load_json(configs, "dlp_engines.json"),
-        "policies": _load_json(configs, "dlp_policies.json"),
+        "policies": pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")),
+        "app_groups": _load_json(configs, "endpoint_application_groups.json"),
     }
 
 
@@ -392,6 +393,15 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     # ---- rules ----------------------------------------------------------------
     engine_labels = {e["name"]: S.get("engine", e["name"]) for e in src["engines"]}
     rules = ["# Rules — one resource per pack policy. New rules take var.rule_starting_order + N in their channel.\n\n"]
+    group_labels: Dict[str, str] = {}
+    for g in src.get("app_groups") or []:
+        lbl = S.get("appgroup", g["name"])
+        group_labels[g["name"]] = lbl
+        rules.append(f'resource "zia_endpoint_dlp_application_group" "{lbl}" {{\n'
+                     + _attr("name", hcl_str(g["name"]))
+                     + _attr("description", hcl_str(_provenance(meta, pack_id, g.get("description", ""))))
+                     + _attr("resources", hcl_list([str(x) for x in (g.get("resources") or [])]))
+                     + "}\n\n")
     lookups: List[str] = []
     variables_extra: List[str] = []
     rule_refs: List[str] = []
@@ -402,12 +412,18 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         res = RESOURCE_BY_CHANNEL.get(channel)
         if not res:
             continue
+        sub = bool(p.get("parent_rule")) and channel == pc.ENDPOINT
+        if sub:
+            res = "zia_endpoint_dlp_sub_rules"
         label = S.get("rule", p["name"])
         rule_refs.append(f"{res}.{label}")
         idx = per_channel_index.get(channel, 0)
-        per_channel_index[channel] = idx + 1
+        if not sub:
+            per_channel_index[channel] = idx + 1
         item = plan.get(("policy", p["name"]))
         existing_order = ((item or {}).get("tenant") or {}).get("order")
+        if sub:
+            existing_order = existing_order or int(p.get("order") or 1)
         order_expr = str(int(existing_order)) if existing_order else f"var.rule_starting_order + {idx}"
 
         if channel in pc.CONTROL_CHANNELS:
@@ -426,6 +442,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         r = [f'resource "{res}" "{label}" {{\n']
         r.append(_attr("name", hcl_str(p["name"])))
         r.append(_attr("description", hcl_str(_provenance(meta, pack_id, p.get("description", "")))))
+        if sub:
+            r.append(_attr("parent_rule", f"zia_endpoint_dlp_rules.{S.get('rule', str(p['parent_rule']))}.rule_id"))
         # Keep an existing rule where the admin placed it (gap mode); otherwise stack new rules from the start order.
         r.append(_attr("order", str(int(existing_order)) if existing_order else f"var.rule_starting_order + {idx}"))
         if channel != pc.EMAIL:
@@ -470,6 +488,21 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                     r.append(_attr(opt, hcl_str(p[opt])))
             if p.get("user_risk_score_levels"):
                 r.append(_attr("user_risk_score_levels", hcl_list(p["user_risk_score_levels"])))
+            if p.get("eun_enabled") is not None:
+                r.append(_attr("eun_enabled", "true" if p["eun_enabled"] else "false"))
+            if str(p.get("action", "")).upper() == "CONFIRM":
+                # ZIA requires a user confirmation template for CONFIRM; resolve the tenant's ENDPOINT_DLP one.
+                lookups.append('data "zia_eun_user_confirmation_template_product" "endpoint_dlp" {\n  product = "ENDPOINT_DLP"\n  name    = var.endpoint_dlp_user_confirmation_template_name\n}\n\n')
+                if not any('endpoint_dlp_user_confirmation_template_name' in v for v in variables_extra):
+                    variables_extra.append('variable "endpoint_dlp_user_confirmation_template_name" {\n  description = "User Confirmation template for Endpoint DLP CONFIRM rules. Leave null to use the tenant default ENDPOINT_DLP template."\n  type        = string\n  default     = null\n}\n\n')
+                r.append(_attr("uc_template_id", "data.zia_eun_user_confirmation_template_product.endpoint_dlp.id"))
+            groups = [g for g in (p.get("endpoint_application_groups") or [])]
+            if groups:
+                refs = [f"tostring(zia_endpoint_dlp_application_group.{group_labels[g]}.group_id)" for g in groups if g in group_labels]
+                if refs:
+                    r.append(f"  end_point_application_groups {{\n    group_id = {hcl_list(refs, raw=True)}\n  }}\n")
+                    # ZIA accepts the association but does not always return it on read (provider-documented).
+                    r.append("  lifecycle {\n    ignore_changes = [end_point_application_groups]\n  }\n")
         elif channel == pc.SAAS:
             r.append(_attr("type", hcl_str(p["saas_type"])))
             r.append(_attr("collaboration_scope", hcl_list(p.get("collaboration_scope") or ["ANY"])))
@@ -567,11 +600,16 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
             for obj in (src["dictionaries"] if kind == "dictionary" else src["engines"]):
                 it = plan.get((kind, obj["name"]))
                 _gap_import(imports, counts, it, res, S.get(key_kind, obj["name"]))
+        for g in src.get("app_groups") or []:
+            _gap_import(imports, counts, plan.get(("app_group", g["name"])), "zia_endpoint_dlp_application_group", S.get("appgroup", g["name"]))
         for p in src["policies"]:
             channel = pc.channel_of(p)
             res = RESOURCE_BY_CHANNEL.get(channel)
             if not res:
                 continue
+            sub = bool(p.get("parent_rule")) and channel == pc.ENDPOINT
+            if sub:
+                res = "zia_endpoint_dlp_sub_rules"
             it = plan.get(("policy", p["name"]))
             import_id = None
             if it and (it.get("tenant") or {}).get("id") is not None:
@@ -580,6 +618,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                     import_id = f"{p['saas_type']}:{tid}"
                 elif channel == pc.CLOUD_APP:
                     import_id = f"{str(p['type']).upper()}:{tid}"
+                elif sub:
+                    import_id = f"{(it['tenant'] or {}).get('parent_id', '?')}:{tid}"
                 else:
                     import_id = str(tid)
             _gap_import(imports, counts, it, res, S.get("rule", p["name"]), import_id=import_id)

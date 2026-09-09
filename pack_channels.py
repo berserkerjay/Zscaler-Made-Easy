@@ -147,6 +147,109 @@ def _preview(names: Sequence[Any], limit: int = 6) -> str:
     return ", ".join(names[:limit]) + f", … (+{len(names) - limit} more)"
 
 
+# ---------------------------------------------------------------------------
+# Endpoint DLP extras: application groups and sub-rules
+# ---------------------------------------------------------------------------
+# The SDK covers endpoint rules but not endpoint application groups
+# (/endPointApplicationGroups) or the sub-rule endpoints
+# (/endPointDlpRules/{parent}/subRule[/{id}]); those go through the SDK's
+# own request executor so authentication and camelCase conversion are
+# shared. Tests replace raw_request().
+
+ZIA_BASE = "/zia/api/v1"
+APP_GROUPS_PATH = "/endPointApplicationGroups"
+
+
+def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[str]]:
+    """(payload, error) for a ZIA call the SDK has no method for."""
+    svc = getattr(zia, "endpoint_dlp_rules", None) or getattr(zia, "dlp_web_rules", None)
+    ex = getattr(svc, "_request_executor", None)
+    if ex is None:
+        return None, "the installed zscaler-sdk-python exposes no request executor"
+    try:
+        req, err = ex.create_request(method.upper(), f"{ZIA_BASE}{path}", body or {}, {}, params={})
+        if err:
+            return None, str(err)[:200]
+        resp, err = ex.execute(req)
+        if err:
+            return None, str(err)[:200]
+        data = resp.get_body() if hasattr(resp, "get_body") else resp
+        if isinstance(data, (bytes, str)):
+            import json as _json
+            try:
+                data = _json.loads(data) if data else {}
+            except ValueError:
+                pass
+        return data, None
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)[:200]
+
+
+def list_app_groups(zia) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+    """name -> {id, resources, description} of endpoint application groups."""
+    data, err = raw_request(zia, "GET", APP_GROUPS_PATH)
+    if err:
+        return {}, err
+    items = data if isinstance(data, list) else (data or {}).get("list") or []
+    out: Dict[str, Dict[str, Any]] = {}
+    for g in items:
+        name = str(_field(g, "name", default="") or "").strip()
+        if name:
+            out[name] = {"id": _field(g, "id", "groupId", "group_id"), "description": _field(g, "description", default=""),
+                         "resources": sorted(str(x) for x in (_field(g, "resources", default=[]) or []))}
+    return out, None
+
+
+def add_app_group(zia, definition: Dict[str, Any]):
+    body = {"name": definition["name"], "description": definition.get("description", ""),
+            "resources": [str(x) for x in (definition.get("resources") or [])]}
+    if definition.get("channel"):
+        body["channel"] = definition["channel"]
+    return raw_request(zia, "POST", APP_GROUPS_PATH, body)
+
+
+def update_app_group(zia, group_id: Any, definition: Dict[str, Any]):
+    body = {"id": group_id, "name": definition["name"], "description": definition.get("description", ""),
+            "resources": [str(x) for x in (definition.get("resources") or [])]}
+    return raw_request(zia, "PUT", f"{APP_GROUPS_PATH}/{group_id}", body)
+
+
+def add_sub_rule(zia, parent_id: Any, payload: Dict[str, Any]):
+    body = dict(payload)
+    body.pop("order", None) if body.get("order") is None else None
+    return raw_request(zia, "POST", f"/endPointDlpRules/{parent_id}/subRule", body)
+
+
+def update_sub_rule(zia, parent_id: Any, sub_id: Any, payload: Dict[str, Any]):
+    return raw_request(zia, "PUT", f"/endPointDlpRules/{parent_id}/subRule/{sub_id}", dict(payload, id=sub_id))
+
+
+def is_sub_rule(policy_def: Dict[str, Any]) -> bool:
+    return bool(policy_def.get("parent_rule"))
+
+
+def expand_sub_rules(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Endpoint rules may carry ``sub_rules`` (exceptions evaluated under the
+    parent). Flatten them into standalone policy definitions that carry
+    ``parent_rule`` and an ``order`` among their siblings, right after the
+    parent, so every planner treats them as rules."""
+    out: List[Dict[str, Any]] = []
+    for p in policies:
+        subs = p.get("sub_rules") or []
+        parent = dict(p)
+        parent.pop("sub_rules", None)
+        out.append(parent)
+        for i, sr in enumerate(subs, 1):
+            child = dict(sr)
+            child.setdefault("channel", p.get("channel", ENDPOINT))
+            child["parent_rule"] = p["name"]
+            child.setdefault("order", i)
+            child.setdefault("state", p.get("state", "ENABLED"))
+            child.setdefault("rank", p.get("rank", 7))
+            out.append(child)
+    return out
+
+
 def has_engines(channel: str) -> bool:
     return bool(CHANNELS.get(channel, {}).get("engines", True))
 
@@ -226,6 +329,9 @@ SAAS_TYPE_APPS: Dict[str, Tuple[str, ...]] = {
 EMAIL_APPS = SAAS_TYPE_APPS["OFLCASB_DLP_EMAIL"]
 
 ENDPOINT_TRUST_LEVELS = ("UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST")
+ENDPOINT_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+ENDPOINT_TRANSFER_METHODS = ("REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "APPLICATION_FILE_ACCESS", "PRINTING",
+                             "CLOUD_SYNC", "ANY")
 
 
 def channel_of(policy_def: Dict[str, Any]) -> str:
@@ -260,6 +366,15 @@ def validate(policy_def: Dict[str, Any]) -> Optional[str]:
     ch = channel_of(policy_def)
     if ch not in CHANNELS:
         return f"unknown channel '{ch}' (use one of {', '.join(CHANNELS)})"
+    if ch == ENDPOINT:
+        dtm = policy_def.get("data_transfer_method")
+        if dtm and dtm not in ENDPOINT_TRANSFER_METHODS:
+            return f"unknown data_transfer_method '{dtm}' (use one of {', '.join(ENDPOINT_TRANSFER_METHODS)})"
+        for sr in policy_def.get("sub_rules") or []:
+            if not sr.get("name"):
+                return "every sub_rule needs a name"
+    elif policy_def.get("sub_rules") or policy_def.get("parent_rule") or policy_def.get("endpoint_application_groups"):
+        return "sub_rules, parent_rule and endpoint_application_groups apply to the endpoint channel only"
     if ch == SAAS:
         t = policy_def.get("saas_type")
         if not t:
@@ -355,16 +470,20 @@ def _rule_summary(r: Any, channel: Optional[str] = None) -> Dict[str, Any]:
         "url_categories": sorted(str(a) for a in (_field(r, "url_categories", "urlCategories", default=[]) or [])),
         "file_types": sorted(str(a) for a in (_field(r, "file_types", "fileTypes", default=[]) or [])),
         "operation": _field(r, "operation"),
+        "data_transfer_method": _field(r, "data_transfer_method", "dataTransferMethod"),
+        "parent_id": _field(r, "parent_rule", "parentRule"),
     }
 
 
 def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     """What tenant state the plan has to read for these policies."""
     out = {"channels": set(), "casb": False, "templates": False, "labels": False, "app_classes": set(),
-           "cloud_app_types": set(), "cloud_app_actions": []}
+           "cloud_app_types": set(), "cloud_app_actions": [], "endpoint_app_groups": False}
     for p in policy_defs:
         ch = channel_of(p)
         out["channels"].add(ch)
+        if ch == ENDPOINT and (p.get("endpoint_application_groups") or p.get("sub_rules")):
+            out["endpoint_app_groups"] = True
         if CHANNELS.get(ch, {}).get("needs_casb"):
             out["casb"] = True
         if p.get("notification_template"):
@@ -402,7 +521,12 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
         "labels_error": None,
         "app_classes": {},    # class -> [application identifiers] (dynamic scoping, e.g. AI_ML)
         "app_class_errors": {},
+        "app_groups": {},     # endpoint application group name -> {id, resources}
+        "app_groups_error": None,
+        "planned_app_groups": set(),
     }
+    if need.get("endpoint_app_groups"):
+        state["app_groups"], state["app_groups_error"] = list_app_groups(zia)
     for cls in sorted(need.get("app_classes") or ()):
         try:
             svc = getattr(zia, "cloud_applications", None)
@@ -452,7 +576,20 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
                 data, err = _nx(svc.list_rules())
             if err:
                 raise RuntimeError(str(err))
-            state["rules"][ch] = sorted((_rule_summary(r, ch) for r in (data or [])), key=lambda r: r["order"])
+            rules = sorted((_rule_summary(r, ch) for r in (data or [])), key=lambda r: r["order"])
+            if ch == ENDPOINT:
+                # Sub-rules live inside their parent; flatten them so packs can
+                # match them by name (names are unique tenant-wide).
+                flat = []
+                for r, raw in zip(rules, sorted((data or []), key=lambda x: int(_field(x, "order", default=0) or 0))):
+                    flat.append(r)
+                    for sr in (_field(raw, "sub_rules", "subRules", default=[]) or []):
+                        srs = _rule_summary(sr, ch)
+                        srs["parent_id"] = r["id"]
+                        srs["parent_name"] = r["name"]
+                        flat.append(srs)
+                rules = flat
+            state["rules"][ch] = rules
         except Exception as e:  # noqa: BLE001 — surfaced as a dependency failure
             state["errors"][ch] = str(e)[:200]
 
@@ -589,6 +726,28 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
             resolved["tenants"] = chosen
         for t in resolved.get("tenants") or []:
             depends.append(("resource", f"SaaS tenant: {t['name']}"))
+
+    # Endpoint DLP: application groups by name (created by the pack or already
+    # in the tenant) and the parent rule of a sub-rule.
+    if channel == ENDPOINT:
+        groups = policy_def.get("endpoint_application_groups") or []
+        if groups:
+            if state.get("app_groups_error"):
+                missing.append(f"endpoint application groups could not be listed ({state['app_groups_error']})")
+            known = state.get("app_groups") or {}
+            planned = state.get("planned_app_groups") or set()
+            ids = []
+            for g in groups:
+                if g in known and known[g].get("id") is not None:
+                    ids.append(known[g]["id"])
+                    depends.append(("resource", f"Endpoint application group: {g}"))
+                elif g in planned:
+                    depends.append(("app_group", g))
+                else:
+                    missing.append(f"endpoint application group '{g}' exists in neither the pack nor the tenant")
+            resolved["app_group_ids"] = ids
+        if policy_def.get("parent_rule"):
+            depends.append(("policy", str(policy_def["parent_rule"])))
 
     # Notification template by name.
     tpl = policy_def.get("notification_template")
@@ -812,6 +971,12 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
         for opt in ("user_risk_score_levels", "network_type", "data_transfer_method", "min_size"):
             if p.get(opt):
                 body[opt] = p[opt]
+        if p.get("eun_enabled") is not None:
+            body["eun_enabled"] = bool(p["eun_enabled"])
+        if resolved.get("app_group_ids"):
+            body["end_point_application_groups"] = _ids(resolved["app_group_ids"])
+        if resolved.get("uc_template_id") is not None and str(p.get("action", "")).upper() == "CONFIRM":
+            body["uc_template_id"] = resolved["uc_template_id"]
     elif channel == SAAS:
         body["type"] = p["saas_type"]
         body["cloud_app_tenants"] = _ids(t["id"] for t in resolved.get("tenants", []))
@@ -915,7 +1080,12 @@ def list_rule_names(zia, channel: str, types: Optional[Iterable[str]] = None) ->
             data, err = _nx(svc.list_rules())
         if err:
             return None, str(err)[:200]
-        return {str(_field(r, "name", default="") or "").strip() for r in (data or [])}, None
+        names = {str(_field(r, "name", default="") or "").strip() for r in (data or [])}
+        if channel == ENDPOINT:
+            for r in data or []:
+                for sr in (_field(r, "sub_rules", "subRules", default=[]) or []):
+                    names.add(str(_field(sr, "name", default="") or "").strip())
+        return names, None
     except Exception as e:  # noqa: BLE001
         return None, str(e)[:200]
 
@@ -931,7 +1101,9 @@ def policy_signature_extra(p: Dict[str, Any]) -> Dict[str, Any]:
     elif ch == EMAIL:
         extra.update({"tenants": p.get("tenants", "any")})
     elif ch == ENDPOINT:
-        extra.update({"device_trust_levels": sorted(p.get("device_trust_levels") or ENDPOINT_TRUST_LEVELS)})
+        extra.update({"device_trust_levels": sorted(p.get("device_trust_levels") or ENDPOINT_TRUST_LEVELS),
+                      "data_transfer_method": p.get("data_transfer_method"), "parent_rule": p.get("parent_rule"),
+                      "endpoint_application_groups": sorted(p.get("endpoint_application_groups") or [])})
     if p.get("notification_template"):
         extra["notification_template"] = p["notification_template"]
     if p.get("labels"):

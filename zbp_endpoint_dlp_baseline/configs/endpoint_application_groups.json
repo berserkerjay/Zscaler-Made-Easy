@@ -1,0 +1,46 @@
+[
+  {
+    "name": "zbp-GenAI Applications",
+    "description": "ZBP managed Endpoint Application Group generated from Endpoint DLP golden config.",
+    "resources": [
+      "500000603",
+      "500000601",
+      "500000605",
+      "600000601",
+      "600000605",
+      "600000603"
+    ],
+    "applications": [
+      {
+        "applicationName": "ChatGPT",
+        "osType": "WINDOWS_OS",
+        "zappId": "500000603"
+      },
+      {
+        "applicationName": "ChatGPT Installer (Windows Store)",
+        "osType": "WINDOWS_OS",
+        "zappId": "500000601"
+      },
+      {
+        "applicationName": "Claude",
+        "osType": "WINDOWS_OS",
+        "zappId": "500000605"
+      },
+      {
+        "applicationName": "ChatGPT",
+        "osType": "MAC_OS",
+        "zappId": "600000601"
+      },
+      {
+        "applicationName": "Claude",
+        "osType": "MAC_OS",
+        "zappId": "600000605"
+      },
+      {
+        "applicationName": "Claude",
+        "osType": "MAC_OS",
+        "zappId": "600000603"
+      }
+    ]
+  }
+]

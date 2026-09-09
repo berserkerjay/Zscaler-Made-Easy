@@ -100,6 +100,7 @@
   }
   .dz-chip.kind-dictionary { background: rgba(59,130,246,0.14); color: var(--accent-hover); }
   .dz-chip.kind-engine { background: rgba(168,85,247,0.16); color: #c084fc; }
+  .dz-chip.kind-app_group { background: rgba(14,165,233,0.16); color: #38bdf8; }
   .dz-chip.kind-policy { background: rgba(16,185,129,0.14); color: var(--pass); }
   .dz-chip.kind-tweak { background: rgba(245,158,11,0.16); color: var(--warn); }
   .dz-chip.kind-channel { background: rgba(14,165,233,0.14); color: #0284c7; }

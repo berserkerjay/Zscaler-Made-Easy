@@ -76,7 +76,22 @@ function _gdSteps() {
       status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, pick a pack, run preflight, review, approve.',
       actions: [{ label: 'Open Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
+    {
+      n: 5, title: 'Move the tenant to Evaluate All Rules',
+      state: assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo',
+      what: 'By default ZIA stops at the first matching DLP rule, so a broad monitor rule near the top silently shadows every block rule below it. Evaluate All Rules lets every matching rule fire and log its own incident, which is what a layered policy (monitor + block + caution) needs. The Inline DLP Rule Migration wizard reads the current mode, reorders the rules so the switch is safe, and shows you the plan before anything changes.',
+      need: 'Check 5.20 in the assessment says whether the tenant is already in Evaluate All Rules mode and whether the current order is safe to switch. The switch itself is made in the ZIA Admin Portal under Policy > Data Loss Prevention > Advanced Settings.',
+      status: 'Open the Inline DLP Rule Migration card below the results and follow its five steps.',
+      actions: [{ label: 'Open Rule Migration', fn: '_gdGoMigration()', kind: 'primary' }],
+    },
   ];
+}
+function _gdGoMigration() {
+  const card = [...document.querySelectorAll('div.card')].find(c => ((c.querySelector(':scope > h2, :scope > div h2') || {}).textContent || '').includes('Inline DLP Rule Migration'));
+  if (!card) { alert('The Inline DLP Rule Migration card is not on this page.'); return; }
+  const h = card.querySelector('h2.collapsible');
+  if (h && card.classList.contains('collapsed')) h.click();
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── Rendering ──────────────────────────────────────────────────────
@@ -89,7 +104,7 @@ function _gdRender() {
     <div class="gd-head">
       <div>
         <div class="gd-eyebrow">Start here</div>
-        <h2 class="gd-title">Four steps from "unknown tenant" to "gaps closed"</h2>
+        <h2 class="gd-title">Five steps from "unknown tenant" to "gaps closed"</h2>
         <p class="gd-sub">Follow the steps in order. Each one explains what it does, what you need, and what to click. Nothing is written to the customer's tenant until step 4, and only after you approve a plan.</p>
       </div>
       <div class="gd-controls">
@@ -175,7 +190,7 @@ function _gdSetMode(mode) {
 
 // Guided mode hides the advanced tools. Cards are found by their heading
 // text so index.html needs no markup changes.
-const GD_ADVANCED_HEADINGS = ['Compliance Coverage', 'Inline DLP Rule Migration'];
+const GD_ADVANCED_HEADINGS = ['Compliance Coverage'];
 const GD_ADVANCED_BUTTONS = ['openUpdateModal()', 'openBypassModal()', 'openDlpEfficacyModal()'];
 function _gdApplyMode() {
   document.body.classList.toggle('gd-guided', GD.mode === 'guided');
