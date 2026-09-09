@@ -152,6 +152,7 @@ function _dzRenderSelect() {
         <div class="dz-links">
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
           ${p.baseline ? `<button type="button" class="dz-link" onclick="event.stopPropagation(); _dzCheckDrift('${_dzE(p.id)}')">${(DZ.drift[p.id] || {}).busy ? 'Checking…' : 'Check drift'}</button>` : ''}
+          <button type="button" class="dz-link" title="Download a Terraform workspace for this pack (official zscaler/zia provider). With tenant credentials filled in, it is generated against the tenant with import blocks for everything that already exists." onclick="event.stopPropagation(); _dzTerraform(['${_dzE(p.id)}'])">${DZ.tfBusy === p.id ? 'Generating…' : 'Terraform'}</button>
         </div>
         ${det}
         ${p.baseline ? _dzDriftHtml(p.id) : ''}
@@ -223,6 +224,41 @@ async function _dzCheckDrift(id) {
   }
   _dzRenderSelect();
 }
+// Terraform export: one workspace per pack for the official zscaler/zia
+// provider. With credentials the server runs a preflight first and emits
+// import blocks for existing objects (gap mode), so `terraform plan` is the
+// gap between the tenant and the pack.
+async function _dzTerraform(ids) {
+  DZ.tfBusy = ids.length === 1 ? ids[0] : '*';
+  if (DZ.step === 1) _dzRenderSelect();
+  try {
+    const creds = _dzCreds();
+    const r = await fetch('/api/dlp-packs/terraform', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack_ids: ids, use_rank_0: DZ.options.use_rank_0, ...creds }),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.detail || `HTTP ${r.status}`);
+    }
+    const mode = r.headers.get('X-DLP-Check-Mode') || 'static';
+    const blob = await r.blob();
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename="([^"]+)"/.exec(cd);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : 'dlp-check-terraform.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    announce(`Terraform workspace downloaded (${mode === 'gap' ? 'gap mode: existing objects will be imported' : 'static: no tenant credentials given'}).`);
+  } catch (e) {
+    alert(`Terraform export failed: ${e.message}`);
+  } finally {
+    DZ.tfBusy = null;
+    if (DZ.step === 1) _dzRenderSelect();
+  }
+}
+
 const DZ_DRIFT = {
   in_sync: { label: 'In sync',  cls: 'ok' },
   drifted: { label: 'Drifted',  cls: 'warn' },
@@ -370,6 +406,7 @@ function _dzRenderReview() {
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=1;_dzRender()">← Back</button>
       <button type="button" class="dz-btn" onclick="_dzRunPreflight()">Re-run</button>
+      <button type="button" class="dz-btn" title="Close this gap with Terraform instead: downloads a workspace with import blocks for everything that already exists, so terraform plan shows exactly these changes." onclick="_dzTerraform([...DZ.selected])">Export Terraform</button>
       <button type="button" class="dz-btn primary" ${R.status === 'blocked' ? 'disabled' : ''} onclick="DZ.step=3;DZ.consent=false;_dzRender()">Review &amp; approve <span aria-hidden="true">→</span></button>
     </div>`;
 }

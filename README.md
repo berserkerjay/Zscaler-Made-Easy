@@ -165,3 +165,14 @@ Update `src/dlp_assessment_full_auto.py` with any paths that differ from the def
 ## License
 
 Internal tooling. Not for redistribution.
+
+## Policy Packs, Immutable Baselines and Terraform
+
+Beyond assessment, DLP-Check deploys **policy packs** (dictionaries → engines → rules across
+Web, Endpoint, SaaS Security API and Email DLP) through a guided preflight → approve → apply
+flow, and treats **baselines** as immutable: drift is detected and restored. Every pack can
+also be owned by Terraform state using the official
+[zscaler/zia](https://registry.terraform.io/providers/zscaler/zia/latest/docs) provider:
+`terraform/<pack>/` holds a generated workspace per pack, and *Export Terraform* after a
+preflight produces a gap-mode workspace whose first `terraform plan` is exactly the difference
+between the tenant and the pack. See `POLICY_PACKS.md` sections 6, 11 and 12.

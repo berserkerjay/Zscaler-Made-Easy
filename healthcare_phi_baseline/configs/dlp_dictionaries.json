@@ -1,0 +1,68 @@
+[
+  {
+    "name": "D_MRN",
+    "description": "Medical record number: the label phrase and a 7-digit number within ~20 bytes of each other. Both the phrase and the pattern must match.",
+    "custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 20,
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "MRN"}
+    ],
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_ALL", "pattern": "\\b\\d{7}\\b"}
+    ]
+  },
+  {
+    "name": "D_ACCT",
+    "description": "Patient account number: an account label and a 9-digit number within ~25 bytes. Both the phrase and the pattern must match.",
+    "custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 25,
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Acct"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Account"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Patient Account"}
+    ],
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_ALL", "pattern": "\\b\\d{9}\\b"}
+    ]
+  },
+  {
+    "name": "D_DOB",
+    "description": "Date of birth: a DOB label and a US-format date within ~15 bytes. Both the phrase and the pattern must match.",
+    "custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 15,
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "DOB"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Date of Birth"}
+    ],
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_ALL", "pattern": "\\b(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\\d|3[01])/(?:19|20)\\d{2}\\b"}
+    ]
+  },
+  {
+    "name": "D_LEGAL_SEX",
+    "description": "Legal sex booster: the label and a code or word within ~8 bytes. Never sufficient alone; the engine only counts it beside a strong identifier.",
+    "custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 8,
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Legal Sex"}
+    ],
+    "patterns": [
+      {"action": "PATTERN_COUNT_TYPE_ALL", "pattern": "\\b(?:M|F|Male|Female)\\b"}
+    ]
+  },
+  {
+    "name": "D_CLINICAL_PHRASES",
+    "description": "Low-confidence clinical context phrases. Supplements the predefined Medical Information / Medical Document dictionaries; never sufficient alone for PHI.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Discharge Summary"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Progress Notes"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "MD Prog Notes"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "MD Progress Notes"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Vitals Include:"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "Date of Service"},
+      {"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "No notes of this type exist for this encounter"}
+    ],
+    "patterns": []
+  }
+]
