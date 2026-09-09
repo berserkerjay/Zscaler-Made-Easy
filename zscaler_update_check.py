@@ -151,7 +151,7 @@ ALLOWED_HOSTS = {
 }
 
 FETCH_TIMEOUT = 8  # seconds, both connect and read
-USER_AGENT = "Zscaler-Assessment-UpdateChecker/1.0 (+localhost)"
+USER_AGENT = "Mozilla/5.0 (compatible; Zscaler-Assessment/1.0; +localhost)"  # browser-compatible prefix: some CDNs refuse unknown agents
 
 
 # ── Cache ────────────────────────────────────────────────────────────

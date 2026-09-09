@@ -288,7 +288,8 @@ function _gdHelp(open) {
         <dt>Bypass / Non-Inspected</dt><dd>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection, with exports. Opens in its own tab.</dd>
         <dt>SSL Inspection Flow</dt><dd>Live flow diagram: for each DLP-relevant traffic class (file sharing, webmail, AI, social, uncategorised sites…) which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps are highlighted with the fix. Refresh or auto-refresh from the tab.</dd>
         <dt>DLP Efficacy</dt><dd>Scores every custom dictionary and engine for false-positive risk and lets you test sample text against them.</dd>
-        <dt>Best Practices, Zscaler Updates</dt><dd>Curated reference articles, and a check of PyPI and help.zscaler.com for SDK and documentation changes since last time.</dd>
+        <dt>Best Practices</dt><dd>Curated Zscaler best-practice articles rated by source credibility. <em>Update library now</em> reads the sitemaps of help.zscaler.com, the Zscaler blog and the developer portal (and walks the partner sites), adds every new best-practice or leading-practice article, and shows per source whether it answered and why not. New finds are kept across restarts; a background refresh runs every 6 hours.</dd>
+        <dt>Zscaler Updates</dt><dd>A check of PyPI and help.zscaler.com for SDK and documentation changes since last time.</dd>
         <dt>Packs from a design file (command line)</dt><dd><code>python tools/pack_from_design.py &lt;pack&gt;</code> turns a DLP engineer's dictionary/engine design into a pack, enforcing ZIA's documented limits.</dd>
       </dl>
       <h3>Glossary</h3>
