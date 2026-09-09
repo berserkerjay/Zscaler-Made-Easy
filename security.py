@@ -50,11 +50,20 @@ ALLOWED_CLOUDS = {
     "beta", "gov", "govus", "zscalergov",
 }
 
-# Browser-borne origins we trust for state-changing requests.
-ALLOWED_ORIGINS = {
-    "http://localhost:8000", "http://127.0.0.1:8000",
-    "http://localhost",      "http://127.0.0.1",
-}
+# Browser-borne origins we trust for state-changing requests: this
+# server's own address only (the default port and the configured
+# ZSCALER_PORT, so a GUI on another port is not rejected with 403).
+def _allowed_origins() -> set:
+    out = {"http://localhost:8000", "http://127.0.0.1:8000", "http://localhost", "http://127.0.0.1"}
+    try:
+        port = int(os.environ.get("ZSCALER_PORT", "8000"))
+        out |= {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
+    except ValueError:
+        pass
+    return out
+
+
+ALLOWED_ORIGINS = _allowed_origins()
 
 # Hostname pattern for vanity_domain (RFC-1123 label, dot-separated).
 _HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")

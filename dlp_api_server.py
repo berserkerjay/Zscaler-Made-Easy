@@ -561,9 +561,17 @@ async def best_practices_list(service: Optional[str] = None):
         from zscaler_best_practices import list_all, services
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"best-practices module unavailable: {e}")
+    try:
+        from bp_crawler import last_summary
+        last_crawl = last_summary()
+    except Exception:
+        last_crawl = {}
     return {
         "entries": list_all(service or ""),
         "services": services(),
+        "discovered_count": sum(1 for e in list_all(service or "") if e.get("discovered")),
+        "last_crawl": last_crawl,
+        "crawl_running": bool(_BP_CRAWL_PROGRESS.get("running")),
         "last_refreshed_at": _BP_REFRESH_STATE.get("last_refreshed_at"),
         "last_refresh_status": _BP_REFRESH_STATE.get("last_status"),
         "last_refresh_error": _BP_REFRESH_STATE.get("last_error"),
@@ -577,30 +585,65 @@ class BPCrawlRequest(BaseModel):
     skip_tls_verify: bool = False
 
 
+# Progress of the crawl in flight, for GET /api/best-practices/crawl/status.
+_BP_CRAWL_PROGRESS: Dict[str, Any] = {"running": False}
+_BP_CRAWL_LOCK = asyncio.Lock()
+
+
+def _bp_progress(d: Dict[str, Any]) -> None:
+    _BP_CRAWL_PROGRESS.update(d)
+    _BP_CRAWL_PROGRESS["running"] = True
+    _BP_CRAWL_PROGRESS["updated_at"] = time.time()
+
+
+async def _bp_run_crawl(force: bool, skip_tls_verify: bool) -> Dict[str, Any]:
+    """Crawl, persist discoveries, update the shared state. One crawl at
+    a time: a second caller waits for the first and reuses its result."""
+    from bp_crawler import crawl
+    from zscaler_best_practices import save_discovered
+    async with _BP_CRAWL_LOCK:
+        _BP_CRAWL_PROGRESS.clear()
+        _BP_CRAWL_PROGRESS.update({"running": True, "started_at": time.time(), "phase": "start", "source": "", "pages": 0, "found": 0})
+        try:
+            result = await asyncio.to_thread(crawl, skip_tls_verify, force, None, _bp_progress)
+            # Promote newly-discovered entries into the persistent library
+            # so the curated + discovered catalog survives restarts.
+            new_entries = result.get("new_entries") or []
+            from zscaler_best_practices import _load_discovered
+            before = {e.get("url") for e in _load_discovered()}
+            added = await asyncio.to_thread(save_discovered, new_entries) if new_entries else 0
+            result["added_to_library"] = added
+            result["added_entries"] = [e for e in new_entries if e.get("url") not in before][:200]
+            _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
+            _BP_REFRESH_STATE["last_status"] = "error" if result.get("error") else "ok"
+            _BP_REFRESH_STATE["last_error"] = result.get("error")
+            return result
+        finally:
+            _BP_CRAWL_PROGRESS["running"] = False
+            _BP_CRAWL_PROGRESS["finished_at"] = time.time()
+
+
 @app.post("/api/best-practices/crawl")
 async def best_practices_crawl(req: BPCrawlRequest):
-    """Crawl every source in bp_sources.py for new Best/Leading-Practice
-    articles and report any NEW ones beyond the curated catalog. Results
-    are cached for 24h; force=true bypasses the cache. skip_tls_verify=true
-    opts into the corporate-TLS-MITM bypass (same behavior as the update
-    checker)."""
+    """Update the library: read every source in bp_sources.py (sitemaps
+    first, page walk as fallback) for Best/Leading-Practice articles,
+    add the new ones to the persistent library and report what happened
+    per source. The button always crawls live; force=false only reuses a
+    result younger than 24h (what the background refresh does).
+    skip_tls_verify=true opts into the corporate-TLS-MITM bypass."""
     try:
-        from bp_crawler import crawl
-        from zscaler_best_practices import save_discovered
+        import bp_crawler  # noqa: F401
+        import zscaler_best_practices  # noqa: F401
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bp_crawler unavailable: {e}")
-    result = await asyncio.to_thread(crawl, req.skip_tls_verify, req.force)
-    # Auto-promote newly-discovered entries into the persistent library
-    # so the curated + discovered catalog survives subsequent sessions.
-    new_entries = result.get("new_entries") or []
-    added = await asyncio.to_thread(save_discovered, new_entries)
-    result["added_to_library"] = added
-    # Update the shared refresh state so /api/best-practices reflects
-    # this manual crawl's timestamp + status.
-    _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
-    _BP_REFRESH_STATE["last_status"] = "ok" if not result.get("error") else "error"
-    _BP_REFRESH_STATE["last_error"] = result.get("error")
-    return result
+    return await _bp_run_crawl(req.force, req.skip_tls_verify)
+
+
+@app.get("/api/best-practices/crawl/status")
+async def best_practices_crawl_status():
+    """Progress of the crawl in flight (phase, source, pages fetched,
+    articles found) so the library page can show what it is doing."""
+    return dict(_BP_CRAWL_PROGRESS)
 
 
 # ── Best-practices auto-refresh scheduler ────────────────────────────────
@@ -630,17 +673,10 @@ async def _bp_auto_refresh_loop() -> None:
     await asyncio.sleep(10)
     while _BP_REFRESH_STATE.get("enabled", True):
         try:
-            from bp_crawler import crawl
-            from zscaler_best_practices import save_discovered
             # force=False honors the 24h cache → if something else
-            # already crawled today this is effectively a no-op.
-            result = await asyncio.to_thread(crawl, False, False)
-            new_entries = result.get("new_entries") or []
-            if new_entries:
-                await asyncio.to_thread(save_discovered, new_entries)
-            _BP_REFRESH_STATE["last_refreshed_at"] = time.time()
-            _BP_REFRESH_STATE["last_status"] = "ok"
-            _BP_REFRESH_STATE["last_error"] = None
+            # already crawled today this is effectively a no-op. A crawl
+            # that reached nothing is not cached, so the next tick retries.
+            await _bp_run_crawl(False, False)
         except Exception as e:
             _BP_REFRESH_STATE["last_status"] = "error"
             _BP_REFRESH_STATE["last_error"] = str(e)[:200]

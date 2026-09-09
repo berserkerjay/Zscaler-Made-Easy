@@ -19,6 +19,12 @@ Credibility tiers
   Tier 3  ( 60)  Community / crowd-sourced. Good signal but unvetted.
                  Reddit r/zscaler, Stack Overflow, unofficial blogs.
 
+A source may declare `sitemaps` (XML sitemap or sitemap index URLs on
+its own host): those are read first and list every article in one or
+two requests; `seeds` are only page-walked when no sitemap could be
+read. `sitemap_child_filter` keeps a sitemap index to the children whose
+URL contains one of the given words (e.g. "blog").
+
 Each source declares whether it is `crawlable` — if False, it's listed
 for user reference but the crawler won't try to scrape it (SPAs, forums
 with aggressive anti-bot, login-walled content, etc.). Non-crawlable
@@ -69,6 +75,9 @@ SOURCES: List[Dict[str, Any]] = [
             "https://help.zscaler.com/deception",
             "https://help.zscaler.com/zscaler-deployments-operations",
         ],
+        # The portal publishes a sitemap; it lists every article in one
+        # request and does not depend on how the navigation is rendered.
+        "sitemaps": ["https://help.zscaler.com/sitemap.xml"],
         "article_patterns": ["best-practice", "leading-practice"],
         "why": "Canonical product documentation — all official Best-Practice / Leading-Practice guides live here.",
     },
@@ -86,6 +95,8 @@ SOURCES: List[Dict[str, Any]] = [
             "https://www.zscaler.com/blogs/security-research",
             "https://www.zscaler.com/blogs/zero-trust",
         ],
+        "sitemaps": ["https://www.zscaler.com/sitemap.xml"],
+        "sitemap_child_filter": ["blog"],   # a sitemap index: only walk the blog children
         "article_patterns": ["best-practice", "leading-practice", "how-to", "guide"],
         "why": "Zscaler-authored posts. Often the first place new feature-level guidance appears before it lands in help.zscaler.com.",
     },
@@ -111,6 +122,7 @@ SOURCES: List[Dict[str, Any]] = [
             "https://developer.zscaler.com/",
             "https://developer.zscaler.com/docs",
         ],
+        "sitemaps": ["https://developer.zscaler.com/sitemap.xml"],
         "article_patterns": ["best-practice", "guide", "how-to"],
         "why": "Official API/SDK reference. Integration best practices for OneAPI consumers.",
     },

@@ -127,6 +127,32 @@ re-reads the tenant through the assessment tab, so keep that tab open.
 Zscaler's own *Recommended Exemptions* are recognised and listed
 separately: they cover certificate-pinned apps and should stay enabled.
 
+## 4c. Keep the Best Practices library current
+
+**Best Practices** (under *Reference*) opens the library of Zscaler
+best-practice articles, each badged Official, Authoritative or Community.
+Click **Update library now** to read the sources live:
+
+1. The sitemaps of help.zscaler.com, the Zscaler blog and the developer
+   portal are read first (every published article in one request), then
+   the partner sites (Microsoft Learn, AWS, Splunk, CrowdStrike, Okta,
+   Ping, Zscaler Community) are walked page by page.
+2. Every article whose address contains *best-practice*, *leading-practice*
+   (or *how-to* / *guide* on the blog) that is not yet in the library is
+   fetched for its title and added, badged **DISCOVERED**. Additions are
+   kept in your per-user data folder, so they survive restarts and
+   updates of the tool.
+3. The result panel says, per source, whether it answered, how it was
+   read (sitemap or page walk) and how many articles it listed. A source
+   that could not be reached shows the reason. Common causes: corporate
+   TLS inspection (put `set REQUESTS_CA_BUNDLE=...` in `local_settings.bat`
+   as in section 1b, or tick *Skip TLS verify* for one run), a proxy
+   (`set HTTPS_PROXY=...` in the same file), or the host being blocked.
+
+An update that reaches nothing is never cached: the library keeps its
+last good state, the failure is shown at the top, and the next click
+tries again. A background refresh also runs every 6 hours.
+
 ## 5. Choose a policy pack (step 4)
 
 Click **Deploy Policy Packs**. Each card says who it is for and when to use

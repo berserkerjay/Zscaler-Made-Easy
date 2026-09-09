@@ -4101,64 +4101,76 @@ function _renderBestPractices(data, discoveredData) {
       </section>`;
   }).join('');
 
-  // Discovered section — only renders when a crawl has produced new entries
+  // Crawl result — always rendered after an update so the operator sees
+  // what happened per source (sitemap or page walk, pages, matches,
+  // errors), not only when something new turned up.
+  const fixHints = `
+    <div style="color:var(--dim);font-size:0.75rem;margin-top:0.4rem;line-height:1.5;">
+      <strong>If a source could not be reached:</strong>
+      corporate TLS inspection → put <code style="color:var(--accent);">set REQUESTS_CA_BUNDLE=C:\\path\\to\\your-root-ca.pem</code> in <code style="color:var(--accent);">local_settings.bat</code> and restart (or tick <em>Skip TLS verify</em> for this run);
+      proxy required → <code style="color:var(--accent);">set HTTPS_PROXY=http://user:pass@proxy:port</code> in the same file;
+      blocked host → allow help.zscaler.com, www.zscaler.com and developer.zscaler.com for this laptop.
+    </div>`;
+  const sourceTable = (perSource, errs) => {
+    if (!perSource || !perSource.length) return '';
+    const errByHost = {};
+    for (const e of errs || []) { try { const h = new URL(e.url).hostname; errByHost[h] ||= e.error; } catch (_) {} }
+    const rows = perSource.map(s => {
+      const ok = !!s.reached;
+      const how = s.method === 'sitemap' ? `sitemap (${s.sitemaps_fetched || 0} file${(s.sitemaps_fetched || 0) === 1 ? '' : 's'})` : `page walk (${s.pages_fetched || 0} page${(s.pages_fetched || 0) === 1 ? '' : 's'})`;
+      const err = ok ? '' : (errByHost[s.host] || (s.errors && s.errors[0] && s.errors[0].error) || 'no page could be fetched');
+      return `<tr>
+        <td style="padding:0.3rem 0.5rem;">${escapeHtml(s.source_name || s.source_id)} <span style="color:var(--dim);font-size:0.7rem;">${escapeHtml(s.tier || '')}</span></td>
+        <td style="padding:0.3rem 0.5rem;color:var(--dim);">${ok ? escapeHtml(how) : '—'}</td>
+        <td style="padding:0.3rem 0.5rem;text-align:right;">${ok ? (s.matched_count || 0) : '—'}</td>
+        <td style="padding:0.3rem 0.5rem;color:${ok ? 'var(--pass)' : 'var(--fail)'};" title="${escapeHtml(err)}">${ok ? '✓ reached' : '✗ ' + escapeHtml(String(err).slice(0, 90))}</td>
+      </tr>`;
+    }).join('');
+    return `<table style="width:100%;border-collapse:collapse;font-size:0.76rem;margin-top:0.4rem;">
+      <thead><tr style="color:var(--dim);text-transform:uppercase;letter-spacing:0.06em;font-size:0.66rem;"><th style="text-align:left;padding:0.2rem 0.5rem;">Source</th><th style="text-align:left;padding:0.2rem 0.5rem;">Read via</th><th style="text-align:right;padding:0.2rem 0.5rem;">Articles</th><th style="text-align:left;padding:0.2rem 0.5rem;">Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  };
   let discoveredHtml = '';
-  if (discoveredData && discoveredData.new_entries && discoveredData.new_entries.length) {
-    const newBySvc = {};
-    for (const e of discoveredData.new_entries) (newBySvc[e.service] ||= []).push(e);
-    const newHtml = Object.entries(newBySvc).map(([svc, items]) => `
-      <section style="margin-bottom:0.8rem;">
-        <h4 style="font-size:0.78rem;color:var(--pass);margin-bottom:0.3rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-weight:400;">(${items.length})</span></h4>
-        <ul style="list-style:none;padding:0;margin:0;">${items.map(e => renderEntry(e, true)).join('')}</ul>
-      </section>`).join('');
-    const addedCount = (typeof discoveredData.added_to_library === 'number')
-      ? discoveredData.added_to_library : discoveredData.new_entries.length;
-    const perSource = (discoveredData.per_source || [])
-      .filter(s => s.pages_fetched > 0 || s.pages_failed > 0)
-      .map(s => `${escapeHtml(s.source_name || s.source_id)} (${s.pages_fetched}p)`)
-      .join(' · ');
-    discoveredHtml = `
-      <div style="padding:0.8rem 1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:8px;margin-bottom:1rem;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
-          <strong style="color:var(--pass);">✨ ${addedCount} article${addedCount === 1 ? '' : 's'} added to the library</strong>
-          <span style="color:var(--dim);font-size:0.72rem;">${discoveredData.sources_crawled || 0} source${(discoveredData.sources_crawled||0) === 1 ? '' : 's'} · ${discoveredData.pages_fetched || 0} page${(discoveredData.pages_fetched||0) === 1 ? '' : 's'} · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'from cache' : 'live crawl'}</span>
-        </div>
-        ${perSource ? `<div style="color:var(--dim);font-size:0.7rem;margin-bottom:0.5rem;">${perSource}</div>` : ''}
-        ${newHtml}
-        <div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">
-          These are now persisted in your per-user data dir and will appear in future sessions alongside curated entries (badged DISCOVERED).
-        </div>
-      </div>`;
-  } else if (discoveredData) {
-    const msg = discoveredData.total_matched
-      ? `Crawl found ${discoveredData.total_matched} total article${discoveredData.total_matched === 1 ? '' : 's'} — all already in the curated list.`
-      : 'Crawl completed but found no matching articles.';
-    const fetched = discoveredData.pages_fetched || 0;
-    const failed = discoveredData.pages_failed || 0;
-    const errs = discoveredData.errors || [];
-    // When 0 pages fetched, the crawl hit network errors (TLS/proxy/
-    // firewall). Surface the errors so the user can diagnose.
-    const errorBlock = (fetched === 0 && errs.length) ? `
-      <details style="margin-top:0.5rem;">
-        <summary style="cursor:pointer;color:var(--warn);font-size:0.8rem;">
-          ⚠ ${failed} fetch error${failed === 1 ? '' : 's'} — click to see why
-        </summary>
-        <ul style="margin:0.4rem 0 0 1rem;padding:0;font-size:0.75rem;font-family:monospace;color:var(--dim);line-height:1.5;">
-          ${errs.slice(0, 8).map(e => `<li style="margin-bottom:0.3rem;word-break:break-all;">
-            <span style="color:var(--text);">${escapeHtml(e.url || '')}</span><br>
-            <span style="color:var(--fail);">${escapeHtml(e.error || '')}</span>
-          </li>`).join('')}
-        </ul>
-        <div style="color:var(--dim);font-size:0.75rem;margin-top:0.4rem;line-height:1.5;">
-          Common fixes: corporate TLS inspection → set <code style="color:var(--accent);">ZSCALER_UPDATE_VERIFY_TLS=0</code>;
-          proxy required → set <code style="color:var(--accent);">HTTPS_PROXY=http://user:pass@proxy:port</code>;
-          firewall blocking help.zscaler.com → whitelist the host.
-        </div>
+  if (discoveredData) {
+    const d = discoveredData;
+    const added = (typeof d.added_to_library === 'number') ? d.added_to_library : (d.new_entries || []).length;
+    const reached = d.sources_reached || 0, tried = d.sources_crawled || 0;
+    const stats = `${reached} of ${tried} source${tried === 1 ? '' : 's'} answered · ${d.sitemaps_fetched || 0} sitemap${(d.sitemaps_fetched || 0) === 1 ? '' : 's'} · ${d.pages_fetched || 0} page${(d.pages_fetched || 0) === 1 ? '' : 's'} · ${d.elapsed_seconds || 0}s${d.from_cache ? ' · from cache' : ''}`;
+    let head, tone;
+    if (d.error) { head = `✗ Update failed: ${escapeHtml(d.error)}`; tone = 'fail'; }
+    else if (added > 0) { head = `✨ ${added} new article${added === 1 ? '' : 's'} added to the library`; tone = 'pass'; }
+    else if (d.total_matched) { head = `✓ Library is up to date: ${d.total_matched} article${d.total_matched === 1 ? '' : 's'} found, all already in the library`; tone = 'accent'; }
+    else { head = '✓ Sources answered but no best-practice article matched'; tone = 'warn'; }
+    const color = tone === 'fail' ? 'var(--fail)' : tone === 'pass' ? 'var(--pass)' : tone === 'warn' ? 'var(--warn)' : 'var(--accent)';
+    let newHtml = '';
+    const addedEntries = d.added_entries || (added > 0 ? (d.new_entries || []) : []);
+    if (addedEntries.length) {
+      const newBySvc = {};
+      for (const e of addedEntries) (newBySvc[e.service] ||= []).push(e);
+      newHtml = Object.entries(newBySvc).map(([svc, items]) => `
+        <section style="margin:0.6rem 0 0.2rem;">
+          <h4 style="font-size:0.78rem;color:var(--pass);margin-bottom:0.3rem;">${escapeHtml(svc)} <span style="color:var(--dim);font-weight:400;">(${items.length})</span></h4>
+          <ul style="list-style:none;padding:0;margin:0;">${items.map(e => renderEntry(e, true)).join('')}</ul>
+        </section>`).join('');
+    }
+    const errs = d.errors || [];
+    const errorBlock = errs.length ? `
+      <details style="margin-top:0.4rem;">
+        <summary style="cursor:pointer;color:var(--warn);font-size:0.78rem;">${errs.length} fetch error${errs.length === 1 ? '' : 's'} — click to see why</summary>
+        <ul style="margin:0.4rem 0 0 1rem;padding:0;font-size:0.74rem;font-family:monospace;color:var(--dim);line-height:1.5;">
+          ${errs.slice(0, 10).map(e => `<li style="margin-bottom:0.3rem;word-break:break-all;"><span style="color:var(--text);">${escapeHtml(e.url || '')}</span><br><span style="color:var(--fail);">${escapeHtml(e.error || '')}</span></li>`).join('')}
+        </ul>${fixHints}
       </details>` : '';
     discoveredHtml = `
-      <div style="padding:0.6rem 0.8rem;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:6px;margin-bottom:1rem;font-size:0.82rem;color:var(--dim);">
-        ${msg} <span style="font-size:0.72rem;">(${fetched} pages · ${failed} failed · ${discoveredData.elapsed_seconds || 0}s · ${discoveredData.from_cache ? 'cached' : 'live'})</span>
+      <div id="bpCrawlResult" style="padding:0.8rem 1rem;border:1px solid ${color};border-left-width:4px;border-radius:8px;margin-bottom:1rem;background:rgba(148,163,184,0.05);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
+          <strong style="color:${color};">${head}</strong>
+          <span style="color:var(--dim);font-size:0.72rem;">${escapeHtml(stats)}</span>
+        </div>
+        ${sourceTable(d.per_source, errs)}
         ${errorBlock}
+        ${newHtml}
+        ${added > 0 ? '<div style="color:var(--dim);font-size:0.72rem;margin-top:0.4rem;">Saved in your per-user data folder; they stay in the library across restarts, badged DISCOVERED.</div>' : ''}
       </div>`;
   }
 
@@ -4181,8 +4193,8 @@ function _renderBestPractices(data, discoveredData) {
       </span>
     </div>`;
 
-  // Last-refresh status — lets the user know the library is being
-  // auto-maintained and when the next poll will happen.
+  // Library status: what is in it, when it was last updated, and what
+  // the last attempt did — so "did the update work?" has an answer.
   const fmtRelative = (ts) => {
     if (!ts) return 'never';
     const secs = Math.max(0, (Date.now() / 1000) - ts);
@@ -4199,20 +4211,24 @@ function _renderBestPractices(data, discoveredData) {
     if (secs < 3600) return `in ${Math.round(secs/60)}m`;
     return `in ${Math.round(secs/3600)}h`;
   };
-  const autoEnabled = data.auto_refresh_enabled !== false;
-  const lastRefreshed = data.last_refreshed_at;
-  const nextRefresh = data.next_refresh_at;
-  const refreshStatus = data.last_refresh_status || 'pending';
-  const refreshErr = data.last_refresh_error;
-  const statusColor = refreshStatus === 'ok' ? 'var(--pass)'
-                     : refreshStatus === 'error' ? 'var(--fail)'
-                     : 'var(--dim)';
-  const refreshLine = autoEnabled
-    ? `<span style="color:${statusColor};">●</span>
-       <strong>Auto-refresh ${refreshStatus === 'ok' ? 'active' : refreshStatus}</strong> ·
-       last ${fmtRelative(lastRefreshed)} ·
-       next ${fmtUntil(nextRefresh)}${refreshErr ? ` · <span style="color:var(--fail);" title="${escapeHtml(refreshErr)}">⚠ error</span>` : ''}`
-    : '<span style="color:var(--dim);">Auto-refresh disabled</span>';
+  const lc = data.last_crawl || {};
+  const discoveredCount = data.discovered_count || entries.filter(e => e.discovered).length;
+  const attemptFailed = lc.last_attempt_error && (!lc.last_success_at || (lc.last_attempt_at || 0) > (lc.last_success_at || 0));
+  let lastLine;
+  if (lc.last_success_at) {
+    lastLine = `<span style="color:var(--pass);">●</span> Last update ${fmtRelative(lc.last_success_at)}: ${lc.last_success_sources || 0} source${(lc.last_success_sources || 0) === 1 ? '' : 's'} answered, ${lc.last_success_total_matched || 0} article${(lc.last_success_total_matched || 0) === 1 ? '' : 's'} found`;
+  } else {
+    lastLine = '<span style="color:var(--dim);">●</span> Never updated from the sources yet';
+  }
+  const failLine = attemptFailed
+    ? `<div style="color:var(--fail);margin-top:0.2rem;">⚠ Last attempt ${fmtRelative(lc.last_attempt_at)} failed: ${escapeHtml(lc.last_attempt_error)}</div>`
+    : '';
+  const autoLine = data.auto_refresh_enabled !== false
+    ? `<div style="color:var(--dim);margin-top:0.2rem;">Auto-refresh every 6h · next ${fmtUntil(data.next_refresh_at)}${data.crawl_running ? ' · <strong style="color:var(--accent);">an update is running now</strong>' : ''}</div>`
+    : '<div style="color:var(--dim);margin-top:0.2rem;">Auto-refresh disabled</div>';
+  const refreshLine = `
+    <div><strong>${entries.length} article${entries.length === 1 ? '' : 's'}</strong> in the library · ${discoveredCount} discovered by updates, ${entries.length - discoveredCount} curated</div>
+    <div style="margin-top:0.2rem;">${lastLine}</div>${failLine}${autoLine}`;
 
   document.getElementById('bestPracticesContent').innerHTML = `
     <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.5rem;">
@@ -4221,61 +4237,84 @@ function _renderBestPractices(data, discoveredData) {
       <strong style="color:var(--pass);">Authoritative</strong> (hyperscalers, Terraform, ecosystem partners: Splunk, CrowdStrike, Okta, Ping, Microsoft, AWS), or
       <strong style="color:var(--warn);">Community</strong> (forums) — so you can weight each link accordingly.
     </p>
-    <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;color:var(--dim);margin-bottom:0.7rem;padding:0.4rem 0.7rem;background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;">
+    <div id="bpStatusLine" style="font-size:0.78rem;color:var(--text);margin-bottom:0.7rem;padding:0.5rem 0.8rem;background:rgba(148,163,184,0.06);border:1px solid var(--border);border-radius:8px;line-height:1.5;">
       ${refreshLine}
     </div>
     ${tierLegend}
-    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;">
-      <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices(false)"
-              aria-label="Crawl help.zscaler.com for new Best Practices articles and add them to the library"
-              style="padding:0.5rem 1rem;font-size:0.85rem;">🔄 Update library</button>
-      <button type="button" class="btn btn-ghost" onclick="crawlBestPractices(true)"
-              aria-label="Force a fresh crawl, bypassing the 24h cache"
-              style="padding:0.5rem 0.9rem;font-size:0.8rem;">⟳ Force refresh</button>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.4rem;flex-wrap:wrap;align-items:center;">
+      <button type="button" id="bpCrawlBtn" class="btn btn-primary" onclick="crawlBestPractices()"
+              aria-label="Read every source now for new Best Practices articles and add them to the library"
+              style="padding:0.5rem 1rem;font-size:0.85rem;">🔄 Update library now</button>
       <label style="display:inline-flex;align-items:center;gap:0.3rem;color:var(--dim);font-size:0.75rem;cursor:pointer;"
-             title="Enable if corporate TLS inspection is blocking the crawl">
+             title="Enable if corporate TLS inspection is blocking the crawl and no CA bundle is configured in local_settings.bat">
         <input type="checkbox" id="bpSkipTls" style="width:auto;cursor:pointer;">
         Skip TLS verify
       </label>
-      <span style="color:var(--dim);font-size:0.72rem;">Auto-merges new finds · 24h cache · crawls every registered source</span>
+      <span style="color:var(--dim);font-size:0.72rem;">Reads the sitemaps of help.zscaler.com, the Zscaler blog and the developer portal, then walks the partner sites. Usually 30–90 seconds. New finds are added automatically.</span>
     </div>
+    <div id="bpCrawlProgress" style="min-height:1.2rem;font-size:0.76rem;color:var(--accent);margin-bottom:0.8rem;"></div>
     ${discoveredHtml}
     ${curatedHtml}`;
 }
 
-async function crawlBestPractices(force) {
+let _bpProgressTimer = null;
+function _bpShowProgress(p) {
+  const el = document.getElementById('bpCrawlProgress');
+  if (!el) return;
+  if (!p || !p.running) { el.textContent = p && p.phase ? 'Finishing…' : 'Starting…'; return; }
+  const phase = p.phase === 'sitemap' ? 'Reading sitemap of' : p.phase === 'pages' ? 'Walking pages of' : p.phase === 'titles' ? 'Fetching titles of new articles from' : 'Starting';
+  const done = (p.sources_done != null && p.sources_total) ? ` · source ${Math.min(p.sources_done + 1, p.sources_total)} of ${p.sources_total}` : '';
+  el.innerHTML = `<span class="spin" style="display:inline-block;width:10px;height:10px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rp-spin 0.9s linear infinite;vertical-align:middle;margin-right:0.4rem;"></span>${escapeHtml(phase)} <strong>${escapeHtml(p.source || '')}</strong> · ${p.pages || 0} fetched · ${p.total_found != null ? p.total_found : (p.found || 0)} articles found so far${done}${p.detail ? ` · <span style="color:var(--dim);">${escapeHtml(String(p.detail).slice(0, 70))}</span>` : ''}`;
+}
+
+async function crawlBestPractices() {
   const btn = document.getElementById('bpCrawlBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Crawling Zscaler sources…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Updating…'; }
   const skipTls = !!(document.getElementById('bpSkipTls') || {}).checked;
+  _bpShowProgress(null);
+  if (_bpProgressTimer) clearInterval(_bpProgressTimer);
+  _bpProgressTimer = setInterval(async () => {
+    try { const r = await fetch('/api/best-practices/crawl/status', { cache: 'no-store' }); _bpShowProgress(await r.json()); } catch (_) { /* next tick */ }
+  }, 1500);
   try {
+    // The button always reads the sources live (force); the 24h cache is
+    // for the background refresh only.
     const r = await fetch('/api/best-practices/crawl', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ force: !!force, skip_tls_verify: skipTls }),
+      body: JSON.stringify({ force: true, skip_tls_verify: skipTls }),
     });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) { let d = `HTTP ${r.status}`; try { const j = await r.json(); d = j.detail || d; } catch (_) {} throw new Error(d); }
     const data = await r.json();
-    // The crawl auto-persists discoveries into the library, so re-fetch
-    // the merged catalog so newly-promoted entries appear inline in
-    // their service sections (with a DISCOVERED badge).
+    // Discoveries are persisted server-side; re-fetch the merged catalog
+    // so they appear in their service sections with a DISCOVERED badge.
     try {
       const r2 = await fetch('/api/best-practices', { cache: 'no-store' });
       _bestPracticesCache = await r2.json();
     } catch(_) { /* keep previous cache */ }
+    clearInterval(_bpProgressTimer); _bpProgressTimer = null;
     _renderBestPractices(_bestPracticesCache, data);
-    // Confirmation toast
+    const skip = document.getElementById('bpSkipTls'); if (skip) skip.checked = skipTls;
     if (typeof data.added_to_library === 'number' && data.added_to_library > 0) {
       announce(`${data.added_to_library} new article${data.added_to_library === 1 ? '' : 's'} added to the library.`);
+    } else if (data.error) {
+      announce(`Library update failed: ${data.error}`);
+    } else {
+      announce('Library is up to date.');
     }
+    const res = document.getElementById('bpCrawlResult'); if (res) res.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (e) {
+    clearInterval(_bpProgressTimer); _bpProgressTimer = null;
     const host = document.getElementById('bestPracticesContent');
     if (host) {
       const banner = document.createElement('div');
       banner.style.cssText = 'padding:0.6rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;margin-bottom:0.8rem;';
-      banner.innerHTML = `<strong style="color:var(--fail);">Crawl failed:</strong> ${escapeHtml(e.message)}`;
+      banner.innerHTML = `<strong style="color:var(--fail);">Update failed:</strong> ${escapeHtml(e.message)}`;
       host.insertBefore(banner, host.firstChild);
     }
+    const pr = document.getElementById('bpCrawlProgress'); if (pr) pr.textContent = '';
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Update library'; }
+    const b2 = document.getElementById('bpCrawlBtn');
+    if (b2) { b2.disabled = false; b2.textContent = '🔄 Update library now'; }
   }
 }
 
