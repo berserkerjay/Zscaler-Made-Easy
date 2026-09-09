@@ -299,8 +299,14 @@ def resolve_engine_expression(expr: str, dict_name_to_id: Dict[str, Any]) -> Tup
         placeholder = f"D:{dict_name}"
         if placeholder in expr:
             expr = expr.replace(placeholder, f"D{dict_name_to_id[dict_name]}.S")
+    # ZIA's grammar wants every dictionary term compared to a count
+    # (`D63.S > 1`); a bare term means "at least one match".
+    expr = _BARE_TERM_RE.sub(r"\1 > 0", expr)
     unresolved = [u.strip() for u in re.findall(_UNRESOLVED_REF_RE, expr) if u.strip()]
     return expr, unresolved
+
+
+_BARE_TERM_RE = re.compile(r"(D\d+\.S)(?!\s*[<>=])")
 
 
 # A leftover `D:<name>` runs until the next boolean operator, closing paren,

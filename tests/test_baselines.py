@@ -51,7 +51,7 @@ def tenant_dict(pattern=r"\bZ\d{4}\b", description="", **kw):
                patterns=[Obj(action="PATTERN_COUNT_TYPE_ALL", pattern=pattern)], phrases=[], **kw)
 
 
-def tenant_engine(expr="(D4100.S)", description=""):
+def tenant_engine(expr="(D4100.S > 0)", description=""):
     return Obj(id=5100, name="ZBP-Alpha Engine", engine_expression=expr, description=description)
 
 
@@ -137,7 +137,7 @@ def test_drifted_baseline_objects_are_restored(baseline_pack):
 
 def test_missing_dictionary_forces_engine_rewrite(baseline_pack):
     # Dictionary gone, engine still points at the old ID: the engine must be restored too.
-    client = FakeClient(dicts=[PREDEF_SSN], engines=[tenant_engine(expr="(D4100.S)")], rules=[tenant_rule()])
+    client = FakeClient(dicts=[PREDEF_SSN], engines=[tenant_engine(expr="(D4100.S > 0)")], rules=[tenant_rule()])
     rep = pd.preflight(client, [baseline_pack], writes_enabled=True)
     d, e, p = items_by(rep, "dictionary"), items_by(rep, "engine"), items_by(rep, "policy")
     assert d["ZBP-Alpha Dict"]["status"] == pd.CREATE
@@ -146,7 +146,7 @@ def test_missing_dictionary_forces_engine_rewrite(baseline_pack):
     res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True)
     assert res["summary"] == {"created": 1, "restored": 1, "reused": 1}
     new_dict_id = client.zia.dlp_dictionary.items[-1].id
-    assert client.zia.dlp_engine.updated[-1]["engine_expression"] == f"(D{new_dict_id}.S)"
+    assert client.zia.dlp_engine.updated[-1]["engine_expression"] == f"(D{new_dict_id}.S > 0)"
 
 
 def test_plain_pack_keeps_never_overwrite_behaviour(plain_pack):

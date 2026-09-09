@@ -419,7 +419,7 @@ def test_apply_creates_in_dependency_order_and_isolates_failures(tmp_path):
 
     # Engine expression was resolved to the freshly created dictionary ID.
     d1_id = next(a for a in client.zia.dlp_dictionary.items if a.name == "D1").id
-    assert client.zia.dlp_engine.added[0]["engine_expression"] == f"D{d1_id}.S"
+    assert client.zia.dlp_engine.added[0]["engine_expression"] == f"D{d1_id}.S > 0"
     # Policy resolved the engine ID and was inserted at the top.
     rule = client.zia.dlp_web_rules.added[0]
     assert rule["order"] == "1" and rule["action"] == "ALLOW" and rule["rank"] == 7

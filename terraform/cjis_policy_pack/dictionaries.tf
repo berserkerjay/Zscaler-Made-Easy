@@ -8,14 +8,6 @@ data "zia_dlp_dictionaries" "drivers_license_united_states" {
   name = "Drivers License (United States)"
 }
 
-data "zia_dlp_dictionaries" "cjis_marking_pattern_high_confidence" {
-  name = "CJIS Marking Pattern (High Confidence"
-}
-
-data "zia_dlp_dictionaries" "cjis_marking_pattern_medium_confidence" {
-  name = "CJIS Marking Pattern (Medium Confidence"
-}
-
 resource "zia_dlp_dictionaries" "cjis_marking_pattern_high_confidence" {
   name                         = "CJIS Marking Pattern (High Confidence)"
   description                  = "Explicit CJIS / CJI / CHRI portion and banner markings (document header/footer or paragraph portion markings). [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."

@@ -208,17 +208,19 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     for e in src["engines"]:
         label = S.get("engine", e["name"])
         expr = e["expression"]
-        refs = [m.group(1).strip() for m in _REF_RE.finditer(expr)]
-        mapping: Dict[str, str] = {}
-        for name in refs:
-            if name in dict_names:
-                mapping[name] = f"${{zia_dlp_dictionaries.{S.get('dict', name)}.id}}"
-            else:
-                if name not in predefined_refs:
-                    predefined_refs[name] = S.get("pre", name)
-                mapping[name] = f"${{data.zia_dlp_dictionaries.{predefined_refs[name]}.id}}"
-        for name in sorted(mapping, key=len, reverse=True):
-            expr = expr.replace(f"D:{name}", f"D{mapping[name]}.S")
+        # Pack dictionaries first (longest name first, so a name that is a
+        # prefix of another cannot clobber it, and parentheses inside names
+        # never confuse the parser); whatever is left is a predefined
+        # Zscaler dictionary looked up by name.
+        for name in sorted(dict_names, key=len, reverse=True):
+            if f"D:{name}" in expr:
+                expr = expr.replace(f"D:{name}", f"D${{zia_dlp_dictionaries.{S.get('dict', name)}.id}}.S")
+        for name in sorted({m.group(1).strip() for m in _REF_RE.finditer(expr)}, key=len, reverse=True):
+            if name not in predefined_refs:
+                predefined_refs[name] = S.get("pre", name)
+            expr = expr.replace(f"D:{name}", f"D${{data.zia_dlp_dictionaries.{predefined_refs[name]}.id}}.S")
+        # ZIA compares every term to a count; a bare term means "at least one match".
+        expr = re.sub(r"(D\$\{[^}]+\}\.S)(?!\s*[<>=])", r"\1 > 0", expr)
         eng.append(f'resource "zia_dlp_engines" "{label}" {{\n')
         eng.append(_attr("name", hcl_str(e["name"])))
         eng.append(_attr("description", hcl_str(_provenance(meta, pack_id, e.get("description", "")))))
