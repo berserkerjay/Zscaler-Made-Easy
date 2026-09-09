@@ -757,8 +757,17 @@ class DLPPackDeployRequest(TenantCredsRequest):
     # Converge mode: overwrite baseline objects the customer changed. Off by
     # default and never chosen for the user; the journey check reports them.
     restore_drift: bool = False
+    # Per pack: which DLP channels to deploy into (web, endpoint, saas,
+    # email). A pack not listed is deployed exactly as packed. A chosen
+    # channel the pack has no rule for gets a monitor-only extension rule
+    # carrying the pack's engines; a deselected channel is skipped.
+    channel_targets: Dict[str, List[str]] = {}
     # apply-only: the hash of the plan the user approved, plus explicit consent
     plan_hash: str = ""
+    confirm: bool = False
+
+
+class DeploymentUndoRequest(TenantCredsRequest):
     confirm: bool = False
 
 
@@ -885,7 +894,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     report = await asyncio.to_thread(
         pack_deploy.preflight, client, packs,
         use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks, writes_enabled=writes_enabled(),
-        restore_drift=req.restore_drift,
+        restore_drift=req.restore_drift, channel_targets=req.channel_targets or None,
     )
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
@@ -1057,15 +1066,19 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
     return [{"id": p["id"], "dir": p["dir"]} for p in discover_packs() if pack_deploy.baseline_meta(p, p["id"])]
 
 
-def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False) -> Dict[str, Any]:
+def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
+                 channel_targets: Optional[Dict[str, List[str]]] = None) -> Dict[str, Any]:
     """Read-only journey check: one preflight per baseline pack (so each
-    pack is measured on its own), rolled up with pack_deploy.journey."""
+    pack is measured on its own), rolled up with pack_deploy.journey.
+    `channel_targets` measures the pack as the operator chose to deploy
+    it (extension rules count, skipped channels do not)."""
     import pack_deploy
     rows: List[Dict[str, Any]] = []
     tenant = None
     blockers: List[str] = []
     for pk in packs:
-        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None)
+        ct = {pk["id"]: (channel_targets or {})[pk["id"]]} if (channel_targets or {}).get(pk["id"]) is not None else None
+        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None, channel_targets=ct)
         j = pack_deploy.journey(rep)
         rows.extend(j["baselines"])
         tenant = j.get("tenant") or tenant
@@ -1103,7 +1116,7 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
         raise HTTPException(status_code=404, detail="No baseline packs found (pack.json needs a \"baseline\" section).")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0)
+    out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
 
@@ -1182,6 +1195,7 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
         full = await asyncio.to_thread(
             pack_deploy.preflight, client, packs,
             use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
+            channel_targets=req.channel_targets or None,
         )
         report = pack_deploy.public_report(full)
         report["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
@@ -1191,6 +1205,7 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
         files = await asyncio.to_thread(
             pack_terraform.generate, p,
             report=pack_terraform.split_report(report, p["id"]) if report else None,
+            channel_targets=(req.channel_targets or {}).get(p["id"]),
         )
         workspaces[p["id"]] = files
     data = pack_terraform.zip_workspaces(workspaces)
@@ -1223,11 +1238,62 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     result = await asyncio.to_thread(
         pack_deploy.apply, client, packs,
         plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
-        verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift, log=logs.append,
+        verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
+        channel_targets=req.channel_targets or None, log=logs.append,
     )
     result["logs"] = logs
     if result.get("status") in ("plan_changed", "blocked"):
         return JSONResponse(result, status_code=409)
+    # Remember what was created so the deployment can be undone later.
+    try:
+        import deployments
+        rec = deployments.from_apply(result, tenant_label=f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})",
+                                     packs=list(req.pack_ids), options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks,
+                                                                        "restore_drift": req.restore_drift},
+                                     channel_targets=req.channel_targets or {})
+        if rec:
+            deployments.add(rec)
+            result["deployment_id"] = rec["id"]
+            result["deployment"] = deployments.summary(rec)
+    except Exception as e:  # noqa: BLE001 — a bookkeeping failure must not hide a successful deploy
+        result["deployment_error"] = f"the deployment was not recorded for undo: {str(e)[:200]}"
+    return result
+
+
+@app.get("/api/deployments")
+async def dlp_deployments_list(tenant_label: Optional[str] = None):
+    """Deployments made from this app (newest first): what was created,
+    in which tenant, and whether it was undone."""
+    import deployments
+    return {"deployments": deployments.list_all(tenant_label), "writes_enabled": writes_enabled()}
+
+
+@app.post("/api/deployments/{dep_id}/undo")
+async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
+    """Delete what a recorded deployment created (rules, endpoint
+    application groups, engines, dictionaries, in that order). Only
+    objects this tool created are removed, and only while the tenant still
+    lists the id under the name we gave it. Needs write mode and
+    confirm=true. Changes still need activation in ZIA."""
+    import deployments
+    import pack_deploy
+    rec = deployments.get(dep_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Deployment not found.")
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Undo requires explicit confirmation (confirm=true).")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    creds = _tenant_creds(req)
+    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    if rec.get("tenant_label") and rec["tenant_label"] != label:
+        raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    logs: list = []
+    result = await asyncio.to_thread(pack_deploy.undo, client, rec, writes_enabled=True, log=logs.append)
+    result["logs"] = logs
+    updated = deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
+    result["deployment"] = deployments.summary(updated) if updated else None
     return result
 
 

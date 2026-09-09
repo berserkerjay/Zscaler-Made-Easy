@@ -272,16 +272,25 @@ def _attr(name: str, value: str, width: int = 28) -> str:
 # Generation
 # ---------------------------------------------------------------------------
 
-def load_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
+def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = None) -> Dict[str, Any]:
+    """`channel_targets` (web/endpoint/saas/email) narrows or extends the
+    pack's rules per channel exactly as Deploy Policy Packs does."""
     configs = _resolve_configs(pack["dir"])
     meta = load_pack_metadata(pack["dir"])
+    engines = _load_json(configs, "dlp_engines.json")
+    policies = pc.expand_sub_rules(_load_json(configs, "dlp_policies.json"))
+    b = meta.get("baseline") or {}
+    policies, note = pc.apply_channel_targets(policies, channel_targets, pack_name=meta.get("name", pack["id"]),
+                                              prefix=b.get("prefix") or "", engine_names=[e.get("name") for e in engines if e.get("name")],
+                                              pack_id=pack["id"])
     return {
         "id": pack["id"],
         "meta": meta,
         "dictionaries": _load_json(configs, "dlp_dictionaries.json"),
-        "engines": _load_json(configs, "dlp_engines.json"),
-        "policies": pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")),
+        "engines": engines,
+        "policies": policies,
         "app_groups": _load_json(configs, "endpoint_application_groups.json"),
+        "channel_note": note,
     }
 
 
@@ -295,10 +304,11 @@ def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optiona
 
 
 def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
-             backend: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+             backend: Optional[Dict[str, str]] = None, channel_targets: Optional[Sequence[str]] = None) -> Dict[str, str]:
     """Build the workspace files for one pack. `report` (a public preflight
-    report for exactly this pack) switches on gap mode."""
-    src = load_pack(pack)
+    report for exactly this pack) switches on gap mode. `channel_targets`
+    applies the same per-channel choice as Deploy Policy Packs."""
+    src = load_pack(pack, channel_targets)
     meta, pack_id = src["meta"], src["id"]
     S = Slugger()
     files: Dict[str, str] = {}

@@ -207,22 +207,32 @@ def _norm_expr(expr: str) -> str:
 # Pack loading + merging
 # ---------------------------------------------------------------------------
 
-def load_sources(packs: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Load every selected pack. `packs` items need `id` and `dir`."""
+def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict[str, Sequence[str]]] = None) -> List[Dict[str, Any]]:
+    """Load every selected pack. `packs` items need `id` and `dir`.
+    `channel_targets` (pack id → DLP channels) narrows or extends the
+    pack's rules per channel; see pack_channels.apply_channel_targets."""
     sources = []
     for p in packs:
         configs = _resolve_configs(p["dir"])
         meta = load_pack_metadata(p["dir"])
+        engines = _load_json(configs, "dlp_engines.json")
+        policies = pc.expand_sub_rules(_load_json(configs, "dlp_policies.json"))
+        targets = (channel_targets or {}).get(p["id"])
+        baseline = baseline_meta(meta, p["id"])
+        policies, note = pc.apply_channel_targets(
+            policies, targets, pack_name=meta.get("name", p["id"]), prefix=(baseline or {}).get("prefix") or "",
+            engine_names=[e.get("name") for e in engines if e.get("name")], pack_id=p["id"])
         sources.append({
             "id": p["id"],
             "name": meta.get("name", p["id"]),
             "dir": p["dir"],
             "dictionaries": _load_json(configs, "dlp_dictionaries.json"),
-            "engines": _load_json(configs, "dlp_engines.json"),
-            "policies": pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")),
+            "engines": engines,
+            "policies": policies,
             "app_groups": _load_json(configs, "endpoint_application_groups.json"),
             "tweaks": meta.get("confidence_tweaks"),
-            "baseline": baseline_meta(meta, p["id"]),
+            "baseline": baseline,
+            "channel_note": note,
         })
     return sources
 
@@ -1019,6 +1029,7 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "drift": item.get("drift"),
         "adopt": bool(item.get("adopt")),
         "position": journey_position(item),
+        "extension": bool(d.get("extension")),
     }
     if item["kind"] == "dictionary":
         out["detail"] = {"type": "clone" if d.get("predefined_clone") else "custom",
@@ -1061,8 +1072,14 @@ def preflight(
     apply_tweaks: bool = True,
     writes_enabled: Optional[bool] = None,
     restore_drift: bool = False,
+    channel_targets: Optional[Dict[str, Sequence[str]]] = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
+
+    `channel_targets` (pack id → list of web/endpoint/saas/email) chooses
+    which DLP channels each pack is deployed into: deselected channels
+    are skipped, channels the pack has no rule for get a monitor-only
+    extension rule with the pack's engines.
 
     `restore_drift` (converge mode) makes baseline objects that differ from
     the reference RESTORE (overwrite) instead of being kept; it is off by
@@ -1076,11 +1093,13 @@ def preflight(
         return {"status": "blocked", "blockers": ["No packs selected."], "items": [], "warnings": [],
                 "impacts": [], "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
 
-    sources = load_sources(packs)
+    targets_norm = {pid: pc.normalize_targets(t) for pid, t in (channel_targets or {}).items() if pc.normalize_targets(t) is not None}
+    sources = load_sources(packs, targets_norm)
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
     tenant = fetch_tenant(client, need)
-    options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift)}
+    options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift),
+               "channel_targets": {k: sorted(v) for k, v in sorted(targets_norm.items())}}
 
     blockers: List[str] = []
     if not tenant["reachable"]:
@@ -1147,6 +1166,10 @@ def preflight(
     for imp in impacts:
         if imp.get("severity") == "warning":
             warnings.append(imp["title"])
+    for src in sources:
+        note = src.get("channel_note") or {}
+        for w in note.get("warnings") or []:
+            warnings.append(f"{src['name']}: {w}")
     if read_only_note:
         warnings.append(read_only_note)
 
@@ -1163,7 +1186,7 @@ def preflight(
         "status": status,
         "packs": [{"id": s["id"], "name": s["name"], "dictionaries": len(s["dictionaries"]),
                    "engines": len(s["engines"]), "policies": len(s["policies"]), "app_groups": len(s.get("app_groups") or []),
-                   "baseline": s.get("baseline")} for s in sources],
+                   "baseline": s.get("baseline"), "channels": s.get("channel_note")} for s in sources],
         "baselines": baseline_status_rows(all_items, sources),
         "tenant_mode": tenant_mode(all_items, sources, tenant) if tenant["reachable"] else None,
         "options": options,
@@ -1428,6 +1451,7 @@ def apply(
     verify: bool = True,
     writes_enabled: Optional[bool] = None,
     restore_drift: bool = False,
+    channel_targets: Optional[Dict[str, Sequence[str]]] = None,
     log: LogFn = None,
 ) -> Dict[str, Any]:
     """Execute a previously approved plan.
@@ -1441,7 +1465,7 @@ def apply(
     _log = log or (lambda m: None)
     started = time.time()
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                       restore_drift=restore_drift)
+                       restore_drift=restore_drift, channel_targets=channel_targets)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs, or start it with "
                                                   "START_Zscaler_Assessment_WRITES_ENABLED.bat, then deploy."],
@@ -1737,3 +1761,121 @@ def apply(
         "elapsed_seconds": round(time.time() - started, 2),
         "activation_required": wrote,
     }
+
+
+# ---------------------------------------------------------------------------
+# Undo a deployment
+# ---------------------------------------------------------------------------
+
+UNDO_ORDER = ("policy", "app_group", "engine", "dictionary")
+
+
+def _current_names(zia, kind: str, channel: Optional[str]) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
+    """id → name for the objects of a kind/channel as the tenant has them
+    now, so an undo only deletes an id that still carries the name we
+    created. Sub-rules are read through their parents."""
+    try:
+        if kind == "dictionary":
+            data, err = pc._nx(zia.dlp_dictionary.list_dicts())
+        elif kind == "engine":
+            data, err = pc._nx(zia.dlp_engine.list_dlp_engines())
+        elif kind == "app_group":
+            groups, gerr = pc.list_app_groups(zia)
+            return ({str(g.get("id")): n for n, g in (groups or {}).items()}, gerr)
+        else:
+            svc = getattr(zia, pc.CHANNELS[channel]["service"], None)
+            if svc is None:
+                return None, "service unavailable"
+            if channel == pc.SAAS:
+                lister = getattr(svc, "list_all_rules", None)
+                data, err = pc._nx(lister()) if lister else pc._nx(svc.list_rules("ANY"))
+            elif channel == pc.CLOUD_APP:
+                data = []
+                for t in pc.CLOUD_APP_TYPES:
+                    part, perr = pc._nx(svc.list_rules(t))
+                    if not perr:
+                        data.extend(part or [])
+                err = None
+            else:
+                data, err = pc._nx(svc.list_rules())
+        if err:
+            return None, str(err)[:200]
+        out: Dict[str, str] = {}
+        for r in data or []:
+            out[str(_field(r, "id"))] = str(_field(r, "name", default="") or "")
+            if channel == pc.ENDPOINT:
+                for sr in (_field(r, "sub_rules", "subRules", default=[]) or []):
+                    out[str(_field(sr, "id"))] = str(_field(sr, "name", default="") or "")
+        return out, None
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)[:200]
+
+
+def _delete(zia, item: Dict[str, Any]) -> Optional[str]:
+    """Delete one created object. Returns an error string or None."""
+    kind, channel, oid = item["kind"], item.get("channel"), item["id"]
+    try:
+        if kind == "dictionary":
+            _, _, err = zia.dlp_dictionary.delete_dict(oid)
+        elif kind == "engine":
+            _, _, err = zia.dlp_engine.delete_dlp_engine(oid)
+        elif kind == "app_group":
+            _, err = pc.raw_request(zia, "DELETE", f"{pc.APP_GROUPS_PATH}/{oid}")
+        elif channel == pc.ENDPOINT and item.get("parent_id") is not None:
+            _, err = pc.raw_request(zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}")
+        elif channel == pc.CLOUD_APP:
+            _, _, err = zia.cloudappcontrol.delete_rule(str(item.get("type") or "").upper() or "ANY", oid)
+        else:
+            svc = getattr(zia, pc.CHANNELS[channel]["service"])
+            _, _, err = svc.delete_rule(oid)
+        return str(err)[:200] if err else None
+    except Exception as e:  # noqa: BLE001
+        return str(e)[:200]
+
+
+def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = None, log: LogFn = None) -> Dict[str, Any]:
+    """Delete what a recorded deployment created, in reverse dependency
+    order: sub-rules, rules, endpoint application groups, engines,
+    dictionaries. Only objects this tool created are touched, and only
+    when the tenant still lists that id under the name we gave it.
+    Reused, modified or restored objects are never deleted. Every item is
+    isolated; a failure (an engine still used by another rule, say) is
+    reported and the rest continues."""
+    _log = log or (lambda m: None)
+    if writes_enabled is False:
+        return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to undo a deployment."], "results": []}
+    zia = client.zia
+    results: List[Dict[str, Any]] = []
+    todo = [c for c in (record.get("created") or []) if not c.get("undone")]
+    rank = {k: i for i, k in enumerate(UNDO_ORDER)}
+    todo.sort(key=lambda c: (rank.get(c["kind"], 9), 0 if c.get("parent_id") is not None else 1))
+    names_cache: Dict[Tuple[str, Optional[str]], Tuple[Optional[Dict[str, str]], Optional[str]]] = {}
+    for c in todo:
+        key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
+        if key not in names_cache:
+            names_cache[key] = _current_names(zia, c["kind"], c.get("channel"))
+        current, err = names_cache[key]
+        entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel")}
+        if current is None:
+            entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
+        elif str(c["id"]) not in current:
+            entry.update(status="gone", reason="already removed from the tenant")
+        elif current[str(c["id"])] != c["name"]:
+            entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not the one this tool created; left alone")
+        else:
+            derr = _delete(zia, c)
+            if derr:
+                entry.update(status="failed", error=derr)
+            else:
+                entry.update(status="deleted")
+                # Keep the cache honest for later items of the same kind.
+                current.pop(str(c["id"]), None)
+        results.append(entry)
+        _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else ""))
+    counts: Dict[str, int] = {}
+    for r in results:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    complete = not counts.get("failed") and not counts.get("skipped")
+    status = "undone" if complete and results else ("partial" if counts.get("deleted") else ("nothing" if not results else "failed"))
+    return {"status": status, "summary": counts, "results": results, "complete": complete,
+            "activation_required": bool(counts.get("deleted"))}
