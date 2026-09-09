@@ -2,7 +2,7 @@
 
 resource "zia_dlp_web_rules" "z_atomic_energy_act_monitor" {
   name                         = "Z-Atomic Energy Act Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -17,7 +17,7 @@ resource "zia_dlp_web_rules" "z_atomic_energy_act_monitor" {
 
 resource "zia_dlp_web_rules" "z_financial_information_monitor" {
   name                         = "Z-Financial Information-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -32,7 +32,7 @@ resource "zia_dlp_web_rules" "z_financial_information_monitor" {
 
 resource "zia_dlp_web_rules" "z_for_official_use_only_markings_monitor" {
   name                         = "Z-For Official Use Only Markings-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 2
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -47,7 +47,7 @@ resource "zia_dlp_web_rules" "z_for_official_use_only_markings_monitor" {
 
 resource "zia_dlp_web_rules" "z_itar_international_traffic_in_arms_regulations_monitor" {
   name                         = "Z-ITAR International Traffic in Arms Regulations-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 3
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -62,7 +62,7 @@ resource "zia_dlp_web_rules" "z_itar_international_traffic_in_arms_regulations_m
 
 resource "zia_dlp_web_rules" "z_standard_forms_monitor" {
   name                         = "Z-Standard Forms-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 4
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -77,7 +77,7 @@ resource "zia_dlp_web_rules" "z_standard_forms_monitor" {
 
 resource "zia_dlp_web_rules" "z_traffic_light_protocol_monitor" {
   name                         = "Z-Traffic Light Protocol-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -92,7 +92,7 @@ resource "zia_dlp_web_rules" "z_traffic_light_protocol_monitor" {
 
 resource "zia_dlp_web_rules" "z_us_pii_monitor" {
   name                         = "Z-US PII-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 6
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -107,7 +107,7 @@ resource "zia_dlp_web_rules" "z_us_pii_monitor" {
 
 resource "zia_dlp_web_rules" "z_us_phi_monitor" {
   name                         = "Z-US PHI-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 7
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -122,7 +122,7 @@ resource "zia_dlp_web_rules" "z_us_phi_monitor" {
 
 resource "zia_dlp_web_rules" "z_controlled_unclassified_information_monitor" {
   name                         = "Z-Controlled Unclassified Information-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 8
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -137,7 +137,7 @@ resource "zia_dlp_web_rules" "z_controlled_unclassified_information_monitor" {
 
 resource "zia_dlp_web_rules" "z_private_keys_monitor" {
   name                         = "Z-Private Keys-Monitor"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 9
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -152,7 +152,7 @@ resource "zia_dlp_web_rules" "z_private_keys_monitor" {
 
 resource "zia_endpoint_dlp_rules" "z_fed_endpoint_monitor" {
   name                         = "Z-Fed Endpoint-Monitor"
-  description                  = "Endpoint DLP: monitor CUI, FOUO-marked and US PII content leaving managed devices via removable media, printing, network shares and application file access. Monitor-only. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Endpoint DLP: monitor CUI, FOUO-marked and US PII content leaving managed devices via removable media, printing, network shares and application file access. Monitor-only. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -167,7 +167,7 @@ resource "zia_endpoint_dlp_rules" "z_fed_endpoint_monitor" {
 
 resource "zia_casb_dlp_rules" "z_fed_saas_file_monitor" {
   name                         = "Z-Fed SaaS File-Monitor"
-  description                  = "SaaS Security API: scan files at rest in onboarded file-storage tenants for CUI, FOUO markings and US PII; report incidents. Applies to every matching onboarded tenant. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "SaaS Security API: scan files at rest in onboarded file-storage tenants for CUI, FOUO markings and US PII; report incidents. Applies to every matching onboarded tenant. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -186,7 +186,7 @@ resource "zia_casb_dlp_rules" "z_fed_saas_file_monitor" {
 
 resource "zia_outbound_email_dlp" "z_fed_email_monitor" {
   name                         = "Z-Fed Email-Monitor"
-  description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CUI, FOUO markings and US PII. Monitor-only. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CUI, FOUO markings and US PII. Monitor-only. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   state                        = "DISABLED"
   action                       = "ALLOW"

@@ -15,5 +15,7 @@
       "target_confidence": "CONFIDENCE_LEVEL_LOW",
       "label": "Medical → Low (reduce FPs on mixed police/medical intake)"
     }
-  ]
+  ],
+  "audience": "State and local law enforcement, courts, and any agency or contractor that handles Criminal Justice Information (CJI).",
+  "when_to_use": "The customer must comply with the FBI CJIS Security Policy, or handles criminal history, NCIC/III, warrants, biometrics or firearms background-check data."
 }

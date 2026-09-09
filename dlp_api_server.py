@@ -177,7 +177,9 @@ if os.path.isdir(STATIC_DIR):
 # functions by redefining them. Same-origin, so the CSP ('self') allows them.
 GUI_ADDONS = [
     ("deploy_studio.css", "style"),
+    ("guide.css", "style"),
     ("deploy_studio.js", "script"),
+    ("guide.js", "script"),
 ]
 
 
@@ -735,6 +737,76 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
+
+
+def _explain_connection_error(detail: str) -> Dict[str, Any]:
+    """Turn an auth/network failure into a plain-language cause and fix."""
+    d = str(detail or "")
+    low = d.lower()
+    if "invalid_client" in low or "401" in low or "unauthorized" in low or "authentication failed" in low and "connect" not in low:
+        cause = "Zscaler rejected the client ID or client secret."
+        fix = ("Check the client ID for typos. The secret is shown only once when the API client is created; if you copied it later, "
+               "generate a new secret in ZIdentity > Integration > API Clients and paste it fresh.")
+    elif "certificate" in low or "ssl" in low or "tls" in low:
+        cause = "The connection to Zscaler was intercepted by TLS inspection (usually Zscaler Client Connector or a proxy on this machine)."
+        fix = ("Export your organisation's root CA certificate as a .pem file and start the tool with "
+               "REQUESTS_CA_BUNDLE=<path to that file>, or run from a machine that is not being inspected.")
+    elif "tunnel connection failed" in low or "proxyerror" in low or "max retries" in low or "name resolution" in low or "nodename" in low:
+        cause = "This machine could not reach Zscaler's login service at all (network, proxy or DNS)."
+        fix = ("Confirm the vanity domain is the short name from your login URL (acme for acme.zslogin.net). "
+               "If you are behind a corporate proxy, set HTTPS_PROXY in START_Zscaler_Assessment.bat. "
+               "Check that outbound HTTPS to *.zslogin.net and api.zsapi.net is allowed.")
+    elif "vanity" in low:
+        cause = "The vanity domain is not valid."
+        fix = "Enter only the short name that appears before .zslogin.net in your admin login URL, for example acme."
+    elif "403" in low or "forbidden" in low or "scope" in low:
+        cause = "The credentials are valid but the API client is not allowed to read this tenant."
+        fix = ("In ZIdentity, open the API client and make sure a ZIA API resource and a role with read access to DLP "
+               "dictionaries, engines and rules are assigned.")
+    else:
+        cause = "The connection failed."
+        fix = "Re-check cloud, vanity domain, client ID and client secret at the top of the page, then try again."
+    return {"cause": cause, "fix": fix, "raw": d[:300]}
+
+
+@app.post("/api/tenant/check")
+async def tenant_check(req: TenantCredsRequest):
+    """Read-only connection test for the Start-here panel: authenticates,
+    counts DLP dictionaries, engines and web DLP rules, and explains any
+    failure in plain language with what to do next."""
+    creds = _tenant_creds(req)
+    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    try:
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+    except HTTPException as e:
+        raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, **_explain_connection_error(e.detail)})
+
+    def probe() -> Dict[str, Any]:
+        from pack_channels import _nx
+        z = client.zia
+        out: Dict[str, Any] = {"ok": True, "tenant_label": label, "problems": []}
+        dicts, err = _nx(z.dlp_dictionary.list_dicts())
+        if err:
+            raise RuntimeError(str(err))
+        items = list(dicts or [])
+        custom = sum(1 for d in items if getattr(d, "custom", False) or (isinstance(d, dict) and d.get("custom")))
+        out["dictionaries"] = len(items)
+        out["custom_dictionaries"] = custom
+        out["predefined_dictionaries"] = len(items) - custom
+        engines, err = _nx(z.dlp_engine.list_dlp_engines_lite())
+        out["engines"] = 0 if err else len(engines or [])
+        if err:
+            out["problems"].append("DLP engines could not be listed; the role may lack engine read access.")
+        rules, err = _nx(z.dlp_web_rules.list_rules())
+        out["web_rules"] = 0 if err else len(rules or [])
+        if err:
+            out["problems"].append("Web DLP rules could not be listed; the role may lack DLP policy read access.")
+        return out
+
+    try:
+        return await asyncio.to_thread(probe)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail={"tenant_label": label, **_explain_connection_error(str(e))})
 
 
 @app.post("/api/dlp-packs/baseline-status")

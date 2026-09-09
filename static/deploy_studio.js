@@ -9,25 +9,41 @@ const DZ = {
   step: 1, report: null, result: null, busy: false, consent: false, error: '',
 };
 const DZ_STEPS = ['Select packs', 'Preflight', 'Approve', 'Deploy'];
+// Every status carries a plain-language explanation (shown as a tooltip on
+// the status chip) so a first-time operator can read a plan without help.
 const DZ_STATUS = {
-  create:             { label: 'Will create',     cls: 'st-create',  icon: '+' },
-  modify:             { label: 'Will modify',     cls: 'st-modify',  icon: '✎' },
-  restore:            { label: 'Will restore',    cls: 'st-modify',  icon: '↺' },
-  reuse:              { label: 'Already present', cls: 'st-reuse',   icon: '✓' },
-  reuse_differs:      { label: 'Kept as-is',      cls: 'st-differs', icon: '≠' },
-  conflict:           { label: 'Conflict',        cls: 'st-blocked', icon: '!' },
-  blocked_dependency: { label: 'Skipped',         cls: 'st-blocked', icon: '–' },
-  skip_empty:         { label: 'Skipped',         cls: 'st-blocked', icon: '–' },
-  noop:               { label: 'No change',       cls: 'st-reuse',   icon: '✓' },
+  create:             { label: 'Will create',     cls: 'st-create',  icon: '+', help: 'This object does not exist in the tenant yet. Deploying creates it exactly as the pack defines it.' },
+  modify:             { label: 'Will modify',     cls: 'st-modify',  icon: '✎', help: 'An existing tenant object will be changed (a confidence tweak). The change is listed so you can approve it.' },
+  restore:            { label: 'Will restore',    cls: 'st-modify',  icon: '↺', help: 'This baseline object exists in the tenant but its content was changed. Deploying overwrites it with the baseline definition.' },
+  reuse:              { label: 'Already present', cls: 'st-reuse',   icon: '✓', help: 'The tenant already has this object with the same content. Nothing is written; the pack simply uses it.' },
+  reuse_differs:      { label: 'Kept as-is',      cls: 'st-differs', icon: '≠', help: 'The tenant has an object with this name but different content. The tenant version is kept and used; the pack version is not applied.' },
+  conflict:           { label: 'Conflict',        cls: 'st-blocked', icon: '!', help: 'Two selected packs define this name differently, or it clashes with a predefined Zscaler object. Deselect one pack or rename it.' },
+  blocked_dependency: { label: 'Skipped',         cls: 'st-blocked', icon: '–', help: 'Something this object needs is missing (a dictionary, an engine, an onboarded SaaS tenant, a licensed feature). It will not be created until that exists.' },
+  skip_empty:         { label: 'Skipped',         cls: 'st-blocked', icon: '–', help: 'This dictionary has no phrases or patterns, so it could never match anything and is not created.' },
+  noop:               { label: 'No change',       cls: 'st-reuse',   icon: '✓', help: 'The tweak\'s target is already at the desired value.' },
   // apply results
-  created:  { label: 'Created',  cls: 'st-ok',      icon: '✓' },
-  modified: { label: 'Modified', cls: 'st-ok',      icon: '✓' },
-  restored: { label: 'Restored', cls: 'st-ok',      icon: '↺' },
-  reused:   { label: 'Reused',   cls: 'st-reuse',   icon: '✓' },
-  skipped:  { label: 'Skipped',  cls: 'st-blocked', icon: '–' },
-  failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕' },
+  created:  { label: 'Created',  cls: 'st-ok',      icon: '✓', help: 'Created in the tenant. It becomes active for users only after ZIA activation.' },
+  modified: { label: 'Modified', cls: 'st-ok',      icon: '✓', help: 'The existing object was changed as planned.' },
+  restored: { label: 'Restored', cls: 'st-ok',      icon: '↺', help: 'The drifted baseline object was overwritten with the baseline definition.' },
+  reused:   { label: 'Reused',   cls: 'st-reuse',   icon: '✓', help: 'Already existed; nothing was written.' },
+  skipped:  { label: 'Skipped',  cls: 'st-blocked', icon: '–', help: 'Not written, for the reason shown.' },
+  failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕', help: 'The API refused this write. The error text is shown; other objects were not affected.' },
 };
 const DZ_KIND = { dictionary: 'Dictionary', engine: 'Engine', policy: 'Policy', tweak: 'Tweak', resource: 'Prerequisite', template: 'Template' };
+const DZ_KIND_HELP = {
+  dictionary: 'What to look for: phrases and/or patterns (for example "MRN" near a 7-digit number).',
+  engine: 'How dictionaries combine into a decision with AND / OR and match counts. Rules point at engines.',
+  policy: 'Where and how an engine is enforced: which traffic, which users, and the action (ALLOW = monitor, BLOCK = stop).',
+  tweak: 'A change to the confidence level of a dictionary that already exists in the tenant.',
+  resource: 'Something the tenant must already have (an onboarded SaaS tenant, a notification template, a label).',
+  template: 'A predefined Zscaler dictionary that a pack dictionary is cloned from.',
+};
+const DZ_CHANNEL_HELP = {
+  web: 'Inline web DLP: uploads through the Zscaler cloud (browsers, apps).',
+  endpoint: 'Endpoint DLP: files moving off managed devices (USB, printing, network shares, app access) via Zscaler Client Connector.',
+  saas: 'SaaS Security API: data already at rest in onboarded SaaS tenants (Box, Google Drive, Slack…), scanned out of band.',
+  email: 'Outbound email DLP for onboarded Microsoft 365 / Gmail tenants.',
+};
 // Rule channels: which ZIA policy a pack rule lands in.
 const DZ_CHANNEL = { web: 'Web', endpoint: 'Endpoint', saas: 'SaaS', email: 'Email' };
 const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
@@ -143,6 +159,7 @@ function _dzRenderSelect() {
           <span class="dz-chip kind-baseline">Immutable baseline</span>${p.baseline.prefix ? `<span class="dz-chip">prefix ${_dzE(p.baseline.prefix)}</span>` : ''}
           <span class="d">Authoritative: drift is restored on deploy.</span></div>` : ''}
         <p>${_dzE(p.description || 'No description provided.')}</p>
+        ${p.audience || p.when_to_use ? `<div class="dz-fit">${p.audience ? `<div><span class="k">Who it's for</span>${_dzE(p.audience)}</div>` : ''}${p.when_to_use ? `<div><span class="k">Use it when</span>${_dzE(p.when_to_use)}</div>` : ''}</div>` : ''}
         <div class="dz-meta">
           <span class="dz-chip kind-dictionary">${_dzN(p.dictionaries || 0, 'dictionary', 'dictionaries')}</span>
           <span class="dz-chip kind-engine">${_dzN(p.engines || 0, 'engine')}</span>
@@ -320,7 +337,7 @@ function _dzRow(i, statusKey, extra) {
   return `<div class="dz-row ${st.cls}">
     <span class="ic" aria-hidden="true">${st.icon}</span>
     <div><div class="nm">${_dzE(i.name)}</div>${reason ? `<div class="rs">${_dzE(reason)}</div>` : ''}</div>
-    <div class="tags"><span class="dz-chip kind-${i.kind}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}<span class="dz-chip">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip">${_dzE(p)}</span>`).join('')}</div>
+    <div class="tags"><span class="dz-chip kind-${i.kind}" title="${_dzE(DZ_KIND_HELP[i.kind] || '')}">${DZ_KIND[i.kind] || i.kind}</span>${i.detail && i.detail.channel ? `<span class="dz-chip kind-channel" title="${_dzE(DZ_CHANNEL_HELP[i.detail.channel] || '')}">${_dzE(_dzChan(i.detail.channel))}</span>` : ''}<span class="dz-chip" title="${_dzE(st.help || '')}">${st.label}</span>${(i.packs || []).slice(0, 2).map(p => `<span class="dz-chip" title="Defined by pack ${_dzE(p)}">${_dzE(p)}</span>`).join('')}</div>
   </div>`;
 }
 
@@ -390,6 +407,14 @@ function _dzRenderReview() {
       <div><div class="k">Tenant rules</div><div class="v">${t.rules ?? '–'}<span style="font-size:0.75rem;color:var(--dim);font-weight:500;"> / ${t.rule_cap || 127}</span></div></div>
     </div>
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
+    <details class="dz-fold dz-howto"><summary><div class="dz-h">How to read this plan</div></summary>
+      <ul class="dz-note">
+        <li><strong>Nothing has been written.</strong> This is a dry run against the live tenant.</li>
+        <li><strong>Impact cards</strong> say what changes for the tenant as a whole: rules inserted at the top of the policy, enforcing actions, drift being restored, activation.</li>
+        <li><strong>Tenant prerequisites</strong> are things the tenant must already have (a predefined dictionary, an onboarded SaaS tenant, a licensed feature). Missing ones skip only the rules that need them.</li>
+        <li><strong>Flow</strong> shows how dictionaries feed engines feed rules; hover any box to trace it. <strong>List</strong> groups the same objects by what will happen to them. Hover any status chip for what it means.</li>
+        <li>Every rule ships <strong>DISABLED</strong>, so deploying never affects users. Enable rules in the portal after tuning.</li>
+      </ul></details>
     ${(R.impacts || []).length ? `<div class="dz-h">Impact on this tenant</div>` : ''}
     ${(R.impacts || []).map(i => `<div class="dz-card sev-${_dzE(i.severity)}"><div class="bar"></div><div><div class="t">${_dzE(i.title)}</div><div class="d">${_dzE(i.detail)}</div></div></div>`).join('')}
     ${_dzDepsHtml(R.dependencies)}
@@ -427,6 +452,10 @@ function _dzRenderApprove() {
     </div>
     ${warns.length ? `<div class="dz-h">Warnings<span class="count">${warns.length}</span></div><div class="dz-rows">${warns.map(w => `<div class="dz-row st-differs"><span class="ic" aria-hidden="true">!</span><div class="rs" style="margin-top:0.25rem;color:var(--text);">${_dzE(w)}</div><div></div></div>`).join('')}</div>` : ''}
     ${_dzSection('Exactly what will be written', writes)}
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Before you approve, confirm with the customer</div><div class="d">
+      1. The tenant name above is the right tenant. &nbsp;2. The customer has seen this list and agreed. &nbsp;3. The customer knows an admin must activate changes in the ZIA portal afterwards, and that every new rule arrives disabled.
+      ${restores.length ? ' &nbsp;4. The drifted baseline objects listed above will be overwritten; if the customer changed them on purpose, stop and update the pack instead.' : ''}
+    </div></div></div>
     <div class="dz-consent">
       <input type="checkbox" id="dzConsent" ${DZ.consent ? 'checked' : ''} onchange="DZ.consent=this.checked;_dzRenderApprove()">
       <label for="dzConsent">I've reviewed this plan and the warnings above, and I authorize these changes to <strong>${_dzE(R.tenant_label || 'the tenant')}</strong>. ${restores.length
@@ -456,6 +485,10 @@ async function _dzApply() {
     else DZ.result = data;
     const s = DZ.result.summary || {};
     announce(`Deployment ${DZ.result.status}: ${s.created || 0} created, ${s.failed || 0} failed.`);
+    try {
+      localStorage.setItem('zassess_last_deploy', JSON.stringify({ at: new Date().toLocaleString(), status: DZ.result.status,
+        created: s.created || 0, restored: s.restored || 0, failed: s.failed || 0, packs: [...DZ.selected] }));
+    } catch (e) { /* storage unavailable */ }
   } catch (e) {
     DZ.error = e.message;
   } finally {
@@ -496,6 +529,14 @@ function _dzRenderDeploy() {
   body.innerHTML = `
     <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created · ${s.restored || 0} restored · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
     ${X.activation_required ? `<div class="dz-card sev-warning" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activate to take effect</div><div class="d">ZIA saved these changes as pending. Open the ZIA Admin Portal and click Activate (or run ziaActivator) — users are unaffected until you do.</div></div></div>` : ''}
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What to do next</div><div class="d">
+      <ol class="dz-next">
+        <li><strong>Activate</strong> in the ZIA Admin Portal so the objects exist for traffic (they are still disabled).</li>
+        <li><strong>Enable rules one at a time</strong> in Policy &gt; Data Loss Prevention, starting with the monitor-only ones, and raise their severity once incidents look right.</li>
+        <li><strong>Review incidents</strong> after a few days and tune dictionaries or thresholds in the pack, not in the portal, so the baseline stays the source of truth.</li>
+        <li><strong>Check drift</strong> from the pack card on the next visit; anything changed by hand is listed and can be restored.</li>
+        <li>If the customer manages Zscaler with Terraform, use <strong>Export Terraform</strong> on the review step to hand them the same configuration with state.</li>
+      </ol></div></div></div>
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml((DZ.report || {}).items || [], results) : `
     ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.error) })}
