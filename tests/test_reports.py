@@ -1,0 +1,41 @@
+"""Reports open in their own tab: the server keeps generated reports in
+memory, serves them by id, exports from the cache, and serves the page."""
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+import dlp_api_server as srv
+
+SAMPLE = {"summary": {"total_bypass_items": 2, "ssl_bypass_rules": 2}, "risk_flags": [], "sections": {
+    "ssl_bypass_rules": {"count": 2, "items": [{"id": 1, "name": "A", "action": "DO_NOT_DECRYPT", "state": "ENABLED", "scope": "global"}]}},
+    "aggregated": {}, "guidance": ["x"]}
+
+
+def test_report_cache_page_and_exports():
+    c = TestClient(srv.app)
+    rid = srv._remember_report("bypass", SAMPLE, "acme (production)")
+    assert rid.startswith("bypass-")
+    r = c.get(f"/api/report/bypass/{rid}")
+    assert r.status_code == 200 and r.json()["tenant_label"] == "acme (production)" and r.json()["report_id"] == rid
+    assert c.get("/api/report/bypass/nope").status_code == 404
+    page = c.get("/report/bypass?id=" + rid)
+    assert page.status_code == 200 and "Back to the assessment" in page.text and "/static/bypass_report.js" in page.text
+    csv = c.get(f"/api/report/bypass/export/{rid}?format=csv")
+    assert csv.status_code == 200 and "attachment" in csv.headers["content-disposition"]
+    js = c.get(f"/api/report/bypass/export/{rid}?format=json")
+    assert js.status_code == 200 and js.json()["report_id"] == rid
+    assert c.get(f"/api/report/bypass/export/{rid}?format=pdf").status_code == 400
+    assert c.get("/api/report/bypass/export/nope?format=csv").status_code == 404
+    # The cache is bounded.
+    for i in range(srv._REPORTS_MAX + 5):
+        srv._remember_report("bypass", SAMPLE)
+    assert len(srv._REPORTS) == srv._REPORTS_MAX
+
+
+def test_index_loads_report_addons():
+    c = TestClient(srv.app)
+    html = c.get("/").text
+    assert '<link rel="stylesheet" href="/static/reports.css">' in html
+    assert '<script src="/static/bypass_report.js"></script>' in html
+    assert "openBypassReportTab()" in html
+    assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200

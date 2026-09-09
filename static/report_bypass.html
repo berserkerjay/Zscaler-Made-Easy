@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bypass &amp; Non-Inspected Traffic — Zscaler Assessment</title>
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page">
+  <header class="rp-top">
+    <a class="back" href="/">← Back to the assessment</a>
+    <h1>Bypass &amp; Non-Inspected Traffic</h1>
+    <span class="meta" id="rpMeta"></span>
+    <span id="rpExports" hidden>
+      <a class="rp-btn" id="expCsv">CSV</a>
+      <a class="rp-btn" id="expMd">Markdown</a>
+      <a class="rp-btn" id="expDocx">Word</a>
+      <a class="rp-btn" id="expJson">JSON</a>
+    </span>
+  </header>
+  <main class="rp-main">
+    <div id="rpBody" class="bp-body" style="padding:0;">
+      <div class="rp-wait"><div class="spin"></div>Reading ZIA and Client Connector in parallel… this tab refreshes when the report is ready (5–15 seconds). Keep the assessment tab open.</div>
+    </div>
+  </main>
+  <script src="/static/bypass_report.js"></script>
+  <script>
+  (async function () {
+    const q = new URLSearchParams(location.search);
+    const body = document.getElementById('rpBody');
+    if (q.get('error')) {
+      body.innerHTML = `<div class="bp-card risk"><div class="t">The report could not be generated</div><div>${_bpE(q.get('error'))}</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`;
+      return;
+    }
+    const id = q.get('id');
+    if (!id) return;  // pending: the assessment tab points this tab at the report when it is ready
+    try {
+      const r = await fetch(`/api/report/bypass/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
+      renderBypassReport(data, body);
+      const meta = document.getElementById('rpMeta');
+      meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · ' + new Date(data.generated_at).toLocaleString() : ''}`;
+      const ex = document.getElementById('rpExports'); ex.hidden = false;
+      for (const [el, fmt] of [['expCsv', 'csv'], ['expMd', 'markdown'], ['expDocx', 'docx'], ['expJson', 'json']]) {
+        document.getElementById(el).href = `/api/report/bypass/export/${encodeURIComponent(id)}?format=${fmt}`;
+      }
+    } catch (e) {
+      body.innerHTML = `<div class="bp-card risk"><div class="t">This report is no longer available</div><div>${_bpE(e.message)}. Reports are kept in memory while the server runs; generate it again from the assessment page.</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`;
+    }
+  })();
+  </script>
+</body>
+</html>
