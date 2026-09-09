@@ -74,19 +74,49 @@ def test_update_switches_back_to_main_and_installs_deps(repos, monkeypatch):
     assert _git(app, "rev-parse", "--abbrev-ref", "HEAD") == "main"
 
 
-def test_hand_edited_file_blocks_the_pull_without_touching_it(repos):
+def test_hand_edited_files_are_preserved_and_settings_move_to_local_settings(repos):
     app = str(repos["app"])
-    (repos["app"] / "dlp_api_server.py").write_text("print('mine')\n")
-    _push_v2(repos["work"])
+    # Older instructions: proxy / CA bundle set inside the start script.
+    (repos["work"] / "START_Zscaler_Assessment.bat").write_text("@echo off\nREM set HTTPS_PROXY=http://proxy:8080\npython dlp_api_server.py\n")
+    _git(repos["work"], "add", "."); _git(repos["work"], "commit", "-q", "-m", "start script"); _git(repos["work"], "push", "-q", "origin", "HEAD:main")
+    _git(app, "pull", "-q", "--ff-only", "origin", "main")
+    (repos["app"] / "START_Zscaler_Assessment.bat").write_text(
+        "@echo off\nset REQUESTS_CA_BUNDLE=C:\\certs\\corp-root.pem\nset HTTPS_PROXY=http://proxy.corp:8080\npython dlp_api_server.py\n")
+    (repos["app"] / "requirements.txt").write_text("requests>=2.28.0\n# my note\n")   # an unrelated hand edit
+    v2 = _push_v2(repos["work"])
     st = au.status(app)
-    assert not st["can_update"] and st["dirty_files"] == ["dlp_api_server.py"] and "edited by hand" in st["reason"]
+    assert st["can_update"] and sorted(st["dirty_files"]) == ["START_Zscaler_Assessment.bat", "requirements.txt"] and "keeps these edits" in st["reason"]
     res = au.update(app, install_deps=False)
-    assert not res["ok"] and not res["updated"] and "edited by hand" in res["error"] and res["steps"][0]["ok"] is False
-    assert (repos["app"] / "dlp_api_server.py").read_text() == "print('mine')\n"
-    # Untracked files (settings, caches) never block.
-    (repos["app"] / "dlp_api_server.py").write_text("print('v1')\n")
-    (repos["app"] / "local_settings.bat").write_text("set X=1\n")
-    assert au.status(app)["can_update"]
+    assert res["ok"] and res["updated"] and res["after"] == v2, res
+    names = [s["name"] for s in res["steps"]]
+    assert names == ["Check this folder", "Move settings to local_settings.bat", "Set aside hand-edited files", "Fetch from GitHub",
+                     "Pull latest code", "Re-apply hand-edited files"] and all(s["ok"] for s in res["steps"])
+    assert res["migrated"] == ["START_Zscaler_Assessment.bat: REQUESTS_CA_BUNDLE", "START_Zscaler_Assessment.bat: HTTPS_PROXY"]
+    ls = (repos["app"] / "local_settings.bat").read_text()
+    assert "set REQUESTS_CA_BUNDLE=C:\\certs\\corp-root.pem" in ls and "set HTTPS_PROXY=http://proxy.corp:8080" in ls and ls.startswith("@echo off")
+    # The start script is the committed one again; the unrelated edit survived the pull.
+    assert "REQUESTS_CA_BUNDLE" not in (repos["app"] / "START_Zscaler_Assessment.bat").read_text()
+    assert "# my note" in (repos["app"] / "requirements.txt").read_text() and res["preserved"] == ["requirements.txt"]
+    assert (repos["app"] / "dlp_api_server.py").read_text() == "print('v2')\n"
+    # Second update with the same edit still present: nothing lost, nothing to migrate twice.
+    res2 = au.update(app, install_deps=False)
+    assert res2["ok"] and not res2["updated"] and "# my note" in (repos["app"] / "requirements.txt").read_text()
+    assert (repos["app"] / "local_settings.bat").read_text().count("REQUESTS_CA_BUNDLE") == 1
+    # Untracked files (settings, caches) never appear as edits.
+    (repos["app"] / "tenant_profiles.json").write_text("{}")
+    assert "tenant_profiles.json" not in au.status(app)["dirty_files"]
+
+
+def test_cli_reports_steps_and_exit_code(repos, capsys):
+    app = str(repos["app"])
+    v2 = _push_v2(repos["work"])
+    assert au.main(["--dir", app, "--no-deps"]) == 0
+    out = capsys.readouterr().out
+    assert "[OK ] Pull latest code" in out and f"Now on build {v2}" in out
+    assert au.main(["--dir", app, "--status"]) == 0
+    _git(app, "remote", "set-url", "origin", "/nonexistent/origin.git")
+    assert au.main(["--dir", app, "--no-deps"]) == 1
+    assert "Update failed: Could not reach GitHub" in capsys.readouterr().out
 
 
 def test_not_a_checkout_and_no_git(tmp_path, monkeypatch):

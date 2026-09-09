@@ -1,71 +1,43 @@
 @echo off
 title Zscaler Assessment - Update
-setlocal
 
-cd /d "%~dp0"
+REM The pull replaces this very file. cmd reads a batch file as it runs,
+REM so run from a copy in %TEMP% and remember the app folder.
+if not defined DLPCHECK_UPDATE_COPY (
+    set "DLPCHECK_APP_DIR=%~dp0"
+    set "DLPCHECK_UPDATE_COPY=1"
+    copy /y "%~f0" "%TEMP%\dlpcheck_update.bat" >nul
+    call "%TEMP%\dlpcheck_update.bat"
+    exit /b
+)
+setlocal
+set "INSTALL_DIR=%DLPCHECK_APP_DIR:~0,-1%"
+cd /d "%INSTALL_DIR%"
 
 echo ============================================================
 echo  Zscaler Assessment - Update to Latest Code
+echo  Folder: %INSTALL_DIR%
 echo ============================================================
 echo.
+
+REM Machine-specific settings (proxy, CA bundle, port) live in local_settings.bat.
+if exist "%INSTALL_DIR%\local_settings.bat" call "%INSTALL_DIR%\local_settings.bat"
+if not defined ZSCALER_PORT set ZSCALER_PORT=8000
 
 REM ----- Step 1: Stop running server -----
 echo [1/4] Stopping running server...
 set FOUND=
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%ZSCALER_PORT%" ^| findstr "LISTENING"') do (
     set FOUND=1
     taskkill /f /pid %%a >nul 2>&1
-    echo       Stopped PID %%a on port 8000.
+    echo       Stopped PID %%a on port %ZSCALER_PORT%.
 )
 if not defined FOUND echo       No server was running.
 timeout /t 2 /nobreak >nul
-echo       Done.
 echo.
 
-REM ----- Step 2: Pull latest code -----
-echo [2/4] Pulling latest code from main...
-where git >nul 2>&1
-if errorlevel 1 (
-    echo       ERROR: git is not installed or not on PATH.
-    echo       Install Git from https://git-scm.com/download/win
-    pause
-    exit /b 1
-)
-git rev-parse --is-inside-work-tree >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo       ERROR: this folder is not a git checkout, so it cannot be updated in place:
-    echo       %CD%
-    echo       Clone the repository and run INSTALL_Zscaler_Assessment.bat from the clone:
-    echo         git clone https://github.com/berserkerjay/DLP-Check.git
-    pause
-    exit /b 1
-)
-git fetch origin
-if errorlevel 1 (
-    echo       ERROR: could not reach GitHub. Check your connection or proxy.
-    pause
-    exit /b 1
-)
-git checkout main
-git pull --ff-only origin main
-if errorlevel 1 (
-    echo.
-    echo       ERROR: git pull failed. Usually a file in this folder was edited by hand.
-    echo       Run:  git status   to see which, then  git checkout -- ^<file^>  to discard, and try again.
-    pause
-    exit /b 1
-)
-for /f "delims=" %%h in ('git rev-parse --short HEAD') do set "LOCAL_SHA=%%h"
-for /f "delims=" %%h in ('git rev-parse --short origin/main') do set "REMOTE_SHA=%%h"
-echo.
-echo       Now on build %LOCAL_SHA% (latest on GitHub: %REMOTE_SHA%)
-if not "%LOCAL_SHA%"=="%REMOTE_SHA%" echo       WARNING: the folder is not on the latest build. Check the messages above.
-git log --oneline -1
-echo.
-
-REM ----- Step 3: Locate real Python -----
-echo [3/4] Locating Python...
+REM ----- Step 2: Locate real Python -----
+echo [2/4] Locating Python...
 set PYTHON_EXE=
 for /f "delims=" %%i in ('where python 2^>nul') do (
     echo %%i | findstr /i "WindowsApps" >nul
@@ -82,11 +54,27 @@ if not defined PYTHON_EXE (
 echo       Using: %PYTHON_EXE%
 echo.
 
+REM ----- Step 3: Pull the latest code (edits preserved, settings moved to local_settings.bat) -----
+echo [3/4] Updating from GitHub...
+where git >nul 2>&1
+if errorlevel 1 (
+    echo       ERROR: git is not installed or not on PATH.
+    echo       Install Git from https://git-scm.com/download/win and run this again.
+    pause
+    exit /b 1
+)
+"%PYTHON_EXE%" "%INSTALL_DIR%\app_update.py" --dir "%INSTALL_DIR%"
+if errorlevel 1 (
+    echo.
+    echo       The update did not complete. Read the lines above for the reason.
+    echo       If it says the repository needs a sign-in: run   git fetch   in this folder once,
+    echo       sign in to GitHub when asked, then run this script again.
+    pause
+    exit /b 1
+)
+echo.
+
 REM ----- Step 3b: Refresh the desktop / Start Menu shortcuts -----
-REM Older installs pointed them at the console script; point them at the
-REM silent launcher so a double-click never leaves a command window open.
-set "INSTALL_DIR=%~dp0"
-set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
 echo       Shortcuts refreshed (silent launcher).
@@ -96,14 +84,13 @@ REM ----- Step 4: Restart server (silently) + open browser -----
 echo [4/4] Starting server...
 echo.
 echo ============================================================
-echo  Update complete. Server starting at http://localhost:8000
-echo  IMPORTANT: in your browser press Ctrl+F5 to hard-refresh
-echo  (otherwise the browser will keep showing the cached UI)
+echo  Update complete. Server starting at http://localhost:%ZSCALER_PORT%
 echo  The server runs in the background (output in server.log).
-echo  STOP_Zscaler_Assessment.bat stops it.
+echo  STOP_Zscaler_Assessment.bat stops it. Next time, use the
+echo  Update app button on the Start here card instead.
 echo ============================================================
 echo.
-wscript.exe "%~dp0START_Zscaler_Assessment.vbs"
+wscript.exe "%INSTALL_DIR%\START_Zscaler_Assessment.vbs"
 timeout /t 3 >nul
 
 endlocal

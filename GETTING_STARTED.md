@@ -39,9 +39,12 @@ next.
 To update later: the Start here card says **update available** when
 GitHub is ahead; click **Update app now**. The app pulls the latest code,
 installs any new dependencies, restarts itself and reloads the page. It
-shows each step and, if a file in the folder was edited by hand, names
-it instead of pulling. `UPDATE_Zscaler_Assessment.bat` does the same from
-a command prompt. A copy that was not installed with git cannot update in
+shows each step. Hand-edited files are kept: proxy or CA-bundle lines
+that older instructions had you put into the start script are moved into
+`local_settings.bat`, and any other edit is set aside and re-applied after
+the pull. `UPDATE_Zscaler_Assessment.bat` does the same from a command
+prompt. The repository is private, so git on the laptop must be signed in
+to GitHub once (`git fetch` in the app folder prompts for it). A copy that was not installed with git cannot update in
 place; the card shows the one command that moves it to a git clone.
 
 ## 1b. Settings that survive updates (proxy, TLS inspection)

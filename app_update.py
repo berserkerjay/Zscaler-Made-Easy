@@ -1,38 +1,55 @@
 """
-Update the app from the web UI.
+Update the app in place: from the web UI (Update app on the Start here
+card) or from UPDATE_Zscaler_Assessment.bat, which runs this file.
 
-The server runs from a git checkout of the repository. This module lets
-the GUI do what UPDATE_Zscaler_Assessment.bat does, without a command
-prompt: see whether GitHub is ahead, pull main fast-forward only,
-install any new Python dependencies, and restart the server process so
-the new code is what answers the browser.
+What an update does
+-------------------
+1. Check the folder: a git checkout with git available.
+2. Preserve local edits. Settings that older instructions had you put
+   into the start scripts (REQUESTS_CA_BUNDLE, HTTPS_PROXY, ...) are moved
+   into local_settings.bat, which git ignores, and the script is restored
+   so the pull is not refused. Any other hand-edited tracked file is
+   stashed before the pull and re-applied after it.
+3. Fetch, switch to main, pull fast-forward only.
+4. Install requirements (optional step; a pip problem never stops the
+   update).
+5. Restart the server through the same start script the shortcuts use.
 
 Safety
 ------
 - Only ever touches the folder the server runs from, and only through
-  git (fetch, checkout main, pull --ff-only). Nothing is deleted; a
-  hand-edited tracked file makes the pull refuse, and the file list is
-  reported so the operator can decide.
+  git. Nothing is deleted. Untracked files (local_settings, profiles,
+  caches, logs) are never touched.
 - The endpoints that call this are localhost-only (same rule as write
-  mode) and go through the origin check, so a web page from elsewhere
-  cannot trigger an update.
-- The restart relaunches the same start script the shortcuts use, so a
-  restarted server has the same settings (local_settings, port) as one
+  mode) and go through the origin check.
+- A restarted server has the same settings (local_settings, port) as one
   started by hand. Write mode is a per-process setting and is off again
   after a restart, exactly as after any restart.
 """
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 GIT_TIMEOUT = 60
 PIP_TIMEOUT = 300
+
+# Environment settings that belong in local_settings.bat. If a start
+# script was edited to set one of these, the value is moved there.
+SETTING_KEYS = (
+    "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
+    "ZSCALER_UPDATE_PROXY", "ZSCALER_UPDATE_VERIFY_TLS", "ZSCALER_BIND_HOST", "ZSCALER_PORT",
+    "ZSCALER_CLOUD", "ZSCALER_VANITY_DOMAIN", "ZSCALER_CLIENT_ID", "ZSCALER_CLIENT_SECRET",
+    "ENABLE_WRITE_ACTIONS",
+)
+START_SCRIPTS = ("START_Zscaler_Assessment.bat", "START_Zscaler_Assessment_WRITES_ENABLED.bat")
+_SET_RE = re.compile(r"^\s*set\s+\"?([A-Z_][A-Z0-9_]*)=([^\"\r\n]*)\"?\s*$", re.I)
 
 
 def _git(app_dir: str, *args: str, timeout: int = GIT_TIMEOUT) -> subprocess.CompletedProcess:
@@ -42,6 +59,20 @@ def _git(app_dir: str, *args: str, timeout: int = GIT_TIMEOUT) -> subprocess.Com
 
 def _out(cp: subprocess.CompletedProcess) -> str:
     return (cp.stdout or "").strip()
+
+
+def _err(cp: subprocess.CompletedProcess, default: str = "") -> str:
+    lines = [ln.strip() for ln in ((cp.stderr or "") + "\n" + (cp.stdout or "")).splitlines() if ln.strip()]
+    fatal = [ln for ln in lines if ln.lower().startswith(("fatal:", "error:"))]
+    return (fatal[0] if fatal else (lines[-1] if lines else default))[:400]
+
+
+def _auth_hint(msg: str) -> str:
+    low = msg.lower()
+    if "could not read username" in low or "authentication failed" in low or "terminal prompts disabled" in low or "403" in low:
+        return (" The repository is private and this machine is not signed in to GitHub for git. "
+                "Open a Command Prompt in the app folder, run  git fetch  once and sign in when asked, then update again.")
+    return ""
 
 
 def is_checkout(app_dir: str) -> bool:
@@ -61,7 +92,7 @@ def dirty_files(app_dir: str) -> List[str]:
 
 def status(app_dir: str, remote_sha: Optional[str] = None) -> Dict[str, Any]:
     """Where this install stands: current build, branch, whether GitHub
-    is ahead, and whether a pull would be refused."""
+    is ahead, and whether it can be updated in place."""
     out: Dict[str, Any] = {"app_dir": app_dir, "git_available": bool(shutil.which("git")),
                            "is_git_checkout": is_checkout(app_dir), "branch": None, "local_commit": None,
                            "remote_commit": remote_sha, "update_available": None, "dirty_files": [],
@@ -82,25 +113,93 @@ def status(app_dir: str, remote_sha: Optional[str] = None) -> Dict[str, Any]:
         return out
     if remote_sha and out["local_commit"]:
         out["update_available"] = not remote_sha.startswith(out["local_commit"]) and not out["local_commit"].startswith(remote_sha)
-    if out["dirty_files"]:
-        out["reason"] = ("A file in this folder was edited by hand, so a pull would be refused: "
-                         + ", ".join(out["dirty_files"][:8]) + (" …" if len(out["dirty_files"]) > 8 else "")
-                         + ". Discard the edit (git checkout -- <file>) or move the file out, then update.")
-        return out
     out["can_update"] = True
+    if out["dirty_files"]:
+        out["reason"] = ("Edited by hand: " + ", ".join(out["dirty_files"][:8]) + (" …" if len(out["dirty_files"]) > 8 else "")
+                         + ". The update keeps these edits (settings move to local_settings.bat; other edits are re-applied after the pull).")
     return out
 
 
+# ── Preserving local edits ─────────────────────────────────────────────
+
+def _committed_settings(app_dir: str, rel: str) -> Dict[str, str]:
+    cp = _git(app_dir, "show", f"HEAD:{rel}")
+    vals: Dict[str, str] = {}
+    if cp.returncode == 0:
+        for line in (cp.stdout or "").splitlines():
+            m = _SET_RE.match(line)
+            if m and m.group(1).upper() in SETTING_KEYS:
+                vals[m.group(1).upper()] = m.group(2).strip()
+    return vals
+
+
+def _local_settings_keys(path: str) -> Dict[str, str]:
+    vals: Dict[str, str] = {}
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                m = _SET_RE.match(line)
+                if m:
+                    vals[m.group(1).upper()] = m.group(2).strip()
+    return vals
+
+
+def migrate_settings(app_dir: str, dirty: List[str]) -> Tuple[List[str], List[str]]:
+    """Move `set KEY=value` lines that a hand-edited start script adds
+    (compared with the committed script) into local_settings.bat, then
+    restore the script. Returns (migrated 'FILE: KEY' labels, restored files)."""
+    migrated: List[str] = []
+    restored: List[str] = []
+    ls_path = os.path.join(app_dir, "local_settings.bat")
+    for rel in dirty:
+        if os.path.basename(rel) not in START_SCRIPTS:
+            continue
+        path = os.path.join(app_dir, rel)
+        if not os.path.isfile(path):
+            continue
+        base = _committed_settings(app_dir, rel)
+        existing = _local_settings_keys(ls_path)
+        found: List[Tuple[str, str]] = []
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                m = _SET_RE.match(line)
+                if not m:
+                    continue
+                key, val = m.group(1).upper(), m.group(2).strip()
+                if key in SETTING_KEYS and val and base.get(key) != val:
+                    found.append((key, val))
+        if not found:
+            continue
+        lines_to_add = [f"set {k}={v}" for k, v in found if k not in existing]
+        if lines_to_add:
+            header = "" if os.path.isfile(ls_path) else ("@echo off\nREM Machine-specific settings (git-ignored; survive updates). Created by the updater.\n")
+            with open(ls_path, "a", encoding="utf-8") as f:
+                if header:
+                    f.write(header)
+                f.write(f"\nREM Moved from {rel} by the updater on {time.strftime('%Y-%m-%d %H:%M')}\n")
+                f.write("\n".join(lines_to_add) + "\n")
+        migrated.extend(f"{rel}: {k}" for k, _ in found)
+        # Their settings now live in local_settings.bat; put the script back
+        # so the pull is not refused. Any other edit in it goes to the stash
+        # copy below, so nothing is lost.
+        cp = _git(app_dir, "stash", "push", "-m", f"DLP-Check updater: {rel} before restore", "--", rel)
+        if cp.returncode == 0:
+            restored.append(rel)
+    return migrated, restored
+
+
+# ── Update ────────────────────────────────────────────────────────────
+
 def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None) -> Dict[str, Any]:
-    """Fetch, switch to main, pull fast-forward only, install requirements.
-    Never raises; every step is reported in `steps` and a failure sets
-    `error`. `updated` is True when HEAD moved."""
+    """Preserve edits, fetch, switch to main, pull fast-forward only,
+    install requirements. Never raises; every step is reported in
+    `steps` and a failure sets `error`. `updated` is True when HEAD moved."""
     steps: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {"ok": False, "updated": False, "before": None, "after": None, "steps": steps, "error": None,
-                              "deps_ok": None, "restart_required": False}
+                              "deps_ok": None, "restart_required": False, "preserved": [], "migrated": []}
 
     def step(name: str, ok: bool, detail: str = "", soft: bool = False) -> None:
-        # soft: a failure here does not stop the update (dependencies).
+        # soft: a failure here does not stop the update (dependencies, re-applying edits).
         steps.append({"name": name, "ok": ok, "detail": detail[-1500:], "soft": soft})
 
     st = status(app_dir)
@@ -111,36 +210,64 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
         return result
     step("Check this folder", True, f"git checkout on branch {st.get('branch')}, build {st.get('local_commit')}")
 
+    # Local edits: settings move to local_settings.bat; the rest is stashed.
+    dirty = list(st.get("dirty_files") or [])
+    stashed = False
+    if dirty:
+        migrated, restored = migrate_settings(app_dir, dirty)
+        result["migrated"] = migrated
+        if migrated:
+            step("Move settings to local_settings.bat", True,
+                 ", ".join(migrated) + " (the script itself was restored; its old copy is in git stash)")
+        remaining = dirty_files(app_dir)
+        if remaining:
+            cp = _git(app_dir, "stash", "push", "-m", f"DLP-Check updater: local edits before update {time.strftime('%Y-%m-%d %H:%M')}")
+            if cp.returncode == 0 and "no local changes" not in (cp.stdout or "").lower():
+                stashed = True
+                result["preserved"] = remaining
+                step("Set aside hand-edited files", True, ", ".join(remaining) + " (re-applied after the pull)")
+            else:
+                step("Set aside hand-edited files", False, _err(cp, "git stash failed"))
+                result["error"] = "Could not set aside the hand-edited files: " + _err(cp, "git stash failed")
+                return result
+
     try:
         cp = _git(app_dir, "fetch", "origin", timeout=GIT_TIMEOUT)
     except subprocess.TimeoutExpired:
         result["error"] = "GitHub did not answer within 60 seconds. Check the connection or proxy, then try again."
         step("Fetch from GitHub", False, result["error"])
+        _restore(app_dir, stashed, step, result)
         return result
     if cp.returncode != 0:
-        result["error"] = "Could not reach GitHub: " + ((cp.stderr or cp.stdout or "").strip()[-400:] or "git fetch failed")
+        msg = _err(cp, "git fetch failed")
+        result["error"] = "Could not reach GitHub: " + msg + _auth_hint(msg)
         step("Fetch from GitHub", False, result["error"])
+        _restore(app_dir, stashed, step, result)
         return result
     step("Fetch from GitHub", True, "origin fetched")
 
     if st.get("branch") != "main":
         cp = _git(app_dir, "checkout", "main")
         if cp.returncode != 0:
-            result["error"] = "Could not switch to main: " + (cp.stderr or cp.stdout or "").strip()[-400:]
+            result["error"] = "Could not switch to main: " + _err(cp)
             step("Switch to main", False, result["error"])
+            _restore(app_dir, stashed, step, result)
             return result
         step("Switch to main", True, f"was on {st.get('branch')}")
 
     cp = _git(app_dir, "pull", "--ff-only", "origin", "main", timeout=GIT_TIMEOUT)
     if cp.returncode != 0:
-        result["error"] = ("Pull refused: " + (cp.stderr or cp.stdout or "").strip()[-400:]
-                           + ". Usually a file in this folder was edited by hand; git status shows which.")
+        msg = _err(cp, "git pull failed")
+        result["error"] = "Pull refused: " + msg + _auth_hint(msg)
         step("Pull latest code", False, result["error"])
+        _restore(app_dir, stashed, step, result)
         return result
     after = _out(_git(app_dir, "rev-parse", "--short", "HEAD")) or None
     result["after"] = after
     result["updated"] = bool(after and after != result["before"])
     step("Pull latest code", True, f"build {result['before']} → {after}" if result["updated"] else f"already on build {after}")
+
+    _restore(app_dir, stashed, step, result)
 
     if install_deps and result["updated"]:
         req = os.path.join(app_dir, "requirements.txt")
@@ -164,6 +291,23 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     result["restart_required"] = result["updated"]
     return result
 
+
+def _restore(app_dir: str, stashed: bool, step, result: Dict[str, Any]) -> None:
+    """Re-apply the stashed edits. A conflict keeps the stash (nothing is
+    lost) and is reported as a soft failure."""
+    if not stashed:
+        return
+    cp = _git(app_dir, "stash", "pop")
+    if cp.returncode == 0:
+        step("Re-apply hand-edited files", True, ", ".join(result.get("preserved") or []))
+    else:
+        _git(app_dir, "checkout", "--", ".")   # leave the tree clean; the edits stay in the stash
+        step("Re-apply hand-edited files", False,
+             "Your edits could not be re-applied automatically; they are kept in git stash "
+             "(run  git stash list  in the app folder). The app runs on the new build. " + _err(cp), soft=True)
+
+
+# ── Restart ───────────────────────────────────────────────────────────
 
 def restart_command(app_dir: str) -> List[str]:
     """The detached command that relaunches the server the same way the
@@ -201,3 +345,33 @@ def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) ->
 
     threading.Thread(target=_exit_soon, daemon=True).start()
     return {"scheduled": True, "command": cmd}
+
+
+# ── Command line (used by UPDATE_Zscaler_Assessment.bat) ──────────────
+
+def main(argv: Optional[List[str]] = None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Update DLP-Check in place (git pull, edits preserved).")
+    ap.add_argument("--dir", default=os.path.dirname(os.path.abspath(__file__)), help="app folder (default: this file's folder)")
+    ap.add_argument("--no-deps", action="store_true", help="skip pip install -r requirements.txt")
+    ap.add_argument("--status", action="store_true", help="only report where this install stands")
+    args = ap.parse_args(argv)
+    if args.status:
+        st = status(args.dir)
+        print(f"folder: {st['app_dir']}\nbranch: {st['branch']}  build: {st['local_commit']}\ncan update: {st['can_update']}")
+        if st["reason"]:
+            print(st["reason"])
+        return 0 if st["can_update"] else 1
+    res = update(args.dir, install_deps=not args.no_deps)
+    for s in res["steps"]:
+        mark = "OK " if s["ok"] else ("!! " if s.get("soft") else "ERR")
+        print(f"  [{mark}] {s['name']}" + (f" - {s['detail']}" if s.get("detail") else ""))
+    if not res["ok"]:
+        print("\nUpdate failed: " + (res["error"] or "see above"))
+        return 1
+    print("\nNow on build " + str(res["after"]) + ("" if res["updated"] else " (already current)"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
