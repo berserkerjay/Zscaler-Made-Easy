@@ -106,6 +106,7 @@ function _gdRender() {
         <div class="gd-eyebrow">Start here</div>
         <h2 class="gd-title">Five steps from "unknown tenant" to "gaps closed"</h2>
         <p class="gd-sub">Follow the steps in order. Each one explains what it does, what you need, and what to click. Nothing is written to the customer's tenant until step 4, and only after you approve a plan.</p>
+        <p class="gd-sub gd-where" id="gdWhere">${GD.about && GD.about.app_dir ? `Installed at <code>${_gdE(GD.about.app_dir)}</code>${GD.about.git_commit && GD.about.git_commit !== 'unknown' ? ` · build ${_gdE(GD.about.git_commit)}` : ''}${GD.about.is_git_checkout === false ? ' · <strong>not a git checkout</strong>: the update script cannot pull here; clone the repository and run the installer from the clone.' : ' · run UPDATE_Zscaler_Assessment.bat in this folder to update.'}` : ''}</p>
       </div>
       <div class="gd-controls">
         <label class="gd-switch" title="Guided mode hides the advanced tools (rule migration, bypass inventory, efficacy scoring, update checks) so only the four steps are on screen.">
@@ -433,6 +434,7 @@ function _gdProfilesRender() {
   const anchor = document.getElementById('stepBar');
   if (!anchor) return;
   _gdLoad();
+  fetch('/api/health', { cache: 'no-store' }).then(r => r.json()).then(d => { GD.about = d; _gdRender(); }).catch(() => {});
   const panel = document.createElement('section');
   panel.id = 'gdPanel'; panel.className = 'gd-panel'; panel.setAttribute('aria-label', 'Start here');
   anchor.insertAdjacentElement('afterend', panel);

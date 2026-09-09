@@ -106,3 +106,6 @@ body.gd-guided .gd-advanced { display: none !important; }
 .gd-hist { width: 100%; border-collapse: collapse; margin-top: 0.4rem; font-size: 0.8rem; }
 .gd-hist th, .gd-hist td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border, #334155); vertical-align: top; }
 .gd-hist th { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim, #94a3b8); }
+
+.gd-where { font-size: 0.8rem; }
+.gd-where code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; background: rgba(148,163,184,0.15); padding: 0.05rem 0.4rem; border-radius: 4px; }
