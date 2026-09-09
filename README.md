@@ -86,6 +86,7 @@ See `docs/DLP_Assessment_Step_by_Step_Guide.docx` for the complete walkthrough.
 | `GET` | `/api/checks` | List all check IDs and labels |
 | `POST` | `/api/report/bypass` | Bypass / non-inspected traffic inventory (opens at `/report/bypass?id=`) |
 | `POST` | `/api/report/ssl-flow` | SSL Inspection Flow: per traffic class, which SSL rule decides and whether inline DLP can see it (opens at `/report/sslflow?id=`; exports via `/api/report/ssl-flow/export/{id}`) |
+| `GET` | `/report/flow` | Deployment Flow tab: the Deploy Policy Packs dependency diagram (templates → dictionaries → engines → rules) full width, with a details panel; fed live by the assessment tab |
 
 ### Request Body
 

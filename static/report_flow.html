@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deployment Flow — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/deploy_studio.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page flow-page">
+  <div class="rp-page fl-page">
+    <div class="hero rp-hero">
+      <h1><span class="accent">Deployment</span> Flow <span class="sf-live" id="flLive" hidden><i></i>live</span></h1>
+      <p>How the policy pack fits together: predefined templates feed dictionaries, dictionaries feed engines, engines feed rules, and rules apply to what the tenant already has.</p>
+      <span class="badge" id="rpMeta"></span>
+    </div>
+    <div class="rp-bar">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="fl-find"><span class="lbl">Find</span><input type="search" id="flFind" placeholder="dictionary, engine or rule name" aria-label="Find a node by name"></label>
+      <a class="rp-btn" id="flRefresh" href="#" title="Read the plan currently shown in Deploy Policy Packs">↻ Refresh</a>
+    </div>
+    <div class="fl-grid">
+      <main class="rp-card fl-main">
+        <div id="rpBody">
+          <div class="rp-wait"><div class="spin"></div>Waiting for the plan from Deploy Policy Packs… keep the assessment tab open.</div>
+        </div>
+      </main>
+      <aside class="rp-card fl-side" id="flSide" aria-live="polite">
+        <div class="fl-side-empty">
+          <div class="dz-h">Details</div>
+          <p>Hover a box to trace what it depends on and what depends on it. Click a box to pin it and read its full name, why it is in the plan, and what it connects to. Press Escape to unpin.</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <script src="/static/report_theme.js"></script>
+  <script>
+    // deploy_studio.js expects these page helpers from index.html.
+    function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function announce() {}
+  </script>
+  <script src="/static/deploy_studio.js"></script>
+  <script>
+  (function () {
+    const body = document.getElementById('rpBody');
+    const side = document.getElementById('flSide');
+    const meta = document.getElementById('rpMeta');
+    const find = document.getElementById('flFind');
+    const E = escapeHtml;
+    let current = null;
+    const KIND_WORD = { template: 'Predefined template', resource: 'Tenant prerequisite' };
+
+    function stageText(p) {
+      if (p.stage === 'deployed') return { applied: 'Deployed', partial: 'Deployed with some failures', failed: 'Deployment failed' }[p.status] || 'Deployed';
+      return { blocked: 'Preflight — blocked', warnings: 'Preflight plan — nothing written', ready: 'Preflight plan — nothing written' }[p.status] || 'Preflight plan — nothing written';
+    }
+
+    function render(p) {
+      current = p;
+      DZ.report = { items: p.items, tenant_label: p.tenant_label, plan_hash: p.plan_hash };
+      DZ.selected = new Set(p.packs || []);
+      DZ_FLOW.pinned = null;
+      body.innerHTML = _dzFlowHtml(p.items || [], p.results || null, { standalone: true });
+      _dzFlowZoom(0);
+      meta.textContent = `${p.tenant_label || 'tenant'} · ${stageText(p)}${p.packs && p.packs.length ? ' · ' + p.packs.join(', ') : ''}${p.at ? ' · ' + new Date(p.at).toLocaleTimeString() : ''}`;
+      document.getElementById('flLive').hidden = !(window.opener && !window.opener.closed);
+      showDetails(null, null);
+      applyFind();
+    }
+
+    // Details panel: the full name and reason, plus what feeds this node
+    // and what it feeds (names are truncated in the boxes).
+    function showDetails(key, n) {
+      const pinned = key && DZ_FLOW.pinned === key;
+      if (!n) {
+        side.innerHTML = `<div class="fl-side-empty"><div class="dz-h">Details</div><p>Hover a box to trace what it depends on and what depends on it. Click a box to pin it and read its full name, why it is in the plan, and what it connects to. Press Escape to unpin.</p></div>`;
+        return;
+      }
+      const g = DZ_FLOW.graph;
+      const name = k => { const m = g && g.nodes.get(k); return m ? `${E(DZ_KIND[m.kind] || m.kind)} · ${E(m.name)}` : E(k); };
+      const st = n.result || n.status;
+      const label = DZ_FLOW_LABEL[st] || st;
+      const cls = DZ_FLOW_STATUS[st] || 'st-reuse';
+      const list = (title, keys) => keys.length ? `<div class="fl-rel"><div class="k">${title}</div><ul>${keys.map(k => `<li><button type="button" class="fl-link" data-key="${E(k)}">${name(k)}</button></li>`).join('')}</ul></div>` : '';
+      side.innerHTML = `
+        <div class="fl-side-head"><span class="fl-st ${cls}">${E(label)}</span>${pinned ? '<span class="fl-pin">pinned · Esc to unpin</span>' : '<span class="fl-pin">click to pin</span>'}</div>
+        <div class="fl-kind">${E(KIND_WORD[n.kind] || DZ_KIND[n.kind] || n.kind)}${n.channel ? ' · ' + E(_dzChan(n.channel)) : ''}${n.tweak ? ' · confidence tweak' : ''}</div>
+        <div class="fl-name">${E(n.name)}</div>
+        ${n.packs && n.packs.length ? `<div class="fl-row"><span class="k">Pack</span>${E(n.packs.join(', '))}</div>` : (n.kind === 'template' ? `<div class="fl-row"><span class="k">Source</span>Zscaler predefined</div>` : `<div class="fl-row"><span class="k">Source</span>existing in tenant</div>`)}
+        ${n.reason ? `<div class="fl-row"><span class="k">Why</span>${E(n.reason)}</div>` : ''}
+        ${n.resultText ? `<div class="fl-row"><span class="k">Result</span>${E(n.resultText)}</div>` : ''}
+        ${n.tenant && n.tenant.id ? `<div class="fl-row"><span class="k">Tenant ID</span>${E(n.tenant.id)}</div>` : ''}
+        ${(n.warnings || []).length ? `<div class="fl-row warn"><span class="k">Warnings</span>${n.warnings.map(w => `<div>${E(w)}</div>`).join('')}</div>` : ''}
+        ${list(n.kind === 'resource' ? 'Needed by' : 'Depends on', n.in)}
+        ${list(n.kind === 'policy' ? 'Applies to / requires' : 'Feeds', n.out)}`;
+    }
+    DZ_FLOW.onTrace = (key, n) => { if (!DZ_FLOW.pinned || DZ_FLOW.pinned === key) showDetails(key, n); };
+    side.addEventListener('click', ev => {
+      const b = ev.target.closest('.fl-link');
+      if (!b) return;
+      DZ_FLOW.pinned = b.dataset.key;
+      _dzFlowTrace(b.dataset.key);
+      const node = document.querySelector(`.dz-node[data-key="${CSS.escape(b.dataset.key)}"]`);
+      if (node) node.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { DZ_FLOW.pinned = null; _dzFlowTrace(null); } });
+
+    // Find: dim every box whose name does not contain the text.
+    function applyFind() {
+      const q = (find.value || '').trim().toLowerCase();
+      const svg = document.getElementById('dzFlowSvg');
+      if (!svg) return;
+      if (!q) { _dzFlowTrace(DZ_FLOW.pinned); return; }
+      const g = DZ_FLOW.graph;
+      let first = null;
+      svg.querySelectorAll('.dz-node').forEach(el => {
+        const n = g && g.nodes.get(el.dataset.key);
+        const hit = !!n && n.name.toLowerCase().includes(q);
+        el.classList.toggle('is-dim', !hit);
+        if (hit && !first) first = el;
+      });
+      svg.querySelectorAll('.dz-edge').forEach(el => el.classList.remove('is-hi'));
+      if (first) first.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    find.addEventListener('input', applyFind);
+
+    // The assessment tab pushes the plan here whenever it changes.
+    window.__flowApply = function (payload) { if (payload && payload.items) render(payload); };
+
+    function fromOpener() {
+      try {
+        if (window.opener && !window.opener.closed && typeof window.opener.__flowCurrent === 'function') return window.opener.__flowCurrent();
+      } catch (e) { /* cross-tab hiccup */ }
+      return null;
+    }
+    function fromStorage() {
+      try { const raw = localStorage.getItem('zassess_flow_last'); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+    }
+    document.getElementById('flRefresh').addEventListener('click', ev => {
+      ev.preventDefault();
+      const p = fromOpener() || fromStorage();
+      if (p) render(p);
+      else meta.textContent = 'No plan yet: run preflight in Deploy Policy Packs, then click Refresh.';
+    });
+    // First paint: the opener pushes the plan itself; if this tab was
+    // reloaded (or opened by hand) use the last plan it stored.
+    setTimeout(() => { if (!current) { const p = fromOpener() || fromStorage(); if (p) render(p); else body.innerHTML = '<div class="tt-gone"><strong>No plan to draw yet.</strong> Run preflight in Deploy Policy Packs on the assessment page, then click ↗ Open in new tab on the flow (or ↻ Refresh here).</div>'; } }, 600);
+    setInterval(() => { document.getElementById('flLive').hidden = !(window.opener && !window.opener.closed); }, 2000);
+  })();
+  </script>
+</body>
+</html>

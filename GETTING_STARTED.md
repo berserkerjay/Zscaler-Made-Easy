@@ -273,7 +273,17 @@ need activation in ZIA like any change.
    SaaS tenant onboarded) skips only the rules that need it.
 4. Open **How to read this plan** if any term is unfamiliar. Hover any
    status chip for a one-line explanation.
-5. Click **Review & approve**. Read the checklist, tick the consent box,
+5. Read the **Flow** diagram: predefined templates feed dictionaries,
+   dictionaries feed engines, engines feed rules, and rules apply to what
+   the tenant already has. Hover a box to trace it, click to pin. For a
+   full-width view click **↗ Open in new tab**: the Deployment Flow tab has
+   a **Details** panel with the full name, the reason each object is in the
+   plan and clickable links to what it depends on and what it feeds, plus a
+   **Find** box. It stays live while the assessment tab is open (it
+   redraws after every preflight and after the deploy), and **← Back to the
+   assessment** returns you here. **List** shows the same objects grouped by
+   what will happen to them.
+6. Click **Review & approve**. Read the checklist, tick the consent box,
    click **Deploy to tenant**.
 
 The server starts **read-only**, so preflight and the plan always work but
