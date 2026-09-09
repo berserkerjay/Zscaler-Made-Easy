@@ -423,7 +423,7 @@ def test_cui_marking_baseline_deploys_and_measures():
     full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
     assert "D:" not in full and full.count(".S") == 28 and full.endswith("AND NOT (D9028.S > 0)")
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")
-    assert prox["proximity"] == 300 and prox["match"] == "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+    assert prox["proximity"] == 300 and prox["match"] == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
     rules = {r["name"]: r for r in client.zia.dlp_web_rules.added}
     assert rules["CUI-Block-Marked-Documents"]["action"] == "BLOCK" and rules["CUI-Caution-Weak-Markings"]["action"] == "CONFIRM"
     assert all(r["state"] == "DISABLED" and r["ocr_enabled"] for r in rules.values())
@@ -447,3 +447,34 @@ def test_dictionary_limits_block_only_the_offending_dictionary(tmp_path):
     assert d["Lookaround"]["status"] == pd.BLOCKED_DEPENDENCY and "lookaround" in d["Lookaround"]["reason"]
     assert d["Far"]["status"] == pd.BLOCKED_DEPENDENCY and "0-10000" in d["Far"]["reason"]
     assert items_by(rep, "policy")["R"]["status"] == pd.CREATE
+
+
+def test_phrase_match_type_and_engine_count_limits(tmp_path):
+    from dlp_importer import dictionary_limit_problems, engine_limit_problems
+    assert any("3-128 bytes" in x for x in dictionary_limit_problems({"phrases": [{"phrase": "ab"}]}))
+    assert any("unknown match type" in x for x in dictionary_limit_problems({"custom_phrase_match_type": "MATCH_NOPE", "patterns": [{"pattern": "x"}]}))
+    assert any("needs at least one pattern and one phrase" in x for x in dictionary_limit_problems(
+        {"custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE", "patterns": [{"pattern": "x"}], "phrases": []}))
+    assert dictionary_limit_problems({"custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+                                      "patterns": [{"pattern": r"\bCUI\b"}], "phrases": [{"phrase": "SP-EXPT"}], "proximity": 400}) == []
+    assert engine_limit_problems("(D:A > 1000)") and engine_limit_problems("(D:A > 999)") == []
+    pack = write_pack(tmp_path, "counts", dicts=[_dict("A")], engines=[_engine("Big", "(D:A > 1500)"), _engine("Ok", "(D:A > 2)")],
+                      policies=[_policy("R", ["Ok"])], meta=BASELINE_META)
+    rep = pd.preflight(FakeClient(dicts=[PREDEF_SSN]), [pack], writes_enabled=True)
+    e = items_by(rep, "engine")
+    assert e["Big"]["status"] == pd.BLOCKED_DEPENDENCY and "under 1000" in e["Big"]["reason"]
+    assert e["Ok"]["status"] == pd.CREATE and items_by(rep, "policy")["R"]["status"] == pd.CREATE
+
+
+def test_cui_proximity_dictionaries_anchor_pattern_to_phrase():
+    from dlp_importer import discover_packs, build_dict_kwargs
+    cui = next(p for p in discover_packs() if p["id"] == "cui_marking_baseline")
+    dicts = {d["name"]: d for d in json.load(open(f"{cui['dir']}/configs/dlp_dictionaries.json", encoding="utf-8"))}
+    for name in [n for n in dicts if n.startswith("CUI-Prox-")] + ["CUI-Designation-Indicator"]:
+        d = dicts[name]
+        assert d["custom_phrase_match_type"] == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+        assert d["patterns"] == [{"action": "PATTERN_COUNT_TYPE_ALL", "pattern": r"\bCUI\b"}] and d["phrases"]
+        assert d["proximity"] > 0 and d["proximity_enabled_for_custom_dictionary"] is True
+        kw, err = build_dict_kwargs(d, {})
+        assert err is None and kw["proximity"] == d["proximity"] and kw["proximity_enabled_for_custom_dictionary"] is True
+    assert dicts["CUI-Prox-EXPT"]["phrases"] == [{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "SP-EXPT"}]

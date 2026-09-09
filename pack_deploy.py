@@ -57,7 +57,7 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import pack_channels as pc
-from dlp_importer import (
+from dlp_importer import (engine_limit_problems, 
     DICT_DESCRIPTION_MAX,
     EMPTY_DICT_REASON,
     fit_description,
@@ -485,6 +485,11 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
         if item["status"] == CONFLICT:
             continue
         expr = item["definition"].get("expression", "")
+        limit_problems = engine_limit_problems(expr)
+        if limit_problems:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = "Outside ZIA's documented engine limits: " + "; ".join(limit_problems) + "."
+            continue
         _, unresolved = resolve_engine_expression(expr, candidates)
         referenced = engine_references(expr, candidates)
         item["depends_on"] = [("dictionary", n) for n in referenced]

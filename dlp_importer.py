@@ -214,7 +214,23 @@ EMPTY_DICT_REASON = "no patterns/phrases"
 DICT_MAX_PATTERNS = 8
 DICT_PATTERN_MAX_BYTES = 256
 DICT_PROXIMITY_MAX = 10000
+DICT_MAX_PHRASES = 256
+DICT_PHRASE_MIN_BYTES, DICT_PHRASE_MAX_BYTES = 3, 128
+ENGINE_COUNT_MAX = 999          # engine match counts accept any value under 1000
+DICT_MATCH_TYPES = ("MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY", "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+                    "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE")
 _LOOKAROUND_RE = re.compile(r"\(\?<?[=!]")
+_COUNT_RE = re.compile(r"[<>=]=?\s*(\d+)")
+
+
+def engine_limit_problems(expr: str) -> List[str]:
+    """Reasons an engine expression would be rejected: match counts must be
+    under 1000."""
+    out: List[str] = []
+    for n in _COUNT_RE.findall(expr or ""):
+        if int(n) > ENGINE_COUNT_MAX:
+            out.append(f"match count {n} is not accepted (engine counts must be under 1000)")
+    return out
 
 
 def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
@@ -230,6 +246,19 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
             out.append(f"pattern longer than {DICT_PATTERN_MAX_BYTES} bytes: {str(pat)[:40]}…")
         if _LOOKAROUND_RE.search(str(pat)):
             out.append(f"pattern uses lookaround, which ZIA's PCRE does not support: {str(pat)[:40]}…")
+    phrases = d.get("phrases") or []
+    if len(phrases) > DICT_MAX_PHRASES:
+        out.append(f"{len(phrases)} phrases; ZIA allows at most {DICT_MAX_PHRASES} per dictionary")
+    for ph in phrases:
+        text = ph.get("phrase", "") if isinstance(ph, dict) else (ph[1] if isinstance(ph, (list, tuple)) and len(ph) > 1 else str(ph))
+        n = len(str(text).strip('"').encode("utf-8"))
+        if n < DICT_PHRASE_MIN_BYTES or n > DICT_PHRASE_MAX_BYTES:
+            out.append(f"phrase must be {DICT_PHRASE_MIN_BYTES}-{DICT_PHRASE_MAX_BYTES} bytes: {str(text)[:40]}")
+    mt = d.get("custom_phrase_match_type")
+    if mt and mt not in DICT_MATCH_TYPES:
+        out.append(f"unknown match type {mt}; expected one of {', '.join(DICT_MATCH_TYPES)}")
+    if mt == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE" and (not pats or not phrases):
+        out.append("MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE needs at least one pattern and one phrase")
     prox = d.get("proximity") or 0
     try:
         prox = int(prox)
