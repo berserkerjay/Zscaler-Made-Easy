@@ -33,3 +33,7 @@ tenant_profiles.json
 
 # Silent launcher output
 server.log
+
+# Machine-specific settings (proxy, CA bundle, credentials)
+local_settings.bat
+local_settings.env

@@ -39,6 +39,24 @@ next.
 To update later: `.\UPDATE_Zscaler_Assessment.bat` (stops the server,
 pulls the latest code, restarts). Press Ctrl+F5 in the browser once.
 
+## 1b. Settings that survive updates (proxy, TLS inspection)
+
+If your laptop sits behind Zscaler Client Connector or a corporate proxy,
+Python needs the organisation's root CA and/or a proxy address. Do not edit
+the start scripts (an update or a fresh clone replaces them). Instead:
+
+1. Copy `local_settings.bat.example` to `local_settings.bat` in the app
+   folder (it is git-ignored).
+2. Remove the `REM ` in front of the lines you need, for example
+   `set REQUESTS_CA_BUNDLE=C:\certs\zscaler-root-ca.pem` or
+   `set HTTPS_PROXY=http://proxy.corp:8080`.
+3. Stop and start the server (`STOP_Zscaler_Assessment.bat`, then the
+   desktop shortcut). Start here shows the CA bundle in use.
+
+Test connection tells you when this is the problem: "intercepted by TLS
+inspection" means the CA bundle is missing or wrong; "rejected the client
+ID or client secret" means the credentials themselves.
+
 ## 2. Get credentials from the customer
 
 Ask the customer's Zscaler admin for four things. They come from

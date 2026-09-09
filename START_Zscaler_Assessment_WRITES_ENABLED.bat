@@ -25,6 +25,11 @@ set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
 if not defined ZSCALER_BIND_HOST set ZSCALER_BIND_HOST=127.0.0.1
 if not defined ZSCALER_PORT      set ZSCALER_PORT=8000
 
+REM Machine-specific settings that must survive updates (proxy, corporate
+REM root CA for TLS inspection, credentials) live in local_settings.bat
+REM next to this file. It is git-ignored; copy local_settings.bat.example.
+if exist "%~dp0local_settings.bat" call "%~dp0local_settings.bat"
+
 echo.
 echo  ============================================================
 echo   Zscaler Platform Assessment  -  WRITE ACTIONS ENABLED

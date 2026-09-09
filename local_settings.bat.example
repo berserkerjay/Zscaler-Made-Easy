@@ -1,0 +1,22 @@
+@echo off
+REM Copy this file to local_settings.bat (same folder). It is git-ignored, so
+REM the settings survive UPDATE_Zscaler_Assessment.bat and fresh clones.
+REM Remove the "REM " in front of a line to activate it.
+
+REM Laptop behind Zscaler Client Connector or another TLS-inspecting proxy:
+REM point Python at your organisation's root CA (export it as .pem).
+REM set REQUESTS_CA_BUNDLE=C:\certs\zscaler-root-ca.pem
+REM set SSL_CERT_FILE=C:\certs\zscaler-root-ca.pem
+
+REM Corporate proxy for outbound HTTPS (api.zsapi.net, *.zslogin.net, pypi.org).
+REM set HTTPS_PROXY=http://proxy.corp.example:8080
+
+REM Default tenant, so the GUI fields can be left blank (secrets are better
+REM kept in a tenant profile with "remember the secret on this laptop").
+REM set ZSCALER_CLOUD=production
+REM set ZSCALER_VANITY_DOMAIN=acme
+REM set ZSCALER_CLIENT_ID=
+REM set ZSCALER_CLIENT_SECRET=
+
+REM Start in write mode without the in-app switch.
+REM set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
