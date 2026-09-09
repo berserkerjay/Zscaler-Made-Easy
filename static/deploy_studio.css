@@ -108,6 +108,11 @@
   .dz-note { color: var(--dim); font-size: 0.8rem; margin: 0.35rem 0 0.6rem; line-height: 1.45; }
   .dz-link { background: none; border: 0; color: var(--accent); font-size: 0.78rem; font-weight: 600; cursor: pointer; padding: 0.35rem 0; }
   .dz-links { display: flex; gap: 1rem; align-items: center; }
+  .dz-fit { display: grid; gap: 0.3rem; margin: 0.2rem 0 0.6rem; font-size: 0.8rem; color: var(--text); }
+  .dz-fit .k { display: block; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+  .dz-howto { margin-top: 0.8rem; }
+  .dz-howto ul { margin: 0.3rem 0 0; padding-left: 1.1rem; display: grid; gap: 0.3rem; }
+  .dz-next { margin: 0.2rem 0 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; }
   /* Immutable baselines */
   .dz-chip.kind-baseline { background: rgba(168,85,247,0.14); color: #7e22ce; }
   .dz-baseline { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 0.15rem 0 0.5rem; }

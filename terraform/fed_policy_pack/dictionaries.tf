@@ -30,7 +30,7 @@ data "zia_dlp_dictionaries" "medical" {
 
 resource "zia_dlp_dictionaries" "fouo_markings_high_confidence" {
   name                         = "FOUO Markings (High Confidence)"
-  description                  = "High confidence looks for case sensitive uppercase markings, without typos. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "High confidence looks for case sensitive uppercase markings, without typos. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -42,7 +42,7 @@ resource "zia_dlp_dictionaries" "fouo_markings_high_confidence" {
 
 resource "zia_dlp_dictionaries" "fouo_markings_medium_confidence" {
   name                         = "FOUO Markings (Medium Confidence)"
-  description                  = "Medium Confidence is not case sensitive and allows for certain typos, such as “FUOU) which was observed in one of the reference docs. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Medium Confidence is not case sensitive and allows for certain typos, such as “FUOU) which was observed in one of the reference docs. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -54,7 +54,7 @@ resource "zia_dlp_dictionaries" "fouo_markings_medium_confidence" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_admonishment_phrase" {
   name                         = "AEA RD-FRD-Admonishment Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -70,7 +70,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_admonishment_phrase" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_literal_phrase" {
   name                         = "AEA RD-FRD-Literal Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -86,7 +86,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_literal_phrase" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_contextual_phrase" {
   name                         = "AEA RD-FRD-Contextual Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -134,7 +134,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_contextual_phrase" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_high_confidence" {
   name                         = "AEA RD-FRD Pattern (High Confidence)"
-  description                  = "High confidence pattern matches uppercase plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "High confidence pattern matches uppercase plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -146,7 +146,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_high_confidence" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_medium_confidence" {
   name                         = "AEA RD-FRD Pattern (Medium Confidence)"
-  description                  = "Medium confidence pattern matches any case plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Medium confidence pattern matches any case plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -158,7 +158,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_medium_confidence" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_high_confidence" {
   name                         = "AEA RD-FRD-Portion-Marking-Pattern (High Confidence)"
-  description                  = "High confidence pattern matches uppercase plaintext markings with parenthesis, with or without dashes and slashes, with mid-string matching prevention. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "High confidence pattern matches uppercase plaintext markings with parenthesis, with or without dashes and slashes, with mid-string matching prevention. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -170,7 +170,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_high_confide
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_medium_confidence" {
   name                         = "AEA RD-FRD-Portion-Marking-Pattern (Medium Confidence)"
-  description                  = "Medium confidence pattern matches any case plaintext portion marking with a pre and post character like parenthesis or double quote. As seen in some typos. Some potential for mid-string matching. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Medium confidence pattern matches any case plaintext portion marking with a pre and post character like parenthesis or double quote. As seen in some typos. Some potential for mid-string matching. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -182,7 +182,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_medium_confi
 
 resource "zia_dlp_dictionaries" "standard_forms" {
   name                         = "Standard Forms"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -302,7 +302,7 @@ resource "zia_dlp_dictionaries" "standard_forms" {
 
 resource "zia_dlp_dictionaries" "us_passport_high_confidence" {
   name                         = "US Passport - High Confidence"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -362,7 +362,7 @@ resource "zia_dlp_dictionaries" "us_passport_high_confidence" {
 
 resource "zia_dlp_dictionaries" "us_passport_prox_500" {
   name                         = "US Passport - Prox 500"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -424,7 +424,7 @@ resource "zia_dlp_dictionaries" "us_passport_prox_500" {
 
 resource "zia_dlp_dictionaries" "alien_registration_number_prox_500" {
   name                         = "Alien Registration Number - Prox 500"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -466,7 +466,7 @@ resource "zia_dlp_dictionaries" "alien_registration_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "alien_registration_number_high_confidence" {
   name                         = "Alien Registration Number - High Confidence"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -506,7 +506,7 @@ resource "zia_dlp_dictionaries" "alien_registration_number_high_confidence" {
 
 resource "zia_dlp_dictionaries" "date_of_birth_high_confidence" {
   name                         = "Date of Birth - High Confidence"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -558,7 +558,7 @@ resource "zia_dlp_dictionaries" "date_of_birth_high_confidence" {
 
 resource "zia_dlp_dictionaries" "date_of_birth_prox_500" {
   name                         = "Date of Birth - Prox 500"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -612,7 +612,7 @@ resource "zia_dlp_dictionaries" "date_of_birth_prox_500" {
 
 resource "zia_dlp_dictionaries" "social_security_numbers_us_high" {
   name                         = "Social Security Numbers (US) - High"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -629,7 +629,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_high" {
 
 resource "zia_dlp_dictionaries" "social_security_numbers_us_prox_500" {
   name                         = "Social Security Numbers (US) - Prox 500"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -647,7 +647,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "tax_identification_number_us_high" {
   name                         = "Tax Identification Number (US) - High"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -660,7 +660,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_high" {
 
 resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
   name                         = "Tax Identification Number (US) - Prox 500"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -674,7 +674,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
   name                         = "Drivers License (United States) - Prox 500"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -693,7 +693,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
 
 resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
   name                         = "Drivers License (United States) - High"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -711,7 +711,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
 
 resource "zia_dlp_dictionaries" "private_keys_plaintext_regex" {
   name                         = "Private Keys-Plaintext Regex"
-  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when store... [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when... [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -723,7 +723,7 @@ resource "zia_dlp_dictionaries" "private_keys_plaintext_regex" {
 
 resource "zia_dlp_dictionaries" "jwk_private_key" {
   name                         = "JWK Private Key"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -741,7 +741,7 @@ resource "zia_dlp_dictionaries" "jwk_private_key" {
 
 resource "zia_dlp_dictionaries" "private_key" {
   name                         = "Private Key"
-  description                  = "Detect leakage of credentials and secrets [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of credentials and secrets [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -755,7 +755,7 @@ resource "zia_dlp_dictionaries" "private_key" {
 
 resource "zia_dlp_dictionaries" "encrypted_or_ascii_armored_pgp_keys" {
   name                         = "Encrypted or ASCII Armored PGP Keys"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -767,7 +767,7 @@ resource "zia_dlp_dictionaries" "encrypted_or_ascii_armored_pgp_keys" {
 
 resource "zia_dlp_dictionaries" "encrypted_bouncy_castle_key_exports" {
   name                         = "Encrypted Bouncy Castle Key Exports"
-  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -789,7 +789,7 @@ resource "zia_dlp_dictionaries" "encrypted_bouncy_castle_key_exports" {
 
 resource "zia_dlp_dictionaries" "form_k_1" {
   name                         = "Form K-1"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -825,7 +825,7 @@ resource "zia_dlp_dictionaries" "form_k_1" {
 
 resource "zia_dlp_dictionaries" "form_1099_misc_and_1099_nec" {
   name                         = "Form 1099-MISC and 1099-NEC"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -881,7 +881,7 @@ resource "zia_dlp_dictionaries" "form_1099_misc_and_1099_nec" {
 
 resource "zia_dlp_dictionaries" "w2_or_w4_or_w9_forms" {
   name                         = "W2 or W4 or W9 Forms"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -973,7 +973,7 @@ resource "zia_dlp_dictionaries" "w2_or_w4_or_w9_forms" {
 
 resource "zia_dlp_dictionaries" "form_1040_and_related_schedules" {
   name                         = "Form 1040 and related schedules"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1133,7 +1133,7 @@ resource "zia_dlp_dictionaries" "form_1040_and_related_schedules" {
 
 resource "zia_dlp_dictionaries" "aba_bank_routing_number_high" {
   name                         = "ABA Bank Routing Number - High"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1146,7 +1146,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_high" {
 
 resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
   name                         = "ABA Bank Routing Number - Prox 500"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1160,7 +1160,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "credit_cards_high" {
   name                         = "Credit Cards - High"
-  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1173,7 +1173,7 @@ resource "zia_dlp_dictionaries" "credit_cards_high" {
 
 resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
   name                         = "Credit Cards - Prox 500"
-  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1187,7 +1187,7 @@ resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
 
 resource "zia_dlp_dictionaries" "credit_card_magnetic_tracks" {
   name                         = "Credit Card Magnetic Tracks"
-  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1203,7 +1203,7 @@ resource "zia_dlp_dictionaries" "credit_card_magnetic_tracks" {
 
 resource "zia_dlp_dictionaries" "itar_phrase" {
   name                         = "ITAR Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1239,7 +1239,7 @@ resource "zia_dlp_dictionaries" "itar_phrase" {
 
 resource "zia_dlp_dictionaries" "itar_pattern" {
   name                         = "ITAR Pattern"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1263,7 +1263,7 @@ resource "zia_dlp_dictionaries" "itar_pattern" {
 
 resource "zia_dlp_dictionaries" "tlp_red" {
   name                         = "TLP Red"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1275,7 +1275,7 @@ resource "zia_dlp_dictionaries" "tlp_red" {
 
 resource "zia_dlp_dictionaries" "tlp_amber_strict" {
   name                         = "TLP Amber Strict"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1287,7 +1287,7 @@ resource "zia_dlp_dictionaries" "tlp_amber_strict" {
 
 resource "zia_dlp_dictionaries" "tlp_amber" {
   name                         = "TLP Amber"
-  description                  = "[DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1299,7 +1299,7 @@ resource "zia_dlp_dictionaries" "tlp_amber" {
 
 resource "zia_dlp_dictionaries" "cui_registry_marking_pattern_high_confidence" {
   name                         = "CUI Registry Marking Pattern (High confidence)"
-  description                  = "Identifies CUI Registry Markings with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Identifies CUI Registry Markings with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1311,7 +1311,7 @@ resource "zia_dlp_dictionaries" "cui_registry_marking_pattern_high_confidence" {
 
 resource "zia_dlp_dictionaries" "cui_registry_marking_pattern_medium_confidence" {
   name                         = "CUI Registry Marking Pattern (Medium confidence)"
-  description                  = "Identifies CUI Registry Markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Identifies CUI Registry Markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1323,7 +1323,7 @@ resource "zia_dlp_dictionaries" "cui_registry_marking_pattern_medium_confidence"
 
 resource "zia_dlp_dictionaries" "cui_portion_marking_pattern_high_confidence" {
   name                         = "CUI Portion Marking Pattern (High confidence)"
-  description                  = "Identifies CUI portion markings with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Identifies CUI portion markings with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1339,7 +1339,7 @@ resource "zia_dlp_dictionaries" "cui_portion_marking_pattern_high_confidence" {
 
 resource "zia_dlp_dictionaries" "cui_portion_marking_pattern_medium_confidence" {
   name                         = "CUI Portion Marking Pattern (Medium confidence)"
-  description                  = "Identifies CUI portion markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Identifies CUI portion markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1351,7 +1351,7 @@ resource "zia_dlp_dictionaries" "cui_portion_marking_pattern_medium_confidence" 
 
 resource "zia_dlp_dictionaries" "declassify_date_pattern_high_confidence" {
   name                         = "Declassify Date Pattern (High Confidence)"
-  description                  = "Identifies declassification dates with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Identifies declassification dates with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1363,7 +1363,7 @@ resource "zia_dlp_dictionaries" "declassify_date_pattern_high_confidence" {
 
 resource "zia_dlp_dictionaries" "declassify_date_pattern_medium_confidence" {
   name                         = "Declassify Date Pattern (Medium Confidence)"
-  description                  = "Identifies declassification dates with medium confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "Identifies declassification dates with medium confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1375,7 +1375,7 @@ resource "zia_dlp_dictionaries" "declassify_date_pattern_medium_confidence" {
 
 resource "zia_dlp_dictionaries" "cui_contextual_phrases" {
   name                         = "CUI Contextual Phrases"
-  description                  = "CUI Contextual Phrases, based on reference documents. [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "CUI Contextual Phrases, based on reference documents. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1475,7 +1475,7 @@ resource "zia_dlp_dictionaries" "cui_contextual_phrases" {
 
 resource "zia_dlp_dictionaries" "cui_category_phrase" {
   name                         = "CUI Category Phrase"
-  description                  = "CUI Category phrases from https://www.archives.gov/cui/registry/category-marking-list [DLP-Check pack fed_policy_pack] Terraform-managed."
+  description                  = "CUI Category phrases from https://www.archives.gov/cui/registry/category-marking-list [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"

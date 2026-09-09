@@ -11,5 +11,7 @@
     "immutable": true,
     "prefix": "ZBP-",
     "version": "1.0"
-  }
+  },
+  "audience": "Engineering-heavy organisations that worry about source code being pasted or uploaded into AI tools.",
+  "when_to_use": "The customer wants to stop Python, JavaScript or shell source code reaching AI/ML applications. The rule is BLOCK once enabled, so pilot it with a small group first."
 }

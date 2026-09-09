@@ -8,5 +8,7 @@
     "immutable": true,
     "prefix": "ZBP-",
     "version": "1.0"
-  }
+  },
+  "audience": "Any commercial enterprise. Zscaler's recommended starting point for US PII, US PHI, financial data, ITAR, TLP markings and private keys.",
+  "when_to_use": "The customer has no DLP policy yet, or wants Zscaler's best-practice monitoring rules as an immutable baseline. Start here unless a regulation-specific pack applies."
 }

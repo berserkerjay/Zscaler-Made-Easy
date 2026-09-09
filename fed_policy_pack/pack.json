@@ -1,0 +1,10 @@
+{
+  "name": "Fed Policy Pack",
+  "version": "1.1",
+  "description": "Zscaler's Fed Policy Pack V1.1: dictionaries, engines and monitor rules for FOUO markings, Atomic Energy Act RD/FRD, Standard Forms, US PII, US PHI, financial information, ITAR, Traffic Light Protocol, CUI at three confidence levels and private keys, plus endpoint, SaaS and email monitor rules. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "references": [
+    "Zscaler Fed Policy Pack V1.1"
+  ],
+  "audience": "US federal civilian agencies and their contractors handling CUI, FOUO, Atomic Energy Act data, ITAR, and US PII/PHI.",
+  "when_to_use": "The customer is a federal agency or contractor. It is a superset of the ZBP Enterprise baseline; do not deploy both."
+}

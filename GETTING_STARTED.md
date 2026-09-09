@@ -1,0 +1,140 @@
+# Getting Started — a walkthrough for your first engagement
+
+This guide assumes you have never used DLP-Check and know only the basics
+of Zscaler. It takes a tenant from "we don't know our DLP posture" to
+"gaps identified and a policy pack ready to deploy" in about an hour.
+
+## What the tool does, in one paragraph
+
+DLP-Check connects to a customer's Zscaler tenant with read-only API
+credentials, runs 300+ automated checks, and gives the tenant a maturity
+score with a list of findings. It then lets you close the gaps by deploying
+a **policy pack** — a ready-made set of DLP dictionaries, engines and rules
+for a regulation (CJIS, Fed, HIPAA PHI) or for Zscaler's own best practice —
+after showing you exactly what would change and asking you to approve it.
+Every rule in every pack ships **disabled**, so deploying never affects the
+customer's users. Baselines keep the configuration from drifting afterwards.
+
+## 1. Install (once per laptop)
+
+1. Install Python 3.11+ from python.org and tick **Add Python to PATH**.
+2. Install Git from git-scm.com.
+3. In PowerShell:
+   ```
+   git clone https://github.com/berserkerjay/DLP-Check.git
+   cd DLP-Check
+   .\INSTALL_Zscaler_Assessment.bat
+   ```
+4. A **Zscaler Assessment** shortcut appears on the desktop. Double-click it.
+   A console window opens and the browser opens to http://localhost:8000.
+
+To update later: `.\UPDATE_Zscaler_Assessment.bat` (stops the server,
+pulls the latest code, restarts). Press Ctrl+F5 in the browser once.
+
+## 2. Get credentials from the customer
+
+Ask the customer's Zscaler admin for four things. They come from
+**ZIdentity → Integration → API Clients → Add API Client**:
+
+| Field | What it is | Example |
+|---|---|---|
+| Cloud | Almost always Production | Production |
+| Vanity domain | The short name before `.zslogin.net` in their login URL | `acme` |
+| Client ID | Shown on the API client | `a1b2c3…` |
+| Client secret | Shown **once** when the client is created | — |
+
+The API client needs a ZIA role that can **read** DLP dictionaries, engines
+and DLP policy. For deploying packs it also needs **write** on those. Ask
+for a dedicated client for this engagement so it can be revoked afterwards.
+
+If the customer pasted the secret from the portal later, it is a masked
+placeholder and will not work. They must generate a new one.
+
+## 3. Connect (Start here, step 1)
+
+1. Open **Tenant Configuration** and enter the four values plus your
+   organisation and assessor name.
+2. In the **Start here** panel click **Test connection**. You should see
+   "Connected: N dictionaries, N engines, N web DLP rules".
+3. If it fails, the panel says why and what to do. The two common causes:
+   - *Zscaler rejected the client ID or client secret* → regenerate the secret.
+   - *Connection intercepted by TLS inspection* → your laptop is behind
+     Zscaler Client Connector or a proxy. Export the corporate root CA as a
+     `.pem` and start the tool with `REQUESTS_CA_BUNDLE` pointing at it, or
+     run from a machine that is not inspected.
+4. Click **Save Config** so the non-secret fields are remembered.
+
+## 4. Assess (step 2 and 3)
+
+1. Leave the default scopes ticked and click **Run Assessment**.
+2. After about 90 seconds the **Summary** shows the score and maturity
+   level; **Detailed Findings** lists every check that failed or warned,
+   with what it means and how to fix it.
+3. Walk the customer through **Critical** findings first. Those are
+   configurations that leak data today. Use **Export** to give them the
+   report as Word or CSV.
+
+## 5. Choose a policy pack (step 4)
+
+Click **Deploy Policy Packs**. Each card says who it is for and when to use
+it. Rule of thumb:
+
+| Customer | Pack |
+|---|---|
+| Any commercial enterprise with no DLP policy yet | **ZBP Enterprise Baseline** |
+| Worried about source code going into AI tools | add **ZBP Source Code to AI** |
+| Healthcare provider or payer | add **Healthcare PHI** |
+| US federal agency or contractor | **Fed Policy Pack** instead of ZBP Enterprise (it contains it) |
+| Law enforcement, courts, CJI handlers | **CJIS Policy Pack** |
+
+Do not select Fed and ZBP Enterprise together; they define the same
+objects under different names.
+
+## 6. Preflight, review, approve
+
+1. Toggle the pack(s) on and click **Run preflight**. Nothing is written.
+2. Read the **Impact on this tenant** cards. They tell you how many rules
+   are inserted at the top of the policy, whether any would enforce
+   rather than monitor, and whether anything drifted from a baseline.
+3. Check **Tenant prerequisites**. A missing prerequisite (for example, no
+   SaaS tenant onboarded) skips only the rules that need it.
+4. Open **How to read this plan** if any term is unfamiliar. Hover any
+   status chip for a one-line explanation.
+5. Click **Review & approve**. Read the checklist, tick the consent box,
+   click **Deploy to tenant**.
+
+If the server was started read-only (the normal shortcut), the deploy step
+says so. Close the console window and start
+`START_Zscaler_Assessment_WRITES_ENABLED.bat` when the customer has agreed.
+
+## 7. After deploying
+
+1. An admin must click **Activate** in the ZIA Admin Portal.
+2. Enable rules one at a time in **Policy → Data Loss Prevention**,
+   monitor-only ones first, and raise severity once incidents look right.
+3. On the next visit, click **Check drift** on the baseline card. Anything
+   changed by hand is listed and can be restored with another deploy.
+4. If the customer's platform team uses Terraform, click **Export
+   Terraform** on the review step and hand them the zip. Its first
+   `terraform plan` shows exactly the gap.
+
+## 8. When something goes wrong
+
+| You see | It means | Do this |
+|---|---|---|
+| "Could not connect … rejected the client ID or client secret" | Bad credentials | Regenerate the secret in ZIdentity, paste it fresh |
+| "… intercepted by TLS inspection" | Laptop behind ZCC/proxy | `REQUESTS_CA_BUNDLE` to the corporate root CA, or another machine |
+| "0 endpoints probed" in ZCC diagnostics | Credentials rejected | Test connection first |
+| Preflight **Blocked** card | A named prerequisite is missing | Read the card; onboard the SaaS tenant, or deselect that rule's pack |
+| "Write actions require ENABLE_WRITE_ACTIONS" | Read-only mode | Start with `START_Zscaler_Assessment_WRITES_ENABLED.bat` |
+| "The tenant changed since you approved" | Someone edited the tenant mid-flow | Re-run preflight and approve the new plan |
+| Only one usage of each socket address (port 8000) | Old server still running | `STOP_Zscaler_Assessment.bat` then start again |
+
+## Glossary
+
+The **? Help** button in the app has the full glossary. The five words that
+matter: a **dictionary** is what to look for; an **engine** combines
+dictionaries into a decision; a **rule** says where the engine applies and
+whether to monitor (ALLOW) or stop (BLOCK); a **pack** is a folder of all
+three for one purpose; a **baseline** is a pack the tenant is held to, with
+drift detected and restored.

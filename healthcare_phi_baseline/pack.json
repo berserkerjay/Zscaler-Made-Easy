@@ -18,5 +18,7 @@
     "immutable": true,
     "prefix": "",
     "version": "1.0"
-  }
+  },
+  "audience": "Healthcare providers, payers and their vendors handling protected health information under HIPAA.",
+  "when_to_use": "The customer handles medical records with MRN, patient account numbers and dates of birth, and needs PHI detection anchored to clinical context. Start in monitor mode."
 }
