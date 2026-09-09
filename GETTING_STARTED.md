@@ -36,8 +36,13 @@ next.
    `START_Zscaler_Assessment.bat --console` when you want to watch the
    server output in a window.
 
-To update later: `.\UPDATE_Zscaler_Assessment.bat` (stops the server,
-pulls the latest code, restarts). Press Ctrl+F5 in the browser once.
+To update later: the Start here card says **update available** when
+GitHub is ahead; click **Update app now**. The app pulls the latest code,
+installs any new dependencies, restarts itself and reloads the page. It
+shows each step and, if a file in the folder was edited by hand, names
+it instead of pulling. `UPDATE_Zscaler_Assessment.bat` does the same from
+a command prompt. A copy that was not installed with git cannot update in
+place; the card shows the one command that moves it to a git clone.
 
 ## 1b. Settings that survive updates (proxy, TLS inspection)
 

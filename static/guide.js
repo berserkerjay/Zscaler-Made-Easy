@@ -120,6 +120,86 @@ function _gdTlsNote(t) {
   return ' · No corporate CA bundle configured. If Authenticate reports a certificate error, copy local_settings.bat.example to local_settings.bat and set REQUESTS_CA_BUNDLE; it survives updates.';
 }
 
+
+// ── Update the app from here ───────────────────────────────────────
+// The server pulls main, installs requirements and restarts itself; the
+// page waits for the new process and reloads.
+function _gdWhereHtml() {
+  const a = GD.about;
+  if (!a || !a.app_dir) return '';
+  let s = `Installed at <code>${_gdE(a.app_dir)}</code>${a.git_commit && a.git_commit !== 'unknown' ? ` · build ${_gdE(a.git_commit)}` : ''}`;
+  if (a.is_git_checkout === false) {
+    s += ' · <strong>not a git checkout</strong>: it cannot be updated in place. <button type="button" class="gd-link" onclick="_gdUpdateHelp()">How to move to a git clone</button>';
+  } else if (a.latest_commit && a.git_commit && a.latest_commit !== a.git_commit) {
+    s += ` · <strong>update available</strong> (GitHub is on ${_gdE(a.latest_commit)}) <button type="button" class="gd-btn primary gd-btn-sm" onclick="_gdUpdateApp()">Update app now</button>`;
+  } else if (a.latest_commit) {
+    s += ' · up to date <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
+  } else {
+    s += ' · could not check GitHub for updates <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
+  }
+  return s + _gdTlsNote(a.tls);
+}
+function _gdUpdateBox(html, show = true) {
+  const box = document.getElementById('gdUpdate');
+  if (!box) return;
+  box.hidden = !show; box.innerHTML = html;
+}
+async function _gdUpdateCheck() {
+  _gdUpdateBox('<span class="gd-upd-line">Checking GitHub…</span>');
+  try {
+    const st = await (await fetch('/api/app/update/status?refresh=1', { cache: 'no-store' })).json();
+    GD.about = Object.assign({}, GD.about, { git_commit: st.local_commit || GD.about.git_commit, latest_commit: st.remote_commit, is_git_checkout: st.is_git_checkout });
+    _gdRender();
+    if (st.reason && !st.can_update) _gdUpdateBox(`<span class="gd-upd-line warn">${_gdE(st.reason)}</span>`);
+    else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">GitHub is on build ${_gdE(st.remote_commit)}; this install is on ${_gdE(st.local_commit)}.</span>`);
+    else _gdUpdateBox(`<span class="gd-upd-line ok">Up to date (build ${_gdE(st.local_commit || '?')}).</span>`);
+  } catch (e) { _gdUpdateBox(`<span class="gd-upd-line warn">Could not check: ${_gdE(e.message)}</span>`); }
+}
+function _gdUpdateHelp() {
+  const cmd = 'cd /d "%USERPROFILE%" && (if exist "DLP-Check\\\\.git" (cd /d "%USERPROFILE%\\\\DLP-Check" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\DLP-Check")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat';
+  _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git, so it cannot pull updates. Run this once in a Command Prompt; it clones the repository under your user folder, installs it and repoints the shortcuts. Copy <code>local_settings.bat</code> from the old folder afterwards.</div>
+    <pre class="gd-upd-cmd" id="gdUpdCmd">${_gdE(cmd)}</pre>
+    <button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('gdUpdCmd').textContent).then(() => announce('Command copied'))">Copy command</button>`);
+}
+async function _gdUpdateApp() {
+  const btn = document.querySelector('#gdWhere .gd-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+  const lines = [];
+  const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'warn') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✗') : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);
+  lines.push({ name: 'Pulling the latest code from GitHub', ok: null }); show();
+  let res;
+  try {
+    const r = await fetch('/api/app/update', { method: 'POST' });
+    res = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(res.detail || `HTTP ${r.status}`);
+  } catch (e) {
+    lines.length = 0; lines.push({ name: 'Update failed', ok: false, detail: e.message }); show();
+    if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; }
+    return;
+  }
+  lines.length = 0;
+  for (const s of res.steps || []) lines.push({ name: s.name, ok: s.ok, detail: s.detail, soft: !!s.soft });
+  if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; } return; }
+  if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; } _gdUpdateCheck(); return; }
+  lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
+  try {
+    const r = await fetch('/api/app/restart', { method: 'POST' });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+  } catch (e) {
+    lines[lines.length - 1] = { name: 'Restart could not be scheduled', ok: false, detail: e.message + '. Close the app with STOP_Zscaler_Assessment.bat and open it again from the shortcut.' }; show(); return;
+  }
+  // Wait for the new process: health answers with the new build.
+  const started = Date.now();
+  const poll = async () => {
+    try {
+      const h = await (await fetch('/api/health', { cache: 'no-store' })).json();
+      if (h.git_commit && h.git_commit === res.after) { lines[lines.length - 1] = { name: `Restarted on build ${h.git_commit}. Reloading…`, ok: true }; show(); setTimeout(() => location.reload(), 600); return; }
+    } catch (_) { /* server is down while it restarts */ }
+    if (Date.now() - started > 90000) { lines[lines.length - 1] = { name: 'The app did not come back within 90 seconds', ok: false, detail: 'Open it again from the desktop shortcut; the update itself succeeded.' }; show(); return; }
+    setTimeout(poll, 1500);
+  };
+  setTimeout(poll, 2500);
+}
+
 // ── Rendering ──────────────────────────────────────────────────────
 function _gdRender() {
   _gdAuthStatus();
@@ -133,7 +213,8 @@ function _gdRender() {
         <div class="gd-eyebrow">Start here</div>
         <h2 class="gd-title">Seven steps from "unknown tenant" to "governed data"</h2>
         <p class="gd-sub">Follow the steps in order. Each one explains what it does, what you need, and what to click. Nothing is written to the customer's tenant until step 5, and only after you approve a plan or hand it off as Terraform.</p>
-        <p class="gd-sub gd-where" id="gdWhere">${GD.about && GD.about.app_dir ? `Installed at <code>${_gdE(GD.about.app_dir)}</code>${GD.about.git_commit && GD.about.git_commit !== 'unknown' ? ` · build ${_gdE(GD.about.git_commit)}` : ''}${GD.about.is_git_checkout === false ? ' · <strong>not a git checkout</strong>: the update script cannot pull here; clone the repository and run the installer from the clone.' : (GD.about.latest_commit && GD.about.git_commit && GD.about.latest_commit !== GD.about.git_commit ? ` · <strong>update available</strong> (GitHub is on ${_gdE(GD.about.latest_commit)}): run UPDATE_Zscaler_Assessment.bat in this folder, then reload.` : ' · up to date. Run UPDATE_Zscaler_Assessment.bat in this folder to update later.')}${_gdTlsNote(GD.about.tls)}` : ''}</p>
+        <p class="gd-sub gd-where" id="gdWhere">${_gdWhereHtml()}</p>
+        <div id="gdUpdate" class="gd-update" hidden></div>
       </div>
       <div class="gd-controls">
         <label class="gd-switch" title="Guided mode hides the Compliance Coverage card so the seven steps stay in focus. Every tool stays available in the toolbar above.">

@@ -1710,6 +1710,50 @@ def _latest_remote_commit() -> Optional[str]:
     return sha
 
 
+# ── Update the app from the web UI ─────────────────────────────────────────────
+# Same as UPDATE_Zscaler_Assessment.bat, without a command prompt: pull
+# main fast-forward, install requirements, restart the server. Localhost
+# only (like write mode); every request also passes the origin check.
+
+def _update_allowed() -> None:
+    from security import get_bind_host
+    if get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=403, detail="Updating from the web UI is only allowed when the server is bound to localhost.")
+
+
+@app.get("/api/app/update/status")
+async def app_update_status(refresh: bool = False):
+    """Current build, whether GitHub is ahead, and whether a pull would be
+    refused (hand-edited files, not a checkout, no git)."""
+    import app_update
+    if refresh:
+        _LATEST["at"] = 0.0
+    remote = await asyncio.to_thread(_latest_remote_commit)
+    st = await asyncio.to_thread(app_update.status, _APP_DIR, remote)
+    st["restart_command"] = app_update.restart_command(_APP_DIR)
+    return st
+
+
+@app.post("/api/app/update")
+async def app_update_run():
+    """Fetch, pull --ff-only origin main, install requirements. Reports
+    every step; nothing is deleted or overwritten."""
+    _update_allowed()
+    import app_update
+    result = await asyncio.to_thread(app_update.update, _APP_DIR)
+    _LATEST["at"] = 0.0
+    return result
+
+
+@app.post("/api/app/restart")
+async def app_restart():
+    """Relaunch the server through the start script and exit this process.
+    The page polls /api/health until the new process answers."""
+    _update_allowed()
+    import app_update
+    return await asyncio.to_thread(app_update.schedule_restart, _APP_DIR)
+
+
 @app.get("/api/checks")
 async def list_checks(scope: Optional[str] = None):
     """List all check IDs, sections, and labels. Optional scope filter: dlp, zia, zpa, zcc, genai, automation."""
