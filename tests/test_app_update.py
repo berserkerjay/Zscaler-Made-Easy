@@ -133,3 +133,19 @@ def test_endpoints(repos, monkeypatch):
     assert c.post("/api/app/update").status_code == 403 and c.post("/api/app/restart").status_code == 403
     html = c.get("/static/guide.js").text
     assert "_gdUpdateApp" in html and "/api/app/update" in html and "Update app now" in html
+    # The button is offered even when the GitHub check failed, and the reason is shown.
+    assert "could not check GitHub" in html and "latest_commit_error" in html and "btn('Update app', true)" in html
+
+
+def test_health_reports_why_the_github_check_failed(repos, monkeypatch):
+    import dlp_api_server as srv
+    app = str(repos["app"])
+    _git(app, "remote", "set-url", "origin", str(repos["origin"] / "does-not-exist"))
+    monkeypatch.setattr(srv, "_APP_DIR", app)
+    srv._LATEST.update({"at": 0.0, "sha": None, "error": None})
+    c = TestClient(srv.app)
+    h = c.get("/api/health").json()
+    assert h["latest_commit"] is None and h["latest_commit_error"]
+    st = c.get("/api/app/update/status?refresh=1").json()
+    assert st["remote_commit"] is None and st["remote_error"] and st["can_update"]
+    srv._LATEST.update({"at": 0.0, "sha": None, "error": None})

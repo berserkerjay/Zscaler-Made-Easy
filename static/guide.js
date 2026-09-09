@@ -128,14 +128,17 @@ function _gdWhereHtml() {
   const a = GD.about;
   if (!a || !a.app_dir) return '';
   let s = `Installed at <code>${_gdE(a.app_dir)}</code>${a.git_commit && a.git_commit !== 'unknown' ? ` · build ${_gdE(a.git_commit)}` : ''}`;
+  // The Update button is always there on a git checkout: the update
+  // itself reports what GitHub says, even when the quick check failed.
+  const btn = (label, primary) => ` <button type="button" class="gd-btn ${primary ? 'primary' : 'quiet'} gd-btn-sm" id="gdUpdateBtn" onclick="_gdUpdateApp()">${label}</button>`;
   if (a.is_git_checkout === false) {
-    s += ' · <strong>not a git checkout</strong>: it cannot be updated in place. <button type="button" class="gd-link" onclick="_gdUpdateHelp()">How to move to a git clone</button>';
-  } else if (a.latest_commit && a.git_commit && a.latest_commit !== a.git_commit) {
-    s += ` · <strong>update available</strong> (GitHub is on ${_gdE(a.latest_commit)}) <button type="button" class="gd-btn primary gd-btn-sm" onclick="_gdUpdateApp()">Update app now</button>`;
+    s += ' · <strong>not a git checkout</strong>: it cannot be updated in place.' + btn('How to update', true);
+  } else if (a.latest_commit && a.git_commit && a.git_commit !== 'unknown' && a.latest_commit !== a.git_commit) {
+    s += ` · <strong>update available</strong> (GitHub is on ${_gdE(a.latest_commit)})` + btn('Update app now', true);
   } else if (a.latest_commit) {
-    s += ' · up to date <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
+    s += ' · up to date' + btn('Update app', false) + ' <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
   } else {
-    s += ' · could not check GitHub for updates <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
+    s += ` · <strong>could not check GitHub</strong>${a.latest_commit_error ? ` (${_gdE(a.latest_commit_error)})` : ''}` + btn('Update app', true) + ' <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
   }
   return s + _gdTlsNote(a.tls);
 }
@@ -148,7 +151,7 @@ async function _gdUpdateCheck() {
   _gdUpdateBox('<span class="gd-upd-line">Checking GitHub…</span>');
   try {
     const st = await (await fetch('/api/app/update/status?refresh=1', { cache: 'no-store' })).json();
-    GD.about = Object.assign({}, GD.about, { git_commit: st.local_commit || GD.about.git_commit, latest_commit: st.remote_commit, is_git_checkout: st.is_git_checkout });
+    GD.about = Object.assign({}, GD.about, { git_commit: st.local_commit || GD.about.git_commit, latest_commit: st.remote_commit, latest_commit_error: st.remote_error || null, is_git_checkout: st.is_git_checkout });
     _gdRender();
     if (st.reason && !st.can_update) _gdUpdateBox(`<span class="gd-upd-line warn">${_gdE(st.reason)}</span>`);
     else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">GitHub is on build ${_gdE(st.remote_commit)}; this install is on ${_gdE(st.local_commit)}.</span>`);
@@ -162,7 +165,8 @@ function _gdUpdateHelp() {
     <button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('gdUpdCmd').textContent).then(() => announce('Command copied'))">Copy command</button>`);
 }
 async function _gdUpdateApp() {
-  const btn = document.querySelector('#gdWhere .gd-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+  if (GD.about && GD.about.is_git_checkout === false) { _gdUpdateHelp(); return; }
+  const btn = document.getElementById('gdUpdateBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   const lines = [];
   const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'warn') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✗') : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);
   lines.push({ name: 'Pulling the latest code from GitHub', ok: null }); show();
@@ -173,13 +177,13 @@ async function _gdUpdateApp() {
     if (!r.ok) throw new Error(res.detail || `HTTP ${r.status}`);
   } catch (e) {
     lines.length = 0; lines.push({ name: 'Update failed', ok: false, detail: e.message }); show();
-    if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Update app'; }
     return;
   }
   lines.length = 0;
   for (const s of res.steps || []) lines.push({ name: s.name, ok: s.ok, detail: s.detail, soft: !!s.soft });
-  if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; } return; }
-  if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app now'; } _gdUpdateCheck(); return; }
+  if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } return; }
+  if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } _gdUpdateCheck(); return; }
   lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
   try {
     const r = await fetch('/api/app/restart', { method: 'POST' });

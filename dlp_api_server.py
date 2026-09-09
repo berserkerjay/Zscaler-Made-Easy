@@ -1687,26 +1687,39 @@ async def health():
         "is_git_checkout": os.path.isdir(os.path.join(_APP_DIR, ".git")),
         "tls": _tls_status(),
         "latest_commit": _latest_remote_commit(),
+        "latest_commit_error": _LATEST.get("error"),
     }
 
 
-_LATEST: Dict[str, Any] = {"at": 0.0, "sha": None}
+_LATEST: Dict[str, Any] = {"at": 0.0, "sha": None, "error": None}
 
 
 def _latest_remote_commit() -> Optional[str]:
     """Short sha of origin/main on GitHub (best effort, cached 10 minutes),
-    so the GUI can say whether this install is behind."""
+    so the GUI can say whether this install is behind. When the check
+    fails the reason is kept in _LATEST["error"] for the GUI."""
     import subprocess, time as _t
     if _t.time() - _LATEST["at"] < 600:
         return _LATEST["sha"]
     _LATEST["at"] = _t.time()
+    sha, err = None, None
     try:
-        out = subprocess.check_output(["git", "ls-remote", "origin", "-h", "refs/heads/main"],
-                                      cwd=_APP_DIR, stderr=subprocess.DEVNULL, timeout=4).decode()
-        sha = out.split()[0][:7] if out.strip() else None
-    except Exception:
-        sha = None
+        cp = subprocess.run(["git", "ls-remote", "origin", "-h", "refs/heads/main"], cwd=_APP_DIR,
+                            capture_output=True, text=True, timeout=8, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        if cp.returncode == 0 and cp.stdout.strip():
+            sha = cp.stdout.split()[0][:7]
+        else:
+            lines = [ln.strip() for ln in (cp.stderr or cp.stdout or "").splitlines() if ln.strip()]
+            fatal = [ln for ln in lines if ln.lower().startswith("fatal:")]
+            err = (fatal[0] if fatal else (lines[0] if lines else "git ls-remote failed"))[:200]
+    except FileNotFoundError:
+        err = "git is not installed or not on PATH for the server process"
+    except subprocess.TimeoutExpired:
+        err = "GitHub did not answer within 8 seconds (network, proxy or TLS inspection)"
+    except Exception as e:  # noqa: BLE001
+        err = str(e)[:200]
     _LATEST["sha"] = sha
+    _LATEST["error"] = err
     return sha
 
 
@@ -1730,6 +1743,7 @@ async def app_update_status(refresh: bool = False):
         _LATEST["at"] = 0.0
     remote = await asyncio.to_thread(_latest_remote_commit)
     st = await asyncio.to_thread(app_update.status, _APP_DIR, remote)
+    st["remote_error"] = _LATEST.get("error")
     st["restart_command"] = app_update.restart_command(_APP_DIR)
     return st
 
