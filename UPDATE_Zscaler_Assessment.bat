@@ -63,6 +63,16 @@ if not defined PYTHON_EXE (
 echo       Using: %PYTHON_EXE%
 echo.
 
+REM ----- Step 3b: Refresh the desktop / Start Menu shortcuts -----
+REM Older installs pointed them at the console script; point them at the
+REM silent launcher so a double-click never leaves a command window open.
+set "INSTALL_DIR=%~dp0"
+set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
+echo       Shortcuts refreshed (silent launcher).
+echo.
+
 REM ----- Step 4: Restart server (silently) + open browser -----
 echo [4/4] Starting server...
 echo.

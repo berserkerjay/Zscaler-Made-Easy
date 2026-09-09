@@ -31,7 +31,10 @@ next.
 4. A **Zscaler Assessment** shortcut appears on the desktop. Double-click it.
    The browser opens to http://localhost:8000; the server runs silently in
    the background (its output is in `server.log` next to the app).
-   `STOP_Zscaler_Assessment.bat` stops it.
+   `STOP_Zscaler_Assessment.bat` stops it. Double-clicking
+   `START_Zscaler_Assessment.bat` also starts silently; run it as
+   `START_Zscaler_Assessment.bat --console` when you want to watch the
+   server output in a window.
 
 To update later: `.\UPDATE_Zscaler_Assessment.bat` (stops the server,
 pulls the latest code, restarts). Press Ctrl+F5 in the browser once.
