@@ -415,9 +415,76 @@ def c_3_5(cl):
     s=[p for p in d if p.get("groups") or p.get("users") or p.get("deviceGroups")]
     return R(R.PASS,f"{len(s)} profile(s) scoped.") if s else R(R.WARN,"All profiles globally scoped.")
 def c_3_6(cl): return c_1_6(cl)
+def _dictify(x):
+    if isinstance(x, dict): return x
+    for m in ("as_dict", "to_dict"):
+        f = getattr(x, m, None)
+        if callable(f):
+            try: return f() or {}
+            except Exception: pass
+    return dict(getattr(x, "__dict__", {}) or {})
+
+def _cbi_profiles(cl):
+    """Browser Isolation profiles (empty list when the feature is not licensed or the API says no)."""
+    d,c=cl.get("/zia/isolationProfile"); return [_dictify(p) for p in (_ls(d) if c in(200,204) else [])], c
+
+_CAC_TYPES = ("AI_ML","BUSINESS_PRODUCTIVITY","CONSUMER","CUSTOM_CAPP","DNS_OVER_HTTPS","ENTERPRISE_COLLABORATION","FILE_SHARE","FINANCE",
+              "HEALTH_CARE","HOSTING_PROVIDER","HUMAN_RESOURCES","INSTANT_MESSAGING","IT_SERVICES","LEGAL","SALES_AND_MARKETING",
+              "SOCIAL_NETWORKING","STREAMING_MEDIA","SYSTEM_AND_DEVELOPMENT","WEBMAIL")
+
+def _cac_rules_all_types(cl):
+    """Cloud App Control rules across every rule type (the API lists them per type)."""
+    zs = getattr(cl, "_zs", None)
+    svc = getattr(getattr(zs, "zia", None), "cloudappcontrol", None) if zs else None
+    out=[]
+    if svc is not None:
+        for t in _CAC_TYPES:
+            try:
+                rules, _, err = svc.list_rules(t)
+            except Exception: rules, err = None, "x"
+            if err or not rules: continue
+            for r in rules:
+                d=_dictify(r); d.setdefault("type", t); out.append(d)
+        return out
+    d,c=cl.get("/zia/cloudApplicationRules"); return [_dictify(r) for r in (_ls(d) if c in(200,204) else [])]
+
+def _isolate_rules(cl):
+    """Enabled rules that send traffic to Browser Isolation: URL Filtering
+    rules with action ISOLATE and Cloud App Control rules with ISOLATE_ actions."""
+    d,c=cl.get("/zia/urlFilteringRules"); url=[_dictify(r) for r in (_ls(d) if c in(200,204) else [])]
+    def on(r): return str(r.get("state") or "ENABLED").upper()=="ENABLED"
+    url_iso=[r for r in url if on(r) and str(r.get("action") or "").upper()=="ISOLATE"]
+    cac_iso=[r for r in _cac_rules_all_types(cl) if on(r) and any(str(a).upper().startswith("ISOLATE") for a in (r.get("actions") or []))]
+    return url_iso, cac_iso
+
 def c_3_7(cl):
-    d,c=cl.get("/zia/isolationProfile"); p=_ls(d) if c in(200,204) else []
-    return R(R.PASS,f"{len(p)} isolation profile(s).") if p else R(R.WARN,"No Browser Isolation — no BYOD DLP.")
+    """Browser Isolation: profiles exist AND policy actually routes traffic to them."""
+    profiles, code = _cbi_profiles(cl)
+    if not profiles:
+        if code in (403, 404):
+            return R(R.INFO, "Browser Isolation is not licensed or not enabled on this tenant (API returned no profiles). Without it, unsanctioned SaaS and AI tools can only be allowed or blocked; isolation is the middle ground that permits viewing while stopping upload, download and clipboard.")
+        return R(R.WARN, "No Browser Isolation profiles configured. Best practice: create a profile with upload, download and clipboard disabled and route unsanctioned file-sharing, webmail and AI categories through it (URL Filtering action ISOLATE, or Cloud App Control ISOLATE_ actions).")
+    url_iso, cac_iso = _isolate_rules(cl)
+    names = [r.get("name","?") for r in url_iso[:4]] + [f"{r.get('name','?')} (CAC {r.get('type','')})" for r in cac_iso[:4]]
+    if url_iso or cac_iso:
+        return R(R.PASS, f"{len(profiles)} isolation profile(s) and {len(url_iso)} URL Filtering + {len(cac_iso)} Cloud App Control rule(s) enabled with an ISOLATE action: {', '.join(names)}. Isolation needs SSL inspection on the same traffic to apply upload/download controls.",
+                 data={"profiles": len(profiles), "url_rules": len(url_iso), "cac_rules": len(cac_iso)})
+    return R(R.WARN, f"{len(profiles)} isolation profile(s) exist but no enabled URL Filtering or Cloud App Control rule uses an ISOLATE action, so nothing is actually isolated. Add ISOLATE rules for unsanctioned file-sharing, webmail and AI categories (view allowed, upload/download/clipboard blocked).",
+             data={"profiles": len(profiles), "url_rules": 0, "cac_rules": 0})
+
+def c_a17(cl):
+    """Isolation coverage of the risky data-exfiltration channels."""
+    profiles, code = _cbi_profiles(cl)
+    if not profiles:
+        return c_3_7(cl)
+    url_iso, cac_iso = _isolate_rules(cl)
+    risky = {"FILE_SHARE","WEBMAIL","AI_ML","SOCIAL_NETWORKING","CONSUMER"}
+    covered = sorted({str(r.get("type","")) for r in cac_iso if str(r.get("type","")) in risky})
+    url_cats = sorted({str(c) for r in url_iso for c in (r.get("urlCategories") or r.get("url_categories") or [])})
+    if covered or url_cats:
+        return R(R.PASS, f"Isolation covers Cloud App Control classes {', '.join(covered) or 'none'} and URL categories {', '.join(url_cats[:8]) or 'none'}. Missing risky classes: {', '.join(sorted(risky - set(covered))) or 'none'}.",
+                 data={"cac_classes": covered, "url_categories": url_cats})
+    return R(R.WARN, "No ISOLATE rule targets the risky channels (file sharing, webmail, AI, social, consumer apps). Isolation is most valuable exactly there: users keep access, data cannot leave.")
 def c_3_8(cl):
     d,c=cl.get("/zia/isolationProfile"); p=_ls(d) if c in(200,204) else []
     if not p: return R(R.WARN,"No isolation profiles.")
@@ -564,11 +631,32 @@ def c_5_19(cl):
     if not a: return R(R.WARN,"No active DLP rules — OCR check not applicable.")
     return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.") if ocr else R(R.WARN,"OCR not enabled on any active rules.")
 def c_5_20(cl):
-    d,c=cl.get("/zia/advancedSettings")
-    if c==404: d,c=cl.get("/zia/dlpAdvancedSettings")
-    if c in(200,204) and isinstance(d,dict):
-        return R(R.WARN,"'Evaluate all' ON.") if d.get("evaluateAllRules") else R(R.PASS,"First-match-wins (default).")
-    return R(R.WARN,"Advanced settings not accessible.")
+    """Inline DLP rule evaluation mode: Evaluate All Rules (every matching
+    rule fires) or By Rule Order (first match wins). Uses the same probe as
+    the Rule Migration wizard, so the answer matches what it shows."""
+    try:
+        from rule_migrator import assess_current_status
+        st = assess_current_status(cl)
+    except Exception as e:  # noqa: BLE001
+        return R(R.INFO, f"Could not determine the DLP rule evaluation mode ({str(e)[:80]}). Check Policy > Data Loss Prevention > Advanced Settings in the portal.")
+    on = st.get("evaluate_all_enabled")
+    via = st.get("found_via") or ""
+    order_ok = st.get("order_already_safe_for_eval_all")
+    n_rules = st.get("rule_count", 0); n_on = st.get("enabled_rules", 0)
+    if on is True:
+        return R(R.PASS, f"Evaluate All Rules is ON (seen at {via}). Every matching DLP rule fires and logs its own incident, so a broad monitor rule and a narrow block rule can coexist. {n_on}/{n_rules} web DLP rules enabled.",
+                 data={"evaluate_all": True, "found_via": via})
+    if on is False:
+        tail = ("Current rule order is already safe to switch: the strictest rules sit above broader ones." if order_ok
+                else "Rule order is NOT yet safe to switch: a broad ALLOW/monitor rule above a BLOCK rule would keep firing first. Use Inline DLP Rule Migration (Step 3, Optimize) to reorder, then enable.")
+        return R(R.WARN, f"Evaluate All Rules is OFF: the tenant is in By Rule Order mode (seen at {via}). Only the first matching rule fires, so a monitor rule near the top silently shadows every block rule below it. Best practice for a layered DLP policy is Evaluate All Rules. {tail} {n_on}/{n_rules} web DLP rules enabled.",
+                 data={"evaluate_all": False, "found_via": via, "order_safe": bool(order_ok)})
+    feat = st.get("feature_available")
+    feat_note = (" The capability flag says the feature is available on this tenant." if feat is True
+                 else " The capability flag says the feature is not enabled on this tenant; Zscaler support enables it." if feat is False else "")
+    return R(R.INFO, "The API does not expose the DLP rule evaluation mode on this tenant." + feat_note
+             + " Read it in the portal under Policy > Data Loss Prevention > Advanced Settings (Inline DLP Rule Evaluation), or declare it in the Rule Migration wizard.",
+             data={"evaluate_all": None, "feature_available": feat})
 def c_5_21(cl):
     d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
     ai=[x for x in dicts if any(k in (x.get("name") or "").lower() for k in ["ai","llm","intent","ml class"])]
@@ -810,7 +898,16 @@ def c_e12(cl):
     d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
     adv=[x for x in dicts if any(k in (x.get("name") or "").lower() for k in ["adversarial","injection","jailbreak","prompt inject"])]
     return R(R.PASS,f"Adversarial dicts: {', '.join(x.get('name','?') for x in adv[:3])}") if adv else R(R.WARN,"No adversarial prompt patterns.")
-def c_e13(cl): return c_3_7(cl)
+def c_e13(cl):
+    """Browser Isolation applied to GenAI apps."""
+    profiles, code = _cbi_profiles(cl)
+    if not profiles: return c_3_7(cl)
+    url_iso, cac_iso = _isolate_rules(cl)
+    ai_cac=[r for r in cac_iso if str(r.get("type",""))=="AI_ML"]
+    ai_url=[r for r in url_iso if any("AI" in str(c).upper() for c in (r.get("urlCategories") or r.get("url_categories") or []))]
+    if ai_cac or ai_url:
+        return R(R.PASS, f"{len(ai_cac)} Cloud App Control (AI_ML) and {len(ai_url)} URL Filtering rule(s) isolate GenAI traffic: users can use the tools, uploads and clipboard are controlled by the profile.")
+    return R(R.WARN, f"{len(profiles)} isolation profile(s) exist but none is applied to GenAI (no AI_ML Cloud App Control rule or AI-category URL rule with ISOLATE). Best practice: isolate unsanctioned AI tools instead of blocking them outright.")
 def c_e14(cl): return R(R.WARN,"Copilot oversharing — requires M365/Entra review.")
 def c_e15(cl):
     d,c=cl.get("/zia/nssFeeds"); f=_ls(d) if c in(200,204) else []
@@ -831,7 +928,7 @@ REG = [
     ("10.1","10 — macOS","Full Disk Access",c_10_1),("10.2","10 — macOS","SSL cert MDM",c_10_2),("10.3","10 — macOS","Platform versions",c_10_3),("10.4","10 — macOS","Sys/Net Extensions",c_10_4),
     ("11.1","11 — Rollback","Disable path",c_11_1),("11.2","11 — Rollback","Comms plan",c_11_2),("11.3","11 — Rollback","Staging test",c_11_3),
     ("12.1","12 — Incident Mgmt","ICAP/IR deployed",c_12_1),("12.2","12 — Incident Mgmt","Secure ICAP mTLS",c_12_2),("12.3","12 — Incident Mgmt","Incident content",c_12_3),("12.4","12 — Incident Mgmt","Workflow Automation",c_12_4),("12.5","12 — Incident Mgmt","Remediation workflows",c_12_5),("12.6","12 — Incident Mgmt","User justification",c_12_6),("12.7","12 — Incident Mgmt","ITSM integration",c_12_7),("12.8","12 — Incident Mgmt","NSS/SIEM",c_12_8),("12.9","12 — Incident Mgmt","NSS DLP fields",c_12_9),("12.10","12 — Incident Mgmt","SIEM correlation",c_12_10),("12.11","12 — Incident Mgmt","30-day retention",c_12_11),("12.12","12 — Incident Mgmt","Evidence storage",c_12_12),("12.13","12 — Incident Mgmt","Admin role segregation",c_12_13),("12.14","12 — Incident Mgmt","C2C forwarding",c_12_14),
-    ("A.1","Ch.A — Inline Web","Rule count",c_a1),("A.2","Ch.A — Inline Web","SSL+DNI",c_a2),("A.3","Ch.A — Inline Web","Rule verbs",c_a3),("A.4","Ch.A — Inline Web","File type scope",c_a4),("A.5","Ch.A — Inline Web","URL scope",c_a5),("A.6","Ch.A — Inline Web","CAC actions",c_a6),("A.7","Ch.A — Inline Web","Tenancy",c_a7),("A.8","Ch.A — Inline Web","Prompt/Confirm",c_a8),("A.9","Ch.A — Inline Web","Evaluate all",c_a9),("A.10","Ch.A — Inline Web","Test upload",c_a10),("A.11","Ch.A — Inline Web","Web Insights",c_a11),("A.12","Ch.A — Inline Web","Incident report",c_a12),("A.13","Ch.A — Inline Web","FP rate",c_a13),("A.14","Ch.A — Inline Web","ICAP evidence",c_a14),("A.15","Ch.A — Inline Web","C2C forwarding",c_a15),("A.16","Ch.A — Inline Web","Notification template",c_a16),
+    ("A.1","Ch.A — Inline Web","Rule count",c_a1),("A.2","Ch.A — Inline Web","SSL+DNI",c_a2),("A.3","Ch.A — Inline Web","Rule verbs",c_a3),("A.4","Ch.A — Inline Web","File type scope",c_a4),("A.5","Ch.A — Inline Web","URL scope",c_a5),("A.6","Ch.A — Inline Web","CAC actions",c_a6),("A.7","Ch.A — Inline Web","Tenancy",c_a7),("A.8","Ch.A — Inline Web","Prompt/Confirm",c_a8),("A.9","Ch.A — Inline Web","Evaluate all",c_a9),("A.10","Ch.A — Inline Web","Test upload",c_a10),("A.11","Ch.A — Inline Web","Web Insights",c_a11),("A.12","Ch.A — Inline Web","Incident report",c_a12),("A.13","Ch.A — Inline Web","FP rate",c_a13),("A.14","Ch.A — Inline Web","ICAP evidence",c_a14),("A.15","Ch.A — Inline Web","C2C forwarding",c_a15),("A.16","Ch.A — Inline Web","Notification template",c_a16),("A.17","Ch.A — Inline Web","Browser Isolation coverage",c_a17),
     ("B.1","Ch.B — Endpoint","ZDP installed",c_b1),("B.2","Ch.B — Endpoint","ZCC versions",c_b2),("B.3","Ch.B — Endpoint","macOS FDA",c_b3),("B.4","Ch.B — Endpoint","Scan allowlists",c_b4),("B.5","Ch.B — Endpoint","Rule count",c_b5),("B.6","Ch.B — Endpoint","Printer coverage",c_b6),("B.7","Ch.B — Endpoint","USB coverage",c_b7),("B.8","Ch.B — Endpoint","Share coverage",c_b8),("B.9","Ch.B — Endpoint","Cloud coverage",c_b9),("B.10","Ch.B — Endpoint","OCR",c_b10),("B.11","Ch.B — Endpoint","EUN templates",c_b11),("B.12","Ch.B — Endpoint","Disable password",c_b12),("B.13","Ch.B — Endpoint","Endpoint Report",c_b13),("B.14","Ch.B — Endpoint","Discovery scan",c_b14),("B.15","Ch.B — Endpoint","Workflow Automation",c_b15),("B.16","Ch.B — Endpoint","User coaching",c_b16),
     ("E.1","Ch.E — GenAI","GenAI categories",c_e1),("E.2","Ch.E — GenAI","SSL for GenAI",c_e2),("E.3","Ch.E — GenAI","CAC actions",c_e3),("E.4","Ch.E — GenAI","Prompt/upload/download",c_e4),("E.5","Ch.E — GenAI","Source code rule",c_e5),("E.6","Ch.E — GenAI","PII/PAN/PHI rule",c_e6),("E.7","Ch.E — GenAI","Prompt/Confirm EUN",c_e7),("E.8","Ch.E — GenAI","Shadow GenAI",c_e8),("E.9","Ch.E — GenAI","AUP enforcement",c_e9),("E.10","Ch.E — GenAI","GenAI Report",c_e10),("E.11","Ch.E — GenAI","FP review",c_e11),("E.12","Ch.E — GenAI","Adversarial patterns",c_e12),("E.13","Ch.E — GenAI","Browser Isolation",c_e13),("E.14","Ch.E — GenAI","Copilot oversharing",c_e14),("E.15","Ch.E — GenAI","GenAI logging",c_e15),
 ]
