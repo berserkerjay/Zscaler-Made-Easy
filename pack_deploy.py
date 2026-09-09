@@ -219,7 +219,8 @@ def load_sources(packs: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "dir": p["dir"],
             "dictionaries": _load_json(configs, "dlp_dictionaries.json"),
             "engines": _load_json(configs, "dlp_engines.json"),
-            "policies": _load_json(configs, "dlp_policies.json"),
+            "policies": pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")),
+            "app_groups": _load_json(configs, "endpoint_application_groups.json"),
             "tweaks": meta.get("confidence_tweaks"),
             "baseline": baseline_meta(meta, p["id"]),
         })
@@ -287,18 +288,62 @@ def policy_signature(p: Dict[str, Any]) -> Dict[str, Any]:
     return sig
 
 
+def app_group_signature(g: Dict[str, Any]) -> Dict[str, Any]:
+    """Content of an endpoint application group: the catalogue IDs it holds."""
+    return {"resources": sorted(str(x) for x in (g.get("resources") or []))}
+
+
+def _plan_app_groups(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
+    """Endpoint application groups: create when missing, keep when present."""
+    known = tenant["channels"].get("app_groups") or {}
+    err = tenant["channels"].get("app_groups_error")
+    for name, item in items.items():
+        if item["status"] == CONFLICT:
+            continue
+        if err:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = f"Endpoint application groups could not be listed ({err}); the Endpoint DLP feature is probably not licensed."
+            continue
+        existing = known.get(name)
+        if existing is not None:
+            item["tenant"] = {"id": existing.get("id"), "resources": existing.get("resources") or []}
+            same = sorted(existing.get("resources") or []) == app_group_signature(item["definition"])["resources"]
+            if same:
+                item["status"] = REUSE
+                item["reason"] = "Already in the tenant with the same applications; nothing to do."
+            elif item.get("baseline") and restore:
+                item["status"] = RESTORE
+                item["drift"] = ["resources"]
+                item["reason"] = "Differs from the baseline (applications). Converge mode: the group will be overwritten."
+            else:
+                item["status"] = REUSE_DIFFERS
+                item["drift"] = ["resources"]
+                item["reason"] = ("Already in the tenant with a different application list. Kept exactly as the customer has it; "
+                                  "the rules below use the tenant's group.")
+                item["warnings"].append("customized in tenant" if item.get("baseline") else "tenant version differs from pack")
+            continue
+        if not (item["definition"].get("resources") or []):
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = "The application group lists no applications (resources), so it cannot be created."
+            continue
+        item["status"] = CREATE
+        n = len(item["definition"].get("resources") or [])
+        item["reason"] = f"Will be created as a new Endpoint DLP application group with {n} application(s) from the Zscaler catalogue."
+
+
 def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """Merge all packs into name-keyed maps per kind, recording provenance
     and flagging cross-pack conflicts."""
-    merged: Dict[str, Dict[str, Dict[str, Any]]] = {"dictionary": {}, "engine": {}, "policy": {}}
+    merged: Dict[str, Dict[str, Dict[str, Any]]] = {"dictionary": {}, "engine": {}, "app_group": {}, "policy": {}}
     sig_fns = {
         "dictionary": lambda d: _canonical(dict_signature(d)),
         "engine": lambda e: _norm_expr(e.get("expression", "")),
+        "app_group": lambda g: _canonical(app_group_signature(g)),
         "policy": lambda p: _canonical(policy_signature(p)),
     }
     for src in sources:
-        for kind, key in (("dictionary", "dictionaries"), ("engine", "engines"), ("policy", "policies")):
-            for definition in src[key]:
+        for kind, key in (("dictionary", "dictionaries"), ("engine", "engines"), ("app_group", "app_groups"), ("policy", "policies")):
+            for definition in src.get(key) or []:
                 name = (definition.get("name") or "").strip()
                 if not name:
                     continue
@@ -562,8 +607,12 @@ def _tenant_rules_for(tenant: Dict[str, Any], channel: str) -> List[Dict[str, An
     return tenant["channels"]["rules"].get(channel, [])
 
 
-def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
-    for name, item in items.items():
+def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *,
+                   restore: bool = False, app_group_items: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
+    app_group_items = app_group_items or {}
+    # Parents before their sub-rules, so a sub-rule can see its parent's status.
+    ordered = sorted(items.items(), key=lambda kv: 1 if kv[1]["definition"].get("parent_rule") else 0)
+    for name, item in ordered:
         if item["status"] == CONFLICT:
             continue
         p = item["definition"]
@@ -599,6 +648,23 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             item["status"] = BLOCKED_DEPENDENCY
             item["reason"] = f"Can't be created ({pc.label(channel)}) — " + "; ".join(res["missing"]) + "."
             continue
+        # Endpoint DLP: application groups the pack creates, and the parent of a sub-rule.
+        blocked_groups = [n for k, n in item["depends_on"] if k == "app_group"
+                          and (app_group_items.get(n) or {}).get("status") not in (None, CREATE, REUSE, REUSE_DIFFERS, RESTORE)]
+        if blocked_groups:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = "Can't be created — depends on blocked endpoint application group(s): " + ", ".join(blocked_groups) + "."
+            continue
+        if p.get("parent_rule"):
+            parent = items.get(str(p["parent_rule"]))
+            if parent is None:
+                item["status"] = BLOCKED_DEPENDENCY
+                item["reason"] = f"Sub-rule of '{p['parent_rule']}', which is not in the selected packs."
+                continue
+            if parent["status"] in BLOCKING_STATUSES:
+                item["status"] = BLOCKED_DEPENDENCY
+                item["reason"] = f"Sub-rule of '{p['parent_rule']}', which is blocked: {parent.get('reason', '')}"
+                continue
         tenant_rules = {r["name"]: r for r in _tenant_rules_for(tenant, channel)}
         existing = tenant_rules.get(name)
         pack_action = pc.policy_action(p)
@@ -640,6 +706,8 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             continue
         item["status"] = CREATE
         scope = ""
+        if p.get("parent_rule"):
+            scope = f" as a sub-rule of '{p['parent_rule']}'"
         if item["resolved"].get("tenants"):
             scope = " scoped to " + ", ".join(t["name"] for t in item["resolved"]["tenants"])
         elif item["resolved"].get("cloud_applications"):
@@ -973,7 +1041,13 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
                          "actions": resolved.get("actions") or d.get("actions") or [],
                          "url_categories": d.get("url_categories", []),
                          "file_types": d.get("file_types", []),
-                         "operation": d.get("operation")}
+                         "operation": d.get("operation"),
+                         "parent_rule": d.get("parent_rule"),
+                         "data_transfer_method": d.get("data_transfer_method"),
+                         "endpoint_application_groups": d.get("endpoint_application_groups", [])}
+    elif item["kind"] == "app_group":
+        out["detail"] = {"resources": [str(x) for x in (d.get("resources") or [])],
+                         "applications": [f"{a.get('applicationName', a.get('name', '?'))} ({a.get('osType', '?')})" for a in (d.get("applications") or [])]}
     elif item["kind"] == "tweak":
         out["detail"] = {"target": d.get("target_confidence")}
     return out
@@ -1019,11 +1093,13 @@ def preflight(
     if tenant["reachable"]:
         _plan_dictionaries(merged["dictionary"], tenant, restore=restore_drift)
         _plan_engines(merged["engine"], merged["dictionary"], tenant, restore=restore_drift)
-        _plan_policies(merged["policy"], merged["engine"], tenant, restore=restore_drift)
+        _plan_app_groups(merged["app_group"], tenant, restore=restore_drift)
+        tenant["channels"]["planned_app_groups"] = {n for n, i in merged["app_group"].items() if i["status"] in (CREATE, REUSE, REUSE_DIFFERS, RESTORE)}
+        _plan_policies(merged["policy"], merged["engine"], tenant, restore=restore_drift, app_group_items=merged["app_group"])
         tweak_items = _plan_tweaks(sources, tenant, apply_tweaks)
         impacts, impact_blockers = _impacts(merged["policy"], tenant, use_rank_0)
         impacts = _baseline_impacts(list(merged["dictionary"].values()) + list(merged["engine"].values())
-                                    + list(merged["policy"].values()), restore_drift) + impacts
+                                    + list(merged["app_group"].values()) + list(merged["policy"].values()), restore_drift) + impacts
         blockers.extend(impact_blockers)
         dependencies = pc.dependency_report(list(merged["policy"].values()), tenant["channels"], len(tenant["rules"]))
     else:
@@ -1036,10 +1112,10 @@ def preflight(
         tweak_items, impacts = [], []
 
     all_items = (list(merged["dictionary"].values()) + list(merged["engine"].values())
-                 + list(merged["policy"].values()) + tweak_items)
+                 + list(merged["app_group"].values()) + list(merged["policy"].values()) + tweak_items)
 
     summary: Dict[str, Any] = {}
-    for kind in ("dictionary", "engine", "policy", "tweak"):
+    for kind in ("dictionary", "engine", "app_group", "policy", "tweak"):
         counts: Dict[str, int] = {}
         for i in all_items:
             if i["kind"] == kind:
@@ -1084,7 +1160,7 @@ def preflight(
     report = {
         "status": status,
         "packs": [{"id": s["id"], "name": s["name"], "dictionaries": len(s["dictionaries"]),
-                   "engines": len(s["engines"]), "policies": len(s["policies"]),
+                   "engines": len(s["engines"]), "policies": len(s["policies"]), "app_groups": len(s.get("app_groups") or []),
                    "baseline": s.get("baseline")} for s in sources],
         "baselines": baseline_status_rows(all_items, sources),
         "tenant_mode": tenant_mode(all_items, sources, tenant) if tenant["reachable"] else None,
@@ -1176,7 +1252,7 @@ def _needed_for(stage_key: str, item: Dict[str, Any]) -> Optional[str]:
     kind = item["kind"]
     ch = item.get("channel") or (pc.channel_of(item["definition"]) if kind == "policy" else None)
     if stage_key == "foundation":
-        return "present" if kind in ("dictionary", "engine") else None
+        return "present" if kind in ("dictionary", "engine", "app_group") else None
     if kind != "policy":
         return None
     if stage_key == "deployed":
@@ -1212,7 +1288,7 @@ def _next_step(item: Dict[str, Any], position: str, need: str) -> str:
     if position == "blocked":
         return f"Unblock {kind} '{name}': {item.get('reason', '')}".strip()
     if position == "missing":
-        return f"Deploy {kind} '{name}' (select the baseline and run preflight)."
+        return f"Deploy {kind.replace('_', ' ')} '{name}' (select the baseline and run preflight)."
     if need == "enabled":
         if position == "customized":
             return f"Enable rule '{name}' in {portal} (it is customized; check the action still fits)."
@@ -1478,8 +1554,48 @@ def apply(
             failed_names["engine"].add(item["name"])
             record(item, "failed", error=str(ex)[:200])
 
+    _log("Phase 2b: endpoint application groups")
+    app_group_ids: Dict[str, Any] = {n: g.get("id") for n, g in (tenant["channels"].get("app_groups") or {}).items()}
+    failed_names["app_group"] = set()
+    for item in merged["app_group"].values():
+        if item["status"] in (REUSE, REUSE_DIFFERS):
+            record(item, "reused", id=(item.get("tenant") or {}).get("id"))
+            continue
+        if item["status"] not in (CREATE, RESTORE):
+            record(item, "skipped", reason=item["reason"])
+            failed_names["app_group"].add(item["name"])
+            continue
+        g = described(item, item["definition"])
+        try:
+            if item["status"] == RESTORE:
+                gid = item["tenant"]["id"]
+                data, err = pc.update_app_group(zia, gid, g)
+                if err:
+                    failed_names["app_group"].add(item["name"])
+                    record(item, "failed", error=err)
+                else:
+                    record(item, "restored", id=gid, drift=item.get("drift"))
+                continue
+            data, err = pc.add_app_group(zia, g)
+            new_id = (data or {}).get("id") if isinstance(data, dict) else None
+            if err or new_id is None:
+                failed_names["app_group"].add(item["name"])
+                record(item, "failed", error=err or "the API returned no id")
+            else:
+                app_group_ids[item["name"]] = new_id
+                record(item, "created", id=new_id)
+        except Exception as ex:  # noqa: BLE001
+            failed_names["app_group"].add(item["name"])
+            record(item, "failed", error=str(ex)[:200])
+
     _log("Phase 3: policies")
-    for item in merged["policy"].values():
+    policy_ids: Dict[str, Any] = {}
+    for ch_rules in tenant["channels"]["rules"].values():
+        for r in ch_rules:
+            policy_ids.setdefault(r["name"], r.get("id"))
+    for r in tenant["rules"]:
+        policy_ids.setdefault(r["name"], r.get("id"))
+    for item in sorted(merged["policy"].values(), key=lambda i: 1 if i["definition"].get("parent_rule") else 0):
         if item["status"] in (REUSE, REUSE_DIFFERS):
             record(item, "reused", id=(item.get("tenant") or {}).get("id"))
             continue
@@ -1496,22 +1612,50 @@ def apply(
             record(item, "skipped", reason="one or more engines could not be resolved to an ID")
             continue
         channel = item.get("channel") or pc.channel_of(p)
+        resolved = dict(item.get("resolved") or {})
+        if channel == pc.ENDPOINT and p.get("endpoint_application_groups"):
+            groups_failed = [g for g in p["endpoint_application_groups"] if g in failed_names["app_group"] or app_group_ids.get(g) is None]
+            if groups_failed:
+                record(item, "skipped", reason="endpoint application group not available: " + ", ".join(groups_failed), channel=channel)
+                continue
+            resolved["app_group_ids"] = [app_group_ids[g] for g in p["endpoint_application_groups"]]
+        parent_id = None
+        if p.get("parent_rule"):
+            parent_id = policy_ids.get(str(p["parent_rule"]))
+            if parent_id is None:
+                record(item, "skipped", reason=f"parent rule '{p['parent_rule']}' was not created", channel=channel)
+                continue
         try:
-            payload = pc.build_payload(channel, p, ids, item.get("resolved") or {}, use_rank_0=use_rank_0)
+            payload = pc.build_payload(channel, p, ids, resolved, use_rank_0=use_rank_0)
+            if parent_id is not None:
+                payload["order"] = int(p.get("order") or 1)
             if item["status"] == RESTORE:
                 existing = item["tenant"]
                 # Keep the rule where the admin placed it; only its content is restored.
                 payload["order"] = existing.get("order") or payload.get("order")
-                resp = pc.update_rule(zia, channel, existing["id"], payload)
-                err = _extract_error(resp) if _extract_id(resp) is None else None
+                if parent_id is not None:
+                    data, err = pc.update_sub_rule(zia, parent_id, existing["id"], payload)
+                else:
+                    resp = pc.update_rule(zia, channel, existing["id"], payload)
+                    err = _extract_error(resp) if _extract_id(resp) is None else None
                 if err:
                     record(item, "failed", error=err, channel=channel)
                 else:
                     record(item, "restored", id=existing["id"], channel=channel, drift=item.get("drift"))
                 continue
+            if parent_id is not None:
+                data, err = pc.add_sub_rule(zia, parent_id, payload)
+                new_id = (data or {}).get("id") if isinstance(data, dict) else None
+                if err or new_id is None:
+                    record(item, "failed", error=err or "the API returned no id", channel=channel)
+                else:
+                    policy_ids[item["name"]] = new_id
+                    record(item, "created", id=new_id, channel=channel, parent_id=parent_id)
+                continue
             resp = pc.add_rule(zia, channel, payload)
             new_id = _extract_id(resp)
             if new_id:
+                policy_ids[item["name"]] = new_id
                 record(item, "created", id=new_id, channel=channel)
             else:
                 record(item, "failed", error=_extract_error(resp), channel=channel)

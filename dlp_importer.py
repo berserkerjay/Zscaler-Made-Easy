@@ -122,11 +122,13 @@ def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
     meta["dir"] = pack_dir
     meta["dictionaries"] = len(dicts)
     meta["engines"] = len(engines)
-    meta["policies"] = len(policies)
+    # Endpoint sub-rules are rules too (created under their parent).
+    meta["policies"] = len(policies) + sum(len(p.get("sub_rules") or []) for p in policies)
+    meta["app_groups"] = len(_load_json(configs, "endpoint_application_groups.json"))
     channels: Dict[str, int] = {}
     for p in policies:
         ch = str(p.get("channel") or "web").strip().lower()
-        channels[ch] = channels.get(ch, 0) + 1
+        channels[ch] = channels.get(ch, 0) + 1 + len(p.get("sub_rules") or [])
     meta["channels"] = channels
     return meta
 

@@ -269,6 +269,47 @@ Deploy Studio shows the resolved SaaS tenants a rule will be scoped to before yo
 
 ---
 
+### 4.2 Endpoint DLP extras — transfer methods, application groups, sub-rules
+
+Endpoint rules (`"channel": "endpoint"`) accept these fields on top of the
+shared ones:
+
+| Field | What to enter | Sample |
+|---|---|---|
+| `data_transfer_method` | One of `REMOVABLE_DRIVE_TRANSFER`, `NETWORK_DRIVE_TRANSFER`, `APPLICATION_FILE_ACCESS`, `PRINTING`, `CLOUD_SYNC`, `ANY` | `"REMOVABLE_DRIVE_TRANSFER"` |
+| `user_risk_score_levels` | Explicit values (the API rejects ANY) | `["LOW", "MEDIUM", "HIGH", "CRITICAL"]` |
+| `eun_enabled` | Show the end-user notification | `false` |
+| `endpoint_application_groups` | Names of groups from `configs/endpoint_application_groups.json` or already in the tenant | `["zbp-GenAI Applications"]` |
+| `sub_rules` | Exceptions evaluated under this rule, in order; same fields as a rule, no `channel` | see below |
+
+```json
+{
+  "name": "zbp-Sensitive Data to USB", "channel": "endpoint", "action": "BLOCK", "state": "DISABLED",
+  "engines": ["PCI - High", "PCI - Medium", "PCI - Low"], "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+  "sub_rules": [
+    {"name": "zbp-PCI High USB Block", "action": "BLOCK",   "engines": ["PCI - High"],   "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER"},
+    {"name": "zbp-PCI Medium USB",     "action": "CONFIRM", "engines": ["PCI - Medium"], "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER"},
+    {"name": "zbp-PCI Low USB",        "action": "ALLOW",   "engines": ["PCI - Low"],    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER"}
+  ]
+}
+```
+
+`configs/endpoint_application_groups.json` lists groups of desktop
+applications by Zscaler catalogue ID (`zappId`, portable across tenants):
+
+```json
+[{"name": "zbp-GenAI Applications", "description": "ChatGPT and Claude desktop apps",
+  "resources": ["500000603", "500000605", "600000601", "600000605"],
+  "applications": [{"applicationName": "ChatGPT", "osType": "WINDOWS_OS", "zappId": "500000603"}]}]
+```
+
+Groups are created before the rules that reference them (or reused by
+name), sub-rules are created under their parent after it exists, and
+Terraform emits `zia_endpoint_dlp_application_group` and
+`zia_endpoint_dlp_sub_rules`. A `CONFIRM` sub-rule needs the tenant's
+Endpoint DLP user confirmation template; without one the API rejects that
+sub-rule and the rest deploys.
+
 ## 5. Validate Locally Before Import
 
 ```bash
@@ -573,6 +614,7 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
 | `zbp_source_code_baseline` | yes | Engineering organisations: source code to AI apps |
 | `healthcare_phi_baseline` | yes | Healthcare: PHI with clinical context, plus containment |
 | `cui_marking_baseline` | yes | Defense industrial base / federal contractors: CUI by its markings (28 dictionaries in six tiers, block/caution/monitor rules, SSL, AI upload block); see the pack's README for the tier table |
+| `zbp_endpoint_dlp_baseline` | yes | Any enterprise with Endpoint DLP: USB, private shares and desktop GenAI apps, graded by PCI confidence (three parent rules, five sub-rules, one application group) |
 | `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
 | `fed_policy_pack` | no | Federal agencies: content-based CUI categories (superset of ZBP Enterprise) |
 

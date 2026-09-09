@@ -29,12 +29,13 @@ const DZ_STATUS = {
   skipped:  { label: 'Skipped',  cls: 'st-blocked', icon: '–', help: 'Not written, for the reason shown.' },
   failed:   { label: 'Failed',   cls: 'st-blocked', icon: '✕', help: 'The API refused this write. The error text is shown; other objects were not affected.' },
 };
-const DZ_KIND = { dictionary: 'Dictionary', engine: 'Engine', policy: 'Policy', tweak: 'Tweak', resource: 'Prerequisite', template: 'Template' };
+const DZ_KIND = { dictionary: 'Dictionary', engine: 'Engine', app_group: 'App group', policy: 'Policy', tweak: 'Tweak', resource: 'Prerequisite', template: 'Template' };
 const DZ_KIND_HELP = {
   dictionary: 'What to look for: phrases and/or patterns (for example "MRN" near a 7-digit number).',
   engine: 'How dictionaries combine into a decision with AND / OR and match counts. Rules point at engines.',
   policy: 'Where and how an engine is enforced: which traffic, which users, and the action (ALLOW = monitor, BLOCK = stop).',
   tweak: 'A change to the confidence level of a dictionary that already exists in the tenant.',
+  app_group: 'An Endpoint DLP application group: desktop applications (by Zscaler catalogue ID) that endpoint rules can be scoped to, for example the ChatGPT and Claude desktop apps.',
   resource: 'Something the tenant must already have (an onboarded SaaS tenant, a notification template, a label).',
   template: 'A predefined Zscaler dictionary that a pack dictionary is cloned from.',
 };
@@ -648,6 +649,7 @@ const DZ_FLOW_COLS = [
   { key: 'template',   title: 'Tenant templates' },
   { key: 'dictionary', title: 'Dictionaries' },
   { key: 'engine',     title: 'Engines' },
+  { key: 'app_group',  title: 'App groups' },
   { key: 'policy',     title: 'Policies' },
   { key: 'resource',   title: 'Applies to / requires' },
 ];
