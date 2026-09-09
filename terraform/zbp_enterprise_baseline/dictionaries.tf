@@ -24,6 +24,10 @@ data "zia_dlp_dictionaries" "credit_card" {
   name = "CREDIT_CARD"
 }
 
+data "zia_dlp_dictionaries" "ml_corporate_finance_leakage" {
+  name = "ML_CORPORATE_FINANCE_LEAKAGE"
+}
+
 data "zia_dlp_dictionaries" "ml_tax_leakage" {
   name = "ML_TAX_LEAKAGE"
 }
@@ -32,24 +36,20 @@ data "zia_dlp_dictionaries" "financial" {
   name = "FINANCIAL"
 }
 
-data "zia_dlp_dictionaries" "ml_corporate_finance_leakage" {
-  name = "ML_CORPORATE_FINANCE_LEAKAGE"
+data "zia_dlp_dictionaries" "medical" {
+  name = "MEDICAL"
 }
 
 data "zia_dlp_dictionaries" "ml_medical_doc_leakage" {
   name = "ML_MEDICAL_DOC_LEAKAGE"
 }
 
-data "zia_dlp_dictionaries" "medical" {
-  name = "MEDICAL"
+data "zia_dlp_dictionaries" "diseases_leakage" {
+  name = "DISEASES_LEAKAGE"
 }
 
 data "zia_dlp_dictionaries" "drugs_leakage" {
   name = "DRUGS_LEAKAGE"
-}
-
-data "zia_dlp_dictionaries" "diseases_leakage" {
-  name = "DISEASES_LEAKAGE"
 }
 
 resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
