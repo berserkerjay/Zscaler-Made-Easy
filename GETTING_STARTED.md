@@ -93,6 +93,25 @@ it. Rule of thumb:
 Do not select Fed and ZBP Enterprise together; they define the same
 objects under different names.
 
+## 5b. Tenant profiles (many customers, one laptop)
+
+The **Tenant profiles** bar at the top of Tenant Configuration saves one
+record per customer: organisation, assessor, cloud, vanity domain, client
+ID, ZPA customer ID, scopes, industry, which baseline packs apply, and
+notes. Pick a profile from the list and the form fills itself.
+
+- **Remember the secret on this laptop** stores the client secret in
+  `tenant_profiles.json` next to the app (owner-only file, git-ignored).
+  Leave it unticked on a shared machine; you will paste the secret each
+  time instead. The secret is never sent back to the browser.
+- Every assessment run with a profile selected is recorded in that
+  profile's **history**: date, score, maturity and the journey stage per
+  baseline. The journey card on the results compares with the previous
+  run, so the customer sees movement between visits.
+- **Baseline packs** on the profile restrict the journey measurement to
+  the baselines that apply to this customer (a hospital is measured
+  against Healthcare PHI, not CJIS).
+
 ## 6. Preflight, review, approve
 
 1. Toggle the pack(s) on and click **Run preflight**. Nothing is written.

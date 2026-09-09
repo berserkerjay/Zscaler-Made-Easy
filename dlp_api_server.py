@@ -216,6 +216,25 @@ class AssessRequest(BaseModel):
     scope: str = "full"  # legacy single scope, kept for compatibility
     scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
     customer_id: str = ""  # Optional ZPA customer ID
+    profile_id: str = ""   # Saved tenant profile: fills blanks, records history
+
+
+class TenantProfileRequest(BaseModel):
+    id: str = ""
+    name: str = ""
+    org_name: str = ""
+    assessor: str = ""
+    cloud: str = "production"
+    vanity_domain: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    remember_secret: bool = False
+    customer_id: str = ""
+    industry: str = ""
+    baseline_packs: list[str] = []
+    scopes: list[str] = []
+    frameworks: list[str] = []
+    notes: str = ""
 
 
 class UpdateCheckRequest(BaseModel):
@@ -608,6 +627,9 @@ class TenantCredsRequest(BaseModel):
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
+    # Saved tenant profile: blanks above are filled from it (including a
+    # remembered secret), so the operator can switch tenants without retyping.
+    profile_id: str = ""
 
 
 class DLPPackImportRequest(TenantCredsRequest):
@@ -641,6 +663,7 @@ def _tenant_creds(req: TenantCredsRequest) -> Dict[str, str]:
         "cloud": req.cloud, "vanity_domain": req.vanity_domain,
         "client_id": req.client_id, "client_secret": req.client_secret,
     }
+    creds = _fill_from_profile(creds, getattr(req, "profile_id", ""))
     if not (creds["client_id"] and creds["client_secret"]):
         creds = {
             "cloud": creds["cloud"] or os.environ.get("ZSCALER_CLOUD", ""),
@@ -658,6 +681,22 @@ def _tenant_creds(req: TenantCredsRequest) -> Dict[str, str]:
             except Exception:
                 pass
     return creds
+
+
+def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]:
+    """Fill blank credential fields from a saved tenant profile (the
+    remembered secret included). Typed values always win."""
+    if not profile_id:
+        return creds
+    try:
+        import tenant_profiles
+        prof = tenant_profiles.get(profile_id, with_secret=True)
+    except Exception:
+        prof = None
+    if not prof:
+        return creds
+    pc = tenant_profiles.creds_from(prof)
+    return {k: (creds.get(k) or pc.get(k, "")) for k in set(creds) | {"cloud", "vanity_domain", "client_id", "client_secret"}}
 
 
 def _oneapi_cloud(cloud: str) -> Optional[str]:
@@ -813,6 +852,57 @@ async def tenant_check(req: TenantCredsRequest):
         raise HTTPException(status_code=502, detail={"tenant_label": label, **_explain_connection_error(str(e))})
 
 
+# ---------------------------------------------------------------------------
+# Tenant profiles
+# ---------------------------------------------------------------------------
+
+@app.get("/api/tenant-profiles")
+async def tenant_profiles_list():
+    """Saved tenant profiles (secrets never returned; has_secret says
+    whether one is remembered) with each tenant's last assessment."""
+    import tenant_profiles
+    return {"profiles": tenant_profiles.list_profiles(), "store": os.path.basename(tenant_profiles.store_path())}
+
+
+@app.get("/api/tenant-profiles/{profile_id}")
+async def tenant_profile_get(profile_id: str):
+    import tenant_profiles
+    p = tenant_profiles.get(profile_id)
+    if not p:
+        raise HTTPException(status_code=404, detail=f"No tenant profile '{profile_id}'.")
+    return p
+
+
+@app.post("/api/tenant-profiles")
+async def tenant_profile_save(req: TenantProfileRequest):
+    """Create or update a profile. The secret is stored only with
+    remember_secret=true (owner-only local file); a blank secret keeps the
+    one already remembered, remember_secret=false forgets it."""
+    import tenant_profiles
+    if not (req.name or req.org_name or req.vanity_domain):
+        raise HTTPException(status_code=400, detail="A profile needs at least a name, an organisation or a vanity domain.")
+    cloud = validate_cloud(req.cloud or "production")
+    vd = validate_vanity(req.vanity_domain) if req.vanity_domain else ""
+    cid = validate_credential("client_id", req.client_id, required=False) if req.client_id else ""
+    sec = validate_credential("client_secret", req.client_secret, required=False) if req.client_secret else ""
+    cust = validate_customer_id(req.customer_id) if req.customer_id else ""
+    fields = {
+        "name": req.name or req.org_name or vd, "org_name": req.org_name, "assessor": req.assessor,
+        "cloud": cloud, "vanity_domain": vd, "client_id": cid, "customer_id": cust,
+        "industry": req.industry, "baseline_packs": [str(b) for b in req.baseline_packs],
+        "scopes": [str(x) for x in req.scopes], "frameworks": [str(x) for x in req.frameworks], "notes": req.notes[:2000],
+    }
+    return tenant_profiles.upsert(fields, client_secret=sec, remember_secret=req.remember_secret, profile_id=req.id)
+
+
+@app.delete("/api/tenant-profiles/{profile_id}")
+async def tenant_profile_delete(profile_id: str):
+    import tenant_profiles
+    if not tenant_profiles.delete(profile_id):
+        raise HTTPException(status_code=404, detail=f"No tenant profile '{profile_id}'.")
+    return {"deleted": profile_id}
+
+
 def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
     import pack_deploy
     from dlp_importer import discover_packs
@@ -855,7 +945,14 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
         import pack_deploy  # noqa: F401
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_deploy unavailable: {e}")
-    packs = _journey_packs(req.pack_ids)
+    pack_ids = list(req.pack_ids)
+    if not pack_ids and req.profile_id:
+        try:
+            import tenant_profiles
+            pack_ids = list((tenant_profiles.get(req.profile_id) or {}).get("baseline_packs") or [])
+        except Exception:
+            pack_ids = []
+    packs = _journey_packs(pack_ids)
     if not packs:
         raise HTTPException(status_code=404, detail="No baseline packs found (pack.json needs a \"baseline\" section).")
     creds = _tenant_creds(req)
@@ -1960,6 +2057,22 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
     """Run assessment with SSE streaming."""
+    # A saved profile fills whatever the form left blank (a remembered secret included).
+    profile = None
+    if req.profile_id:
+        try:
+            import tenant_profiles
+            profile = tenant_profiles.get(req.profile_id, with_secret=True)
+        except Exception:
+            profile = None
+        if profile:
+            pc = tenant_profiles.creds_from(profile)
+            req.cloud = req.cloud or pc["cloud"]
+            req.vanity_domain = req.vanity_domain or pc["vanity_domain"]
+            req.client_id = req.client_id or pc["client_id"]
+            req.client_secret = req.client_secret or pc["client_secret"]
+            req.customer_id = req.customer_id or pc["customer_id"]
+            req.org_name = req.org_name if req.org_name not in ("", "Unknown") else (profile.get("org_name") or req.org_name)
     # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
     cloud = validate_cloud(req.cloud)
     vd = validate_vanity(req.vanity_domain)
@@ -1967,6 +2080,7 @@ async def assess_stream(req: AssessRequest):
     sec = validate_credential("client_secret", req.client_secret, required=True)
     cust = validate_customer_id(req.customer_id)
     checks = _get_checks(req.scope, req.scopes)
+    journey_pack_ids = [str(b) for b in (profile or {}).get("baseline_packs") or []]
 
     async def event_generator():
         results = []
@@ -2033,7 +2147,7 @@ async def assess_stream(req: AssessRequest):
                 try:
                     yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
                                             "current": "Data governance journey: measuring the tenant against the baselines"})
-                    packs = _journey_packs([])
+                    packs = _journey_packs(journey_pack_ids)
                     if packs:
                         sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
                         journey = await asyncio.wait_for(asyncio.to_thread(_journey_for, sdk, packs), timeout=180)
@@ -2065,7 +2179,17 @@ async def assess_stream(req: AssessRequest):
                 "critical": [r for r in results if r["status"] == "FAIL"],
                 "review": [r for r in results if r["status"] == "REVIEW"],
                 "journey": journey,
+                "profile": None,
             }
+            if profile:
+                try:
+                    import tenant_profiles
+                    updated = tenant_profiles.add_history(profile["id"], tenant_profiles.snapshot(report))
+                    if updated:
+                        report["profile"] = {"id": updated["id"], "name": updated.get("name"),
+                                             "history": (updated.get("history") or [])[-12:]}
+                except Exception:  # noqa: BLE001 — history is best effort
+                    pass
 
             yield _sse("complete", report)
 

@@ -174,7 +174,9 @@ URL Filtering and SSL Inspection) through a guided preflight → approve → app
 empty tenant (greenfield) or on top of an existing one (brownfield). Whatever the customer
 already has is kept exactly as it is; only what is missing is created, every rule DISABLED.
 
-A **baseline** is the reference a tenant is measured against. After deployment the assessment
+**Tenant profiles** keep one record per customer (details, scopes, applicable baselines, optional
+remembered secret) with a history of every assessment, so a consultant can switch tenants and show
+movement between visits. A **baseline** is the reference a tenant is measured against. After deployment the assessment
 places every baseline object (missing, deployed, monitoring, enforcing, customized) and reports
 where the tenant is on the journey — Foundation → Policies deployed → Visibility → Containment
 → Enforcement — with the exact rules to enable or harden next. Every pack can also be owned by

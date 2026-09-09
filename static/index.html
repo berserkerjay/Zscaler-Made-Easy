@@ -2119,8 +2119,13 @@ function migrateCredBody() {
     client_id: document.getElementById('cid').value,
     client_secret: document.getElementById('csec').value,
     customer_id: document.getElementById('custid').value,
+    // Saved tenant profile (guide add-on): fills blanks server-side, incl. a remembered secret.
+    profile_id: (window.GD && GD.profile) ? GD.profile : '',
   };
 }
+// True when the selected tenant profile remembers the secret, so the form
+// may leave the secret field blank.
+function profileHasSecret() { return !!(window.GD && GD.profile && GD.profileHasSecret); }
 
 function migrateValidateCreds() {
   const b = migrateCredBody();
@@ -3042,6 +3047,7 @@ async function runAssessment() {
   ];
   for (const [id, label] of checks) {
     const el = document.getElementById(id);
+    if (id === 'csec' && profileHasSecret()) continue;
     if (!el || !el.value || !el.value.trim()) missing.push([id, label]);
   }
   if (missing.length) {
@@ -3090,6 +3096,7 @@ async function runAssessment() {
     client_secret: document.getElementById('csec').value,
     customer_id: document.getElementById('custid').value,
     scopes: scopes,
+    profile_id: (window.GD && GD.profile) ? GD.profile : '',
   };
 
   try {
