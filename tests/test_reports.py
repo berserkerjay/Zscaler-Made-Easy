@@ -35,8 +35,10 @@ def test_report_cache_page_and_exports():
 def test_index_loads_report_addons():
     c = TestClient(srv.app)
     html = c.get("/").text
-    assert '<link rel="stylesheet" href="/static/reports.css">' in html
-    assert '<script src="/static/bypass_report.js"></script>' in html
+    assert '<link rel="stylesheet" href="/static/reports.css?v=' in html
+    assert '<script src="/static/bypass_report.js?v=' in html
+    st = c.get("/static/guide.js")
+    assert st.status_code == 200 and "no-cache" in st.headers.get("cache-control", "")
     assert "openBypassReportTab()" in html and "openToolTab('updates')" in html and "openToolTab('efficacy')" in html
     view = c.get("/report/view?tool=updates")
     assert view.status_code == 200 and "Back to the assessment" in view.text and "__ttApply" in view.text
