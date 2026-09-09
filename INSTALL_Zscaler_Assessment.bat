@@ -34,11 +34,11 @@ if errorlevel 1 (
 
 echo  [2/2] Creating desktop shortcut...
 
-REM Create desktop shortcut pointing to START bat
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = '%INSTALL_DIR%\START_Zscaler_Assessment.bat'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment'; $lnk.Save();"
+REM Desktop shortcut: silent launcher (no console window); server output goes to server.log
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desktop = [Environment]::GetFolderPath('Desktop'); $lnk = $ws.CreateShortcut(\"$desktop\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();"
 
 REM Also create Start Menu shortcut
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = '%INSTALL_DIR%\START_Zscaler_Assessment.bat'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment'; $lnk.Save();" >nul 2>&1
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
 
 echo.
 echo  ════════════════════════════════════════════════════════════

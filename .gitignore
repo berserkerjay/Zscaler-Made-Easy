@@ -30,3 +30,6 @@ Thumbs.db
 
 # Tenant profiles (local, may hold remembered secrets)
 tenant_profiles.json
+
+# Silent launcher output
+server.log

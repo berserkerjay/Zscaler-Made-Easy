@@ -63,16 +63,18 @@ if not defined PYTHON_EXE (
 echo       Using: %PYTHON_EXE%
 echo.
 
-REM ----- Step 4: Restart server + open browser -----
+REM ----- Step 4: Restart server (silently) + open browser -----
 echo [4/4] Starting server...
-start "" /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:8000"
 echo.
 echo ============================================================
 echo  Update complete. Server starting at http://localhost:8000
 echo  IMPORTANT: in your browser press Ctrl+F5 to hard-refresh
 echo  (otherwise the browser will keep showing the cached UI)
+echo  The server runs in the background (output in server.log).
+echo  STOP_Zscaler_Assessment.bat stops it.
 echo ============================================================
 echo.
-"%PYTHON_EXE%" dlp_api_server.py
+wscript.exe "%~dp0START_Zscaler_Assessment.vbs"
+timeout /t 3 >nul
 
 endlocal

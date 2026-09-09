@@ -853,6 +853,37 @@ async def tenant_check(req: TenantCredsRequest):
 
 
 # ---------------------------------------------------------------------------
+# Write mode (Deploy Studio switch)
+# ---------------------------------------------------------------------------
+
+class WriteModeRequest(BaseModel):
+    enable: bool = True
+    confirm: str = ""
+
+
+@app.get("/api/write-mode")
+async def write_mode_get():
+    """Whether deploys are allowed right now, where that comes from
+    (environment, this session, or the read-only default), and whether
+    the operator may switch it from the browser (localhost binds only)."""
+    from security import write_mode_status
+    return write_mode_status()
+
+
+@app.post("/api/write-mode")
+async def write_mode_set(req: WriteModeRequest):
+    """Switch write mode for this server process. Enabling needs the typed
+    confirmation phrase and a localhost bind; the setting is not persisted."""
+    from security import set_write_mode
+    try:
+        out = set_write_mode(req.enable, req.confirm)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    print(f"[write-mode] {'ENABLED' if out['enabled'] else 'disabled'} from the GUI ({out['source']})")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Tenant profiles
 # ---------------------------------------------------------------------------
 

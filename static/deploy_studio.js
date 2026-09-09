@@ -4,7 +4,7 @@
 // State lives in DZ; every step re-renders from it.
 
 const DZ = {
-  packs: [], selected: new Set(), details: {}, open: new Set(), journey: {},
+  packs: [], selected: new Set(), details: {}, open: new Set(), journey: {}, write: null,
   options: { use_rank_0: false, apply_tweaks: true },
   step: 1, report: null, result: null, busy: false, consent: false, error: '',
 };
@@ -102,6 +102,7 @@ async function openDlpPacksModal() {
   document.body.style.overflow = 'hidden';
   DZ.step = 1; DZ.report = null; DZ.result = null; DZ.consent = false; DZ.error = '';
   _dzRender();
+  _dzLoadWriteMode();
   try {
     const r = await fetch('/api/dlp-packs', { cache: 'no-store' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -114,6 +115,49 @@ async function openDlpPacksModal() {
   _dzRender();
   const first = m.querySelector('.dz-pack input, .dz-close');
   if (first) first.focus();
+}
+
+// ── Write mode ────────────────────────────────────────────────────
+// Deploys are refused unless the server is in write mode. It comes from
+// the start script (ENABLE_WRITE_ACTIONS) or from this switch, which only
+// works while the server is bound to localhost and needs the phrase typed.
+async function _dzLoadWriteMode() {
+  try {
+    const r = await fetch('/api/write-mode', { cache: 'no-store' });
+    DZ.write = r.ok ? await r.json() : null;
+  } catch (e) { DZ.write = null; }
+  if (DZ.step === 1 || DZ.step === 3) _dzRender();
+}
+async function _dzSetWriteMode(enable) {
+  const w = DZ.write || {};
+  let confirm = '';
+  if (enable) {
+    if (!w.can_toggle) { alert(w.reason || 'Write mode can only be enabled from the start script on this server.'); return; }
+    confirm = prompt(`Enable write mode for this server session?\n\nDeploy Studio will then CREATE objects in the tenant you approve. Every rule still arrives DISABLED, existing objects are never overwritten, and read-only returns when the server restarts.\n\nType ${w.confirm_phrase || 'YES_I_UNDERSTAND'} to continue:`, '') || '';
+    if (!confirm) return;
+  } else if (!window.confirm('Switch back to read-only? Preflight and the journey check keep working; deploying will be refused until write mode is enabled again.')) return;
+  try {
+    const r = await fetch('/api/write-mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable, confirm }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    DZ.write = data;
+    announce(data.enabled ? 'Write mode enabled for this session.' : 'Read-only mode.');
+    // A plan made in read-only mode carries a read-only blocker; refresh it.
+    if (DZ.report && DZ.step >= 2) { _dzRunPreflight(); return; }
+  } catch (e) { alert(`Could not change write mode: ${e.message}`); }
+  _dzRender();
+}
+function _dzWriteBanner() {
+  const w = DZ.write;
+  if (!w) return '';
+  if (w.enabled) {
+    return `<div class="dz-write on"><span class="dz-status ready">Write mode</span><div><div class="t">Deploying will create objects in the tenant you approve.</div>
+      <div class="d">Every rule arrives DISABLED and existing objects are never overwritten. ${w.source === 'session' ? 'Enabled from this window; the server returns to read-only when it restarts.' : 'Set by the start script (ENABLE_WRITE_ACTIONS).'}</div></div>
+      ${w.source === 'session' ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(false)">Back to read-only</button>` : ''}</div>`;
+  }
+  return `<div class="dz-write off"><span class="dz-status warnings">Read-only</span><div><div class="t">Preflight, the plan and the journey check work; deploying is refused.</div>
+    <div class="d">${w.can_toggle ? 'Enable write mode here when the customer has agreed to the plan. You will be asked to type a confirmation phrase.' : _dzE(w.reason || '')}</div></div>
+    ${w.can_toggle ? `<button type="button" class="dz-btn primary" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}</div>`;
 }
 
 function closeDlpPacksModal() {
@@ -181,6 +225,7 @@ function _dzRenderSelect() {
       </div>`;
     }).join('');
     body.innerHTML = `
+      ${_dzWriteBanner()}
       <div class="dz-grid">${cards}</div>
       <div class="dz-options">
         <div class="dz-option">
@@ -482,6 +527,7 @@ function _dzRenderApprove() {
       <div><div class="lead">${_dzN(writes.length, 'change')} to ${_dzE(R.tenant_label || 'your tenant')}</div>
       <div class="sub">${_dzN([...DZ.selected].length, 'pack')} · ${R.options.use_rank_0 ? 'rank 0 on' : 'standard ranking'} · ${R.options.apply_tweaks ? 'confidence tweaks on' : 'no confidence tweaks'}</div></div>
     </div>
+    ${DZ.write && !DZ.write.enabled ? _dzWriteBanner() : ''}
     ${warns.length ? `<div class="dz-h">Warnings<span class="count">${warns.length}</span></div><div class="dz-rows">${warns.map(w => `<div class="dz-row st-differs"><span class="ic" aria-hidden="true">!</span><div class="rs" style="margin-top:0.25rem;color:var(--text);">${_dzE(w)}</div><div></div></div>`).join('')}</div>` : ''}
     ${_dzSection('Exactly what will be written', writes)}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Before you approve, confirm with the customer</div><div class="d">
@@ -494,11 +540,13 @@ function _dzRenderApprove() {
         ? `<strong>${_dzN(restores.length, 'customized object')} will be overwritten</strong> with the baseline definition (converge mode); every other existing object is left untouched.`
         : 'Existing objects are never overwritten;'} Changes still need activation in ZIA afterwards.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
     </div>`;
+  const writeOff = DZ.write && !DZ.write.enabled;
   document.getElementById('dzFoot').innerHTML = `
-    <div class="dz-summary">${DZ.consent ? 'Ready when you are.' : 'Tick the box to enable deployment.'}</div>
+    <div class="dz-summary">${writeOff ? 'The server is read-only: enable write mode to deploy.' : (DZ.consent ? 'Ready when you are.' : 'Tick the box to enable deployment.')}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=2;_dzRender()">← Back</button>
-      <button type="button" class="dz-btn primary" ${DZ.consent && R.status !== 'blocked' ? '' : 'disabled'} onclick="_dzApply()">Deploy to tenant</button>
+      ${writeOff && DZ.write.can_toggle ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}
+      <button type="button" class="dz-btn primary" ${DZ.consent && R.status !== 'blocked' && !writeOff ? '' : 'disabled'} onclick="_dzApply()">Deploy to tenant</button>
     </div>`;
 }
 

@@ -29,7 +29,9 @@ next.
    .\INSTALL_Zscaler_Assessment.bat
    ```
 4. A **Zscaler Assessment** shortcut appears on the desktop. Double-click it.
-   A console window opens and the browser opens to http://localhost:8000.
+   The browser opens to http://localhost:8000; the server runs silently in
+   the background (its output is in `server.log` next to the app).
+   `STOP_Zscaler_Assessment.bat` stops it.
 
 To update later: `.\UPDATE_Zscaler_Assessment.bat` (stops the server,
 pulls the latest code, restarts). Press Ctrl+F5 in the browser once.
@@ -126,9 +128,12 @@ notes. Pick a profile from the list and the form fills itself.
 5. Click **Review & approve**. Read the checklist, tick the consent box,
    click **Deploy to tenant**.
 
-If the server was started read-only (the normal shortcut), the deploy step
-says so. Close the console window and start
-`START_Zscaler_Assessment_WRITES_ENABLED.bat` when the customer has agreed.
+The server starts **read-only**, so preflight and the plan always work but
+deploying is refused. Deploy Policy Packs shows the mode at the top. When
+the customer has agreed to the plan, click **Enable write mode** and type
+the confirmation phrase it asks for; it lasts until the server restarts.
+(`START_Zscaler_Assessment_WRITES_ENABLED.bat` starts in write mode from
+the outset, for scripted use.)
 
 ## 7. After deploying
 
