@@ -1,0 +1,22 @@
+[
+  {
+    "name": "R_HEALTHCARE_PHI_MRN_ACCT_DOB",
+    "description": "Inline Web DLP: PHI presence (E_HEALTHCARE_PHI) or bulk export (E_PHI_BULK_EXPORT). Monitor-only to start; OCR on so screenshots and scanned PDFs are inspected; 10 KB floor suppresses small-telemetry false positives. Move to BLOCK after tuning.",
+    "action": "ALLOW",
+    "state": "ENABLED",
+    "rank": 7,
+    "engines": [
+      "E_HEALTHCARE_PHI",
+      "E_PHI_BULK_EXPORT"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_HIGH",
+    "min_size": 10,
+    "ocr_enabled": true
+  }
+]

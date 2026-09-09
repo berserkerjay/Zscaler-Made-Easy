@@ -523,3 +523,57 @@ a `.tf.json` with `zia_dlp_dictionaries` / `zia_dlp_engines` /
 python tools/pack_from_terraform.py template.tf.json my_baseline \
   --name "My Baseline" --version 1.0 --prefix ZBP- --baseline --enable-rules
 ```
+
+## 12. Terraform — Own a Pack with State
+
+Every pack (baselines included) can be deployed with the official
+[`zscaler/zia`](https://registry.terraform.io/providers/zscaler/zia/latest/docs)
+provider instead of the in-app executor. DLP-Check generates the workspace;
+Terraform owns the lifecycle: `plan` shows the diff, `apply` converges,
+`destroy` removes exactly what the pack created.
+
+**Committed workspaces.** `terraform/<pack_id>/` holds a generated workspace
+for every pack in the repo. Regenerate after editing a pack (CI fails if
+they are stale):
+
+```bash
+python pack_terraform.py --out terraform          # all packs
+python pack_terraform.py zbp_enterprise_baseline --out terraform
+```
+
+**Gap mode (assess, then close the gap with Terraform).** From Deploy
+Studio, run preflight and click *Export Terraform*, or call the API with
+tenant credentials:
+
+```bash
+curl -s -X POST http://localhost:8000/api/dlp-packs/terraform \
+  -H "Content-Type: application/json" -o tf.zip \
+  -d '{"pack_ids": ["zbp_enterprise_baseline"], "cloud": "production", "vanity_domain": "acme",
+       "client_id": "...", "client_secret": "..."}'
+```
+
+The workspace then contains `imports.tf` with an `import {}` block (Terraform
+1.5+) for every object that already exists in the tenant, so the first
+`terraform plan` is exactly the gap: in-sync objects import with no change,
+drifted objects import and are updated in place, missing objects are
+created, blocked objects are listed as comments with their reason. Existing
+rules keep their current order; new rules start at `rule_starting_order`.
+Without credentials the endpoint (and the *Terraform* link on each pack
+card) returns the static workspace.
+
+**What is generated.**
+
+| File | Contents |
+|---|---|
+| `versions.tf` | `zscaler/zia ~> 4.8`, Terraform `>= 1.5`, commented S3 backend |
+| `provider.tf` | provider from variables or `ZSCALER_*` environment variables |
+| `variables.tf` | credentials (sensitive), `rule_starting_order`, `policy_rank`, `activate`, SaaS tenant ID lists when not resolved |
+| `dictionaries.tf` | `data "zia_dlp_dictionaries"` for predefined templates and referenced predefined dictionaries; one resource per pack dictionary |
+| `engines.tf` | expressions rewritten to `D${zia_dlp_dictionaries.x.id}.S` |
+| `rules.tf` | `zia_dlp_web_rules` / `zia_endpoint_dlp_rules` / `zia_casb_dlp_rules` / `zia_outbound_email_dlp`; `cloud_app_classes` become a `data "zia_cloud_applications"` lookup with a precondition |
+| `activation.tf` | `zia_activation_status` after every rule (`activate = false` to skip) |
+| `imports.tf` | gap mode only |
+
+Every object carries a `[DLP-Check baseline|pack <id> v<ver>] Terraform-managed.`
+description tag. CI regenerates the committed workspaces and runs
+`terraform init` + `validate` against the real provider schema.

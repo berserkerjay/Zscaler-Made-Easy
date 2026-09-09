@@ -1,0 +1,1003 @@
+# Dictionaries — generated from the pack; predefined Zscaler dictionaries are looked up by name.
+
+data "zia_dlp_dictionaries" "ssn" {
+  name = "SSN"
+}
+
+data "zia_dlp_dictionaries" "usitin_leakage" {
+  name = "USITIN_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "usdl_leakage" {
+  name = "USDL_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "cred_leakage" {
+  name = "CRED_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "aba_leakage" {
+  name = "ABA_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "credit_card" {
+  name = "CREDIT_CARD"
+}
+
+resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
+  name                         = "ZBP-US Passport - High Confidence"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b\\d{8,9}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\b[A-Z]\\d{8}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport Number "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport No"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport#"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "PassportID"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportno"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportnumber "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. du Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. de Pasaporte"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Pasaporte"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_us_passport_prox_500" {
+  name                         = "ZBP-US Passport - Prox 500"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b\\d{8,9}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\b[A-Z]\\d{8}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport Number "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport No"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport#"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "PassportID"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportno"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportnumber "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. du Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. de Pasaporte"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Pasaporte"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_alien_registration_number_prox_500" {
+  name                         = "ZBP-Alien Registration Number - Prox 500"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ARN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Registration"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "'A-Number'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Immigrant data"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "USCIS Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Employment Authorization"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_alien_registration_number_high_confidence" {
+  name                         = "ZBP-Alien Registration Number - High Confidence"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ARN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Registration"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "'A-Number'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Immigrant data"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "USCIS Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Employment Authorization"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_date_of_birth_high_confidence" {
+  name                         = "ZBP-Date of Birth - High Confidence"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Date of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "year of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "month of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "day of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birthday"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth year"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth month"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "dob"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "d.o.b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_date_of_birth_prox_500" {
+  name                         = "ZBP-Date of Birth - Prox 500"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Date of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "year of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "month of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "day of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birthday"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth year"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth month"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "dob"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "d.o.b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_high" {
+  name                         = "ZBP-Social Security Numbers (US) - High"
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.ssn.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ssn"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_prox_500" {
+  name                         = "ZBP-Social Security Numbers (US) - Prox 500"
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.ssn.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ssn"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_high" {
+  name                         = "ZBP-Tax Identification Number (US) - High"
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usitin_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+}
+
+resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_prox_500" {
+  name                         = "ZBP-Tax Identification Number (US) - Prox 500"
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usitin_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+}
+
+resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_prox_500" {
+  name                         = "ZBP-Drivers License (United States) - Prox 500"
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usdl_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+  hierarchical_identifiers     = ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL", "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME", "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH", "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI", "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"]
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Driver License"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_high" {
+  name                         = "ZBP-Drivers License (United States) - High"
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usdl_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  hierarchical_identifiers     = ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL", "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME", "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH", "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI", "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"]
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Driver License"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_private_keys_plaintext_regex" {
+  name                         = "ZBP-Private Keys-Plaintext Regex"
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when stored in plaintext [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "[- ]{4,5}BEGIN (EC|DSA|RSA|SSH2|OPENSSH|PGP|GPG) PRIVA"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_jwk_private_key" {
+  name                         = "ZBP-JWK Private Key"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\"kty\" ?: ?\"(EC|RSA)\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "'\"d\"'"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_private_key" {
+  name                         = "ZBP-Private Key"
+  description                  = "Detect leakage of credentials and secrets [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.cred_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_MEDIUM"
+  hierarchical_identifiers     = ["CRED_PRIVATE_KEY"]
+}
+
+resource "zia_dlp_dictionaries" "zbp_encrypted_or_ascii_armored_pgp_keys" {
+  name                         = "ZBP-Encrypted or ASCII Armored PGP Keys"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "-{4,5}BEGIN (PGP|ENCRYPTED) PRIVATE\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_encrypted_bouncy_castle_key_exports" {
+  name                         = "ZBP-Encrypted Bouncy Castle Key Exports"
+  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bProc-Type: 4,ENCRYPTED\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Private Key"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "DEK-Info"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_form_k_1" {
+  name                         = "ZBP-Form K-1"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Schedule K-1 "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "OMB No. 1545-0123"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "A Partnership’s employer identification number "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "F Name, address, city, state, and ZIP code for partner entered in"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Partner’s share of liabilities"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Partner’s Share of Current Year Income"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "More than one activity for passive activity purposes"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_form_1099_misc_and_1099_nec" {
+  name                         = "ZBP-Form 1099-MISC and 1099-NEC"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "PAYER’S name, street address, city or town, state or province, country, ZIP"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form 1099-MISC"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form 1099-NEC"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Payer made direct sales totaling $5,000 or more of"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Nonqualified deferred compensation"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "OMB No. 1545-0115"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Excess golden parachute"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Gross proceeds paid to an"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "PAYER’S TIN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "RECIPIENT’S TIN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "File with Form 1096."
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "OMB No. 1545-0116"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_w2_or_w4_or_w9_forms" {
+  name                         = "ZBP-W2 or W4 or W9 Forms"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "a Employee’s social security number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "OMB No. 1545-0008 "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form W-2"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Wage and Tax Statement"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "c Employer’s name, address, and ZIP code"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "e Employee’s first name and initial"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "3 Social security wages"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form W-9"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Identification Number and Certification"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Name of entity/individual. An entry is required"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "LLC. Enter the tax classification "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Exemptions (codes apply only to"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Cat. No. 10231X"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "List account number(s) here (optional)"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form W-4"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "OMB No. 1545-0074"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Single or Married filing separately"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Other income (not from jobs)."
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "If your total income will be $200,000 or less"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Deductions. If you expect to claim deductions other than the standard deduction "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Cat. No. 10220Q"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_form_1040_and_related_schedules" {
+  name                         = "ZBP-Form 1040 and related schedules"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form 1040"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "OMB No. 1545-0074"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = " or other tax year beginning"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Was born before January 2, 1959"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "If you checked the HOH or QSS box"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "I have examined this return and accompanying schedules and statements, and to the best of my knowledge"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Do you want to allow another person to discuss this return"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Cat. No. 11320B"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "'Schedule 1 (Form 1040)'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Additional Income and Adjustments to Income"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Foreign earned income exclusion"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Activity not engaged in for profit income"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Nontaxable amount of Medicaid "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Cat. No. 71479F"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "'Schedule 2 (Form 1040)'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Alternative minimum tax. Attach Form"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Social security and Medicare tax on unreported tip income"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Additional Medicare Tax. Attach Form 8959"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = " tax due on installment income from the sale of certain residential lots"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = " Cat. No. 71478U"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Recapture of federal mortgage subsidy"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Compensation you received from a nonqualified deferred"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Tax on non-effectively connected income for any part of"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Section 965 net tax liability installment from Form 965-A"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "'Schedule 3 (Form 1040)'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Foreign tax credit. Attach Form 1116 if required"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "General business credit. Attach Form 3800"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Mortgage interest credit. Attach Form 8396"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Credit to holders of tax credit bonds. Attach Form 8912"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Attach to Form 1040, 1040-SR, or 1040-NR"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Excess social security and tier 1 RRTA tax withheld"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Credit for repayment of amounts included in income from earlier"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Deferred amount of net 965 tax liability"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Add lines 9 through 12 and 14. Enter here and on Form 1040, 1040-SR, or 1040-NR"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Form 1040-ES"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Disclosure, Privacy Act, and Paperwork Reduction Act Notice"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "File only if you are making a payment of estimated tax by check"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_UNIQUE"
+    phrase = "Amount of estimated tax you are paying"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_high" {
+  name                         = "ZBP-ABA Bank Routing Number - High"
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.aba_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+}
+
+resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_prox_500" {
+  name                         = "ZBP-ABA Bank Routing Number - Prox 500"
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.aba_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+}
+
+resource "zia_dlp_dictionaries" "zbp_credit_cards_high" {
+  name                         = "ZBP-Credit Cards - High"
+  description                  = "Detect leakage of credit card information [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.credit_card.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  include_bin_numbers          = true
+}
+
+resource "zia_dlp_dictionaries" "zbp_credit_cards_prox_500" {
+  name                         = "ZBP-Credit Cards - Prox 500"
+  description                  = "Detect leakage of credit card information [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.credit_card.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+  include_bin_numbers          = true
+}
+
+resource "zia_dlp_dictionaries" "zbp_credit_card_magnetic_tracks" {
+  name                         = "ZBP-Credit Card Magnetic Tracks"
+  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "[%][B]\\d{12,19}[\\^][a-zA-Z\\/\\s.]{2,26}[\\^](\\d{7})([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "[;]\\d{12,19}[=]([\\dxX])([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_itar_phrase" {
+  name                         = "ZBP-ITAR Phrase"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "This information may be subject to the Export Administration Regulations"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "This information may be subject to the International Traffic in Arms Regulations"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "These items are controlled by the U.S. Government and authorized for export only"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "This document, and technical data contained in it, are subject to United States export laws and regulations."
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "This document contains information within the purview of the Export Administration Regulations"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "This document contains information which falls under the purview of the U.S. Munitions List"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "This document contains information whose export is restricted by the Arms Export Control Act"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_itar_pattern" {
+  name                         = "ZBP-ITAR Pattern"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)(purview of the\\s|subject to\\s(the\\s)?)(united states export laws|u.s. munitions list|arms export control act)"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)(restricted by the\\s)(united states export laws|export administration regulations|u.s. munitions list|arms export control act)"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)(purview of the\\s|subject to\\s)(u.s. export laws|(the )?international traffic in arms regulations)"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)(purview of the\\s|subject to\\s(the\\s)?)(united states export laws|export administration regulations|u.s. munitions list|arms export control act)"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_tlp_red" {
+  name                         = "ZBP-TLP Red"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)TLP: ?Red"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_tlp_amber_strict" {
+  name                         = "ZBP-TLP Amber Strict"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)TLP: ?Amber[+ ]?Strict"
+  }
+}
+
+resource "zia_dlp_dictionaries" "zbp_tlp_amber" {
+  name                         = "ZBP-TLP Amber"
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "(?i)TLP: ?Amber\\b"
+  }
+}
+

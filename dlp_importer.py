@@ -309,7 +309,7 @@ def build_policy_payload(
     for field in ("locations", "location_groups", "groups", "departments", "users", "url_categories", "labels"):
         if policy_def.get(field):
             payload[field] = policy_def[field]
-    for flag in ("match_only", "without_content_inspection"):
+    for flag in ("match_only", "without_content_inspection", "ocr_enabled", "zscaler_incident_receiver"):
         if policy_def.get(flag):
             payload[flag] = True
     return payload

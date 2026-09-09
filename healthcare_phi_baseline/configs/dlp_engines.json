@@ -1,0 +1,12 @@
+[
+  {
+    "name": "E_HEALTHCARE_PHI",
+    "description": "Presence-based PHI. Branch A: clinical context (predefined Medical Information or Medical Document, or the custom clinical phrases) AND at least one strong identifier. Branch B: two distinct strong identifiers. Branch C: the legal-sex booster beside a strong identifier.",
+    "expression": "((((D:Medical Information > 0) OR (D:Medical Document > 0) OR (D:D_CLINICAL_PHRASES > 0)) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))) OR (((D:D_MRN > 0) AND (D:D_ACCT > 0)) OR ((D:D_MRN > 0) AND (D:D_DOB > 0)) OR ((D:D_ACCT > 0) AND (D:D_DOB > 0))) OR ((D:D_LEGAL_SEX > 0) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))))"
+  },
+  {
+    "name": "E_PHI_BULK_EXPORT",
+    "description": "Volume-based PHI for mass exposure: any strong identifier appearing 10 or more times in one transaction (a record dump or spreadsheet). Tune the threshold to your export sizes.",
+    "expression": "((D:D_MRN > 9) OR (D:D_ACCT > 9) OR (D:D_DOB > 9))"
+  }
+]

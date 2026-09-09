@@ -256,8 +256,18 @@ def test_pack_from_terraform_converts_references():
 def test_shipped_baselines_are_discoverable_and_plan():
     from dlp_importer import discover_packs
     packs = {p["id"]: p for p in discover_packs()}
-    for pid in ("zbp_enterprise_baseline", "zbp_source_code_baseline"):
+    for pid in ("zbp_enterprise_baseline", "zbp_source_code_baseline", "healthcare_phi_baseline"):
         assert pid in packs and pd.baseline_meta(packs[pid], pid), pid
+    # Healthcare PHI: engines reference the tenant's predefined medical dictionaries by name.
+    phi = packs["healthcare_phi_baseline"]
+    client = FakeClient(dicts=[Obj(id=1, name="Medical Information", custom=False), Obj(id=2, name="Medical Document", custom=False)])
+    rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
+    assert rep["status"] == "ready", rep["blockers"]
+    res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
+    assert res["summary"] == {"created": 8}
+    rule = client.zia.dlp_web_rules.added[0]
+    assert rule["ocr_enabled"] is True and rule["min_size"] == 10
+    assert client.zia.dlp_engine.added[0]["engine_expression"].startswith("((((D1.S > 0) OR (D2.S > 0)")
     ent = packs["zbp_enterprise_baseline"]
     templates = sorted({d["dict_template_name"] for d in json.load(open(f"{ent['dir']}/configs/dlp_dictionaries.json")) if d.get("predefined_clone")})
     client = FakeClient(dicts=[Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(templates)])

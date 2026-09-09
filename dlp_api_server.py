@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -765,6 +765,47 @@ async def dlp_packs_baseline_status(req: DLPPackDeployRequest):
     out = pack_deploy.baseline_status(report)
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
+
+
+@app.post("/api/dlp-packs/terraform")
+async def dlp_packs_terraform(req: DLPPackDeployRequest):
+    """Download a Terraform workspace (zip, one folder per pack) for the
+    official zscaler/zia provider. With tenant credentials the workspace is
+    generated in GAP mode: a preflight runs first and every object that
+    already exists gets an import block, so the first `terraform plan`
+    shows exactly what closes the gap. Without credentials (empty
+    client_id) the workspace is static. Read-only — nothing is written."""
+    try:
+        import pack_deploy
+        import pack_terraform
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_terraform unavailable: {e}")
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack.")
+    packs = _resolve_pack_ids(req.pack_ids)
+    report = None
+    mode = "static"
+    creds = _tenant_creds(req)
+    if creds.get("client_id"):
+        client = await asyncio.to_thread(_build_sdk_client, creds)
+        full = await asyncio.to_thread(
+            pack_deploy.preflight, client, packs,
+            use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
+        )
+        report = pack_deploy.public_report(full)
+        report["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+        mode = "gap"
+    workspaces = {}
+    for p in packs:
+        files = await asyncio.to_thread(
+            pack_terraform.generate, p,
+            report=pack_terraform.split_report(report, p["id"]) if report else None,
+        )
+        workspaces[p["id"]] = files
+    data = pack_terraform.zip_workspaces(workspaces)
+    name = f"dlp-check-terraform-{mode}-{'-'.join(req.pack_ids)[:60]}.zip"
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": mode})
 
 
 @app.post("/api/dlp-packs/apply")
