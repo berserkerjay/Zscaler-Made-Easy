@@ -179,3 +179,18 @@ def test_health_reports_why_the_github_check_failed(repos, monkeypatch):
     st = c.get("/api/app/update/status?refresh=1").json()
     assert st["remote_commit"] is None and st["remote_error"] and st["can_update"]
     srv._LATEST.update({"at": 0.0, "sha": None, "error": None})
+
+
+def test_worktree_and_nested_folders_count_as_checkouts(repos, tmp_path):
+    # A worktree has a .git *file*, not a directory.
+    wt = tmp_path / "wt"
+    _git(str(repos["app"]), "worktree", "add", "-q", "--detach", str(wt), "main")
+    assert (wt / ".git").is_file() and au.is_checkout(str(wt))
+    st = au.status(str(wt))
+    assert st["is_git_checkout"] and st["can_update"]
+    # A folder inside a checkout is managed by git too.
+    sub = repos["app"] / "sub"; sub.mkdir()
+    assert au.is_checkout(str(sub))
+    # A plain folder is not.
+    plain = tmp_path / "plain"; plain.mkdir()
+    assert not au.is_checkout(str(plain))
