@@ -82,3 +82,7 @@ body.report-page {
   .bp-guide li { margin: 0.2rem 0; }
   body.theme-light .bp-risks li { background: rgba(255,255,255,0.7); }
   @media (max-width: 760px) { .bp-hero { grid-template-columns: 1fr; } .bp-panel { max-height: calc(100vh - 1.5rem); } }
+@media (prefers-color-scheme: light) {
+  body.report-page .bp-risks li { background: rgba(255,255,255,0.75); }
+  body.report-page .bp-table th { background: #fff; }
+}
