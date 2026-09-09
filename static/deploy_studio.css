@@ -307,3 +307,17 @@
   .dz-write > div { flex: 1; min-width: 0; }
   .dz-write .t { font-weight: 700; color: var(--text); }
   .dz-write .d { font-size: 0.8rem; color: var(--dim); margin-top: 0.15rem; }
+  /* Terraform hand-off */
+  .tf-packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.5rem; }
+  .tf-pack { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 0.85rem; }
+  .tf-pack.on { border-color: var(--accent); background: rgba(59,130,246,0.06); }
+  .tf-pack .d, .tf-sum .d, .tf-mode .d, .tf-actions .d { color: var(--dim); font-size: 0.8rem; }
+  .tf-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.6rem; }
+  .tf-mode { padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: 12px; }
+  .tf-mode.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  .tf-mode .t { font-weight: 700; margin-bottom: 0.25rem; }
+  .tf-sum { padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.5rem; font-size: 0.85rem; }
+  .tf-sum-h { margin-bottom: 0.2rem; }
+  .tf-files { margin: 0.3rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; }
+  .tf-files li { margin: 0.15rem 0; }
+  .tf-actions { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.8rem; }

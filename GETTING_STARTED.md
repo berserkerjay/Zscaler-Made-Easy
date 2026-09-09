@@ -117,6 +117,27 @@ notes. Pick a profile from the list and the form fills itself.
   the baselines that apply to this customer (a hospital is measured
   against Healthcare PHI, not CJIS).
 
+## 5c. Hand off as Terraform (platform teams)
+
+Some customers manage Zscaler as code and will not accept changes made
+from a tool. Give them the same baseline as a Terraform workspace instead:
+
+1. Click **Terraform hand-off** on the front page (or *Terraform hand-off*
+   on a pack card, or *Hand off as Terraform* on the preflight review). It
+   opens in its own tab.
+2. Tick the packs. With tenant details filled in, the page is in **gap
+   mode**: DLP-Check reads the tenant and writes `imports.tf` so the
+   platform team's first `terraform plan` is exactly the gap. Without
+   credentials it is **static** (the whole pack, no tenant knowledge).
+3. Read *What you get* (the files and what each is for) and click
+   **Download workspace**. One zip, one folder per pack.
+4. Hand over the zip with the note on the page: fill `terraform.tfvars`,
+   `terraform init`, `terraform plan` (the review), `terraform apply`.
+   Every rule arrives disabled.
+
+The repository also carries a ready workspace per pack under
+`terraform/<pack>/`, validated against the real provider on every commit.
+
 ## 6. Preflight, review, approve
 
 1. Toggle the pack(s) on and click **Run preflight**. Nothing is written.

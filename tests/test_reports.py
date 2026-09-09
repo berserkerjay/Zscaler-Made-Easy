@@ -42,3 +42,17 @@ def test_index_loads_report_addons():
     assert view.status_code == 200 and "Back to the assessment" in view.text and "__ttApply" in view.text
     assert c.get("/static/tool_tabs.js").status_code == 200
     assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200
+
+
+def test_terraform_summary_endpoint():
+    c = TestClient(srv.app)
+    r = c.get("/api/dlp-packs/healthcare_phi_baseline/terraform")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["committed"] is True and d["path"] == "terraform/healthcare_phi_baseline/"
+    names = [f["name"] for f in d["files"]]
+    assert "rules.tf" in names and "README.md" in names and all(f["purpose"] for f in d["files"] if f["name"].endswith(".tf"))
+    assert d["counts"]["rules"] >= 9 and d["counts"]["channels"].get("email") == 1 and d["provider"] == "zscaler/zia"
+    assert c.get("/api/dlp-packs/nope/terraform").status_code == 404
+    html = c.get("/").text
+    assert "openToolTab('terraform')" in html and "Terraform hand-off" in html

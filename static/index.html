@@ -529,6 +529,9 @@
     padding: 0.5rem 0.6rem;
     min-height: 38px;
   }
+  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
+  .tool-group { display: grid; gap: 0.35rem; padding: 0.55rem 0.6rem 0.6rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card); text-align: left; }
+  .tool-group-l { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 0 0.2rem; }
 
   /* Responsive */
   @media (max-width: 768px) {
@@ -570,27 +573,51 @@
       <div id="promptResult"></div>
     </div>
 
-    <div class="hero-toolbar">
-      <button class="btn btn-ghost" onclick="openToolTab('updates')"
-              aria-label="Check for Zscaler SDK and documentation updates (opens in a new tab)">
-        <span aria-hidden="true">🔄</span> Zscaler Updates
-      </button>
-      <button class="btn btn-ghost" onclick="openBypassReportTab()"
-              aria-label="Open Bypass and Non-Inspected Traffic Inventory Report in a new tab">
-        <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
-      </button>
-      <button class="btn btn-ghost" onclick="openToolTab('bestpractices')"
-              aria-label="Open curated Zscaler Best Practices reference library (opens in a new tab)">
-        <span aria-hidden="true">📚</span> Best Practices
-      </button>
-      <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
-              aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)">
-        <span aria-hidden="true">📊</span> DLP Efficacy
-      </button>
-      <button class="btn btn-ghost" onclick="openDlpPacksModal()"
-              aria-label="Browse, import, and verify DLP policy packs (Fed, custom, uploaded)">
-        <span aria-hidden="true">📦</span> DLP Policy Packs
-      </button>
+    <div class="hero-toolbar" aria-label="Tools">
+      <div class="tool-group" role="group" aria-label="Find the gaps">
+        <div class="tool-group-l">Find the gaps</div>
+        <button class="btn btn-ghost" onclick="openBypassReportTab()"
+                aria-label="Open Bypass and Non-Inspected Traffic Inventory Report in a new tab"
+                title="Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection. Opens in a new tab.">
+          <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
+        </button>
+        <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
+                aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
+                title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
+          <span aria-hidden="true">📊</span> DLP Efficacy
+        </button>
+      </div>
+      <div class="tool-group" role="group" aria-label="Close the gaps">
+        <div class="tool-group-l">Close the gaps</div>
+        <button class="btn btn-ghost" onclick="openDlpPacksModal()"
+                aria-label="Deploy policy packs and baselines: preflight, review, approve, deploy"
+                title="Pick a baseline, see exactly what would be created, approve, deploy. Every rule arrives disabled.">
+          <span aria-hidden="true">📦</span> Deploy Policy Packs
+        </button>
+        <button class="btn btn-ghost" onclick="openToolTab('terraform')"
+                aria-label="Hand the same baseline to a platform team as a Terraform workspace (opens in a new tab)"
+                title="Same baseline as a Terraform workspace for teams that manage Zscaler as code. Opens in a new tab.">
+          <span aria-hidden="true">🧱</span> Terraform hand-off
+        </button>
+        <button class="btn btn-ghost" onclick="_gdGoMigration()"
+                aria-label="Move the tenant to Evaluate All Rules with the Inline DLP Rule Migration wizard"
+                title="Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely.">
+          <span aria-hidden="true">🔀</span> Evaluate All Rules
+        </button>
+      </div>
+      <div class="tool-group" role="group" aria-label="Reference">
+        <div class="tool-group-l">Reference</div>
+        <button class="btn btn-ghost" onclick="openToolTab('bestpractices')"
+                aria-label="Open curated Zscaler Best Practices reference library (opens in a new tab)"
+                title="Curated Zscaler best-practice articles. Opens in a new tab.">
+          <span aria-hidden="true">📚</span> Best Practices
+        </button>
+        <button class="btn btn-ghost" onclick="openToolTab('updates')"
+                aria-label="Check for Zscaler SDK and documentation updates (opens in a new tab)"
+                title="Checks PyPI and help.zscaler.com for SDK and documentation changes since last time. Opens in a new tab.">
+          <span aria-hidden="true">🔄</span> Zscaler Updates
+        </button>
+      </div>
     </div>
   </div>
 

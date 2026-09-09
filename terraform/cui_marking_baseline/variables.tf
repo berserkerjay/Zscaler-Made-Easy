@@ -42,3 +42,8 @@ variable "activate" {
   default     = true
 }
 
+variable "saas_tenant_ids_cui_email_monitor" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Email-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+

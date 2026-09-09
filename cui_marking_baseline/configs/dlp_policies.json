@@ -110,5 +110,17 @@
       "MEDIUM_TRUST",
       "HIGH_TRUST"
     ]
+  },
+  {
+    "name": "CUI-Email-Monitor",
+    "channel": "email",
+    "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CUI markings (full CUI-Detect-All surface). Monitor-only; switch the block-grade engine to BLOCK after tuning.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-All"
+    ],
+    "tenants": "any"
   }
 ]

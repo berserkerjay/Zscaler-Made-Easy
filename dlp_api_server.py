@@ -996,6 +996,56 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
     return out
 
 
+@app.get("/api/dlp-packs/{pack_id}/terraform")
+async def dlp_pack_terraform_summary(pack_id: str):
+    """What the Terraform hand-off for one pack contains: the files of the
+    committed workspace (terraform/<pack>/, validated in CI), their
+    purpose, resource counts and the README. Read-only."""
+    packs = {p["id"]: p for p in __import__("dlp_importer").discover_packs()}
+    if pack_id not in packs:
+        raise HTTPException(status_code=404, detail=f"Unknown pack '{pack_id}'.")
+    import pack_terraform
+    purpose = {
+        "versions.tf": "Terraform and provider version pins (zscaler/zia ~> 4.8).",
+        "provider.tf": "Provider block; credentials come from variables or ZSCALER_* environment variables.",
+        "variables.tf": "Inputs: credentials, rule starting order, admin rank, activation, tenant-specific IDs.",
+        "terraform.tfvars.example": "Copy to terraform.tfvars and fill in (git-ignored).",
+        "dictionaries.tf": "DLP dictionaries (custom ones as resources, predefined ones as data lookups).",
+        "engines.tf": "DLP engines with their expressions referencing the dictionaries above.",
+        "rules.tf": "Every rule of the pack: Web/Endpoint/SaaS/Email DLP and the containment rules.",
+        "imports.tf": "Gap mode only: import blocks adopting objects that already exist in the tenant.",
+        "activation.tf": "Activates the pending ZIA configuration after apply.",
+        "outputs.tf": "IDs and names of everything created.",
+        "README.md": "How to run it, ordering notes, gap summary.",
+        ".gitignore": "Keeps state, tfvars and .terraform/ out of git.",
+        ".terraform.lock.hcl": "Provider checksum lock (committed).",
+    }
+    tf_dir = os.path.join(_APP_DIR, "terraform", pack_id)
+    files = []
+    readme = ""
+    if os.path.isdir(tf_dir):
+        for name in sorted(os.listdir(tf_dir)):
+            path = os.path.join(tf_dir, name)
+            if os.path.isfile(path):
+                files.append({"name": name, "bytes": os.path.getsize(path), "purpose": purpose.get(name, "")})
+        rp = os.path.join(tf_dir, "README.md")
+        if os.path.exists(rp):
+            readme = open(rp, encoding="utf-8").read()
+    src = pack_terraform.load_pack({"id": pack_id, "dir": packs[pack_id]["dir"]})
+    channels: Dict[str, int] = {}
+    for pol in src["policies"]:
+        ch = str(pol.get("channel") or "web").lower()
+        channels[ch] = channels.get(ch, 0) + 1
+    return {
+        "pack_id": pack_id, "name": packs[pack_id].get("name", pack_id), "baseline": bool(packs[pack_id].get("baseline")),
+        "committed": bool(files), "path": f"terraform/{pack_id}/", "files": files, "readme": readme,
+        "provider": pack_terraform.PROVIDER_SOURCE, "provider_version": pack_terraform.PROVIDER_VERSION,
+        "terraform_version": pack_terraform.TERRAFORM_VERSION,
+        "counts": {"dictionaries": len(src["dictionaries"]), "engines": len(src["engines"]), "rules": len(src["policies"]),
+                   "app_groups": len(src.get("app_groups") or []), "channels": channels},
+    }
+
+
 @app.post("/api/dlp-packs/terraform")
 async def dlp_packs_terraform(req: DLPPackDeployRequest):
     """Download a Terraform workspace (zip, one folder per pack) for the

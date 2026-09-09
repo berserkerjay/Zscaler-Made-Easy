@@ -28,7 +28,10 @@
     "action": {
       "type": "DECRYPT",
       "override_default_certificate": false,
-      "ssl_interception_cert": {"id": 1, "default_certificate": true},
+      "ssl_interception_cert": {
+        "id": 1,
+        "default_certificate": true
+      },
       "decrypt_sub_actions": {
         "server_certificates": "ALLOW",
         "ocsp_check": true,
@@ -39,8 +42,19 @@
         "http2_enabled": true
       }
     },
-    "cloud_app_classes": ["FILE_SHARE", "WEBMAIL", "AI_ML"],
-    "platforms": ["SCAN_WINDOWS", "SCAN_MACOS", "SCAN_LINUX", "SCAN_IOS", "SCAN_ANDROID", "NO_CLIENT_CONNECTOR"],
+    "cloud_app_classes": [
+      "FILE_SHARE",
+      "WEBMAIL",
+      "AI_ML"
+    ],
+    "platforms": [
+      "SCAN_WINDOWS",
+      "SCAN_MACOS",
+      "SCAN_LINUX",
+      "SCAN_IOS",
+      "SCAN_ANDROID",
+      "NO_CLIENT_CONNECTOR"
+    ],
     "road_warrior_for_kerberos": true
   },
   {
@@ -50,9 +64,20 @@
     "state": "DISABLED",
     "rank": 7,
     "type": "FILE_SHARE",
-    "cloud_app_classes": ["FILE_SHARE"],
-    "actions_by_verb": {"UPLOAD": "BLOCK", "SHARE": "BLOCK", "*": "ALLOW"},
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "cloud_app_classes": [
+      "FILE_SHARE"
+    ],
+    "actions_by_verb": {
+      "UPLOAD": "BLOCK",
+      "SHARE": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
   },
   {
     "name": "R_PHI_CAC_WEBMAIL_NO_SEND",
@@ -61,9 +86,20 @@
     "state": "DISABLED",
     "rank": 7,
     "type": "WEBMAIL",
-    "cloud_app_classes": ["WEBMAIL"],
-    "actions_by_verb": {"SEND": "BLOCK", "ATTACHMENT_SEND": "BLOCK", "*": "ALLOW"},
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "cloud_app_classes": [
+      "WEBMAIL"
+    ],
+    "actions_by_verb": {
+      "SEND": "BLOCK",
+      "ATTACHMENT_SEND": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
   },
   {
     "name": "R_PHI_CAC_AI_NO_UPLOAD",
@@ -72,9 +108,19 @@
     "state": "DISABLED",
     "rank": 7,
     "type": "AI_ML",
-    "cloud_app_classes": ["AI_ML"],
-    "actions_by_verb": {"UPLOAD": "BLOCK", "*": "ALLOW"},
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
+    "actions_by_verb": {
+      "UPLOAD": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
   },
   {
     "name": "R_PHI_FTC_BLOCK_BULK_EXPORT_UPLOAD",
@@ -84,10 +130,29 @@
     "rank": 7,
     "filtering_action": "BLOCK",
     "operation": "UPLOAD",
-    "file_types": ["FTCATEGORY_MS_EXCEL", "FTCATEGORY_ZIP", "FTCATEGORY_RAR", "FTCATEGORY_TAR", "FTCATEGORY_GZIP", "FTCATEGORY_ACCDB", "FTCATEGORY_SQL"],
-    "protocols": ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE"],
-    "cloud_app_classes": ["FILE_SHARE"],
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "file_types": [
+      "FTCATEGORY_MS_EXCEL",
+      "FTCATEGORY_ZIP",
+      "FTCATEGORY_RAR",
+      "FTCATEGORY_TAR",
+      "FTCATEGORY_GZIP",
+      "FTCATEGORY_ACCDB",
+      "FTCATEGORY_SQL"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE"
+    ],
+    "cloud_app_classes": [
+      "FILE_SHARE"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
   },
   {
     "name": "R_PHI_FTC_CAUTION_IMAGE_UPLOAD",
@@ -97,10 +162,25 @@
     "rank": 7,
     "filtering_action": "CAUTION",
     "operation": "UPLOAD",
-    "file_types": ["FTCATEGORY_BITMAP", "FTCATEGORY_JPEG", "FTCATEGORY_PNG", "FTCATEGORY_TIFF"],
-    "protocols": ["HTTP_RULE", "HTTPS_RULE"],
-    "cloud_app_classes": ["FILE_SHARE"],
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "file_types": [
+      "FTCATEGORY_BITMAP",
+      "FTCATEGORY_JPEG",
+      "FTCATEGORY_PNG",
+      "FTCATEGORY_TIFF"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE"
+    ],
+    "cloud_app_classes": [
+      "FILE_SHARE"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
   },
   {
     "name": "R_PHI_URL_BLOCK_POST_TO_UNKNOWN",
@@ -109,9 +189,36 @@
     "state": "DISABLED",
     "rank": 7,
     "action": "BLOCK",
-    "protocols": ["HTTP_RULE", "HTTPS_RULE"],
-    "request_methods": ["POST", "PUT"],
-    "url_categories": ["OTHER_MISCELLANEOUS", "GAMBLING"],
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE"
+    ],
+    "request_methods": [
+      "POST",
+      "PUT"
+    ],
+    "url_categories": [
+      "OTHER_MISCELLANEOUS",
+      "GAMBLING"
+    ],
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
+  },
+  {
+    "name": "R_PHI_EMAIL_MONITOR",
+    "channel": "email",
+    "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for PHI (E_HEALTHCARE_PHI) and bulk exports (E_PHI_BULK_EXPORT). Monitor-only; needs an email tenant under Administration > SaaS Application Tenants.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "E_HEALTHCARE_PHI",
+      "E_PHI_BULK_EXPORT"
+    ],
+    "tenants": "any"
   }
 ]
