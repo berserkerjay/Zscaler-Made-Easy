@@ -512,7 +512,7 @@ classified applications are picked up on the next deploy.
 
 | Pack | Contents | Source |
 |---|---|---|
-| `zbp_enterprise_baseline` | 31 dictionaries, 9 engines, 6 monitor-only web DLP rules (US PII, US PHI, financial, ITAR, TLP markings, private keys), `ZBP-` prefix | Converted from `mkoyfman/zbp-automation` (`zbp-enterprise-zia`) with `tools/pack_from_terraform.py`; rules enabled here (upstream ships them disabled) |
+| `zbp_enterprise_baseline` | 31 dictionaries, 9 engines, 6 monitor-only web DLP rules (US PII, US PHI, financial, ITAR, TLP markings, private keys), `ZBP-` prefix | Converted from `mkoyfman/zbp-automation` (`zbp-enterprise-zia`) with `tools/pack_from_terraform.py` |
 | `zbp_source_code_baseline` | 3 dictionaries, 3 engines, 1 **BLOCK** rule for Python/JavaScript/shell source uploads to AI/ML applications, scope resolved from the `AI_ML` class at deploy time | `zbp-source-code-dlp-zia` |
 
 **Converting a Terraform template.** `tools/pack_from_terraform.py` turns
@@ -577,3 +577,13 @@ card) returns the static workspace.
 Every object carries a `[DLP-Check baseline|pack <id> v<ver>] Terraform-managed.`
 description tag. CI regenerates the committed workspaces and runs
 `terraform init` + `validate` against the real provider schema.
+
+**Shipping convention.** Every rule in every shipped pack is delivered
+`"state": "DISABLED"` with `"severity": "RULE_SEVERITY_INFO"`, the same way
+Zscaler delivers its Fed pack. Deploying creates the dictionaries, engines
+and rules without changing what users experience; you enable each rule and
+raise its severity in the portal (or in the pack) once it is tuned. Actions
+are authored as intended (ALLOW to monitor, BLOCK to enforce), so enabling a
+rule never changes its meaning. For a baseline this is also the definition
+the tenant is held to: enabling a baseline rule in the portal counts as
+drift unless the pack is updated to match.

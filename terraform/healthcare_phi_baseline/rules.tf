@@ -5,9 +5,9 @@ resource "zia_dlp_web_rules" "r_healthcare_phi_mrn_acct_dob" {
   description                  = "Inline Web DLP: PHI presence (E_HEALTHCARE_PHI) or bulk export (E_PHI_BULK_EXPORT). Monitor-only to start; OCR on so screenshots and scanned PDFs are inspected; 10 KB floor suppresses small-telemetry false positives. Move to BLOCK after tuning. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   min_size                     = 10
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]

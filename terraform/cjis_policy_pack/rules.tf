@@ -5,9 +5,9 @@ resource "zia_dlp_web_rules" "z_cjis_markings_monitor" {
   description                  = "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -20,9 +20,9 @@ resource "zia_dlp_web_rules" "z_cjis_identifier_monitor" {
   description                  = "Monitor structured CJIS identifiers — NCIC ORI, FBI UCN, SID, NCIC Purpose Code. Any such identifier leaving the tenant is logged for review. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -35,9 +35,9 @@ resource "zia_dlp_web_rules" "z_cjis_criminal_history_monitor" {
   description                  = "Monitor transmission of criminal-history records (RAP sheets, booking reports, incident reports) when they co-occur with subject PII. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 2
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -50,9 +50,9 @@ resource "zia_dlp_web_rules" "z_cjis_ncic_iii_data_monitor" {
   description                  = "Monitor NCIC / III query results (wanted persons, stolen property, missing persons) correlated with subject PII. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 3
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -65,9 +65,9 @@ resource "zia_dlp_web_rules" "z_cjis_warrants_monitor" {
   description                  = "Monitor wanted-person / warrant content near subject PII — flags accidental or intentional exfil of active-warrant data. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 4
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -80,9 +80,9 @@ resource "zia_dlp_web_rules" "z_cjis_biometric_monitor" {
   description                  = "Monitor biometric references (fingerprint, palm, AFIS/IAFIS/NGI, booking photo) that co-occur with CJIS markings or structured identifiers. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -95,9 +95,9 @@ resource "zia_dlp_web_rules" "z_cjis_nics_firearms_monitor" {
   description                  = "Monitor NICS / firearm background-check terminology — ATF Form 4473, NICS denials, prohibited-person content. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 6
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_MEDIUM"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -110,9 +110,9 @@ resource "zia_dlp_web_rules" "z_cjis_info_sharing_monitor" {
   description                  = "Monitor egress of content derived from LE info-sharing portals (N-DEx, LEEP, Nlets, RISS) when coupled with subject identifiers. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 7
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE"]
   dlp_engines {
@@ -125,9 +125,9 @@ resource "zia_dlp_web_rules" "z_cjis_any_signal_monitor" {
   description                  = "Broad catch-all — any high-signal CJIS marking or structured identifier. Useful as a safety net while tuning the narrower policies above. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 8
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_MEDIUM"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   dlp_engines {
@@ -140,9 +140,9 @@ resource "zia_endpoint_dlp_rules" "z_cjis_endpoint_monitor" {
   description                  = "Endpoint DLP: monitor CJI leaving managed devices via removable media, printing, network shares and application file access. Uses the broadest CJIS engine; monitor-only. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
   dlp_engines {
@@ -155,9 +155,9 @@ resource "zia_casb_dlp_rules" "z_cjis_saas_file_monitor" {
   description                  = "SaaS Security API: scan files at rest in onboarded file-storage tenants (Box, Google Drive, OneDrive, SharePoint) for CJI and report incidents. Applies to every matching onboarded tenant; pin with \"tenants\": [\"<name>\"] to narrow. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "OFLCASB_DLP_REPORT_INCIDENT"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   type                         = "OFLCASB_DLP_FILE"
   collaboration_scope          = ["ANY"]
@@ -174,9 +174,9 @@ resource "zia_casb_dlp_rules" "z_cjis_saas_collaboration_monitor" {
   description                  = "SaaS Security API: scan messages and attachments in onboarded collaboration tenants (Slack, Teams, Webex) for CJI and report incidents. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "OFLCASB_DLP_REPORT_INCIDENT"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   type                         = "OFLCASB_DLP_COLLAB"
   collaboration_scope          = ["ANY"]
@@ -193,9 +193,9 @@ resource "zia_outbound_email_dlp" "z_cjis_email_monitor" {
   name                         = "Z-CJIS Email-Monitor"
   description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CJI markings, NCIC/III references and criminal-justice PII. Monitor-only; switch to BLOCK after tuning. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   dlp_engines {
     id = [zia_dlp_engines.cjis_any_signal_engine.id]

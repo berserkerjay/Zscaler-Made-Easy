@@ -3,7 +3,7 @@
     "name": "ZBP-Financial Information-Monitor",
     "description": "",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "ZBP-Financial Information"
@@ -17,7 +17,7 @@
     "name": "ZBP-ITAR International Traffic in Arms Regulations-Monitor",
     "description": "",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "ZBP-ITAR Phrases"
@@ -31,7 +31,7 @@
     "name": "ZBP-Traffic Light Protocol-Monitor",
     "description": "",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "ZBP-TLP Red",
@@ -47,7 +47,7 @@
     "name": "ZBP-US PII-Monitor",
     "description": "",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "ZBP-US PII"
@@ -61,7 +61,7 @@
     "name": "ZBP-US PHI-Monitor",
     "description": "",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "ZBP-US PHI - Medium Confidence",
@@ -76,7 +76,7 @@
     "name": "ZBP-Private Keys-Monitor",
     "description": "",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "ZBP-Private Keys"

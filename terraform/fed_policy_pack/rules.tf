@@ -155,9 +155,9 @@ resource "zia_endpoint_dlp_rules" "z_fed_endpoint_monitor" {
   description                  = "Endpoint DLP: monitor CUI, FOUO-marked and US PII content leaving managed devices via removable media, printing, network shares and application file access. Monitor-only. [DLP-Check pack fed_policy_pack] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
   dlp_engines {
@@ -170,9 +170,9 @@ resource "zia_casb_dlp_rules" "z_fed_saas_file_monitor" {
   description                  = "SaaS Security API: scan files at rest in onboarded file-storage tenants for CUI, FOUO markings and US PII; report incidents. Applies to every matching onboarded tenant. [DLP-Check pack fed_policy_pack] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "OFLCASB_DLP_REPORT_INCIDENT"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   type                         = "OFLCASB_DLP_FILE"
   collaboration_scope          = ["ANY"]
@@ -188,9 +188,9 @@ resource "zia_outbound_email_dlp" "z_fed_email_monitor" {
   name                         = "Z-Fed Email-Monitor"
   description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CUI, FOUO markings and US PII. Monitor-only. [DLP-Check pack fed_policy_pack] Terraform-managed."
   order                        = var.rule_starting_order + 0
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   dlp_engines {
     id = [zia_dlp_engines.cui_engine_high_confidence.id, zia_dlp_engines.fouo_markings_high_confidence.id, zia_dlp_engines.us_pii.id]

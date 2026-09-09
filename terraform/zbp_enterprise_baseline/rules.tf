@@ -5,7 +5,7 @@ resource "zia_dlp_web_rules" "zbp_financial_information_monitor" {
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
@@ -20,7 +20,7 @@ resource "zia_dlp_web_rules" "zbp_itar_international_traffic_in_arms_regulations
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
@@ -35,7 +35,7 @@ resource "zia_dlp_web_rules" "zbp_traffic_light_protocol_monitor" {
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 2
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
@@ -50,7 +50,7 @@ resource "zia_dlp_web_rules" "zbp_us_pii_monitor" {
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 3
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
@@ -65,7 +65,7 @@ resource "zia_dlp_web_rules" "zbp_us_phi_monitor" {
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 4
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
@@ -80,7 +80,7 @@ resource "zia_dlp_web_rules" "zbp_private_keys_monitor" {
   description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false

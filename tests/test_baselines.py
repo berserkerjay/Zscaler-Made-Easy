@@ -277,3 +277,14 @@ def test_shipped_baselines_are_discoverable_and_plan():
     rep = pd.preflight(client, [{"id": ent["id"], "dir": ent["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"]
     assert rep["baselines"][0]["missing"] == 46
+
+
+def test_shipped_packs_ship_disabled_at_info():
+    """Shipping convention: every rule in every shipped pack is DISABLED at
+    INFO severity (Zscaler's Fed pack delivery convention). Actions keep
+    their authored meaning; enabling is a deliberate, per-rule step."""
+    from dlp_importer import discover_packs
+    for p in discover_packs():
+        for pol in json.load(open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8")):
+            assert pol.get("state") == "DISABLED", f"{p['id']}: {pol['name']} ships {pol.get('state')}"
+            assert pol.get("severity") == "RULE_SEVERITY_INFO", f"{p['id']}: {pol['name']} ships {pol.get('severity')}"

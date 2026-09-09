@@ -3,7 +3,7 @@
     "name": "Z-CJIS Markings-Monitor",
     "description": "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "CJIS Markings High Confidence"
@@ -14,13 +14,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Identifier-Monitor",
     "description": "Monitor structured CJIS identifiers — NCIC ORI, FBI UCN, SID, NCIC Purpose Code. Any such identifier leaving the tenant is logged for review.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "CJIS Identifier Engine"
@@ -31,13 +31,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Criminal History-Monitor",
     "description": "Monitor transmission of criminal-history records (RAP sheets, booking reports, incident reports) when they co-occur with subject PII.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "Criminal History / RAP Sheet Engine"
@@ -48,13 +48,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS NCIC III Data-Monitor",
     "description": "Monitor NCIC / III query results (wanted persons, stolen property, missing persons) correlated with subject PII.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "NCIC / III Data Engine"
@@ -65,13 +65,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Warrants-Monitor",
     "description": "Monitor wanted-person / warrant content near subject PII — flags accidental or intentional exfil of active-warrant data.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "Warrant / Wanted-Person Engine"
@@ -82,13 +82,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Biometric-Monitor",
     "description": "Monitor biometric references (fingerprint, palm, AFIS/IAFIS/NGI, booking photo) that co-occur with CJIS markings or structured identifiers.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "Biometric CJI Engine"
@@ -99,13 +99,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS NICS Firearms-Monitor",
     "description": "Monitor NICS / firearm background-check terminology — ATF Form 4473, NICS denials, prohibited-person content.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "NICS Firearms Background Engine"
@@ -116,13 +116,13 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_MEDIUM"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Info-Sharing-Monitor",
     "description": "Monitor egress of content derived from LE info-sharing portals (N-DEx, LEEP, Nlets, RISS) when coupled with subject identifiers.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "Info-Sharing Portal Engine"
@@ -131,13 +131,13 @@
       "HTTP_RULE",
       "HTTPS_RULE"
     ],
-    "severity": "RULE_SEVERITY_HIGH"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Any-Signal-Monitor",
     "description": "Broad catch-all — any high-signal CJIS marking or structured identifier. Useful as a safety net while tuning the narrower policies above.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
     "engines": [
       "CJIS Any-Signal Engine"
@@ -148,16 +148,16 @@
       "FTP_RULE",
       "NATIVE_FTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_MEDIUM"
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-CJIS Endpoint-Monitor",
     "channel": "endpoint",
     "description": "Endpoint DLP: monitor CJI leaving managed devices via removable media, printing, network shares and application file access. Uses the broadest CJIS engine; monitor-only.",
     "action": "ALLOW",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
-    "severity": "RULE_SEVERITY_HIGH",
+    "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "CJIS Any-Signal Engine"
     ],
@@ -174,9 +174,9 @@
     "saas_type": "OFLCASB_DLP_FILE",
     "description": "SaaS Security API: scan files at rest in onboarded file-storage tenants (Box, Google Drive, OneDrive, SharePoint) for CJI and report incidents. Applies to every matching onboarded tenant; pin with \"tenants\": [\"<name>\"] to narrow.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
-    "severity": "RULE_SEVERITY_HIGH",
+    "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "CJIS Any-Signal Engine"
     ],
@@ -191,9 +191,9 @@
     "saas_type": "OFLCASB_DLP_COLLAB",
     "description": "SaaS Security API: scan messages and attachments in onboarded collaboration tenants (Slack, Teams, Webex) for CJI and report incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
-    "state": "ENABLED",
+    "state": "DISABLED",
     "rank": 7,
-    "severity": "RULE_SEVERITY_HIGH",
+    "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "CJIS Any-Signal Engine"
     ],
@@ -211,8 +211,8 @@
     "channel": "email",
     "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for CJI markings, NCIC/III references and criminal-justice PII. Monitor-only; switch to BLOCK after tuning.",
     "action": "ALLOW",
-    "state": "ENABLED",
-    "severity": "RULE_SEVERITY_HIGH",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "CJIS Any-Signal Engine"
     ],

@@ -1,7 +1,7 @@
 {
   "name": "ZBP Enterprise Baseline",
   "version": "1.0",
-  "description": "Zscaler Best Practice (ZBP) enterprise DLP baseline: US PII, US PHI, financial information, ITAR, Traffic Light Protocol markings and private keys, as monitor-only web DLP rules with their dictionaries and engines. Immutable: objects that drift from this definition are restored on the next deploy. Upstream ships the rules DISABLED; this baseline enables them (ALLOW = monitor only, no user impact).",
+  "description": "Zscaler Best Practice (ZBP) enterprise DLP baseline: US PII, US PHI, financial information, ITAR, Traffic Light Protocol markings and private keys, as monitor-only web DLP rules with their dictionaries and engines. Immutable: objects that drift from this definition are restored on the next deploy. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
   "confidence_tweaks": [],
   "source": "mkoyfman/zbp-automation zbp-enterprise-zia (Zscaler Best Practice enterprise pack)",
   "baseline": {

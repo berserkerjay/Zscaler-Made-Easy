@@ -10,9 +10,9 @@ resource "zia_dlp_web_rules" "zbp_dlp_block_source_code_uploads" {
   description                  = "Blocks uploads containing Python, JavaScript, or shell-script source code to AI/ML applications. Application scope is resolved from the tenant's AI_ML catalogue at deploy time. [DLP-Check baseline zbp_source_code_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
-  state                        = "ENABLED"
+  state                        = "DISABLED"
   action                       = "BLOCK"
-  severity                     = "RULE_SEVERITY_HIGH"
+  severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["WEBSOCKETSSL_RULE", "WEBSOCKET_RULE", "FTP_RULE", "HTTPS_RULE", "HTTP_RULE"]
   cloud_applications           = sort(distinct(concat([for a in data.zia_cloud_applications.apps_ai_ml.applications : a.app])))
