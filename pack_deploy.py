@@ -542,11 +542,11 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             item["status"] = BLOCKED_DEPENDENCY
             item["reason"] = f"Invalid policy definition in the pack: {bad}."
             continue
-        engine_names = [e for e in p.get("engines", [])]
+        engine_names = [e for e in p.get("engines", [])] if pc.has_engines(channel) else []
         item["depends_on"] = [("engine", e) for e in engine_names]
         missing = [e for e in engine_names if e not in engine_items and e not in tenant["engines"]]
         blocked = [e for e in engine_names if e in engine_items and engine_items[e]["status"] not in AVAILABLE_STATUSES]
-        if not engine_names:
+        if not engine_names and pc.has_engines(channel):
             item["status"] = BLOCKED_DEPENDENCY
             item["reason"] = "Policy lists no engines, so it would match nothing."
             continue
@@ -569,13 +569,16 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             continue
         tenant_rules = {r["name"]: r for r in _tenant_rules_for(tenant, channel)}
         existing = tenant_rules.get(name)
-        pack_action = p.get("action", pc.default_action(channel))
+        pack_action = pc.policy_action(p)
+        if channel == pc.CLOUD_APP and item["resolved"].get("actions"):
+            pack_action = ",".join(sorted(item["resolved"]["actions"]))
         if existing is not None:
             item["tenant"] = existing
             baseline = item.get("baseline")
             if baseline:
                 item["adopt"] = BASELINE_MARK not in str(existing.get("description") or "")
-                drift = _policy_drift(p, channel, existing, engine_items, tenant)
+                drift = _policy_drift(p, channel, existing, engine_items, tenant, pack_action=pack_action,
+                                      resolved=item.get("resolved") or {})
                 if drift:
                     item["status"] = RESTORE
                     item["drift"] = drift
@@ -602,23 +605,40 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
         scope = ""
         if item["resolved"].get("tenants"):
             scope = " scoped to " + ", ".join(t["name"] for t in item["resolved"]["tenants"])
-        item["reason"] = f"Will be created as a new {pc.label(channel)} rule at the top of that policy (action {pack_action}){scope}."
+        elif item["resolved"].get("cloud_applications"):
+            scope = f" scoped to {len(item['resolved']['cloud_applications'])} cloud application(s)"
+        shown_action = pack_action if len(pack_action) <= 80 else f"{len(item['resolved'].get('actions') or [])} per-application actions"
+        item["reason"] = f"Will be created as a new {pc.label(channel)} rule at the top of that policy (action {shown_action}){scope}."
         if pc.is_enforcing(channel, pack_action):
             item["warnings"].append("enforcing action")
 
 
 def _policy_drift(p: Dict[str, Any], channel: str, existing: Dict[str, Any],
-                  engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any]) -> List[str]:
+                  engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
+                  *, pack_action: Optional[str] = None, resolved: Optional[Dict[str, Any]] = None) -> List[str]:
     """Fields on which an existing rule differs from its baseline definition.
     Only fields the tenant snapshot carries are compared; anything the API
-    does not echo back (e.g. dynamic cloud-application scope) is left alone."""
+    does not echo back is left alone."""
     drift: List[str] = []
-    if existing.get("action") and existing["action"] != p.get("action", pc.default_action(channel)):
+    resolved = resolved or {}
+    want_action = pack_action if pack_action is not None else pc.policy_action(p)
+    if existing.get("action") and existing["action"] != want_action:
         drift.append("action")
     if existing.get("state") and existing["state"] != p.get("state", "ENABLED"):
         drift.append("state")
     if p.get("severity") and existing.get("severity") and existing["severity"] != p["severity"]:
         drift.append("severity")
+    if channel in pc.CONTROL_CHANNELS:
+        apps = [str(a) for a in (p.get("applications") or [])] or list(resolved.get("cloud_applications") or [])
+        if apps and existing.get("applications") and sorted(apps) != existing["applications"]:
+            drift.append("applications")
+        if p.get("url_categories") and existing.get("url_categories") and sorted(map(str, p["url_categories"])) != existing["url_categories"]:
+            drift.append("url_categories")
+        if p.get("file_types") and existing.get("file_types") and sorted(map(str, p["file_types"])) != existing["file_types"]:
+            drift.append("file_types")
+        if p.get("operation") and existing.get("operation") and existing["operation"] != p["operation"]:
+            drift.append("operation")
+        return drift
     # Engines: expected = the tenant IDs of the baseline's engines. An
     # engine the plan is about to CREATE has no ID yet, so the rule cannot
     # be in sync with it. (A RESTORE keeps its ID.)
@@ -739,7 +759,7 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
     for i in new_rules:
         by_channel.setdefault(i.get("channel") or pc.channel_of(i["definition"]), []).append(i)
 
-    for channel in (pc.WEB, pc.ENDPOINT, pc.SAAS, pc.EMAIL):
+    for channel in pc.CHANNELS:
         rules = by_channel.get(channel)
         if not rules:
             continue
@@ -781,9 +801,21 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
                 "detail": "New rules get admin rank 0, which takes precedence over rules created by lower-ranked admins. Use only to resolve ordering conflicts.",
                 "severity": "warning",
             })
-        enforcing = [i["name"] for i in list(new_rules) + [i for i in policy_items.values() if i["status"] == RESTORE]
-                     if pc.is_enforcing(i.get("channel") or pc.channel_of(i["definition"]),
-                                        i["definition"].get("action", pc.default_action(i.get("channel") or pc.WEB)))]
+        enforcing_items = [i for i in list(new_rules) + [i for i in policy_items.values() if i["status"] == RESTORE]
+                           if pc.is_enforcing(i.get("channel") or pc.channel_of(i["definition"]),
+                                              ",".join(sorted((i.get("resolved") or {}).get("actions") or [])) or pc.policy_action(i["definition"]))]
+        enforcing = [i["name"] for i in enforcing_items if str(i["definition"].get("state", "ENABLED")).upper() != "DISABLED"]
+        enforcing_disabled = [i["name"] for i in enforcing_items if i["name"] not in enforcing]
+        containment = [i for i in new_rules if (i.get("channel") or pc.channel_of(i["definition"])) in pc.CONTROL_CHANNELS]
+        if containment:
+            impacts.append({
+                "type": "containment",
+                "title": f"{len(containment)} containment rule{'s' if len(containment) != 1 else ''} (Cloud App Control, File Type, URL, SSL) run before DLP",
+                "detail": ("ZIA evaluates Cloud App Control, File Type Control, URL Filtering and SSL Inspection before content inspection. "
+                           "Once enabled, a block in these rules stops the transaction whether or not DLP would have matched: "
+                           + ", ".join(i["name"] for i in containment[:6]) + ("…" if len(containment) > 6 else "") + "."),
+                "severity": "info",
+            })
         if enforcing:
             impacts.append({
                 "type": "enforcement",
@@ -791,6 +823,15 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
                 "detail": ("These rules block, quarantine or challenge user activity as soon as they are activated: " + ", ".join(enforcing)
                            + ". Best practice is to deploy in monitor mode first and switch to an enforcing action after tuning."),
                 "severity": "warning",
+            })
+        elif enforcing_disabled:
+            impacts.append({
+                "type": "enforcement_disabled",
+                "title": f"{len(enforcing_disabled)} new rule{'s' if len(enforcing_disabled) != 1 else ''} carr{'y' if len(enforcing_disabled) != 1 else 'ies'} an enforcing action but ship DISABLED",
+                "detail": ("Nothing changes for users until you enable them one by one in the ZIA Admin Portal: " + ", ".join(enforcing_disabled)
+                           + ". When you do, these rules block, decrypt or challenge user activity. Enable them after reviewing the monitor-mode "
+                           "DLP incidents and confirming the application scope is right."),
+                "severity": "info",
             })
         else:
             impacts.append({
@@ -844,13 +885,19 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     elif item["kind"] == "policy":
         channel = item.get("channel") or pc.channel_of(d)
         resolved = item.get("resolved") or {}
-        out["detail"] = {"action": d.get("action", pc.default_action(channel)), "severity": d.get("severity"),
+        out["detail"] = {"action": pc.policy_action(d), "severity": d.get("severity"),
                          "engines": d.get("engines", []), "protocols": d.get("protocols", ["ANY_RULE"]),
                          "channel": channel, "channel_label": pc.label(channel),
                          "saas_type": d.get("saas_type"),
                          "tenants": [t["name"] for t in resolved.get("tenants", [])],
                          "notification_template": d.get("notification_template"),
-                         "labels": d.get("labels", [])}
+                         "labels": d.get("labels", []),
+                         "type": d.get("type"),
+                         "applications": resolved.get("cloud_applications") or d.get("applications") or [],
+                         "actions": resolved.get("actions") or d.get("actions") or [],
+                         "url_categories": d.get("url_categories", []),
+                         "file_types": d.get("file_types", []),
+                         "operation": d.get("operation")}
     elif item["kind"] == "tweak":
         out["detail"] = {"target": d.get("target_confidence")}
     return out
@@ -1256,7 +1303,9 @@ def apply(
                     expected.setdefault(item.get("channel") or pc.channel_of(item["definition"]), []).append(item["name"])
             rules_check: Dict[str, Any] = {}
             for channel, names in expected.items():
-                present, err = pc.list_rule_names(zia, channel)
+                types = {str(i["definition"].get("type")) for i in merged["policy"].values()
+                         if (i.get("channel") or pc.channel_of(i["definition"])) == pc.CLOUD_APP and i["definition"].get("type")}
+                present, err = pc.list_rule_names(zia, channel, types=types if channel == pc.CLOUD_APP else None)
                 if err or present is None:
                     rules_check[channel] = {"total": len(names), "ok": 0, "missing": names, "error": err}
                     verification[src["id"]]["all_good"] = False

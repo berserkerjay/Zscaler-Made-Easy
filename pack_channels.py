@@ -39,6 +39,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 # ---------------------------------------------------------------------------
 
 WEB, ENDPOINT, SAAS, EMAIL = "web", "endpoint", "saas", "email"
+# Containment channels: rules that restrict the CHANNEL or PAYLOAD rather
+# than inspect content. They have no dictionary/engine dependency.
+CLOUD_APP, FILE_TYPE, URL, SSL = "cloud_app", "file_type", "url", "ssl"
 
 CHANNELS: Dict[str, Dict[str, Any]] = {
     WEB: {
@@ -49,6 +52,7 @@ CHANNELS: Dict[str, Dict[str, Any]] = {
         "enforcing_actions": {"BLOCK", "CONFIRM", "ICAP_RESPONSE"},
         "rule_cap": 127,
         "needs_casb": False,
+        "engines": True,
     },
     ENDPOINT: {
         "label": "Endpoint DLP",
@@ -58,6 +62,7 @@ CHANNELS: Dict[str, Dict[str, Any]] = {
         "enforcing_actions": {"BLOCK", "CONFIRM"},
         "rule_cap": None,
         "needs_casb": False,
+        "engines": True,
     },
     SAAS: {
         "label": "SaaS Security API",
@@ -67,6 +72,7 @@ CHANNELS: Dict[str, Dict[str, Any]] = {
         "enforcing_actions": None,  # anything that is not a monitor action
         "rule_cap": None,
         "needs_casb": True,
+        "engines": True,
     },
     EMAIL: {
         "label": "Email DLP",
@@ -76,8 +82,125 @@ CHANNELS: Dict[str, Dict[str, Any]] = {
         "enforcing_actions": {"BLOCK", "CUSTOMHEADERINSERTION"},
         "rule_cap": None,
         "needs_casb": True,
+        "engines": True,
+    },
+    CLOUD_APP: {
+        "label": "Cloud App Control",
+        "long": "Cloud App Control (per-application actions: upload, share, send...)",
+        "service": "cloudappcontrol",
+        "monitor_actions": set(),        # decided per action: any BLOCK_/ISOLATE_ action enforces
+        "enforcing_actions": None,
+        "rule_cap": None,
+        "needs_casb": False,
+        "engines": False,
+    },
+    FILE_TYPE: {
+        "label": "File Type Control",
+        "long": "File Type Control (upload/download of file categories)",
+        "service": "file_type_control_rule",
+        "monitor_actions": {"ALLOW"},
+        "enforcing_actions": {"BLOCK", "CAUTION"},
+        "rule_cap": None,
+        "needs_casb": False,
+        "engines": False,
+    },
+    URL: {
+        "label": "URL Filtering",
+        "long": "URL Filtering (categories, methods, protocols)",
+        "service": "url_filtering",
+        "monitor_actions": {"ALLOW"},
+        "enforcing_actions": {"BLOCK", "CAUTION", "ISOLATE", "ICAP_RESPONSE"},
+        "rule_cap": None,
+        "needs_casb": False,
+        "engines": False,
+    },
+    SSL: {
+        "label": "SSL Inspection",
+        "long": "SSL Inspection (decrypt / do not decrypt / block)",
+        "service": "ssl_inspection_rules",
+        "monitor_actions": {"DO_NOT_DECRYPT"},
+        "enforcing_actions": {"DECRYPT", "BLOCK"},
+        "rule_cap": None,
+        "needs_casb": False,
+        "engines": False,
     },
 }
+CONTROL_CHANNELS = {CLOUD_APP, FILE_TYPE, URL, SSL}
+
+# Cloud App Control rule types (application categories). A pack rule's
+# "type" must be one of these; "cloud_app_classes" defaults to [type].
+CLOUD_APP_TYPES = (
+    "AI_ML", "BUSINESS_PRODUCTIVITY", "CONSUMER", "CUSTOM_CAPP", "DNS_OVER_HTTPS", "ENTERPRISE_COLLABORATION",
+    "FILE_SHARE", "FINANCE", "HEALTH_CARE", "HOSTING_PROVIDER", "HUMAN_RESOURCES", "INSTANT_MESSAGING",
+    "IT_SERVICES", "LEGAL", "SALES_AND_MARKETING", "SOCIAL_NETWORKING", "STREAMING_MEDIA",
+    "SYSTEM_AND_DEVELOPMENT", "WEBMAIL",
+)
+CLOUD_APP_TRUST_LEVELS = ("UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST")
+SSL_PLATFORMS = ("SCAN_IOS", "SCAN_ANDROID", "SCAN_MACOS", "SCAN_WINDOWS", "NO_CLIENT_CONNECTOR", "SCAN_LINUX")
+
+
+def _preview(names: Sequence[Any], limit: int = 6) -> str:
+    """'A, B, C, … (+n more)' for dependency labels."""
+    names = [str(n) for n in names]
+    if len(names) <= limit:
+        return ", ".join(names)
+    return ", ".join(names[:limit]) + f", … (+{len(names) - limit} more)"
+
+
+def has_engines(channel: str) -> bool:
+    return bool(CHANNELS.get(channel, {}).get("engines", True))
+
+
+def policy_action(p: Dict[str, Any]) -> str:
+    """The comparable 'action' of a pack policy, whatever its channel."""
+    ch = channel_of(p)
+    if ch == FILE_TYPE:
+        return str(p.get("filtering_action", "ALLOW"))
+    if ch == SSL:
+        return str((p.get("action") or {}).get("type", "DO_NOT_DECRYPT")) if isinstance(p.get("action"), dict) else str(p.get("action", "DO_NOT_DECRYPT"))
+    if ch == CLOUD_APP:
+        if p.get("actions"):
+            return ",".join(sorted(str(a) for a in p["actions"]))
+        verbs = p.get("actions_by_verb") or {}
+        return ",".join(f"{k}={v}" for k, v in sorted(verbs.items()))
+    return str(p.get("action", default_action(ch)))
+
+
+def _verb_choice(action_name: str, verbs: Dict[str, str]) -> Optional[str]:
+    """Which prefix (ALLOW/BLOCK) a pack wants for an available action such
+    as BLOCK_FILE_SHARE_UPLOAD, from {"UPLOAD": "BLOCK", "*": "ALLOW"}.
+    Longest matching verb wins; '*' is the default; None = leave out."""
+    body = action_name.split("_", 1)[1] if "_" in action_name else action_name
+    best = None
+    for verb, want in verbs.items():
+        if verb == "*":
+            continue
+        if body.endswith(verb.upper()) and (best is None or len(verb) > len(best[0])):
+            best = (verb, want)
+    if best:
+        return str(best[1]).upper()
+    return str(verbs["*"]).upper() if "*" in verbs else None
+
+
+def choose_cloud_app_actions(available: Iterable[str], verbs: Dict[str, str]) -> List[str]:
+    """Pick one ALLOW_/BLOCK_ variant per action family from the tenant's
+    available actions, per the pack's verb mapping. ISOLATE_ actions are
+    never chosen (they need a CBI profile; list them explicitly)."""
+    families: Dict[str, Dict[str, str]] = {}
+    for a in available:
+        a = str(a)
+        for prefix in ("ALLOW_", "BLOCK_", "ISOLATE_"):
+            if a.startswith(prefix):
+                families.setdefault(a[len(prefix):], {})[prefix[:-1]] = a
+                break
+    chosen: List[str] = []
+    for body, variants in sorted(families.items()):
+        want = _verb_choice("X_" + body, verbs)
+        if want and want in variants:
+            chosen.append(variants[want])
+        elif want and want == "BLOCK" and "ALLOW" in variants and "BLOCK" not in variants:
+            chosen.append(variants["ALLOW"])   # nothing to block; keep the family consistent
+    return chosen
 
 SAAS_RULE_TYPES = (
     "OFLCASB_DLP_FILE", "OFLCASB_DLP_EMAIL", "OFLCASB_DLP_CRM", "OFLCASB_DLP_ITSM",
@@ -119,13 +242,17 @@ def is_enforcing(channel: str, action: Optional[str]) -> bool:
     if not spec:
         return False
     action = action or ""
+    if channel == CLOUD_APP:
+        # "BLOCK_..." actions or verb mappings with a BLOCK value enforce.
+        return any(part.startswith("BLOCK_") or part.startswith("ISOLATE_") or part.endswith("=BLOCK") or part.endswith("=ISOLATE")
+                   for part in action.split(","))
     if spec["enforcing_actions"] is None:
         return bool(action) and action not in spec["monitor_actions"]
     return action in spec["enforcing_actions"]
 
 
 def default_action(channel: str) -> str:
-    return "OFLCASB_DLP_REPORT_INCIDENT" if channel == SAAS else "ALLOW"
+    return {SAAS: "OFLCASB_DLP_REPORT_INCIDENT", SSL: "DO_NOT_DECRYPT", CLOUD_APP: ""}.get(channel, "ALLOW")
 
 
 def validate(policy_def: Dict[str, Any]) -> Optional[str]:
@@ -139,6 +266,31 @@ def validate(policy_def: Dict[str, Any]) -> Optional[str]:
             return "SaaS rules need 'saas_type' (e.g. OFLCASB_DLP_FILE)"
         if t not in SAAS_RULE_TYPES:
             return f"unknown saas_type '{t}' (use one of {', '.join(SAAS_RULE_TYPES)})"
+    if ch == CLOUD_APP:
+        t = policy_def.get("type")
+        if not t:
+            return "Cloud App Control rules need 'type' (the application category, e.g. FILE_SHARE, WEBMAIL, AI_ML)"
+        if t not in CLOUD_APP_TYPES:
+            return f"unknown Cloud App Control type '{t}' (use one of {', '.join(CLOUD_APP_TYPES)})"
+        if not policy_def.get("actions") and not policy_def.get("actions_by_verb"):
+            return ("Cloud App Control rules need 'actions' (explicit list) or 'actions_by_verb' "
+                    "(e.g. {\"UPLOAD\": \"BLOCK\", \"*\": \"ALLOW\"})")
+    if ch == FILE_TYPE:
+        if not policy_def.get("file_types"):
+            return "File Type Control rules need 'file_types' (e.g. [\"FTCATEGORY_MS_EXCEL\"])"
+        if policy_def.get("operation", "UPLOAD") not in ("UPLOAD", "DOWNLOAD", "UPLOAD_DOWNLOAD"):
+            return "File Type Control 'operation' must be UPLOAD, DOWNLOAD or UPLOAD_DOWNLOAD"
+        if policy_def.get("filtering_action", "ALLOW") not in ("ALLOW", "CAUTION", "BLOCK"):
+            return "File Type Control 'filtering_action' must be ALLOW, CAUTION or BLOCK"
+    if ch == URL:
+        if not policy_def.get("url_categories"):
+            return "URL Filtering rules need 'url_categories' (e.g. [\"GAMBLING\"] or [\"ANY\"])"
+        if policy_def.get("action", "ALLOW") not in ("ALLOW", "CAUTION", "BLOCK", "ISOLATE", "ICAP_RESPONSE"):
+            return "URL Filtering 'action' must be ALLOW, CAUTION, BLOCK, ISOLATE or ICAP_RESPONSE"
+    if ch == SSL:
+        a = policy_def.get("action")
+        if not isinstance(a, dict) or a.get("type") not in ("DECRYPT", "DO_NOT_DECRYPT", "BLOCK"):
+            return "SSL Inspection rules need 'action': {\"type\": \"DECRYPT\" | \"DO_NOT_DECRYPT\" | \"BLOCK\", ...}"
     return None
 
 
@@ -176,25 +328,40 @@ def engine_ids_of(r: Any) -> List[Any]:
     return sorted(out, key=str)
 
 
-def _rule_summary(r: Any) -> Dict[str, Any]:
+def _rule_summary(r: Any, channel: Optional[str] = None) -> Dict[str, Any]:
+    action = _field(r, "action")
+    if channel == FILE_TYPE:
+        action = _field(r, "filtering_action", "filteringAction", default=action)
+    elif channel == SSL and isinstance(action, dict):
+        action = action.get("type")
+    elif channel == SSL and action is not None and not isinstance(action, str):
+        action = _field(action, "type")
+    elif channel == CLOUD_APP:
+        acts = _field(r, "actions", default=[]) or []
+        action = ",".join(sorted(str(a) for a in acts))
     return {
         "id": _field(r, "id"),
         "name": str(_field(r, "name", default="") or "").strip(),
         "order": int(_field(r, "order", default=0) or 0),
         "rank": _field(r, "rank"),
-        "action": _field(r, "action"),
+        "action": action,
         "state": _field(r, "state"),
         "type": _field(r, "type"),
         # Content fields used for baseline drift detection.
         "engine_ids": engine_ids_of(r),
         "severity": _field(r, "severity"),
         "description": _field(r, "description"),
+        "applications": sorted(str(a) for a in (_field(r, "applications", "cloud_applications", "cloudApplications", default=[]) or [])),
+        "url_categories": sorted(str(a) for a in (_field(r, "url_categories", "urlCategories", default=[]) or [])),
+        "file_types": sorted(str(a) for a in (_field(r, "file_types", "fileTypes", default=[]) or [])),
+        "operation": _field(r, "operation"),
     }
 
 
 def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     """What tenant state the plan has to read for these policies."""
-    out = {"channels": set(), "casb": False, "templates": False, "labels": False, "app_classes": set()}
+    out = {"channels": set(), "casb": False, "templates": False, "labels": False, "app_classes": set(),
+           "cloud_app_types": set(), "cloud_app_actions": []}
     for p in policy_defs:
         ch = channel_of(p)
         out["channels"].add(ch)
@@ -206,6 +373,16 @@ def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
             out["labels"] = True
         for cls in p.get("cloud_app_classes") or []:
             out["app_classes"].add(str(cls).upper())
+        if ch == CLOUD_APP and p.get("type"):
+            out["cloud_app_types"].add(str(p["type"]).upper())
+            if not p.get("applications") and not p.get("cloud_app_classes"):
+                out["app_classes"].add(str(p["type"]).upper())
+            if p.get("actions_by_verb") and not p.get("actions"):
+                out["cloud_app_actions"].append({
+                    "type": str(p["type"]).upper(),
+                    "applications": [str(a) for a in (p.get("applications") or [])],
+                    "classes": [str(c).upper() for c in (p.get("cloud_app_classes") or [str(p["type"])])],
+                })
     return out
 
 
@@ -254,13 +431,53 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
             if ch == SAAS:
                 lister = getattr(svc, "list_all_rules", None)
                 data, err = _nx(lister()) if lister else _nx(svc.list_rules("ANY"))
+            elif ch == CLOUD_APP:
+                # Cloud App Control rules are listed per application category.
+                data = []
+                for t in sorted(need.get("cloud_app_types") or ()):
+                    part, err = _nx(svc.list_rules(t))
+                    if err:
+                        raise RuntimeError(f"{t}: {err}")
+                    for r in part or []:
+                        if isinstance(r, dict):
+                            r.setdefault("type", t)
+                        elif not getattr(r, "type", None):
+                            try:
+                                setattr(r, "type", t)
+                            except Exception:  # noqa: BLE001
+                                pass
+                    data.extend(part or [])
+                err = None
             else:
                 data, err = _nx(svc.list_rules())
             if err:
                 raise RuntimeError(str(err))
-            state["rules"][ch] = sorted((_rule_summary(r) for r in (data or [])), key=lambda r: r["order"])
+            state["rules"][ch] = sorted((_rule_summary(r, ch) for r in (data or [])), key=lambda r: r["order"])
         except Exception as e:  # noqa: BLE001 — surfaced as a dependency failure
             state["errors"][ch] = str(e)[:200]
+
+    # Cloud App Control: the actions a rule may carry depend on the type and
+    # the applications, so packs that map verbs ("UPLOAD": "BLOCK") are
+    # resolved against the tenant's own list of available actions.
+    state["cloud_app_actions"] = {}
+    state["cloud_app_action_errors"] = {}
+    svc = getattr(zia, CHANNELS[CLOUD_APP]["service"], None)
+    for spec in need.get("cloud_app_actions") or []:
+        apps = spec["applications"] or sorted({a for c in spec["classes"] for a in (state["app_classes"].get(c) or [])})
+        key = f"{spec['type']}:{','.join(apps)}"
+        if key in state["cloud_app_actions"] or key in state["cloud_app_action_errors"]:
+            continue
+        try:
+            if svc is None:
+                raise RuntimeError("cloudappcontrol is not available in the installed zscaler-sdk-python")
+            if not apps:
+                raise RuntimeError("no applications resolved for this rule type")
+            data, err = _nx(svc.list_available_actions(spec["type"], apps))
+            if err:
+                raise RuntimeError(str(err))
+            state["cloud_app_actions"][key] = [str(a) for a in (data or [])]
+        except Exception as e:  # noqa: BLE001
+            state["cloud_app_action_errors"][key] = str(e)[:200]
 
     if need["casb"]:
         try:
@@ -390,6 +607,8 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
     # resolved against the tenant's current catalogue at plan time, so new
     # applications Zscaler classifies later are picked up on the next deploy.
     classes = [str(c).upper() for c in (policy_def.get("cloud_app_classes") or [])]
+    if channel == CLOUD_APP and not classes and not policy_def.get("applications") and policy_def.get("type"):
+        classes = [str(policy_def["type"]).upper()]
     if classes:
         apps: List[str] = []
         for cls in classes:
@@ -399,12 +618,35 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
                 missing.append(f"cloud applications of class {cls} could not be listed ({err})")
                 depends.append(("missing", f"Cloud applications: {cls}"))
             elif not found:
-                missing.append(f"the tenant exposes no cloud applications of class {cls}; set \"cloud_applications\" explicitly instead")
+                missing.append(f"the tenant exposes no cloud applications of class {cls}; set \"applications\" explicitly instead")
                 depends.append(("missing", f"Cloud applications: {cls}"))
             else:
                 apps.extend(found)
-                depends.append(("resource", f"Cloud applications: {cls} ({len(found)})"))
+                depends.append(("resource", f"Cloud applications: {cls} ({len(found)}): {_preview(found)}"))
         resolved["cloud_applications"] = sorted(set(apps))
+
+    # Cloud App Control actions: explicit, or chosen from the tenant's
+    # available actions per the pack's verb mapping.
+    if channel == CLOUD_APP:
+        if policy_def.get("actions"):
+            resolved["actions"] = [str(a) for a in policy_def["actions"]]
+        elif policy_def.get("actions_by_verb"):
+            apps = [str(a) for a in (policy_def.get("applications") or [])] or resolved.get("cloud_applications") or []
+            key = f"{str(policy_def['type']).upper()}:{','.join(apps)}"
+            err = (state.get("cloud_app_action_errors") or {}).get(key)
+            available = (state.get("cloud_app_actions") or {}).get(key)
+            if err:
+                missing.append(f"available Cloud App Control actions could not be read ({err})")
+                depends.append(("missing", f"Cloud App Control actions: {policy_def['type']}"))
+            elif not available:
+                missing.append(f"the tenant reports no Cloud App Control actions for type {policy_def['type']} and these applications")
+                depends.append(("missing", f"Cloud App Control actions: {policy_def['type']}"))
+            else:
+                chosen = choose_cloud_app_actions(available, policy_def["actions_by_verb"])
+                if not chosen:
+                    missing.append("the verb mapping selected no actions from the tenant's available Cloud App Control actions")
+                resolved["actions"] = chosen
+                depends.append(("resource", f"Cloud App Control actions: {policy_def['type']} ({len(chosen)} of {len(available)} available): {_preview(chosen, 8)}"))
 
     # Rule labels by name.
     labels = policy_def.get("labels") or []
@@ -438,18 +680,27 @@ def dependency_report(policy_items: Sequence[Dict[str, Any]], state: Dict[str, A
     def names(items):
         return [i["name"] for i in items]
 
-    for ch in (WEB, ENDPOINT, SAAS, EMAIL):
+    for ch in CHANNELS:
         items = by_channel.get(ch)
         if not items:
             continue
         spec = CHANNELS[ch]
         # Shared chain.
-        rows.append({
-            "channel": ch, "label": spec["label"], "status": "info",
-            "requirement": "DLP dictionaries and engines referenced by these rules",
-            "detail": "Resolved per rule in the plan (created by the pack or reused from the tenant).",
-            "rules": names(items),
-        })
+        if spec.get("engines", True):
+            rows.append({
+                "channel": ch, "label": spec["label"], "status": "info",
+                "requirement": "DLP dictionaries and engines referenced by these rules",
+                "detail": "Resolved per rule in the plan (created by the pack or reused from the tenant).",
+                "rules": names(items),
+            })
+        if ch in CONTROL_CHANNELS:
+            err = state["errors"].get(ch)
+            rows.append({
+                "channel": ch, "label": spec["label"], "status": "error" if err else "ok",
+                "requirement": f"{spec['label']} rule API reachable",
+                "detail": err or f"{len(state['rules'].get(ch, []))} existing rule(s). Containment rules run BEFORE DLP: a block here stops the transaction before content inspection.",
+                "rules": names(items),
+            })
         if ch == WEB:
             rows.append({
                 "channel": ch, "label": spec["label"], "status": "ok",
@@ -457,7 +708,7 @@ def dependency_report(policy_items: Sequence[Dict[str, Any]], state: Dict[str, A
                 "detail": f"{tenant_web_rules} existing rule(s); API cap {spec['rule_cap']}.",
                 "rules": names(items),
             })
-        else:
+        elif ch not in CONTROL_CHANNELS:
             err = state["errors"].get(ch)
             rows.append({
                 "channel": ch, "label": spec["label"], "status": "error" if err else "ok",
@@ -499,7 +750,10 @@ def dependency_report(policy_items: Sequence[Dict[str, Any]], state: Dict[str, A
                 if kind in ("resource", "missing") and not lab.startswith("SaaS tenant:"):
                     rows.append({
                         "channel": ch, "label": spec["label"], "status": "ok" if kind == "resource" else "missing",
-                        "requirement": lab, "detail": "Referenced by name in the pack.", "rules": [it["name"]],
+                        "requirement": lab,
+                        "detail": ("Resolved live from the tenant during preflight and again on every deploy, so newly classified applications are picked up automatically."
+                                   if lab.startswith(("Cloud applications:", "Cloud App Control actions:")) else "Referenced by name in the pack."),
+                        "rules": [it["name"]],
                     })
     # De-duplicate identical requirement rows, merging rule lists.
     merged: Dict[Tuple[str, str], Dict[str, Any]] = {}
@@ -528,6 +782,9 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
         if resolved.get("cloud_applications") and not p.get("cloud_applications"):
             p = dict(p, cloud_applications=list(resolved["cloud_applications"]))
         return build_policy_payload(p, engine_ids, use_rank_0=use_rank_0)
+
+    if channel in CONTROL_CHANNELS:
+        return _build_control_payload(channel, p, resolved, use_rank_0=use_rank_0)
 
     body: Dict[str, Any] = {
         "name": p["name"],
@@ -570,19 +827,75 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
     return body
 
 
+def _build_control_payload(channel: str, p: Dict[str, Any], resolved: Dict[str, Any], *, use_rank_0: bool = False) -> Dict[str, Any]:
+    """Containment rules: Cloud App Control, File Type Control, URL
+    Filtering, SSL Inspection. Field names follow the ZIA API / SDK."""
+    body: Dict[str, Any] = {
+        "name": p["name"],
+        "order": 1,
+        "state": p.get("state", "ENABLED"),
+        "rank": 0 if use_rank_0 else p.get("rank", 7),
+    }
+    if p.get("description"):
+        body["description"] = p["description"]
+    apps = [str(a) for a in (p.get("applications") or [])] or list(resolved.get("cloud_applications") or [])
+    if channel == CLOUD_APP:
+        body["type"] = str(p["type"]).upper()
+        body["actions"] = list(resolved.get("actions") or p.get("actions") or [])
+        body["applications"] = apps
+        body["device_trust_levels"] = list(p.get("device_trust_levels") or CLOUD_APP_TRUST_LEVELS)
+        for opt in ("user_agent_types", "user_risk_score_levels", "time_quota", "size_quota"):
+            if p.get(opt):
+                body[opt] = p[opt]
+    elif channel == FILE_TYPE:
+        body["filtering_action"] = p.get("filtering_action", "ALLOW")
+        body["operation"] = p.get("operation", "UPLOAD")
+        body["file_types"] = list(p["file_types"])
+        body["protocols"] = list(p.get("protocols") or ["ANY_RULE"])
+        if apps:
+            body["cloud_applications"] = apps
+        for opt in ("url_categories", "device_trust_levels", "min_size", "max_size", "active_content", "unscannable"):
+            if p.get(opt) is not None and p.get(opt) != []:
+                body[opt] = p[opt]
+    elif channel == URL:
+        body["action"] = p.get("action", "ALLOW")
+        body["protocols"] = list(p.get("protocols") or ["ANY_RULE"])
+        body["url_categories"] = list(p["url_categories"])
+        for opt in ("request_methods", "device_trust_levels", "user_agent_types", "user_risk_score_levels",
+                    "end_user_notification_url", "block_override"):
+            if p.get(opt) is not None and p.get(opt) != []:
+                body[opt] = p[opt]
+    elif channel == SSL:
+        body["action"] = dict(p["action"])
+        body["platforms"] = list(p.get("platforms") or SSL_PLATFORMS)
+        if apps:
+            body["cloud_applications"] = apps
+        for opt in ("url_categories", "device_trust_levels", "user_agent_types", "road_warrior_for_kerberos"):
+            if p.get(opt) is not None and p.get(opt) != []:
+                body[opt] = p[opt]
+    if resolved.get("labels"):
+        body["labels"] = _ids(resolved["labels"])
+    return body
+
+
 def add_rule(zia, channel: str, payload: Dict[str, Any]):
     svc = getattr(zia, CHANNELS[channel]["service"])
+    if channel == CLOUD_APP:
+        return svc.add_rule(payload["type"], **payload)
     return svc.add_rule(**payload)
 
 
 def update_rule(zia, channel: str, rule_id: Any, payload: Dict[str, Any]):
     """Overwrite an existing rule with a full baseline payload (PUT semantics)."""
     svc = getattr(zia, CHANNELS[channel]["service"])
+    if channel == CLOUD_APP:
+        return svc.update_rule(payload["type"], rule_id, **payload)
     return svc.update_rule(rule_id, **payload)
 
 
-def list_rule_names(zia, channel: str) -> Tuple[Optional[set], Optional[str]]:
-    """Fresh name set for post-deploy verification."""
+def list_rule_names(zia, channel: str, types: Optional[Iterable[str]] = None) -> Tuple[Optional[set], Optional[str]]:
+    """Fresh name set for post-deploy verification. Cloud App Control rules
+    are listed per type; pass the types the pack uses."""
     svc = getattr(zia, CHANNELS[channel]["service"], None)
     if svc is None:
         return None, "service unavailable"
@@ -590,6 +903,14 @@ def list_rule_names(zia, channel: str) -> Tuple[Optional[set], Optional[str]]:
         if channel == SAAS:
             lister = getattr(svc, "list_all_rules", None)
             data, err = _nx(lister()) if lister else _nx(svc.list_rules("ANY"))
+        elif channel == CLOUD_APP:
+            data = []
+            for t in sorted(set(types or ())):
+                part, err = _nx(svc.list_rules(t))
+                if err:
+                    return None, str(err)[:200]
+                data.extend(part or [])
+            err = None
         else:
             data, err = _nx(svc.list_rules())
         if err:
@@ -619,4 +940,10 @@ def policy_signature_extra(p: Dict[str, Any]) -> Dict[str, Any]:
         extra["file_types"] = sorted(p["file_types"])
     if p.get("cloud_app_classes"):
         extra["cloud_app_classes"] = sorted(str(c).upper() for c in p["cloud_app_classes"])
+    if ch in CONTROL_CHANNELS:
+        for k in ("type", "applications", "actions", "actions_by_verb", "filtering_action", "operation", "file_types",
+                  "url_categories", "request_methods", "platforms", "protocols"):
+            if p.get(k) is not None:
+                extra[k] = p[k]
+        extra["action"] = policy_action(p)
     return extra

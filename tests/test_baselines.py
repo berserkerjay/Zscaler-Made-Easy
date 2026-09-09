@@ -13,7 +13,7 @@ import pytest
 
 import pack_channels as pc
 import pack_deploy as pd
-from test_pack_channels import FakeChannelRules, make_client  # noqa: F401
+from test_pack_channels import FakeChannelRules, add_control_services, make_client  # noqa: F401
 from test_pack_deploy import (  # noqa: F401
     PREDEF_SSN, FakeClient, Obj, _dict, _engine, _policy, write_pack, items_by,
 )
@@ -205,7 +205,7 @@ def test_cloud_app_class_resolves_to_current_catalogue(tmp_path):
     rep = pd.preflight(client, [pack], writes_enabled=True)
     pol = items_by(rep, "policy")["ZBP-Block Code to AI"]
     assert pol["status"] == pd.CREATE
-    assert "resource:Cloud applications: AI_ML (3)" in pol["depends_on"]
+    assert "resource:Cloud applications: AI_ML (3): CHATGPT, CLAUDE, GEMINI" in pol["depends_on"]
     assert any(r["requirement"].startswith("Cloud applications: AI_ML") and r["status"] == "ok" for r in rep["dependencies"])
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
     assert res["status"] == "applied"
@@ -260,11 +260,11 @@ def test_shipped_baselines_are_discoverable_and_plan():
         assert pid in packs and pd.baseline_meta(packs[pid], pid), pid
     # Healthcare PHI: engines reference the tenant's predefined medical dictionaries by name.
     phi = packs["healthcare_phi_baseline"]
-    client = FakeClient(dicts=[Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)])
+    client = add_control_services(FakeClient(dicts=[Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)]))
     rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
-    assert rep["status"] == "ready", rep["blockers"]
+    assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    assert res["summary"] == {"created": 8}
+    assert res["summary"] == {"created": 15}  # 5 dictionaries + 2 engines + 1 DLP rule + 7 containment rules
     rule = client.zia.dlp_web_rules.added[0]
     assert rule["ocr_enabled"] is True and rule["min_size"] == 10
     assert client.zia.dlp_engine.added[0]["engine_expression"].startswith("((((D1.S > 0) OR (D2.S > 0)")
@@ -284,7 +284,11 @@ def test_shipped_packs_ship_disabled_at_info():
     INFO severity (Zscaler's Fed pack delivery convention). Actions keep
     their authored meaning; enabling is a deliberate, per-rule step."""
     from dlp_importer import discover_packs
+    import pack_channels as pc
     for p in discover_packs():
         for pol in json.load(open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8")):
             assert pol.get("state") == "DISABLED", f"{p['id']}: {pol['name']} ships {pol.get('state')}"
-            assert pol.get("severity") == "RULE_SEVERITY_INFO", f"{p['id']}: {pol['name']} ships {pol.get('severity')}"
+            # Containment rules (Cloud App Control, File Type Control, URL Filtering,
+            # SSL Inspection) carry no DLP severity field in the API.
+            if pc.has_engines(pc.channel_of(pol)):
+                assert pol.get("severity") == "RULE_SEVERITY_INFO", f"{p['id']}: {pol['name']} ships {pol.get('severity')}"
