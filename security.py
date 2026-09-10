@@ -335,3 +335,108 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             cutoff = now - 300
             self.buckets = {k: v for k, v in self.buckets.items() if v[1] > cutoff}
         return await call_next(request)
+
+
+# ── UI access token ───────────────────────────────────────────────────────────
+# The web UI and API are for the person who started the server. A random
+# token is minted per process (or taken from ZSCALER_UI_TOKEN); the launcher
+# opens the browser with it, the page stores it in an HttpOnly cookie, and
+# every other request must carry it (cookie, X-DLP-Check-Token header or a
+# Bearer token). Without it, another process or user on the same machine
+# gets 401 instead of the tenant. ZSCALER_UI_AUTH=0 disables it (not
+# recommended; documented for kiosk-style single-user setups).
+import secrets as _secrets
+
+UI_TOKEN_COOKIE = "dlpcheck_token"
+UI_TOKEN_HEADER = "X-DLP-Check-Token"
+UI_TOKEN_FILE = "ui_token.txt"
+_ui_token: "str | None" = None
+# Paths a browser needs before it can present the token: the page itself,
+# its assets, the standalone report pages (they then call the API with the
+# cookie) and the unlock/status/ping calls.
+_UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
+_UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico"}
+
+
+def ui_auth_enabled() -> bool:
+    return os.environ.get("ZSCALER_UI_AUTH", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def ui_token() -> str:
+    """The token for this process (stable for its lifetime)."""
+    global _ui_token
+    if _ui_token is None:
+        _ui_token = (os.environ.get("ZSCALER_UI_TOKEN") or "").strip() or _secrets.token_urlsafe(24)
+    return _ui_token
+
+
+def ui_token_ok(candidate: Optional[str]) -> bool:
+    c = (candidate or "").strip()
+    return bool(c) and _secrets.compare_digest(c, ui_token())
+
+
+def write_ui_token_file(app_dir: str) -> Optional[str]:
+    """Write the token next to the app (owner-only) so the launcher can open
+    the browser with it. Returns the path, or None when it could not be written."""
+    if not ui_auth_enabled():
+        return None
+    path = os.path.join(app_dir, UI_TOKEN_FILE)
+    try:
+        import tempfile
+        fd, tmp = tempfile.mkstemp(prefix=".ui_token_", dir=app_dir)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(ui_token())
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, path)
+        return path
+    except OSError:
+        return None
+
+
+def _token_from_request(request: Request) -> Optional[str]:
+    h = request.headers.get(UI_TOKEN_HEADER)
+    if h:
+        return h
+    auth = request.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:]
+    return request.cookies.get(UI_TOKEN_COOKIE)
+
+
+def ui_request_ok(request: Request) -> bool:
+    return (not ui_auth_enabled()) or ui_token_ok(_token_from_request(request))
+
+
+def set_ui_cookie(response, request: Request) -> None:
+    """Attach the token cookie: HttpOnly, SameSite=Strict, Secure when the
+    page itself came over HTTPS (a reverse proxy in front of the server)."""
+    secure = request.url.scheme == "https" or (request.headers.get("x-forwarded-proto") or "").lower() == "https"
+    response.set_cookie(UI_TOKEN_COOKIE, ui_token(), httponly=True, samesite="strict", secure=secure, path="/", max_age=12 * 3600)
+
+
+class UIAuthMiddleware(BaseHTTPMiddleware):
+    """Require the UI token on every request except the ones a browser
+    needs to obtain it. `/?token=...` (what the launcher opens) sets the
+    cookie and redirects to `/` so the token never stays in the URL."""
+
+    async def dispatch(self, request: Request, call_next):
+        if not ui_auth_enabled():
+            return await call_next(request)
+        path = request.url.path
+        if path == "/" and request.query_params.get("token"):
+            from fastapi.responses import RedirectResponse
+            if ui_token_ok(request.query_params.get("token")):
+                resp = RedirectResponse("/", status_code=303)
+                set_ui_cookie(resp, request)
+                return resp
+            return JSONResponse({"detail": "That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.",
+                                 "token_required": True}, status_code=401)
+        if path in _UI_AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _UI_AUTH_EXEMPT_PREFIXES):
+            return await call_next(request)
+        if ui_request_ok(request):
+            return await call_next(request)
+        return JSONResponse({"detail": "UI token required. Open the app from the launcher, or paste the token from ui_token.txt (next to the app) into the unlock box.",
+                             "token_required": True}, status_code=401)

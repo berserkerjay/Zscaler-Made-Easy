@@ -38,3 +38,5 @@ server.log
 local_settings.bat
 local_settings.env
 deployments.json
+ui_token.txt
+audit.log*

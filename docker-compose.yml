@@ -1,0 +1,33 @@
+# docker compose up --build
+# Publishes on the host's loopback only; the container is read-only, runs
+# as a non-root user, drops every capability and cannot gain privileges.
+# Credentials: either type them in the GUI, or put ZSCALER_* in a local
+# .env file next to this compose file (git-ignored).
+services:
+  dlp-check:
+    build: .
+    image: dlp-check:local
+    container_name: dlp-check
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ZSCALER_BIND_HOST: 0.0.0.0        # inside the container only; the publish above is loopback
+      ZSCALER_PORT: "8000"
+    volumes:
+      - dlpcheck-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    restart: unless-stopped
+
+volumes:
+  dlpcheck-data:

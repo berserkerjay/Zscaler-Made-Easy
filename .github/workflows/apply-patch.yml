@@ -15,6 +15,8 @@ permissions:
 
 jobs:
   apply:
+    # Only the repository owner may have CI rewrite a branch from a patch.
+    if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

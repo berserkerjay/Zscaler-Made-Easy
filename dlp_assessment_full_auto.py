@@ -12,7 +12,7 @@ Usage:
     python dlp_assessment_full_auto.py --config tenant.json --output report.json
 """
 
-import argparse, json, sys, time
+import argparse, json, os, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,12 +125,43 @@ def _resolve_ep(ep, customer_id=""):
         return "/zpa/mgmtconfig/v1/" + ep[5:]
     return ep
 
+class _RateLimiter:
+    """One request pacer shared by every thread of a Client: keeps a minimum
+    gap between requests (the API's rate limit is per tenant, not per
+    thread) and, after a 429, holds every thread until Retry-After has
+    passed instead of letting them each hit the limit in turn."""
+    def __init__(s, min_gap):
+        import threading
+        s.min_gap = float(min_gap); s._lock = threading.Lock(); s._next = 0.0; s._pause_until = 0.0
+    def wait(s):
+        while True:
+            with s._lock:
+                now = time.time()
+                at = max(now, s._next, s._pause_until)
+                if at - now < 5:            # short waits are booked inside the lock
+                    s._next = at + s.min_gap
+                    delay = at - now
+                    break
+            time.sleep(1)                   # long pause (429): re-check every second
+        if delay > 0:
+            time.sleep(delay)
+    def pause(s, seconds):
+        with s._lock:
+            s._pause_until = max(s._pause_until, time.time() + float(seconds))
+
+
 class Client:
     # Bound the response cache so a long-lived client process can't grow unbounded.
     # Each entry is a small dict; 512 is plenty for an assessment run (~250 checks max).
     _CACHE_MAX = 512
+    # Minimum gap between requests across all threads (ZSCALER_MIN_GAP seconds).
+    # 0.15 s ≈ 6-7 requests/s, well inside the tenant limits with 429 handling as the backstop.
+    MIN_GAP = float(os.environ.get("ZSCALER_MIN_GAP", "0.15") or 0.15)
+    # (connect, read) timeouts: a black-holed tenant fails in 10 s, a slow listing gets 40 s.
+    TIMEOUT = (10, 40)
 
     def __init__(s, cid, sec, vd, cloud, customer_id=""):
+        import threading
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
         s.token = None; s.exp = 0; s.base = _base_url(cloud)
         s.customer_id = str(customer_id or "")
@@ -138,45 +169,62 @@ class Client:
         # Use OrderedDict for O(1) LRU eviction
         from collections import OrderedDict
         s._c = OrderedDict()
+        # Checks run on several threads at once: the cache and the token are shared.
+        s._lock = threading.RLock()
+        s._limiter = _RateLimiter(s.MIN_GAP)
+        s.requests_made = 0
 
     def _cache_set(s, k, v):
-        s._c[k] = v
-        s._c.move_to_end(k)
-        if len(s._c) > s._CACHE_MAX:
-            s._c.popitem(last=False)  # evict least-recently-used
+        with s._lock:
+            s._c[k] = v
+            s._c.move_to_end(k)
+            if len(s._c) > s._CACHE_MAX:
+                s._c.popitem(last=False)  # evict least-recently-used
     def auth(s):
-        try:
-            url = _token_url(s.vd, s.cloud)
-            r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
-            r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
-            s.sess.headers["Authorization"] = f"Bearer {s.token}"
-            return True
-        except Exception as e: return (False, str(e))
+        with s._lock:
+            try:
+                url = _token_url(s.vd, s.cloud)
+                r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
+                r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
+                s.sess.headers["Authorization"] = f"Bearer {s.token}"
+                return True
+            except Exception as e: return (False, str(e))
+    def _ensure_token(s):
+        """Re-auth once when the token is stale; other threads wait for it."""
+        with s._lock:
+            if not s.token or time.time() >= s.exp:
+                a = s.auth()
+                if a is not True:
+                    return ({"error":str(a),"status":401}, 401)
+        return None
     def get(s, ep, p=None, _retry=0):
         # Self-healing: skip ZPA calls if no customer_id provided
         if ep.startswith("/zpa/") and not s.customer_id:
             return ({"error":"ZPA customer ID not configured","status":404}, 404)
         real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
-        if k in s._c:
-            s._c.move_to_end(k)
-            return s._c[k]
+        with s._lock:
+            if k in s._c:
+                s._c.move_to_end(k)
+                return s._c[k]
         # Self-healing: re-auth if token is stale or missing
-        if not s.token or time.time()>=s.exp:
-            a = s.auth()
-            if a is not True:
-                return ({"error":str(a),"status":401}, 401)
+        bad = s._ensure_token()
+        if bad:
+            return bad
         try:
-            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=30); time.sleep(0.3)
+            s._limiter.wait()
+            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
+            s.requests_made += 1
             if r.status_code == 200:
                 try: res = (r.json(), 200)
                 except Exception: res = ([], 200)
             elif r.status_code == 204:
                 res = ([], 204)
             elif r.status_code == 429:
-                # Self-healing: honor Retry-After with cap
-                wait = min(int(r.headers.get("Retry-After", 5)), 30)
-                time.sleep(wait)
+                # Self-healing: honor Retry-After with cap, and hold every thread for it
+                try: wait = min(int(r.headers.get("Retry-After", 5)), 30)
+                except ValueError: wait = 5
+                s._limiter.pause(wait)
                 if _retry < 3: return s.get(ep, p, _retry+1)
                 res = ({"error":"rate limited","status":429}, 429)
             elif r.status_code == 401:
@@ -194,7 +242,8 @@ class Client:
             else:
                 res = ({"error":r.text[:200] if r.text else "error","status":r.status_code}, r.status_code)
         except requests.exceptions.Timeout:
-            if _retry < 2: return s.get(ep, p, _retry+1)
+            # One retry: a second 40 s read timeout on the same listing is not going to help.
+            if _retry < 1: return s.get(ep, p, _retry+1)
             res = ({"error":"request timeout","status":0}, 0)
         except requests.exceptions.ConnectionError as e:
             if _retry < 2:
@@ -208,16 +257,16 @@ class Client:
     def _write(s, method, ep, body=None, _retry=0):
         """Shared write path for POST / PUT / DELETE with self-healing."""
         real_ep = _resolve_ep(ep, s.customer_id)
-        if not s.token or time.time() >= s.exp:
-            a = s.auth()
-            if a is not True:
-                return ({"error": str(a), "status": 401}, 401)
+        bad = s._ensure_token()
+        if bad:
+            return bad
         try:
             kwargs = {"timeout": 30}
             if body is not None:
                 kwargs["json"] = body
+            s._limiter.wait()
             r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
-            time.sleep(0.3)
+            s.requests_made += 1
             if r.status_code in (200, 201):
                 try: return (r.json(), r.status_code)
                 except Exception: return ({}, r.status_code)

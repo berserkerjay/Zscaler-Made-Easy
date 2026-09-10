@@ -280,11 +280,18 @@ if __name__ == "__main__":
                         help="MCP transport (default: streamable-http)")
     parser.add_argument("--port", type=int, default=8080,
                         help="Port for HTTP transport (default: 8080)")
+    parser.add_argument("--host", default=os.environ.get("ZSCALER_MCP_BIND_HOST", "127.0.0.1"),
+                        help="Bind address for HTTP transports (default: 127.0.0.1, loopback only). The server holds "
+                             "tenant credentials and has no authentication of its own, so expose it beyond this "
+                             "machine only behind an authenticating proxy.")
     args = parser.parse_args()
 
+    if args.transport in ("streamable-http", "sse") and args.host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"WARNING: MCP server bound to {args.host}: anyone who can reach port {args.port} can run assessments "
+              "with this process's tenant credentials. Put an authenticating proxy in front of it.", file=sys.stderr)
     if args.transport == "streamable-http":
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=args.port)
+        mcp.run(transport="streamable-http", host=args.host, port=args.port)
     elif args.transport == "sse":
-        mcp.run(transport="sse", host="0.0.0.0", port=args.port)
+        mcp.run(transport="sse", host=args.host, port=args.port)
     else:
         mcp.run(transport="stdio")

@@ -18,7 +18,17 @@ Endpoints:
 """
 
 import json, asyncio, os, re, tempfile, time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from starlette.background import BackgroundTask
+
+
+def _unlink_quietly(path: str) -> None:
+    """Remove a temporary report file; a missing file is not an error."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -132,6 +142,10 @@ app = FastAPI(
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
 app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 app.add_middleware(OriginCheckMiddleware)
+import security as _security
+import audit as _audit
+app.add_middleware(_audit.AuditMiddleware, writes_enabled=writes_enabled)   # innermost: sees the final status of every write call
+app.add_middleware(_security.UIAuthMiddleware)   # inside the headers layer: a 401 still carries the security headers
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -142,7 +156,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -177,6 +191,13 @@ async def _safe_exception_handler(request: Request, exc: Exception):
 # Serve static files (web GUI)
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(_APP_DIR, "static")
+
+# Assessment run tuning. Checks run on ASSESS_WORKERS threads that share one
+# request pacer (see dlp_assessment_full_auto.Client); a check still running
+# after CHECK_TIMEOUT seconds is reported as timed out and the run moves on.
+ASSESS_WORKERS = max(1, min(16, int(os.environ.get("ASSESS_WORKERS", "6") or 6)))
+CHECK_TIMEOUT = max(15, int(os.environ.get("ASSESS_CHECK_TIMEOUT", "60") or 60))
+JOURNEY_TIMEOUT = max(30, int(os.environ.get("ASSESS_JOURNEY_TIMEOUT", "180") or 180))
 
 
 def _load_local_settings() -> None:
@@ -298,6 +319,35 @@ class UpdateCheckRequest(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────────
+
+class UnlockRequest(BaseModel):
+    token: str = ""
+
+
+@app.get("/api/ping")
+async def ping():
+    """Liveness only (no version, no paths): what the launcher polls."""
+    return {"ok": True}
+
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    """Whether this server asks for a UI token and whether this browser has it."""
+    return {"required": _security.ui_auth_enabled(), "unlocked": _security.ui_request_ok(request),
+            "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None}
+
+
+@app.post("/api/auth/unlock")
+async def auth_unlock(req: UnlockRequest, request: Request):
+    """Exchange the UI token for the cookie the page uses from then on."""
+    if not _security.ui_auth_enabled():
+        return {"ok": True, "required": False}
+    if not _security.ui_token_ok(req.token):
+        raise HTTPException(status_code=401, detail="That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.")
+    resp = JSONResponse({"ok": True, "required": True})
+    _security.set_ui_cookie(resp, request)
+    return resp
+
 
 @app.get("/")
 async def serve_gui():
@@ -874,6 +924,51 @@ def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
     return [{"id": pid, "dir": known[pid]["dir"]} for pid in pack_ids]
 
 
+class PackFromTenantRequest(TenantCredsRequest):
+    """Rebuild a pack from the tenant's own Anchor/Signal dictionaries."""
+    name_filter: str = ""      # substring/regex the dictionary names must match ("" = every custom dictionary)
+    prefix: str = "SRC-"       # engine name prefix
+    threshold: int = 4         # Signal matches the engine needs (> N)
+    html_threshold: int = 3
+    confirm: bool = False      # False = preview only; True = write the pack's configs
+
+
+def _regenerate_terraform(pack_id: str, pack_dir: str) -> str:
+    """Keep the committed Terraform workspace in step with the rewritten pack."""
+    try:
+        import pack_terraform
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        pack_terraform.write_workspace(files, os.path.join(_APP_DIR, "terraform", pack_id))
+        return "regenerated"
+    except Exception as ex:  # noqa: BLE001
+        return f"not regenerated ({str(ex)[:120]}); run: python pack_terraform.py {pack_id} --out terraform"
+
+
+@app.post("/api/dlp-packs/{pack_id}/from-tenant")
+async def dlp_pack_from_tenant(pack_id: str, req: PackFromTenantRequest):
+    """Pull the tenant's source-code dictionaries (an Anchor and a Signal
+    per language, paired by name) and rebuild the pack from them: the
+    dictionaries keep their tenant names, each language gets one engine
+    ((Signal > N) AND (Anchor > 0)), the pack's rules reference the new
+    engines and the old pack dictionaries/engines are dropped. Read-only
+    against the tenant. Preview unless `confirm` is true; writing the pack
+    on disk is allowed only from a localhost-bound server."""
+    if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", pack_id or ""):
+        raise HTTPException(status_code=400, detail="Invalid pack id.")
+    if req.confirm and get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=403, detail="Rewriting a pack from the web UI is only allowed when the server is bound to localhost.")
+    pack = _resolve_pack_ids([pack_id])[0]
+    import pack_from_tenant
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    res = await asyncio.to_thread(
+        pack_from_tenant.rebuild_from_tenant, client, pack["dir"], name_filter=req.name_filter[:200], prefix=req.prefix[:40],
+        threshold=max(0, min(999, req.threshold)), html_threshold=max(0, min(999, req.html_threshold)), dry_run=not req.confirm)
+    if res.get("status") == "written":
+        res["terraform"] = await asyncio.to_thread(_regenerate_terraform, pack_id, pack["dir"])
+    return res
+
+
 @app.post("/api/dlp-packs/preflight")
 async def dlp_packs_preflight(req: DLPPackDeployRequest):
     """Plan a deployment of one or more packs WITHOUT writing anything.
@@ -1067,18 +1162,34 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
 
 
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
-                 channel_targets: Optional[Dict[str, List[str]]] = None) -> Dict[str, Any]:
+                 channel_targets: Optional[Dict[str, List[str]]] = None,
+                 progress: Optional[Any] = None) -> Dict[str, Any]:
     """Read-only journey check: one preflight per baseline pack (so each
     pack is measured on its own), rolled up with pack_deploy.journey.
     `channel_targets` measures the pack as the operator chose to deploy
-    it (extension rules count, skipped channels do not)."""
+    it (extension rules count, skipped channels do not). The tenant is
+    read once for every pack (superset of their needs); `progress(i, n,
+    pack_id)` is called before each pack is measured."""
     import pack_deploy
+    import pack_channels as pc
     rows: List[Dict[str, Any]] = []
     tenant = None
     blockers: List[str] = []
-    for pk in packs:
+    cache: Dict[str, Any] = {}
+    try:
+        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, {}))
+        cache["need"] = pc.needs(i["definition"] for i in merged["policy"].values())
+    except Exception:  # noqa: BLE001 — fall back to per-pack needs
+        cache = {}
+    for i, pk in enumerate(packs):
+        if progress is not None:
+            try:
+                progress(i, len(packs), pk["id"])
+            except Exception:  # noqa: BLE001
+                pass
         ct = {pk["id"]: (channel_targets or {})[pk["id"]]} if (channel_targets or {}).get(pk["id"]) is not None else None
-        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None, channel_targets=ct)
+        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None, channel_targets=ct,
+                                    tenant_cache=cache)
         j = pack_deploy.journey(rep)
         rows.extend(j["baselines"])
         tenant = j.get("tenant") or tenant
@@ -1342,7 +1453,10 @@ class DLPPackUploadRequest(BaseModel):
 @app.post("/api/dlp-packs/upload")
 async def dlp_pack_upload(req: DLPPackUploadRequest):
     """Create a new DLP pack from uploaded JSON definitions. Persists
-    to disk so it survives server restarts."""
+    to disk so it survives server restarts. Writes into the application
+    folder, so it is allowed only from a localhost-bound server."""
+    if get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=403, detail="Uploading a pack from the web UI is only allowed when the server is bound to localhost.")
     slug = re.sub(r"[^a-z0-9_]+", "_", req.pack_name.lower().strip()).strip("_")
     if not slug:
         raise HTTPException(status_code=400, detail="Invalid pack name")
@@ -1533,7 +1647,16 @@ async def permissions_required():
         from scope_permissions import get_all_permissions
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"scope_permissions unavailable: {e}")
-    return get_all_permissions()
+    out = dict(get_all_permissions())
+    try:
+        import permissions as _perm
+        out["write_permissions"] = _perm.write_permissions_needed(_perm.WRITE_PERMISSIONS.keys())
+        out["partial_note"] = ("A client that lacks a permission does not stop the tool: the checks, report sections and plan items it "
+                               "cannot read are marked as not permitted and everything else runs. The assessment results list what a "
+                               "full scan would need; a preflight lists what a verified plan would need.")
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 @app.get("/api/llm/status")
@@ -2010,6 +2133,36 @@ async def compliance_drilldown(request: Request):
     return get_control_drilldown(results)
 
 
+@app.post("/api/benchmarks")
+async def benchmarks_report(request: Request):
+    """Best-practice alignment per area (with each deviation's guidance and
+    article), the DLP programme stages, framework rows and the journey,
+    computed from an assessment report (the `complete` payload or a saved
+    JSON)."""
+    import benchmarks
+    data = await request.json()
+    if not isinstance(data, dict) or not data.get("checks"):
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    return benchmarks.benchmark_report(data)
+
+
+@app.post("/api/benchmarks/export")
+async def benchmarks_export(request: Request, format: str = "markdown"):
+    """The same benchmarks as Markdown (default) or JSON, for a customer note."""
+    import benchmarks
+    data = await request.json()
+    if not isinstance(data, dict) or not data.get("checks"):
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    b = benchmarks.benchmark_report(data)
+    org = str((data.get("metadata") or {}).get("org") or "")
+    ts = datetime.now().strftime("%Y%m%d")
+    if format == "json":
+        return Response(content=json.dumps(b, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_benchmarks_{ts}.json"})
+    return Response(content=benchmarks.to_markdown(b, org), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_benchmarks_{ts}.md"})
+
+
 # ═════════════════════════════════════════════════════════════════
 # Rule Migration API (Evaluate All Rules mode)
 # ═════════════════════════════════════════════════════════════════
@@ -2457,64 +2610,84 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "ok"})
             yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
 
-            # NOTE: the loop tuple variable must NOT be named `sec` — that
-            # shadows the outer `sec` (client_secret) and Python's
-            # closure rules then make every earlier reference to `sec`
-            # in this generator raise UnboundLocalError.
-            for i, (check_id, section, label, fn) in enumerate(checks):
-                # Bulletproof: every check runs in its own try/except with hard timeout
+            # Checks run on a small pool of threads (the API's rate limit is
+            # shared by the Client's pacer), each result is streamed the moment
+            # it lands, and a check that is still running after CHECK_TIMEOUT
+            # is reported as timed out without holding up the others. The
+            # pool is per run, so a thread stuck in a black-holed request can
+            # never starve the next run.
+            # NOTE: no loop variable here may be named `sec` — that shadows the
+            # outer `sec` (client_secret) through Python's closure rules.
+            loop = asyncio.get_running_loop()
+            inbox: asyncio.Queue = asyncio.Queue()
+            started: Dict[int, float] = {}
+
+            def _run_one(idx, check_id, section, label, fn):
+                started[idx] = time.time()
                 try:
-                    r = await asyncio.wait_for(asyncio.to_thread(fn, client), timeout=60)
-                except asyncio.TimeoutError:
-                    r = R(R.INFO, f"{label}: Check timed out after 60 seconds.")
-                except Exception as ex:
+                    r = fn(client)
+                except Exception as ex:  # noqa: BLE001
                     r = R(R.INFO, f"{label}: Could not complete check. {str(ex)[:120]}")
+                loop.call_soon_threadsafe(inbox.put_nowait, (idx, r))
 
-                # Defensive: ensure r has expected shape
-                if not hasattr(r, 'status') or not hasattr(r, 'detail'):
+            pool = ThreadPoolExecutor(max_workers=ASSESS_WORKERS, thread_name_prefix="assess")
+            for idx, chk in enumerate(checks):
+                pool.submit(_run_one, idx, *chk)
+            done: Dict[int, Dict[str, Any]] = {}
+            last_keepalive = time.time()
+            run_started = time.time()
+
+            def _finish(idx, r):
+                check_id, section, label, _fn = checks[idx]
+                if not hasattr(r, "status") or not hasattr(r, "detail"):
                     r = R(R.INFO, f"{label}: Invalid check result.")
+                result = {"id": check_id, "section": section, "label": label,
+                          "status": str(r.status), "detail": str(r.detail)[:500]}
+                done[idx] = result
+                return result
 
-                result = {
-                    "id": check_id, "section": section, "label": label,
-                    "status": str(r.status), "detail": str(r.detail)[:500],
-                }
-                results.append(result)
-
-                # Yield check + progress, skipping if client disconnected
+            while len(done) < len(checks):
+                landed = []
                 try:
-                    yield _sse("check", result)
-                    yield _sse("progress", {
-                        "total": len(checks),
-                        "completed": i + 1,
-                        "pct": round((i + 1) / len(checks) * 100),
-                        "current": f"{check_id}: {label}",
-                    })
-                    # Periodic keepalive every 10 checks
-                    if (i + 1) % 10 == 0:
+                    landed.append(await asyncio.wait_for(inbox.get(), timeout=1.0))
+                except asyncio.TimeoutError:
+                    pass
+                while not inbox.empty():
+                    landed.append(inbox.get_nowait())
+                now = time.time()
+                fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
+                for idx, t0 in list(started.items()):
+                    if idx not in done and now - t0 > CHECK_TIMEOUT:
+                        fresh.append(_finish(idx, R(R.INFO, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
+                try:
+                    for result in fresh:
+                        yield _sse("check", result)
+                    if fresh:
+                        yield _sse("progress", {
+                            "total": len(checks), "completed": len(done),
+                            "pct": round(len(done) / len(checks) * 100),
+                            "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
+                            "running": len([i for i in started if i not in done]),
+                            "elapsed": round(now - run_started),
+                        })
+                    if now - last_keepalive > 10:
                         yield ": keepalive\n\n"
+                        last_keepalive = now
                 except Exception:
                     # Client disconnected; just keep collecting results
                     pass
+            pool.shutdown(wait=False, cancel_futures=True)
+            results = [done[i] for i in range(len(checks))]
 
-            # Data-governance journey: where the tenant stands against every
-            # baseline pack. Read-only, best effort; never fails the assessment.
-            journey = None
-            if not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"):
-                try:
-                    yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
-                                            "current": "Data governance journey: measuring the tenant against the baselines"})
-                    packs = _journey_packs(journey_pack_ids)
-                    if packs:
-                        sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
-                        journey = await asyncio.wait_for(asyncio.to_thread(_journey_for, sdk, packs), timeout=180)
-                        journey["tenant_label"] = f"{vd} ({cloud})"
-                except Exception as ex:  # noqa: BLE001
-                    journey = {"status": "error", "error": str(ex).replace(sec, mask_secret(sec))[:200] if sec else str(ex)[:200]}
+            # Results first: the report goes out as soon as the checks are
+            # in. The data-governance journey (one read-only preflight per
+            # baseline pack) follows as its own event so nobody waits on it.
+            want_journey = bool(_journey_packs(journey_pack_ids)) and (
+                not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"))
 
-            # Always send the complete event, even if some checks failed
             try:
                 secs, overall = compute(results)
-            except Exception as e:
+            except Exception:  # noqa: BLE001
                 secs, overall = {}, 0
 
             report = {
@@ -2527,6 +2700,8 @@ async def assess_stream(req: AssessRequest):
                     "cloud": req.cloud,
                     "total_checks": len(checks),
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
+                    "elapsed_seconds": round(time.time() - run_started, 1),
+                    "api_requests": getattr(client, "requests_made", None),
                 },
                 "score": overall,
                 "maturity": maturity(overall),
@@ -2534,20 +2709,64 @@ async def assess_stream(req: AssessRequest):
                 "checks": results,
                 "critical": [r for r in results if r["status"] == "FAIL"],
                 "review": [r for r in results if r["status"] == "REVIEW"],
-                "journey": journey,
+                "journey": {"status": "pending"} if want_journey else None,
                 "profile": None,
             }
-            if profile:
+
+            def _record_history(rep):
+                if not profile:
+                    return None
                 try:
                     import tenant_profiles
-                    updated = tenant_profiles.add_history(profile["id"], tenant_profiles.snapshot(report))
+                    updated = tenant_profiles.add_history(profile["id"], tenant_profiles.snapshot(rep))
                     if updated:
-                        report["profile"] = {"id": updated["id"], "name": updated.get("name"),
-                                             "history": (updated.get("history") or [])[-12:]}
+                        return {"id": updated["id"], "name": updated.get("name"),
+                                "history": (updated.get("history") or [])[-12:]}
                 except Exception:  # noqa: BLE001 — history is best effort
-                    pass
+                    return None
+                return None
 
+            # Partial scans are reported as such: which checks the API client
+            # was not allowed to run, and what to grant for a full scan.
+            try:
+                import permissions as _perm
+                report["permissions"] = _perm.assessment_permission_summary(results, req.scopes or [req.scope])
+            except Exception:  # noqa: BLE001
+                report["permissions"] = None
+            if not want_journey:
+                report["profile"] = _record_history(report)
             yield _sse("complete", report)
+
+            if want_journey:
+                journey = None
+                try:
+                    packs = _journey_packs(journey_pack_ids)
+                    yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                                            "current": f"Data governance journey: measuring the tenant against {len(packs)} baselines"})
+                    sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
+                    notes: asyncio.Queue = asyncio.Queue()
+
+                    def _note(i, n, pack_id):
+                        loop.call_soon_threadsafe(notes.put_nowait, (i, n, pack_id))
+
+                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, progress=_note))
+                    deadline = time.time() + JOURNEY_TIMEOUT
+                    while not task.done():
+                        if time.time() > deadline:
+                            raise TimeoutError(f"the journey measurement did not finish within {JOURNEY_TIMEOUT} seconds")
+                        try:
+                            i, n, pack_id = await asyncio.wait_for(notes.get(), timeout=5.0)
+                            yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                                                    "current": f"Data governance journey: {pack_id} ({i + 1} of {n})", "journey": True})
+                        except asyncio.TimeoutError:
+                            yield ": keepalive\n\n"
+                    journey = task.result()
+                    journey["tenant_label"] = f"{vd} ({cloud})"
+                except Exception as ex:  # noqa: BLE001
+                    journey = {"status": "error", "error": str(ex).replace(sec, mask_secret(sec))[:200] if sec else str(ex)[:200]}
+                report["journey"] = journey
+                report["profile"] = _record_history(report)
+                yield _sse("journey", {"journey": journey, "profile": report["profile"]})
 
         except Exception as e:
             # Catch-all: never let the generator crash the stream
@@ -2590,9 +2809,11 @@ async def generate_docx(request: Request):
         print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
         raise HTTPException(status_code=500, detail=f"Word generation error: {type(e).__name__}: {str(e)[:300]}")
 
-    org = cfg.get("org", "report").replace(" ", "_")
+    org = re.sub(r"[^A-Za-z0-9_-]+", "_", str(cfg.get("org", "report"))).strip("_")[:60] or "report"
+    # The temp file holds the whole assessment: remove it once it has been sent.
     return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        filename=f"zscaler_{org}_{datetime.now().strftime('%Y%m%d')}.docx")
+                        filename=f"zscaler_{org}_{datetime.now().strftime('%Y%m%d')}.docx",
+                        background=BackgroundTask(_unlink_quietly, tmp_path))
 
 
 def _sse(event: str, data: dict) -> str:
@@ -2703,17 +2924,98 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
             from bypass_report import to_docx
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
-        output_path = os.path.join(tempfile.gettempdir(), f"zscaler_bypass_{ts}.docx")
+        # A private, unpredictable temp file (owner-only), removed once sent.
+        fd, output_path = tempfile.mkstemp(suffix=".docx", prefix="zscaler_bypass_")
+        os.close(fd)
         try:
             await asyncio.to_thread(to_docx, report, output_path)
         except ImportError as e:
+            _unlink_quietly(output_path)
             raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
         except Exception as e:
+            _unlink_quietly(output_path)
             raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
         return FileResponse(output_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            filename=f"zscaler_bypass_{ts}.docx")
+                            filename=f"zscaler_bypass_{ts}.docx", background=BackgroundTask(_unlink_quietly, output_path))
     return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",
                     headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"})
+
+
+# ── Data Flow Map (the exact path a transaction takes through the tenant) ──────
+class DataFlowRequest(MigrateRequest):
+    destinations: List[str] = []      # traffic-class keys, app names, category ids or hostnames; [] = every traffic class
+    platform: str = "windows"
+
+
+class DataFlowTraceRequest(BaseModel):
+    destination: str = ""
+    network: str = "off"
+    platform: str = "windows"
+
+
+@app.get("/report/dataflow")
+async def report_dataflow_page():
+    """Standalone tab for the Data Flow Map (static/report_dataflow.html)."""
+    page = os.path.join(STATIC_DIR, "report_dataflow.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/report/data-flow")
+async def report_data_flow(req: DataFlowRequest):
+    """Trace every traffic class (or the given destinations) through the
+    tenant: Client Connector app profile and forwarding profile, PAC, SSL
+    inspection, URL filtering, Cloud App Control, File Type Control and
+    Web DLP, plus the endpoint, SaaS and email channels, with each policy
+    pack's coverage on the path. Read-only; carries report_id for
+    /report/dataflow?id=... and the exports."""
+    try:
+        from data_flow import generate_data_flow_report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"data_flow unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    plat = req.platform if req.platform in ("windows", "macos", "ios", "android", "linux") else "windows"
+    dests = [str(d)[:200] for d in (req.destinations or [])][:40]
+    report = await asyncio.to_thread(generate_data_flow_report, client, dests or None, plat)
+    rid = _remember_report("dataflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    return _REPORTS[rid]
+
+
+@app.get("/api/report/data-flow/{report_id}")
+async def report_data_flow_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.post("/api/report/data-flow/{report_id}/trace")
+async def report_data_flow_trace(report_id: str, req: DataFlowTraceRequest):
+    """Trace one destination the user typed (app, category or hostname)
+    against the stored tenant snapshot; no tenant call."""
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    from data_flow import trace_from_report
+    if not req.destination.strip():
+        raise HTTPException(status_code=400, detail="Enter a cloud application, URL category or hostname.")
+    return await asyncio.to_thread(trace_from_report, rep, req.destination.strip()[:200], req.network, req.platform)
+
+
+@app.get("/api/report/data-flow/export/{report_id}")
+async def report_data_flow_export(report_id: str, format: str = "markdown"):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    from data_flow import to_markdown as df_md
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        return Response(content=json.dumps(rep, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_dataflow_{ts}.json"})
+    return Response(content=df_md(rep, rep.get("tenant_label", "")), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_dataflow_{ts}.md"})
 
 
 # ── SSL Inspection Flow (what inline DLP can and cannot see) ───────────────────
@@ -2834,7 +3136,20 @@ if __name__ == "__main__":
     host = get_bind_host()
     port = get_port()
     print("\n  Zscaler Platform Assessment")
-    print(f"  Open http://{('localhost' if host == '127.0.0.1' else host)}:{port} in your browser\n")
+    open_url = f"http://{('localhost' if host == '127.0.0.1' else host)}:{port}/"
+    if _security.ui_auth_enabled():
+        token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
+        open_url += f"?token={_security.ui_token()}"
+        print(f"  UI token: {_security.ui_token()}")
+        print(f"  (also in {token_path or 'ui_token.txt'}; the launcher opens the browser with it, anyone else gets 401)")
+    print(f"  Open {open_url} in your browser\n")
+    if os.environ.get("ZSCALER_OPEN_BROWSER", "").strip().lower() in ("1", "true", "yes"):
+        try:
+            import threading
+            import webbrowser
+            threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()
+        except Exception:  # noqa: BLE001
+            pass
     if host != "127.0.0.1":
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
         print(f"     can reach this server. Currently listening on {host}:{port}.")

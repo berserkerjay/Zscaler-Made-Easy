@@ -611,7 +611,7 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
 | Pack | Baseline | Who it is for |
 |---|---|---|
 | `zbp_enterprise_baseline` | yes | Any enterprise: Zscaler's best-practice DLP set |
-| `zbp_source_code_baseline` | yes | Engineering organisations: source code to AI apps |
+| `zbp_source_code_baseline` | yes | Engineering organisations: source code to AI apps. 13 languages from the v4.14 pattern library, each an Anchor dictionary (one fingerprint) AND a Signal dictionary (eight counted patterns) in one engine; regenerate from a new library document with `tools/pack_from_pattern_doc.py`, or from the tenant's own Anchor/Signal dictionaries with `pack_from_tenant.py` (also the *Rebuild from tenant dictionaries* button on the pack card) |
 | `healthcare_phi_baseline` | yes | Healthcare: PHI with clinical context, plus containment |
 | `cui_marking_baseline` | yes | Defense industrial base / federal contractors: CUI by its markings (28 dictionaries in six tiers, block/caution/monitor rules, SSL, AI upload block); see the pack's README for the tier table |
 | `zbp_endpoint_dlp_baseline` | yes | Any enterprise with Endpoint DLP: USB, private shares and desktop GenAI apps, graded by PCI confidence (three parent rules, five sub-rules, one application group) |

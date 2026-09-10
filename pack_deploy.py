@@ -391,7 +391,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     when `need` (see pack_channels.needs) says the packs use them.
     Never raises: each failure is recorded and `reachable` reflects it."""
     snap: Dict[str, Any] = {
-        "reachable": True, "errors": [],
+        "reachable": True, "errors": [], "unreadable": {},
         "dictionaries": {}, "predefined": {}, "engines": {}, "rules": [],
         "channels": {"rules": {}, "errors": {}, "casb_tenants": None, "casb_error": None,
                      "templates": None, "templates_error": None, "labels": None, "labels_error": None},
@@ -411,7 +411,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             if not _field(d, "custom", default=False):
                 snap["predefined"][name] = _field(d, "id")
     except Exception as e:  # noqa: BLE001 — surfaced to the user, not hidden
-        snap["reachable"] = False
+        snap["unreadable"]["dictionaries"] = str(e)[:200]
         snap["errors"].append(f"dictionaries: {str(e)[:200]}")
 
     try:
@@ -424,7 +424,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             if name:
                 snap["engines"][name] = e
     except Exception as e:  # noqa: BLE001
-        snap["reachable"] = False
+        snap["unreadable"]["engines"] = str(e)[:200]
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
     try:
@@ -447,8 +447,13 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             })
         snap["rules"].sort(key=lambda r: r["order"])
     except Exception as e:  # noqa: BLE001
-        snap["reachable"] = False
+        snap["unreadable"]["web DLP rules"] = str(e)[:200]
         snap["errors"].append(f"web DLP rules: {str(e)[:200]}")
+    # A partial read still yields a plan: only when nothing could be listed
+    # is the tenant unreachable. What could not be read is planned as new
+    # (the API rejects duplicate names, so nothing is overwritten) and every
+    # such item is marked unverified, with the permission that would fix it.
+    snap["reachable"] = len(snap["unreadable"]) < 3
     return snap
 
 
@@ -1073,8 +1078,14 @@ def preflight(
     writes_enabled: Optional[bool] = None,
     restore_drift: bool = False,
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
+    tenant_cache: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
+
+    `tenant_cache` (a dict the caller keeps across calls) makes several
+    preflights against the same tenant read it once: the first call stores
+    the snapshot (read for `tenant_cache["need"]` when the caller set it,
+    a superset of every pack's needs), later calls plan from a copy.
 
     `channel_targets` (pack id → list of web/endpoint/saas/email) chooses
     which DLP channels each pack is deployed into: deselected channels
@@ -1097,7 +1108,13 @@ def preflight(
     sources = load_sources(packs, targets_norm)
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
-    tenant = fetch_tenant(client, need)
+    if tenant_cache is not None:
+        import copy
+        if tenant_cache.get("snapshot") is None:
+            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need)
+        tenant = copy.deepcopy(tenant_cache["snapshot"])
+    else:
+        tenant = fetch_tenant(client, need)
     options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift),
                "channel_targets": {k: sorted(v) for k, v in sorted(targets_norm.items())}}
 
@@ -1108,6 +1125,8 @@ def preflight(
     read_only_note = ("The server is in read-only mode: this plan can be reviewed and exported but not deployed. "
                       "Click Enable write mode in Deploy Policy Packs (you type a confirmation phrase), or start the server with "
                       "START_Zscaler_Assessment_WRITES_ENABLED.bat.") if writes_enabled is False else ""
+
+    unreadable = tenant.get("unreadable") or {}
 
     if tenant["reachable"]:
         _plan_dictionaries(merged["dictionary"], tenant, restore=restore_drift)
@@ -1121,6 +1140,11 @@ def preflight(
                                     + list(merged["app_group"].values()) + list(merged["policy"].values()), restore_drift) + impacts
         blockers.extend(impact_blockers)
         dependencies = pc.dependency_report(list(merged["policy"].values()), tenant["channels"], len(tenant["rules"]))
+        for kind, key in (("dictionaries", "dictionary"), ("engines", "engine"), ("web DLP rules", "policy")):
+            if kind in unreadable:
+                for item in merged[key].values():
+                    if item["status"] == CREATE and (key != "policy" or pc.channel_of(item["definition"]) == pc.WEB):
+                        item["warnings"].append("unverified: the tenant's list could not be read, so an existing object of this name would make the create fail (never overwrite)")
     else:
         dependencies = []
         for kind in merged:
@@ -1148,6 +1172,12 @@ def preflight(
     summary["channels"] = channels
 
     warnings: List[str] = []
+    if tenant["reachable"] and unreadable:
+        _perm = {"dictionaries": "DLP Dictionaries", "engines": "DLP Engines", "web DLP rules": "Web DLP Rules"}
+        for kind, err in unreadable.items():
+            warnings.append(f"Could not list the tenant's {kind} ({err}). Those objects are planned as new and will be attempted; "
+                            f"the API rejects a duplicate name, so nothing existing is overwritten. For a verified plan grant the "
+                            f"API client '{_perm.get(kind, kind)}' read access.")
     for i in all_items:
         if i["status"] == CONFLICT:
             warnings.append(f"{i['kind'].title()} '{i['name']}' is defined differently in {', '.join(i['packs'])} — it and everything that depends on it will be skipped.")

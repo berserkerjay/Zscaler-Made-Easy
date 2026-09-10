@@ -588,6 +588,11 @@
                 title="Live flow diagram: for each DLP-relevant traffic class, which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps highlighted. Opens in a new tab.">
           <span aria-hidden="true">🔐</span> SSL Inspection Flow
         </button>
+        <button class="btn btn-ghost" onclick="openDataFlowTab()"
+                aria-label="Open the live Data Flow Map: the exact path a transaction takes through Client Connector, forwarding profiles, PAC, SSL, URL filtering, app control and DLP, with each policy pack's weak points (opens in a new tab)"
+                title="Live path tracer: for every traffic class (and any app, category or hostname you type) on every network context, which app profile, forwarding profile, PAC, SSL rule, URL rule, Cloud App Control rule, File Type rule and DLP rule decides, where it is bypassed or blind, and where each policy pack is weak. Opens in a new tab.">
+          <span aria-hidden="true">🗺️</span> Data Flow Map
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -926,11 +931,17 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="fw-cb" value="CIS" checked style="width:auto;cursor:pointer;"> 🛡️ CIS Controls v8
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="NIST_CSF_2" checked style="width:auto;cursor:pointer;"> 🧭 NIST CSF 2.0
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="GLBA" checked style="width:auto;cursor:pointer;"> 🏦 GLBA Safeguards
+          </label>
         </div>
         <div class="helper">
           <a onclick="toggleFrameworks(true)" style="color:var(--accent);cursor:pointer;margin-right:0.75rem;">Select all</a>
           <a onclick="toggleFrameworks(false)" style="color:var(--accent);cursor:pointer;">Clear all</a>
-          <span style="margin-left:0.75rem;">Uncheck all to skip compliance analysis entirely.</span>
+          <span style="margin-left:0.75rem;">Ticked frameworks narrow the compliance card; with none ticked every framework is shown.</span>
         </div>
       </div>
     </div>
@@ -1158,9 +1169,20 @@
       </div>
     </div>
 
+    <div class="card" id="permissionsCard" style="display:none;">
+      <h2>Partial scan: what a full scan needs</h2>
+      <div id="permissionsBody"></div>
+    </div>
+
     <div class="card">
       <h2>Scores by Section</h2>
       <div class="section-grid" id="sectionGrid"></div>
+    </div>
+
+    <div class="card" id="benchmarkCard" style="display:none;">
+      <h2>Best Practices &amp; Benchmarks</h2>
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:1rem;">How this tenant measures against Zscaler's stated best practices (every check that names one), the DLP programme checklist as five stages, the compliance frameworks below, and the baseline-pack journey. Each deviation links to the article that says what good looks like.</p>
+      <div id="benchmarkBody"></div>
     </div>
 
     <div class="card" id="complianceCard">
@@ -3171,10 +3193,20 @@ async function runAssessment() {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // Watchdog: the server sends something at least every 10 s (a result or
+    // a keepalive). If nothing arrives for 45 s, say so instead of sitting
+    // on a frozen bar; after 3 minutes of silence give up and show what we have.
+    let lastByte = Date.now();
+    const watchdog = setInterval(() => {
+      const quiet = Math.round((Date.now() - lastByte) / 1000);
+      if (quiet >= 180) { clearInterval(watchdog); reader.cancel().catch(() => {}); return; }
+      if (quiet >= 45) document.getElementById('progressDetail').textContent = `No answer from the server for ${quiet}s — still waiting (the tenant may be slow to answer a listing).`;
+    }, 5000);
 
     while (true) {
       const {done, value} = await reader.read();
       if (done) break;
+      lastByte = Date.now();
       buffer += decoder.decode(value, {stream: true});
       const lines = buffer.split('\n');
       buffer = lines.pop();
@@ -3183,6 +3215,11 @@ async function runAssessment() {
           try { handleEvent(JSON.parse(line.slice(6))); } catch(e){}
         }
       }
+    }
+    clearInterval(watchdog);
+    if (!reportData && partialResults.length) {
+      setStatus('The server stopped answering. Showing the checks that finished.', 'error');
+      buildPartialReport();
     }
   } catch(e) {
     setStatus('Connection lost: ' + e.message + '. Showing partial results.', 'error');
@@ -3233,11 +3270,26 @@ function handleEvent(evt) {
     const pct = evt.pct || Math.round((evt.completed / evt.total) * 100);
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progressPct').textContent = pct + '%';
-    document.getElementById('progressText').textContent = `Check ${evt.completed} of ${evt.total}`;
+    document.getElementById('progressText').textContent = evt.journey
+      ? `All ${evt.total} checks done — results are below; measuring the journey`
+      : `Check ${evt.completed} of ${evt.total}${evt.running ? ` · ${evt.running} running` : ''}${evt.elapsed ? ` · ${evt.elapsed}s` : ''}`;
     if (evt.current) document.getElementById('progressDetail').textContent = evt.current;
+    if (evt.journey && typeof _gdJourneyCard === 'function') { try { _gdJourneyCard({ status: 'pending', current: evt.current }); } catch (e) {} }
   } else if (evt.score !== undefined) {
     reportData = evt;
     showResults(evt);
+    setStatus(evt.journey && evt.journey.status === 'pending'
+      ? `Assessment complete in ${(evt.metadata || {}).elapsed_seconds || '?'}s — measuring the data governance journey in the background`
+      : 'Assessment complete', 'success');
+    if (evt.journey && evt.journey.status === 'pending') document.getElementById('progressCard').classList.add('active');
+  } else if (evt.journey !== undefined && evt.score === undefined) {
+    // The journey lands after the results.
+    if (reportData) { reportData.journey = evt.journey; if (evt.profile) reportData.profile = evt.profile; }
+    if (window.GD) GD.lastReport = reportData;
+    document.getElementById('progressCard').classList.remove('active');
+    if (typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(evt.journey); } catch (e) { console.warn('journey card', e); } }
+    if (evt.profile && typeof _gdProfilesLoad === 'function') { try { _gdProfilesLoad(); } catch (e) {} }
+    try { refreshBenchmarkJourney(evt.journey); } catch (e) {}
     setStatus('Assessment complete', 'success');
   } else if (evt.message) {
     setStatus('Error: ' + evt.message + (partialResults.length ? '. Showing partial results.' : ''), 'error');
@@ -3278,8 +3330,133 @@ function showResults(data) {
   }
 
   renderChecks(checks, 'all');
+  renderPermissions(data);
+  loadBenchmarks(data);
   loadCompliance(data);
+  expandResultSections();
   window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+}
+
+// ── Partial scan card: what the API client could not run ────────────
+function renderPermissions(data) {
+  const card = document.getElementById('permissionsCard');
+  const body = document.getElementById('permissionsBody');
+  if (!card || !body) return;
+  const p = data && data.permissions;
+  if (!p || !p.blocked) { card.style.display = 'none'; return; }
+  const E = escapeHtml;
+  const scopes = (p.needed_for_full_scan || []).filter(s => s.blocked_checks);
+  body.innerHTML = `
+    <p style="font-size:0.88rem;margin-bottom:0.6rem;"><strong style="color:var(--warn);">${p.blocked} check${p.blocked === 1 ? '' : 's'} could not run</strong> because the API client's role does not include their feature. Every other check ran, so the score above covers what was reachable. ${E(p.note)}</p>
+    ${scopes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.6rem;">${scopes.map(s => `<div style="padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,0.3);">
+        <div style="font-weight:700;">${E(s.label)} <span style="color:var(--dim);font-weight:500;font-size:0.8rem;">${E(s.service)} · ${s.blocked_checks} blocked</span></div>
+        <div style="font-size:0.78rem;color:var(--dim);margin-top:0.2rem;">Grant (read): ${E((s.permissions || []).join(', '))}</div>
+        ${s.license ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">${E(s.license)}</div>` : ''}
+      </div>`).join('')}</div>` : ''}
+    <details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:var(--accent);font-size:0.82rem;">Checks that were not permitted (${p.blocked})</summary>
+      <ul style="margin:0.4rem 0 0;padding-left:1.2rem;font-size:0.8rem;color:var(--dim);">${(p.checks || []).map(c => `<li><span style="font-family:monospace;">[${E(c.id)}]</span> ${E(c.label)} <span style="opacity:0.8;">(${E(c.section)})</span></li>`).join('')}</ul></details>
+    <div style="font-size:0.78rem;color:var(--dim);margin-top:0.6rem;">The full permission list per scope, and what a configuration change needs, is on the <a href="/permissions" target="_blank" rel="noopener" style="color:var(--accent);">Required API Access</a> page.</div>`;
+  card.style.display = 'block';
+}
+
+// ── Best practices & benchmarks card ────────────────────────────────
+let benchmarkData = null;
+async function loadBenchmarks(data) {
+  const card = document.getElementById('benchmarkCard');
+  const body = document.getElementById('benchmarkBody');
+  if (!card || !body) return;
+  try {
+    const resp = await fetch('/api/benchmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    if (!resp.ok) { card.style.display = 'none'; return; }
+    benchmarkData = await resp.json();
+    body.innerHTML = renderBenchmarks(benchmarkData);
+    card.style.display = 'block';
+    const h = card.querySelector(':scope > h2');
+    if (h && typeof _setCardOpen === 'function') _setCardOpen(card, h, true);
+  } catch (e) {
+    card.style.display = 'none';
+  }
+}
+function refreshBenchmarkJourney(journey) {
+  // The journey lands after the results; redraw the card with it.
+  if (!reportData) return;
+  loadBenchmarks({ ...reportData, journey });
+}
+function renderBenchmarks(b) {
+  const E = escapeHtml;
+  const bp = b.best_practices || { areas: [] };
+  const gradeColor = g => ({ A: 'var(--pass)', B: 'var(--pass)', C: 'var(--warn)', D: 'var(--warn)', F: 'var(--fail)' }[g] || 'var(--dim)');
+  const bar = (pct, color) => `<div style="height:8px;border-radius:4px;background:rgba(148,163,184,0.15);overflow:hidden;"><div style="width:${Math.max(0, Math.min(100, pct || 0))}%;height:100%;background:${color};"></div></div>`;
+  const pctColor = p => p >= 75 ? 'var(--pass)' : p >= 50 ? 'var(--warn)' : 'var(--fail)';
+  const areas = (bp.areas || []).map(a => {
+    const gaps = (a.gaps || []).map(g => `<li style="margin:0.35rem 0;">
+        <span style="color:${g.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)'};font-weight:700;">${g.status === 'FAIL' ? '✗' : '◑'}</span>
+        <span style="font-family:monospace;color:var(--dim);margin:0 0.3rem;">[${E(g.id)}]</span><strong>${E(g.label)}</strong>
+        <div style="color:var(--dim);font-size:0.78rem;margin-left:1.6rem;">${E(g.finding || '')}</div>
+        ${g.best_practice ? `<div style="font-size:0.8rem;margin-left:1.6rem;margin-top:0.15rem;"><span style="color:var(--accent);font-weight:600;">Best practice:</span> ${E(g.best_practice)} ${g.reference ? `<a href="${E(g.reference)}" target="_blank" rel="noopener" style="color:var(--accent);">Read the article ↗</a>` : ''}${g.inline ? '' : ' <span style="color:var(--dim);font-size:0.72rem;">(general guidance for this area)</span>'}</div>` : ''}
+      </li>`).join('');
+    return `<details ${a.deviations ? 'open' : ''} style="border:1px solid var(--border);border-radius:10px;padding:0.6rem 0.9rem;margin:0.4rem 0;background:rgba(15,23,42,0.3);">
+      <summary style="cursor:pointer;display:grid;grid-template-columns:1fr auto auto;gap:0.75rem;align-items:center;">
+        <span><strong>${E(a.area)}</strong> <span style="color:var(--dim);font-size:0.8rem;">${a.aligned} of ${a.measured} measured aligned${a.not_measured ? ` · ${a.not_measured} not measured` : ''}</span>${bar(a.pct, pctColor(a.pct))}</span>
+        <span style="font-weight:700;color:${pctColor(a.pct)};">${a.measured ? a.pct + '%' : '—'}</span>
+        <span style="font-weight:800;font-size:1.1rem;color:${gradeColor(a.grade)};min-width:1.2rem;text-align:center;">${E(a.grade)}</span>
+      </summary>
+      ${gaps ? `<ul style="list-style:none;padding:0;margin:0.6rem 0 0;">${gaps}</ul>` : '<div style="color:var(--dim);font-size:0.8rem;margin-top:0.5rem;">No deviations from best practice in this area.</div>'}
+    </details>`;
+  }).join('');
+  const p = b.dlp_programme || { stages: [] };
+  const stages = (p.stages || []).map(s => `<div style="flex:1;min-width:150px;padding:0.6rem 0.75rem;border-radius:10px;border:1px solid ${s.met ? 'rgba(16,185,129,0.45)' : (s.measured ? 'rgba(245,158,11,0.45)' : 'var(--border)')};background:rgba(15,23,42,0.3);">
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${s.met ? 'var(--pass)' : (s.measured ? 'var(--warn)' : 'var(--dim)')};">${s.met ? '✓' : (s.measured ? '○' : '–')} Stage ${s.n}</div>
+      <div style="font-weight:700;">${E(s.name)}</div>
+      <div style="font-size:0.75rem;color:var(--dim);">${E(s.what)}</div>
+      <div style="font-size:0.8rem;margin-top:0.3rem;">${s.measured ? `${s.passed}/${s.measured} · <strong style="color:${pctColor(s.pct)}">${s.pct}%</strong>` : 'not measured in this run'}</div>
+      ${(s.todo || []).length ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.25rem;">Next: ${s.todo.slice(0, 3).map(t => `[${E(t.id)}] ${E(t.label)}`).join(' · ')}${s.todo.length > 3 ? ` · +${s.todo.length - 3} more` : ''}</div>` : ''}
+    </div>`).join('');
+  const fws = (b.frameworks || []).map(f => `<span style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem;border-radius:100px;border:1px solid var(--border);font-size:0.78rem;"><strong>${E(f.name)}</strong> <span style="color:${pctColor(f.alignment_pct)};font-weight:700;">${f.alignment_pct}%</span> <span style="color:var(--dim);">${E(f.status)}</span></span>`).join(' ');
+  const j = b.journey;
+  const journey = !j ? '' : (j.status === 'pending'
+    ? `<div style="color:var(--dim);font-size:0.85rem;"><span class="gd-spin" aria-hidden="true"></span> Baseline journey still being measured; this line fills in when it lands.</div>`
+    : `<div style="font-size:0.85rem;">Baseline journey: <strong>stage ${j.stage || 0} of 5</strong>, ${j.score || 0}% of the way${(j.baselines || []).length ? ' — ' + j.baselines.map(x => `${E(x.name)} stage ${x.stage} (${E(x.stage_name || '')})`).join(', ') : ''}. Details in the Data governance journey card.</div>`);
+  return `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;padding:0.9rem 1rem;border:1px solid var(--border);border-radius:12px;background:rgba(15,23,42,0.3);margin-bottom:0.9rem;">
+      <div style="text-align:center;"><div style="font-size:2.4rem;font-weight:800;line-height:1;color:${gradeColor(bp.grade)};">${E(bp.grade || '–')}</div><div style="font-size:0.7rem;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;">grade</div></div>
+      <div><div style="font-weight:700;">Zscaler best-practice alignment: <span style="color:${pctColor(bp.pct)};">${bp.pct}%</span></div>
+        <div style="font-size:0.82rem;color:var(--dim);">${bp.aligned} of ${bp.measured} measured checks follow the stated best practice · ${bp.deviations} deviations · ${bp.not_measured} not measured (not licensed or not reachable). Grade A ≥ 90%, B ≥ 75%, C ≥ 60%, D ≥ 40%.</div>
+        ${bar(bp.pct, pctColor(bp.pct))}</div>
+    </div>
+    <h3 style="font-size:0.95rem;margin:0.8rem 0 0.3rem;">By area</h3>
+    ${areas || '<div style="color:var(--dim);">Nothing measured.</div>'}
+    <h3 style="font-size:0.95rem;margin:1rem 0 0.4rem;">DLP programme benchmark — stage ${p.stage || 0} of ${(p.stages || []).length} (${E(p.stage_name || 'Not started')})</h3>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">${stages}</div>
+    <h3 style="font-size:0.95rem;margin:1rem 0 0.4rem;">Frameworks (weakest first)</h3>
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">${fws}</div>
+    <div style="color:var(--dim);font-size:0.75rem;margin-top:0.3rem;">Click a framework card below for the control-by-control view.</div>
+    ${journey ? `<div style="margin-top:0.8rem;">${journey}</div>` : ''}
+    <div style="margin-top:0.9rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <button class="btn btn-ghost" onclick="downloadBenchmarks('markdown')" style="font-size:0.8rem;padding:0.4rem 0.8rem;">Download benchmark note (Markdown)</button>
+      <button class="btn btn-ghost" onclick="downloadBenchmarks('json')" style="font-size:0.8rem;padding:0.4rem 0.8rem;">JSON</button>
+    </div>`;
+}
+async function downloadBenchmarks(format) {
+  if (!reportData) return;
+  try {
+    const resp = await fetch(`/api/benchmarks/export?format=${encodeURIComponent(format)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reportData) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `zscaler_benchmarks_${new Date().toISOString().slice(0, 10)}.${format === 'json' ? 'json' : 'md'}`;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { setStatus('Benchmark export failed: ' + e.message, 'error'); }
+}
+
+// Every subsection of the report opens when results arrive, so nothing has
+// to be clicked open (a section collapsed by hand earlier is reopened too).
+function expandResultSections() {
+  document.querySelectorAll('#results .card, #gdJourney').forEach(card => {
+    const h = card.querySelector(':scope > h2, :scope > h3');
+    if (h) _setCardOpen(card, h, true);
+  });
+  document.querySelectorAll('#results details').forEach(d => { d.open = true; });
 }
 
 let drilldownData = null;
@@ -3294,11 +3471,11 @@ function toggleFrameworks(state) {
 }
 
 async function loadCompliance(data) {
-  // Respect framework checkboxes — if none selected, skip entirely
-  const selectedFws = getSelectedFrameworks();
+  // The framework checkboxes narrow the card; with none ticked, every
+  // framework is shown (the card must never be silently missing).
+  let selectedFws = getSelectedFrameworks();
   if (selectedFws.length === 0) {
-    document.getElementById('complianceCard').style.display = 'none';
-    return;
+    selectedFws = Array.from(document.querySelectorAll('.fw-cb')).map(cb => cb.value);
   }
   try {
     const resp = await fetch('/api/compliance', {
@@ -3345,6 +3522,8 @@ async function loadCompliance(data) {
       </div>`;
     }
     document.getElementById('complianceCard').style.display = 'block';
+    const cc = document.getElementById('complianceCard'), ch = cc.querySelector(':scope > h2, :scope > h3');
+    if (ch && typeof _setCardOpen === 'function') _setCardOpen(cc, ch, true);
   } catch(e) {
     document.getElementById('complianceCard').style.display = 'none';
   }
@@ -3418,6 +3597,49 @@ function renderControls(filter) {
   }
   container.innerHTML = html || '<p style="padding:1.5rem;text-align:center;color:var(--dim);">No controls match this filter.</p>';
 }
+
+// ── UI token ──────────────────────────────────────────────────────────
+// The launcher opens this page with the server's token and the server
+// turns it into a cookie. Opened another way, the first API call answers
+// 401 "token required": ask for the token once (ui_token.txt next to the
+// app, or the server console), unlock, retry.
+(function () {
+  if (window.__dlpAuthWrapped) return;
+  window.__dlpAuthWrapped = true;
+  const realFetch = window.fetch.bind(window);
+  let asking = null;
+  async function unlock(message) {
+    if (asking) return asking;
+    asking = (async () => {
+      const t = window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also printed on the server console). Paste it here:');
+      if (t === null) return false;
+      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t.trim() }) });
+      if (!r.ok) { try { setStatus('That token was not accepted. Read ui_token.txt again and retry.', 'error'); } catch (e) {} }
+      return r.ok;
+    })();
+    try { return await asking; } finally { asking = null; }
+  }
+  window.fetch = async function (input, init) {
+    let r = await realFetch(input, init);
+    if (r.status === 401) {
+      let body = null;
+      try { body = await r.clone().json(); } catch (e) { /* not json */ }
+      if (body && body.token_required) {
+        const ok = await unlock(body.detail);
+        if (ok) r = await realFetch(input, init);
+      }
+    }
+    return r;
+  };
+  window.__dlpUnlock = unlock;
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const r = await realFetch('/api/auth/status');
+      const s = await r.json();
+      if (s.required && !s.unlocked) await unlock('This server asks for its UI token before it shows anything.');
+    } catch (e) { /* server not reachable yet; the first API call will ask */ }
+  });
+})();
 
 function escapeHtml(s) {
   if (!s) return '';
@@ -5122,6 +5344,25 @@ async function openSslFlowTab() {
     w.location = `/report/sslflow?error=${encodeURIComponent(e.message)}`;
   }
 }
+async function openDataFlowTab() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const w = window.open('/report/dataflow?pending=1', '_blank');
+  if (!w) { alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.'); return; }
+  try {
+    const id = await window.__dataFlowGenerate();
+    w.location = `/report/dataflow?id=${encodeURIComponent(id)}`;
+  } catch (e) {
+    w.location = `/report/dataflow?error=${encodeURIComponent(e.message)}`;
+  }
+}
+// Called by the Data Flow Map tab (Refresh); this page holds the credentials.
+window.__dataFlowGenerate = async function (platform) {
+  const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
+  const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, platform: platform || 'windows' }) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  return data.report_id;
+};
 window.__sslFlowGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
   const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -5358,9 +5599,10 @@ function _initCollapsibleCards() {
     h.setAttribute('role', 'button');
     h.setAttribute('tabindex', '0');
     const interactive = _cardHasControls(card);
-    // Form sections start open (they are the input surface); report
-    // sections start collapsed to keep the page short.
-    _setCardOpen(card, h, interactive);
+    // Every section starts open: form sections are the input surface and
+    // report sections must be readable without a click each. The heading
+    // still collapses a section, and showResults re-opens them on each run.
+    _setCardOpen(card, h, true);
     h.setAttribute('title', 'Click to expand or collapse');
 
     const toggle = () => _setCardOpen(card, h, card.classList.contains('collapsed'));

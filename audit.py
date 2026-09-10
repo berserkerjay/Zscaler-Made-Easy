@@ -1,0 +1,157 @@
+"""Audit log: one line per API call that can change something.
+
+Every non-GET request to /api/* is appended to audit.log (JSON lines,
+owner-only, git-ignored; path in DLP_CHECK_AUDIT) with the time, method,
+path, status, duration, caller address, whether write mode was on, and a
+redacted view of the request body (keys that look like secrets or tokens
+are dropped, long values truncated). Write-mode toggles and updates go
+through the same log. Nothing here is ever sent anywhere; the file is
+evidence for the operator and the customer.
+
+The log is capped by size: past DLP_CHECK_AUDIT_MAX_MB (default 20) the
+oldest half is rolled to audit.log.1."""
+from __future__ import annotations
+
+import json
+import os
+import re
+import threading
+import time
+from typing import Any, Dict, Optional
+
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_LOCK = threading.Lock()
+_SECRET_KEY = re.compile(r"secret|token|password|passwd|credential|authorization|cookie|api_?key|private_?key", re.I)
+_MAX_VALUE = 200
+_MAX_KEYS = 40
+
+
+def path() -> str:
+    return os.environ.get("DLP_CHECK_AUDIT") or os.path.join(_APP_DIR, "audit.log")
+
+
+def redact(value: Any, depth: int = 0) -> Any:
+    """Copy a request body with secret-looking keys removed and values shortened."""
+    if depth > 4:
+        return "…"
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for i, (k, v) in enumerate(value.items()):
+            if i >= _MAX_KEYS:
+                out["…"] = f"{len(value) - _MAX_KEYS} more keys"
+                break
+            if _SECRET_KEY.search(str(k)):
+                out[str(k)] = "[redacted]"
+            else:
+                out[str(k)] = redact(v, depth + 1)
+        return out
+    if isinstance(value, list):
+        return [redact(v, depth + 1) for v in value[:20]] + (["…"] if len(value) > 20 else [])
+    if isinstance(value, str):
+        return value if len(value) <= _MAX_VALUE else value[:_MAX_VALUE] + "…"
+    return value
+
+
+def record(event: str, **fields: Any) -> Optional[str]:
+    """Append one event. Returns the path written, or None when the log
+    could not be written (never raises; auditing must not break a call)."""
+    entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event}
+    entry.update({k: redact(v) for k, v in fields.items()})
+    line = json.dumps(entry, default=str, separators=(",", ":")) + "\n"
+    p = path()
+    try:
+        with _LOCK:
+            _rotate_if_needed(p)
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as f:
+                f.write(line)
+        return p
+    except OSError:
+        return None
+
+
+def _rotate_if_needed(p: str) -> None:
+    try:
+        limit = int(float(os.environ.get("DLP_CHECK_AUDIT_MAX_MB", "20") or 20) * 1024 * 1024)
+    except ValueError:
+        limit = 20 * 1024 * 1024
+    try:
+        if os.path.getsize(p) < limit:
+            return
+    except OSError:
+        return
+    try:
+        os.replace(p, p + ".1")
+    except OSError:
+        pass
+
+
+def tail(n: int = 200) -> list:
+    """The last n entries (for the operator; never exposed without the UI token)."""
+    p = path()
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            lines = f.readlines()[-n:]
+    except OSError:
+        return []
+    out = []
+    for ln in lines:
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            continue
+    return out
+
+
+class AuditMiddleware:
+    """ASGI middleware: log every non-GET /api/* call with its outcome.
+    Reads the body once and replays it to the app."""
+
+    def __init__(self, app, writes_enabled=None):
+        self.app = app
+        self.writes_enabled = writes_enabled or (lambda: None)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("method") in ("GET", "HEAD", "OPTIONS") or not scope.get("path", "").startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        body = b""
+        more = True
+        while more:
+            msg = await receive()
+            body += msg.get("body", b"")
+            more = msg.get("more_body", False)
+        parsed: Any = None
+        if body:
+            try:
+                parsed = json.loads(body.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                parsed = f"<{len(body)} bytes>"
+        replayed = {"done": False}
+
+        async def replay():
+            if not replayed["done"]:
+                replayed["done"] = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            # A streaming response keeps polling receive() to notice a real
+            # disconnect; hand that through instead of faking one.
+            return await receive()
+
+        status = {"code": None}
+        started = time.time()
+
+        async def send_wrapper(message):
+            if message.get("type") == "http.response.start":
+                status["code"] = message.get("status")
+            await send(message)
+
+        try:
+            await self.app(scope, replay, send_wrapper)
+        finally:
+            client = scope.get("client") or ("?", 0)
+            try:
+                wm = self.writes_enabled()
+            except Exception:  # noqa: BLE001
+                wm = None
+            record("api", method=scope.get("method"), path=scope.get("path"), status=status["code"],
+                   ms=round((time.time() - started) * 1000), client=f"{client[0]}", write_mode=wm, body=parsed)

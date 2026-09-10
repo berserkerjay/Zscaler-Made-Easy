@@ -58,7 +58,7 @@ def test_report_tabs_share_the_app_stylesheet_and_theme():
     css = c.get("/app.css")
     assert css.status_code == 200 and "text/css" in css.headers["content-type"] and "no-cache" in css.headers["cache-control"]
     assert "--bg: #0a0e1a" in css.text and "body.theme-light" in css.text and ".hero h1 .accent" in css.text and "<style>" not in css.text
-    for path in ("/report/bypass?id=x", "/report/sslflow?id=x", "/report/view?tool=updates", "/report/flow"):
+    for path in ("/report/bypass?id=x", "/report/sslflow?id=x", "/report/view?tool=updates", "/report/flow", "/report/dataflow?id=x"):
         html = c.get(path).text
         assert '<link rel="stylesheet" href="/app.css">' in html, path
         assert '<script src="/static/report_theme.js"></script>' in html, path
@@ -100,3 +100,15 @@ def test_deploy_flow_has_its_own_tab():
     assert "DZ_FLOW.onTrace" in js
     css = c.get("/static/reports.css").text
     assert "body.flow-page .dz-flow-wrap" in css and ".fl-side" in css
+
+
+def test_report_sections_open_by_default_and_compliance_never_hides():
+    """Every card starts open, results re-open their sections on each run,
+    and the compliance card shows every framework when none is ticked."""
+    c = TestClient(srv.app)
+    html = c.get("/").text
+    assert "_setCardOpen(card, h, true);" in html and "function expandResultSections()" in html
+    assert "expandResultSections();" in html
+    assert "selectedFws = Array.from(document.querySelectorAll('.fw-cb')).map(cb => cb.value);" in html
+    # The old early return that hid the card is gone.
+    assert "if (selectedFws.length === 0) {\n    document.getElementById('complianceCard').style.display = 'none';\n    return;" not in html

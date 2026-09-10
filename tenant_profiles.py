@@ -98,13 +98,74 @@ def list_profiles() -> List[Dict[str, Any]]:
     return rows
 
 
+# ── Secret storage ────────────────────────────────────────────────────
+# A remembered secret goes to the operating system's credential store when
+# the optional `keyring` package is installed (Windows Credential Manager /
+# DPAPI, macOS Keychain, Secret Service on Linux); the profile file then
+# holds only a marker. Without keyring it is stored in the owner-only
+# profile file, as before.
+KEYRING_SERVICE = "dlp-check"
+KEYRING_MARK = "@keyring"
+
+
+def _keyring():
+    try:
+        import keyring  # type: ignore
+        return keyring
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def secret_storage() -> str:
+    """'keyring' or 'file': where a remembered secret is kept on this machine."""
+    return "keyring" if _keyring() is not None else "file"
+
+
+def _store_secret(profile_id: str, secret: str) -> str:
+    kr = _keyring()
+    if kr is not None:
+        try:
+            kr.set_password(KEYRING_SERVICE, profile_id, secret)
+            return KEYRING_MARK
+        except Exception:  # noqa: BLE001 — no usable backend: fall back to the file
+            pass
+    return secret
+
+
+def _load_secret(profile_id: str) -> Optional[str]:
+    kr = _keyring()
+    if kr is None:
+        return None
+    try:
+        return kr.get_password(KEYRING_SERVICE, profile_id)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _forget_secret(profile_id: str, stored: Optional[str]) -> None:
+    if stored != KEYRING_MARK:
+        return
+    kr = _keyring()
+    if kr is None:
+        return
+    try:
+        kr.delete_password(KEYRING_SERVICE, profile_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def get(profile_id: str, *, with_secret: bool = False) -> Optional[Dict[str, Any]]:
     with _LOCK:
         data = _read()
     p = data["profiles"].get(profile_id)
     if not p:
         return None
-    return dict(p) if with_secret else masked(p)
+    if not with_secret:
+        return masked(p)
+    out = dict(p)
+    if out.get(SECRET_FIELD) == KEYRING_MARK:
+        out[SECRET_FIELD] = _load_secret(profile_id) or ""
+    return out
 
 
 def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: bool = False,
@@ -121,8 +182,9 @@ def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: 
         p.setdefault("name", p.get("org_name") or pid)
         if remember_secret:
             if client_secret:
-                p[SECRET_FIELD] = client_secret
+                p[SECRET_FIELD] = _store_secret(pid, client_secret)
         else:
+            _forget_secret(pid, p.get(SECRET_FIELD))
             p.pop(SECRET_FIELD, None)
         p["updated_at"] = _now()
         data["profiles"][pid] = p

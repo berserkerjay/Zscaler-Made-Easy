@@ -383,7 +383,7 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
         return {"status": "dry_run", **p,
                 "message": f"DRY RUN: Would {p['method']} {p['endpoint']}. Set dry_run=false + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND to actually apply."}
 
-    if p.get("destructive") and os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+    if p.get("destructive") and not __import__("security").writes_enabled():
         return {"status": "blocked", **p,
                 "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. Relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat."}
 

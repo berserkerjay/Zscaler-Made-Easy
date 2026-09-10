@@ -1,0 +1,18 @@
+DLP-Check — Proprietary, internal use
+
+Copyright (c) 2026 the repository owner. All rights reserved.
+
+This software and its policy packs are provided to the organisation that
+operates this repository for its own assessments and engagements. They may
+be run, copied and modified within that organisation. They may not be
+redistributed, sublicensed or made available to third parties, in source
+or binary form, without written permission from the repository owner.
+
+Third-party components keep their own licences (see requirements.lock for
+the Python packages and the Terraform provider lockfiles for the Zscaler
+provider).
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. It reads and, when the operator enables writes, changes a Zscaler
+tenant's configuration; the operator remains responsible for reviewing
+every plan before approving it.

@@ -286,7 +286,9 @@ function _dzRenderSelect() {
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
           ${p.baseline ? `<button type="button" class="dz-link" title="Read-only: places every object of this baseline in the tenant (missing, deployed, monitoring, enforcing, customized) and shows the stage reached and the next steps." onclick="event.stopPropagation(); _dzJourney('${_dzE(p.id)}')">${(DZ.journey[p.id] || {}).busy ? 'Measuring…' : 'Where is this tenant?'}</button>` : ''}
           <button type="button" class="dz-link" title="Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab." onclick="event.stopPropagation(); openToolTab('terraform', '${_dzE(p.id)}')">Terraform hand-off</button>
+          ${p.id === 'zbp_source_code_baseline' ? `<button type="button" class="dz-link" title="Read the tenant's own source-code dictionaries (an Anchor and a Signal per language, paired by name), preview the pairing, then rebuild this pack from them: dictionaries keep their tenant names, each language gets one engine (Signal > N AND Anchor > 0), the old pack dictionaries and engines are dropped." onclick="event.stopPropagation(); _dzFromTenant('${_dzE(p.id)}')">${(DZ.fromTenant || {}).busy ? 'Reading tenant…' : 'Rebuild from tenant dictionaries'}</button>` : ''}
         </div>
+        ${p.id === 'zbp_source_code_baseline' ? _dzFromTenantHtml() : ''}
         ${det}
         ${p.baseline ? _dzJourneyHtml(p.id) : ''}
       </div>`;
@@ -341,6 +343,60 @@ async function _dzToggleDetail(id) {
 }
 // Read-only journey check: same planner as preflight, nothing written,
 // works without the write gate. Renders inline on the card.
+// ── Rebuild the source-code pack from the tenant's dictionaries ─────
+// Preview first (which Anchor/Signal pairs were found), then write.
+function _dzFromTenantHtml() {
+  const s = DZ.fromTenant;
+  if (!s || s.busy) return '';
+  if (s.error) return `<div class="dz-card sev-error" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">Could not read the tenant's dictionaries</div><div class="d">${_dzE(s.error)}</div></div></div>`;
+  const r = s.data;
+  if (!r) return '';
+  const langs = (r.languages || []).map(l => `<li><strong>${_dzE(l.language)}</strong>: anchor <code>${_dzE(l.anchor)}</code> (${l.anchor_patterns}) + signal <code>${_dzE(l.signal)}</code> (${l.signal_patterns} patterns)</li>`).join('');
+  const extra = [...(r.unpaired || []).map(u => `unpaired: ${u}`), ...(r.ignored || []).map(i => `no Anchor/Signal in the name: ${i}`)];
+  if (r.status === 'written') {
+    return `<div class="dz-card sev-info" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">Pack rebuilt from the tenant</div><div class="d">${_dzN((r.languages || []).length, 'language')}, ${_dzN(r.dictionaries || 0, 'dictionary', 'dictionaries')}, ${_dzN((r.engines || []).length, 'engine')}. Removed: ${_dzE((r.removed_engines || []).join(', ') || 'nothing')}. Rules rewired: ${_dzE((r.rules_rewired || []).join(', '))}. Terraform ${_dzE(r.terraform || '')}.</div>
+      <ul class="dz-note">${langs}</ul></div></div>`;
+  }
+  return `<div class="dz-card sev-warning" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">Preview: ${_dzN((r.languages || []).length, 'language pair')} found in ${_dzN(r.tenant_custom_dictionaries || 0, 'custom dictionary', 'custom dictionaries')}</div>
+    <ul class="dz-note">${langs || '<li>No pairs.</li>'}</ul>
+    ${extra.length ? `<div class="d">${_dzE(extra.join(' · '))}</div>` : ''}
+    <div class="d">Engines will be <code>((Signal > ${_dzE(String(s.threshold))}) AND (Anchor > 0))</code>; the pack's current ${_dzN(r.replacing || 0, 'engine')} and their dictionaries are dropped. Nothing is written to the tenant.</div>
+    <div class="dz-actions" style="margin-top:0.5rem;"><button type="button" class="dz-btn primary" onclick="_dzFromTenant('${_dzE(s.id)}', true)">Rebuild the pack</button><button type="button" class="dz-btn" onclick="DZ.fromTenant=null;_dzRenderSelect()">Cancel</button></div></div></div>`;
+}
+async function _dzFromTenant(id, confirm) {
+  let filter = (DZ.fromTenant && DZ.fromTenant.filter) || '';
+  let threshold = (DZ.fromTenant && DZ.fromTenant.threshold) || 4;
+  if (!confirm) {
+    const f = window.prompt('Which dictionaries? Enter a name prefix or pattern (for example SRC- or v4), or leave empty for every custom dictionary whose name contains Anchor or Signal.', filter);
+    if (f === null) return;
+    filter = f.trim();
+    const t = window.prompt('Signal matches an engine needs (> N). HTML uses N-1.', String(threshold));
+    if (t === null) return;
+    threshold = Math.max(0, parseInt(t, 10) || 0);
+  }
+  DZ.fromTenant = { id, busy: true, filter, threshold };
+  _dzRenderSelect();
+  try {
+    const r = await fetch(`/api/dlp-packs/${encodeURIComponent(id)}/from-tenant`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name_filter: filter, threshold, html_threshold: Math.max(0, threshold - 1), confirm: !!confirm, ..._dzCreds() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    if (data.status === 'error') throw new Error(data.error || 'no pairs found');
+    const pack = (DZ.packs || []).find(p => p.id === id) || {};
+    data.replacing = pack.engines || 0;
+    DZ.fromTenant = { id, data, filter, threshold };
+    announce(data.status === 'written' ? `Pack ${id} rebuilt from ${data.languages.length} tenant language pairs.` : `${data.languages.length} language pairs found; review and confirm.`);
+    if (data.status === 'written') {
+      try { const pr = await fetch('/api/dlp-packs', { cache: 'no-store' }); if (pr.ok) DZ.packs = (await pr.json()).packs || DZ.packs; } catch (e) { /* keep the old card counts */ }
+    }
+  } catch (e) {
+    DZ.fromTenant = { id, error: e.message, filter, threshold };
+  }
+  _dzRenderSelect();
+}
+
 async function _dzJourney(id) {
   DZ.journey[id] = { busy: true };
   _dzRenderSelect();

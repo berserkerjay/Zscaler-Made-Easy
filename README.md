@@ -87,6 +87,9 @@ See `docs/DLP_Assessment_Step_by_Step_Guide.docx` for the complete walkthrough.
 | `POST` | `/api/report/bypass` | Bypass / non-inspected traffic inventory (opens at `/report/bypass?id=`) |
 | `POST` | `/api/report/ssl-flow` | SSL Inspection Flow: per traffic class, which SSL rule decides and whether inline DLP can see it (opens at `/report/sslflow?id=`; exports via `/api/report/ssl-flow/export/{id}`) |
 | `GET` | `/report/flow` | Deployment Flow tab: the Deploy Policy Packs dependency diagram (templates → dictionaries → engines → rules) full width, with a details panel; fed live by the assessment tab |
+| `POST` | `/api/report/data-flow` | Data Flow Map: per traffic class and network context, the exact path through Client Connector app/forwarding profiles, PAC, SSL, URL filtering, Cloud App Control, File Type Control and Web DLP, the endpoint/SaaS/email channels and each pack's coverage (opens at `/report/dataflow?id=`; `/{id}/trace` traces any app, category or hostname; exports via `/api/report/data-flow/export/{id}`) |
+| `POST` | `/api/benchmarks` | Best-practice alignment per area (deviations with guidance and article), DLP programme stages, framework rows (incl. NIST CSF 2.0, GLBA) and journey, from an assessment report; `/api/benchmarks/export?format=markdown|json` downloads it |
+| `POST` | `/api/dlp-packs/{pack_id}/from-tenant` | Rebuild a pack from the tenant's own Anchor/Signal dictionaries (paired by name, one engine per language); preview unless `confirm` is true; writing is localhost-only |
 
 ### Request Body
 
@@ -159,11 +162,14 @@ Update `src/dlp_assessment_full_auto.py` with any paths that differ from the def
 
 ## Security
 
-- All API calls are **read-only GET requests** — the engine cannot modify tenant config
-- OAuth2 Client Credentials flow — no human user auth involved
-- Credentials stay in `config/tenant.json` — delete after engagement
-- Revoke the API Client in ZIdentity when done
-- JSON report may contain config details — treat as confidential
+See [SECURITY.md](SECURITY.md) for the disclosure policy and the full posture. In short:
+
+- **Read-only by default.** The assessment, reports, preflight and journey checks only read. Writing to a tenant (Deploy Policy Packs, undo, migration, remediation) is refused until write mode is enabled for the session with a typed confirmation phrase on a localhost-bound server, or the server is started with `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`. Every deploy is a plan you approve first (bound to a plan hash), every rule ships DISABLED, and every deployment is recorded for undo.
+- **Machine identity only.** OAuth2 client-credentials against ZIdentity; no human login is proxied. Use a least-privilege API client and revoke it when the engagement ends.
+- **Secrets stay local.** Credentials come from the form, `ZSCALER_*` environment variables, `local_settings.bat`, or a saved tenant profile (secret stored only when you tick *remember*, in an owner-only file). Secrets are never returned by the API and are masked in every error. All of those files are git-ignored.
+- **Loopback bound, token guarded.** The web server and the MCP server bind to 127.0.0.1 unless you set `ZSCALER_BIND_HOST` / `ZSCALER_MCP_BIND_HOST`. Every API call needs the per-process UI token (the launcher opens the browser with it; `ui_token.txt` holds it); CORS and origin checks allow only localhost origins; security headers, a body-size cap and a rate limit are always on. Every write call is audited in `audit.log`.
+- **Pinned and scanned.** `requirements.lock` pins every wheel by hash and the installer, updater and container install with `--require-hashes`; CI runs pip-audit, publishes an SBOM and scans the image. `docker compose up --build` runs it as a non-root, read-only container published on loopback.
+- **Reports are confidential.** JSON, Markdown and Word exports contain tenant configuration; temp files are removed once sent.
 
 ## License
 

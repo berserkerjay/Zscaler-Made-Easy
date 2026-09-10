@@ -41,6 +41,8 @@ FRAMEWORK_DESCRIPTIONS = {
     "CMMC_L1": "CMMC 2.0 Level 1 — Foundational (15 practices, FAR 52.204-21). Required for any DoD contractor handling Federal Contract Information (FCI).",
     "CMMC_L2": "CMMC 2.0 Level 2 — Advanced (110 practices, aligned to NIST SP 800-171 Rev 2). Required for contractors handling Controlled Unclassified Information (CUI).",
     "CMMC_L3": "CMMC 2.0 Level 3 — Expert (Level 2 plus a subset of NIST SP 800-172 enhanced requirements). Required for CUI in highest-priority DoD programs.",
+    "NIST_CSF_2": "NIST Cybersecurity Framework 2.0 — Govern, Identify, Protect, Detect, Respond, Recover",
+    "GLBA": "GLBA Safeguards Rule (16 CFR Part 314) — financial institutions' information security programme",
 }
 
 # Mapping of check categories to compliance controls
@@ -204,6 +206,42 @@ CONTROL_DOMAINS = {
         "CMMC_L3": ["CM.L3-3.4.1e (Application Whitelisting)"],
     },
 }
+
+# NIST CSF 2.0 and the GLBA Safeguards Rule, per control domain (banks and
+# any organisation reporting against the CSF functions).
+_EXTRA_FRAMEWORKS = {
+    "NIST_CSF_2": {
+        "ssl_inspection": ["PR.DS-02 (Data-in-transit protected)", "DE.CM-01 (Networks monitored)"],
+        "dlp": ["PR.DS-01 (Data-at-rest protected)", "PR.DS-02 (Data-in-transit protected)", "PR.DS-10 (Data-in-use protected)", "DE.CM-09 (Software and data monitored)"],
+        "url_filtering": ["PR.PS-05 (Unauthorized software prevented)", "DE.CM-01 (Networks monitored)"],
+        "firewall": ["PR.IR-01 (Networks protected from unauthorized access)", "DE.CM-01 (Networks monitored)"],
+        "zpa_zero_trust": ["PR.AA-05 (Access permissions, least privilege)", "PR.IR-01 (Networks protected)"],
+        "logging_monitoring": ["DE.CM-01 (Networks monitored)", "DE.AE-03 (Information correlated)", "GV.OV-01 (Strategy outcomes reviewed)"],
+        "endpoint_dlp": ["PR.DS-01 (Data-at-rest protected)", "PR.DS-10 (Data-in-use protected)", "PR.PS-01 (Configuration management)"],
+        "malware_threat": ["DE.CM-09 (Software and data monitored)", "PR.PS-05 (Unauthorized software prevented)"],
+        "identity_admin": ["PR.AA-01 (Identities managed)", "PR.AA-03 (Users authenticated)", "PR.AA-05 (Least privilege)", "GV.RR-02 (Roles and responsibilities)"],
+        "incident_response": ["RS.MA-01 (Incident response plan executed)", "RS.AN-03 (Analysis performed)", "RS.CO-02 (Stakeholders notified)"],
+        "ai_governance": ["GV.PO-01 (Policy established)", "PR.DS-10 (Data-in-use protected)", "ID.RA-01 (Vulnerabilities identified)"],
+        "device_compliance": ["ID.AM-01 (Hardware inventoried)", "PR.PS-01 (Configuration management)", "DE.CM-01 (Networks monitored)"],
+    },
+    "GLBA": {
+        "ssl_inspection": ["314.4(c)(3) (Encrypt customer information in transit)", "314.4(c)(8) (Monitor and log activity)"],
+        "dlp": ["314.4(c)(3) (Encryption of customer information)", "314.4(c)(6) (Dispose of customer information securely)", "314.4(c)(8) (Monitor unauthorized access)"],
+        "url_filtering": ["314.4(c)(1) (Access controls)", "314.4(c)(8) (Monitoring)"],
+        "firewall": ["314.4(c)(1) (Access controls)", "314.4(c)(8) (Monitoring)"],
+        "zpa_zero_trust": ["314.4(c)(1) (Access controls, least privilege)", "314.4(c)(5) (Multi-factor authentication)"],
+        "logging_monitoring": ["314.4(c)(8) (Monitor and log user activity)", "314.4(d) (Continuous monitoring or penetration testing)"],
+        "endpoint_dlp": ["314.4(c)(2) (Identify and manage data, devices and systems)", "314.4(c)(8) (Monitoring)"],
+        "malware_threat": ["314.4(c)(8) (Monitoring)", "314.4(d) (Continuous monitoring)"],
+        "identity_admin": ["314.4(c)(1) (Access controls)", "314.4(c)(5) (Multi-factor authentication)", "314.4(a) (Qualified individual)"],
+        "incident_response": ["314.4(h) (Written incident response plan)", "314.4(j) (Notify the FTC of a notification event)"],
+        "ai_governance": ["314.4(b) (Risk assessment)", "314.4(c)(1) (Access controls)"],
+        "device_compliance": ["314.4(c)(2) (Inventory of devices and systems)", "314.4(c)(1) (Access controls)"],
+    },
+}
+for _fw, _by_domain in _EXTRA_FRAMEWORKS.items():
+    for _domain, _controls in _by_domain.items():
+        CONTROL_DOMAINS.setdefault(_domain, {})[_fw] = list(_controls)
 
 # Map check ID prefixes/keywords to their primary control domains
 # Each check can map to multiple domains

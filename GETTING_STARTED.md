@@ -47,6 +47,31 @@ prompt. The repository is private, so git on the laptop must be signed in
 to GitHub once (`git fetch` in the app folder prompts for it). A copy that was not installed with git cannot update in
 place; the card shows the one command that moves it to a git clone.
 
+## 1a. The UI token (why the browser sometimes asks for a code)
+
+Each time the server starts it mints a token. The desktop shortcut opens
+the browser with it, so you normally never see it. If you open
+`http://localhost:8000` by hand, or in another browser, the page asks for
+the token once: it is in `ui_token.txt` next to the app (also printed on
+the server console). Paste it and you are in; the browser keeps it as a
+cookie for 12 hours. Anything else on the laptop that tries the API
+without it gets *401*. Set `ZSCALER_UI_TOKEN=...` in `local_settings.bat`
+to keep one token across restarts, or `ZSCALER_UI_AUTH=0` to turn it off
+(not recommended). Every write call is recorded in `audit.log` next to
+the app.
+
+## 1c. Run it in a container instead
+
+`docker compose up --build` in the app folder builds an image with
+hash-pinned dependencies and runs it as a non-root user on a read-only
+filesystem, published on `127.0.0.1:8000` only. Profiles, deployments,
+the audit log and the UI token live on the `dlpcheck-data` volume
+(`docker compose exec dlp-check cat /data/ui_token.txt` prints the token;
+`docker compose logs` shows it too). Put `ZSCALER_*` credentials in a
+`.env` file next to `docker-compose.yml` if you do not want to type them.
+The in-app **Update app** button does not apply inside a container:
+rebuild the image instead.
+
 ## 1b. Settings that survive updates (proxy, TLS inspection)
 
 If your laptop sits behind Zscaler Client Connector or a corporate proxy,
@@ -174,6 +199,66 @@ An update that reaches nothing is never cached: the library keeps its
 last good state, the failure is shown at the top, and the next click
 tries again. A background refresh also runs every 6 hours.
 
+## 4d. Best practices, benchmarks and frameworks
+
+The results carry a **Best Practices & Benchmarks** card:
+
+- **Zscaler best-practice alignment**: a grade (A to F) and a percentage.
+  Every check that names Zscaler's best practice (most do, in the finding
+  text after *Best Practice:*) counts; a failed or review finding on one of
+  them is a *deviation* and is listed under its area (ZIA policy, Client
+  Connector, SSL inspection, DLP programme, GenAI, ZPA, administration,
+  automation, ZDX) with the guidance and a **Read the article** link.
+  Checks the tenant could not answer (not licensed, not reachable) are
+  *not measured* and do not count against it.
+- **DLP programme benchmark**: the twelve-step DLP checklist as five stages
+  (Foundation, Visibility, Coverage, Operation, Response). A stage is met
+  at 75% of its measured checks; the stage reached stops at the first
+  unmet one, and each stage names the checks to fix next.
+- **Frameworks, weakest first**: NIST 800-53, NIST 800-171, NIST CSF 2.0,
+  SOC 2, GDPR, HIPAA, PCI DSS, ISO 27001, CIS Controls, GLBA Safeguards
+  and CMMC. The **Regulatory & Compliance Alignment** card below it has
+  the control-by-control drilldown with the findings behind each control.
+- **Baseline journey**: the stage the tenant has reached against the
+  baseline packs (fills in when the journey measurement lands).
+
+**Download benchmark note** gives the same as Markdown for the customer
+write-up. Every card on the results page is open by default; click a
+heading to collapse it.
+
+## 4e. Data Flow Map (the exact path, and where each pack is weak)
+
+**Data Flow Map** in the toolbar opens a live tab that traces, for every
+DLP-relevant traffic class on every network context (off network, on a
+trusted network, on VPN), the exact path a transaction takes through
+*this* tenant:
+
+1. **Client Connector app profile** for the platform: does a domain, app,
+   process or IP bypass send it straight out of the device? Strict
+   enforcement, certificate push and Endpoint DLP install are read too.
+2. **Forwarding profile** for that network: Z-Tunnel 2.0, Tunnel 1.0,
+   tunnel with local proxy, enforce-proxy (PAC) or none.
+3. **PAC file**: `DIRECT` statements that skip Zscaler for the host.
+4. **SSL inspection**: which rule decides, decrypt or leave encrypted.
+5. **URL filtering**, **Cloud App Control** (upload/share controls need
+   decryption), **File Type Control**, then **Inline Web DLP**: which
+   rules see the content and whether they monitor or enforce.
+
+Beside the path, the channels that do not ride the tunnel: Endpoint DLP
+on the device (only if the app profile installs it), SaaS Security API at
+rest, Outbound Email DLP. Under it, **every policy pack**: which of its
+rules sit on this path and whether each is enforcing, monitoring, disabled
+or not deployed, with the pack's weak point in one line.
+
+Type any **cloud application, URL category or hostname** in the box (the
+list suggests the tenant's own catalogue and categories), pick the network
+and platform, and click **Trace**; the path is computed from the snapshot
+without touching the tenant again. **Refresh** re-reads the tenant.
+Weak points are ranked worst first, each with the fix. Raw profile values
+are kept next to every interpretation because Client Connector schemas
+vary by version; if a mode reads *unknown*, the raw value tells you what
+the portal says.
+
 ## 5. Choose a policy pack (step 4)
 
 Click **Deploy Policy Packs**. Each card says who it is for and when to use
@@ -182,7 +267,7 @@ it. Rule of thumb:
 | Customer | Pack |
 |---|---|
 | Any commercial enterprise with no DLP policy yet | **ZBP Enterprise Baseline** |
-| Worried about source code going into AI tools | add **ZBP Source Code to AI** |
+| Worried about source code going into AI tools | add **Source Code to AI** (13 languages; each language is an Anchor dictionary AND a Signal dictionary in one engine, so cousin languages such as Java/Kotlin do not cross-fire). If the customer already maintains their own Anchor/Signal dictionaries in the tenant, click **Rebuild from tenant dictionaries** on the card: it previews the pairs it found, then rebuilds the pack from them, dropping the shipped ones. |
 | Healthcare provider or payer | add **Healthcare PHI** |
 | Bank, card issuer, payment processor, wealth manager | **Global Banking Baseline** (PCI, payment instructions, customer PII across jurisdictions, KYC/AML, MNPI; it shares its US PII, financial and private-key objects with ZBP Enterprise, so the two can be deployed together) |
 | US federal agency or contractor | **Fed Policy Pack** instead of ZBP Enterprise (it contains it) |
@@ -319,6 +404,30 @@ the outset, for scripted use.)
 | "Write actions require ENABLE_WRITE_ACTIONS" | Read-only mode | Start with `START_Zscaler_Assessment_WRITES_ENABLED.bat` |
 | "The tenant changed since you approved" | Someone edited the tenant mid-flow | Re-run preflight and approve the new plan |
 | Only one usage of each socket address (port 8000) | Old server still running | `STOP_Zscaler_Assessment.bat` then start again |
+
+## 8b. When the API client is missing a permission
+
+A partial scan is better than none, so a missing role never stops the
+tool:
+
+- **Assessment**: every check the client is allowed to run, runs. Checks
+  it is not allowed to run answer *Not permitted* and the results show a
+  **Partial scan: what a full scan needs** card naming the permissions to
+  grant per scope, with the list of checks that were skipped. The score
+  covers what was reachable.
+- **Reports** (Bypass, SSL Inspection Flow, Data Flow Map): each section
+  that could not be read is listed under *read problems*; the rest of the
+  report is complete.
+- **Preflight and deploy**: the plan is built from whatever the tenant
+  would list. If, say, dictionaries cannot be listed, the pack's
+  dictionaries are planned as *new* and marked *unverified*; creating one
+  that already exists fails on that item alone (the API rejects a
+  duplicate name, nothing is overwritten) and the rest deploys. The
+  warnings say which read permission would make the plan verified. Only
+  a tenant where nothing at all can be listed blocks the plan.
+- **What a configuration change needs** is on the **Required API Access**
+  page (`/permissions`): the *Full* permission per object kind the pack
+  writes. Activation is never done by the tool.
 
 ## Glossary
 

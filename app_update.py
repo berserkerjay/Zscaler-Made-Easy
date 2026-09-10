@@ -281,15 +281,20 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     _restore(app_dir, stashed, step, result)
 
     if install_deps and result["updated"]:
+        lock = os.path.join(app_dir, "requirements.lock")
         req = os.path.join(app_dir, "requirements.txt")
-        if os.path.isfile(req):
+        if os.path.isfile(lock) or os.path.isfile(req):
             py = python or sys.executable
+            # The lock pins every wheel by hash; pip refuses anything that differs.
+            args = ([py, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "--require-hashes", "--no-deps", "-r", lock]
+                    if os.path.isfile(lock) else
+                    [py, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "-r", req])
             try:
-                cp = subprocess.run([py, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "-r", req],
+                cp = subprocess.run(args,
                                     cwd=app_dir, capture_output=True, text=True, timeout=PIP_TIMEOUT)
                 result["deps_ok"] = cp.returncode == 0
                 step("Install Python dependencies", cp.returncode == 0,
-                     "requirements.txt installed" if cp.returncode == 0
+                     ("requirements.lock installed (hash-verified)" if os.path.isfile(lock) else "requirements.txt installed") if cp.returncode == 0
                      else "pip reported a problem; the app still runs. If a feature fails to import, run INSTALL_Zscaler_Assessment.bat once. "
                           + (cp.stderr or cp.stdout or "").strip()[-400:], soft=True)
             except subprocess.TimeoutExpired:

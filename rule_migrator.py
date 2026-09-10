@@ -330,7 +330,7 @@ def import_rules_to_zscaler(client, rules: List[Dict[str, Any]], rule_type: str 
     env var to be set to "YES_I_UNDERSTAND".
     """
     import os
-    if not dry_run and os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+    if not dry_run and not __import__("security").writes_enabled():
         return {
             "status": "blocked",
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable for safety.",
@@ -1011,7 +1011,7 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             ),
         }
 
-    if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+    if not __import__("security").writes_enabled():
         return {
             "status": "blocked",
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND (relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat).",
@@ -1285,7 +1285,7 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             "warning": "This is destructive and cannot be undone via API — restore requires re-posting from your backup.",
         }
 
-    if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+    if not __import__("security").writes_enabled():
         return {
             "status": "blocked",
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
@@ -1363,7 +1363,7 @@ def post_new_rule_order(
             "recommendation": "Best practice: keep a JSON backup from Step 2 before running with dry_run=false.",
         }
 
-    if os.environ.get("ENABLE_WRITE_ACTIONS") != "YES_I_UNDERSTAND":
+    if not __import__("security").writes_enabled():
         return {
             "status": "blocked",
             "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND environment variable.",
