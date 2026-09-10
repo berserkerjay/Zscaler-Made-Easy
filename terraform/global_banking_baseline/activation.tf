@@ -18,11 +18,5 @@ resource "zia_activation_status" "this" {
     zia_endpoint_dlp_rules.bank_endpoint_bulk_block_usb,
     zia_casb_dlp_rules.bank_saas_file_monitor,
     zia_outbound_email_dlp.bank_email_monitor,
-    zia_ssl_inspection_rules.bank_ssl_decrypt_file_share_webmail_ai,
-    zia_cloud_app_control_rule.bank_cac_file_share_no_upload,
-    zia_cloud_app_control_rule.bank_cac_webmail_no_send,
-    zia_cloud_app_control_rule.bank_cac_ai_no_upload,
-    zia_file_type_control_rules.bank_ftc_block_bulk_export_upload,
-    zia_url_filtering_rules.bank_url_block_post_to_unknown,
   ]
 }

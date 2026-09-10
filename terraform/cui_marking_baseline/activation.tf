@@ -8,8 +8,6 @@ resource "zia_activation_status" "this" {
     zia_dlp_web_rules.cui_block_marked_documents,
     zia_dlp_web_rules.cui_caution_weak_markings,
     zia_dlp_web_rules.cui_monitor_all,
-    zia_ssl_inspection_rules.cui_ssl_decrypt_file_share_webmail_ai,
-    zia_cloud_app_control_rule.cui_cac_ai_no_upload,
     zia_outbound_email_dlp.cui_email_monitor,
   ]
 }
