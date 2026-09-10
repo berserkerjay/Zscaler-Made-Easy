@@ -137,21 +137,38 @@ def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scan the project root for directories that look like DLP packs
     (contain configs/dlp_*.json or dlp_*.json at top level)."""
     root = root or PACKS_ROOT
-    packs = []
-    for entry in sorted(os.listdir(root)):
-        d = os.path.join(root, entry)
-        if not os.path.isdir(d):
-            continue
-        configs = _resolve_configs(d)
-        has_json = any(
-            f.startswith("dlp_") and f.endswith(".json")
-            for f in os.listdir(configs)
-        ) if os.path.isdir(configs) else False
-        if has_json:
-            meta = load_pack_metadata(d)
-            meta["dir"] = d
-            meta["id"] = entry
-            packs.append(meta)
+    packs: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    def scan(base: str, source: str) -> None:
+        if not os.path.isdir(base):
+            return
+        for entry in sorted(os.listdir(base)):
+            d = os.path.join(base, entry)
+            if not os.path.isdir(d) or entry in seen:
+                continue
+            configs = _resolve_configs(d)
+            has_json = any(
+                f.startswith("dlp_") and f.endswith(".json")
+                for f in os.listdir(configs)
+            ) if os.path.isdir(configs) else False
+            if has_json:
+                meta = load_pack_metadata(d)
+                meta["dir"] = d
+                meta["id"] = entry
+                meta["source"] = source
+                packs.append(meta)
+                seen.add(entry)
+
+    scan(root, "built-in")
+    # Packs added from Advanced settings (or dropped into user_packs/ by hand).
+    try:
+        from pack_library import user_packs_dir
+        lib = user_packs_dir(root)
+    except Exception:  # noqa: BLE001
+        lib = os.path.join(root, "user_packs")
+    if os.path.realpath(lib) != os.path.realpath(root):
+        scan(lib, "uploaded")
     return packs
 
 
@@ -305,6 +322,34 @@ def fit_description(base: Optional[str], tag: str = "", limit: int = DICT_DESCRI
     return f"{base} {tag}".strip()
 
 
+# The same predefined dictionary is exported under its API name by some
+# tenants and its portal display name by others; packs use either. Both
+# resolve, so a pack written against one export works against the other.
+PREDEFINED_TEMPLATE_ALIASES: Dict[str, str] = {
+    "Social Security Numbers (US)": "SSN", "Drivers License (United States)": "USDL_LEAKAGE", "Credit Cards": "CREDIT_CARD",
+    "ABA Bank Routing Number": "ABA_LEAKAGE", "Tax Identification Number (US)": "USITIN_LEAKAGE",
+    "International Bank Account Number (EU)": "EUIBAN_LEAKAGE", "Credentials Leakage": "CRED_LEAKAGE",
+    "Financial Statements": "FINANCIAL", "Medical Information": "MEDICAL",
+}
+PREDEFINED_TEMPLATE_ALIASES.update({v: k for k, v in list(PREDEFINED_TEMPLATE_ALIASES.items())})
+
+
+def template_candidates(name: Optional[str]) -> List[str]:
+    """The name as written plus its known alias."""
+    if not name:
+        return []
+    alt = PREDEFINED_TEMPLATE_ALIASES.get(name)
+    return [name] + ([alt] if alt and alt != name else [])
+
+
+def resolve_template(name: Optional[str], predefined_name_to_id: Dict[str, Any]) -> Any:
+    """Tenant id of a predefined dictionary by either of its names, or None."""
+    for cand in template_candidates(name):
+        if cand in predefined_name_to_id:
+            return predefined_name_to_id[cand]
+    return None
+
+
 def build_dict_kwargs(
     d: Dict[str, Any], predefined_name_to_id: Dict[str, Any]
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -319,7 +364,7 @@ def build_dict_kwargs(
         template_id = d.get("dict_template_id")
         template_name = d.get("dict_template_name")
         if not template_id and template_name:
-            template_id = predefined_name_to_id.get(template_name)
+            template_id = resolve_template(template_name, predefined_name_to_id)
         if not template_id:
             return None, f"No template ID for '{template_name}'"
         kwargs: Dict[str, Any] = {

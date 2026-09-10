@@ -348,6 +348,38 @@ that another rule still uses, listing those so you can decide. Undo needs
 write mode and the tenant fields set to the same tenant; the deletions
 need activation in ZIA like any change.
 
+## 5f. Add your own policy packs (Advanced settings)
+
+**Advanced settings** in the toolbar opens a tab with the policy pack
+library: the packs the app ships with and the ones you add. Adding a pack
+makes it appear everywhere the app offers a pack: Deploy Policy Packs,
+the Data Flow Map, the Terraform hand-off and the detection validator.
+
+What you can bring:
+
+- **One JSON file**: a name, a description and three lists (`dictionaries`,
+  `engines`, `policies`). *Download a complete example* on the tab gives you
+  the Global Banking Baseline in this layout to copy from.
+- **The three pack files** (`dlp_dictionaries.json`, `dlp_engines.json`,
+  `dlp_policies.json`, optional `pack.json`), or a ZIP of a pack folder.
+- **Terraform** for the `zscaler/zia` provider (`zia_dlp_dictionaries`,
+  `zia_dlp_engines`, the DLP and containment rule resources). A workspace
+  from the Terraform hand-off round-trips. Objects must be referenced by
+  name; an id copied from another tenant is reported.
+
+How it works: choose the files, the tab checks them (patterns compile,
+Zscaler limits, every engine points at a dictionary, every rule at an
+engine) and shows what it found. Problems block the upload; warnings are
+shown and allowed. *Add to library* stores the pack on this machine only.
+Nothing changes in the tenant until you deploy the pack from Deploy Policy
+Packs, where its rules are created DISABLED like every other pack.
+
+Where packs live: `user_packs/` next to the app (git-ignored, kept by
+updates), or the folder in `DLP_CHECK_USER_PACKS` (the `/data` volume in
+the container). *Remove* deletes an uploaded pack from the library only.
+Adding and removing is allowed when the server only answers your laptop
+(bind host 127.0.0.1) or when the UI token is on; the tab says which.
+
 ## 6. Preflight, review, approve
 
 1. Toggle the pack(s) on and click **Run preflight**. Nothing is written.

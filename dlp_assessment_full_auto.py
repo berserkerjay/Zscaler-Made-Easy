@@ -850,7 +850,7 @@ def c_12_8(cl):
     d,c=cl.get("/zia/nssFeeds")
     if c==404: d,c=cl.get("/zia/nssFeed")
     f=_ls(d) if c in(200,204) else []
-    return R(R.PASS,f"{len(f)} NSS feed(s) streaming.") if f else R(R.WARN,"No NSS feeds — DLP stays in ZIA.")
+    return R(R.PASS,f"{len(f)} NSS feed(s) streaming.") if f else R(R.WARN,"No NSS or Cloud NSS feed: transaction logs stay in ZIA and only incidents are visible outside it. Recommended, not required: a feed gives the full transaction baseline (normal business traffic and what no rule caught) for SIEM correlation and continuous evaluation; without it, Workflow Automation incidents and analyst verdicts are the near-real-time source. Best Practice: Configure a Cloud NSS feed (web + DLP logs) to your SIEM or a collector, with the DLP fields in the format string. Ref: https://help.zscaler.com/zia/about-cloud-nss-feeds")
 def c_12_9(cl):
     d,c=cl.get("/zia/nssFeeds"); feeds=_ls(d) if c in(200,204) else []
     dlp_flds=["dlpeng","dlpdict","dlprulename","dlpmd5"]
@@ -858,11 +858,11 @@ def c_12_9(cl):
         fmt=(f.get("formatString") or f.get("format") or "").lower()
         miss=[x for x in dlp_flds if x not in fmt]
         if miss: return R(R.WARN,f"Feed '{f.get('name','?')}' missing: {', '.join(miss)}")
-    return R(R.PASS,"All feeds include DLP fields.") if feeds else R(R.WARN,"No feeds.")
+    return R(R.PASS,"All feeds include DLP fields.") if feeds else R(R.INFO,"No NSS feed to check (see 12.8; a feed is a recommendation, not a requirement).")
 def c_12_10(cl): return R(R.WARN,"SIEM correlation rules live outside Zscaler.")
 def c_12_11(cl):
     d,c=cl.get("/zia/nssFeeds"); f=_ls(d) if c in(200,204) else []
-    return R(R.PASS,"NSS active — SIEM retention.") if f else R(R.FAIL,"No NSS — 30-day ZIA limit only.")
+    return R(R.PASS,"NSS active — SIEM retention.") if f else R(R.WARN,"No NSS feed: ZIA keeps logs for its retention window only (typically 30 days unless extended). Recommended, not required: stream logs out for longer retention and evidence. Best Practice: Send web and DLP logs to a SIEM through Cloud NSS or an NSS VM and retain them for at least 12 months. Ref: https://help.zscaler.com/zia/about-nss-feeds")
 def c_12_12(cl): return c_12_1(cl)
 def c_12_13(cl):
     d,c=cl.get("/zia/adminRoles")

@@ -15,6 +15,8 @@ what each batch of changes did, newest first.
 - `SECURITY.md` (disclosure policy), `LICENSE`, this changelog.
 
 ### Features
+- Advanced settings tab: add your own policy packs from a JSON bundle, the three pack files, Terraform for the zscaler/zia provider or a ZIP; they are validated, kept in `user_packs/` (the `/data` volume in the container) and offered everywhere the app offers a pack. Download any pack as one JSON file.
+- Detection validation harness (`tools/validate_detection.py`) and reviewer report; predefined dictionaries resolve by API or display name.
 - Assessment runs checks in parallel, streams results first, reports a stuck check instead of hanging, and measures the journey afterwards.
 - Partial scans: checks, report sections and plan items the API client cannot read are marked as not permitted; results say what a full scan or a configuration change needs.
 - Best Practices & Benchmarks card: best-practice alignment grade per area, DLP programme stages, frameworks incl. NIST CSF 2.0 and GLBA.

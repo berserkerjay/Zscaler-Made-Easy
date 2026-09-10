@@ -40,3 +40,6 @@ local_settings.env
 deployments.json
 ui_token.txt
 audit.log*
+
+# Policy packs added from Advanced settings (local library)
+user_packs/

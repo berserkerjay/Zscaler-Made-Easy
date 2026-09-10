@@ -57,7 +57,7 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import pack_channels as pc
-from dlp_importer import (engine_limit_problems, 
+from dlp_importer import (resolve_template, engine_limit_problems, 
     DICT_DESCRIPTION_MAX,
     EMPTY_DICT_REASON,
     fit_description,
@@ -242,7 +242,7 @@ def dict_signature(d: Dict[str, Any], predefined_name_to_id: Optional[Dict[str, 
     each other and with the tenant."""
     predefined_name_to_id = predefined_name_to_id or {}
     if d.get("predefined_clone"):
-        template = d.get("dict_template_id") or predefined_name_to_id.get(d.get("dict_template_name", ""), d.get("dict_template_name"))
+        template = d.get("dict_template_id") or resolve_template(d.get("dict_template_name"), predefined_name_to_id) or d.get("dict_template_name")
         return {
             "kind": "clone",
             "template": str(template) if template is not None else None,
@@ -469,7 +469,7 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
         d = item["definition"]
         if d.get("predefined_clone"):
             template_name = d.get("dict_template_name")
-            if not d.get("dict_template_id") and template_name and template_name not in predefined:
+            if not d.get("dict_template_id") and template_name and resolve_template(template_name, predefined) is None:
                 item["depends_on"].append(("predefined", template_name))
         existing = tenant["dictionaries"].get(name)
         if existing is not None:

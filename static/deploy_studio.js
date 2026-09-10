@@ -141,13 +141,13 @@ function _ensureDlpPacksModal() {
   m.setAttribute('aria-labelledby', 'dzTitle');
   m.innerHTML = `
     <div class="dz-sheet">
-      <header class="dz-head">
+      <div class="dz-head">
         <div>
           <h2 id="dzTitle">Deploy Policy Packs</h2>
           <p class="dz-sub" id="dzSub">Pick the packs to deploy. Everything is cross-checked against your tenant before anything is written.</p>
         </div>
         <button type="button" class="dz-close" onclick="closeDlpPacksModal()" aria-label="Close">✕</button>
-      </header>
+      </div>
       <nav class="dz-steps" id="dzSteps" aria-label="Deployment steps"></nav>
       <div class="dz-body" id="dzBody" aria-live="polite"></div>
       <footer class="dz-foot" id="dzFoot"></footer>
@@ -999,7 +999,7 @@ function _dzFlowHtml(items, results, opts) {
         </div>
       </div>
       <div class="dz-flow-wrap" id="dzFlowWrap" onmouseover="_dzFlowOver(event)" onmouseout="_dzFlowOut(event)" onclick="_dzFlowClick(event)" onkeydown="_dzFlowKey(event)">
-        <svg id="dzFlowSvg" viewBox="0 0 ${DZ_FLOW.W} ${DZ_FLOW.H}" width="${DZ_FLOW.W}" height="${DZ_FLOW.H}" role="img" aria-label="Dependency flow: templates to dictionaries to engines to policies">
+        <svg id="dzFlowSvg" viewBox="0 0 ${DZ_FLOW.W} ${DZ_FLOW.H}" width="${DZ_FLOW.W}" height="${DZ_FLOW.H}" role="group" aria-label="Dependency flow: templates to dictionaries to engines to policies">
           <g class="dz-heads">${heads}</g>
           <g class="dz-edges">${edgeHtml}</g>
           <g class="dz-nodes">${nodeHtml}</g>

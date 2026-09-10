@@ -10,12 +10,12 @@
 </head>
 <body class="report-page df-page">
   <div class="rp-page">
-    <div class="hero rp-hero">
+    <header class="hero rp-hero">
       <h1><span class="accent">Data</span> Flow Map <span class="sf-live" id="dfLive" hidden><i></i>live</span></h1>
       <p>The exact path a transaction takes to a destination: Client Connector app profile and forwarding profile, PAC, SSL inspection, URL filtering, Cloud App Control, File Type Control and Web DLP, with the endpoint, SaaS and email channels beside it, and where each policy pack is weak along the way.</p>
       <span class="badge" id="rpMeta"></span>
-    </div>
-    <div class="rp-bar">
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <span class="sep"></span>
       <span id="rpControls" hidden>
@@ -28,7 +28,7 @@
         <a class="rp-btn" id="expMd">Markdown</a>
         <a class="rp-btn" id="expJson">JSON</a>
       </span>
-    </div>
+    </nav>
     <main class="rp-card">
       <div id="rpBody" class="bp-body" style="padding:0;">
         <div class="rp-wait"><div class="spin"></div>Reading Client Connector profiles, forwarding profiles, PAC files and every ZIA policy… this tab fills in when the map is ready (10–30 seconds). Keep the assessment tab open.</div>
@@ -58,9 +58,9 @@
           <div class="df-stat ${s.high ? 'bad' : ''}"><div class="n">${s.high}</div><div class="l">high-severity weak points</div></div>
         </div>
         <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>
-        <h3 class="df-h">Every destination, every network</h3>
+        <h2 class="df-h">Every destination, every network</h2>
         <div id="dfOverview"></div>
-        <h3 class="df-h" id="dfTraceTitle">Path</h3>
+        <h2 class="df-h" id="dfTraceTitle">Path</h2>
         <div id="dfTraceBody"></div>`;
       renderDataFlowOverview(report, document.getElementById('dfOverview'));
       document.querySelectorAll('.df-row').forEach(r => {

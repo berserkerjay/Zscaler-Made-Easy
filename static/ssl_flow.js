@@ -88,7 +88,7 @@ function _sfSvg(data) {
       <rect class="box" width="${W.c}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
       <text class="st" x="14" y="20">${E(dlp.label)}</text><text class="sub" x="14" y="37">${E(dlpLine)}</text></g>`;
   });
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="SSL inspection flow">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="SSL inspection flow">
     ${head(xA, W.a, 'TRAFFIC LEAVING USERS')}${head(xB, W.b, 'SSL INSPECTION DECIDES')}${head(xC, W.c, 'INLINE WEB DLP SEES')}
     <g class="sf-edges">${edges}</g><g class="sf-nodes">${nodes}</g></svg>`;
 }

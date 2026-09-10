@@ -10,12 +10,12 @@
 </head>
 <body class="report-page">
   <div class="rp-page">
-    <div class="hero rp-hero">
+    <header class="hero rp-hero">
       <h1><span class="accent">Bypass</span> &amp; Non-Inspected Traffic</h1>
       <p>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection.</p>
       <span class="badge" id="rpMeta"></span>
-    </div>
-    <div class="rp-bar">
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <span class="sep"></span>
       <span id="rpExports" hidden>
@@ -25,7 +25,7 @@
         <a class="rp-btn" id="expDocx">Word</a>
         <a class="rp-btn" id="expJson">JSON</a>
       </span>
-    </div>
+    </nav>
     <main class="rp-card">
       <div id="rpBody" class="bp-body" style="padding:0;">
         <div class="rp-wait"><div class="spin"></div>Reading ZIA and Client Connector in parallel… this tab refreshes when the report is ready (5–15 seconds). Keep the assessment tab open.</div>
