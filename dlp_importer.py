@@ -305,6 +305,34 @@ def fit_description(base: Optional[str], tag: str = "", limit: int = DICT_DESCRI
     return f"{base} {tag}".strip()
 
 
+# The same predefined dictionary is exported under its API name by some
+# tenants and its portal display name by others; packs use either. Both
+# resolve, so a pack written against one export works against the other.
+PREDEFINED_TEMPLATE_ALIASES: Dict[str, str] = {
+    "Social Security Numbers (US)": "SSN", "Drivers License (United States)": "USDL_LEAKAGE", "Credit Cards": "CREDIT_CARD",
+    "ABA Bank Routing Number": "ABA_LEAKAGE", "Tax Identification Number (US)": "USITIN_LEAKAGE",
+    "International Bank Account Number (EU)": "EUIBAN_LEAKAGE", "Credentials Leakage": "CRED_LEAKAGE",
+    "Financial Statements": "FINANCIAL", "Medical Information": "MEDICAL",
+}
+PREDEFINED_TEMPLATE_ALIASES.update({v: k for k, v in list(PREDEFINED_TEMPLATE_ALIASES.items())})
+
+
+def template_candidates(name: Optional[str]) -> List[str]:
+    """The name as written plus its known alias."""
+    if not name:
+        return []
+    alt = PREDEFINED_TEMPLATE_ALIASES.get(name)
+    return [name] + ([alt] if alt and alt != name else [])
+
+
+def resolve_template(name: Optional[str], predefined_name_to_id: Dict[str, Any]) -> Any:
+    """Tenant id of a predefined dictionary by either of its names, or None."""
+    for cand in template_candidates(name):
+        if cand in predefined_name_to_id:
+            return predefined_name_to_id[cand]
+    return None
+
+
 def build_dict_kwargs(
     d: Dict[str, Any], predefined_name_to_id: Dict[str, Any]
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -319,7 +347,7 @@ def build_dict_kwargs(
         template_id = d.get("dict_template_id")
         template_name = d.get("dict_template_name")
         if not template_id and template_name:
-            template_id = predefined_name_to_id.get(template_name)
+            template_id = resolve_template(template_name, predefined_name_to_id)
         if not template_id:
             return None, f"No template ID for '{template_name}'"
         kwargs: Dict[str, Any] = {
