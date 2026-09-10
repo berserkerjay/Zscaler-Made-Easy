@@ -80,7 +80,7 @@ function renderDataFlowTrace(t, container) {
       <span class="df-prof"><span class="k">Platform</span><span class="v">${_dfE(t.platform)}</span></span>
     </div>
     <div class="df-flow-wrap" id="dfFlowWrap">${_dfSvg(t)}</div>
-    <div class="df-hint">Each box is a hop the tenant's configuration puts on the path; a dot marks a weak point. Click a box for the rule that decided it.</div>
+    <div class="df-hint">Each box is a hop the tenant's configuration puts on the path; a dot marks a weak point. Click a box for the rule that decided it. SSL Inspection, Cloud App Control, URL Filtering and File Type Control are data security controls alongside DLP — they stop or scope data movement before content inspection. Cloud App Control can also gate on a user risk profile (risk score levels).</div>
     <h2 class="df-h">Hops</h2>
     <div class="df-hops">${t.hops.map(_dfHopDetail).join('')}</div>
     <h2 class="df-h">Channels that do not ride the tunnel</h2>
