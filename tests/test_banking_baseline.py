@@ -76,9 +76,11 @@ def test_banking_pack_is_premised_on_predefined_dictionaries_at_high_confidence(
               "Bank-Credit and Loan Applications", "Bank-MNPI and Deal Information", "Bank-Confidential Markings"):
         assert n in mine, n
     assert "(D:ZBP-Credit Cards - High > 0) AND (D:Bank-Card Security Data > 1)" in mine["Bank-Payment Card Data"]["expression"]
-    # Channels: web, endpoint, saas, email plus the five containment channels.
+    # Detection only: the pack ships Web, Endpoint, SaaS and Email DLP rules.
+    # Containment (Cloud App Control, File Type Control, URL Filtering, SSL
+    # Inspection) is managed separately and is not part of any pack.
     channels = {p.get("channel", "web") for p in policies}
-    assert channels == {"web", "endpoint", "saas", "email", "ssl", "cloud_app", "file_type", "url"}
+    assert channels == {"web", "endpoint", "saas", "email"}
     assert {p["action"] for p in policies if p.get("channel", "web") == "web"} == {"ALLOW", "BLOCK"}
     assert all(p["state"] == "DISABLED" for p in policies)
     assert meta["baseline"]["immutable"] is True and meta["baseline"]["prefix"] == "Bank-"

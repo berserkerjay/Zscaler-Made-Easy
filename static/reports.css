@@ -321,3 +321,5 @@ body.theme-light .df-chip.st-block { color: #1d4ed8; }
 .adv-upd-line.ok { color: var(--chip-ok, var(--pass)); }
 .adv-upd-line.bad { color: var(--chip-fail, var(--fail)); }
 .adv-upd-line.soft { color: var(--chip-warn, var(--warn)); }
+
+.adv-page .chip.carved { background: rgba(148,163,184,0.14); color: var(--dim); }
