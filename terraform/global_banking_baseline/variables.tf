@@ -42,13 +42,93 @@ variable "activate" {
   default     = true
 }
 
-variable "saas_tenant_ids_bank_saas_file_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-SaaS File-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_payment_card_data_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Card Data [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_email_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Email-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_payment_card_data_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Card Data [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_payment_card_data_bulk_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Card Data-Bulk [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_payment_card_data_bulk_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Card Data-Bulk [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_payment_instructions_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Instructions [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_payment_instructions_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Instructions [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_customer_pii_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_customer_pii_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_customer_pii_bulk_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII-Bulk [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_customer_pii_bulk_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII-Bulk [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_customer_records_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Records [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_customer_records_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Records [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_mnpi_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_mnpi_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_confidential_markings_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Confidential Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_confidential_markings_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Confidential Markings [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_credentials_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Credentials [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_credentials_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Credentials [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

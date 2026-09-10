@@ -9,3 +9,5 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
+# saas_tenant_ids_src_dlp_block_source_code_uploads_saas = [123456]
+# saas_tenant_ids_src_dlp_block_source_code_uploads_email = [123456]

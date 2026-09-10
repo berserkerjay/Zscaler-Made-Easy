@@ -31,5 +31,100 @@
       "AI_ML"
     ],
     "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "SRC-[DLP] Block Source Code Uploads [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-[DLP] Block Source Code Uploads\" (SRC-CSharp, SRC-CPlusPlus, SRC-Go, SRC-HTML, SRC-Java, SRC-JavaScript, SRC-Kotlin, SRC-Python, SRC-Rust, SRC-SQL, SRC-Swift, SRC-TypeScript, SRC-VBNet). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-CSharp",
+      "SRC-CPlusPlus",
+      "SRC-Go",
+      "SRC-HTML",
+      "SRC-Java",
+      "SRC-JavaScript",
+      "SRC-Kotlin",
+      "SRC-Python",
+      "SRC-Rust",
+      "SRC-SQL",
+      "SRC-Swift",
+      "SRC-TypeScript",
+      "SRC-VBNet"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "SRC-[DLP] Block Source Code Uploads [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-[DLP] Block Source Code Uploads\" (SRC-CSharp, SRC-CPlusPlus, SRC-Go, SRC-HTML, SRC-Java, SRC-JavaScript, SRC-Kotlin, SRC-Python, SRC-Rust, SRC-SQL, SRC-Swift, SRC-TypeScript, SRC-VBNet). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-CSharp",
+      "SRC-CPlusPlus",
+      "SRC-Go",
+      "SRC-HTML",
+      "SRC-Java",
+      "SRC-JavaScript",
+      "SRC-Kotlin",
+      "SRC-Python",
+      "SRC-Rust",
+      "SRC-SQL",
+      "SRC-Swift",
+      "SRC-TypeScript",
+      "SRC-VBNet"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "SRC-[DLP] Block Source Code Uploads [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-[DLP] Block Source Code Uploads\" (SRC-CSharp, SRC-CPlusPlus, SRC-Go, SRC-HTML, SRC-Java, SRC-JavaScript, SRC-Kotlin, SRC-Python, SRC-Rust, SRC-SQL, SRC-Swift, SRC-TypeScript, SRC-VBNet). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-CSharp",
+      "SRC-CPlusPlus",
+      "SRC-Go",
+      "SRC-HTML",
+      "SRC-Java",
+      "SRC-JavaScript",
+      "SRC-Kotlin",
+      "SRC-Python",
+      "SRC-Rust",
+      "SRC-SQL",
+      "SRC-Swift",
+      "SRC-TypeScript",
+      "SRC-VBNet"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
   }
 ]

@@ -42,18 +42,93 @@ variable "activate" {
   default     = true
 }
 
-variable "saas_tenant_ids_z_cjis_saas_file_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS SaaS File-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_cjis_markings_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_cjis_saas_collaboration_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS SaaS Collaboration-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_cjis_markings_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Markings [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_cjis_email_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Email-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_cjis_identifier_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Identifier [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_identifier_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Identifier [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_criminal_history_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Criminal History [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_criminal_history_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Criminal History [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_ncic_iii_data_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS NCIC III Data [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_ncic_iii_data_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS NCIC III Data [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_warrants_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Warrants [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_warrants_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Warrants [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_biometric_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Biometric [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_biometric_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Biometric [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_nics_firearms_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS NICS Firearms [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_nics_firearms_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS NICS Firearms [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_info_sharing_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Info-Sharing [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_info_sharing_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Info-Sharing [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_any_signal_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Any-Signal [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_any_signal_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Any-Signal [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

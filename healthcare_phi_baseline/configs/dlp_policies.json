@@ -20,9 +20,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "R_PHI_EMAIL_MONITOR",
-    "channel": "email",
-    "description": "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for PHI (E_HEALTHCARE_PHI) and bulk exports (E_PHI_BULK_EXPORT). Monitor-only; needs an email tenant under Administration > SaaS Application Tenants.",
+    "name": "R_HEALTHCARE_PHI_MRN_ACCT_DOB [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"R_HEALTHCARE_PHI_MRN_ACCT_DOB\" (E_HEALTHCARE_PHI, E_PHI_BULK_EXPORT). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -30,6 +30,55 @@
       "E_HEALTHCARE_PHI",
       "E_PHI_BULK_EXPORT"
     ],
-    "tenants": "any"
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "R_HEALTHCARE_PHI_MRN_ACCT_DOB [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"R_HEALTHCARE_PHI_MRN_ACCT_DOB\" (E_HEALTHCARE_PHI, E_PHI_BULK_EXPORT). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "E_HEALTHCARE_PHI",
+      "E_PHI_BULK_EXPORT"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "R_HEALTHCARE_PHI_MRN_ACCT_DOB [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"R_HEALTHCARE_PHI_MRN_ACCT_DOB\" (E_HEALTHCARE_PHI, E_PHI_BULK_EXPORT). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "E_HEALTHCARE_PHI",
+      "E_PHI_BULK_EXPORT"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
   }
 ]

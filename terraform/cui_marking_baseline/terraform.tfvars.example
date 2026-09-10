@@ -9,4 +9,9 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
-# saas_tenant_ids_cui_email_monitor = [123456]
+# saas_tenant_ids_cui_block_marked_documents_saas = [123456]
+# saas_tenant_ids_cui_block_marked_documents_email = [123456]
+# saas_tenant_ids_cui_caution_weak_markings_saas = [123456]
+# saas_tenant_ids_cui_caution_weak_markings_email = [123456]
+# saas_tenant_ids_cui_monitor_all_saas = [123456]
+# saas_tenant_ids_cui_monitor_all_email = [123456]

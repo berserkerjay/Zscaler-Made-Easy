@@ -292,6 +292,7 @@ function _dzRenderSelect() {
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
           ${p.baseline ? `<button type="button" class="dz-link" title="Read-only: places every object of this baseline in the tenant (missing, deployed, monitoring, enforcing, customized) and shows the stage reached and the next steps." onclick="event.stopPropagation(); _dzJourney('${_dzE(p.id)}')">${(DZ.journey[p.id] || {}).busy ? 'Measuring…' : 'Where is this tenant?'}</button>` : ''}
           <button type="button" class="dz-link" title="Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab." onclick="event.stopPropagation(); openToolTab('terraform', '${_dzE(p.id)}')">Terraform hand-off</button>
+          <button type="button" class="dz-link danger" title="Find what this pack put in the tenant (by its DLP-Check tag and its names) and remove it, in dependency order. Previews first; objects another rule or engine still uses are kept. Needs write mode." onclick="event.stopPropagation(); _dzRemove('${_dzE(p.id)}')">${(DZ.remove || {})[p.id] === 'busy' ? 'Working…' : 'Remove from tenant'}</button>
           ${p.id === 'zbp_source_code_baseline' ? `<button type="button" class="dz-link" title="Read the tenant's own source-code dictionaries (an Anchor and a Signal per language, paired by name), preview the pairing, then rebuild this pack from them: dictionaries keep their tenant names, each language gets one engine (Signal > N AND Anchor > 0), the old pack dictionaries and engines are dropped." onclick="event.stopPropagation(); _dzFromTenant('${_dzE(p.id)}')">${(DZ.fromTenant || {}).busy ? 'Reading tenant…' : 'Rebuild from tenant dictionaries'}</button>` : ''}
         </div>
         ${p.id === 'zbp_source_code_baseline' ? _dzFromTenantHtml() : ''}
@@ -770,6 +771,68 @@ function _dzRenderDeploy() {
     </div>`;
 }
 
+
+// ── Remove a deployed pack (discovery-based) ──────────────────────
+// Finds what a pack put in the tenant by its DLP-Check tag and its
+// names, previews the removal (what goes, what is kept because another
+// rule or engine still uses it), then deletes in dependency order.
+async function _dzRemove(id) {
+  const pack = (DZ.packs || []).find(x => x.id === id) || { id, name: id };
+  DZ.remove = DZ.remove || {}; DZ.remove[id] = 'busy'; _dzRenderSelect();
+  let plan;
+  try {
+    const r = await fetch('/api/dlp-packs/removal/preflight', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack_ids: [id], ..._dzCreds() }),
+    });
+    plan = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
+  } catch (e) {
+    DZ.remove[id] = null; _dzRenderSelect();
+    alert(`Could not scan the tenant for ${pack.name || id}: ${e.message}`);
+    return;
+  }
+  DZ.remove[id] = null; _dzRenderSelect();
+  if (plan.status === 'blocked') { alert((plan.blockers || ['Could not read the tenant.']).join('\n')); return; }
+  const remove = (plan.items || []).filter(i => i.status === 'remove');
+  const keep = (plan.items || []).filter(i => i.status === 'keep');
+  if (!remove.length) {
+    alert(`Nothing to remove for ${pack.name || id}. No objects in the tenant carry this pack's DLP-Check tag or its names.${keep.length ? `\n\n${keep.length} matching object(s) are kept because something else still uses them.` : ''}`);
+    return;
+  }
+  const kindWord = { policy: 'rule', app_group: 'application group', engine: 'engine', dictionary: 'dictionary' };
+  const lines = remove.map(i => `  • ${kindWord[i.kind] || i.kind}: ${i.name}${i.match === 'name' ? '  (matched by name — no DLP-Check tag)' : ''}`);
+  const keepLines = keep.map(i => `  • ${kindWord[i.kind] || i.kind}: ${i.name} — kept (${i.keep})`);
+  const nameOnly = remove.some(i => i.match === 'name');
+  if (!(DZ.write && DZ.write.enabled)) {
+    alert(`This would remove ${remove.length} object(s) for ${pack.name || id}:\n\n${lines.join('\n')}${keepLines.length ? `\n\nKept:\n${keepLines.join('\n')}` : ''}\n\nEnable write mode to remove them.`);
+    return;
+  }
+  const msg = `Remove ${remove.length} object(s) that ${pack.name || id} put in ${plan.tenant_label || 'this tenant'}?\n\n${lines.join('\n')}${keepLines.length ? `\n\nKept (still in use elsewhere):\n${keepLines.join('\n')}` : ''}\n\nDeletion is in dependency order (rules, application groups, engines, dictionaries) and needs activation in ZIA afterwards.${nameOnly ? '\n\nSome objects matched by NAME only, with no DLP-Check tag — confirm they are yours.' : ''}`;
+  if (!window.confirm(msg)) return;
+  DZ.remove[id] = 'busy'; _dzRenderSelect();
+  try {
+    const r = await fetch('/api/dlp-packs/removal/apply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack_ids: [id], plan_hash: plan.plan_hash, confirm: true, ..._dzCreds() }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    const s = data.summary || {};
+    const parts = [];
+    if (s.deleted) parts.push(`${s.deleted} deleted`);
+    if (s.gone) parts.push(`${s.gone} already gone`);
+    if (s.skipped) parts.push(`${s.skipped} left alone`);
+    if (s.failed) parts.push(`${s.failed} failed`);
+    const detail = (data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped').map(x => `${x.name}: ${x.error || x.reason}`).join('; ');
+    alert(`Removal ${data.status}: ${parts.join(', ') || 'nothing to do'}.${detail ? '\n\n' + detail : ''}${data.activation_required ? '\n\nActivate in ZIA to make the deletions live.' : ''}`);
+    announce(`Removal ${data.status}.`);
+  } catch (e) {
+    alert(`Removal failed: ${e.message}`);
+  } finally {
+    DZ.remove[id] = null; _dzRenderSelect();
+  }
+}
 
 // ── Previous deployments and undo ─────────────────────────────────
 // Every deploy made from here is recorded (what was created, where).

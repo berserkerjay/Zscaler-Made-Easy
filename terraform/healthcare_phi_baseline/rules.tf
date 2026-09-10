@@ -17,9 +17,45 @@ resource "zia_dlp_web_rules" "r_healthcare_phi_mrn_acct_dob" {
   }
 }
 
-resource "zia_outbound_email_dlp" "r_phi_email_monitor" {
-  name                         = "R_PHI_EMAIL_MONITOR"
-  description                  = "Outbound Email DLP: monitor mail leaving onboarded Microsoft 365 / Gmail tenants for PHI (E_HEALTHCARE_PHI) and bulk exports (E_PHI_BULK_EXPORT). Monitor-only; needs an email tenant under Administration > SaaS Application Tenants. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
+resource "zia_endpoint_dlp_rules" "r_healthcare_phi_mrn_acct_dob_endpoint" {
+  name                         = "R_HEALTHCARE_PHI_MRN_ACCT_DOB [Endpoint]"
+  description                  = "Endpoint DLP: the same detection as the inline rule \"R_HEALTHCARE_PHI_MRN_ACCT_DOB\" (E_HEALTHCARE_PHI, E_PHI_BULK_EXPORT). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.e_healthcare_phi.id, zia_dlp_engines.e_phi_bulk_export.id]
+  }
+}
+
+resource "zia_casb_dlp_rules" "r_healthcare_phi_mrn_acct_dob_saas" {
+  name                         = "R_HEALTHCARE_PHI_MRN_ACCT_DOB [SaaS]"
+  description                  = "SaaS Security API: the same detection as the inline rule \"R_HEALTHCARE_PHI_MRN_ACCT_DOB\" (E_HEALTHCARE_PHI, E_PHI_BULK_EXPORT). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "OFLCASB_DLP_REPORT_INCIDENT"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  type                         = "OFLCASB_DLP_FILE"
+  collaboration_scope          = ["ANY"]
+  dlp_engines {
+    id = [zia_dlp_engines.e_healthcare_phi.id, zia_dlp_engines.e_phi_bulk_export.id]
+  }
+  cloud_app_tenants {
+    id = var.saas_tenant_ids_r_healthcare_phi_mrn_acct_dob_saas
+  }
+}
+
+resource "zia_outbound_email_dlp" "r_healthcare_phi_mrn_acct_dob_email" {
+  name                         = "R_HEALTHCARE_PHI_MRN_ACCT_DOB [Email]"
+  description                  = "Email DLP: the same detection as the inline rule \"R_HEALTHCARE_PHI_MRN_ACCT_DOB\" (E_HEALTHCARE_PHI, E_PHI_BULK_EXPORT). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 0
   state                        = "DISABLED"
   action                       = "ALLOW"
@@ -29,7 +65,7 @@ resource "zia_outbound_email_dlp" "r_phi_email_monitor" {
     id = [zia_dlp_engines.e_healthcare_phi.id, zia_dlp_engines.e_phi_bulk_export.id]
   }
   email_tenants {
-    id = var.saas_tenant_ids_r_phi_email_monitor
+    id = var.saas_tenant_ids_r_healthcare_phi_mrn_acct_dob_email
   }
 }
 

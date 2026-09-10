@@ -42,8 +42,63 @@ variable "activate" {
   default     = true
 }
 
-variable "saas_tenant_ids_zbp_email_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule ZBP-Email-Monitor applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_zbp_financial_information_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-Financial Information [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_financial_information_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-Financial Information [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_itar_international_traffic_in_arms_regulations_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-ITAR International Traffic in Arms Regulations [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_itar_international_traffic_in_arms_regulations_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-ITAR International Traffic in Arms Regulations [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_traffic_light_protocol_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-Traffic Light Protocol [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_traffic_light_protocol_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-Traffic Light Protocol [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_us_pii_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_us_pii_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PII [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_us_phi_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_us_phi_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_private_keys_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-Private Keys [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_private_keys_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-Private Keys [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

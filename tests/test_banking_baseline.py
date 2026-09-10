@@ -109,12 +109,16 @@ def test_banking_pack_deploys_across_every_channel(monkeypatch):
     euiban = PREDEFINED.index("EUIBAN_LEAKAGE") + 1
     assert f"D{euiban}.S > 2" in eng["Bank-Account and Payment Instructions"]["engine_expression"]
     assert "D:" not in "".join(e["engine_expression"] for e in eng.values())
-    # Every channel received its rules.
-    web = {r["name"] for r in client.zia.dlp_web_rules.added}
+    # Every channel mirrors the inline (web) rules one-for-one: same count,
+    # same engines, so Endpoint / SaaS / Email match Web DLP.
+    web = [r["name"] for r in client.zia.dlp_web_rules.added]
     assert "Bank-Payment Card Data-Monitor" in web and "Bank-Customer PII-Bulk-Block" in web
-    assert {r["name"] for r in client.zia.endpoint_dlp_rules.added} == {"Bank-Endpoint-Monitor", "Bank-Endpoint-Bulk-Block-USB"}
-    assert client.zia.casb_dlp_rules.added[0]["name"] == "Bank-SaaS File-Monitor"
-    assert client.zia.outbound_email_dlp_rules.added[0]["name"] == "Bank-Email-Monitor"
+    ep = [r["name"] for r in client.zia.endpoint_dlp_rules.added]
+    saas = [r["name"] for r in client.zia.casb_dlp_rules.added]
+    email = [r["name"] for r in client.zia.outbound_email_dlp_rules.added]
+    assert len(ep) == len(web) and all(n.endswith("[Endpoint]") for n in ep)
+    assert len(saas) == len(web) and all(n.endswith("[SaaS]") for n in saas)
+    assert len(email) == len(web) and all(n.endswith("[Email]") for n in email)
     # Nothing to do the second time: the baseline is in sync.
     rep2 = pd.preflight(client, [pk], writes_enabled=True)
     assert rep2["status"] == "blocked" and any("every baseline object already exists" in b for b in rep2["blockers"])

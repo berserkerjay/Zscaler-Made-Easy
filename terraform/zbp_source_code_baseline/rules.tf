@@ -27,3 +27,55 @@ resource "zia_dlp_web_rules" "src_dlp_block_source_code_uploads" {
   }
 }
 
+resource "zia_endpoint_dlp_rules" "src_dlp_block_source_code_uploads_endpoint" {
+  name                         = "SRC-[DLP] Block Source Code Uploads [Endpoint]"
+  description                  = "Endpoint DLP: the same detection as the inline rule \"SRC-[DLP] Block Source Code Uploads\" (SRC-CSharp, SRC-CPlusPlus, SRC-Go, SRC-HTML, SRC-Java, SRC-JavaScript, SRC-Kotlin, SRC-Python, SRC-Rust, SRC-SQL, SRC-Swift, SRC-TypeScript, SRC-VBNet). Monitor-only; enable after reviewing incidents. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.src_csharp.id, zia_dlp_engines.src_cplusplus.id, zia_dlp_engines.src_go.id, zia_dlp_engines.src_html.id, zia_dlp_engines.src_java.id, zia_dlp_engines.src_javascript.id, zia_dlp_engines.src_kotlin.id, zia_dlp_engines.src_python.id, zia_dlp_engines.src_rust.id, zia_dlp_engines.src_sql.id, zia_dlp_engines.src_swift.id, zia_dlp_engines.src_typescript.id, zia_dlp_engines.src_vbnet.id]
+  }
+}
+
+resource "zia_casb_dlp_rules" "src_dlp_block_source_code_uploads_saas" {
+  name                         = "SRC-[DLP] Block Source Code Uploads [SaaS]"
+  description                  = "SaaS Security API: the same detection as the inline rule \"SRC-[DLP] Block Source Code Uploads\" (SRC-CSharp, SRC-CPlusPlus, SRC-Go, SRC-HTML, SRC-Java, SRC-JavaScript, SRC-Kotlin, SRC-Python, SRC-Rust, SRC-SQL, SRC-Swift, SRC-TypeScript, SRC-VBNet). Monitor-only; enable after reviewing incidents. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "OFLCASB_DLP_REPORT_INCIDENT"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  type                         = "OFLCASB_DLP_FILE"
+  collaboration_scope          = ["ANY"]
+  dlp_engines {
+    id = [zia_dlp_engines.src_csharp.id, zia_dlp_engines.src_cplusplus.id, zia_dlp_engines.src_go.id, zia_dlp_engines.src_html.id, zia_dlp_engines.src_java.id, zia_dlp_engines.src_javascript.id, zia_dlp_engines.src_kotlin.id, zia_dlp_engines.src_python.id, zia_dlp_engines.src_rust.id, zia_dlp_engines.src_sql.id, zia_dlp_engines.src_swift.id, zia_dlp_engines.src_typescript.id, zia_dlp_engines.src_vbnet.id]
+  }
+  cloud_app_tenants {
+    id = var.saas_tenant_ids_src_dlp_block_source_code_uploads_saas
+  }
+}
+
+resource "zia_outbound_email_dlp" "src_dlp_block_source_code_uploads_email" {
+  name                         = "SRC-[DLP] Block Source Code Uploads [Email]"
+  description                  = "Email DLP: the same detection as the inline rule \"SRC-[DLP] Block Source Code Uploads\" (SRC-CSharp, SRC-CPlusPlus, SRC-Go, SRC-HTML, SRC-Java, SRC-JavaScript, SRC-Kotlin, SRC-Python, SRC-Rust, SRC-SQL, SRC-Swift, SRC-TypeScript, SRC-VBNet). Monitor-only; enable after reviewing incidents. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  order                        = var.rule_starting_order + 0
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  dlp_engines {
+    id = [zia_dlp_engines.src_csharp.id, zia_dlp_engines.src_cplusplus.id, zia_dlp_engines.src_go.id, zia_dlp_engines.src_html.id, zia_dlp_engines.src_java.id, zia_dlp_engines.src_javascript.id, zia_dlp_engines.src_kotlin.id, zia_dlp_engines.src_python.id, zia_dlp_engines.src_rust.id, zia_dlp_engines.src_sql.id, zia_dlp_engines.src_swift.id, zia_dlp_engines.src_typescript.id, zia_dlp_engines.src_vbnet.id]
+  }
+  email_tenants {
+    id = var.saas_tenant_ids_src_dlp_block_source_code_uploads_email
+  }
+}
+

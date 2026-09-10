@@ -42,8 +42,13 @@ variable "activate" {
   default     = true
 }
 
-variable "saas_tenant_ids_r_phi_email_monitor" {
-  description = "IDs of the onboarded SaaS application tenants rule R_PHI_EMAIL_MONITOR applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_r_healthcare_phi_mrn_acct_dob_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule R_HEALTHCARE_PHI_MRN_ACCT_DOB [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_r_healthcare_phi_mrn_acct_dob_email" {
+  description = "IDs of the onboarded SaaS application tenants rule R_HEALTHCARE_PHI_MRN_ACCT_DOB [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
