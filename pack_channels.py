@@ -1205,6 +1205,26 @@ def update_rule(zia, channel: str, rule_id: Any, payload: Dict[str, Any]):
     return svc.update_rule(rule_id, **payload)
 
 
+def saas_rule_type(zia, rule_id: Any) -> Optional[str]:
+    """The ruleType of one SaaS Security API rule, looked up by id (the
+    delete API needs it). None when it cannot be found."""
+    svc = getattr(zia, CHANNELS[SAAS]["service"], None)
+    if svc is None:
+        return None
+    try:
+        lister = getattr(svc, "list_all_rules", None)
+        data, err = _nx(lister()) if lister else _nx(svc.list_rules("ANY"))
+    except Exception:  # noqa: BLE001
+        return None
+    if err:
+        return None
+    for r in data or []:
+        if str(_field(r, "id")) == str(rule_id):
+            t = _field(r, "type", "rule_type", "ruleType")
+            return str(t) if t else None
+    return None
+
+
 def list_rule_names(zia, channel: str, types: Optional[Iterable[str]] = None) -> Tuple[Optional[set], Optional[str]]:
     """Fresh name set for post-deploy verification. Cloud App Control rules
     are listed per type; pass the types the pack uses."""

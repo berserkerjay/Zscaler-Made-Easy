@@ -397,9 +397,6 @@ OTHER_SAMPLES = {
         "tlp_red": lambda rng: "TLP:RED. Incident 2026-0412: credential stuffing against the customer portal from 14 IPs. Not for disclosure, restricted to participants only. Indicators attached.",
         "us_pii_export": lambda rng: "\n".join(f"{n}, SSN {ssn(rng)}, DOB {rng.randint(1,12):02d}/{rng.randint(1,28):02d}/19{rng.randint(50,95)}, driver license number {rng.choice('ABC')}{rng.randint(1000000,9999999)}" for n in ("A. Kim", "B. Ortiz", "C. Weber", "D. Chen", "E. Rossi", "F. Byrne")) + "\nHR export for the benefits enrolment vendor.",
     },
-    "endpoint": {
-        "pci_usb": lambda rng: "Copying the chargeback spreadsheet to the USB drive. " + " ".join(luhn_number(rng, "4") for _ in range(4)) + " are the disputed card numbers, expiry dates in column C.",
-    },
     "cjis": {
         "ncic_query": lambda rng: f"NCIC/III query results. ORI CA{rng.randint(1000000,9999999)}, purpose code C, QH inquiry on subject DOB {rng.randint(1,12):02d}/{rng.randint(1,28):02d}/19{rng.randint(60,95)}, SSN {ssn(rng)}. Criminal history record information returned: two prior arrests. Hit confirmation requested. Law Enforcement Sensitive, CJIS.",
         "warrant": lambda rng: f"WANTED PERSON. Active warrant issued by Harris County. Subject SSN {ssn(rng)}, DOB {rng.randint(1,12):02d}/{rng.randint(1,28):02d}/19{rng.randint(60,95)}, driver license number TX{rng.randint(10000000,99999999)}. Extradition limits: full. NCIC entry confirmed. Law Enforcement Sensitive.",
@@ -421,7 +418,7 @@ def build_docs(rng, iteration: int) -> List[Dict[str, Any]]:
             ex = list(item["examples"]); rng.shuffle(ex)
             docs.append({"pack": "zbp_source_code_baseline", "cls": lang, "positive": True, "text": "\n".join(ex[: max(10, len(ex) // 2)]), "source": "library examples"})
     for pack, items in (("healthcare_phi_baseline", OTHER_SAMPLES["healthcare"]), ("fed_policy_pack", OTHER_SAMPLES["cui"]), ("cjis_policy_pack", OTHER_SAMPLES["cjis"]),
-                        ("zbp_enterprise_baseline", OTHER_SAMPLES["zbp"]), ("zbp_endpoint_dlp_baseline", OTHER_SAMPLES["endpoint"]), ("fed_policy_pack", OTHER_SAMPLES["zbp"])):
+                        ("zbp_enterprise_baseline", OTHER_SAMPLES["zbp"]), ("fed_policy_pack", OTHER_SAMPLES["zbp"])):
         for k, fn in items.items():
             docs.append({"pack": pack, "cls": k, "positive": True, "text": fn(rng)})
     for k, items in NEGATIVES.items():
@@ -457,7 +454,6 @@ EXPECT = {
     "zbp_enterprise_baseline": {"tax_forms": ["ZBP-Financial Information", "ZBP-US PII"], "private_key": ["ZBP-Private Keys"], "itar_legend": ["ZBP-ITAR Phrases"], "itar_mention": [], "tlp_red": ["ZBP-TLP Red"], "us_pii_export": ["ZBP-US PII"]},
     "fed_policy_pack": {"tax_forms": ["Financial Information", "US PII"], "private_key": ["Private Keys"], "itar_legend": ["ITAR Phrases"], "itar_mention": [], "tlp_red": ["TLP Red"], "us_pii_export": ["US PII"],
                         "cui_banner": ["CUI-Detect-All"], "fouo_legacy": ["CUI-Detect-All", "FOUO Markings High Confidence", "FOUO Markings Medium Confidence"]},
-    "zbp_endpoint_dlp_baseline": {"pci_usb": ["PCI - Low", "PCI - Medium"]},
 }
 
 

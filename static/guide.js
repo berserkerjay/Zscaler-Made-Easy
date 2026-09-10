@@ -72,17 +72,17 @@ function _gdSteps() {
       actions: [{ label: 'Jump to results', fn: '_gdGoResults()', kind: 'quiet', disabled: !assessed }],
     },
     {
-      n: 4, title: 'Pick a baseline and run the preflight',
+      n: 4, title: 'Pick a policy pack and run the preflight',
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
-      what: 'A baseline is a complete, layered policy design for one situation: Healthcare PHI, CUI markings, Zscaler\'s enterprise best practice, Endpoint DLP, and so on. Each card says who it is for and when to use it. Preflight reads the tenant and shows exactly what would be created, what already exists and is kept, and what the impact is. Nothing is written.',
+      what: 'A policy pack is a complete, layered policy design for one situation: Healthcare PHI, CUI markings, Zscaler\'s enterprise best practice, Endpoint DLP, and so on. Each card says who it is for and when to use it. Preflight reads the tenant and shows exactly what would be created, what already exists and is kept, and what the impact is. Nothing is written.',
       need: 'A connected tenant. Preflight works in read-only mode; it is the plan you show the customer.',
-      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, tick a baseline, click Run preflight, then read the Impact cards and the plan.',
+      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, tick a policy pack, click Run preflight, then read the Impact cards and the plan.',
       actions: [{ label: 'Open Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
     {
       n: 5, title: 'Close the gap: deploy from here, or hand off as Terraform',
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
-      what: 'Two ways to create the missing objects. <strong>Deploy from here</strong>: enable write mode in Deploy Policy Packs, review, tick the consent box, deploy; every rule arrives disabled and nothing the customer already has is overwritten. <strong>Hand off as Terraform</strong>: for customers whose platform team manages Zscaler as code, download the same baseline as a Terraform workspace; in gap mode it imports what exists so their first plan is exactly the gap.',
+      what: 'Two ways to create the missing objects. <strong>Deploy from here</strong>: enable write mode in Deploy Policy Packs, review, tick the consent box, deploy; every rule arrives disabled and nothing the customer already has is overwritten. <strong>Hand off as Terraform</strong>: for customers whose platform team manages Zscaler as code, download the same policy pack as a Terraform workspace; in gap mode it imports what exists so their first plan is exactly the gap.',
       need: 'Deploying from here needs write mode (a confirmation phrase, until the server restarts). The Terraform route needs nothing from this tool after the download; the platform team needs an API client with write access.',
       status: deployed ? 'Deployed. Activate in the ZIA portal, then enable rules one by one.' : 'Choose the route the customer prefers. Both start from the same preflight.',
       actions: [{ label: 'Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }, { label: 'Terraform hand-off', fn: "openToolTab('terraform')", kind: 'quiet' }],
@@ -359,17 +359,17 @@ const GD_GLOSSARY = [
   ['Action: ALLOW vs BLOCK', 'ALLOW means monitor: the transaction goes through and an incident is logged. BLOCK stops it. CONFIRM asks the user first. Every pack ships its rules in ALLOW or BLOCK as designed, but DISABLED, so nothing happens until you enable a rule.'],
   ['Severity', 'The label an incident gets in reports (INFO, LOW, MEDIUM, HIGH). It does not change what the rule does. Packs ship at INFO; raise it once a rule is tuned.'],
   ['Policy pack', 'A folder of dictionaries, engines and rules for one purpose: CJIS, the Fed pack, Zscaler\'s enterprise best practice, healthcare PHI. Deploying a pack creates those objects in the tenant.'],
-  ['Baseline', 'A pack that is the reference a tenant is measured against. Deploy it greenfield (empty tenant: everything is created) or brownfield (existing tenant: what exists is kept exactly as the customer has it, the rest is created). Nothing is ever overwritten. Objects the baseline does not define are never touched.'],
+  ['Reference policy pack', 'A policy pack that is the reference a tenant is measured against. Deploy it greenfield (empty tenant: everything is created) or brownfield (existing tenant: what exists is kept exactly as the customer has it, the rest is created). Nothing is ever overwritten. Objects the policy pack does not define are never touched.'],
   ['Greenfield / brownfield', 'Greenfield: none of the pack\'s objects exist yet, so the whole pack is created from scratch. Brownfield: some already exist (perhaps from an earlier deploy, perhaps built by hand); they are kept, only the missing ones are created.'],
   ['Preflight', 'The read-only check Deploy Studio runs before anything is written: it reads the tenant, works out what is missing, what already exists, what conflicts, and what the impact would be. You approve that exact plan.'],
   ['Plan hash', 'A fingerprint of the plan you approved. If the tenant changes between approval and deploy, the fingerprint no longer matches and nothing is written until you review again.'],
   ['Journey (where is this tenant?)', 'The data-governance journey has five stages: Foundation (dictionaries and engines exist), Policies deployed (every rule exists), Visibility (SSL decrypts the risky app classes and DLP rules are enabled), Containment (Cloud App Control, File Type and URL rules are enabled), Enforcement (DLP rules block). The assessment and the pack card place the tenant on that ladder and list the exact rules to enable or harden next.'],
-  ['Customized', 'A baseline object the customer changed: a rule they enabled, an action they hardened from ALLOW to BLOCK, a dictionary they tuned. That is progress, not drift. It is kept as-is and shown as customized; converge mode (an explicit API option) is the only thing that overwrites it.'],
+  ['Customized', 'A policy pack object the customer changed: a rule they enabled, an action they hardened from ALLOW to BLOCK, a dictionary they tuned. That is progress, not drift. It is kept as-is and shown as customized; converge mode (an explicit API option) is the only thing that overwrites it.'],
   ['Activation', 'ZIA saves changes as pending. After a deploy, an admin must click Activate in the ZIA Admin Portal for the new rules to take effect for users.'],
   ['Read-only vs write mode', 'The server starts read-only: assessment, preflight and journey checks all work, deploying is refused. Deploy Policy Packs shows the current mode and an Enable write mode button (type the confirmation phrase; it lasts until the server restarts). START_Zscaler_Assessment_WRITES_ENABLED.bat starts in write mode from the outset. Stay read-only when you only want to show the customer the plan.'],
   ['OneAPI credentials', 'The client ID and secret of an API client created in ZIdentity, plus the vanity domain (the short name in the login URL, acme for acme.zslogin.net) and the cloud (Production for almost everyone).'],
   ['Terraform hand-off', 'The same pack as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Gap mode reads the tenant and imports existing objects so the first plan shows exactly the gap; static mode needs no credentials. Terraform then owns the objects: a later plan shows how the tenant moved, and apply would converge it, so use plan to assess and apply deliberately.'],
-  ['Outbound Email DLP', 'Rules that inspect mail leaving onboarded Microsoft 365 / Gmail tenants (Administration > SaaS Application Tenants). The baselines ship a monitor-only email rule; preflight skips it, with the reason, when no email tenant is onboarded.'],
+  ['Outbound Email DLP', 'Rules that inspect mail leaving onboarded Microsoft 365 / Gmail tenants (Administration > SaaS Application Tenants). The policy packs ship a monitor-only email rule; preflight skips it, with the reason, when no email tenant is onboarded.'],
 ];
 function _gdHelp(open) {
   GD.helpOpen = open;
@@ -384,14 +384,14 @@ function _gdHelp(open) {
   d.innerHTML = `
     <div class="gd-help-sheet">
       <header><h2>How this tool works</h2><button type="button" class="gd-btn quiet" onclick="_gdHelp(false)" aria-label="Close help">✕</button></header>
-      <p>DLP-Check does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP and containment configuration that is checked against the tenant and approved by you before anything is written, into an empty tenant or on top of what is already there. Afterwards it <strong>measures the journey</strong>: how far the tenant has taken that baseline, from deployed to monitoring to enforcing, and what to enable next.</p>
+      <p>DLP-Check does two things. First it <strong>assesses</strong> a Zscaler tenant against a checklist of best practices and gives it a score. Then it <strong>closes the gaps</strong> by deploying policy packs: ready-made DLP and containment configuration that is checked against the tenant and approved by you before anything is written, into an empty tenant or on top of what is already there. Afterwards it <strong>measures the journey</strong>: how far the tenant has taken that policy pack, from deployed to monitoring to enforcing, and what to enable next.</p>
       <p>A good first engagement: connect, run the assessment, walk the customer through the critical findings, then run a preflight for the pack that matches their regulation and show them the plan. Deploy only when the customer has agreed and the server is running with writes enabled.</p>
       <h3>Tools at a glance</h3>
       <dl>
-        <dt>Assessment (Run Assessment)</dt><dd>300+ read-only checks against the tenant, a score, findings with fixes, and the Data governance journey card for every baseline pack.</dd>
-        <dt>Tenant profiles</dt><dd>One saved record per customer (details, scopes, applicable baselines, optional remembered secret) with the history of every assessment.</dd>
-        <dt>Deploy Policy Packs</dt><dd>Pick a baseline, choose which DLP channels its engines go into (Inline Web, Endpoint DLP, SaaS Security, Outbound Email: a ticked channel the pack has no rule for gets a monitor-only rule with the pack's engines, an unticked one is skipped), preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a baseline card measures the journey. Every deployment is recorded under <em>Previous deployments</em>, where <em>Undo</em> deletes exactly what it created.</dd>
-        <dt>Terraform hand-off</dt><dd>The same baseline as a Terraform workspace for the official zscaler/zia provider, for platform teams that manage Zscaler as code. Gap mode imports what already exists so the first plan is exactly the gap. The repository also carries a validated workspace per pack under terraform/.</dd>
+        <dt>Assessment (Run Assessment)</dt><dd>300+ read-only checks against the tenant, a score, findings with fixes, and the Data governance journey card for every policy pack.</dd>
+        <dt>Tenant profiles</dt><dd>One saved record per customer (details, scopes, applicable policy packs, optional remembered secret) with the history of every assessment.</dd>
+        <dt>Deploy Policy Packs</dt><dd>Pick a policy pack, choose which DLP channels its engines go into (Inline Web, Endpoint DLP, SaaS Security, Outbound Email: a ticked channel the pack has no rule for gets a monitor-only rule with the pack's engines, an unticked one is skipped), preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a policy pack card measures the journey. Every deployment is recorded under <em>Previous deployments</em>, where <em>Undo</em> deletes exactly what it created.</dd>
+        <dt>Terraform hand-off</dt><dd>The same policy pack as a Terraform workspace for the official zscaler/zia provider, for platform teams that manage Zscaler as code. Gap mode imports what already exists so the first plan is exactly the gap. The repository also carries a validated workspace per pack under terraform/.</dd>
         <dt>Evaluate All Rules (Inline DLP Rule Migration)</dt><dd>Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely; check 5.20 in the assessment says whether it is needed.</dd>
         <dt>Bypass / Non-Inspected</dt><dd>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection, with exports. Opens in its own tab.</dd>
         <dt>SSL Inspection Flow</dt><dd>Live flow diagram: for each DLP-relevant traffic class (file sharing, webmail, AI, social, uncategorised sites…) which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps are highlighted with the fix. Refresh or auto-refresh from the tab.</dd>
@@ -415,7 +415,7 @@ function _gdHelp(open) {
 }
 
 // ── Journey card on the assessment results ─────────────────────────
-// The assessment measures the tenant against every baseline pack; this
+// The assessment measures the tenant against every policy pack; this
 // renders that as a card above the compliance section.
 function _gdJourneyCard(j) {
   let card = document.getElementById('gdJourney');
@@ -430,16 +430,16 @@ function _gdJourneyCard(j) {
   card.hidden = false;
   const E = _gdE;
   if (j.status === 'error') {
-    card.innerHTML = `<h2>Data governance journey</h2><p class="gd-sub">Could not measure the tenant against the baselines: ${E(j.error || 'unknown error')}. The assessment itself is complete.</p>`;
+    card.innerHTML = `<h2>Data governance journey</h2><p class="gd-sub">Could not measure the tenant against the policy packs: ${E(j.error || 'unknown error')}. The assessment itself is complete.</p>`;
     return;
   }
   if (j.status === 'pending') {
-    card.innerHTML = `<h2>Data governance journey</h2><p class="gd-sub"><span class="gd-spin" aria-hidden="true"></span> Measuring the tenant against each baseline pack${j.current ? ` — ${E(j.current.replace(/^Data governance journey: /, ''))}` : ''}. The results above are final; this card fills in when the measurement finishes.</p>`;
+    card.innerHTML = `<h2>Data governance journey</h2><p class="gd-sub"><span class="gd-spin" aria-hidden="true"></span> Measuring the tenant against each policy pack${j.current ? ` — ${E(j.current.replace(/^Data governance journey: /, ''))}` : ''}. The results above are final; this card fills in when the measurement finishes.</p>`;
     return;
   }
   const stages = (j.stages || []).map(s => `<li><b>${E(s.name)}</b> — ${E(s.what)}</li>`).join('');
   const rows = (j.baselines || []).map(b => `<div class="dz-journey ${b.state === 'governed' ? 'ok' : (b.state === 'blocked' ? 'fail' : (b.state === 'not_started' ? 'info' : 'warn'))}"><h3>${E(b.name)}${b.version ? ` <span class="gd-dim">v${E(b.version)}</span>` : ''}</h3>${typeof _dzJourneyRowHtml === 'function' ? _dzJourneyRowHtml(b, { max: 6 }) : `Stage ${b.stage} of 5 (${E(b.stage_name)})`}</div>`).join('');
-  const overall = { not_started: 'Not started: none of the baselines has been deployed yet.', in_progress: 'In progress: baselines are deployed but not yet fully enabled and enforcing.', governed: 'Governed: every baseline is deployed, enabled and enforcing.', blocked: 'Blocked: something a baseline needs is missing from the tenant.' }[j.status] || j.status;
+  const overall = { not_started: 'Not started: none of the policy packs has been deployed yet.', in_progress: 'In progress: policy packs are deployed but not yet fully enabled and enforcing.', governed: 'Governed: every policy pack is deployed, enabled and enforcing.', blocked: 'Blocked: something a policy pack needs is missing from the tenant.' }[j.status] || j.status;
   const hist = ((GD.lastReport || {}).profile || {}).history || [];
   const prev = hist.length >= 2 ? hist[hist.length - 2] : null;
   let trend = '';
@@ -451,10 +451,10 @@ function _gdJourneyCard(j) {
   }
   card.innerHTML = `
     <h2>Data governance journey</h2>
-    <p class="gd-sub">Where this tenant stands against each baseline pack, measured read-only during the assessment. <strong>${E(overall)}</strong> Overall stage ${j.stage || 0} of 5, ${j.score || 0}% of the way. Deploying a baseline (Deploy Studio) creates what is missing and keeps everything the customer already has; enabling and hardening rules in the ZIA portal moves the tenant up the ladder.</p>
+    <p class="gd-sub">Where this tenant stands against each policy pack, measured read-only during the assessment. <strong>${E(overall)}</strong> Overall stage ${j.stage || 0} of 5, ${j.score || 0}% of the way. Deploying a policy pack (Deploy Studio) creates what is missing and keeps everything the customer already has; enabling and hardening rules in the ZIA portal moves the tenant up the ladder.</p>
     ${trend}
     <details class="dz-fold"><summary>The five stages</summary><ol class="dz-next">${stages}</ol></details>
-    ${rows || '<p class="gd-sub">No baseline packs are installed.</p>'}`;
+    ${rows || '<p class="gd-sub">No policy packs are installed.</p>'}`;
 }
 (function () {
   const orig = window.showResults;
@@ -469,7 +469,7 @@ function _gdJourneyCard(j) {
 
 // ── Tenant profiles ─────────────────────────────────────────────────
 // One saved record per customer tenant (server-side, git-ignored file):
-// details, scopes, applicable baselines, optional remembered secret, and
+// details, scopes, applicable policy packs, optional remembered secret, and
 // the history of every assessment run against it.
 const GD_INDUSTRIES = ['Healthcare', 'Federal', 'State & local government', 'Law enforcement (CJIS)', 'Financial services', 'Education', 'Manufacturing', 'Technology', 'Other'];
 function _gdProfileSel() { return (GD.profiles || []).find(p => p.id === GD.profile) || null; }
@@ -553,7 +553,7 @@ function _gdHistoryHtml(p) {
     const bl = (j.baselines || []).map(b => `${_gdE(b.name || b.id)}: stage ${b.stage || 0}${b.stage_name ? ` (${_gdE(b.stage_name)})` : ''}, ${b.score ?? 0}%`).join(' · ');
     return `<tr><td>${_gdE(new Date(h.at).toLocaleString())}</td><td>${h.score ?? '–'}%${h.maturity ? ` <span class="gd-dim">${_gdE(h.maturity)}</span>` : ''}</td><td>${j.stage != null ? `Stage ${j.stage} of 5 · ${j.score ?? 0}%` : '<span class="gd-dim">not measured</span>'}</td><td class="gd-dim">${bl || ''}</td></tr>`;
   }).join('');
-  return `<table class="gd-hist"><thead><tr><th>When</th><th>Assessment</th><th>Journey</th><th>Per baseline</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class="gd-hist"><thead><tr><th>When</th><th>Assessment</th><th>Journey</th><th>Per policy pack</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function _gdProfilesRender() {
   const card = document.getElementById('configCard');
@@ -581,11 +581,11 @@ function _gdProfilesRender() {
       </div>
     </div>
     <details class="gd-prof-more" ${sel ? 'open' : ''}>
-      <summary>${sel ? `Profile details${det.has_secret ? ' · secret remembered on this laptop' : ' · secret not stored (paste it below)'}` : 'Profile details (industry, applicable baselines, notes, secret)'}</summary>
+      <summary>${sel ? `Profile details${det.has_secret ? ' · secret remembered on this laptop' : ' · secret not stored (paste it below)'}` : 'Profile details (industry, applicable policy packs, notes, secret)'}</summary>
       <div class="gd-prof-grid">
         <label>Profile name<input id="gdProfName" value="${_gdE(det.name || '')}" placeholder="Acme Health"><span class="gd-need">Usually the customer name. Sample: <code>Acme Health</code></span></label>
-        <label>Industry<select id="gdProfIndustry"><option value="">—</option>${GD_INDUSTRIES.map(i => `<option ${det.industry === i ? 'selected' : ''}>${i}</option>`).join('')}</select><span class="gd-need">Helps you pick the right baseline; it does not change any check.</span></label>
-        <div class="gd-prof-packs"><span class="lbl">Baselines that apply to this customer</span>${packs || '<span class="gd-need">No baseline packs installed.</span>'}<span class="gd-need">The journey is measured only against the ticked baselines. Leave all unticked to measure against every baseline.</span></div>
+        <label>Industry<select id="gdProfIndustry"><option value="">—</option>${GD_INDUSTRIES.map(i => `<option ${det.industry === i ? 'selected' : ''}>${i}</option>`).join('')}</select><span class="gd-need">Helps you pick the right policy pack; it does not change any check.</span></label>
+        <div class="gd-prof-packs"><span class="lbl">Policy packs that apply to this customer</span>${packs || '<span class="gd-need">No policy packs installed.</span>'}<span class="gd-need">The journey is measured only against the ticked policy packs. Leave all unticked to measure against every policy pack.</span></div>
         <label class="gd-prof-wide">Notes<textarea id="gdProfNotes" rows="2" placeholder="Kickoff 12 May; admin contact: Pat Lee; PHI pack agreed, enable SSL rule after change window.">${_gdE(det.notes || '')}</textarea></label>
         <label class="gd-prof-remember"><input type="checkbox" id="gdProfRemember" ${det.has_secret ? 'checked' : ''}> Remember the client secret on this laptop
           <span class="gd-need">Stored in <code>tenant_profiles.json</code> next to the app (owner-only file, never sent back to the browser). Leave unticked on a shared machine.</span></label>

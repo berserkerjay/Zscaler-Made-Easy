@@ -286,17 +286,36 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
             _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))
             names_cache.clear()   # re-read after activation
 
-    counts: Dict[str, int] = {}
-    for r in results:
-        counts[r["status"]] = counts.get(r["status"], 0) + 1
     # Final activation so every deletion is live.
     final_activation = None
-    if counts.get("deleted"):
+    if any(r["status"] == "deleted" for r in results):
         _log("Activating pending ZIA changes…")
         final_activation = pc.activate(zia)
         activations.append(final_activation)
         _log("Activation " + ("done." if final_activation.get("activated") else f"could not run: {final_activation.get('error')}"))
-    complete = not counts.get("failed") and not counts.get("skipped")
+
+    # Verify: re-read every kind/channel the plan touched and report any
+    # object that is still there, so "removed" means removed — not "the
+    # delete calls returned".
+    names_cache.clear()
+    still: List[str] = []
+    for entry in results:
+        if entry["status"] != "deleted":
+            continue
+        key = (entry["kind"], entry.get("channel") if entry["kind"] == "policy" else None)
+        if key not in names_cache:
+            names_cache[key] = pd._current_names(zia, entry["kind"], entry.get("channel"))
+        current, _err = names_cache[key]
+        if current is not None and current.get(str(entry["id"])) == entry["name"]:
+            entry.update(status="still_present", error="the delete call returned no error but the tenant still lists this object; activate in the portal and run the removal again")
+            still.append(f"{entry['kind']} '{entry['name']}'")
+    if still:
+        _log("Still present after removal: " + ", ".join(still))
+
+    counts: Dict[str, int] = {}
+    for r in results:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    complete = not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
     status = "removed" if complete and results else ("partial" if counts.get("deleted") else ("nothing" if not results else "failed"))
     return {"status": status, "summary": counts, "results": results, "complete": complete,
             "kept": [it for it in plan["items"] if it["status"] == "keep"],

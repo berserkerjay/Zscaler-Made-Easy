@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Terraform workspace generator for DLP policy packs and baselines.
+Terraform workspace generator for DLP policy packs.
 
 Turns a pack (the same JSON Deploy Studio deploys) into a self-contained
 Terraform workspace for the official ``zscaler/zia`` provider from the
@@ -18,7 +18,7 @@ Two modes:
   first ``terraform plan`` shows exactly the gap: in-sync objects import
   with no change, customized objects import and would be updated in place, and
   missing objects are created. Nothing is destroyed. After apply the whole
-  baseline is in state.
+  policy pack is in state.
 
 Files produced (a dict of path -> content; write them with write_workspace):
 
@@ -650,7 +650,7 @@ def _gap_import(imports: List[str], counts: Dict[str, int], item: Optional[Dict[
         customized = bool(item.get("drift")) or status == "restore"
         counts["customized" if customized else "in_sync"] += 1
         note = ("customized in the tenant: " + ", ".join(item.get("drift") or ["content"])
-                + " — terraform apply would overwrite this with the baseline; delete this import block to leave the customer's version alone"
+                + " — terraform apply would overwrite this with the policy pack; delete this import block to leave the customer's version alone"
                 if customized else "in sync")
         imports.append(f"# {item['name']} — {note}\nimport {{\n  to = {res}.{label}\n  id = {hcl_str(import_id if import_id is not None else str(tid))}\n}}\n\n")
     elif status == "create":
@@ -707,13 +707,13 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
              + (f" v{meta.get('version')}" if meta.get("version") else "") + " for the official "
              f"[zscaler/zia]({REGISTRY_URL}) provider ({PROVIDER_VERSION}).\n\n",
              f"{len(src['dictionaries'])} dictionaries · {len(src['engines'])} engines · {len(src['policies'])} rules"
-             + (" · **baseline**" if b else "") + "\n\n"]
+             + (" · **policy pack**" if b else "") + "\n\n"]
     if b:
-        lines.append("This pack is a baseline: the reference a tenant is measured against on its data-governance journey. "
+        lines.append("This pack is a policy pack: the reference a tenant is measured against on its data-governance journey. "
                      "Terraform is convergent by nature, so once objects are in state `terraform plan` shows every way the tenant "
                      "differs from the reference and `terraform apply` would make them match. Use `plan` to assess; `apply` only "
                      "when the customer wants the tenant converged (an enabled rule or a hardened action is usually progress to keep, "
-                     "not something to revert — update the pack instead). Objects the baseline does not define are never touched.\n\n")
+                     "not something to revert — update the pack instead). Objects the policy pack does not define are never touched.\n\n")
     if gap:
         lines.append(f"## Gap against {report.get('tenant_label', 'the tenant') if report else 'the tenant'}\n\n"
                      f"| In sync | Customized | Missing | Blocked |\n|---|---|---|---|\n"

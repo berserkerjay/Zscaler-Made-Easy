@@ -427,6 +427,104 @@ _BARE_TERM_RE = re.compile(r"(D\d+\.S)(?!\s*[<>=])")
 _UNRESOLVED_REF_RE = re.compile(r"D:([^&|>]+?)\s*(?=\bAND\b|\bOR\b|\)|>|$)")
 
 
+_ENGINE_TOKEN_RE = re.compile(r"\(|\)|\bAND\s+NOT\b|\bAND\b|\bOR\b|§[KP]\d+§(?:\s*[<>=]+\s*\d+)?|\s+")
+
+
+def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) -> Tuple[Optional[str], List[str]]:
+    """Drop every `D:<name>` term that names one of `prune` from an engine
+    expression, keeping the boolean structure valid: an operator whose
+    operand went away goes with it, an emptied group disappears, and an
+    `AND NOT` over a pruned term is simply dropped. `known` lists the
+    dictionary names that must survive. Returns (expression, pruned
+    names); expression is None when nothing meaningful would be left or
+    the expression could not be parsed."""
+    prune_l, known_l = [n for n in prune if n], [n for n in known if n]
+    if not prune_l:
+        return expr, []
+    names = sorted({(n, "P") for n in prune_l} | {(n, "K") for n in known_l if n not in prune_l}, key=lambda t: -len(t[0]))
+    back: Dict[str, str] = {}
+    work = expr
+    for i, (n, tag) in enumerate(names):
+        key = f"§{tag}{i}§"
+        pat = re.compile(r"D:" + re.escape(n) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|<|=|$))")
+        if pat.search(work):
+            work = pat.sub(key, work)
+            back[key] = f"D:{n}"
+    pos, toks = 0, []
+    for m in _ENGINE_TOKEN_RE.finditer(work):
+        if m.start() != pos:
+            return None, []          # unparseable text between tokens
+        if not m.group(0).isspace():
+            toks.append(m.group(0))
+        pos = m.end()
+    if pos != len(work):
+        return None, []
+
+    def parse(i: int):
+        items: list = []
+        op = None
+        while i < len(toks):
+            t = toks[i]
+            if t == "(":
+                node, i = parse(i + 1)
+                if i >= len(toks) or toks[i] != ")":
+                    raise ValueError("unbalanced")
+                items.append((op, node)); op = None; i += 1
+            elif t == ")":
+                break
+            elif re.fullmatch(r"AND\s+NOT|AND|OR", t):
+                op = re.sub(r"\s+", " ", t); i += 1
+            else:
+                items.append((op, ("term", t))); op = None; i += 1
+        return ("group", items), i
+
+    try:
+        tree, end = parse(0)
+        if end != len(toks):
+            return None, []
+    except ValueError:
+        return None, []
+
+    dropped: set = set()
+
+    def cut(node):
+        if node[0] == "term":
+            key = node[1].split()[0]
+            if key.startswith("§P"):
+                dropped.add(back.get(key, key).replace("D:", "", 1)); return None
+            return node
+        kept = []
+        for op, child in node[1]:
+            c = cut(child)
+            if c is not None:
+                kept.append((op, c))
+        if not kept:
+            return None
+        kept[0] = (None, kept[0][1])
+        return ("group", kept)
+
+    def render(node, root: bool = False) -> str:
+        if node[0] == "term":
+            t = node[1]
+            for key, name in back.items():
+                t = t.replace(key, name)
+            return t
+        parts = []
+        for op, child in node[1]:
+            parts.append((op + " " if op else "") + render(child))
+        body = " ".join(parts)
+        # The root is the expression itself, not a parenthesised group.
+        return body if root else "(" + body + ")"
+
+    pruned_tree = cut(tree)
+    if pruned_tree is None:
+        return None, sorted(dropped)
+    out = render(pruned_tree, root=True)
+    if "D:" not in out:
+        return None, sorted(dropped)
+    return out, sorted(dropped)
+
+
 def engine_references(expr: str, candidate_names: Iterable[str]) -> List[str]:
     """Return the candidate dictionary names an expression references as
     `D:<name>`, requiring an operator/paren/end boundary after the name so

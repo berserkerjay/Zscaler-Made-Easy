@@ -70,6 +70,7 @@ from dlp_importer import (resolve_template, engine_limit_problems,
     build_dict_kwargs,
     build_policy_payload,
     engine_references,
+    prune_engine_terms,
     load_pack_metadata,
     resolve_engine_expression,
     verify_deployment,
@@ -324,7 +325,7 @@ def _plan_app_groups(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *
             elif item.get("baseline") and restore:
                 item["status"] = RESTORE
                 item["drift"] = ["resources"]
-                item["reason"] = "Differs from the baseline (applications). Converge mode: the group will be overwritten."
+                item["reason"] = "Differs from the policy pack (applications). Converge mode: the group will be overwritten."
             else:
                 item["status"] = REUSE_DIFFERS
                 item["drift"] = ["resources"]
@@ -480,8 +481,8 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
             baseline = item.get("baseline")
             if baseline and not is_custom:
                 item["status"] = CONFLICT
-                item["reason"] = ("A predefined Zscaler dictionary already has this name; a baseline cannot manage "
-                                  "predefined objects. Rename the baseline dictionary.")
+                item["reason"] = ("A predefined Zscaler dictionary already has this name; a policy pack cannot manage "
+                                  "predefined objects. Rename the policy pack dictionary.")
                 continue
             if baseline:
                 item["adopt"] = not _has_mark(existing)
@@ -490,24 +491,24 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
                 item["reason"] = "Already in the tenant; existing dictionary will be used (content not compared — tenant returned a summary only)."
             elif ten_sig == pack_sig:
                 item["status"] = REUSE
-                item["reason"] = ("In sync with the baseline; nothing to do." if baseline
+                item["reason"] = ("In sync with the policy pack; nothing to do." if baseline
                                   else "Already in the tenant with identical content; nothing to do.")
             elif baseline and restore:
                 diffs = [k for k in pack_sig if pack_sig.get(k) != ten_sig.get(k)]
                 item["status"] = RESTORE
                 item["drift"] = diffs
                 item["reason"] = (
-                    f"Differs from the baseline ({', '.join(diffs) or 'content'}). Converge mode: "
-                    "the dictionary will be overwritten with the baseline definition."
+                    f"Differs from the policy pack ({', '.join(diffs) or 'content'}). Converge mode: "
+                    "the dictionary will be overwritten with the policy pack definition."
                 )
-                item["warnings"].append("differs from baseline")
+                item["warnings"].append("differs from policy pack")
             elif baseline:
                 diffs = [k for k in pack_sig if pack_sig.get(k) != ten_sig.get(k)]
                 item["status"] = REUSE_DIFFERS
                 item["drift"] = diffs
                 item["reason"] = (
-                    f"Customized in the tenant ({', '.join(diffs) or 'content'} differ from the baseline). "
-                    "Kept exactly as the customer has it; the baseline version is NOT applied."
+                    f"Customized in the tenant ({', '.join(diffs) or 'content'} differ from the policy pack). "
+                    "Kept exactly as the customer has it; the policy pack version is NOT applied."
                 )
                 item["warnings"].append("customized in tenant")
             else:
@@ -555,6 +556,18 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
         item["depends_on"] = [("dictionary", n) for n in referenced]
         missing = [u for u in unresolved]
         blocked_deps = [n for n in referenced if n in dict_items and dict_items[n]["status"] not in AVAILABLE_STATUSES]
+        if missing and not blocked_deps and not restore:
+            # A dictionary that exists in neither the packs nor the tenant is
+            # a predefined one this tenant does not expose (or a typo). Rather
+            # than skip the engine and every rule behind it, deploy the engine
+            # without those terms and say so loudly.
+            pruned_expr, dropped = prune_engine_terms(expr, missing, candidates)
+            if pruned_expr and not engine_limit_problems(pruned_expr):
+                item["definition"] = dict(item["definition"], expression=pruned_expr)
+                item["pruned"] = dropped
+                item.setdefault("warnings", []).append("deployed without " + ", ".join(dropped))
+                expr = pruned_expr
+                missing = []
         if missing or blocked_deps:
             item["status"] = BLOCKED_DEPENDENCY
             parts = []
@@ -579,18 +592,18 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
                 pack_expr, _ = resolve_engine_expression(expr, tenant_ids)
                 if _norm_expr(pack_expr) == _norm_expr(str(ten_expr)) and not (baseline and deps_changing):
                     item["status"] = REUSE
-                    item["reason"] = ("In sync with the baseline; nothing to do." if baseline
+                    item["reason"] = ("In sync with the policy pack; nothing to do." if baseline
                                       else "Already in the tenant with the same expression; nothing to do.")
                 elif baseline and restore:
                     item["status"] = RESTORE
                     item["drift"] = ["expression"]
-                    item["reason"] = "Differs from the baseline (expression). Converge mode: the engine will be overwritten with the baseline expression."
-                    item["warnings"].append("differs from baseline")
+                    item["reason"] = "Differs from the policy pack (expression). Converge mode: the engine will be overwritten with the policy pack expression."
+                    item["warnings"].append("differs from policy pack")
                 elif baseline:
                     item["status"] = REUSE_DIFFERS
                     item["drift"] = ["expression"]
-                    item["reason"] = ("Customized in the tenant (expression differs from the baseline). Kept exactly as the customer "
-                                      "has it and used by the rules below; the baseline expression is NOT applied.")
+                    item["reason"] = ("Customized in the tenant (expression differs from the policy pack). Kept exactly as the customer "
+                                      "has it and used by the rules below; the policy pack expression is NOT applied.")
                     item["warnings"].append("customized in tenant")
                 else:
                     item["status"] = REUSE_DIFFERS
@@ -600,12 +613,12 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
             elif baseline and deps_changing and restore:
                 item["status"] = RESTORE
                 item["drift"] = ["dictionaries"]
-                item["reason"] = ("References dictionaries the baseline is creating; converge mode: the engine will be "
-                                  "rewritten against the baseline dictionaries.")
+                item["reason"] = ("References dictionaries the policy pack is creating; converge mode: the engine will be "
+                                  "rewritten against the policy pack dictionaries.")
             elif baseline and deps_changing:
                 item["status"] = REUSE_DIFFERS
                 item["drift"] = ["dictionaries"]
-                item["reason"] = ("Exists in the tenant but references dictionaries the baseline is about to create. Kept as-is; "
+                item["reason"] = ("Exists in the tenant but references dictionaries the policy pack is about to create. Kept as-is; "
                                   "point it at the new dictionaries in the portal once they exist, or re-run in converge mode.")
                 item["warnings"].append("customized in tenant")
             else:
@@ -695,20 +708,20 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
                 if drift and restore:
                     item["status"] = RESTORE
                     item["drift"] = drift
-                    item["reason"] = (f"Differs from the baseline ({', '.join(drift)}). Converge mode: the {pc.label(channel)} rule "
-                                      "will be overwritten with the baseline definition; its position in the policy is kept.")
-                    item["warnings"].append("differs from baseline")
+                    item["reason"] = (f"Differs from the policy pack ({', '.join(drift)}). Converge mode: the {pc.label(channel)} rule "
+                                      "will be overwritten with the policy pack definition; its position in the policy is kept.")
+                    item["warnings"].append("differs from policy pack")
                     if pc.is_enforcing(channel, pack_action):
                         item["warnings"].append("enforcing action")
                 elif drift:
                     item["status"] = REUSE_DIFFERS
                     item["drift"] = drift
-                    item["reason"] = (f"Customized in the tenant ({', '.join(drift)} differ from the baseline): "
+                    item["reason"] = (f"Customized in the tenant ({', '.join(drift)} differ from the policy pack): "
                                       f"{_journey_phrase(item, channel, existing, p)} Kept exactly as the customer has it.")
                     item["warnings"].append("customized in tenant")
                 else:
                     item["status"] = REUSE
-                    item["reason"] = f"Deployed as the baseline defines it ({_journey_phrase(item, channel, existing, p)})."
+                    item["reason"] = f"Deployed as the policy pack defines it ({_journey_phrase(item, channel, existing, p)})."
                 continue
             if existing.get("action") and existing["action"] != pack_action:
                 item["status"] = REUSE_DIFFERS
@@ -748,7 +761,7 @@ _POSITION_PHRASE = {
     "deployed": "present but still disabled",
     "monitoring": "enabled in monitor mode",
     "enforcing": "enabled and enforcing",
-    "relaxed": "the baseline ships it enabled but the tenant has disabled it",
+    "relaxed": "the policy pack ships it enabled but the tenant has disabled it",
 }
 
 
@@ -761,7 +774,7 @@ def _journey_phrase(item: Dict[str, Any], channel: str, existing: Dict[str, Any]
 def _policy_drift(p: Dict[str, Any], channel: str, existing: Dict[str, Any],
                   engine_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
                   *, pack_action: Optional[str] = None, resolved: Optional[Dict[str, Any]] = None) -> List[str]:
-    """Fields on which an existing rule differs from its baseline definition.
+    """Fields on which an existing rule differs from its policy pack definition.
     Only fields the tenant snapshot carries are compared; anything the API
     does not echo back is left alone."""
     drift: List[str] = []
@@ -845,7 +858,7 @@ def _plan_tweaks(sources: Sequence[Dict[str, Any]], tenant: Dict[str, Any], appl
 
 
 def _baseline_impacts(all_items: Sequence[Dict[str, Any]], restore: bool = False) -> List[Dict[str, Any]]:
-    """One card per baseline pack: greenfield (nothing exists yet, the
+    """One card per policy pack: greenfield (nothing exists yet, the
     whole pack is created) or brownfield (some objects exist and are kept
     as the customer has them; only what is missing is created)."""
     per: Dict[str, Dict[str, Any]] = {}
@@ -878,16 +891,16 @@ def _baseline_impacts(all_items: Sequence[Dict[str, Any]], restore: bool = False
             names = ", ".join(row["restore_names"][:6]) + (f" +{len(row['restore_names']) - 6} more" if len(row["restore_names"]) > 6 else "")
             out.append({
                 "type": "baseline_restore", "baseline": pack_id,
-                "title": f"Converge mode: {row['restore']} object{'s' if row['restore'] != 1 else ''} will be overwritten with baseline {label}",
-                "detail": (f"You asked for the tenant to be reset to the reference. These objects differ from the baseline and will be "
+                "title": f"Converge mode: {row['restore']} object{'s' if row['restore'] != 1 else ''} will be overwritten with policy pack {label}",
+                "detail": (f"You asked for the tenant to be reset to the reference. These objects differ from the policy pack and will be "
                            f"overwritten: {names}. If the customer changed any of them on purpose, stop and deploy without converge mode."),
                 "severity": "warning",
             })
         elif row["present"] == 0 and row["blocked"] == 0:
             out.append({
                 "type": "greenfield", "baseline": pack_id,
-                "title": f"Greenfield for baseline {label}: none of its {total} objects exist yet",
-                "detail": ("The whole baseline will be created from scratch, every rule DISABLED. This is the starting point of the "
+                "title": f"Greenfield for policy pack {label}: none of its {total} objects exist yet",
+                "detail": ("The whole policy pack will be created from scratch, every rule DISABLED. This is the starting point of the "
                            "data governance journey; enabling rules moves the tenant along it."),
                 "severity": "ok",
             })
@@ -897,10 +910,10 @@ def _baseline_impacts(all_items: Sequence[Dict[str, Any]], restore: bool = False
                     "and stay exactly as they are." if row["customized"] else "")
             out.append({
                 "type": "brownfield", "baseline": pack_id,
-                "title": f"Brownfield for baseline {label}: {row['present']} of {total} objects already exist, {row['missing']} will be created"
+                "title": f"Brownfield for policy pack {label}: {row['present']} of {total} objects already exist, {row['missing']} will be created"
                          + (f", {row['blocked']} blocked" if row["blocked"] else ""),
                 "detail": ("Existing objects are kept as the customer has them (enabled rules, hardened actions and tuned dictionaries "
-                           "are progress, not drift)." + cust + " Only the missing objects are created, DISABLED. Objects the baseline "
+                           "are progress, not drift)." + cust + " Only the missing objects are created, DISABLED. Objects the policy pack "
                            "does not define are never touched."),
                 "severity": "info" if not row["blocked"] else "warning",
             })
@@ -1035,6 +1048,7 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "adopt": bool(item.get("adopt")),
         "position": journey_position(item),
         "extension": bool(d.get("extension")),
+        "pruned": item.get("pruned") or [],
     }
     if item["kind"] == "dictionary":
         out["detail"] = {"type": "clone" if d.get("predefined_clone") else "custom",
@@ -1092,7 +1106,7 @@ def preflight(
     are skipped, channels the pack has no rule for get a monitor-only
     extension rule with the pack's engines.
 
-    `restore_drift` (converge mode) makes baseline objects that differ from
+    `restore_drift` (converge mode) makes policy pack objects that differ from
     the reference RESTORE (overwrite) instead of being kept; it is off by
     default and never chosen for the user.
 
@@ -1179,6 +1193,9 @@ def preflight(
                             f"the API rejects a duplicate name, so nothing existing is overwritten. For a verified plan grant the "
                             f"API client '{_perm.get(kind, kind)}' read access.")
     for i in all_items:
+        if i.get("pruned"):
+            warnings.append(f"Engine '{i['name']}' will be created without {', '.join(i['pruned'])}: not a dictionary this tenant exposes. "
+                            "Its expression will differ from the pack, so the journey check will show it as customized.")
         if i["status"] == CONFLICT:
             warnings.append(f"{i['kind'].title()} '{i['name']}' is defined differently in {', '.join(i['packs'])} — it and everything that depends on it will be skipped.")
         elif i["status"] == BLOCKED_DEPENDENCY:
@@ -1188,7 +1205,7 @@ def preflight(
         elif i["status"] == REUSE_DIFFERS:
             warnings.append(f"{i['kind'].title()} '{i['name']}' already exists with different content — the tenant's version is kept.")
         elif i["status"] == RESTORE:
-            warnings.append(f"{i['kind'].title()} '{i['name']}' differs from the baseline ({', '.join(i.get('drift') or ['content'])}) — converge mode will overwrite it.")
+            warnings.append(f"{i['kind'].title()} '{i['name']}' differs from the policy pack ({', '.join(i.get('drift') or ['content'])}) — converge mode will overwrite it.")
         elif i["status"] == MODIFY:
             warnings.append(f"{i['name']}: {i['reason']}")
         elif i["status"] == SKIP_EMPTY:
@@ -1206,7 +1223,7 @@ def preflight(
     creates = sum(1 for i in all_items if i["status"] in WRITE_STATUSES)
     if tenant["reachable"] and creates == 0 and not blockers:
         if any(s.get("baseline") for s in sources):
-            blockers.append("Nothing to deploy: every baseline object already exists in the tenant. Use the journey check to see how far the tenant has taken them.")
+            blockers.append("Nothing to deploy: every policy pack object already exists in the tenant. Use the journey check to see how far the tenant has taken them.")
         else:
             blockers.append("Nothing to deploy: everything in the selected packs already exists in the tenant or is blocked.")
 
@@ -1269,9 +1286,9 @@ POSITIONS = ("missing", "deployed", "monitoring", "enforcing", "customized", "re
 
 STAGES = [
     {"n": 1, "key": "foundation", "name": "Foundation",
-     "what": "Dictionaries and engines exist, so the tenant can recognise the data the baseline is about."},
+     "what": "Dictionaries and engines exist, so the tenant can recognise the data the policy pack is about."},
     {"n": 2, "key": "deployed", "name": "Policies deployed",
-     "what": "Every rule of the baseline exists in the tenant (still disabled is fine)."},
+     "what": "Every rule of the policy pack exists in the tenant (still disabled is fine)."},
     {"n": 3, "key": "visibility", "name": "Visibility",
      "what": "SSL Inspection decrypts the risky application classes and the DLP rules are enabled, so incidents are being logged."},
     {"n": 4, "key": "containment", "name": "Containment",
@@ -1344,7 +1361,7 @@ def _next_step(item: Dict[str, Any], position: str, need: str) -> str:
     if position == "blocked":
         return f"Unblock {kind} '{name}': {item.get('reason', '')}".strip()
     if position == "missing":
-        return f"Deploy {kind.replace('_', ' ')} '{name}' (select the baseline and run preflight)."
+        return f"Deploy {kind.replace('_', ' ')} '{name}' (select the policy pack and run preflight)."
     if need == "enabled":
         if position == "customized":
             return f"Enable rule '{name}' in {portal} (it is customized; check the action still fits)."
@@ -1438,7 +1455,7 @@ def tenant_mode(all_items: Sequence[Dict[str, Any]], sources: Sequence[Dict[str,
 
 
 def journey(report: Dict[str, Any]) -> Dict[str, Any]:
-    """Compact, read-only journey report for the baselines in a preflight:
+    """Compact, read-only journey report for the policy packs in a preflight:
     where the tenant is, what the next steps are. Nothing is written."""
     rows = report.get("baselines") or []
     if any(r["state"] == "blocked" for r in rows):
@@ -1525,7 +1542,7 @@ def apply(
     engine_ids: Dict[str, Any] = {n: _field(t, "id") for n, t in tenant["engines"].items()}
 
     def described(item: Dict[str, Any], definition: Dict[str, Any], fallback: str = "") -> Dict[str, Any]:
-        """Definition with the baseline provenance tag in its description
+        """Definition with the policy pack provenance tag in its description
         (clamped to the API limit for dictionaries)."""
         if not item.get("baseline"):
             return definition
@@ -1864,6 +1881,12 @@ def _delete(zia, item: Dict[str, Any]) -> Optional[str]:
             _, err = pc.raw_request(zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}")
         elif channel == pc.CLOUD_APP:
             _, _, err = zia.cloudappcontrol.delete_rule(str(item.get("type") or "").upper() or "ANY", oid)
+        elif channel == pc.SAAS:
+            # The SaaS Security API delete wants the rule's type (ruleType);
+            # without it the API refuses and the rule silently survives.
+            svc = getattr(zia, pc.CHANNELS[channel]["service"])
+            rtype = item.get("type") or item.get("saas_type") or pc.saas_rule_type(zia, oid)
+            _, _, err = svc.delete_rule(oid, rule_type=rtype) if rtype else svc.delete_rule(oid)
         else:
             svc = getattr(zia, pc.CHANNELS[channel]["service"])
             _, _, err = svc.delete_rule(oid)

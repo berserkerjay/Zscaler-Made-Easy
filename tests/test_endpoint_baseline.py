@@ -179,27 +179,13 @@ def test_terraform_emits_groups_and_sub_rules(tmp_path):
     assert 'data_transfer_method         = "APPLICATION_FILE_ACCESS"' in r
 
 
-def test_shipped_zbp_endpoint_baseline(raw):
+def test_no_shipped_pack_is_endpoint_only():
+    """The PCI-only endpoint baseline is gone: every shipped pack mirrors
+    its inline rules onto Endpoint DLP instead."""
     from dlp_importer import discover_packs
-    ep = next(p for p in discover_packs() if p["id"] == "zbp_endpoint_dlp_baseline")
-    pols = json.load(open(f"{ep['dir']}/configs/dlp_policies.json", encoding="utf-8"))
-    assert [p["name"] for p in pols] == ["zbp-Sensitive Data to USB", "zbp-Unapproved GenAI Applications", "zbp-Sensitive Data Private Share"]
-    assert sum(len(p.get("sub_rules") or []) for p in pols) == 5
-    # Endpoint DLP only: no SaaS, web, email or other channel rides along.
-    assert {pc.channel_of(p) for p in pc.expand_sub_rules(pols)} == {"endpoint"}
-    assert not any(k in ("saas", "casb") for k in json.load(open(f"{ep['dir']}/pack.json", encoding="utf-8")).get("channels", []))
-    assert all(p["state"] == "DISABLED" for p in pols) and all(s.get("state", "DISABLED") == "DISABLED" for p in pols for s in p.get("sub_rules") or [])
-    groups = json.load(open(f"{ep['dir']}/configs/endpoint_application_groups.json", encoding="utf-8"))
-    assert groups[0]["name"] == "zbp-GenAI Applications" and len(groups[0]["resources"]) == 6
-    client = make_client()
-    raw.client = client
-    client.zia.dlp_dictionary.items.append(Obj(id=77, name="CREDIT_CARDS", custom=False))
-    rep = pd.preflight(client, [{"id": ep["id"], "dir": ep["dir"]}], writes_enabled=True)
-    assert rep["status"] == "ready", rep["blockers"] + rep["warnings"]
-    assert rep["summary"]["engine"] == {"create": 3} and rep["summary"]["app_group"] == {"create": 1} and rep["summary"]["policy"] == {"create": 8}
-    res = pd.apply(client, [{"id": ep["id"], "dir": ep["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    assert res["summary"] == {"created": 12}
-    confirm = [s for subs in raw.subs.values() for s in subs if s["name"] == "zbp-PCI Medium USB"][0]
-    assert confirm["action"] == "CONFIRM"
-    j = pd.journey(pd.preflight(client, [{"id": ep["id"], "dir": ep["dir"]}], writes_enabled=True))["baselines"][0]
-    assert j["stage"] == 2 and j["deployed"] == 12
+    ids = {p["id"] for p in discover_packs()}
+    assert "zbp_endpoint_dlp_baseline" not in ids
+    for p in discover_packs():
+        pols = json.load(open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8"))
+        chans = {pc.channel_of(x) for x in pc.expand_sub_rules(pols)}
+        assert "endpoint" in chans and "web" in chans, p["id"]

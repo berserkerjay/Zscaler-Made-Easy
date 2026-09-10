@@ -105,6 +105,47 @@ def test_remove_activates_between_tiers_and_at_the_end(tmp_path, monkeypatch):
     assert not client.zia.dlp_engine.items and not client.zia.dlp_dictionary.items
 
 
+SAAS_POL = {"name": "RM-Web-Monitor [SaaS]", "channel": "saas", "engines": ["RM-Engine"], "action": "OFLCASB_DLP_REPORT_INCIDENT",
+            "state": "DISABLED", "saas_type": "OFLCASB_DLP_FILE", "tenants": "any", "severity": "RULE_SEVERITY_INFO", "channel_mirror": True}
+
+
+def test_remove_clears_saas_rules_using_their_rule_type(tmp_path, monkeypatch):
+    """A SaaS Security API rule can only be deleted with its ruleType; the
+    plan carries the type it read and the delete passes it on."""
+    from test_pack_channels import make_client
+    d = write_pack(tmp_path, "removeme", dicts=[_dict("RM-Dict")], engines=[_engine("RM-Engine", "(D:RM-Dict > 0)")],
+                   policies=[_policy("RM-Web-Monitor", ["RM-Engine"]), SAAS_POL], meta=META)
+    pack = {"id": "removeme", "dir": d["dir"]}
+    client = make_client(saas_rules=[Obj(id=8501, name="RM-Web-Monitor [SaaS]", type="OFLCASB_DLP_FILE", state="DISABLED",
+                                         action="OFLCASB_DLP_REPORT_INCIDENT", dlp_engines=[{"id": 5001}], description=TAG)])
+    base = _tenant(with_survivors=False)
+    client.zia.dlp_dictionary.items = base.zia.dlp_dictionary.items
+    client.zia.dlp_engine.items = base.zia.dlp_engine.items
+    client.zia.dlp_web_rules.items = base.zia.dlp_web_rules.items
+    _deletable(client)
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    plan = pr.plan_removal(client, [pack])
+    saas = next(i for i in plan["items"] if i.get("channel") == "saas")
+    assert saas["name"] == "RM-Web-Monitor [SaaS]" and saas["type"] == "OFLCASB_DLP_FILE" and saas["status"] == "remove"
+    res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
+    assert res["status"] == "removed" and res["complete"] and res["summary"] == {"deleted": 4}
+    assert client.zia.casb_dlp_rules.deleted == [(8501, "OFLCASB_DLP_FILE")] and client.zia.casb_dlp_rules.items == []
+
+
+def test_remove_reports_objects_the_tenant_still_lists(tmp_path, monkeypatch):
+    """A delete that returns no error but leaves the object in place is
+    reported as still present, and the removal is not called complete."""
+    pack = _pack_dir(tmp_path)
+    client = _deletable(_tenant(with_survivors=False))
+    client.zia.dlp_web_rules.delete_rule = lambda oid: (None, None, None)   # "succeeds", removes nothing
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    plan = pr.plan_removal(client, [pack])
+    res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
+    rule = next(r for r in res["results"] if r["kind"] == "policy")
+    assert rule["status"] == "still_present" and "still lists" in rule["error"]
+    assert res["complete"] is False and res["status"] == "partial" and res["summary"]["still_present"] == 1
+
+
 def test_remove_is_refused_read_only_and_when_stale(tmp_path):
     pack = _pack_dir(tmp_path)
     client = _deletable(_tenant(with_survivors=False))

@@ -506,55 +506,55 @@ starter_pack/
 
 Drop this at the project root, restart the server, and you have a working pack.
 
-## 11. Baselines and the Data-Governance Journey
+## 11. Policy packs and the Data-Governance Journey
 
-A pack can declare itself a **baseline**: the reference a tenant is
+A pack can declare itself a **policy pack**: the reference a tenant is
 measured against. Add a `baseline` section to `pack.json`:
 
 ```json
 {
-  "name": "ZBP Enterprise Baseline",
+  "name": "ZBP Enterprise Policy pack",
   "version": "1.0",
   "baseline": { "prefix": "ZBP-", "version": "1.0" }
 }
 ```
 
-A baseline is deployed **greenfield** (an empty tenant: everything is
+A policy pack is deployed **greenfield** (an empty tenant: everything is
 created) or **brownfield** (an existing tenant: whatever already exists is
 kept exactly as the customer has it, only what is missing is created).
 Nothing is ever overwritten by default. An enabled rule, an action
 hardened from ALLOW to BLOCK, a tuned dictionary — those are the
 customer's progress, not drift to revert.
 
-| Tenant state of a baseline object | Plan status | What apply does |
+| Tenant state of a policy pack object | Plan status | What apply does |
 |---|---|---|
 | Missing | `create` | Creates it, DISABLED, with a provenance tag |
-| Exists as the baseline defines it | `reuse` | Nothing |
+| Exists as the policy pack defines it | `reuse` | Nothing |
 | Exists, changed by the customer | `reuse_differs` (customized) | Nothing; the customer's version is kept |
-| Same name as a predefined Zscaler dictionary | `conflict` | Nothing; rename the baseline object |
+| Same name as a predefined Zscaler dictionary | `conflict` | Nothing; rename the policy pack object |
 
-Preflight adds a **Greenfield** or **Brownfield** impact card per baseline
+Preflight adds a **Greenfield** or **Brownfield** impact card per policy pack
 saying how many objects exist, how many are customized, and how many will
-be created. Objects the baseline does not define are never touched.
+be created. Objects the policy pack does not define are never touched.
 
 **Converge mode (explicit, off by default).** `restore_drift: true` on
 `/preflight` and `/apply` turns customized objects into `restore`
-(overwrite with the baseline definition, a rule keeps its position). It is
+(overwrite with the policy pack definition, a rule keeps its position). It is
 an API option only; Deploy Studio never selects it. Use it when the
 customer has asked for the tenant to be reset to the reference.
 
 ### Where is this tenant on the journey?
 
-After deployment the same comparison places every baseline object:
+After deployment the same comparison places every policy pack object:
 
 | Position | Meaning |
 |---|---|
 | `missing` | Not in the tenant |
-| `deployed` | Present as the baseline defines it; rule still DISABLED |
+| `deployed` | Present as the policy pack defines it; rule still DISABLED |
 | `monitoring` | Rule ENABLED with a non-enforcing action (ALLOW, report) |
 | `enforcing` | Rule ENABLED with an enforcing action (BLOCK, DECRYPT, CAUTION…) |
 | `customized` | Present but content differs (kept) |
-| `relaxed` | The baseline ships it enabled, the tenant disabled it |
+| `relaxed` | The policy pack ships it enabled, the tenant disabled it |
 | `blocked` | Cannot be created (missing prerequisite, conflict) |
 
 and rolls them up into five stages. A stage is reached when every object
@@ -570,8 +570,8 @@ highest one with all earlier stages reached.
 | 5 Enforcement | DLP rules use an enforcing action |
 
 The score is the share of required objects in place, averaged over the
-stages. The **assessment** runs this for every baseline pack and shows a
-*Data governance journey* card; each baseline card in Deploy Studio has a
+stages. The **assessment** runs this for every policy pack and shows a
+*Data governance journey* card; each policy pack card in Deploy Studio has a
 *Where is this tenant?* action; and the API exposes the same thing:
 
 ```bash
@@ -589,9 +589,9 @@ curl -s -X POST http://localhost:8000/api/dlp-packs/journey \
 
 It runs without the write gate (nothing is written). `next_steps` names
 the exact rules to enable or harden, and where in the ZIA Admin Portal.
-Every object a baseline creates carries a provenance tag in its
+Every object a policy pack creates carries a provenance tag in its
 description (`[DLP-Check baseline <pack> v<version>]`), so admins can see
-which baseline version it came from.
+which policy pack version it came from.
 
 **Dynamic application scope.** A web rule may carry
 `"cloud_app_classes": ["AI_ML"]` instead of a fixed `cloud_applications`
@@ -600,7 +600,7 @@ application catalogue, lists the count as a prerequisite, blocks the rule
 if the class resolves to nothing, and applies the resolved list. Newly
 classified applications are picked up on the next deploy.
 
-**Shipped baselines.**
+**Shipped policy packs.**
 
 | Pack | Contents | Source |
 |---|---|---|
@@ -613,17 +613,16 @@ a `.tf.json` with `zia_dlp_dictionaries` / `zia_dlp_engines` /
 
 ```bash
 python tools/pack_from_terraform.py template.tf.json my_baseline \
-  --name "My Baseline" --version 1.0 --prefix ZBP- --baseline --enable-rules
+  --name "My Policy pack" --version 1.0 --prefix ZBP- --baseline --enable-rules
 ```
 
-### Shipped baselines
+### Shipped policy packs
 
-| Pack | Baseline | Who it is for |
+| Pack | Policy pack | Who it is for |
 |---|---|---|
 | `zbp_enterprise_baseline` | yes | Any enterprise: Zscaler's best-practice DLP set |
 | `zbp_source_code_baseline` | yes | Engineering organisations: source code to AI apps. 13 languages from the v4.14 pattern library, each an Anchor dictionary (one fingerprint) AND a Signal dictionary (eight counted patterns) in one engine; regenerate from a new library document with `tools/pack_from_pattern_doc.py`, or from the tenant's own Anchor/Signal dictionaries with `pack_from_tenant.py` (also the *Rebuild from tenant dictionaries* button on the pack card) |
 | `healthcare_phi_baseline` | yes | Healthcare: PHI with clinical context, plus containment |
-| `zbp_endpoint_dlp_baseline` | yes | Any enterprise with Endpoint DLP: USB, private shares and desktop GenAI apps, graded by PCI confidence (three parent rules, five sub-rules, one application group) |
 | `global_banking_baseline` | yes | Banks, card issuers, payment processors: PCI, bank account and payment instructions (ABA, EU and global IBAN, SWIFT/BIC), customer PII across jurisdictions, KYC/AML and lending files, MNPI, confidentiality markings; premised on Zscaler's predefined dictionaries cloned at high confidence, reusing the ZBP Enterprise engines; web, endpoint, SaaS, email and containment rules; see the pack's README |
 | `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
 | `fed_policy_pack` | no | Federal agencies, the defense industrial base and federal contractors: Zscaler's Fed Policy Pack V1.1 (FOUO, Atomic Energy Act, Standard Forms, US PII/PHI, financial, ITAR, TLP, private keys) plus CUI by its markings (31 dictionaries in seven tiers behind block, caution and monitor rules; see `fed_policy_pack/CUI_MARKINGS.md` for the tier table). Superset of ZBP Enterprise; do not deploy both |
@@ -659,7 +658,7 @@ dictionary. Policies and `pack.json` are authored by hand.
 
 ## 12. Terraform — Own a Pack with State
 
-Every pack (baselines included) can be deployed with the official
+Every pack (policy packs included) can be deployed with the official
 [`zscaler/zia`](https://registry.terraform.io/providers/zscaler/zia/latest/docs)
 provider instead of the in-app executor. DLP-Check generates the workspace;
 Terraform owns the lifecycle: `plan` shows the diff, `apply` converges,
@@ -718,7 +717,7 @@ Zscaler delivers its Fed pack. Deploying creates the dictionaries, engines
 and rules without changing what users experience; you enable each rule and
 raise its severity in the portal (or in the pack) once it is tuned. Actions
 are authored as intended (ALLOW to monitor, BLOCK to enforce), so enabling a
-rule never changes its meaning. For a baseline, enabling a rule in the
+rule never changes its meaning. For a policy pack, enabling a rule in the
 portal is exactly the expected next step: the journey check reports it as
 *monitoring* or *enforcing*, never as drift, and nothing reverts it.
 

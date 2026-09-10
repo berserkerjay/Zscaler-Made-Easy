@@ -613,13 +613,13 @@
       <div class="tool-group" role="group" aria-label="Close the gaps">
         <div class="tool-group-l">Close the gaps</div>
         <button class="btn btn-ghost" onclick="openDlpPacksModal()"
-                aria-label="Deploy policy packs and baselines: preflight, review, approve, deploy"
-                title="Pick a baseline, see exactly what would be created, approve, deploy. Every rule arrives disabled.">
+                aria-label="Deploy policy packs: preflight, review, approve, deploy"
+                title="Pick a policy pack, see exactly what would be created, approve, deploy. Every rule arrives disabled.">
           <span aria-hidden="true">📦</span> Deploy Policy Packs
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('terraform')"
-                aria-label="Hand the same baseline to a platform team as a Terraform workspace (opens in a new tab)"
-                title="Same baseline as a Terraform workspace for teams that manage Zscaler as code. Opens in a new tab.">
+                aria-label="Hand the same policy pack to a platform team as a Terraform workspace (opens in a new tab)"
+                title="Same policy pack as a Terraform workspace for teams that manage Zscaler as code. Opens in a new tab.">
           <span aria-hidden="true">🧱</span> Terraform hand-off
         </button>
         <button class="btn btn-ghost" onclick="_gdGoMigration()"
@@ -751,7 +751,7 @@
       </p>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
         <button class="btn btn-primary" id="updateRunBtn" onclick="runUpdateCheck(false)" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Check Now</button>
-        <button class="btn btn-ghost" onclick="runUpdateCheck(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;" title="Clear cached baselines so every source is reported as 'new'.">Reset Cache + Re-check</button>
+        <button class="btn btn-ghost" onclick="runUpdateCheck(true)" style="padding:0.55rem 1.1rem;font-size:0.85rem;" title="Clear the cached snapshot so every source is reported as 'new'.">Reset Cache + Re-check</button>
       </div>
       <div id="updateResult" style="font-size:0.88rem;"></div>
     </div>
@@ -3434,8 +3434,8 @@ function renderBenchmarks(b) {
   const fws = (b.frameworks || []).map(f => `<span style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem;border-radius:100px;border:1px solid var(--border);font-size:0.78rem;"><strong>${E(f.name)}</strong> <span style="color:${pctColor(f.alignment_pct)};font-weight:700;">${f.alignment_pct}%</span> <span style="color:var(--dim);">${E(f.status)}</span></span>`).join(' ');
   const j = b.journey;
   const journey = !j ? '' : (j.status === 'pending'
-    ? `<div style="color:var(--dim);font-size:0.85rem;"><span class="gd-spin" aria-hidden="true"></span> Baseline journey still being measured; this line fills in when it lands.</div>`
-    : `<div style="font-size:0.85rem;">Baseline journey: <strong>stage ${j.stage || 0} of 5</strong>, ${j.score || 0}% of the way${(j.baselines || []).length ? ' — ' + j.baselines.map(x => `${E(x.name)} stage ${x.stage} (${E(x.stage_name || '')})`).join(', ') : ''}. Details in the Data governance journey card.</div>`);
+    ? `<div style="color:var(--dim);font-size:0.85rem;"><span class="gd-spin" aria-hidden="true"></span> Policy pack journey still being measured; this line fills in when it lands.</div>`
+    : `<div style="font-size:0.85rem;">Policy pack journey: <strong>stage ${j.stage || 0} of 5</strong>, ${j.score || 0}% of the way${(j.baselines || []).length ? ' — ' + j.baselines.map(x => `${E(x.name)} stage ${x.stage} (${E(x.stage_name || '')})`).join(', ') : ''}. Details in the Data governance journey card.</div>`);
   return `
     <div style="display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;padding:0.9rem 1rem;border:1px solid var(--border);border-radius:12px;background:var(--well);margin-bottom:0.9rem;">
       <div style="text-align:center;"><div style="font-size:2.4rem;font-weight:800;line-height:1;color:${gradeColor(bp.grade)};">${E(bp.grade || '–')}</div><div style="font-size:0.7rem;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;">grade</div></div>
@@ -4744,7 +4744,7 @@ function openUpdateModal() {
   document.body.style.overflow = 'hidden';
   const r = document.getElementById('updateResult');
   if (!r.innerHTML.trim()) {
-    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Check Now</strong> to compare the current state of Zscaler SDK + docs against your last-seen baseline.</div>';
+    r.innerHTML = '<div style="color:var(--dim);padding:1rem;text-align:center;">Click <strong>Check Now</strong> to compare the current state of Zscaler SDK + docs against your last-seen snapshot.</div>';
   }
   announce('Update-check dialog opened');
   _focusFirstInModal(modal);

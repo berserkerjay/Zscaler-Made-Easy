@@ -87,7 +87,7 @@ See `docs/DLP_Assessment_Step_by_Step_Guide.docx` for the complete walkthrough.
 | `POST` | `/api/report/bypass` | Bypass / non-inspected traffic inventory (opens at `/report/bypass?id=`) |
 | `POST` | `/api/report/ssl-flow` | SSL Inspection Flow: per traffic class, which SSL rule decides and whether inline DLP can see it (opens at `/report/sslflow?id=`; exports via `/api/report/ssl-flow/export/{id}`) |
 | `GET` | `/report/flow` | Deployment Flow tab: the Deploy Policy Packs dependency diagram (templates → dictionaries → engines → rules) full width, with a details panel; fed live by the assessment tab |
-| `POST` | `/api/report/data-flow` | Data Flow Map: how ZIA processes a policy from the device to incident management, and per traffic class and network context the exact path through Client Connector app/forwarding profiles, PAC, Cloud Firewall, SSL, threat protection, Cloud App Control (before URL Filtering), URL filtering, File Type Control, Web DLP and the logs → Incident Receiver → Workflow Automation hop, the endpoint/SaaS/email channels and each pack's coverage (opens at `/report/dataflow?id=`; `/{id}/trace` traces any app, category or hostname; exports via `/api/report/data-flow/export/{id}`) |
+| `POST` | `/api/report/data-flow` | Data Flow Map: how ZIA processes a policy from the device to incident management, and per traffic class and network context the exact path through Client Connector app/forwarding profiles, PAC, then ZIA's request order (Browser & FTP Control, Cloud App Control before URL Filtering, URL filtering, SSL, threat protection, File Type Control, Bandwidth Control, Web DLP, Firewall & DNS Control) and the logs → Incident Receiver → Workflow Automation hop, the endpoint/SaaS/email channels and each pack's coverage (opens at `/report/dataflow?id=`; `/{id}/trace` traces any app, category or hostname; exports via `/api/report/data-flow/export/{id}`) |
 | `GET` | `/api/pack-library` | Policy pack library: built-in and uploaded packs with counts, where uploads live and whether adding is allowed (`/report/advanced` is the tab) |
 | `POST` | `/api/pack-library/preview` · `/upload` · `/{id}/remove` · `GET /{id}/bundle` | Check an upload (JSON bundle, the three pack files, Terraform or a ZIP) without saving, add it to the library, remove an uploaded pack, download any pack as one JSON file |
 | `POST` | `/api/benchmarks` | Best-practice alignment per area (deviations with guidance and article), DLP programme stages, framework rows (incl. NIST CSF 2.0, GLBA) and journey, from an assessment report; `/api/benchmarks/export?format=markdown|json` downloads it |
@@ -177,7 +177,7 @@ See [SECURITY.md](SECURITY.md) for the disclosure policy and the full posture. I
 
 Internal tooling. Not for redistribution.
 
-## Policy Packs, Baselines and the Data-Governance Journey
+## Policy Packs and the Data-Governance Journey
 
 Beyond assessment, DLP-Check deploys **policy packs** (dictionaries → engines → rules across
 Web, Endpoint, SaaS Security API and Email DLP, plus Cloud App Control, File Type Control,
@@ -185,10 +185,10 @@ URL Filtering and SSL Inspection) through a guided preflight → approve → app
 empty tenant (greenfield) or on top of an existing one (brownfield). Whatever the customer
 already has is kept exactly as it is; only what is missing is created, every rule DISABLED.
 
-**Tenant profiles** keep one record per customer (details, scopes, applicable baselines, optional
+**Tenant profiles** keep one record per customer (details, scopes, applicable policy packs, optional
 remembered secret) with a history of every assessment, so a consultant can switch tenants and show
-movement between visits. A **baseline** is the reference a tenant is measured against. After deployment the assessment
-places every baseline object (missing, deployed, monitoring, enforcing, customized) and reports
+movement between visits. A **policy pack** is the reference a tenant is measured against. After deployment the assessment
+places every policy pack object (missing, deployed, monitoring, enforcing, customized) and reports
 where the tenant is on the journey — Foundation → Policies deployed → Visibility → Containment
 → Enforcement — with the exact rules to enable or harden next. Every pack can also be owned by
 Terraform state using the official

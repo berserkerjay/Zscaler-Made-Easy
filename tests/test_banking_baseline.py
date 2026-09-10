@@ -121,7 +121,7 @@ def test_banking_pack_deploys_across_every_channel(monkeypatch):
     assert len(email) == len(web) and all(n.endswith("[Email]") for n in email)
     # Nothing to do the second time: the baseline is in sync.
     rep2 = pd.preflight(client, [pk], writes_enabled=True)
-    assert rep2["status"] == "blocked" and any("every baseline object already exists" in b for b in rep2["blockers"])
+    assert rep2["status"] == "blocked" and any("every policy pack object already exists" in b for b in rep2["blockers"])
     assert rep2["baselines"][0]["missing"] == 0 and rep2["baselines"][0]["in_sync"] == len(dicts) + len(engines) + len(policies)
 
 

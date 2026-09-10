@@ -1,5 +1,5 @@
 {
-  "name": "Source Code to AI Baseline",
+  "name": "Source Code to AI Policy Pack",
   "version": "4.14",
   "description": "Blocks uploads of source code to AI/ML applications, detecting 13 languages (C#, C++, Go, HTML, Java, JavaScript, Kotlin, Python, Rust, SQL, Swift, TypeScript, VB.NET) with the v4.14 Source Code DLP pattern library. Each language is two dictionaries joined with All (AND) in one engine: an Anchor (one structural fingerprint, threshold > 0) and a Signal (eight syntax patterns counted as unique matches, count threshold), so a file triggers only when the language's fingerprint is present AND enough language-specific evidence accumulates. That composition removes the cousin-language false positives (Java/Kotlin, C#/VB, JavaScript/TypeScript) the old three-dictionary ZBP set produced. The rule's application scope is resolved from the tenant's AI_ML cloud-application catalogue at deploy time. Immutable: objects that drift from this definition are restored. The rule's action is BLOCK, so enable it only after tuning in a pilot scope. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
   "source": "DLP Pattern Library v4.14 (per-pattern descriptions with regex); rules from mkoyfman/zbp-automation zbp-source-code-dlp-zia",

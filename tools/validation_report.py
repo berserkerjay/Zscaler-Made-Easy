@@ -27,7 +27,7 @@ FINDINGS = [
                "included), which is the property the Anchor AND Signal design exists to guarantee. Recall on hand-written programs was 100%; the only "
                "misses were on synthetic documents built from a random half of the library's own example lines, where fewer than five signal lines "
                "survived the draw, which is the threshold working as designed.", "severity": "pass"},
-    {"title": "Global Banking Baseline: every tested engine at 100% on positives, no false positives",
+    {"title": "Global Banking Policy pack: every tested engine at 100% on positives, no false positives",
      "detail": "Card data (single card with CVV, six-card export, 32-card bulk export), wire instructions with IBAN/SWIFT/ABA, IBAN lists, statements, "
                "KYC files, loan applications, MNPI memos, confidentiality markings and customer PII across US, UK, Canada, Australia, South Africa, India, "
                "Singapore and Hong Kong all fired the intended engine and nothing else fired on the negative documents (meeting notes, invoice, CSV, "

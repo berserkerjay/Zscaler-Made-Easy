@@ -100,7 +100,7 @@ def test_in_sync_baseline_has_nothing_to_deploy(baseline_pack):
     assert {i["name"]: i["status"] for i in rep["items"]} == {
         "ZBP-Alpha Dict": pd.REUSE, "ZBP-Alpha Engine": pd.REUSE, "ZBP-Alpha-Monitor": pd.REUSE}
     assert rep["status"] == "blocked"
-    assert any("every baseline object already exists" in b for b in rep["blockers"])
+    assert any("every policy pack object already exists" in b for b in rep["blockers"])
     assert rep["tenant_mode"]["mode"] == "brownfield"
     row = rep["baselines"][0]
     assert row["state"] == "in_progress"                                  # deployed and monitoring, not yet enforcing

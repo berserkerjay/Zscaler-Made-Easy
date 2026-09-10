@@ -55,6 +55,12 @@ class FakeChannelRules:
                 return self.items[i], None, None
         return None, None, {"message": "not found"}
 
+    def delete_rule(self, rule_id):
+        self.deleted = getattr(self, "deleted", [])
+        self.deleted.append((rule_id, None))
+        self.items = [i for i in self.items if str(i.id) != str(rule_id)]
+        return None, None, None
+
 
 class FakeCasbRules(FakeChannelRules):
     def list_all_rules(self):
@@ -62,6 +68,15 @@ class FakeCasbRules(FakeChannelRules):
 
     def list_rules(self, rule_type=None, query_params=None):
         return super().list_rules()
+
+    def delete_rule(self, rule_id, rule_type=None):
+        # Like the real API: a SaaS rule delete without its ruleType is refused.
+        self.deleted = getattr(self, "deleted", [])
+        self.deleted.append((rule_id, rule_type))
+        if not rule_type:
+            return None, None, {"message": "ruleType is required"}
+        self.items = [i for i in self.items if str(i.id) != str(rule_id)]
+        return None, None, None
 
 
 class FakeSaaS:

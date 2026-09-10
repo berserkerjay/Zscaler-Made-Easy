@@ -72,13 +72,15 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     by = {(t["destination"]["class"], t["network"]): t for t in rep["traces"]}
     # AI on Windows off network: tunnelled, decrypted, app control blocks
     # upload, DLP enforces and forwards to the Incident Receiver. Hops run
-    # in ZIA's enforcement order: firewall, SSL, threat protection, Cloud
-    # App Control before URL Filtering, File Type Control, DLP, incidents.
+    # in ZIA's request order (Understanding Policy Enforcement): Browser &
+    # FTP Control, Cloud App Control before URL Filtering, SSL, threat
+    # protection, File Type Control, Bandwidth, DLP, Firewall & DNS, then
+    # the incident path.
     t = by[("ai_ml", "off")]
     keys = [h["key"] for h in t["hops"]]
-    assert keys == ["zcc", "forwarding", "firewall", "ssl", "threat", "cac", "url", "ftc", "dlp", "incident"] and t["reaches_zscaler"] and t["decrypted"]
+    assert keys == ["zcc", "forwarding", "browser", "cac", "url", "ssl", "threat", "ftc", "bandwidth", "dlp", "firewall", "incident"] and t["reaches_zscaler"] and t["decrypted"]
     hop = lambda k: next(h for h in t["hops"] if h["key"] == k)  # noqa: E731
-    assert hop("firewall")["status"] == "info" and hop("threat")["status"] == "info"
+    assert all(hop(k)["status"] == "info" for k in ("browser", "threat", "bandwidth", "firewall"))
     assert hop("cac")["status"] == "blocked"
     # Cloud App Control matched, so URL Filtering is not applied to this transaction.
     assert hop("url")["status"] == "na" and hop("url")["decided_by"]["name"] == "AI no upload"
@@ -109,7 +111,8 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     g = df.trace_from_report(rep, "GAMBLING", "off", "windows")
     gh = {h["key"]: h for h in g["hops"]}
     assert gh["cac"]["status"] == "none" and gh["url"]["status"] == "blocked" and gh["url"]["decided_by"]["name"] == "Block gambling"
-    assert "dlp" not in gh and "incident" not in gh and g["outcome"] == "blocked"
+    # URL Filtering runs before SSL inspection: a URL block ends the request there.
+    assert "ssl" not in gh and "dlp" not in gh and "incident" not in gh and g["outcome"] == "blocked"
     # On VPN the corp forwarding profile forwards nothing: never reaches Zscaler.
     v = by[("ai_ml", "vpn")]
     assert not v["reaches_zscaler"] and v["outcome"] == "bypassed" and v["hops"][1]["status"] == "bypass"

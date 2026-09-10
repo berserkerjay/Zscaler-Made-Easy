@@ -1,5 +1,5 @@
 {
-  "name": "Healthcare PHI Baseline",
+  "name": "Healthcare PHI Policy Pack",
   "version": "1.0",
   "description": "Inline Web DLP detection of US healthcare PHI: MRN, patient account number, date of birth and legal sex as strong identifiers, anchored to clinical context by Zscaler's predefined medical dictionaries (Medical Information, Medical Document) plus a small custom clinical-phrase list. One presence engine (context + identifier, two distinct identifiers, or a legal-sex booster beside an identifier) and one bulk-export engine, bound to a single monitor-only rule with OCR on. Immutable: objects that drift from this definition are restored on the next deploy. Rule action is ALLOW (monitor); tune proximity and thresholds against real spreadsheets and multi-column PDFs, then move to BLOCK. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity. Containment (File Type Control, Cloud App Control) is deliberately outside this pack.",
   "references": [
@@ -8,7 +8,7 @@
     "HIPAA Privacy Rule 45 CFR 164.514 (identifiers)"
   ],
   "notes": [
-    "E_PHI_BULK_EXPORT is expressed as 'any identifier dictionary with 10 or more matches' rather than a Sum across dictionaries, because the engine expression language exposed through the API uses per-dictionary counts. If you want a true Sum, rebuild that engine in the portal's Engine Builder; the baseline will then report it as drifted, so remove it from dlp_engines.json first.",
+    "E_PHI_BULK_EXPORT is expressed as 'any identifier dictionary with 10 or more matches' rather than a Sum across dictionaries, because the engine expression language exposed through the API uses per-dictionary counts. If you want a true Sum, rebuild that engine in the portal's Engine Builder; the policy pack will then report it as drifted, so remove it from dlp_engines.json first.",
     "Proximity values are bytes across the extracted text stream. They are unreliable for spreadsheets, multi-column PDFs and OCR output; Branch B (two distinct identifiers) and the Medical Document ML dictionary cover those cases.",
     "The rule sets no file_types, so it applies to every inspectable type; set file_types in dlp_policies.json to narrow it.",
     "Predefined dictionaries are referenced by their API names as a tenant exports them (MEDICAL = Medical Information, ML_MEDICAL_DOC_LEAKAGE = Medical Document). If preflight reports them missing, list the tenant's dictionaries and adjust the names in dlp_engines.json."

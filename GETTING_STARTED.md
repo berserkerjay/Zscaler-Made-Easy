@@ -219,8 +219,8 @@ The results carry a **Best Practices & Benchmarks** card:
   SOC 2, GDPR, HIPAA, PCI DSS, ISO 27001, CIS Controls, GLBA Safeguards
   and CMMC. The **Regulatory & Compliance Alignment** card below it has
   the control-by-control drilldown with the findings behind each control.
-- **Baseline journey**: the stage the tenant has reached against the
-  baseline packs (fills in when the journey measurement lands).
+- **Policy pack journey**: the stage the tenant has reached against the
+  policy packs (fills in when the journey measurement lands).
 
 **Download benchmark note** gives the same as Markdown for the customer
 write-up. Every card on the results page is open by default; click a
@@ -266,10 +266,10 @@ it. Rule of thumb:
 
 | Customer | Pack |
 |---|---|
-| Any commercial enterprise with no DLP policy yet | **ZBP Enterprise Baseline** |
+| Any commercial enterprise with no DLP policy yet | **ZBP Enterprise Policy pack** |
 | Worried about source code going into AI tools | add **Source Code to AI** (13 languages; each language is an Anchor dictionary AND a Signal dictionary in one engine, so cousin languages such as Java/Kotlin do not cross-fire). If the customer already maintains their own Anchor/Signal dictionaries in the tenant, click **Rebuild from tenant dictionaries** on the card: it previews the pairs it found, then rebuilds the pack from them, dropping the shipped ones. |
 | Healthcare provider or payer | add **Healthcare PHI** |
-| Bank, card issuer, payment processor, wealth manager | **Global Banking Baseline** (PCI, payment instructions, customer PII across jurisdictions, KYC/AML, MNPI; it shares its US PII, financial and private-key objects with ZBP Enterprise, so the two can be deployed together) |
+| Bank, card issuer, payment processor, wealth manager | **Global Banking Policy pack** (PCI, payment instructions, customer PII across jurisdictions, KYC/AML, MNPI; it shares its US PII, financial and private-key objects with ZBP Enterprise, so the two can be deployed together) |
 | US federal agency or contractor | **Fed Policy Pack** instead of ZBP Enterprise (it contains it) |
 | Law enforcement, courts, CJI handlers | **CJIS Policy Pack** |
 
@@ -280,7 +280,7 @@ objects under different names.
 
 The **Tenant profiles** bar at the top of Tenant Configuration saves one
 record per customer: organisation, assessor, cloud, vanity domain, client
-ID, ZPA customer ID, scopes, industry, which baseline packs apply, and
+ID, ZPA customer ID, scopes, industry, which policy packs apply, and
 notes. Pick a profile from the list and the form fills itself.
 
 - **Remember the secret on this laptop** stores the client secret in
@@ -289,16 +289,16 @@ notes. Pick a profile from the list and the form fills itself.
   time instead. The secret is never sent back to the browser.
 - Every assessment run with a profile selected is recorded in that
   profile's **history**: date, score, maturity and the journey stage per
-  baseline. The journey card on the results compares with the previous
+  policy pack. The journey card on the results compares with the previous
   run, so the customer sees movement between visits.
-- **Baseline packs** on the profile restrict the journey measurement to
-  the baselines that apply to this customer (a hospital is measured
+- **Policy packs** on the profile restrict the journey measurement to
+  the policy packs that apply to this customer (a hospital is measured
   against Healthcare PHI, not CJIS).
 
 ## 5c. Hand off as Terraform (platform teams)
 
 Some customers manage Zscaler as code and will not accept changes made
-from a tool. Give them the same baseline as a Terraform workspace instead:
+from a tool. Give them the same policy pack as a Terraform workspace instead:
 
 1. Click **Terraform hand-off** on the front page (or *Terraform hand-off*
    on a pack card, or *Hand off as Terraform* on the preflight review). It
@@ -359,7 +359,7 @@ What you can bring:
 
 - **One JSON file**: a name, a description and three lists (`dictionaries`,
   `engines`, `policies`). *Download a complete example* on the tab gives you
-  the Global Banking Baseline in this layout to copy from.
+  the Global Banking Policy pack in this layout to copy from.
 - **The three pack files** (`dlp_dictionaries.json`, `dlp_engines.json`,
   `dlp_policies.json`, optional `pack.json`), or a ZIP of a pack folder.
 - **Terraform** for the `zscaler/zia` provider (`zia_dlp_dictionaries`,
@@ -417,7 +417,7 @@ the outset, for scripted use.)
 2. Enable rules one at a time in **Policy → Data Loss Prevention**,
    monitor-only ones first, and raise severity once incidents look right.
 3. On the next visit, run the assessment again (or click **Where is this
-   tenant?** on the baseline card). The *Data governance journey* card shows
+   tenant?** on the policy pack card). The *Data governance journey* card shows
    the stage reached — Foundation, Policies deployed, Visibility,
    Containment, Enforcement — and names the exact rules to enable or harden
    next. Nothing the customer changed is ever reverted.
@@ -467,5 +467,5 @@ The **? Help** button in the app has the full glossary. The five words that
 matter: a **dictionary** is what to look for; an **engine** combines
 dictionaries into a decision; a **rule** says where the engine applies and
 whether to monitor (ALLOW) or stop (BLOCK); a **pack** is a folder of all
-three for one purpose; a **baseline** is a pack the tenant is measured
+three for one purpose; a **policy pack** is a pack the tenant is measured
 against on its journey from deployed to enforcing.

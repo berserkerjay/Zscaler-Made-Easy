@@ -1222,7 +1222,7 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
                  channel_targets: Optional[Dict[str, List[str]]] = None,
                  progress: Optional[Any] = None) -> Dict[str, Any]:
-    """Read-only journey check: one preflight per baseline pack (so each
+    """Read-only journey check: one preflight per policy pack (so each
     pack is measured on its own), rolled up with pack_deploy.journey.
     `channel_targets` measures the pack as the operator chose to deploy
     it (extension rules count, skipped channels do not). The tenant is
@@ -1263,7 +1263,7 @@ def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
 @app.post("/api/dlp-packs/baseline-status")   # older name, same answer
 async def dlp_packs_journey(req: DLPPackDeployRequest):
     """Where is this tenant on the data-governance journey? For every
-    baseline pack (or the ones in pack_ids), every object is placed as
+    policy pack (or the ones in pack_ids), every object is placed as
     missing / deployed / monitoring / enforcing / customized / relaxed /
     blocked, the stage ladder (Foundation → Policies deployed →
     Visibility → Containment → Enforcement) is evaluated and the concrete
@@ -1282,7 +1282,7 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
             pack_ids = []
     packs = _journey_packs(pack_ids)
     if not packs:
-        raise HTTPException(status_code=404, detail="No baseline packs found (pack.json needs a \"baseline\" section).")
+        raise HTTPException(status_code=404, detail="No policy packs found (pack.json needs a \"policy pack\" section).")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
@@ -2918,7 +2918,7 @@ async def assess_stream(req: AssessRequest):
                 try:
                     packs = _journey_packs(journey_pack_ids)
                     yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
-                                            "current": f"Data governance journey: measuring the tenant against {len(packs)} baselines"})
+                                            "current": f"Data governance journey: measuring the tenant against {len(packs)} policy packs"})
                     sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
                     notes: asyncio.Queue = asyncio.Queue()
 
@@ -3142,12 +3142,14 @@ async def report_dataflow_page():
 @app.post("/api/report/data-flow")
 async def report_data_flow(req: DataFlowRequest):
     """Trace every traffic class (or the given destinations) through the
-    tenant in ZIA's enforcement order: Client Connector app profile and
-    forwarding profile, PAC, Cloud Firewall, SSL inspection, threat
-    protection, Cloud App Control (before URL Filtering), URL filtering,
-    File Type Control, Web DLP and what happens after a match (logs,
-    Incident Receiver, Workflow Automation), plus the endpoint, SaaS and
-    email channels, with each policy pack's coverage on the path.
+    tenant in ZIA's request order (Understanding Policy Enforcement):
+    Client Connector app profile and forwarding profile, PAC, Browser &
+    FTP Control, Cloud App Control (before URL Filtering), URL filtering,
+    SSL inspection, threat protection, File Type Control, Bandwidth
+    Control, Web DLP, Firewall & DNS Control and what happens after a
+    match (logs, Incident Receiver, Workflow Automation), plus the
+    endpoint, SaaS and email channels, with each policy pack's coverage
+    on the path.
     Read-only; carries report_id for /report/dataflow?id=... and the
     exports."""
     try:
