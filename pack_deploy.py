@@ -1073,8 +1073,14 @@ def preflight(
     writes_enabled: Optional[bool] = None,
     restore_drift: bool = False,
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
+    tenant_cache: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
+
+    `tenant_cache` (a dict the caller keeps across calls) makes several
+    preflights against the same tenant read it once: the first call stores
+    the snapshot (read for `tenant_cache["need"]` when the caller set it,
+    a superset of every pack's needs), later calls plan from a copy.
 
     `channel_targets` (pack id → list of web/endpoint/saas/email) chooses
     which DLP channels each pack is deployed into: deselected channels
@@ -1097,7 +1103,13 @@ def preflight(
     sources = load_sources(packs, targets_norm)
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
-    tenant = fetch_tenant(client, need)
+    if tenant_cache is not None:
+        import copy
+        if tenant_cache.get("snapshot") is None:
+            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need)
+        tenant = copy.deepcopy(tenant_cache["snapshot"])
+    else:
+        tenant = fetch_tenant(client, need)
     options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift),
                "channel_targets": {k: sorted(v) for k, v in sorted(targets_norm.items())}}
 

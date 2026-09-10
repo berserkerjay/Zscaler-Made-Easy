@@ -3171,10 +3171,20 @@ async function runAssessment() {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // Watchdog: the server sends something at least every 10 s (a result or
+    // a keepalive). If nothing arrives for 45 s, say so instead of sitting
+    // on a frozen bar; after 3 minutes of silence give up and show what we have.
+    let lastByte = Date.now();
+    const watchdog = setInterval(() => {
+      const quiet = Math.round((Date.now() - lastByte) / 1000);
+      if (quiet >= 180) { clearInterval(watchdog); reader.cancel().catch(() => {}); return; }
+      if (quiet >= 45) document.getElementById('progressDetail').textContent = `No answer from the server for ${quiet}s — still waiting (the tenant may be slow to answer a listing).`;
+    }, 5000);
 
     while (true) {
       const {done, value} = await reader.read();
       if (done) break;
+      lastByte = Date.now();
       buffer += decoder.decode(value, {stream: true});
       const lines = buffer.split('\n');
       buffer = lines.pop();
@@ -3183,6 +3193,11 @@ async function runAssessment() {
           try { handleEvent(JSON.parse(line.slice(6))); } catch(e){}
         }
       }
+    }
+    clearInterval(watchdog);
+    if (!reportData && partialResults.length) {
+      setStatus('The server stopped answering. Showing the checks that finished.', 'error');
+      buildPartialReport();
     }
   } catch(e) {
     setStatus('Connection lost: ' + e.message + '. Showing partial results.', 'error');
@@ -3233,11 +3248,25 @@ function handleEvent(evt) {
     const pct = evt.pct || Math.round((evt.completed / evt.total) * 100);
     document.getElementById('progressFill').style.width = pct + '%';
     document.getElementById('progressPct').textContent = pct + '%';
-    document.getElementById('progressText').textContent = `Check ${evt.completed} of ${evt.total}`;
+    document.getElementById('progressText').textContent = evt.journey
+      ? `All ${evt.total} checks done — results are below; measuring the journey`
+      : `Check ${evt.completed} of ${evt.total}${evt.running ? ` · ${evt.running} running` : ''}${evt.elapsed ? ` · ${evt.elapsed}s` : ''}`;
     if (evt.current) document.getElementById('progressDetail').textContent = evt.current;
+    if (evt.journey && typeof _gdJourneyCard === 'function') { try { _gdJourneyCard({ status: 'pending', current: evt.current }); } catch (e) {} }
   } else if (evt.score !== undefined) {
     reportData = evt;
     showResults(evt);
+    setStatus(evt.journey && evt.journey.status === 'pending'
+      ? `Assessment complete in ${(evt.metadata || {}).elapsed_seconds || '?'}s — measuring the data governance journey in the background`
+      : 'Assessment complete', 'success');
+    if (evt.journey && evt.journey.status === 'pending') document.getElementById('progressCard').classList.add('active');
+  } else if (evt.journey !== undefined && evt.score === undefined) {
+    // The journey lands after the results.
+    if (reportData) { reportData.journey = evt.journey; if (evt.profile) reportData.profile = evt.profile; }
+    if (window.GD) GD.lastReport = reportData;
+    document.getElementById('progressCard').classList.remove('active');
+    if (typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(evt.journey); } catch (e) { console.warn('journey card', e); } }
+    if (evt.profile && typeof _gdProfilesLoad === 'function') { try { _gdProfilesLoad(); } catch (e) {} }
     setStatus('Assessment complete', 'success');
   } else if (evt.message) {
     setStatus('Error: ' + evt.message + (partialResults.length ? '. Showing partial results.' : ''), 'error');

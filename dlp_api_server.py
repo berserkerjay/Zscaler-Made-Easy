@@ -18,6 +18,7 @@ Endpoints:
 """
 
 import json, asyncio, os, re, tempfile, time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -177,6 +178,13 @@ async def _safe_exception_handler(request: Request, exc: Exception):
 # Serve static files (web GUI)
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(_APP_DIR, "static")
+
+# Assessment run tuning. Checks run on ASSESS_WORKERS threads that share one
+# request pacer (see dlp_assessment_full_auto.Client); a check still running
+# after CHECK_TIMEOUT seconds is reported as timed out and the run moves on.
+ASSESS_WORKERS = max(1, min(16, int(os.environ.get("ASSESS_WORKERS", "6") or 6)))
+CHECK_TIMEOUT = max(15, int(os.environ.get("ASSESS_CHECK_TIMEOUT", "60") or 60))
+JOURNEY_TIMEOUT = max(30, int(os.environ.get("ASSESS_JOURNEY_TIMEOUT", "180") or 180))
 
 
 def _load_local_settings() -> None:
@@ -1067,18 +1075,34 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
 
 
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
-                 channel_targets: Optional[Dict[str, List[str]]] = None) -> Dict[str, Any]:
+                 channel_targets: Optional[Dict[str, List[str]]] = None,
+                 progress: Optional[Any] = None) -> Dict[str, Any]:
     """Read-only journey check: one preflight per baseline pack (so each
     pack is measured on its own), rolled up with pack_deploy.journey.
     `channel_targets` measures the pack as the operator chose to deploy
-    it (extension rules count, skipped channels do not)."""
+    it (extension rules count, skipped channels do not). The tenant is
+    read once for every pack (superset of their needs); `progress(i, n,
+    pack_id)` is called before each pack is measured."""
     import pack_deploy
+    import pack_channels as pc
     rows: List[Dict[str, Any]] = []
     tenant = None
     blockers: List[str] = []
-    for pk in packs:
+    cache: Dict[str, Any] = {}
+    try:
+        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, {}))
+        cache["need"] = pc.needs(i["definition"] for i in merged["policy"].values())
+    except Exception:  # noqa: BLE001 — fall back to per-pack needs
+        cache = {}
+    for i, pk in enumerate(packs):
+        if progress is not None:
+            try:
+                progress(i, len(packs), pk["id"])
+            except Exception:  # noqa: BLE001
+                pass
         ct = {pk["id"]: (channel_targets or {})[pk["id"]]} if (channel_targets or {}).get(pk["id"]) is not None else None
-        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None, channel_targets=ct)
+        rep = pack_deploy.preflight(client, [pk], use_rank_0=use_rank_0, apply_tweaks=False, writes_enabled=None, channel_targets=ct,
+                                    tenant_cache=cache)
         j = pack_deploy.journey(rep)
         rows.extend(j["baselines"])
         tenant = j.get("tenant") or tenant
@@ -2457,64 +2481,84 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "ok"})
             yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
 
-            # NOTE: the loop tuple variable must NOT be named `sec` — that
-            # shadows the outer `sec` (client_secret) and Python's
-            # closure rules then make every earlier reference to `sec`
-            # in this generator raise UnboundLocalError.
-            for i, (check_id, section, label, fn) in enumerate(checks):
-                # Bulletproof: every check runs in its own try/except with hard timeout
+            # Checks run on a small pool of threads (the API's rate limit is
+            # shared by the Client's pacer), each result is streamed the moment
+            # it lands, and a check that is still running after CHECK_TIMEOUT
+            # is reported as timed out without holding up the others. The
+            # pool is per run, so a thread stuck in a black-holed request can
+            # never starve the next run.
+            # NOTE: no loop variable here may be named `sec` — that shadows the
+            # outer `sec` (client_secret) through Python's closure rules.
+            loop = asyncio.get_running_loop()
+            inbox: asyncio.Queue = asyncio.Queue()
+            started: Dict[int, float] = {}
+
+            def _run_one(idx, check_id, section, label, fn):
+                started[idx] = time.time()
                 try:
-                    r = await asyncio.wait_for(asyncio.to_thread(fn, client), timeout=60)
-                except asyncio.TimeoutError:
-                    r = R(R.INFO, f"{label}: Check timed out after 60 seconds.")
-                except Exception as ex:
+                    r = fn(client)
+                except Exception as ex:  # noqa: BLE001
                     r = R(R.INFO, f"{label}: Could not complete check. {str(ex)[:120]}")
+                loop.call_soon_threadsafe(inbox.put_nowait, (idx, r))
 
-                # Defensive: ensure r has expected shape
-                if not hasattr(r, 'status') or not hasattr(r, 'detail'):
+            pool = ThreadPoolExecutor(max_workers=ASSESS_WORKERS, thread_name_prefix="assess")
+            for idx, chk in enumerate(checks):
+                pool.submit(_run_one, idx, *chk)
+            done: Dict[int, Dict[str, Any]] = {}
+            last_keepalive = time.time()
+            run_started = time.time()
+
+            def _finish(idx, r):
+                check_id, section, label, _fn = checks[idx]
+                if not hasattr(r, "status") or not hasattr(r, "detail"):
                     r = R(R.INFO, f"{label}: Invalid check result.")
+                result = {"id": check_id, "section": section, "label": label,
+                          "status": str(r.status), "detail": str(r.detail)[:500]}
+                done[idx] = result
+                return result
 
-                result = {
-                    "id": check_id, "section": section, "label": label,
-                    "status": str(r.status), "detail": str(r.detail)[:500],
-                }
-                results.append(result)
-
-                # Yield check + progress, skipping if client disconnected
+            while len(done) < len(checks):
+                landed = []
                 try:
-                    yield _sse("check", result)
-                    yield _sse("progress", {
-                        "total": len(checks),
-                        "completed": i + 1,
-                        "pct": round((i + 1) / len(checks) * 100),
-                        "current": f"{check_id}: {label}",
-                    })
-                    # Periodic keepalive every 10 checks
-                    if (i + 1) % 10 == 0:
+                    landed.append(await asyncio.wait_for(inbox.get(), timeout=1.0))
+                except asyncio.TimeoutError:
+                    pass
+                while not inbox.empty():
+                    landed.append(inbox.get_nowait())
+                now = time.time()
+                fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
+                for idx, t0 in list(started.items()):
+                    if idx not in done and now - t0 > CHECK_TIMEOUT:
+                        fresh.append(_finish(idx, R(R.INFO, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
+                try:
+                    for result in fresh:
+                        yield _sse("check", result)
+                    if fresh:
+                        yield _sse("progress", {
+                            "total": len(checks), "completed": len(done),
+                            "pct": round(len(done) / len(checks) * 100),
+                            "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
+                            "running": len([i for i in started if i not in done]),
+                            "elapsed": round(now - run_started),
+                        })
+                    if now - last_keepalive > 10:
                         yield ": keepalive\n\n"
+                        last_keepalive = now
                 except Exception:
                     # Client disconnected; just keep collecting results
                     pass
+            pool.shutdown(wait=False, cancel_futures=True)
+            results = [done[i] for i in range(len(checks))]
 
-            # Data-governance journey: where the tenant stands against every
-            # baseline pack. Read-only, best effort; never fails the assessment.
-            journey = None
-            if not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"):
-                try:
-                    yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
-                                            "current": "Data governance journey: measuring the tenant against the baselines"})
-                    packs = _journey_packs(journey_pack_ids)
-                    if packs:
-                        sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
-                        journey = await asyncio.wait_for(asyncio.to_thread(_journey_for, sdk, packs), timeout=180)
-                        journey["tenant_label"] = f"{vd} ({cloud})"
-                except Exception as ex:  # noqa: BLE001
-                    journey = {"status": "error", "error": str(ex).replace(sec, mask_secret(sec))[:200] if sec else str(ex)[:200]}
+            # Results first: the report goes out as soon as the checks are
+            # in. The data-governance journey (one read-only preflight per
+            # baseline pack) follows as its own event so nobody waits on it.
+            want_journey = bool(_journey_packs(journey_pack_ids)) and (
+                not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"))
 
-            # Always send the complete event, even if some checks failed
             try:
                 secs, overall = compute(results)
-            except Exception as e:
+            except Exception:  # noqa: BLE001
                 secs, overall = {}, 0
 
             report = {
@@ -2527,6 +2571,8 @@ async def assess_stream(req: AssessRequest):
                     "cloud": req.cloud,
                     "total_checks": len(checks),
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
+                    "elapsed_seconds": round(time.time() - run_started, 1),
+                    "api_requests": getattr(client, "requests_made", None),
                 },
                 "score": overall,
                 "maturity": maturity(overall),
@@ -2534,20 +2580,57 @@ async def assess_stream(req: AssessRequest):
                 "checks": results,
                 "critical": [r for r in results if r["status"] == "FAIL"],
                 "review": [r for r in results if r["status"] == "REVIEW"],
-                "journey": journey,
+                "journey": {"status": "pending"} if want_journey else None,
                 "profile": None,
             }
-            if profile:
+
+            def _record_history(rep):
+                if not profile:
+                    return None
                 try:
                     import tenant_profiles
-                    updated = tenant_profiles.add_history(profile["id"], tenant_profiles.snapshot(report))
+                    updated = tenant_profiles.add_history(profile["id"], tenant_profiles.snapshot(rep))
                     if updated:
-                        report["profile"] = {"id": updated["id"], "name": updated.get("name"),
-                                             "history": (updated.get("history") or [])[-12:]}
+                        return {"id": updated["id"], "name": updated.get("name"),
+                                "history": (updated.get("history") or [])[-12:]}
                 except Exception:  # noqa: BLE001 — history is best effort
-                    pass
+                    return None
+                return None
 
+            if not want_journey:
+                report["profile"] = _record_history(report)
             yield _sse("complete", report)
+
+            if want_journey:
+                journey = None
+                try:
+                    packs = _journey_packs(journey_pack_ids)
+                    yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                                            "current": f"Data governance journey: measuring the tenant against {len(packs)} baselines"})
+                    sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
+                    notes: asyncio.Queue = asyncio.Queue()
+
+                    def _note(i, n, pack_id):
+                        loop.call_soon_threadsafe(notes.put_nowait, (i, n, pack_id))
+
+                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, progress=_note))
+                    deadline = time.time() + JOURNEY_TIMEOUT
+                    while not task.done():
+                        if time.time() > deadline:
+                            raise TimeoutError(f"the journey measurement did not finish within {JOURNEY_TIMEOUT} seconds")
+                        try:
+                            i, n, pack_id = await asyncio.wait_for(notes.get(), timeout=5.0)
+                            yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                                                    "current": f"Data governance journey: {pack_id} ({i + 1} of {n})", "journey": True})
+                        except asyncio.TimeoutError:
+                            yield ": keepalive\n\n"
+                    journey = task.result()
+                    journey["tenant_label"] = f"{vd} ({cloud})"
+                except Exception as ex:  # noqa: BLE001
+                    journey = {"status": "error", "error": str(ex).replace(sec, mask_secret(sec))[:200] if sec else str(ex)[:200]}
+                report["journey"] = journey
+                report["profile"] = _record_history(report)
+                yield _sse("journey", {"journey": journey, "profile": report["profile"]})
 
         except Exception as e:
             # Catch-all: never let the generator crash the stream
