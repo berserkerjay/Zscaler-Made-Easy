@@ -58,7 +58,7 @@ const DZ_CHANNEL = { web: 'Web', endpoint: 'Endpoint', saas: 'SaaS', email: 'Ema
 const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
 // Containment channels a pack never deploys: they are carved out and
 // managed separately (kept in step with pack_channels.CARVED_CHANNELS).
-const DZ_CARVED = ['cloud_app', 'file_type', 'url'];
+const DZ_CARVED = ['cloud_app', 'file_type', 'url', 'ssl'];
 function _dzChannelChips(channels) {
   if (!channels) return '';
   const chips = Object.keys(DZ_CHANNEL).filter(c => c !== 'web' && !DZ_CARVED.includes(c) && channels[c])

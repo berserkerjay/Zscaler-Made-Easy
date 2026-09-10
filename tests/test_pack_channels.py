@@ -207,11 +207,12 @@ def test_packs_carve_out_containment_by_default(monkeypatch):
     monkeypatch.delenv("DLP_CHECK_CARVED_CHANNELS", raising=False)
     kept, note = pc.apply_channel_targets(_all_channel_policies(), None, pack_name="P", prefix="", engine_names=["Alpha Engine"])
     names = {p["name"] for p in kept}
-    # Detection (web/endpoint/saas/email) and SSL stay; Cloud App Control,
-    # File Type Control and URL Filtering are carved out.
-    assert names == {"Web-Monitor", "EP-Monitor", "SaaS-Monitor", "Email-Monitor", "SSL-Decrypt"}
-    assert note["carved_channels"] == ["cloud_app", "file_type", "url"]
-    assert set(note["carved_out"]) == {"CAC-AI", "FTC-Zip", "URL-Block"}
+    # Detection only (web/endpoint/saas/email); every containment channel
+    # (Cloud App Control, File Type Control, URL Filtering, SSL Inspection)
+    # is carved out.
+    assert names == {"Web-Monitor", "EP-Monitor", "SaaS-Monitor", "Email-Monitor"}
+    assert note["carved_channels"] == ["cloud_app", "file_type", "ssl", "url"]
+    assert set(note["carved_out"]) == {"CAC-AI", "FTC-Zip", "URL-Block", "SSL-Decrypt"}
 
 
 def test_carve_out_is_configurable(monkeypatch):

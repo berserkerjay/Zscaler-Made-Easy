@@ -126,23 +126,23 @@ CHANNELS: Dict[str, Dict[str, Any]] = {
     },
 }
 CONTROL_CHANNELS = {CLOUD_APP, FILE_TYPE, URL, SSL}
-# Containment channels carved out of every pack: a pack deploys detection
-# (Web / Endpoint / SaaS / Email DLP) only. Cloud App Control, File Type
-# Control and URL Filtering are managed separately, not by a pack. SSL
-# Inspection stays with the pack because decryption is what lets inline
-# DLP read HTTPS. Override with DLP_CHECK_CARVED_CHANNELS (comma list of
-# channel keys, or "none") if a deployment wants a different split.
+# Containment channels carved out of every pack and baseline: a pack
+# deploys detection only — Web, Endpoint, SaaS and Email DLP. Cloud App
+# Control, File Type Control, URL Filtering and SSL Inspection are managed
+# separately, not by a pack. Override with DLP_CHECK_CARVED_CHANNELS
+# (comma list of channel keys, or "none") if a deployment wants a
+# different split.
 def _carved_channels() -> set:
     import os
     raw = os.environ.get("DLP_CHECK_CARVED_CHANNELS")
     if raw is None:
-        return {CLOUD_APP, FILE_TYPE, URL}
+        return set(CONTROL_CHANNELS)
     if raw.strip().lower() in ("", "none"):
         return set()
     return {c.strip().lower() for c in raw.split(",") if c.strip().lower() in CONTROL_CHANNELS}
 
 
-CARVED_CHANNELS = {CLOUD_APP, FILE_TYPE, URL}
+CARVED_CHANNELS = set(CONTROL_CHANNELS)
 
 # Cloud App Control rule types (application categories). A pack rule's
 # "type" must be one of these; "cloud_app_classes" defaults to [type].
