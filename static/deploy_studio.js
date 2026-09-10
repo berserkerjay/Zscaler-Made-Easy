@@ -886,6 +886,10 @@ function _dzRemovalDone() {
 
 async function _dzRemovalApply() {
   const R = DZ.removal; if (!R) return;
+  const remove = (R.plan.items || []).filter(i => i.status === 'remove');
+  // Second confirmation (the consent checkbox was the first): a final,
+  // explicit yes naming the count and tenant before anything is deleted.
+  if (!window.confirm(`Final confirmation.\n\nPermanently delete ${remove.length} object(s) that ${R.pack.name || R.id} put in ${R.plan.tenant_label || 'this tenant'}?\n\nThis cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
   DZ.busy = true; R.step = 3; _dzRemovalRender();
   try {
     const r = await fetch('/api/dlp-packs/removal/apply', {

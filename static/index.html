@@ -599,20 +599,10 @@
     <div class="hero-toolbar" aria-label="Tools">
       <div class="tool-group" role="group" aria-label="Find the gaps">
         <div class="tool-group-l">Find the gaps</div>
-        <button class="btn btn-ghost" onclick="openBypassReportTab()"
-                aria-label="Open Bypass and Non-Inspected Traffic Inventory Report in a new tab"
-                title="Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection. Opens in a new tab.">
-          <span aria-hidden="true">🔓</span> Bypass / Non-Inspected
-        </button>
-        <button class="btn btn-ghost" onclick="openSslFlowTab()"
-                aria-label="Open the live SSL Inspection Flow diagram: what is decrypted, what is not, and where inline DLP is blind (opens in a new tab)"
-                title="Live flow diagram: for each DLP-relevant traffic class, which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps highlighted. Opens in a new tab.">
-          <span aria-hidden="true">🔐</span> SSL Inspection Flow
-        </button>
         <button class="btn btn-ghost" onclick="openDataFlowTab()"
-                aria-label="Open the live Data Flow Map: the exact path a transaction takes through Client Connector, forwarding profiles, PAC, SSL, URL filtering, app control and DLP, with each policy pack's weak points (opens in a new tab)"
-                title="Live path tracer: for every traffic class (and any app, category or hostname you type) on every network context, which app profile, forwarding profile, PAC, SSL rule, URL rule, Cloud App Control rule, File Type rule and DLP rule decides, where it is bypassed or blind, and where each policy pack is weak. Opens in a new tab.">
-          <span aria-hidden="true">🗺️</span> Data Flow Map
+                aria-label="Open Traffic Flow and Gaps: the exact path a transaction takes through Client Connector app and forwarding profiles, PAC, SSL, URL filtering, app control and DLP, visibility by cloud app category, and every bypass or blind spot, in one report (opens in a new tab)"
+                title="One report: the path each transaction takes (Client Connector app profile and forwarding profile by name, PAC, SSL, URL, Cloud App Control, File Type, DLP) with the diagram on top, visibility across every cloud app category, and where inspection is lost (bypasses and SSL blind spots). Opens in a new tab.">
+          <span aria-hidden="true">🗺️</span> Traffic Flow &amp; Gaps
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"

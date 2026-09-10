@@ -24,6 +24,9 @@
         <label class="df-ctl"><span class="lbl">Platform</span><select id="dfPlat" aria-label="Platform"></select></label>
         <a class="rp-btn primary" id="dfTrace" href="#">Trace</a>
         <a class="rp-btn" id="dfRefresh" href="#" title="Re-read the tenant">↻ Refresh</a>
+        <span class="lbl">Detail</span>
+        <a class="rp-btn" id="dfBypass" href="#" title="The full bypass and non-inspected inventory">Bypass inventory</a>
+        <a class="rp-btn" id="dfSsl" href="#" title="The full SSL inspection flow diagram">SSL inspection</a>
         <span class="lbl">Export</span>
         <a class="rp-btn" id="expMd">Markdown</a>
         <a class="rp-btn" id="expJson">JSON</a>
@@ -48,8 +51,18 @@
 
     function layout() {
       const s = report.summary;
+      // Diagram first: the selected path's flow, then visibility by cloud
+      // app category, then the full destination x network table and totals.
       body.innerHTML = `
-        <div class="df-stats">
+        <h2 class="df-h" id="dfTraceTitle">Path</h2>
+        <div id="dfTraceBody"></div>
+        <h2 class="df-h">Visibility by cloud app category</h2>
+        <div id="dfCategories"></div>
+        <h2 class="df-h">Where inspection is lost</h2>
+        <div id="dfGaps"></div>
+        <h2 class="df-h">Every destination, every network</h2>
+        <div id="dfOverview"></div>
+        <div class="df-stats" style="margin-top:1rem;">
           <div class="df-stat"><div class="n">${s.traces}</div><div class="l">paths traced</div></div>
           <div class="df-stat ${s.bypassed ? 'bad' : ''}"><div class="n">${s.bypassed}</div><div class="l">never reach Zscaler</div></div>
           <div class="df-stat ${s.blind ? 'bad' : ''}"><div class="n">${s.blind}</div><div class="l">reach ZIA encrypted</div></div>
@@ -57,16 +70,14 @@
           <div class="df-stat"><div class="n">${s.monitored}</div><div class="l">inspected, monitor only</div></div>
           <div class="df-stat ${s.high ? 'bad' : ''}"><div class="n">${s.high}</div><div class="l">high-severity weak points</div></div>
         </div>
-        <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>
-        <h2 class="df-h">Every destination, every network</h2>
-        <div id="dfOverview"></div>
-        <h2 class="df-h" id="dfTraceTitle">Path</h2>
-        <div id="dfTraceBody"></div>`;
+        <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>`;
       renderDataFlowOverview(report, document.getElementById('dfOverview'));
-      document.querySelectorAll('.df-row').forEach(r => {
-        const show = () => { document.querySelectorAll('.df-row').forEach(x => x.classList.remove('sel')); r.classList.add('sel'); showTrace(report.traces[Number(r.dataset.i)]); };
-        r.addEventListener('click', show); r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(); } });
-      });
+      renderCategoryVisibility(report, document.getElementById('dfCategories'));
+      renderDataFlowGaps(report, document.getElementById('dfGaps'));
+      const wire = r => { r.addEventListener('click', () => sel(Number(r.dataset.i))); r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(Number(r.dataset.i)); } }); };
+      const sel = i => { document.querySelectorAll('.df-row').forEach(x => x.classList.remove('sel')); const row = document.querySelector(`.df-row[data-i="${i}"]`); if (row) row.classList.add('sel'); showTrace(report.traces[i]); };
+      document.querySelectorAll('.df-row').forEach(wire);
+      document.querySelectorAll('.df-vis[data-i], .df-gap[data-i]').forEach(b => b.addEventListener('click', () => sel(Number(b.dataset.i))));
       const first = report.traces.findIndex(t => t.weak_points.some(w => w.severity === 'high'));
       const idx = first >= 0 ? first : 0;
       const row = document.querySelector(`.df-row[data-i="${idx}"]`); if (row) row.classList.add('sel');
@@ -125,6 +136,14 @@
     document.getElementById('dfTrace').addEventListener('click', traceCustom);
     document.getElementById('dfDest').addEventListener('keydown', e => { if (e.key === 'Enter') traceCustom(e); });
     document.getElementById('dfRefresh').addEventListener('click', refresh);
+    const drill = (id, fn) => document.getElementById(id).addEventListener('click', ev => {
+      ev.preventDefault();
+      const o = window.opener;
+      if (o && !o.closed && typeof o[fn] === 'function') o[fn]();
+      else meta.textContent = 'Open this from the assessment tab to reach the detailed inventory.';
+    });
+    drill('dfBypass', 'openBypassReportTab');
+    drill('dfSsl', 'openSslFlowTab');
     if (q.get('error')) { fail('The map could not be generated', q.get('error')); return; }
     const id = q.get('id');
     if (!id) return;
