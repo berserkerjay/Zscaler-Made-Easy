@@ -16,6 +16,7 @@ services:
     environment:
       ZSCALER_BIND_HOST: 0.0.0.0        # inside the container only; the publish above is loopback
       ZSCALER_PORT: "8000"
+      DLP_CHECK_USER_PACKS: /data/user_packs   # packs added from Advanced settings persist on the volume
     volumes:
       - dlpcheck-data:/data
     read_only: true

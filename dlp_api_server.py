@@ -156,7 +156,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1450,36 +1450,154 @@ class DLPPackUploadRequest(BaseModel):
     policies: Optional[List[Dict[str, Any]]] = None
 
 
+def _pack_library_writes_allowed() -> bool:
+    """Adding or removing packs writes to the app's own disk. Allowed when
+    the server only answers this machine (localhost bind) or when the UI
+    token gate is on, so a network-exposed server still needs the token."""
+    return get_bind_host() in ("127.0.0.1", "localhost", "::1") or _security.ui_auth_enabled()
+
+
+def _require_pack_library_writes() -> None:
+    if not _pack_library_writes_allowed():
+        raise HTTPException(status_code=403, detail="Adding or removing packs is only allowed when the server is bound to localhost or the UI token is enabled (ZSCALER_UI_AUTH).")
+
+
 @app.post("/api/dlp-packs/upload")
 async def dlp_pack_upload(req: DLPPackUploadRequest):
-    """Create a new DLP pack from uploaded JSON definitions. Persists
-    to disk so it survives server restarts. Writes into the application
-    folder, so it is allowed only from a localhost-bound server."""
-    if get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
-        raise HTTPException(status_code=403, detail="Uploading a pack from the web UI is only allowed when the server is bound to localhost.")
-    slug = re.sub(r"[^a-z0-9_]+", "_", req.pack_name.lower().strip()).strip("_")
-    if not slug:
-        raise HTTPException(status_code=400, detail="Invalid pack name")
-    pack_dir = os.path.join(PACKS_ROOT, slug)
-    if os.path.exists(pack_dir):
-        raise HTTPException(status_code=409, detail=f"Pack '{slug}' already exists")
-    configs_dir = os.path.join(pack_dir, "configs")
-    os.makedirs(configs_dir, exist_ok=True)
-    saved = {}
-    for fname, data in [
-        ("dlp_dictionaries.json", req.dictionaries),
-        ("dlp_engines.json", req.engines),
-        ("dlp_policies.json", req.policies),
-    ]:
-        if data:
-            with open(os.path.join(configs_dir, fname), "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            saved[fname] = len(data)
-    # Write pack.json metadata
-    meta = {"name": req.pack_name, "version": "1.0", "description": f"Uploaded pack: {req.pack_name}"}
-    with open(os.path.join(pack_dir, "pack.json"), "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
-    return {"id": slug, "dir": pack_dir, "files_saved": saved, "metadata": meta}
+    """Older single-call upload: the three JSON lists in one body. Kept for
+    scripts; the Advanced settings tab uses /api/pack-library/upload."""
+    _require_pack_library_writes()
+    import pack_library as pl
+    bundle = {"name": req.pack_name, "dictionaries": req.dictionaries or [], "engines": req.engines or [], "policies": req.policies or []}
+    try:
+        pack = pl.assemble_pack([{"name": "pack.json", "content": json.dumps({**bundle, "bundle": True})}], pack_name=req.pack_name)
+        saved = pl.save_pack(pack, root=PACKS_ROOT)
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"id": saved["id"], "dir": saved["dir"], "files_saved": saved["validation"]["counts"], "metadata": {k: saved.get(k) for k in ("name", "version", "description")}}
+
+
+class PackUploadFile(BaseModel):
+    name: str
+    content: str
+    encoding: Optional[str] = None      # "base64" for ZIPs; text otherwise
+
+
+class PackLibraryUploadRequest(BaseModel):
+    files: List[PackUploadFile]
+    pack_name: str = ""
+    pack_id: str = ""
+    description: str = ""
+
+
+def _pack_library_status() -> Dict[str, Any]:
+    import pack_library as pl
+    return {
+        "writes_allowed": _pack_library_writes_allowed(),
+        "bind_host": get_bind_host(),
+        "ui_auth": _security.ui_auth_enabled(),
+        "user_packs_dir": pl.user_packs_dir(PACKS_ROOT),
+        "packs_root": PACKS_ROOT,
+        "max_upload_mb": pl.MAX_UPLOAD_BYTES // (1024 * 1024),
+        "env": {"DLP_CHECK_USER_PACKS": os.environ.get("DLP_CHECK_USER_PACKS") or "",
+                "ZSCALER_UI_AUTH": os.environ.get("ZSCALER_UI_AUTH") or "",
+                "ZSCALER_BIND_HOST": os.environ.get("ZSCALER_BIND_HOST") or "",
+                "ZSCALER_WRITES": os.environ.get("ZSCALER_WRITES") or ""},
+        "writes_to_tenant": _security.writes_enabled(),
+    }
+
+
+@app.get("/api/pack-library")
+async def pack_library_list():
+    """Every policy pack the app knows: built-in and uploaded, with counts."""
+    import pack_library as pl
+    out = pl.library(PACKS_ROOT)
+    out.update(_pack_library_status())
+    return out
+
+
+@app.post("/api/pack-library/preview")
+async def pack_library_preview(req: PackLibraryUploadRequest):
+    """Parse and validate an upload without saving it: what it contains,
+    what would block it, what to watch."""
+    import pack_library as pl
+    import pack_channels as _pc
+    try:
+        pack = pl.assemble_pack([f.model_dump() for f in req.files], pack_name=req.pack_name, description=req.description)
+    except ValueError as e:
+        return {"ok": False, "problems": [str(e)], "warnings": [], "counts": {}, "channels": []}
+    v = pl.validate_pack(pack)
+    slug = pl.slugify(req.pack_id or pack["meta"].get("name") or "")
+    if slug and pl._pack_id_taken(slug, PACKS_ROOT):
+        v["ok"] = False
+        v["problems"].append(f"a pack with id '{slug}' already exists; choose another id or remove that pack first")
+    v.update({
+        "pack_id": slug, "name": pack["meta"].get("name"), "description": pack["meta"].get("description"),
+        "format": pack.get("format"), "sources": pack.get("sources"),
+        "dictionaries": [{"name": d.get("name"), "clone": bool(d.get("predefined_clone")), "template": d.get("dict_template_name"),
+                          "patterns": len(d.get("patterns") or []), "phrases": len(d.get("phrases") or []), "proximity": d.get("proximity") or 0}
+                         for d in pack.get("dictionaries") or [] if isinstance(d, dict)],
+        "engines": [{"name": e.get("name"), "expression": e.get("expression")} for e in pack.get("engines") or [] if isinstance(e, dict)],
+        "policies": [{"name": p.get("name"), "channel": _pc.channel_of(p), "action": p.get("action") if not isinstance(p.get("action"), dict) else (p["action"].get("type") or "action"),
+                      "state": p.get("state", "ENABLED"), "engines": p.get("engines") or [], "sub_rules": len(p.get("sub_rules") or [])}
+                     for p in pack.get("policies") or [] if isinstance(p, dict)],
+        "app_groups": [g.get("name") for g in pack.get("app_groups") or [] if isinstance(g, dict)],
+    })
+    return v
+
+
+@app.post("/api/pack-library/upload")
+async def pack_library_upload(req: PackLibraryUploadRequest):
+    """Add a pack to the library from JSON, Terraform or a ZIP. It is then
+    an ordinary pack: Deploy Policy Packs, the Data Flow Map, the
+    Terraform hand-off and the validator all list it."""
+    _require_pack_library_writes()
+    import pack_library as pl
+    try:
+        pack = pl.assemble_pack([f.model_dump() for f in req.files], pack_name=req.pack_name, description=req.description)
+        saved = pl.save_pack(pack, pack_id=req.pack_id, root=PACKS_ROOT)
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "pack": {k: saved.get(k) for k in ("id", "name", "version", "description", "dictionaries", "engines", "policies", "app_groups", "channels", "source")},
+            "validation": saved["validation"], "dir": saved["dir"]}
+
+
+@app.post("/api/pack-library/{pack_id}/remove")
+async def pack_library_delete(pack_id: str):
+    """Remove an uploaded pack. Built-in packs are not removable here."""
+    _require_pack_library_writes()
+    import pack_library as pl
+    try:
+        removed = pl.delete_pack(pack_id, root=PACKS_ROOT)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True, "removed": removed}
+
+
+@app.get("/api/pack-library/{pack_id}/bundle")
+async def pack_library_bundle(pack_id: str):
+    """One JSON file holding a pack: the upload format, and the starting
+    point for a customer's own pack."""
+    import pack_library as pl
+    pack = _resolve_pack_ids([pack_id])[0]
+    body = json.dumps(pl.pack_bundle(pack["dir"]), indent=2)
+    return Response(content=body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}.json"'})
+
+
+@app.get("/report/advanced")
+async def report_advanced_page():
+    """Advanced settings tab (static/report_advanced.html): the policy pack
+    library and how this server is configured."""
+    page = os.path.join(STATIC_DIR, "report_advanced.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/permissions")

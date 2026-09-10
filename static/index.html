@@ -645,6 +645,11 @@
                 title="Curated Zscaler best-practice articles. Opens in a new tab.">
           <span aria-hidden="true">📚</span> Best Practices
         </button>
+        <button class="btn btn-ghost" onclick="openAdvancedTab()"
+                aria-label="Open Advanced settings: add your own policy packs from JSON or Terraform and see how this server is configured (opens in a new tab)"
+                title="Add your own policy packs (JSON, Terraform or a ZIP) so they appear in Deploy Policy Packs, the Data Flow Map and the Terraform hand-off; see the library and this server's settings. Opens in a new tab.">
+          <span aria-hidden="true">⚙️</span> Advanced settings
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('updates')"
                 aria-label="Check for Zscaler SDK and documentation updates (opens in a new tab)"
                 title="Checks PyPI and help.zscaler.com for SDK and documentation changes since last time. Opens in a new tab.">
@@ -5364,6 +5369,10 @@ async function openSslFlowTab() {
   } catch (e) {
     w.location = `/report/sslflow?error=${encodeURIComponent(e.message)}`;
   }
+}
+function openAdvancedTab() {
+  const w = window.open('/report/advanced', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 async function openDataFlowTab() {
   const body = migrateValidateCreds(); if (!body) return;

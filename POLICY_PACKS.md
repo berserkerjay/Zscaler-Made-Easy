@@ -355,6 +355,16 @@ for p in dlp_importer.discover_packs():
 6. **Approve** — the exact list of writes and every warning, restated. Deployment stays disabled until you tick the consent box. The plan hash shown is what the server will require.
 7. **Deploy** — dictionaries → engines → policies → tweaks → verification. Each item is isolated: a failure is reported and its dependents are skipped, never created half-wired. If the tenant changed since you approved, nothing is written and you are asked to re-run preflight.
 
+### Web UI: Advanced settings (bring your own pack)
+
+The **Advanced settings** tab adds a pack from a single JSON bundle
+(`{"name", "description", "dictionaries", "engines", "policies"}`), from the
+three files in this document, from Terraform for the zscaler/zia provider,
+or from a ZIP of any of them. The upload is validated (section 5's checks)
+and stored under `user_packs/<id>/` in exactly the layout above, so it is
+an ordinary pack from then on. *Download JSON* on any pack gives you its
+bundle to copy from. See `GETTING_STARTED.md` section 5f.
+
 ### API (for scripting / CI)
 
 ```bash

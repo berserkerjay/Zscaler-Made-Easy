@@ -17,3 +17,4 @@ audit.log*
 terraform/**/.terraform
 terraform/**/*.tfstate*
 terraform/**/terraform.tfvars
+user_packs/

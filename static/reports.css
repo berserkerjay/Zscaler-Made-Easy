@@ -258,3 +258,54 @@ body.theme-light .df-chip.st-fail, body.theme-light .fl-st.st-fail { color: #b91
 body.theme-light .df-chip.st-warn, body.theme-light .fl-st.st-modify, body.theme-light .fl-st.st-differs { color: #b45309; }
 body.theme-light .df-chip.st-block { color: #1d4ed8; }
 @media (prefers-reduced-motion: reduce) { .rp-page { animation: none; } .rp-wait .spin { animation: none; } .sf-live i { animation: none; } }
+
+/* ── Advanced settings tab ─────────────────────────────────────────── */
+.adv-page .rp-card section { margin-bottom: 2rem; }
+.adv-lead { color: var(--dim); font-size: 0.88rem; line-height: 1.55; max-width: 72ch; margin: 0 0 0.9rem; }
+.adv-status { padding: 0.8rem 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border); background: var(--well); font-size: 0.88rem; line-height: 1.5; }
+.adv-status.ok { border-color: rgba(16,185,129,0.5); }
+.adv-status.warn { border-color: rgba(245,158,11,0.55); }
+.adv-status.bad { border-color: rgba(239,68,68,0.55); }
+.adv-table th[scope="row"] { font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.85rem; min-width: 18rem; }
+.adv-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.adv-table .adv-k { white-space: nowrap; width: 16rem; }
+.adv-pname { font-weight: 700; }
+.adv-pdesc { color: var(--dim); font-size: 0.78rem; font-weight: 400; margin-top: 0.15rem; max-width: 48ch; }
+.adv-acts { white-space: nowrap; }
+.adv-acts .rp-btn { min-height: 30px; padding: 0.25rem 0.6rem; font-size: 0.72rem; margin-right: 0.3rem; }
+.rp-btn.danger { border-color: rgba(239,68,68,0.5); color: var(--fail); }
+.rp-btn.danger:hover { background: rgba(239,68,68,0.12); color: var(--fail); }
+.adv-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 1.2fr); gap: 1rem; align-items: start; }
+.adv-drop { border: 2px dashed var(--border-strong, var(--border)); border-radius: 12px; padding: 1.1rem; background: var(--well); min-height: 150px; }
+.adv-drop.over { border-color: var(--accent); background: rgba(59,130,246,0.08); }
+.adv-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.adv-drop-l { display: block; font-weight: 700; margin-bottom: 0.5rem; }
+.adv-drop input[type="file"] { display: block; max-width: 100%; color: var(--text); }
+.adv-drop-hint { color: var(--dim); font-size: 0.78rem; margin-top: 0.5rem; }
+.adv-files { list-style: none; padding: 0; margin: 0.6rem 0 0; font-size: 0.8rem; }
+.adv-files li { padding: 0.15rem 0; }
+.adv-fields { display: grid; gap: 0.6rem; }
+.adv-field { display: grid; gap: 0.25rem; font-size: 0.78rem; font-weight: 600; }
+.adv-field small { font-weight: 400; color: var(--dim); }
+.adv-field input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); background: var(--well); color: var(--text); font: inherit; font-size: 0.85rem; }
+.adv-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.adv-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.3rem; }
+.adv-preview { margin-top: 1rem; display: grid; gap: 0.8rem; }
+.adv-verdict { font-weight: 700; font-size: 1rem; }
+.adv-verdict.ok { color: var(--pass); }
+.adv-verdict.bad { color: var(--fail); }
+.adv-list { margin: 0.3rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; line-height: 1.5; }
+.adv-list li { margin: 0.15rem 0; }
+.adv-expr { display: block; white-space: pre-wrap; word-break: break-word; font-size: 0.72rem; color: var(--dim); margin-top: 0.1rem; }
+.adv-details { border: 1px solid var(--border); border-radius: 10px; padding: 0.5rem 0.9rem; background: var(--well); }
+.adv-details summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+.adv-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.8rem; margin-bottom: 0.9rem; }
+.adv-cols .bp-card p { font-size: 0.82rem; line-height: 1.5; color: var(--dim); margin: 0.4rem 0 0; }
+.adv-cols .bp-card p:last-child { margin-top: 0.7rem; }
+.adv-page .chip { display: inline-block; white-space: nowrap; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; background: rgba(59,130,246,0.14); color: var(--chip-info, var(--accent)); margin: 0.1rem 0.1rem 0.1rem 0; }
+.adv-page .chip.ok { background: rgba(16,185,129,0.14); color: var(--chip-ok, var(--pass)); }
+.adv-page .chip.warn { background: rgba(245,158,11,0.16); color: var(--chip-warn, var(--warn)); }
+.adv-page .dim { color: var(--dim); font-size: 0.78rem; }
+.adv-page .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.adv-page .tw { overflow-x: auto; }
+@media (max-width: 760px) { .adv-grid { grid-template-columns: 1fr; } .adv-table .adv-k { width: auto; white-space: normal; } }

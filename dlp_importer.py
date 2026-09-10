@@ -137,21 +137,38 @@ def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scan the project root for directories that look like DLP packs
     (contain configs/dlp_*.json or dlp_*.json at top level)."""
     root = root or PACKS_ROOT
-    packs = []
-    for entry in sorted(os.listdir(root)):
-        d = os.path.join(root, entry)
-        if not os.path.isdir(d):
-            continue
-        configs = _resolve_configs(d)
-        has_json = any(
-            f.startswith("dlp_") and f.endswith(".json")
-            for f in os.listdir(configs)
-        ) if os.path.isdir(configs) else False
-        if has_json:
-            meta = load_pack_metadata(d)
-            meta["dir"] = d
-            meta["id"] = entry
-            packs.append(meta)
+    packs: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    def scan(base: str, source: str) -> None:
+        if not os.path.isdir(base):
+            return
+        for entry in sorted(os.listdir(base)):
+            d = os.path.join(base, entry)
+            if not os.path.isdir(d) or entry in seen:
+                continue
+            configs = _resolve_configs(d)
+            has_json = any(
+                f.startswith("dlp_") and f.endswith(".json")
+                for f in os.listdir(configs)
+            ) if os.path.isdir(configs) else False
+            if has_json:
+                meta = load_pack_metadata(d)
+                meta["dir"] = d
+                meta["id"] = entry
+                meta["source"] = source
+                packs.append(meta)
+                seen.add(entry)
+
+    scan(root, "built-in")
+    # Packs added from Advanced settings (or dropped into user_packs/ by hand).
+    try:
+        from pack_library import user_packs_dir
+        lib = user_packs_dir(root)
+    except Exception:  # noqa: BLE001
+        lib = os.path.join(root, "user_packs")
+    if os.path.realpath(lib) != os.path.realpath(root):
+        scan(lib, "uploaded")
     return packs
 
 
