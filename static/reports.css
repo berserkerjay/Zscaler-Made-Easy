@@ -323,3 +323,32 @@ body.theme-light .df-chip.st-block { color: #1d4ed8; }
 .adv-upd-line.soft { color: var(--chip-warn, var(--warn)); }
 
 .adv-page .chip.carved { background: rgba(148,163,184,0.14); color: var(--dim); }
+
+/* Data Flow: app/forwarding profile bar and cloud-app-category visibility */
+.df-profiles { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin: 0.5rem 0 0.8rem; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--well); }
+.df-prof { display: flex; flex-direction: column; gap: 0.1rem; }
+.df-prof .k { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.df-prof .v { font-size: 0.9rem; font-weight: 700; color: var(--text); }
+.df-vis-table td { text-align: center; }
+.df-vis-table td.df-vis-cat { text-align: left; font-weight: 600; }
+.df-vis { border: 1px solid var(--border); background: transparent; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; white-space: nowrap; color: var(--dim); }
+.df-vis:hover { border-color: var(--border-strong); }
+.df-vis:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.df-vis-ok { color: var(--chip-ok, var(--pass)); border-color: rgba(16,185,129,0.4); }
+.df-vis-warn { color: var(--chip-warn, var(--warn)); border-color: rgba(245,158,11,0.4); }
+.df-vis-fail { color: var(--chip-fail, var(--fail)); border-color: rgba(239,68,68,0.4); }
+.df-vis-dim { color: var(--dim); }
+body.theme-light .df-vis-ok { color: #047857; } body.theme-light .df-vis-warn { color: #9a3412; } body.theme-light .df-vis-fail { color: #b91c1c; }
+
+/* Data Flow: where inspection is lost (bypass + SSL gaps in one list) */
+.df-gap-h { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin: 0.6rem 0 0.3rem; }
+.df-gap-h.st-fail { color: var(--chip-fail, var(--fail)); } .df-gap-h.st-warn { color: var(--chip-warn, var(--warn)); }
+body.theme-light .df-gap-h.st-fail { color: #b91c1c; } body.theme-light .df-gap-h.st-warn { color: #9a3412; }
+.df-gaps { display: grid; gap: 0.35rem; }
+.df-gap { display: grid; grid-template-columns: minmax(9rem,1fr) 8rem 2fr; gap: 0.6rem; align-items: baseline; text-align: left; width: 100%; background: var(--well); border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.7rem; cursor: pointer; font: inherit; color: var(--text); }
+.df-gap:hover { border-color: var(--border-strong); }
+.df-gap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.df-gap-d { font-weight: 700; font-size: 0.85rem; }
+.df-gap-n { color: var(--dim); font-size: 0.78rem; }
+.df-gap-w { color: var(--dim); font-size: 0.78rem; }
+@media (max-width: 640px) { .df-gap { grid-template-columns: 1fr; gap: 0.15rem; } }

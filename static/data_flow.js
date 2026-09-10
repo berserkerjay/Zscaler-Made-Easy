@@ -66,8 +66,19 @@ function renderDataFlowTrace(t, container) {
     return `<div class="df-pack cov-${_dfE(p.coverage)}"><div class="df-hop-h"><span class="df-chip st-${{ enforcing: 'ok', monitoring: 'warn', partial: 'warn', deployed: 'dim', missing: 'fail' }[p.coverage] || 'dim'}">${_dfE(p.coverage)}</span><strong>${_dfE(p.name)}</strong>${p.weak_point ? `<span class="df-by">${_dfE(p.weak_point)}</span>` : ''}</div><div class="df-rules-wrap">${rows}</div></div>`;
   }).join('');
   const weak = (t.weak_points || []).map(w => `<li class="sev-${_dfE(w.severity)}"><span class="sev">${_dfE(w.severity)}</span> <strong>${_dfE(w.title)}</strong> <span class="df-by">at ${_dfE(w.hop_label)}</span><div class="df-hop-d">${_dfE(w.fix)}</div></li>`).join('');
+  const zccHop = (t.hops || []).find(h => h.key === 'zcc');
+  const fwdHop = (t.hops || []).find(h => h.key === 'forwarding');
+  const appProf = (zccHop && zccHop.decided_by && zccHop.decided_by.name) || (zccHop && zccHop.profile) || '—';
+  const fwdProf = (fwdHop && fwdHop.decided_by && fwdHop.decided_by.name) || '—';
+  const fwdMode = (fwdHop && fwdHop.mode) ? ` (${_dfE(fwdHop.mode)})` : '';
   container.innerHTML = `
     <div class="df-outcome st-${ocls}"><span class="df-chip st-${ocls}">${_dfE(olab)}</span><strong>${_dfE(t.destination.label)}</strong> <span class="df-by">${_dfE(t.destination.kind)}${t.destination.categories && t.destination.categories.length ? ` · categories ${_dfE(t.destination.categories.slice(0, 4).join(', '))}` : ''}${t.destination.applications && t.destination.applications.length ? ` · ${t.destination.applications.length} application(s)` : ''}</span></div>
+    <div class="df-profiles">
+      <span class="df-prof"><span class="k">Client Connector app profile</span><span class="v">${_dfE(appProf)}</span></span>
+      <span class="df-prof"><span class="k">Forwarding profile</span><span class="v">${_dfE(fwdProf)}${fwdMode}</span></span>
+      <span class="df-prof"><span class="k">Network</span><span class="v">${_dfE(t.network)}</span></span>
+      <span class="df-prof"><span class="k">Platform</span><span class="v">${_dfE(t.platform)}</span></span>
+    </div>
     <div class="df-flow-wrap" id="dfFlowWrap">${_dfSvg(t)}</div>
     <div class="df-hint">Each box is a hop the tenant's configuration puts on the path; a dot marks a weak point. Click a box for the rule that decided it.</div>
     <h2 class="df-h">Hops</h2>
@@ -95,5 +106,60 @@ function renderDataFlowOverview(report, container) {
   container.innerHTML = `<div class="df-tablewrap"><table class="df-table"><thead><tr><th>Destination</th><th>Network</th><th>Outcome</th><th>Visibility</th><th>Weak points</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+// Visibility across each cloud app category: for every destination class
+// (AI/ML, webmail, file sharing, …) on every network, is the traffic
+// bypassed (no visibility), reaching ZIA encrypted (blind), or decrypted
+// and inspected — and if inspected, enforced or monitor-only.
+function _dfVisibility(t) {
+  if (!t.reaches_zscaler) return ['Bypassed', 'fail', 'Leaves the device direct — no cloud visibility'];
+  if (!t.decrypted) return ['Encrypted', 'warn', 'Reaches ZIA but is not decrypted — inline DLP is blind'];
+  if (t.outcome === 'enforce') return ['Decrypted · enforced', 'ok', 'Decrypted and a rule blocks/confirms'];
+  if (t.outcome === 'monitor') return ['Decrypted · monitor', 'warn', 'Decrypted and inspected, monitor-only'];
+  return ['Decrypted', 'ok', 'Decrypted and inspected'];
+}
+
+function renderCategoryVisibility(report, container) {
+  const cats = report.traces.filter(t => t.destination && t.destination.kind === 'class');
+  if (!cats.length) { container.innerHTML = '<div class="df-hop-d">No cloud app categories traced.</div>'; return; }
+  const nets = report.networks.map(n => n.key);
+  const netLabel = k => (report.networks.find(n => n.key === k) || {}).label || k;
+  const byCat = {};
+  cats.forEach(t => { const c = t.destination.label; (byCat[c] = byCat[c] || {})[t.network] = t; });
+  const head = `<tr><th>Cloud app category</th>${nets.map(n => `<th>${_dfE(netLabel(n))}</th>`).join('')}</tr>`;
+  const rows = Object.keys(byCat).sort().map(c => {
+    const cells = nets.map(n => {
+      const t = byCat[c][n];
+      if (!t) return '<td><span class="df-chip st-dim">—</span></td>';
+      const [lab, cls, tip] = _dfVisibility(t);
+      const i = report.traces.indexOf(t);
+      return `<td><button type="button" class="df-vis df-vis-${cls}" data-i="${i}" title="${_dfE(tip)} — click for the path">${_dfE(lab)}</button></td>`;
+    }).join('');
+    return `<tr><td class="df-vis-cat">${_dfE(c)}</td>${cells}</tr>`;
+  }).join('');
+  container.innerHTML = `<div class="df-tablewrap"><table class="df-table df-vis-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
+    <div class="df-hint">Each cell is the visibility for that category on that network. Click a cell to jump to its path.</div>`;
+}
+
+// Where inspection is lost: every path that never reaches Zscaler
+// (bypassed at the client or forwarding) or reaches it encrypted (blind),
+// with the rule/profile that decided it — the bypass + SSL gaps in one place.
+function renderDataFlowGaps(report, container) {
+  const netLabel = k => (report.networks.find(n => n.key === k) || {}).label || k;
+  const lost = report.traces.filter(t => !t.reaches_zscaler || !t.decrypted).map((t, _i) => ({ t, i: report.traces.indexOf(t) }));
+  if (!lost.length) { container.innerHTML = '<div class="df-hop-d">Every traced path reaches Zscaler and is decrypted — no bypass or SSL gap found.</div>'; return; }
+  const bypassed = lost.filter(x => !x.t.reaches_zscaler);
+  const blind = lost.filter(x => x.t.reaches_zscaler && !x.t.decrypted);
+  const item = ({ t, i }) => {
+    const hop = (t.hops || []).find(h => h.status === 'bypass') || (t.hops || []).find(h => h.key === 'ssl') || {};
+    const by = (hop.decided_by && hop.decided_by.name) || hop.profile || '';
+    return `<button type="button" class="df-gap" data-i="${i}"><span class="df-gap-d">${_dfE(t.destination.label)}</span><span class="df-gap-n">${_dfE(netLabel(t.network))}</span><span class="df-gap-w">${_dfE(hop.detail || '')}${by ? ` <em>(${_dfE(by)})</em>` : ''}</span></button>`;
+  };
+  container.innerHTML =
+    (bypassed.length ? `<div class="df-gap-h st-fail">Never reaches Zscaler — no cloud visibility (${bypassed.length})</div><div class="df-gaps">${bypassed.map(item).join('')}</div>` : '') +
+    (blind.length ? `<div class="df-gap-h st-warn">Reaches ZIA encrypted — inline DLP is blind (${blind.length})</div><div class="df-gaps">${blind.map(item).join('')}</div>` : '');
+}
+
 window.renderDataFlowTrace = renderDataFlowTrace;
 window.renderDataFlowOverview = renderDataFlowOverview;
+window.renderCategoryVisibility = renderCategoryVisibility;
+window.renderDataFlowGaps = renderDataFlowGaps;
