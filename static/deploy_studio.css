@@ -342,3 +342,6 @@
   body.theme-light .dz-status.warnings { color: #9a3412; }
   body.theme-light .dz-step.is-done { color: #047857; }
   @media (prefers-reduced-motion: reduce) { .dz-edge.flow { animation: none; } .dz-progress .bar { animation: none; } .dz-flow-wrap svg { transition: none; } }
+
+  .dz-link.danger { color: var(--fail); }
+  .dz-link.danger:hover { color: var(--fail); text-decoration-color: var(--fail); }

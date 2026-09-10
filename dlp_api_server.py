@@ -821,6 +821,12 @@ class DeploymentUndoRequest(TenantCredsRequest):
     confirm: bool = False
 
 
+class PackRemovalRequest(TenantCredsRequest):
+    pack_ids: List[str] = []
+    plan_hash: str = ""
+    confirm: bool = False
+
+
 _WRITES_DISABLED_MSG = (
     "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. "
     "Relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat."
@@ -995,6 +1001,58 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
+
+
+@app.post("/api/dlp-packs/removal/preflight")
+async def dlp_pack_removal_preflight(req: PackRemovalRequest):
+    """Find what a deployed pack or baseline put into the tenant — by its
+    DLP-Check provenance tag and by the names it defines — and preview a
+    methodical removal: rules, then endpoint application groups, then
+    engines, then dictionaries. Objects a surviving rule or engine still
+    uses, and every predefined dictionary, are kept and reported. Returns
+    a plan_hash the apply step must echo. Read-only."""
+    try:
+        import pack_removal
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack to remove.")
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(pack_removal.plan_removal, client, packs)
+    out["writes_enabled"] = writes_enabled()
+    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    return out
+
+
+@app.post("/api/dlp-packs/removal/apply")
+async def dlp_pack_removal_apply(req: PackRemovalRequest):
+    """Remove what the preflight found, in reverse dependency order. Needs
+    write mode, confirm=true and the plan_hash from a matching preflight;
+    if the tenant changed since the preview the removal is refused as
+    stale. Deleted rules still need activation in ZIA."""
+    try:
+        import pack_removal
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack to remove.")
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    logs: list = []
+    result = await asyncio.to_thread(pack_removal.remove, client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append)
+    result["logs"] = logs
+    if result.get("status") == "blocked":
+        raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
+    if result.get("status") == "stale":
+        raise HTTPException(status_code=409, detail="; ".join(result.get("blockers") or ["The removal plan is stale; run the preview again."]))
+    return result
 
 
 def _explain_connection_error(detail: str) -> Dict[str, Any]:
