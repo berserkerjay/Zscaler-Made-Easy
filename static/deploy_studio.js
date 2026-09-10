@@ -170,7 +170,7 @@ async function openDlpPacksModal() {
   const m = document.getElementById('dlpDeployModal');
   m.classList.add('is-open');
   document.body.style.overflow = 'hidden';
-  DZ.step = 1; DZ.report = null; DZ.result = null; DZ.consent = false; DZ.error = '';
+  DZ.step = 1; DZ.report = null; DZ.result = null; DZ.consent = false; DZ.error = ''; DZ.removal = null;
   _dzLoadChannels();
   _dzRender();
   _dzLoadWriteMode();
@@ -240,6 +240,7 @@ function closeDlpPacksModal() {
 }
 
 function _dzRender() {
+  if (DZ.removal) return _dzRemovalRender();
   const steps = document.getElementById('dzSteps');
   steps.innerHTML = DZ_STEPS.map((s, i) => {
     const n = i + 1;
@@ -772,10 +773,13 @@ function _dzRenderDeploy() {
 }
 
 
-// ── Remove a deployed pack (discovery-based) ──────────────────────
-// Finds what a pack put in the tenant by its DLP-Check tag and its
-// names, previews the removal (what goes, what is kept because another
-// rule or engine still uses it), then deletes in dependency order.
+// ── Remove a deployed pack — a wizard that mirrors deploy ──────────
+// Preview (find what the pack put in the tenant, draw the flow, explain
+// what goes and what is kept) -> Approve -> Remove. The same flow diagram
+// as a deploy shows how each dictionary feeds its engines feed its rules.
+const RM_KIND = { policy: 'rule', app_group: 'application group', engine: 'engine', dictionary: 'dictionary' };
+const RM_STEPS = ['Preview', 'Approve', 'Remove'];
+
 async function _dzRemove(id) {
   const pack = (DZ.packs || []).find(x => x.id === id) || { id, name: id };
   DZ.remove = DZ.remove || {}; DZ.remove[id] = 'busy'; _dzRenderSelect();
@@ -792,46 +796,151 @@ async function _dzRemove(id) {
     alert(`Could not scan the tenant for ${pack.name || id}: ${e.message}`);
     return;
   }
-  DZ.remove[id] = null; _dzRenderSelect();
-  if (plan.status === 'blocked') { alert((plan.blockers || ['Could not read the tenant.']).join('\n')); return; }
-  const remove = (plan.items || []).filter(i => i.status === 'remove');
-  const keep = (plan.items || []).filter(i => i.status === 'keep');
-  if (!remove.length) {
-    alert(`Nothing to remove for ${pack.name || id}. No objects in the tenant carry this pack's DLP-Check tag or its names.${keep.length ? `\n\n${keep.length} matching object(s) are kept because something else still uses them.` : ''}`);
-    return;
-  }
-  const kindWord = { policy: 'rule', app_group: 'application group', engine: 'engine', dictionary: 'dictionary' };
-  const lines = remove.map(i => `  • ${kindWord[i.kind] || i.kind}: ${i.name}${i.match === 'name' ? '  (matched by name — no DLP-Check tag)' : ''}`);
-  const keepLines = keep.map(i => `  • ${kindWord[i.kind] || i.kind}: ${i.name} — kept (${i.keep})`);
-  const nameOnly = remove.some(i => i.match === 'name');
-  if (!(DZ.write && DZ.write.enabled)) {
-    alert(`This would remove ${remove.length} object(s) for ${pack.name || id}:\n\n${lines.join('\n')}${keepLines.length ? `\n\nKept:\n${keepLines.join('\n')}` : ''}\n\nEnable write mode to remove them.`);
-    return;
-  }
-  const msg = `Remove ${remove.length} object(s) that ${pack.name || id} put in ${plan.tenant_label || 'this tenant'}?\n\n${lines.join('\n')}${keepLines.length ? `\n\nKept (still in use elsewhere):\n${keepLines.join('\n')}` : ''}\n\nDeletion is in dependency order (rules, application groups, engines, dictionaries) and needs activation in ZIA afterwards.${nameOnly ? '\n\nSome objects matched by NAME only, with no DLP-Check tag — confirm they are yours.' : ''}`;
-  if (!window.confirm(msg)) return;
-  DZ.remove[id] = 'busy'; _dzRenderSelect();
+  DZ.remove[id] = null;
+  if (plan.status === 'blocked') { alert((plan.blockers || ['Could not read the tenant.']).join('\n')); _dzRenderSelect(); return; }
+  DZ.removal = { id, pack, plan, step: 1, result: null };
+  _dzRemovalRender();
+}
+
+function _dzRemovalClose() { DZ.removal = null; DZ.step = 1; _dzRender(); }
+
+function _dzRemovalRender() {
+  const R = DZ.removal; if (!R) return;
+  const steps = document.getElementById('dzSteps');
+  steps.innerHTML = RM_STEPS.map((s, i) => {
+    const n = i + 1, cls = n === R.step ? 'is-active' : (n < R.step ? 'is-done' : '');
+    return `<div class="dz-step ${cls}" ${n === R.step ? 'aria-current="step"' : ''}><span class="n">${n < R.step ? '✓' : n}</span>${s}</div>`;
+  }).join('');
+  const subs = { 1: `Removing ${R.pack.name || R.id}: what it put in ${_dzE(R.plan.tenant_label || 'the tenant')}, and how it flows. Nothing is deleted yet.`,
+                 2: 'Review, then approve. Deletion is in dependency order and needs write mode.',
+                 3: DZ.busy ? 'Removing — keep this window open.' : 'Removal finished.' };
+  document.getElementById('dzSub').textContent = subs[R.step];
+  ({ 1: _dzRemovalPreview, 2: _dzRemovalApprove, 3: _dzRemovalDone })[R.step]();
+}
+
+function _dzRemovalPreview() {
+  const R = DZ.removal, body = document.getElementById('dzBody');
+  const items = R.plan.items || [];
+  const remove = items.filter(i => i.status === 'remove');
+  const keep = items.filter(i => i.status === 'keep');
+  const order = { policy: 0, app_group: 1, engine: 2, dictionary: 3 };
+  const row = i => `<div class="dz-row ${i.status === 'keep' ? 'st-reuse' : 'st-fail'}">
+    <span class="ic" aria-hidden="true">${i.status === 'keep' ? '↺' : '🗑'}</span>
+    <div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div>
+      <div class="rs">${i.status === 'keep' ? `Kept — ${_dzE(i.keep)}` : (i.match === 'name' ? 'Removed — matched by name (no DLP-Check tag; confirm it is yours)' : 'Removed — carries this pack’s DLP-Check tag')}</div></div>
+  </div>`;
+  const removeSorted = remove.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.name.localeCompare(b.name));
+  body.innerHTML = `
+    ${!remove.length ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Nothing to remove</div><div class="d">No objects in the tenant carry this pack’s DLP-Check tag or its names.${keep.length ? ` ${keep.length} matching object(s) are kept because something else still uses them.` : ''}</div></div></div>` : `
+    <div class="dz-flow-hint" style="margin-bottom:0.6rem;">How ${_dzE(R.pack.name || R.id)} flows through the tenant: each dictionary feeds its engines, which feed the rules on every channel. Red is removed; grey is kept because another rule or engine still uses it.</div>
+    ${_dzFlowHtml(items, null, { standalone: true })}
+    <div class="dz-h" style="margin-top:1rem;">Will remove<span class="count">${remove.length}</span></div>
+    <div class="dz-rows">${removeSorted.map(row).join('')}</div>
+    ${keep.length ? `<div class="dz-h" style="margin-top:1rem;">Kept (still used elsewhere)<span class="count">${keep.length}</span></div><div class="dz-rows">${keep.map(row).join('')}</div>` : ''}`}
+    <div class="dz-actions">
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()" ${remove.length ? '' : 'disabled'}>Print / Save as PDF</button>
+      <button type="button" class="dz-btn primary" onclick="DZ.removal.step=2;_dzRemovalRender()" ${remove.length ? '' : 'disabled'}>Continue to approve</button>
+    </div>`;
+  if (remove.length) _dzFlowZoom(0);
+}
+
+function _dzRemovalApprove() {
+  const R = DZ.removal, body = document.getElementById('dzBody');
+  const remove = (R.plan.items || []).filter(i => i.status === 'remove');
+  const nameOnly = remove.filter(i => i.match === 'name');
+  const writeOn = !!(DZ.write && DZ.write.enabled);
+  body.innerHTML = `
+    ${_dzWriteBanner()}
+    <div class="dz-card sev-high"><div class="bar"></div><div>
+      <div class="t">Remove ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}</div>
+      <div class="d">Deleted in dependency order: rules, then endpoint application groups, then engines, then dictionaries. Objects another rule or engine still uses are left alone. Deletions need activation in ZIA afterwards.</div>
+    </div></div>
+    ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no DLP-Check tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
+    <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I understand this permanently deletes ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>
+    <div class="dz-actions">
+      <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print / Save as PDF</button>
+      <button type="button" class="dz-btn danger" ${writeOn && R.consent ? '' : 'disabled'} title="${writeOn ? '' : 'Enable write mode first'}" onclick="_dzRemovalApply()">Remove now</button>
+    </div>`;
+}
+
+function _dzRemovalDone() {
+  const R = DZ.removal, body = document.getElementById('dzBody'), data = R.result || {};
+  const s = data.summary || {};
+  const kept = data.kept || [];
+  const line = (label, n, cls) => n ? `<div class="dz-row ${cls}"><span class="ic">•</span><div><div class="nm">${n} ${label}</div></div></div>` : '';
+  body.innerHTML = `
+    <div class="dz-card ${data.status === 'removed' ? 'sev-info' : 'sev-medium'}"><div class="bar"></div><div>
+      <div class="t">Removal ${_dzE(data.status || '')}</div>
+      <div class="d">${data.activation_required ? 'Activate in ZIA to make the deletions live.' : 'Nothing needed activation.'}</div></div></div>
+    <div class="dz-rows">
+      ${line('deleted', s.deleted, 'st-ok')}${line('already gone', s.gone, 'st-reuse')}${line('left alone', s.skipped, 'st-differs')}${line('failed', s.failed, 'st-fail')}
+    </div>
+    ${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped').length ? `<div class="dz-h" style="margin-top:0.8rem;">Not removed</div><div class="dz-rows">${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped').map(x => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(x.name)}</div><div class="rs">${_dzE(x.error || x.reason || '')}</div></div></div>`).join('')}</div>` : ''}
+    ${kept.length ? `<div class="dz-h" style="margin-top:0.8rem;">Kept (still in use)<span class="count">${kept.length}</span></div><div class="dz-rows">${kept.map(i => `<div class="dz-row st-reuse"><span class="ic">↺</span><div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}</div><div class="rs">${_dzE(i.keep || '')}</div></div></div>`).join('')}</div>` : ''}
+    <div class="dz-actions">
+      <button type="button" class="dz-btn primary" onclick="_dzRemovalClose()">Back to packs</button>
+    </div>`;
+}
+
+async function _dzRemovalApply() {
+  const R = DZ.removal; if (!R) return;
+  DZ.busy = true; R.step = 3; _dzRemovalRender();
   try {
     const r = await fetch('/api/dlp-packs/removal/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [id], plan_hash: plan.plan_hash, confirm: true, ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: [R.id], plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
-    const s = data.summary || {};
-    const parts = [];
-    if (s.deleted) parts.push(`${s.deleted} deleted`);
-    if (s.gone) parts.push(`${s.gone} already gone`);
-    if (s.skipped) parts.push(`${s.skipped} left alone`);
-    if (s.failed) parts.push(`${s.failed} failed`);
-    const detail = (data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped').map(x => `${x.name}: ${x.error || x.reason}`).join('; ');
-    alert(`Removal ${data.status}: ${parts.join(', ') || 'nothing to do'}.${detail ? '\n\n' + detail : ''}${data.activation_required ? '\n\nActivate in ZIA to make the deletions live.' : ''}`);
+    R.result = data;
     announce(`Removal ${data.status}.`);
   } catch (e) {
-    alert(`Removal failed: ${e.message}`);
+    R.result = { status: 'failed', summary: {}, results: [{ status: 'failed', name: R.pack.name || R.id, error: e.message }] };
   } finally {
-    DZ.remove[id] = null; _dzRenderSelect();
+    DZ.busy = false; _dzRemovalRender();
   }
+}
+
+// Printable removal report — opens a clean page the operator can save as
+// PDF (browser Print). Explanations and details in a table; no live tenant
+// calls, just the plan already previewed.
+function _dzRemovalReport() {
+  const R = DZ.removal; if (!R) return;
+  const items = R.plan.items || [];
+  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const rows = items.slice().sort((a, b) => (a.status === b.status ? 0 : a.status === 'remove' ? -1 : 1)).map(i => `
+    <tr class="${i.status}">
+      <td>${esc(RM_KIND[i.kind] || i.kind)}</td><td>${esc(i.name)}</td><td>${esc(i.channel || '')}</td>
+      <td><b>${i.status === 'remove' ? 'Remove' : 'Keep'}</b></td>
+      <td>${i.status === 'keep' ? esc(i.keep) : (i.match === 'name' ? 'Matched by name only (no DLP-Check tag) — confirm ownership' : 'Carries this pack’s DLP-Check provenance tag')}</td>
+    </tr>`).join('');
+  const remove = items.filter(i => i.status === 'remove').length, keep = items.length - remove;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Removal plan — ${esc(R.pack.name || R.id)}</title>
+    <style>
+      body{font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#14202b;margin:2rem;line-height:1.5}
+      h1{font-size:1.4rem;margin:0 0 .2rem} .sub{color:#5f6b76;margin:0 0 1rem}
+      .stat{display:flex;gap:1.5rem;margin:1rem 0;font-size:.9rem}
+      table{border-collapse:collapse;width:100%;font-size:.82rem;margin-top:1rem}
+      th,td{border:1px solid #d9dfe3;padding:.4rem .55rem;text-align:left;vertical-align:top}
+      th{background:#eef1f3;text-transform:uppercase;font-size:.68rem;letter-spacing:.05em}
+      tr.remove td:nth-child(4){color:#b91c1c} tr.keep td:nth-child(4){color:#5f6b76}
+      .method{color:#5f6b76;font-size:.8rem;margin-top:1.2rem}
+      @media print{.noprint{display:none}}
+      .btn{margin:0 .4rem 1rem 0;padding:.5rem .9rem;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:6px;cursor:pointer;font-size:.85rem}
+    </style></head><body>
+    <div class="noprint"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div>
+    <h1>Removal plan — ${esc(R.pack.name || R.id)}</h1>
+    <p class="sub">Tenant ${esc(R.plan.tenant_label || '')} · generated ${new Date().toLocaleString()}</p>
+    <div class="stat"><div><b>${remove}</b> to remove</div><div><b>${keep}</b> kept (still in use)</div></div>
+    <p>This is the plan previewed in DLP-Check. Removal deletes objects in dependency order — rules, then endpoint application groups, then engines, then dictionaries — so nothing is deleted while something still points at it. An engine a surviving rule still uses, and a dictionary a surviving engine still uses, are kept and listed below. Predefined Zscaler dictionaries are never removed. Deletions take effect in ZIA after activation.</p>
+    <table><thead><tr><th>Type</th><th>Name</th><th>Channel</th><th>Decision</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="method">Objects are matched to the pack by the DLP-Check provenance tag written into each object’s description at deploy time, and by the names the pack defines. Name-only matches carry no tag and are flagged for confirmation.</p>
+    </body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Allow pop-ups to open the printable report.'); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ── Previous deployments and undo ─────────────────────────────────
@@ -1000,12 +1109,14 @@ const DZ_FLOW_STATUS = {
   conflict: 'st-blocked', blocked_dependency: 'st-blocked', skip_empty: 'st-blocked', noop: 'st-reuse', tenant: 'st-tenant',
   missing: 'st-fail',
   created: 'st-ok', modified: 'st-ok', restored: 'st-ok', reused: 'st-reuse', skipped: 'st-blocked', failed: 'st-fail',
+  remove: 'st-fail', keep: 'st-reuse', deleted: 'st-ok', gone: 'st-reuse',
 };
 const DZ_FLOW_LABEL = {
   create: 'will create', modify: 'will modify', restore: 'will overwrite', reuse: 'already present', reuse_differs: 'kept as-is (differs)',
   conflict: 'conflict', blocked_dependency: 'skipped', skip_empty: 'skipped', noop: 'no change', tenant: 'in tenant',
   missing: 'MISSING',
   created: 'created', modified: 'modified', restored: 'overwritten', reused: 'reused', skipped: 'skipped', failed: 'FAILED',
+  remove: 'will remove', keep: 'kept (in use)', deleted: 'removed', gone: 'already gone',
 };
 
 // opts.standalone: drawn in its own tab (/report/flow) — no "open in new
@@ -1023,7 +1134,7 @@ function _dzFlowHtml(items, results, opts) {
     const x1 = a.x + G.w, y1 = a.y + G.h / 2, x2 = b.x, y2 = b.y + G.h / 2, dx = G.gapX * 0.55;
     const st = b.result || b.status;
     const flow = (st === 'create' || st === 'modify' || st === 'restore' || st === 'created' || st === 'modified' || st === 'restored') ? ' flow' : '';
-    const bad = (st === 'conflict' || st === 'blocked_dependency' || st === 'skip_empty' || st === 'skipped' || st === 'failed') ? ' bad' : '';
+    const bad = (st === 'conflict' || st === 'blocked_dependency' || st === 'skip_empty' || st === 'skipped' || st === 'failed' || st === 'remove' || st === 'deleted') ? ' bad' : '';
     return `<path class="dz-edge${flow}${bad}" data-from="${_dzE(e.from)}" data-to="${_dzE(e.to)}" d="M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}"/>`;
   }).join('');
   const nodeHtml = [...g.nodes.values()].map(n => {
