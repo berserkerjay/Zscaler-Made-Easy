@@ -673,7 +673,7 @@ function _dzRenderApprove() {
       <input type="checkbox" id="dzConsent" ${DZ.consent ? 'checked' : ''} onchange="DZ.consent=this.checked;_dzRenderApprove()">
       <label for="dzConsent">I've reviewed this plan and the warnings above, and I authorize these changes to <strong>${_dzE(R.tenant_label || 'the tenant')}</strong>. ${restores.length
         ? `<strong>${_dzN(restores.length, 'customized object')} will be overwritten</strong> with the baseline definition (converge mode); every other existing object is left untouched.`
-        : 'Existing objects are never overwritten;'} Changes still need activation in ZIA afterwards.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
+        : 'Existing objects are never overwritten;'} Changes are activated in ZIA automatically when the deploy completes.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
     </div>`;
   const writeOff = DZ.write && !DZ.write.enabled;
   document.getElementById('dzFoot').innerHTML = `
@@ -743,7 +743,8 @@ function _dzRenderDeploy() {
   }).join('');
   body.innerHTML = `
     <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created${s.restored ? ` · ${s.restored} overwritten` : ''} · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
-    ${X.activation_required ? `<div class="dz-card sev-warning" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activate to take effect</div><div class="d">ZIA saved these changes as pending. Open the ZIA Admin Portal and click Activate (or run ziaActivator) — users are unaffected until you do.</div></div></div>` : ''}
+    ${X.activation && X.activation.activated ? `<div class="dz-card sev-info" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activated in ZIA</div><div class="d">The changes were activated automatically, so they are live now.</div></div></div>` : ''}
+    ${X.activation_required ? `<div class="dz-card sev-warning" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activate to take effect</div><div class="d">ZIA saved these changes as pending and automatic activation did not run${X.activation && X.activation.error ? ` (${_dzE(X.activation.error)})` : ''}. Open the ZIA Admin Portal and click Activate (or run ziaActivator) — users are unaffected until you do.</div></div></div>` : ''}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What to do next</div><div class="d">
       <ol class="dz-next">
         <li><strong>Activate</strong> in the ZIA Admin Portal so the objects exist for traffic (they are still disabled).</li>
@@ -854,7 +855,7 @@ function _dzRemovalApprove() {
     ${_dzWriteBanner()}
     <div class="dz-card sev-high"><div class="bar"></div><div>
       <div class="t">Remove ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}</div>
-      <div class="d">Deleted in dependency order: rules, then endpoint application groups, then engines, then dictionaries. Objects another rule or engine still uses are left alone. Deletions need activation in ZIA afterwards.</div>
+      <div class="d">Deleted in dependency order: rules, then endpoint application groups, then engines, then dictionaries — activating between tiers so the engines and dictionaries the pack owns are no longer referenced and actually delete. Objects another rule or engine still uses are left alone. Activation runs automatically.</div>
     </div></div>
     ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no DLP-Check tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
     <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I understand this permanently deletes ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>
@@ -873,7 +874,7 @@ function _dzRemovalDone() {
   body.innerHTML = `
     <div class="dz-card ${data.status === 'removed' ? 'sev-info' : 'sev-medium'}"><div class="bar"></div><div>
       <div class="t">Removal ${_dzE(data.status || '')}</div>
-      <div class="d">${data.activation_required ? 'Activate in ZIA to make the deletions live.' : 'Nothing needed activation.'}</div></div></div>
+      <div class="d">${data.activation && data.activation.activated ? 'Activated in ZIA automatically — the deletions are live.' : (data.activation_required ? `Automatic activation did not run${data.activation && data.activation.error ? ` (${_dzE(data.activation.error)})` : ''}; activate in ZIA to make the deletions live.` : 'Nothing needed activation.')}</div></div></div>
     <div class="dz-rows">
       ${line('deleted', s.deleted, 'st-ok')}${line('already gone', s.gone, 'st-reuse')}${line('left alone', s.skipped, 'st-differs')}${line('failed', s.failed, 'st-fail')}
     </div>
@@ -938,7 +939,7 @@ function _dzRemovalReport() {
     <h1>Removal plan — ${esc(R.pack.name || R.id)}</h1>
     <p class="sub">Tenant ${esc(R.plan.tenant_label || '')} · generated ${new Date().toLocaleString()}</p>
     <div class="stat"><div><b>${remove}</b> to remove</div><div><b>${keep}</b> kept (still in use)</div></div>
-    <p>This is the plan previewed in DLP-Check. Removal deletes objects in dependency order — rules, then endpoint application groups, then engines, then dictionaries — so nothing is deleted while something still points at it. An engine a surviving rule still uses, and a dictionary a surviving engine still uses, are kept and listed below. Predefined Zscaler dictionaries are never removed. Deletions take effect in ZIA after activation.</p>
+    <p>This is the plan previewed in DLP-Check. Removal deletes objects in dependency order — rules, then endpoint application groups, then engines, then dictionaries — so nothing is deleted while something still points at it. An engine a surviving rule still uses, and a dictionary a surviving engine still uses, are kept and listed below. Predefined Zscaler dictionaries are never removed. DLP-Check activates the changes in ZIA automatically as the removal runs, so the deletions are live when it finishes.</p>
     <table><thead><tr><th>Type</th><th>Name</th><th>Channel</th><th>Decision</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
     <p class="method">Objects are matched to the pack by the DLP-Check provenance tag written into each object’s description at deploy time, and by the names the pack defines. Name-only matches carry no tag and are flagged for confirmation.</p>
     </body></html>`;

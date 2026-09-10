@@ -1001,7 +1001,7 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
     impacts.append({
         "type": "activation",
         "title": "Changes must be activated to take effect",
-        "detail": "ZIA saves configuration as pending. After this deployment finishes, activate changes in the ZIA Admin Portal (or with ziaActivator) — nothing changes for users until then.",
+        "detail": "ZIA saves configuration as pending. DLP-Check activates the changes automatically when the deployment finishes; if that call is blocked, activate in the ZIA Admin Portal (or with ziaActivator).",
         "severity": "info",
     })
     return impacts, blockers
@@ -1482,6 +1482,7 @@ def apply(
     writes_enabled: Optional[bool] = None,
     restore_drift: bool = False,
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
+    activate: bool = True,
     log: LogFn = None,
 ) -> Dict[str, Any]:
     """Execute a previously approved plan.
@@ -1782,6 +1783,13 @@ def apply(
         status = "partial" if wrote else "failed"
     else:
         status = "applied"
+    # ZIA saves every change as pending; activate so the deployment is live
+    # for users without a manual step in the portal.
+    activation = None
+    if wrote and activate:
+        _log("Activating pending ZIA changes…")
+        activation = pc.activate(client.zia)
+        _log("Activation " + ("done." if activation.get("activated") else f"could not run: {activation.get('error')}"))
     return {
         "status": status,
         "summary": counts,
@@ -1789,7 +1797,8 @@ def apply(
         "verification": verification,
         "plan_hash": plan_hash,
         "elapsed_seconds": round(time.time() - started, 2),
-        "activation_required": wrote,
+        "activation_required": wrote and not (activation and activation.get("activated")),
+        "activation": activation,
     }
 
 

@@ -177,6 +177,25 @@ ZIA_BASE = "/zia/api/v1"
 APP_GROUPS_PATH = "/endPointApplicationGroups"
 
 
+def activation_status(zia) -> Tuple[Optional[str], Optional[str]]:
+    """Current activation status ('ACTIVE' / 'PENDING' / …), or an error."""
+    data, err = raw_request(zia, "GET", "/status")
+    if err:
+        return None, err
+    return (str((data or {}).get("status") or "").upper() or None), None
+
+
+def activate(zia) -> Dict[str, Any]:
+    """Activate pending ZIA configuration (POST /status/activate). ZIA saves
+    every create/delete as pending until this runs, so a deploy or removal
+    is not live for users until it does. Returns {activated, status, error}."""
+    before, _ = activation_status(zia)
+    data, err = raw_request(zia, "POST", "/status/activate")
+    if err:
+        return {"activated": False, "status": before, "error": err}
+    return {"activated": True, "status": str((data or {}).get("status") or "ACTIVE").upper(), "error": None}
+
+
 def raw_request(zia, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Tuple[Any, Optional[str]]:
     """(payload, error) for a ZIA call the SDK has no method for."""
     svc = getattr(zia, "endpoint_dlp_rules", None) or getattr(zia, "dlp_web_rules", None)

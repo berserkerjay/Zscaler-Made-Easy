@@ -80,8 +80,14 @@ def test_missing_baseline_objects_are_created_with_provenance(baseline_pack):
     assert rep["tenant_mode"]["mode"] == "greenfield"
     assert any(i["type"] == "greenfield" for i in rep["impacts"])
 
+    acts = []
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(pd.pc, "activate", lambda zia: (acts.append(1) or {"activated": True, "status": "ACTIVE", "error": None}))
     res = pd.apply(client, [baseline_pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    monkeypatch.undo()
     assert res["status"] == "applied"
+    # A deploy that wrote objects activates them so they are live for users.
+    assert acts == [1] and res["activation"]["activated"] and res["activation_required"] is False
     z = client.zia
     assert pd.BASELINE_MARK in z.dlp_dictionary.added[0]["description"]
     assert "v2.1" in z.dlp_dictionary.added[0]["description"]

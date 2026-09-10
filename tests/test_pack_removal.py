@@ -91,6 +91,20 @@ def test_remove_deletes_in_order_and_reports(tmp_path):
     assert [it.id for it in client.zia.dlp_dictionary.items] == []
 
 
+def test_remove_activates_between_tiers_and_at_the_end(tmp_path, monkeypatch):
+    pack = _pack_dir(tmp_path)
+    client = _deletable(_tenant(with_survivors=False))
+    calls = []
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: (calls.append(1) or {"activated": True, "status": "ACTIVE", "error": None}))
+    plan = pr.plan_removal(client, [pack])
+    res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
+    # Rules, then engine, then dictionary all deleted; activation ran between
+    # tiers (so the engine/dictionary are no longer referenced) and at the end.
+    assert res["summary"].get("deleted") == 3
+    assert len(calls) >= 2 and res["activation"]["activated"] and res["activation_required"] is False
+    assert not client.zia.dlp_engine.items and not client.zia.dlp_dictionary.items
+
+
 def test_remove_is_refused_read_only_and_when_stale(tmp_path):
     pack = _pack_dir(tmp_path)
     client = _deletable(_tenant(with_survivors=False))
