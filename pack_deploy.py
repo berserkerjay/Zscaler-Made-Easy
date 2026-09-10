@@ -391,7 +391,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     when `need` (see pack_channels.needs) says the packs use them.
     Never raises: each failure is recorded and `reachable` reflects it."""
     snap: Dict[str, Any] = {
-        "reachable": True, "errors": [],
+        "reachable": True, "errors": [], "unreadable": {},
         "dictionaries": {}, "predefined": {}, "engines": {}, "rules": [],
         "channels": {"rules": {}, "errors": {}, "casb_tenants": None, "casb_error": None,
                      "templates": None, "templates_error": None, "labels": None, "labels_error": None},
@@ -411,7 +411,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             if not _field(d, "custom", default=False):
                 snap["predefined"][name] = _field(d, "id")
     except Exception as e:  # noqa: BLE001 — surfaced to the user, not hidden
-        snap["reachable"] = False
+        snap["unreadable"]["dictionaries"] = str(e)[:200]
         snap["errors"].append(f"dictionaries: {str(e)[:200]}")
 
     try:
@@ -424,7 +424,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             if name:
                 snap["engines"][name] = e
     except Exception as e:  # noqa: BLE001
-        snap["reachable"] = False
+        snap["unreadable"]["engines"] = str(e)[:200]
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
     try:
@@ -447,8 +447,13 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             })
         snap["rules"].sort(key=lambda r: r["order"])
     except Exception as e:  # noqa: BLE001
-        snap["reachable"] = False
+        snap["unreadable"]["web DLP rules"] = str(e)[:200]
         snap["errors"].append(f"web DLP rules: {str(e)[:200]}")
+    # A partial read still yields a plan: only when nothing could be listed
+    # is the tenant unreachable. What could not be read is planned as new
+    # (the API rejects duplicate names, so nothing is overwritten) and every
+    # such item is marked unverified, with the permission that would fix it.
+    snap["reachable"] = len(snap["unreadable"]) < 3
     return snap
 
 
@@ -1121,6 +1126,8 @@ def preflight(
                       "Click Enable write mode in Deploy Policy Packs (you type a confirmation phrase), or start the server with "
                       "START_Zscaler_Assessment_WRITES_ENABLED.bat.") if writes_enabled is False else ""
 
+    unreadable = tenant.get("unreadable") or {}
+
     if tenant["reachable"]:
         _plan_dictionaries(merged["dictionary"], tenant, restore=restore_drift)
         _plan_engines(merged["engine"], merged["dictionary"], tenant, restore=restore_drift)
@@ -1133,6 +1140,11 @@ def preflight(
                                     + list(merged["app_group"].values()) + list(merged["policy"].values()), restore_drift) + impacts
         blockers.extend(impact_blockers)
         dependencies = pc.dependency_report(list(merged["policy"].values()), tenant["channels"], len(tenant["rules"]))
+        for kind, key in (("dictionaries", "dictionary"), ("engines", "engine"), ("web DLP rules", "policy")):
+            if kind in unreadable:
+                for item in merged[key].values():
+                    if item["status"] == CREATE and (key != "policy" or pc.channel_of(item["definition"]) == pc.WEB):
+                        item["warnings"].append("unverified: the tenant's list could not be read, so an existing object of this name would make the create fail (never overwrite)")
     else:
         dependencies = []
         for kind in merged:
@@ -1160,6 +1172,12 @@ def preflight(
     summary["channels"] = channels
 
     warnings: List[str] = []
+    if tenant["reachable"] and unreadable:
+        _perm = {"dictionaries": "DLP Dictionaries", "engines": "DLP Engines", "web DLP rules": "Web DLP Rules"}
+        for kind, err in unreadable.items():
+            warnings.append(f"Could not list the tenant's {kind} ({err}). Those objects are planned as new and will be attempted; "
+                            f"the API rejects a duplicate name, so nothing existing is overwritten. For a verified plan grant the "
+                            f"API client '{_perm.get(kind, kind)}' read access.")
     for i in all_items:
         if i["status"] == CONFLICT:
             warnings.append(f"{i['kind'].title()} '{i['name']}' is defined differently in {', '.join(i['packs'])} — it and everything that depends on it will be skipped.")

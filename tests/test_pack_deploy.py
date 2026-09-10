@@ -374,8 +374,23 @@ def test_writes_disabled_blocks_deploy_but_not_the_plan(base_pack):
     assert client.zia.dlp_dictionary.added == []
 
 
-def test_tenant_unreachable_blocks_plan(base_pack):
+def test_one_unreadable_listing_degrades_to_a_warned_plan(base_pack):
+    """A client that cannot list dictionaries still gets a plan: those
+    objects are planned as new and marked unverified (a partial plan is
+    better than none); only a tenant where nothing lists is blocked."""
     client = FakeClient(dict_fail=True)
+    rep = pd.preflight(client, [base_pack], writes_enabled=True)
+    assert rep["status"] == "warnings"
+    assert rep["tenant"]["reachable"] is True and "dictionaries:" in " ".join(rep["tenant"]["errors"])
+    assert any("Could not list the tenant's dictionaries" in w for w in rep["warnings"])
+    assert rep["plan_hash"]
+    assert all(any(w.startswith("unverified") for w in i.get("warnings", [])) for i in rep["items"] if i["kind"] == "dictionary" and i["status"] == pd.CREATE)
+
+
+def test_tenant_unreachable_blocks_plan(base_pack, monkeypatch):
+    client = FakeClient(dict_fail=True)
+    monkeypatch.setattr(client.zia.dlp_engine, "list_dlp_engines", lambda: (None, "boom"))
+    monkeypatch.setattr(client.zia.dlp_web_rules, "list_rules", lambda: (None, "boom"))
     rep = pd.preflight(client, [base_pack], writes_enabled=True)
     assert rep["status"] == "blocked"
     assert rep["tenant"]["reachable"] is False

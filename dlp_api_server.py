@@ -1614,7 +1614,16 @@ async def permissions_required():
         from scope_permissions import get_all_permissions
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"scope_permissions unavailable: {e}")
-    return get_all_permissions()
+    out = dict(get_all_permissions())
+    try:
+        import permissions as _perm
+        out["write_permissions"] = _perm.write_permissions_needed(_perm.WRITE_PERMISSIONS.keys())
+        out["partial_note"] = ("A client that lacks a permission does not stop the tool: the checks, report sections and plan items it "
+                               "cannot read are marked as not permitted and everything else runs. The assessment results list what a "
+                               "full scan would need; a preflight lists what a verified plan would need.")
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 @app.get("/api/llm/status")
@@ -2684,6 +2693,13 @@ async def assess_stream(req: AssessRequest):
                     return None
                 return None
 
+            # Partial scans are reported as such: which checks the API client
+            # was not allowed to run, and what to grant for a full scan.
+            try:
+                import permissions as _perm
+                report["permissions"] = _perm.assessment_permission_summary(results, req.scopes or [req.scope])
+            except Exception:  # noqa: BLE001
+                report["permissions"] = None
             if not want_journey:
                 report["profile"] = _record_history(report)
             yield _sse("complete", report)

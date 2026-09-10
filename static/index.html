@@ -1169,6 +1169,11 @@
       </div>
     </div>
 
+    <div class="card" id="permissionsCard" style="display:none;">
+      <h2>Partial scan: what a full scan needs</h2>
+      <div id="permissionsBody"></div>
+    </div>
+
     <div class="card">
       <h2>Scores by Section</h2>
       <div class="section-grid" id="sectionGrid"></div>
@@ -3325,10 +3330,33 @@ function showResults(data) {
   }
 
   renderChecks(checks, 'all');
+  renderPermissions(data);
   loadBenchmarks(data);
   loadCompliance(data);
   expandResultSections();
   window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+}
+
+// ── Partial scan card: what the API client could not run ────────────
+function renderPermissions(data) {
+  const card = document.getElementById('permissionsCard');
+  const body = document.getElementById('permissionsBody');
+  if (!card || !body) return;
+  const p = data && data.permissions;
+  if (!p || !p.blocked) { card.style.display = 'none'; return; }
+  const E = escapeHtml;
+  const scopes = (p.needed_for_full_scan || []).filter(s => s.blocked_checks);
+  body.innerHTML = `
+    <p style="font-size:0.88rem;margin-bottom:0.6rem;"><strong style="color:var(--warn);">${p.blocked} check${p.blocked === 1 ? '' : 's'} could not run</strong> because the API client's role does not include their feature. Every other check ran, so the score above covers what was reachable. ${E(p.note)}</p>
+    ${scopes.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0.6rem;">${scopes.map(s => `<div style="padding:0.7rem 0.9rem;border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,0.3);">
+        <div style="font-weight:700;">${E(s.label)} <span style="color:var(--dim);font-weight:500;font-size:0.8rem;">${E(s.service)} · ${s.blocked_checks} blocked</span></div>
+        <div style="font-size:0.78rem;color:var(--dim);margin-top:0.2rem;">Grant (read): ${E((s.permissions || []).join(', '))}</div>
+        ${s.license ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.2rem;">${E(s.license)}</div>` : ''}
+      </div>`).join('')}</div>` : ''}
+    <details style="margin-top:0.6rem;"><summary style="cursor:pointer;color:var(--accent);font-size:0.82rem;">Checks that were not permitted (${p.blocked})</summary>
+      <ul style="margin:0.4rem 0 0;padding-left:1.2rem;font-size:0.8rem;color:var(--dim);">${(p.checks || []).map(c => `<li><span style="font-family:monospace;">[${E(c.id)}]</span> ${E(c.label)} <span style="opacity:0.8;">(${E(c.section)})</span></li>`).join('')}</ul></details>
+    <div style="font-size:0.78rem;color:var(--dim);margin-top:0.6rem;">The full permission list per scope, and what a configuration change needs, is on the <a href="/permissions" target="_blank" rel="noopener" style="color:var(--accent);">Required API Access</a> page.</div>`;
+  card.style.display = 'block';
 }
 
 // ── Best practices & benchmarks card ────────────────────────────────

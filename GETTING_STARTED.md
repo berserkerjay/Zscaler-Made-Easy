@@ -380,6 +380,30 @@ the outset, for scripted use.)
 | "The tenant changed since you approved" | Someone edited the tenant mid-flow | Re-run preflight and approve the new plan |
 | Only one usage of each socket address (port 8000) | Old server still running | `STOP_Zscaler_Assessment.bat` then start again |
 
+## 8b. When the API client is missing a permission
+
+A partial scan is better than none, so a missing role never stops the
+tool:
+
+- **Assessment**: every check the client is allowed to run, runs. Checks
+  it is not allowed to run answer *Not permitted* and the results show a
+  **Partial scan: what a full scan needs** card naming the permissions to
+  grant per scope, with the list of checks that were skipped. The score
+  covers what was reachable.
+- **Reports** (Bypass, SSL Inspection Flow, Data Flow Map): each section
+  that could not be read is listed under *read problems*; the rest of the
+  report is complete.
+- **Preflight and deploy**: the plan is built from whatever the tenant
+  would list. If, say, dictionaries cannot be listed, the pack's
+  dictionaries are planned as *new* and marked *unverified*; creating one
+  that already exists fails on that item alone (the API rejects a
+  duplicate name, nothing is overwritten) and the rest deploys. The
+  warnings say which read permission would make the plan verified. Only
+  a tenant where nothing at all can be listed blocks the plan.
+- **What a configuration change needs** is on the **Required API Access**
+  page (`/permissions`): the *Full* permission per object kind the pack
+  writes. Activation is never done by the tool.
+
 ## Glossary
 
 The **? Help** button in the app has the full glossary. The five words that
