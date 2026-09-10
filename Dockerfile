@@ -27,6 +27,8 @@ COPY requirements.lock requirements.txt ./
 RUN python -m pip install --require-hashes --no-deps -r requirements.lock \
  && python -m pip install --upgrade pip \
  && python -m pip uninstall -y setuptools wheel   # build tools are not needed at runtime and carry their own CVEs
+ && rm -rf /usr/local/lib/python3.11/ensurepip     # bundled (old) pip/setuptools wheels the scanner would flag
+ && ! python -c "import setuptools" 2>/dev/null   # fail the build if a copy survived
 
 COPY --chown=dlpcheck:dlpcheck . .
 RUN rm -rf .git tests *.zip && mkdir -p /data && chown dlpcheck:dlpcheck /data
