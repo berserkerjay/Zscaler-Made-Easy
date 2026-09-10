@@ -161,7 +161,6 @@
       "CJIS Markings High Confidence"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -221,7 +220,6 @@
       "CJIS Identifier Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -281,7 +279,6 @@
       "Criminal History / RAP Sheet Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -341,7 +338,6 @@
       "NCIC / III Data Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -401,7 +397,6 @@
       "Warrant / Wanted-Person Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -461,7 +456,6 @@
       "Biometric CJI Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -521,7 +515,6 @@
       "NICS Firearms Background Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -581,7 +574,6 @@
       "Info-Sharing Portal Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -641,7 +633,6 @@
       "CJIS Any-Signal Engine"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",

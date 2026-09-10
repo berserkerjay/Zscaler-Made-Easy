@@ -176,7 +176,6 @@
       "Bank-Payment Card Data"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -236,7 +235,6 @@
       "Bank-Payment Card Data - Bulk"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -296,7 +294,6 @@
       "Bank-Account and Payment Instructions"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -357,7 +354,6 @@
       "ZBP-US PII"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -419,7 +415,6 @@
       "Bank-Customer PII - Bulk"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -481,7 +476,6 @@
       "Bank-Credit and Loan Applications"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -546,7 +540,6 @@
       "ZBP-Financial Information"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -608,7 +601,6 @@
       "Bank-Confidential Markings"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -668,7 +660,6 @@
       "ZBP-Private Keys"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",

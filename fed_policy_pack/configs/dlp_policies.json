@@ -195,7 +195,6 @@
       "AEA High Confidence"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -255,7 +254,6 @@
       "Financial Information"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -316,7 +314,6 @@
       "FOUO Markings Medium Confidence"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -378,7 +375,6 @@
       "ITAR Phrases"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -438,7 +434,6 @@
       "Standard Forms"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -500,7 +495,6 @@
       "TLP Amber"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -564,7 +558,6 @@
       "US PII"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -625,7 +618,6 @@
       "US PHI - High Confidence"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -688,7 +680,6 @@
       "CUI Engine (Medium Confidence)"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -750,7 +741,6 @@
       "Private Keys"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",

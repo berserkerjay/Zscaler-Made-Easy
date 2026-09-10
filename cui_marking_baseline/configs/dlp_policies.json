@@ -64,7 +64,6 @@
       "CUI-Detect-Block-Grade"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -124,7 +123,6 @@
       "CUI-Detect-Caution-Grade"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -184,7 +182,6 @@
       "CUI-Detect-All"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",

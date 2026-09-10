@@ -31,7 +31,6 @@
       "E_PHI_BULK_EXPORT"
     ],
     "channel_mirror": true,
-    "data_transfer_method": "ANY",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",

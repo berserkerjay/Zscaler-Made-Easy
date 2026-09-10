@@ -64,7 +64,9 @@ def _mirror(web_rule: dict, channel: str) -> dict:
         GEN_KEY: True,
     }
     if channel == pc.ENDPOINT:
-        r.update({"data_transfer_method": "ANY", "device_trust_levels": list(pc.ENDPOINT_TRUST_LEVELS),
+        # No data_transfer_method: the rule applies to every transfer method
+        # (the provider only accepts a specific method, not "ANY").
+        r.update({"device_trust_levels": list(pc.ENDPOINT_TRUST_LEVELS),
                   "user_risk_score_levels": list(pc.ENDPOINT_RISK_LEVELS),
                   "without_content_inspection": False, "eun_enabled": False, "rank": 7})
     elif channel == pc.SAAS:

@@ -160,7 +160,6 @@ resource "zia_endpoint_dlp_rules" "z_atomic_energy_act_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -213,7 +212,6 @@ resource "zia_endpoint_dlp_rules" "z_financial_information_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -266,7 +264,6 @@ resource "zia_endpoint_dlp_rules" "z_for_official_use_only_markings_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -319,7 +316,6 @@ resource "zia_endpoint_dlp_rules" "z_itar_international_traffic_in_arms_regulati
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -372,7 +368,6 @@ resource "zia_endpoint_dlp_rules" "z_standard_forms_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -425,7 +420,6 @@ resource "zia_endpoint_dlp_rules" "z_traffic_light_protocol_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -478,7 +472,6 @@ resource "zia_endpoint_dlp_rules" "z_us_pii_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -531,7 +524,6 @@ resource "zia_endpoint_dlp_rules" "z_us_phi_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -584,7 +576,6 @@ resource "zia_endpoint_dlp_rules" "z_controlled_unclassified_information_endpoin
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -637,7 +628,6 @@ resource "zia_endpoint_dlp_rules" "z_private_keys_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {

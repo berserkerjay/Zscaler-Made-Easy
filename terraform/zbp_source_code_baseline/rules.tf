@@ -37,7 +37,6 @@ resource "zia_endpoint_dlp_rules" "src_dlp_block_source_code_uploads_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {

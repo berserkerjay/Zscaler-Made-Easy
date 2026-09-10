@@ -153,7 +153,6 @@ resource "zia_endpoint_dlp_rules" "bank_payment_card_data_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -206,7 +205,6 @@ resource "zia_endpoint_dlp_rules" "bank_payment_card_data_bulk_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -259,7 +257,6 @@ resource "zia_endpoint_dlp_rules" "bank_payment_instructions_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -312,7 +309,6 @@ resource "zia_endpoint_dlp_rules" "bank_customer_pii_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -365,7 +361,6 @@ resource "zia_endpoint_dlp_rules" "bank_customer_pii_bulk_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -418,7 +413,6 @@ resource "zia_endpoint_dlp_rules" "bank_customer_records_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -471,7 +465,6 @@ resource "zia_endpoint_dlp_rules" "bank_mnpi_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -524,7 +517,6 @@ resource "zia_endpoint_dlp_rules" "bank_confidential_markings_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
@@ -577,7 +569,6 @@ resource "zia_endpoint_dlp_rules" "bank_credentials_endpoint" {
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "ANY"
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
