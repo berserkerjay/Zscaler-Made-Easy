@@ -17,8 +17,8 @@
     --text: #f1f5f9;
     --dim: #9fb0c3;
     --well: rgba(15, 23, 42, 0.6);
-    --btn: #2563eb;
-    --btn-hover: #1d4ed8;
+    --btn: #1d4ed8;
+    --btn-hover: #1e40af;
     --chip-ok: #34d399;
     --chip-warn: #fbbf24;
     --chip-fail: #f87171;
@@ -60,7 +60,7 @@
     --accent-glow: rgba(37, 99, 235, 0.35);
     --pass: #047857;
     --fail: #dc2626;
-    --warn: #d97706;
+    --warn: #b45309;
     --info: #475569;
     --shadow-sm: 0 2px 8px rgba(15,23,42,0.08);
     --shadow-md: 0 8px 24px rgba(15,23,42,0.12);
@@ -1001,10 +1001,12 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0.6rem;" id="frameworksList"></div>
   </div>
 
-  <!-- Inline DLP Rule Migration: 5-Step Wizard -->
-  <div class="card">
+  <!-- Inline DLP Rule Migration: opens as a modal from the Evaluate All Rules button (not inline on the page). -->
+  <div id="migrateModal" role="dialog" aria-modal="true" aria-labelledby="migrateModalTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2.5rem 1rem;">
+  <div class="card" style="max-width:1000px;margin:0 auto;position:relative;">
+    <button class="btn btn-ghost" onclick="closeMigrateModal()" aria-label="Close the Evaluate All Rules wizard" style="position:absolute;top:0.9rem;right:0.9rem;padding:0.35rem 0.7rem;font-size:0.82rem;">✕ Close</button>
     <div style="margin-bottom:1rem;">
-      <h2 style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
+      <h2 id="migrateModalTitle" tabindex="-1" style="margin-bottom:0.25rem;">Inline DLP Rule Migration — Evaluate All Rules</h2>
       <p style="font-size:0.88rem;color:var(--dim);">Scope: <strong>Inline Web DLP rules only</strong> (/zia/webDlpRules). Follow the steps below in order. Step 3b is destructive and optional. All write actions default to dry-run for safety.</p>
     </div>
 
@@ -1150,6 +1152,7 @@
     </div>
 
     <div id="migrateStatus" class="status-msg" style="margin-top:0.75rem;"></div>
+  </div>
   </div>
 
   <!-- Progress -->

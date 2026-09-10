@@ -72,11 +72,5 @@ output "rules" {
     zia_endpoint_dlp_rules.bank_endpoint_bulk_block_usb.name,
     zia_casb_dlp_rules.bank_saas_file_monitor.name,
     zia_outbound_email_dlp.bank_email_monitor.name,
-    zia_ssl_inspection_rules.bank_ssl_decrypt_file_share_webmail_ai.name,
-    zia_cloud_app_control_rule.bank_cac_file_share_no_upload.name,
-    zia_cloud_app_control_rule.bank_cac_webmail_no_send.name,
-    zia_cloud_app_control_rule.bank_cac_ai_no_upload.name,
-    zia_file_type_control_rules.bank_ftc_block_bulk_export_upload.name,
-    zia_url_filtering_rules.bank_url_block_post_to_unknown.name,
   ]
 }

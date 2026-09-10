@@ -19,6 +19,7 @@
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <a class="rp-btn" href="#add">Add a pack</a>
       <a class="rp-btn" href="#formats">What the app accepts</a>
+      <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
       <span class="sep"></span>
       <a class="rp-btn" id="advRefresh" href="#" title="Re-read the library from disk">↻ Refresh</a>
@@ -77,6 +78,17 @@
             </div>
           </div>
           <p class="adv-lead">Every upload is checked before it is stored: patterns must compile, dictionaries must fit Zscaler's limits, engines must reference dictionaries, rules must reference engines. Problems block the upload; warnings are shown and allowed.</p>
+        </section>
+
+        <section id="update" aria-labelledby="advUpdH">
+          <h2 class="df-h" id="advUpdH">App version and updates</h2>
+          <p class="adv-lead">Update pulls the latest release from GitHub, reinstalls dependencies and restarts the app in place. Your settings and saved packs are kept. This is the same update the desktop launcher runs; do it here when the app is already open.</p>
+          <div id="advUpdBox" class="adv-update" role="status" aria-live="polite"><span class="dim">Checking for updates…</span></div>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn primary" id="advUpdBtn" hidden>Update now</button>
+            <button type="button" class="rp-btn" id="advUpdCheck">Check again</button>
+          </div>
+          <div id="advUpdSteps" class="adv-update-steps" hidden></div>
         </section>
 
         <section id="server" aria-labelledby="advSrvH">

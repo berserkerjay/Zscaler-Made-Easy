@@ -147,7 +147,68 @@
     catch (e) { say('bad', `<strong>Not removed.</strong> ${E(e.message)}`); }
   }
 
+  // ---- app update -----------------------------------------------------------
+  function updBox(html) { $('advUpdBox').innerHTML = html; }
+  function renderUpdateStatus(st) {
+    const btn = $('advUpdBtn');
+    const here = st.local_commit ? `build <code>${E(st.local_commit)}</code>${st.branch ? ' on ' + E(st.branch) : ''}` : 'build unknown';
+    if (!st.can_update) {
+      updBox(`<span class="warn">${E(st.reason || 'This install cannot update itself.')}</span><div class="dim">Installed at <code>${E(st.app_dir || '')}</code></div>`);
+      btn.hidden = true; return;
+    }
+    if (st.update_available) {
+      updBox(`<strong>Update available.</strong> This install is ${here}; GitHub is on <code>${E(st.remote_commit || '?')}</code>.`);
+      btn.hidden = false; btn.textContent = 'Update now';
+    } else if (st.remote_commit) {
+      updBox(`<span class="ok">Up to date</span> — ${here}.`);
+      btn.hidden = false; btn.textContent = 'Update anyway';
+    } else {
+      updBox(`This install is ${here}. Could not reach GitHub to compare${st.remote_error ? `: ${E(st.remote_error)}` : ''}.`);
+      btn.hidden = false; btn.textContent = 'Update now';
+    }
+  }
+  async function checkUpdate() {
+    updBox('<span class="dim">Checking GitHub…</span>');
+    try { renderUpdateStatus(await api('/api/app/update/status?refresh=1')); }
+    catch (e) { updBox(`<span class="warn">Could not check: ${E(e.message)}</span>`); }
+  }
+  async function runUpdate() {
+    const btn = $('advUpdBtn'), steps = $('advUpdSteps');
+    btn.disabled = true; btn.textContent = 'Updating…'; steps.hidden = false;
+    const lines = [];
+    const show = extra => steps.innerHTML = lines.map(l => `<div class="adv-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'bad') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✕') : l.ok ? '✓' : '…'} ${E(l.name)}${l.detail ? ` <span class="dim">— ${E(l.detail)}</span>` : ''}</div>`).join('') + (extra || '');
+    lines.push({ name: 'Pulling the latest code from GitHub', ok: null }); show();
+    let res;
+    try {
+      const r = await fetch('/api/app/update', { method: 'POST' });
+      res = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(res.detail || `HTTP ${r.status}`);
+    } catch (e) { lines.length = 0; lines.push({ name: 'Update failed', ok: false, detail: e.message }); show(); btn.disabled = false; btn.textContent = 'Update now'; return; }
+    lines.length = 0;
+    for (const s of res.steps || []) lines.push({ name: s.name, ok: s.ok, detail: s.detail, soft: !!s.soft });
+    if (!res.ok) { show(); btn.disabled = false; btn.textContent = 'Update now'; return; }
+    if (!res.updated) { show('<div class="adv-upd-line ok">Already on the latest build.</div>'); btn.disabled = false; btn.textContent = 'Update anyway'; checkUpdate(); return; }
+    lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
+    try {
+      const r = await fetch('/api/app/restart', { method: 'POST' });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+    } catch (e) { lines[lines.length - 1] = { name: 'Restart could not be scheduled', ok: false, detail: e.message + '. Close the app with STOP_Zscaler_Assessment.bat and open it again.' }; show(); return; }
+    const started = Date.now();
+    const poll = async () => {
+      try {
+        const h = await (await fetch('/api/health', { cache: 'no-store' })).json();
+        if (h.git_commit && h.git_commit === res.after) { lines[lines.length - 1] = { name: `Restarted on build ${h.git_commit}. Reloading…`, ok: true }; show(); setTimeout(() => location.reload(), 800); return; }
+      } catch (e) { /* server still restarting */ }
+      if (Date.now() - started > 90000) { lines[lines.length - 1] = { name: 'The app is taking a while to come back', ok: false, soft: true, detail: 'Reload this tab in a moment.' }; show(); return; }
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 2000);
+  }
+
   // ---- wiring ---------------------------------------------------------------
+  $('advUpdCheck').addEventListener('click', checkUpdate);
+  $('advUpdBtn').addEventListener('click', runUpdate);
+  checkUpdate();
   $('advFiles').addEventListener('change', e => takeFiles(e.target.files));
   const drop = $('advDrop');
   ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));

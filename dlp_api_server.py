@@ -1727,7 +1727,7 @@ async def serve_permissions_page():
   .muted {{ color: var(--dim); }}
   .print-btn {{
     float: right; margin-bottom: 1rem;
-    background: var(--accent); color: white; border: 0;
+    background: #2563eb; color: white; border: 0;
     padding: 0.5rem 1rem; font-size: 0.85rem;
     border-radius: 6px; cursor: pointer;
   }}

@@ -104,6 +104,7 @@
   .dz-chip.kind-policy { background: rgba(16,185,129,0.14); color: var(--chip-ok, #34d399); }
   .dz-chip.kind-tweak { background: rgba(245,158,11,0.16); color: var(--warn); }
   .dz-chip.kind-channel { background: rgba(14,165,233,0.14); color: var(--chip-info, #60a5fa); }
+  .dz-chip.kind-muted { background: rgba(148,163,184,0.14); color: var(--dim); }
   .dz-chip.kind-resource, .dz-chip.kind-template { background: rgba(148,163,184,0.16); color: var(--dim); }
   .dz-chip.kind-missing { background: rgba(239,68,68,0.14); color: var(--fail); margin-left: 0.4rem; }
   .dz-note { color: var(--dim); font-size: 0.8rem; margin: 0.35rem 0 0.6rem; line-height: 1.45; }
@@ -338,4 +339,6 @@
   /* Light theme: status chips at 4.5:1 on their soft backgrounds. */
   body.theme-light .dz-chip.kind-policy, body.theme-light .st-ok .ic { color: #047857; }
   body.theme-light .dz-status.ready { color: #047857; }
+  body.theme-light .dz-status.warnings { color: #9a3412; }
+  body.theme-light .dz-step.is-done { color: #047857; }
   @media (prefers-reduced-motion: reduce) { .dz-edge.flow { animation: none; } .dz-progress .bar { animation: none; } .dz-flow-wrap svg { transition: none; } }

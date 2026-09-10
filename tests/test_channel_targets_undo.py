@@ -114,7 +114,7 @@ def test_pack_without_engines_cannot_extend(tmp_path):
     from test_pack_channels import add_control_services
     client = add_control_services(make_client())
     rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets={"ctl": ["endpoint"]})
-    assert set(items_by(rep, "policy")) == {"SSL-Decrypt"}   # containment rules are never part of the choice
+    assert set(items_by(rep, "policy")) == set()   # SSL is a containment channel, carved out of the pack; nothing is left to deploy
     assert any("no engines" in w for w in rep["warnings"])
 
 

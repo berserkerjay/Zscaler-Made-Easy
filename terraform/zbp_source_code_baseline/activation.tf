@@ -6,7 +6,5 @@ resource "zia_activation_status" "this" {
 
   depends_on = [
     zia_dlp_web_rules.src_dlp_block_source_code_uploads,
-    zia_cloud_app_control_rule.src_cac_ai_apps_block_file_upload,
-    zia_ssl_inspection_rules.src_ssl_decrypt_ai_apps,
   ]
 }
