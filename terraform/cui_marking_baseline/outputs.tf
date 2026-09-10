@@ -44,6 +44,14 @@ output "rules" {
     zia_dlp_web_rules.cui_block_marked_documents.name,
     zia_dlp_web_rules.cui_caution_weak_markings.name,
     zia_dlp_web_rules.cui_monitor_all.name,
-    zia_outbound_email_dlp.cui_email_monitor.name,
+    zia_endpoint_dlp_rules.cui_block_marked_documents_endpoint.name,
+    zia_casb_dlp_rules.cui_block_marked_documents_saas.name,
+    zia_outbound_email_dlp.cui_block_marked_documents_email.name,
+    zia_endpoint_dlp_rules.cui_caution_weak_markings_endpoint.name,
+    zia_casb_dlp_rules.cui_caution_weak_markings_saas.name,
+    zia_outbound_email_dlp.cui_caution_weak_markings_email.name,
+    zia_endpoint_dlp_rules.cui_monitor_all_endpoint.name,
+    zia_casb_dlp_rules.cui_monitor_all_saas.name,
+    zia_outbound_email_dlp.cui_monitor_all_email.name,
   ]
 }

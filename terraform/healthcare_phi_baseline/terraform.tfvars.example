@@ -9,4 +9,5 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
-# saas_tenant_ids_r_phi_email_monitor = [123456]
+# saas_tenant_ids_r_healthcare_phi_mrn_acct_dob_saas = [123456]
+# saas_tenant_ids_r_healthcare_phi_mrn_acct_dob_email = [123456]

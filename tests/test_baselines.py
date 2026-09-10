@@ -374,13 +374,16 @@ def test_shipped_baselines_are_discoverable_and_plan():
         assert pid in packs and pd.baseline_meta(packs[pid], pid), pid
     # Healthcare PHI: engines reference the tenant's predefined medical dictionaries by name.
     phi = packs["healthcare_phi_baseline"]
-    client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503)]))
+    client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
+                                                            casb_tenant("Acme OneDrive", "ONEDRIVE", 504)]))
     client.zia.dlp_dictionary.items = [Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)]
     rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    assert res["summary"] == {"created": 9}  # 5 dictionaries + 2 engines + 1 web DLP rule + 1 email rule (detection only)
-    assert client.zia.outbound_email_dlp_rules.added[0]["name"] == "R_PHI_EMAIL_MONITOR"
+    # Detection only, mirrored to every channel: 5 dicts + 2 engines + one
+    # rule per channel (web, endpoint, saas, email).
+    assert res["summary"] == {"created": 11}
+    assert any(r["name"].endswith("[Email]") for r in client.zia.outbound_email_dlp_rules.added)
     rule = client.zia.dlp_web_rules.added[0]
     assert rule["ocr_enabled"] is True and rule["min_size"] == 10
     assert client.zia.dlp_engine.added[0]["engine_expression"].startswith("((((D1.S > 0) OR (D2.S > 0)")
@@ -389,11 +392,12 @@ def test_shipped_baselines_are_discoverable_and_plan():
     # Predefined dictionaries the engines reference directly (API names, as a tenant exports them).
     predefined = templates + ["DISEASES_LEAKAGE", "DRUGS_LEAKAGE", "FINANCIAL", "MEDICAL",
                               "ML_CORPORATE_FINANCE_LEAKAGE", "ML_MEDICAL_DOC_LEAKAGE", "ML_TAX_LEAKAGE"]
-    client = make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503)])
+    client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
+                                                            casb_tenant("Acme OneDrive", "ONEDRIVE", 504)]))
     client.zia.dlp_dictionary.items = [Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(predefined)]
     rep = pd.preflight(client, [{"id": ent["id"], "dir": ent["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
-    assert rep["baselines"][0]["missing"] == 47
+    assert rep["baselines"][0]["missing"] == 64   # detection rules mirrored across web, endpoint, saas, email
 
 
 def test_shipped_packs_ship_disabled_at_info():
@@ -426,13 +430,15 @@ def test_cui_marking_baseline_deploys_and_measures():
     assert all(p["phrase"].startswith('"') for d in dicts for p in d["phrases"] if " " in p["phrase"].strip('"'))  # exact, not fuzzy
     assert "D:CUI-Basic-Bare" not in engines["CUI-Detect-Block-Grade"]["expression"]      # never wired to block
     assert "(D:CUI-Basic-Bare > 2)" in engines["CUI-Detect-Caution-Grade"]["expression"]  # min 3 unique
-    client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503)]))
+    client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
+                                                            casb_tenant("Acme OneDrive", "ONEDRIVE", 504)]))
     client.zia.dlp_dictionary.items = []
     rep = pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep["warnings"]
     assert rep["tenant_mode"]["mode"] == "greenfield"
     res = pd.apply(client, [{"id": cui["id"], "dir": cui["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    assert res["summary"] == {"created": 35}  # 28 dictionaries + 3 engines + 3 web DLP rules + 1 email rule (detection only)
+    # 28 dicts + 3 engines + 3 rules per channel across web, endpoint, saas, email.
+    assert res["summary"] == {"created": 43}
     full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
     assert "D:" not in full and full.count(".S") == 28 and full.endswith("AND NOT (D9028.S > 0)")
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")

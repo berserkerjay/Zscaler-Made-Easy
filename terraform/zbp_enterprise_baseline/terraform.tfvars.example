@@ -9,4 +9,15 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
-# saas_tenant_ids_zbp_email_monitor = [123456]
+# saas_tenant_ids_zbp_financial_information_saas = [123456]
+# saas_tenant_ids_zbp_financial_information_email = [123456]
+# saas_tenant_ids_zbp_itar_international_traffic_in_arms_regulations_saas = [123456]
+# saas_tenant_ids_zbp_itar_international_traffic_in_arms_regulations_email = [123456]
+# saas_tenant_ids_zbp_traffic_light_protocol_saas = [123456]
+# saas_tenant_ids_zbp_traffic_light_protocol_email = [123456]
+# saas_tenant_ids_zbp_us_pii_saas = [123456]
+# saas_tenant_ids_zbp_us_pii_email = [123456]
+# saas_tenant_ids_zbp_us_phi_saas = [123456]
+# saas_tenant_ids_zbp_us_phi_email = [123456]
+# saas_tenant_ids_zbp_private_keys_saas = [123456]
+# saas_tenant_ids_zbp_private_keys_email = [123456]

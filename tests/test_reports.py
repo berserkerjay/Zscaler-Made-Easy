@@ -78,8 +78,10 @@ def test_terraform_summary_endpoint():
     assert d["committed"] is True and d["path"] == "terraform/healthcare_phi_baseline/"
     names = [f["name"] for f in d["files"]]
     assert "rules.tf" in names and "README.md" in names and all(f["purpose"] for f in d["files"] if f["name"].endswith(".tf"))
-    # Detection only: a web DLP rule and an email rule, no containment channels.
-    assert d["counts"]["rules"] == 2 and d["counts"]["channels"].get("email") == 1 and d["provider"] == "zscaler/zia"
+    # Detection only, mirrored to every channel: one rule each on web,
+    # endpoint, saas and email; no containment channels.
+    assert d["counts"]["rules"] == 4 and d["provider"] == "zscaler/zia"
+    assert {k: v for k, v in d["counts"]["channels"].items()} == {"web": 1, "endpoint": 1, "saas": 1, "email": 1}
     assert not (set(d["counts"]["channels"]) & {"ssl", "cloud_app", "file_type", "url"})
     assert c.get("/api/dlp-packs/nope/terraform").status_code == 404
     html = c.get("/").text

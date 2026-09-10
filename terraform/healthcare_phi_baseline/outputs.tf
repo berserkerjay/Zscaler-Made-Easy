@@ -18,6 +18,8 @@ output "engines" {
 output "rules" {
   value = [
     zia_dlp_web_rules.r_healthcare_phi_mrn_acct_dob.name,
-    zia_outbound_email_dlp.r_phi_email_monitor.name,
+    zia_endpoint_dlp_rules.r_healthcare_phi_mrn_acct_dob_endpoint.name,
+    zia_casb_dlp_rules.r_healthcare_phi_mrn_acct_dob_saas.name,
+    zia_outbound_email_dlp.r_healthcare_phi_mrn_acct_dob_email.name,
   ]
 }

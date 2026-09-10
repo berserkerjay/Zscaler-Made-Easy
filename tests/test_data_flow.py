@@ -42,7 +42,7 @@ ROUTES = {
     "/zia/pacFiles": PAC, "/zia/sslInspectionRules": SSL, "/zia/urlFilteringRules": URL, "/zia/cloudApplicationRules": CAC,
     "/zia/fileTypeControlRules": FTC, "/zia/webDlpRules": DLP,
     "/zia/endpointDlpRules": [{"id": 60, "name": "Bank-Endpoint-Monitor", "state": "ENABLED", "action": "ALLOW"}],
-    "/zia/casbDlpRules": [], "/zia/emailDlpRules": [{"id": 70, "name": "Bank-Email-Monitor", "state": "DISABLED", "action": "ALLOW"}],
+    "/zia/casbDlpRules": [], "/zia/emailDlpRules": [{"id": 70, "name": "Bank-Customer PII [Email]", "state": "DISABLED", "action": "ALLOW"}],
     "/zia/urlCategories": [{"id": "FILE_HOST", "configuredName": "File Sharing", "urls": [], "dbCategorizedUrls": []},
                            {"id": "CUSTOM_01", "configuredName": "Partner portals", "customCategory": True, "urls": ["portal.partner.com"], "dbCategorizedUrls": []}],
 }
@@ -95,8 +95,10 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     bank = next(p for p in t["packs"] if p["id"] == "global_banking_baseline")
     st = {r["name"]: r for r in bank["rules"]}
     assert st["Bank-Customer PII-Monitor"]["state"] == "monitoring" and st["Bank-Customer PII-Monitor"]["on_path"]
-    assert st["Bank-Payment Card Data-Bulk-Block"]["state"] == "enforcing" and st["Bank-Email-Monitor"]["state"] == "disabled"
-    assert st["Bank-SaaS File-Monitor"]["state"] == "missing" and bank["coverage"] == "partial"
+    # Each inline rule is mirrored to every channel; the tenant here has the
+    # email mirror disabled and no SaaS rule, so coverage is partial.
+    assert st["Bank-Payment Card Data-Bulk-Block"]["state"] == "enforcing" and st["Bank-Customer PII [Email]"]["state"] == "disabled"
+    assert st["Bank-Customer PII [SaaS]"]["state"] == "missing" and bank["coverage"] == "partial"
     s = rep["summary"]
     assert s["traces"] == len(df.TRAFFIC_CLASSES) * 3 and s["bypassed"] >= len(df.TRAFFIC_CLASSES) and s["high"] > 0
 

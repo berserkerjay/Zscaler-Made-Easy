@@ -50,5 +50,8 @@ output "engines" {
 output "rules" {
   value = [
     zia_dlp_web_rules.src_dlp_block_source_code_uploads.name,
+    zia_endpoint_dlp_rules.src_dlp_block_source_code_uploads_endpoint.name,
+    zia_casb_dlp_rules.src_dlp_block_source_code_uploads_saas.name,
+    zia_outbound_email_dlp.src_dlp_block_source_code_uploads_email.name,
   ]
 }

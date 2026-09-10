@@ -8,6 +8,14 @@ resource "zia_activation_status" "this" {
     zia_dlp_web_rules.cui_block_marked_documents,
     zia_dlp_web_rules.cui_caution_weak_markings,
     zia_dlp_web_rules.cui_monitor_all,
-    zia_outbound_email_dlp.cui_email_monitor,
+    zia_endpoint_dlp_rules.cui_block_marked_documents_endpoint,
+    zia_casb_dlp_rules.cui_block_marked_documents_saas,
+    zia_outbound_email_dlp.cui_block_marked_documents_email,
+    zia_endpoint_dlp_rules.cui_caution_weak_markings_endpoint,
+    zia_casb_dlp_rules.cui_caution_weak_markings_saas,
+    zia_outbound_email_dlp.cui_caution_weak_markings_email,
+    zia_endpoint_dlp_rules.cui_monitor_all_endpoint,
+    zia_casb_dlp_rules.cui_monitor_all_saas,
+    zia_outbound_email_dlp.cui_monitor_all_email,
   ]
 }
