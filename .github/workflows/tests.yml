@@ -139,11 +139,7 @@ jobs:
           curl -fsS http://127.0.0.1:8000/api/ping
           docker rm -f "$id" >/dev/null
 
-      - name: Scan the image for known vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: dlp-check:ci
-          format: table
-          exit-code: "1"
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
+      - name: Scan the image for known vulnerabilities (Trivy)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH --format table dlp-check:ci

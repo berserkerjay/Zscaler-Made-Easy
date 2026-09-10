@@ -28,12 +28,12 @@ data "zia_dlp_dictionaries" "euiban_leakage" {
   name = "EUIBAN_LEAKAGE"
 }
 
-data "zia_dlp_dictionaries" "ppeu_leakage" {
-  name = "PPEU_LEAKAGE"
-}
-
 data "zia_dlp_dictionaries" "aspp_leakage" {
   name = "ASPP_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "ppeu_leakage" {
+  name = "PPEU_LEAKAGE"
 }
 
 data "zia_dlp_dictionaries" "ml_corporate_finance_leakage" {
