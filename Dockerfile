@@ -25,13 +25,17 @@ WORKDIR /app
 COPY requirements.lock requirements.txt ./
 # Hash-pinned install: every wheel must match requirements.lock. Build
 # tools (setuptools, wheel) are not needed at runtime and carry their own
-# CVEs, so they and the bundled ensurepip wheels are removed afterwards;
-# the build fails if a copy of setuptools survives.
+# CVEs (pip also vendors old copies of msgpack and setuptools that image
+# scanners flag), so pip, setuptools, wheel and the bundled ensurepip wheels
+# are removed afterwards: nothing can install packages into the running
+# image. The build fails if a copy of either survives.
 RUN python -m pip install --require-hashes --no-deps -r requirements.lock \
  && python -m pip install --upgrade pip \
  && python -m pip uninstall -y setuptools wheel \
- && rm -rf /usr/local/lib/python3.11/ensurepip \
- && ! python -c "import setuptools" 2>/dev/null
+ && python -m pip uninstall -y pip \
+ && rm -rf /usr/local/lib/python3.11/ensurepip /usr/local/lib/python3.11/site-packages/pip* /usr/local/bin/pip* \
+ && ! python -c "import setuptools" 2>/dev/null \
+ && ! python -c "import pip" 2>/dev/null
 
 COPY --chown=dlpcheck:dlpcheck . .
 RUN rm -rf .git tests *.zip && mkdir -p /data && chown dlpcheck:dlpcheck /data
