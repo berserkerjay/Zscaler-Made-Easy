@@ -58,6 +58,8 @@
         <div id="dfTraceBody"></div>
         <h2 class="df-h">Visibility by cloud app category</h2>
         <div id="dfCategories"></div>
+        <h2 class="df-h">Control flow by category</h2>
+        <div id="dfFishbones"></div>
         <h2 class="df-h">Where inspection is lost</h2>
         <div id="dfGaps"></div>
         <h2 class="df-h">Every destination, every network</h2>
@@ -73,11 +75,13 @@
         <div class="df-cc">Client Connector: ${s.app_profiles} app profile(s), ${s.forwarding_profiles} forwarding profile(s), ${s.trusted_networks} trusted network(s), ${s.pac_files} PAC file(s) · platform ${E(report.platform)}${report.diagnostics && report.diagnostics.length ? ` · <details style="display:inline;"><summary style="display:inline;cursor:pointer;color:var(--accent);">${report.diagnostics.length} read problem(s)</summary><div class="df-raw">${report.diagnostics.map(d => E((d.section || '') + ': ' + (d.error || ''))).join('<br>')}</div></details>` : ''}</div>`;
       renderDataFlowOverview(report, document.getElementById('dfOverview'));
       renderCategoryVisibility(report, document.getElementById('dfCategories'));
+      renderControlFishbones(report, document.getElementById('dfFishbones'), report.traces[0] && report.traces[0].network);
       renderDataFlowGaps(report, document.getElementById('dfGaps'));
       const wire = r => { r.addEventListener('click', () => sel(Number(r.dataset.i))); r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sel(Number(r.dataset.i)); } }); };
       const sel = i => { document.querySelectorAll('.df-row').forEach(x => x.classList.remove('sel')); const row = document.querySelector(`.df-row[data-i="${i}"]`); if (row) row.classList.add('sel'); showTrace(report.traces[i]); };
+      window.__dfSel = sel;
       document.querySelectorAll('.df-row').forEach(wire);
-      document.querySelectorAll('.df-vis[data-i], .df-gap[data-i]').forEach(b => b.addEventListener('click', () => sel(Number(b.dataset.i))));
+      document.querySelectorAll('.df-vis[data-i], .df-gap[data-i], .df-cat-card[data-i]').forEach(b => b.addEventListener('click', () => sel(Number(b.dataset.i))));
       const first = report.traces.findIndex(t => t.weak_points.some(w => w.severity === 'high'));
       const idx = first >= 0 ? first : 0;
       const row = document.querySelector(`.df-row[data-i="${idx}"]`); if (row) row.classList.add('sel');

@@ -30,7 +30,9 @@ function _dfSvg(t) {
       const px = x - GAP, cy = y + H / 2;
       const prev = hops[i - 1];
       const dead = prev.status === 'bypass' || prev.status === 'blocked' || h.status === 'skipped';
-      out += `<path class="df-edge ${dead ? 'dead' : ''}" d="M${px},${cy} C${px + GAP * 0.5},${cy} ${x - GAP * 0.5},${cy} ${x},${cy}"/>`;
+      // S-curve connector (like the deployment pack diagram) so the
+      // animated dashed line reads as a flowing squiggle between hops.
+      out += `<path class="df-edge ${dead ? 'dead' : ''}" d="M${px},${cy} C${px + GAP * 0.6},${cy - 16} ${x - GAP * 0.6},${cy + 16} ${x},${cy}"/>`;
     }
     out += `<g class="df-node st-${cls}" data-hop="${_dfE(h.key)}" transform="translate(${x},${y})" tabindex="0" role="button" aria-label="${_dfE(h.label)}: ${_dfE(lab)}">
       <rect class="box" width="${W}" height="${H}" rx="12"/><rect class="bar" x="6" y="6" width="4" height="${H - 12}" rx="2"/>
@@ -159,7 +161,31 @@ function renderDataFlowGaps(report, container) {
     (blind.length ? `<div class="df-gap-h st-warn">Reaches ZIA encrypted — inline DLP is blind (${blind.length})</div><div class="df-gaps">${blind.map(item).join('')}</div>` : '');
 }
 
+// ── Control flow by category ──────────────────────────────────────
+// One left-to-right flow per cloud app category, in the same style as the
+// path above: device -> Client Connector -> forwarding -> SSL -> URL
+// Filtering -> Cloud App Control -> File Type Control -> DLP, each hop the
+// data security control that decides it. Click a category to open its path.
+function renderControlFishbones(report, container, network) {
+  const net = network || (report.traces[0] && report.traces[0].network);
+  const cats = report.traces.filter(t => t.destination && t.destination.kind === 'class' && t.network === net);
+  if (!cats.length) { container.innerHTML = '<div class="df-hop-d">No cloud app categories traced for this network.</div>'; return; }
+  const netLabel = (report.networks.find(n => n.key === net) || {}).label || net;
+  const cards = cats.map(t => {
+    const [olab, ocls] = DF_OUTCOME[t.outcome] || [t.outcome, 'dim'];
+    // The whole card is the click target, so the diagram's own nodes are
+    // drawn non-interactive here (no nested buttons).
+    const svg = _dfSvg(t).replace(/ tabindex="0" role="button"/g, '');
+    return `<button type="button" class="df-cat-card" data-i="${report.traces.indexOf(t)}" aria-label="Open the full path for ${_dfE(t.destination.label)}: ${_dfE(olab)}">
+      <div class="df-cat-h"><strong>${_dfE(t.destination.label)}</strong><span class="df-chip st-${ocls}">${_dfE(olab)}</span></div>
+      ${svg}</button>`;
+  }).join('');
+  container.innerHTML = `<div class="df-hint">One flow per cloud app category on <strong>${_dfE(netLabel)}</strong>, in the same style as the path above: each hop is the data security control that decides it — SSL Inspection, URL Filtering, Cloud App Control, File Type Control and DLP. Cloud App Control and URL Filtering can also gate on a user risk profile. Click a category to open its full path.</div>
+    <div class="df-cat-grid">${cards}</div>`;
+}
+
 window.renderDataFlowTrace = renderDataFlowTrace;
 window.renderDataFlowOverview = renderDataFlowOverview;
 window.renderCategoryVisibility = renderCategoryVisibility;
 window.renderDataFlowGaps = renderDataFlowGaps;
+window.renderControlFishbones = renderControlFishbones;
