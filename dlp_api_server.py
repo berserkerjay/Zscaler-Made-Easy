@@ -20,6 +20,15 @@ Endpoints:
 import json, asyncio, os, re, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from starlette.background import BackgroundTask
+
+
+def _unlink_quietly(path: str) -> None:
+    """Remove a temporary report file; a missing file is not an error."""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -1411,7 +1420,10 @@ class DLPPackUploadRequest(BaseModel):
 @app.post("/api/dlp-packs/upload")
 async def dlp_pack_upload(req: DLPPackUploadRequest):
     """Create a new DLP pack from uploaded JSON definitions. Persists
-    to disk so it survives server restarts."""
+    to disk so it survives server restarts. Writes into the application
+    folder, so it is allowed only from a localhost-bound server."""
+    if get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=403, detail="Uploading a pack from the web UI is only allowed when the server is bound to localhost.")
     slug = re.sub(r"[^a-z0-9_]+", "_", req.pack_name.lower().strip()).strip("_")
     if not slug:
         raise HTTPException(status_code=400, detail="Invalid pack name")
@@ -2748,9 +2760,11 @@ async def generate_docx(request: Request):
         print(f"\n=== Word generation failed ===\n{tb}===\n", flush=True)
         raise HTTPException(status_code=500, detail=f"Word generation error: {type(e).__name__}: {str(e)[:300]}")
 
-    org = cfg.get("org", "report").replace(" ", "_")
+    org = re.sub(r"[^A-Za-z0-9_-]+", "_", str(cfg.get("org", "report"))).strip("_")[:60] or "report"
+    # The temp file holds the whole assessment: remove it once it has been sent.
     return FileResponse(tmp_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        filename=f"zscaler_{org}_{datetime.now().strftime('%Y%m%d')}.docx")
+                        filename=f"zscaler_{org}_{datetime.now().strftime('%Y%m%d')}.docx",
+                        background=BackgroundTask(_unlink_quietly, tmp_path))
 
 
 def _sse(event: str, data: dict) -> str:
@@ -2861,15 +2875,19 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
             from bypass_report import to_docx
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"python-docx not installed: {e}. Run: pip install python-docx")
-        output_path = os.path.join(tempfile.gettempdir(), f"zscaler_bypass_{ts}.docx")
+        # A private, unpredictable temp file (owner-only), removed once sent.
+        fd, output_path = tempfile.mkstemp(suffix=".docx", prefix="zscaler_bypass_")
+        os.close(fd)
         try:
             await asyncio.to_thread(to_docx, report, output_path)
         except ImportError as e:
+            _unlink_quietly(output_path)
             raise HTTPException(status_code=500, detail=f"python-docx missing: {e}. Run: pip install python-docx")
         except Exception as e:
+            _unlink_quietly(output_path)
             raise HTTPException(status_code=500, detail=f"Word generation failed: {type(e).__name__}: {str(e)[:300]}")
         return FileResponse(output_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            filename=f"zscaler_bypass_{ts}.docx")
+                            filename=f"zscaler_bypass_{ts}.docx", background=BackgroundTask(_unlink_quietly, output_path))
     return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",
                     headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"})
 

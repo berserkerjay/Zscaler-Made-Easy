@@ -161,11 +161,13 @@ Update `src/dlp_assessment_full_auto.py` with any paths that differ from the def
 
 ## Security
 
-- All API calls are **read-only GET requests** — the engine cannot modify tenant config
-- OAuth2 Client Credentials flow — no human user auth involved
-- Credentials stay in `config/tenant.json` — delete after engagement
-- Revoke the API Client in ZIdentity when done
-- JSON report may contain config details — treat as confidential
+See [SECURITY.md](SECURITY.md) for the disclosure policy and the full posture. In short:
+
+- **Read-only by default.** The assessment, reports, preflight and journey checks only read. Writing to a tenant (Deploy Policy Packs, undo, migration, remediation) is refused until write mode is enabled for the session with a typed confirmation phrase on a localhost-bound server, or the server is started with `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`. Every deploy is a plan you approve first (bound to a plan hash), every rule ships DISABLED, and every deployment is recorded for undo.
+- **Machine identity only.** OAuth2 client-credentials against ZIdentity; no human login is proxied. Use a least-privilege API client and revoke it when the engagement ends.
+- **Secrets stay local.** Credentials come from the form, `ZSCALER_*` environment variables, `local_settings.bat`, or a saved tenant profile (secret stored only when you tick *remember*, in an owner-only file). Secrets are never returned by the API and are masked in every error. All of those files are git-ignored.
+- **Loopback bound.** The web server and the MCP server bind to 127.0.0.1 unless you set `ZSCALER_BIND_HOST` / `ZSCALER_MCP_BIND_HOST`; CORS and origin checks allow only localhost origins; security headers, a body-size cap and a rate limit are always on.
+- **Reports are confidential.** JSON, Markdown and Word exports contain tenant configuration; temp files are removed once sent.
 
 ## License
 
