@@ -23,12 +23,15 @@ RUN groupadd --system dlpcheck && useradd --system --gid dlpcheck --home-dir /ap
 
 WORKDIR /app
 COPY requirements.lock requirements.txt ./
-# Hash-pinned install: every wheel must match requirements.lock.
+# Hash-pinned install: every wheel must match requirements.lock. Build
+# tools (setuptools, wheel) are not needed at runtime and carry their own
+# CVEs, so they and the bundled ensurepip wheels are removed afterwards;
+# the build fails if a copy of setuptools survives.
 RUN python -m pip install --require-hashes --no-deps -r requirements.lock \
  && python -m pip install --upgrade pip \
- && python -m pip uninstall -y setuptools wheel   # build tools are not needed at runtime and carry their own CVEs
- && rm -rf /usr/local/lib/python3.11/ensurepip     # bundled (old) pip/setuptools wheels the scanner would flag
- && ! python -c "import setuptools" 2>/dev/null   # fail the build if a copy survived
+ && python -m pip uninstall -y setuptools wheel \
+ && rm -rf /usr/local/lib/python3.11/ensurepip \
+ && ! python -c "import setuptools" 2>/dev/null
 
 COPY --chown=dlpcheck:dlpcheck . .
 RUN rm -rf .git tests *.zip && mkdir -p /data && chown dlpcheck:dlpcheck /data
