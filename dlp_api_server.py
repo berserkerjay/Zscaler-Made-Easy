@@ -882,6 +882,51 @@ def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
     return [{"id": pid, "dir": known[pid]["dir"]} for pid in pack_ids]
 
 
+class PackFromTenantRequest(TenantCredsRequest):
+    """Rebuild a pack from the tenant's own Anchor/Signal dictionaries."""
+    name_filter: str = ""      # substring/regex the dictionary names must match ("" = every custom dictionary)
+    prefix: str = "SRC-"       # engine name prefix
+    threshold: int = 4         # Signal matches the engine needs (> N)
+    html_threshold: int = 3
+    confirm: bool = False      # False = preview only; True = write the pack's configs
+
+
+def _regenerate_terraform(pack_id: str, pack_dir: str) -> str:
+    """Keep the committed Terraform workspace in step with the rewritten pack."""
+    try:
+        import pack_terraform
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        pack_terraform.write_workspace(files, os.path.join(_APP_DIR, "terraform", pack_id))
+        return "regenerated"
+    except Exception as ex:  # noqa: BLE001
+        return f"not regenerated ({str(ex)[:120]}); run: python pack_terraform.py {pack_id} --out terraform"
+
+
+@app.post("/api/dlp-packs/{pack_id}/from-tenant")
+async def dlp_pack_from_tenant(pack_id: str, req: PackFromTenantRequest):
+    """Pull the tenant's source-code dictionaries (an Anchor and a Signal
+    per language, paired by name) and rebuild the pack from them: the
+    dictionaries keep their tenant names, each language gets one engine
+    ((Signal > N) AND (Anchor > 0)), the pack's rules reference the new
+    engines and the old pack dictionaries/engines are dropped. Read-only
+    against the tenant. Preview unless `confirm` is true; writing the pack
+    on disk is allowed only from a localhost-bound server."""
+    if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", pack_id or ""):
+        raise HTTPException(status_code=400, detail="Invalid pack id.")
+    if req.confirm and get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
+        raise HTTPException(status_code=403, detail="Rewriting a pack from the web UI is only allowed when the server is bound to localhost.")
+    pack = _resolve_pack_ids([pack_id])[0]
+    import pack_from_tenant
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    res = await asyncio.to_thread(
+        pack_from_tenant.rebuild_from_tenant, client, pack["dir"], name_filter=req.name_filter[:200], prefix=req.prefix[:40],
+        threshold=max(0, min(999, req.threshold)), html_threshold=max(0, min(999, req.html_threshold)), dry_run=not req.confirm)
+    if res.get("status") == "written":
+        res["terraform"] = await asyncio.to_thread(_regenerate_terraform, pack_id, pack["dir"])
+    return res
+
+
 @app.post("/api/dlp-packs/preflight")
 async def dlp_packs_preflight(req: DLPPackDeployRequest):
     """Plan a deployment of one or more packs WITHOUT writing anything.

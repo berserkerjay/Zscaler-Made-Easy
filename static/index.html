@@ -3308,7 +3308,18 @@ function showResults(data) {
 
   renderChecks(checks, 'all');
   loadCompliance(data);
+  expandResultSections();
   window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+}
+
+// Every subsection of the report opens when results arrive, so nothing has
+// to be clicked open (a section collapsed by hand earlier is reopened too).
+function expandResultSections() {
+  document.querySelectorAll('#results .card, #gdJourney').forEach(card => {
+    const h = card.querySelector(':scope > h2, :scope > h3');
+    if (h) _setCardOpen(card, h, true);
+  });
+  document.querySelectorAll('#results details').forEach(d => { d.open = true; });
 }
 
 let drilldownData = null;
@@ -3323,11 +3334,11 @@ function toggleFrameworks(state) {
 }
 
 async function loadCompliance(data) {
-  // Respect framework checkboxes — if none selected, skip entirely
-  const selectedFws = getSelectedFrameworks();
+  // The framework checkboxes narrow the card; with none ticked, every
+  // framework is shown (the card must never be silently missing).
+  let selectedFws = getSelectedFrameworks();
   if (selectedFws.length === 0) {
-    document.getElementById('complianceCard').style.display = 'none';
-    return;
+    selectedFws = Array.from(document.querySelectorAll('.fw-cb')).map(cb => cb.value);
   }
   try {
     const resp = await fetch('/api/compliance', {
@@ -3374,6 +3385,8 @@ async function loadCompliance(data) {
       </div>`;
     }
     document.getElementById('complianceCard').style.display = 'block';
+    const cc = document.getElementById('complianceCard'), ch = cc.querySelector(':scope > h2, :scope > h3');
+    if (ch && typeof _setCardOpen === 'function') _setCardOpen(cc, ch, true);
   } catch(e) {
     document.getElementById('complianceCard').style.display = 'none';
   }
@@ -5387,9 +5400,10 @@ function _initCollapsibleCards() {
     h.setAttribute('role', 'button');
     h.setAttribute('tabindex', '0');
     const interactive = _cardHasControls(card);
-    // Form sections start open (they are the input surface); report
-    // sections start collapsed to keep the page short.
-    _setCardOpen(card, h, interactive);
+    // Every section starts open: form sections are the input surface and
+    // report sections must be readable without a click each. The heading
+    // still collapses a section, and showResults re-opens them on each run.
+    _setCardOpen(card, h, true);
     h.setAttribute('title', 'Click to expand or collapse');
 
     const toggle = () => _setCardOpen(card, h, card.classList.contains('collapsed'));

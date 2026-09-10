@@ -1,14 +1,24 @@
 [
   {
-    "name": "ZBP-[DLP] Block Source Code Uploads",
+    "name": "SRC-[DLP] Block Source Code Uploads",
     "description": "Blocks uploads containing Python, JavaScript, or shell-script source code to AI/ML applications. Application scope is resolved from the tenant's AI_ML catalogue at deploy time.",
     "action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "ZBP-JavaScript Code Detection Engine",
-      "ZBP-Python Code Detection Engine",
-      "ZBP-Shell Script Detection Engine"
+      "SRC-CSharp",
+      "SRC-CPlusPlus",
+      "SRC-Go",
+      "SRC-HTML",
+      "SRC-Java",
+      "SRC-JavaScript",
+      "SRC-Kotlin",
+      "SRC-Python",
+      "SRC-Rust",
+      "SRC-SQL",
+      "SRC-Swift",
+      "SRC-TypeScript",
+      "SRC-VBNet"
     ],
     "protocols": [
       "WEBSOCKETSSL_RULE",
@@ -17,22 +27,34 @@
       "HTTPS_RULE",
       "HTTP_RULE"
     ],
-    "cloud_app_classes": ["AI_ML"],
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "ZBP-[CAC] AI Apps: Block File Upload",
+    "name": "SRC-[CAC] AI Apps: Block File Upload",
     "channel": "cloud_app",
     "description": "Cloud App Control: on AI & ML applications, allow browsing and prompts but block file upload regardless of content. The containment layer in front of the DLP rule above.",
     "state": "DISABLED",
     "rank": 7,
     "type": "AI_ML",
-    "cloud_app_classes": ["AI_ML"],
-    "actions_by_verb": {"UPLOAD": "BLOCK", "*": "ALLOW"},
-    "device_trust_levels": ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
+    "actions_by_verb": {
+      "UPLOAD": "BLOCK",
+      "*": "ALLOW"
+    },
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ]
   },
   {
-    "name": "ZBP-[SSL] Decrypt AI Apps",
+    "name": "SRC-[SSL] Decrypt AI Apps",
     "channel": "ssl",
     "description": "SSL Inspection: decrypt traffic to AI & ML applications so the source-code DLP rule can inspect uploads.",
     "state": "DISABLED",
@@ -40,7 +62,10 @@
     "action": {
       "type": "DECRYPT",
       "override_default_certificate": false,
-      "ssl_interception_cert": {"id": 1, "default_certificate": true},
+      "ssl_interception_cert": {
+        "id": 1,
+        "default_certificate": true
+      },
       "decrypt_sub_actions": {
         "server_certificates": "ALLOW",
         "ocsp_check": true,
@@ -51,8 +76,17 @@
         "http2_enabled": true
       }
     },
-    "cloud_app_classes": ["AI_ML"],
-    "platforms": ["SCAN_WINDOWS", "SCAN_MACOS", "SCAN_LINUX", "SCAN_IOS", "SCAN_ANDROID", "NO_CLIENT_CONNECTOR"],
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
+    "platforms": [
+      "SCAN_WINDOWS",
+      "SCAN_MACOS",
+      "SCAN_LINUX",
+      "SCAN_IOS",
+      "SCAN_ANDROID",
+      "NO_CLIENT_CONNECTOR"
+    ],
     "road_warrior_for_kerberos": true
   }
 ]

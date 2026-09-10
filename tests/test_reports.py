@@ -100,3 +100,15 @@ def test_deploy_flow_has_its_own_tab():
     assert "DZ_FLOW.onTrace" in js
     css = c.get("/static/reports.css").text
     assert "body.flow-page .dz-flow-wrap" in css and ".fl-side" in css
+
+
+def test_report_sections_open_by_default_and_compliance_never_hides():
+    """Every card starts open, results re-open their sections on each run,
+    and the compliance card shows every framework when none is ticked."""
+    c = TestClient(srv.app)
+    html = c.get("/").text
+    assert "_setCardOpen(card, h, true);" in html and "function expandResultSections()" in html
+    assert "expandResultSections();" in html
+    assert "selectedFws = Array.from(document.querySelectorAll('.fw-cb')).map(cb => cb.value);" in html
+    # The old early return that hid the card is gone.
+    assert "if (selectedFws.length === 0) {\n    document.getElementById('complianceCard').style.display = 'none';\n    return;" not in html

@@ -1,23 +1,56 @@
 output "dictionaries" {
   value = { for k, r in {
-    zbp_python_code_detection = zia_dlp_dictionaries.zbp_python_code_detection
-    zbp_javascript_code_detection = zia_dlp_dictionaries.zbp_javascript_code_detection
-    zbp_shell_script_detection = zia_dlp_dictionaries.zbp_shell_script_detection
+    src_csharp_signal = zia_dlp_dictionaries.src_csharp_signal
+    src_csharp_anchor = zia_dlp_dictionaries.src_csharp_anchor
+    src_cplusplus_signal = zia_dlp_dictionaries.src_cplusplus_signal
+    src_cplusplus_anchor = zia_dlp_dictionaries.src_cplusplus_anchor
+    src_go_signal = zia_dlp_dictionaries.src_go_signal
+    src_go_anchor = zia_dlp_dictionaries.src_go_anchor
+    src_html_signal = zia_dlp_dictionaries.src_html_signal
+    src_html_anchor = zia_dlp_dictionaries.src_html_anchor
+    src_java_signal = zia_dlp_dictionaries.src_java_signal
+    src_java_anchor = zia_dlp_dictionaries.src_java_anchor
+    src_javascript_signal = zia_dlp_dictionaries.src_javascript_signal
+    src_javascript_anchor = zia_dlp_dictionaries.src_javascript_anchor
+    src_kotlin_signal = zia_dlp_dictionaries.src_kotlin_signal
+    src_kotlin_anchor = zia_dlp_dictionaries.src_kotlin_anchor
+    src_python_signal = zia_dlp_dictionaries.src_python_signal
+    src_python_anchor = zia_dlp_dictionaries.src_python_anchor
+    src_rust_signal = zia_dlp_dictionaries.src_rust_signal
+    src_rust_anchor = zia_dlp_dictionaries.src_rust_anchor
+    src_sql_signal = zia_dlp_dictionaries.src_sql_signal
+    src_sql_anchor = zia_dlp_dictionaries.src_sql_anchor
+    src_swift_signal = zia_dlp_dictionaries.src_swift_signal
+    src_swift_anchor = zia_dlp_dictionaries.src_swift_anchor
+    src_typescript_signal = zia_dlp_dictionaries.src_typescript_signal
+    src_typescript_anchor = zia_dlp_dictionaries.src_typescript_anchor
+    src_vbnet_signal = zia_dlp_dictionaries.src_vbnet_signal
+    src_vbnet_anchor = zia_dlp_dictionaries.src_vbnet_anchor
   } : r.name => r.id }
 }
 
 output "engines" {
   value = { for k, r in {
-    zbp_python_code_detection_engine = zia_dlp_engines.zbp_python_code_detection_engine
-    zbp_javascript_code_detection_engine = zia_dlp_engines.zbp_javascript_code_detection_engine
-    zbp_shell_script_detection_engine = zia_dlp_engines.zbp_shell_script_detection_engine
+    src_csharp = zia_dlp_engines.src_csharp
+    src_cplusplus = zia_dlp_engines.src_cplusplus
+    src_go = zia_dlp_engines.src_go
+    src_html = zia_dlp_engines.src_html
+    src_java = zia_dlp_engines.src_java
+    src_javascript = zia_dlp_engines.src_javascript
+    src_kotlin = zia_dlp_engines.src_kotlin
+    src_python = zia_dlp_engines.src_python
+    src_rust = zia_dlp_engines.src_rust
+    src_sql = zia_dlp_engines.src_sql
+    src_swift = zia_dlp_engines.src_swift
+    src_typescript = zia_dlp_engines.src_typescript
+    src_vbnet = zia_dlp_engines.src_vbnet
   } : r.name => r.id }
 }
 
 output "rules" {
   value = [
-    zia_dlp_web_rules.zbp_dlp_block_source_code_uploads.name,
-    zia_cloud_app_control_rule.zbp_cac_ai_apps_block_file_upload.name,
-    zia_ssl_inspection_rules.zbp_ssl_decrypt_ai_apps.name,
+    zia_dlp_web_rules.src_dlp_block_source_code_uploads.name,
+    zia_cloud_app_control_rule.src_cac_ai_apps_block_file_upload.name,
+    zia_ssl_inspection_rules.src_ssl_decrypt_ai_apps.name,
   ]
 }

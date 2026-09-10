@@ -5,7 +5,7 @@ data "zia_cloud_applications" "apps_ai_ml" {
   app_class   = ["AI_ML"]
 }
 
-data "zia_cloud_app_control_rule_actions" "zbp_cac_ai_apps_block_file_upload_actions" {
+data "zia_cloud_app_control_rule_actions" "src_cac_ai_apps_block_file_upload_actions" {
   type       = "AI_ML"
   cloud_apps = sort(distinct(concat([for a in data.zia_cloud_applications.apps_ai_ml.applications : a.app])))
 }
@@ -15,9 +15,9 @@ data "zia_cloud_applications" "apps_ssl_ai_ml" {
   app_class   = ["AI_ML"]
 }
 
-resource "zia_dlp_web_rules" "zbp_dlp_block_source_code_uploads" {
-  name                         = "ZBP-[DLP] Block Source Code Uploads"
-  description                  = "Blocks uploads containing Python, JavaScript, or shell-script source code to AI/ML applications. Application scope is resolved from the tenant's AI_ML catalogue at deploy time. [DLP-Check baseline zbp_source_code_baseline v1.0] Terraform-managed."
+resource "zia_dlp_web_rules" "src_dlp_block_source_code_uploads" {
+  name                         = "SRC-[DLP] Block Source Code Uploads"
+  description                  = "Blocks uploads containing Python, JavaScript, or shell-script source code to AI/ML applications. Application scope is resolved from the tenant's AI_ML catalogue at deploy time. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -33,25 +33,25 @@ resource "zia_dlp_web_rules" "zbp_dlp_block_source_code_uploads" {
     }
   }
   dlp_engines {
-    id = [zia_dlp_engines.zbp_javascript_code_detection_engine.id, zia_dlp_engines.zbp_python_code_detection_engine.id, zia_dlp_engines.zbp_shell_script_detection_engine.id]
+    id = [zia_dlp_engines.src_csharp.id, zia_dlp_engines.src_cplusplus.id, zia_dlp_engines.src_go.id, zia_dlp_engines.src_html.id, zia_dlp_engines.src_java.id, zia_dlp_engines.src_javascript.id, zia_dlp_engines.src_kotlin.id, zia_dlp_engines.src_python.id, zia_dlp_engines.src_rust.id, zia_dlp_engines.src_sql.id, zia_dlp_engines.src_swift.id, zia_dlp_engines.src_typescript.id, zia_dlp_engines.src_vbnet.id]
   }
 }
 
-resource "zia_cloud_app_control_rule" "zbp_cac_ai_apps_block_file_upload" {
-  name                         = "ZBP-[CAC] AI Apps: Block File Upload"
-  description                  = "Cloud App Control: on AI & ML applications, allow browsing and prompts but block file upload regardless of content. The containment layer in front of the DLP rule above. [DLP-Check baseline zbp_source_code_baseline v1.0] Terraform-managed."
+resource "zia_cloud_app_control_rule" "src_cac_ai_apps_block_file_upload" {
+  name                         = "SRC-[CAC] AI Apps: Block File Upload"
+  description                  = "Cloud App Control: on AI & ML applications, allow browsing and prompts but block file upload regardless of content. The containment layer in front of the DLP rule above. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
   type                         = "AI_ML"
   applications                 = sort(distinct(concat([for a in data.zia_cloud_applications.apps_ai_ml.applications : a.app])))
-  actions                      = [for a in data.zia_cloud_app_control_rule_actions.zbp_cac_ai_apps_block_file_upload_actions.available_actions_without_isolate : a if (anytrue([for v in ["_UPLOAD"] : endswith(a, v)]) ? startswith(a, "BLOCK_") : (anytrue([for v in [] : endswith(a, v)]) ? startswith(a, "ALLOW_") : startswith(a, "ALLOW_")))]
+  actions                      = [for a in data.zia_cloud_app_control_rule_actions.src_cac_ai_apps_block_file_upload_actions.available_actions_without_isolate : a if (anytrue([for v in ["_UPLOAD"] : endswith(a, v)]) ? startswith(a, "BLOCK_") : (anytrue([for v in [] : endswith(a, v)]) ? startswith(a, "ALLOW_") : startswith(a, "ALLOW_")))]
   device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
 }
 
-resource "zia_ssl_inspection_rules" "zbp_ssl_decrypt_ai_apps" {
-  name                         = "ZBP-[SSL] Decrypt AI Apps"
-  description                  = "SSL Inspection: decrypt traffic to AI & ML applications so the source-code DLP rule can inspect uploads. [DLP-Check baseline zbp_source_code_baseline v1.0] Terraform-managed."
+resource "zia_ssl_inspection_rules" "src_ssl_decrypt_ai_apps" {
+  name                         = "SRC-[SSL] Decrypt AI Apps"
+  description                  = "SSL Inspection: decrypt traffic to AI & ML applications so the source-code DLP rule can inspect uploads. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
