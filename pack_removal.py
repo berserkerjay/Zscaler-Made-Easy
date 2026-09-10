@@ -191,6 +191,16 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         if it.get("match") == "name":
             warnings.append(f"{it['kind']} '{it['name']}' matched by name only (no DLP-Check tag); confirm it is yours before removing.")
 
+    # Dependency links, so the flow diagram can draw dictionary -> engine ->
+    # rule for the objects in the plan (a rule depends on its engines, an
+    # engine on its dictionaries), using only objects the plan itself holds.
+    eng_id_to_name = {str(i["id"]): i["name"] for i in engine_items}
+    dict_id_to_name = {str(i["id"]): i["name"] for i in dict_items}
+    for it in rule_items:
+        it["depends_on"] = [f"engine:{eng_id_to_name[eid]}" for eid in it.get("engine_ids", []) if eid in eng_id_to_name]
+    for it in engine_items:
+        it["depends_on"] = [f"dictionary:{dict_id_to_name[did]}" for did in it.get("dict_ids", []) if did in dict_id_to_name]
+
     rank = {k: i for i, k in enumerate(UNDO_ORDER)}
     items.sort(key=lambda c: (rank.get(c["kind"], 9), 0 if c.get("parent_id") is not None else 1, str(c["name"])))
 
