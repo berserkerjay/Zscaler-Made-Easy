@@ -201,6 +201,39 @@ The results carry a **Best Practices & Benchmarks** card:
 write-up. Every card on the results page is open by default; click a
 heading to collapse it.
 
+## 4e. Data Flow Map (the exact path, and where each pack is weak)
+
+**Data Flow Map** in the toolbar opens a live tab that traces, for every
+DLP-relevant traffic class on every network context (off network, on a
+trusted network, on VPN), the exact path a transaction takes through
+*this* tenant:
+
+1. **Client Connector app profile** for the platform: does a domain, app,
+   process or IP bypass send it straight out of the device? Strict
+   enforcement, certificate push and Endpoint DLP install are read too.
+2. **Forwarding profile** for that network: Z-Tunnel 2.0, Tunnel 1.0,
+   tunnel with local proxy, enforce-proxy (PAC) or none.
+3. **PAC file**: `DIRECT` statements that skip Zscaler for the host.
+4. **SSL inspection**: which rule decides, decrypt or leave encrypted.
+5. **URL filtering**, **Cloud App Control** (upload/share controls need
+   decryption), **File Type Control**, then **Inline Web DLP**: which
+   rules see the content and whether they monitor or enforce.
+
+Beside the path, the channels that do not ride the tunnel: Endpoint DLP
+on the device (only if the app profile installs it), SaaS Security API at
+rest, Outbound Email DLP. Under it, **every policy pack**: which of its
+rules sit on this path and whether each is enforcing, monitoring, disabled
+or not deployed, with the pack's weak point in one line.
+
+Type any **cloud application, URL category or hostname** in the box (the
+list suggests the tenant's own catalogue and categories), pick the network
+and platform, and click **Trace**; the path is computed from the snapshot
+without touching the tenant again. **Refresh** re-reads the tenant.
+Weak points are ranked worst first, each with the fix. Raw profile values
+are kept next to every interpretation because Client Connector schemas
+vary by version; if a mode reads *unknown*, the raw value tells you what
+the portal says.
+
 ## 5. Choose a policy pack (step 4)
 
 Click **Deploy Policy Packs**. Each card says who it is for and when to use

@@ -152,7 +152,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -2890,6 +2890,83 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
                             filename=f"zscaler_bypass_{ts}.docx", background=BackgroundTask(_unlink_quietly, output_path))
     return Response(content=json.dumps(report, indent=2, default=str), media_type="application/json",
                     headers={"Content-Disposition": f"attachment; filename=zscaler_bypass_{ts}.json"})
+
+
+# ── Data Flow Map (the exact path a transaction takes through the tenant) ──────
+class DataFlowRequest(MigrateRequest):
+    destinations: List[str] = []      # traffic-class keys, app names, category ids or hostnames; [] = every traffic class
+    platform: str = "windows"
+
+
+class DataFlowTraceRequest(BaseModel):
+    destination: str = ""
+    network: str = "off"
+    platform: str = "windows"
+
+
+@app.get("/report/dataflow")
+async def report_dataflow_page():
+    """Standalone tab for the Data Flow Map (static/report_dataflow.html)."""
+    page = os.path.join(STATIC_DIR, "report_dataflow.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.post("/api/report/data-flow")
+async def report_data_flow(req: DataFlowRequest):
+    """Trace every traffic class (or the given destinations) through the
+    tenant: Client Connector app profile and forwarding profile, PAC, SSL
+    inspection, URL filtering, Cloud App Control, File Type Control and
+    Web DLP, plus the endpoint, SaaS and email channels, with each policy
+    pack's coverage on the path. Read-only; carries report_id for
+    /report/dataflow?id=... and the exports."""
+    try:
+        from data_flow import generate_data_flow_report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"data_flow unavailable: {e}")
+    client = await asyncio.to_thread(_build_client, req)
+    plat = req.platform if req.platform in ("windows", "macos", "ios", "android", "linux") else "windows"
+    dests = [str(d)[:200] for d in (req.destinations or [])][:40]
+    report = await asyncio.to_thread(generate_data_flow_report, client, dests or None, plat)
+    rid = _remember_report("dataflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    return _REPORTS[rid]
+
+
+@app.get("/api/report/data-flow/{report_id}")
+async def report_data_flow_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.post("/api/report/data-flow/{report_id}/trace")
+async def report_data_flow_trace(report_id: str, req: DataFlowTraceRequest):
+    """Trace one destination the user typed (app, category or hostname)
+    against the stored tenant snapshot; no tenant call."""
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    from data_flow import trace_from_report
+    if not req.destination.strip():
+        raise HTTPException(status_code=400, detail="Enter a cloud application, URL category or hostname.")
+    return await asyncio.to_thread(trace_from_report, rep, req.destination.strip()[:200], req.network, req.platform)
+
+
+@app.get("/api/report/data-flow/export/{report_id}")
+async def report_data_flow_export(report_id: str, format: str = "markdown"):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("dataflow-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    from data_flow import to_markdown as df_md
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    if (format or "").lower() == "json":
+        return Response(content=json.dumps(rep, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_dataflow_{ts}.json"})
+    return Response(content=df_md(rep, rep.get("tenant_label", "")), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_dataflow_{ts}.md"})
 
 
 # ── SSL Inspection Flow (what inline DLP can and cannot see) ───────────────────

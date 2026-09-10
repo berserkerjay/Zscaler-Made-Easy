@@ -588,6 +588,11 @@
                 title="Live flow diagram: for each DLP-relevant traffic class, which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps highlighted. Opens in a new tab.">
           <span aria-hidden="true">🔐</span> SSL Inspection Flow
         </button>
+        <button class="btn btn-ghost" onclick="openDataFlowTab()"
+                aria-label="Open the live Data Flow Map: the exact path a transaction takes through Client Connector, forwarding profiles, PAC, SSL, URL filtering, app control and DLP, with each policy pack's weak points (opens in a new tab)"
+                title="Live path tracer: for every traffic class (and any app, category or hostname you type) on every network context, which app profile, forwarding profile, PAC, SSL rule, URL rule, Cloud App Control rule, File Type rule and DLP rule decides, where it is bypassed or blind, and where each policy pack is weak. Opens in a new tab.">
+          <span aria-hidden="true">🗺️</span> Data Flow Map
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -5268,6 +5273,25 @@ async function openSslFlowTab() {
     w.location = `/report/sslflow?error=${encodeURIComponent(e.message)}`;
   }
 }
+async function openDataFlowTab() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const w = window.open('/report/dataflow?pending=1', '_blank');
+  if (!w) { alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.'); return; }
+  try {
+    const id = await window.__dataFlowGenerate();
+    w.location = `/report/dataflow?id=${encodeURIComponent(id)}`;
+  } catch (e) {
+    w.location = `/report/dataflow?error=${encodeURIComponent(e.message)}`;
+  }
+}
+// Called by the Data Flow Map tab (Refresh); this page holds the credentials.
+window.__dataFlowGenerate = async function (platform) {
+  const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
+  const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, platform: platform || 'windows' }) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  return data.report_id;
+};
 window.__sslFlowGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
   const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
