@@ -157,5 +157,5 @@ def test_preflight_reads_the_tenant_once_per_journey(monkeypatch):
     monkeypatch.setattr(pd, "fetch_tenant", counting)
     out = srv._journey_for(client, packs, progress=lambda i, n, pid: None)
     assert len(calls) == 1, len(calls)
-    assert calls[0]["channels"] >= {"web", "cloud_app", "ssl"}   # the union of both packs' needs
+    assert calls[0]["channels"] >= {"web"}   # packs are detection-only; the union of both packs' needs
     assert len(out["baselines"]) == 2

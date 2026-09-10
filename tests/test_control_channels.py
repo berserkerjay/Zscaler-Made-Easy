@@ -155,14 +155,12 @@ def test_terraform_for_control_rules(tmp_path):
     assert 'id = "FILE_SHARE:9501"' in files["imports.tf"]
 
 
-def test_shipped_phi_and_source_code_baselines_include_containment():
+def test_shipped_baselines_are_detection_only():
+    """Every shipped pack ships Web / Endpoint / SaaS / Email DLP rules
+    only — no Cloud App Control, File Type Control, URL Filtering or SSL
+    Inspection. Containment is managed separately from packs."""
     from dlp_importer import discover_packs
-    packs = {p["id"]: p for p in discover_packs()}
-    phi = packs["healthcare_phi_baseline"]
-    assert phi["channels"].get("cloud_app") == 3 and phi["channels"].get("file_type") == 2
-    assert phi["channels"].get("url") == 1 and phi["channels"].get("ssl") == 1
-    client = control_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503)])   # the baseline also ships an email rule
-    client.zia.dlp_dictionary.items += [Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)]
-    rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
-    assert rep["status"] in ("ready", "warnings"), rep["blockers"]
-    assert all(i["status"] == pd.CREATE for i in rep["items"]), [(i["name"], i["status"], i["reason"]) for i in rep["items"] if i["status"] != pd.CREATE]
+    detection = {"web", "endpoint", "saas", "email"}
+    for p in discover_packs():
+        chans = set((p.get("channels") or {}).keys())
+        assert chans <= detection, (p["id"], sorted(chans - detection))

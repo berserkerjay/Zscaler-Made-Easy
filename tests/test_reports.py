@@ -70,8 +70,7 @@ def test_report_tabs_share_the_app_stylesheet_and_theme():
     assert "prefers-color-scheme" not in rcss and "body.theme-light" in rcss
 
 
-def test_terraform_summary_endpoint(monkeypatch):
-    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")   # the workspace here carries the full pack, containment included
+def test_terraform_summary_endpoint():
     c = TestClient(srv.app)
     r = c.get("/api/dlp-packs/healthcare_phi_baseline/terraform")
     assert r.status_code == 200
@@ -79,7 +78,9 @@ def test_terraform_summary_endpoint(monkeypatch):
     assert d["committed"] is True and d["path"] == "terraform/healthcare_phi_baseline/"
     names = [f["name"] for f in d["files"]]
     assert "rules.tf" in names and "README.md" in names and all(f["purpose"] for f in d["files"] if f["name"].endswith(".tf"))
-    assert d["counts"]["rules"] >= 9 and d["counts"]["channels"].get("email") == 1 and d["provider"] == "zscaler/zia"
+    # Detection only: a web DLP rule and an email rule, no containment channels.
+    assert d["counts"]["rules"] == 2 and d["counts"]["channels"].get("email") == 1 and d["provider"] == "zscaler/zia"
+    assert not (set(d["counts"]["channels"]) & {"ssl", "cloud_app", "file_type", "url"})
     assert c.get("/api/dlp-packs/nope/terraform").status_code == 404
     html = c.get("/").text
     assert "openToolTab('terraform')" in html and "Terraform hand-off" in html

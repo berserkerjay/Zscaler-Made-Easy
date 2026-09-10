@@ -379,7 +379,7 @@ def test_shipped_baselines_are_discoverable_and_plan():
     rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    assert res["summary"] == {"created": 16}  # 5 dictionaries + 2 engines + 1 DLP rule + 7 containment rules + 1 email rule
+    assert res["summary"] == {"created": 9}  # 5 dictionaries + 2 engines + 1 web DLP rule + 1 email rule (detection only)
     assert client.zia.outbound_email_dlp_rules.added[0]["name"] == "R_PHI_EMAIL_MONITOR"
     rule = client.zia.dlp_web_rules.added[0]
     assert rule["ocr_enabled"] is True and rule["min_size"] == 10
@@ -432,7 +432,7 @@ def test_cui_marking_baseline_deploys_and_measures():
     assert rep["status"] == "ready", rep["blockers"] + rep["warnings"]
     assert rep["tenant_mode"]["mode"] == "greenfield"
     res = pd.apply(client, [{"id": cui["id"], "dir": cui["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    assert res["summary"] == {"created": 37}
+    assert res["summary"] == {"created": 35}  # 28 dictionaries + 3 engines + 3 web DLP rules + 1 email rule (detection only)
     full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
     assert "D:" not in full and full.count(".S") == 28 and full.endswith("AND NOT (D9028.S > 0)")
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")
@@ -441,7 +441,8 @@ def test_cui_marking_baseline_deploys_and_measures():
     assert rules["CUI-Block-Marked-Documents"]["action"] == "BLOCK" and rules["CUI-Caution-Weak-Markings"]["action"] == "CONFIRM"
     assert all(r["state"] == "DISABLED" and r["ocr_enabled"] for r in rules.values())
     j = pd.journey(pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True))["baselines"][0]
-    assert j["stage"] == 2 and j["next_steps"][0].startswith("Enable rule 'CUI-SSL-Decrypt")
+    # Detection only: the pack ships no SSL rule now; the next step is to enable a CUI DLP rule.
+    assert j["stage"] == 2 and any(n.startswith("Enable rule 'CUI-") for n in j["next_steps"])
 
 
 def test_dictionary_limits_block_only_the_offending_dictionary(tmp_path):
