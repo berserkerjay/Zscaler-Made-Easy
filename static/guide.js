@@ -238,7 +238,7 @@ function _gdRender() {
         <div id="gdUpdate" class="gd-update" hidden></div>
       </div>
       <div class="gd-controls">
-        <label class="gd-switch" title="Guided mode hides the Compliance Coverage card so the seven steps stay in focus. Every tool stays available in the toolbar above.">
+        <label class="gd-switch" title="Guided mode keeps the seven steps in focus: it hides the Compliance Coverage card and the Reference tools (Best Practices, Zscaler Update Check). The gap-finding and deploy tools stay in the toolbar.">
           <input type="checkbox" ${GD.mode === 'guided' ? 'checked' : ''} onchange="_gdSetMode(this.checked ? 'guided' : 'advanced')" aria-label="Guided mode">
           <span class="track"><span class="knob"></span></span><span class="lbl">Guided mode</span>
         </label>
@@ -327,15 +327,18 @@ async function _gdTest() {
 }
 function _gdSetMode(mode) {
   GD.mode = mode; _gdSave(); _gdApplyMode(); _gdRender();
+  try { if (typeof announce === 'function') announce(mode === 'guided' ? 'Guided mode on: advanced cards and reference tools hidden.' : 'Guided mode off: everything shown.'); } catch (e) { /* ignore */ }
+  const panel = document.getElementById('gdPanel') || document.querySelector('.gd-panel');
+  if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Guided mode hides the advanced tools. Cards are found by their heading
 // text so index.html needs no markup changes.
 const GD_ADVANCED_HEADINGS = ['Compliance Coverage'];
-// The toolbar is grouped (Find the gaps / Close the gaps / Reference) with a
-// tooltip per tool, so guided mode leaves it intact and only hides the
-// Compliance Coverage card.
-const GD_ADVANCED_BUTTONS = [];
+// Guided mode keeps the seven steps in focus: it hides the Compliance
+// Coverage card and the Reference tool group (Best Practices, Zscaler
+// Update Check). The gap-finding and deploy tools stay in the toolbar.
+const GD_ADVANCED_TOOLGROUPS = ['Reference'];
 function _gdApplyMode() {
   document.body.classList.toggle('gd-guided', GD.mode === 'guided');
   document.querySelectorAll('div.card').forEach(card => {
@@ -343,8 +346,8 @@ function _gdApplyMode() {
     const t = (h ? h.textContent : '').trim();
     if (GD_ADVANCED_HEADINGS.some(x => t.startsWith(x))) card.classList.add('gd-advanced');
   });
-  GD_ADVANCED_BUTTONS.forEach(fn => {
-    document.querySelectorAll(`button[onclick="${fn}"]`).forEach(b => b.classList.add('gd-advanced'));
+  GD_ADVANCED_TOOLGROUPS.forEach(label => {
+    document.querySelectorAll(`.tool-group[aria-label="${label}"]`).forEach(g => g.classList.add('gd-advanced'));
   });
 }
 
