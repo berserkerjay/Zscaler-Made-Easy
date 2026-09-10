@@ -142,6 +142,10 @@ app = FastAPI(
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
 app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
 app.add_middleware(OriginCheckMiddleware)
+import security as _security
+import audit as _audit
+app.add_middleware(_audit.AuditMiddleware, writes_enabled=writes_enabled)   # innermost: sees the final status of every write call
+app.add_middleware(_security.UIAuthMiddleware)   # inside the headers layer: a 401 still carries the security headers
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -315,6 +319,35 @@ class UpdateCheckRequest(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────────
+
+class UnlockRequest(BaseModel):
+    token: str = ""
+
+
+@app.get("/api/ping")
+async def ping():
+    """Liveness only (no version, no paths): what the launcher polls."""
+    return {"ok": True}
+
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    """Whether this server asks for a UI token and whether this browser has it."""
+    return {"required": _security.ui_auth_enabled(), "unlocked": _security.ui_request_ok(request),
+            "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None}
+
+
+@app.post("/api/auth/unlock")
+async def auth_unlock(req: UnlockRequest, request: Request):
+    """Exchange the UI token for the cookie the page uses from then on."""
+    if not _security.ui_auth_enabled():
+        return {"ok": True, "required": False}
+    if not _security.ui_token_ok(req.token):
+        raise HTTPException(status_code=401, detail="That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.")
+    resp = JSONResponse({"ok": True, "required": True})
+    _security.set_ui_cookie(resp, request)
+    return resp
+
 
 @app.get("/")
 async def serve_gui():
@@ -3103,7 +3136,20 @@ if __name__ == "__main__":
     host = get_bind_host()
     port = get_port()
     print("\n  Zscaler Platform Assessment")
-    print(f"  Open http://{('localhost' if host == '127.0.0.1' else host)}:{port} in your browser\n")
+    open_url = f"http://{('localhost' if host == '127.0.0.1' else host)}:{port}/"
+    if _security.ui_auth_enabled():
+        token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
+        open_url += f"?token={_security.ui_token()}"
+        print(f"  UI token: {_security.ui_token()}")
+        print(f"  (also in {token_path or 'ui_token.txt'}; the launcher opens the browser with it, anyone else gets 401)")
+    print(f"  Open {open_url} in your browser\n")
+    if os.environ.get("ZSCALER_OPEN_BROWSER", "").strip().lower() in ("1", "true", "yes"):
+        try:
+            import threading
+            import webbrowser
+            threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()
+        except Exception:  # noqa: BLE001
+            pass
     if host != "127.0.0.1":
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
         print(f"     can reach this server. Currently listening on {host}:{port}.")

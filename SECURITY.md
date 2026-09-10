@@ -27,6 +27,10 @@ maintained release branches.
 
 | Area | Behaviour |
 |---|---|
+| Access to the UI and API | A random token per server process (`ZSCALER_UI_TOKEN` to fix it). The launcher opens the browser with it and the server turns it into an HttpOnly, SameSite=Strict cookie; any other caller needs `X-DLP-Check-Token` or a Bearer header, or gets 401. The token is printed on the console and written to `ui_token.txt` (owner-only, git-ignored). `ZSCALER_UI_AUTH=0` disables it. |
+| Audit trail | Every non-GET API call is appended to `audit.log` (owner-only, git-ignored, rotated at 20 MB) with time, path, status, caller, write-mode state and a redacted body; deployments are additionally recorded in `deployments.json` for undo. |
+| Dependencies and updates | `requirements.lock` pins every wheel by hash; the installer, the updater and the container install with `--require-hashes`. CI checks the lock against `requirements.txt`, runs `pip-audit`, publishes a CycloneDX SBOM, builds the image and scans it; Dependabot watches pip, Actions and the base image. |
+| Container | `Dockerfile` + `docker-compose.yml`: non-root user, read-only filesystem, no capabilities, no privilege escalation, data on a volume, published on the host loopback only. |
 | Writes to a tenant | Refused unless write mode is enabled for the session (typed phrase, localhost only) or the server is started with `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`. Deploys require an approved plan hash; every rule ships DISABLED; nothing is activated; every deployment is recorded for undo. |
 | Credentials | Form, `ZSCALER_*` environment, `local_settings.bat`, or a saved profile (secret only when *remember* is ticked; owner-only file). Never returned by the API, masked in every error, all files git-ignored. |
 | Network | Web server and MCP server bind to 127.0.0.1 by default. CORS and origin checks allow localhost origins only. Security headers (CSP, frame-ancestors none, nosniff, no-referrer), a body-size cap and a rate limit are always on. Update, pack upload and pack rewrite are refused unless bound to localhost. |
@@ -36,15 +40,18 @@ maintained release branches.
 
 ## Known limitations
 
-- The web UI has no login of its own. The localhost bind is the access
-  control; do not run it on a shared machine, and do not set
-  `ZSCALER_BIND_HOST` to a non-loopback address without a reverse proxy
-  that authenticates users.
-- A remembered profile secret is stored in plain text in an owner-only
-  file. On Windows the file inherits the user's profile permissions
-  (there is no DPAPI wrapping yet). Prefer `local_settings.bat` or the
-  form if the laptop is shared.
-- Dependencies are floor-pinned in `requirements.txt` without hashes,
-  and the updater does not verify commit signatures. Update over a
-  trusted network; do not set `ZSCALER_UPDATE_VERIFY_TLS=0` except behind
-  a corporate TLS-inspection proxy whose root you trust.
+- The UI token is a bearer secret: anyone who reads `ui_token.txt` or the
+  console can use the API from that machine. Exposing the server beyond
+  loopback (`ZSCALER_BIND_HOST`) still needs a reverse proxy that
+  authenticates users and terminates TLS.
+- A remembered profile secret goes to the operating system's credential
+  store only when the optional `keyring` package is installed
+  (`pip install keyring`); otherwise it stays in the owner-only profile
+  file. Prefer `local_settings.bat` or the form on a shared laptop.
+- The updater fast-forwards `main` over HTTPS but does not verify commit
+  signatures. Update over a trusted network; do not set
+  `ZSCALER_UPDATE_VERIFY_TLS=0` except behind a corporate TLS-inspection
+  proxy whose root you trust.
+- The page's Content-Security-Policy still allows inline scripts, because
+  the GUI ships its script inline; a stored XSS in tenant-supplied text is
+  mitigated by escaping at every render site, not by CSP.

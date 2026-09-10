@@ -16,7 +16,7 @@ running = False
 On Error Resume Next
 Set sock = CreateObject("MSXML2.ServerXMLHTTP.6.0")
 sock.setTimeouts 800, 800, 800, 800
-sock.open "GET", "http://127.0.0.1:" & port & "/api/write-mode", False
+sock.open "GET", "http://127.0.0.1:" & port & "/api/ping", False
 sock.send
 If Err.Number = 0 Then running = (sock.status = 200)
 Err.Clear
@@ -31,4 +31,20 @@ If Not running Then
   WScript.Sleep 4000
 End If
 
-sh.Run "http://localhost:" & port & "/", 1, False
+' The server writes its UI token to ui_token.txt (owner-only); open the
+' browser with it so this browser is unlocked and any other caller is not.
+Dim tokenPath, token, tf
+tokenPath = dir & "\ui_token.txt"
+token = ""
+On Error Resume Next
+If fso.FileExists(tokenPath) Then
+  Set tf = fso.OpenTextFile(tokenPath, 1)
+  token = Trim(tf.ReadAll)
+  tf.Close
+End If
+On Error GoTo 0
+If token <> "" Then
+  sh.Run "http://localhost:" & port & "/?token=" & token, 1, False
+Else
+  sh.Run "http://localhost:" & port & "/", 1, False
+End If

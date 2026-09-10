@@ -47,6 +47,31 @@ prompt. The repository is private, so git on the laptop must be signed in
 to GitHub once (`git fetch` in the app folder prompts for it). A copy that was not installed with git cannot update in
 place; the card shows the one command that moves it to a git clone.
 
+## 1a. The UI token (why the browser sometimes asks for a code)
+
+Each time the server starts it mints a token. The desktop shortcut opens
+the browser with it, so you normally never see it. If you open
+`http://localhost:8000` by hand, or in another browser, the page asks for
+the token once: it is in `ui_token.txt` next to the app (also printed on
+the server console). Paste it and you are in; the browser keeps it as a
+cookie for 12 hours. Anything else on the laptop that tries the API
+without it gets *401*. Set `ZSCALER_UI_TOKEN=...` in `local_settings.bat`
+to keep one token across restarts, or `ZSCALER_UI_AUTH=0` to turn it off
+(not recommended). Every write call is recorded in `audit.log` next to
+the app.
+
+## 1c. Run it in a container instead
+
+`docker compose up --build` in the app folder builds an image with
+hash-pinned dependencies and runs it as a non-root user on a read-only
+filesystem, published on `127.0.0.1:8000` only. Profiles, deployments,
+the audit log and the UI token live on the `dlpcheck-data` volume
+(`docker compose exec dlp-check cat /data/ui_token.txt` prints the token;
+`docker compose logs` shows it too). Put `ZSCALER_*` credentials in a
+`.env` file next to `docker-compose.yml` if you do not want to type them.
+The in-app **Update app** button does not apply inside a container:
+rebuild the image instead.
+
 ## 1b. Settings that survive updates (proxy, TLS inspection)
 
 If your laptop sits behind Zscaler Client Connector or a corporate proxy,

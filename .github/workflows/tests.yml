@@ -43,6 +43,7 @@ jobs:
           pip install httpx
           pip install httpx2 || true
           python - <<'EOF'
+          import os; os.environ["ZSCALER_UI_AUTH"] = "0"
           from fastapi.testclient import TestClient
           import dlp_api_server as srv
 
@@ -88,3 +89,61 @@ jobs:
 
       - name: Print file fingerprints
         run: sha1sum $(git ls-files '*.py' 'static/*' 'tests/*' 'POLICY_PACKS.md')
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lock file matches requirements.txt (hash-pinned)
+        run: |
+          python -m pip install --upgrade pip pip-tools
+          pip-compile --quiet --generate-hashes --output-file=requirements.check requirements.txt
+          # Only the pinned package set must match; hashes are refreshed by the same tool.
+          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale; run: pip-compile --generate-hashes --output-file=requirements.lock requirements.txt"; exit 1; }
+
+      - name: Install from the lock (hash-verified)
+        run: pip install --require-hashes --no-deps -r requirements.lock
+
+      - name: Known-vulnerability audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.lock --strict --desc on
+
+      - name: Software bill of materials (CycloneDX)
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py requirements requirements.lock -o sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t dlp-check:ci .
+
+      - name: Image runs as non-root and answers /api/ping
+        run: |
+          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_AUTH=0 dlp-check:ci)
+          sleep 8
+          docker exec "$id" id -u | grep -qv '^0$'
+          curl -fsS http://127.0.0.1:8000/api/ping
+          docker rm -f "$id" >/dev/null
+
+      - name: Scan the image for known vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: dlp-check:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH

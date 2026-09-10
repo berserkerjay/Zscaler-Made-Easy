@@ -33,3 +33,37 @@
   window.addEventListener('storage', e => { if (e.key === 'zassess_theme') apply(current(), false); });
   if (document.body) init(); else document.addEventListener('DOMContentLoaded', init);
 })();
+
+// ── UI token ──────────────────────────────────────────────────────────
+// Every page shares this: if the server answers 401 "token required", ask
+// for the token once (it is in ui_token.txt next to the app, or on the
+// server console), unlock, and retry the request.
+(function () {
+  if (window.__dlpAuthWrapped) return;
+  window.__dlpAuthWrapped = true;
+  const realFetch = window.fetch.bind(window);
+  let asking = null;
+  async function unlock(message) {
+    if (asking) return asking;
+    asking = (async () => {
+      const t = window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also printed on the server console). Paste it here:');
+      if (t === null) return false;
+      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t.trim() }) });
+      return r.ok;
+    })();
+    try { return await asking; } finally { asking = null; }
+  }
+  window.fetch = async function (input, init) {
+    let r = await realFetch(input, init);
+    if (r.status === 401) {
+      let body = null;
+      try { body = await r.clone().json(); } catch (e) { /* not json */ }
+      if (body && body.token_required) {
+        const ok = await unlock(body.detail);
+        if (ok) r = await realFetch(input, init);
+      }
+    }
+    return r;
+  };
+  window.__dlpUnlock = unlock;
+})();

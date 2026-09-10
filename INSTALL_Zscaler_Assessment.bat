@@ -27,7 +27,11 @@ if not defined PYTHON_EXE (
 echo  Found Python: %PYTHON_EXE%
 echo.
 echo  [1/2] Installing Python dependencies...
-"%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check fastapi uvicorn python-docx zscaler-sdk-python requests rich pydantic
+if exist "%INSTALL_DIR%\requirements.lock" (
+    "%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "%INSTALL_DIR%\requirements.lock"
+) else (
+    "%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check -r "%INSTALL_DIR%\requirements.txt"
+)
 if errorlevel 1 (
     echo  WARNING: Some dependencies may have failed.
 )
