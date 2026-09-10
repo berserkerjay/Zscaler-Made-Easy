@@ -241,33 +241,64 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     to_remove = [it for it in plan["items"] if it["status"] == "remove"]
     names_cache: Dict[Tuple[str, Optional[str]], Tuple[Optional[Dict[str, str]], Optional[str]]] = {}
     results: List[Dict[str, Any]] = []
-    for c in to_remove:
-        key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
-        if key not in names_cache:
-            names_cache[key] = pd._current_names(zia, c["kind"], c.get("channel"))
-        current, err = names_cache[key]
-        entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel"), "match": c.get("match")}
-        if current is None:
-            entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
-        elif str(c["id"]) not in current:
-            entry.update(status="gone", reason="already removed from the tenant")
-        elif current[str(c["id"])] != c["name"]:
-            entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not '{c['name']}'; left alone")
-        else:
-            derr = pd._delete(zia, c)
-            if derr:
-                entry.update(status="failed", error=derr)
+    activations: List[Dict[str, Any]] = []
+
+    # Delete in dependency tiers — rules and endpoint application groups
+    # first, then engines, then dictionaries — and ACTIVATE between tiers.
+    # ZIA validates a delete against the saved (activated) config, so an
+    # engine or dictionary cannot be removed while a rule that references it
+    # is only pending-deleted; activating each tier clears those references
+    # so the next tier's objects (the engines and dictionaries tied to the
+    # pack) actually delete.
+    TIERS = [("policy", "app_group"), ("engine",), ("dictionary",)]
+    for ti, kinds in enumerate(TIERS):
+        tier = [c for c in to_remove if c["kind"] in kinds]
+        if not tier:
+            continue
+        deleted_here = 0
+        for c in tier:
+            key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
+            if key not in names_cache:
+                names_cache[key] = pd._current_names(zia, c["kind"], c.get("channel"))
+            current, err = names_cache[key]
+            entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel"), "match": c.get("match")}
+            if current is None:
+                entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
+            elif str(c["id"]) not in current:
+                entry.update(status="gone", reason="already removed from the tenant")
+            elif current[str(c["id"])] != c["name"]:
+                entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not '{c['name']}'; left alone")
             else:
-                entry.update(status="deleted")
-                current.pop(str(c["id"]), None)
-        results.append(entry)
-        _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else ""))
+                derr = pd._delete(zia, c)
+                if derr:
+                    entry.update(status="failed", error=derr)
+                else:
+                    entry.update(status="deleted"); deleted_here += 1
+                    current.pop(str(c["id"]), None)
+            results.append(entry)
+            _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else ""))
+        # Activate before the next tier so its objects are no longer referenced.
+        more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
+        if deleted_here and more:
+            _log("Activating deleted rules before removing engines/dictionaries…")
+            act = pc.activate(zia)
+            activations.append(act)
+            _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))
+            names_cache.clear()   # re-read after activation
 
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    # Final activation so every deletion is live.
+    final_activation = None
+    if counts.get("deleted"):
+        _log("Activating pending ZIA changes…")
+        final_activation = pc.activate(zia)
+        activations.append(final_activation)
+        _log("Activation " + ("done." if final_activation.get("activated") else f"could not run: {final_activation.get('error')}"))
     complete = not counts.get("failed") and not counts.get("skipped")
     status = "removed" if complete and results else ("partial" if counts.get("deleted") else ("nothing" if not results else "failed"))
     return {"status": status, "summary": counts, "results": results, "complete": complete,
             "kept": [it for it in plan["items"] if it["status"] == "keep"],
-            "activation_required": bool(counts.get("deleted"))}
+            "activation": final_activation, "activations": activations,
+            "activation_required": bool(counts.get("deleted")) and not (final_activation and final_activation.get("activated"))}
