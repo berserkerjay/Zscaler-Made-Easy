@@ -2079,6 +2079,36 @@ async def compliance_drilldown(request: Request):
     return get_control_drilldown(results)
 
 
+@app.post("/api/benchmarks")
+async def benchmarks_report(request: Request):
+    """Best-practice alignment per area (with each deviation's guidance and
+    article), the DLP programme stages, framework rows and the journey,
+    computed from an assessment report (the `complete` payload or a saved
+    JSON)."""
+    import benchmarks
+    data = await request.json()
+    if not isinstance(data, dict) or not data.get("checks"):
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    return benchmarks.benchmark_report(data)
+
+
+@app.post("/api/benchmarks/export")
+async def benchmarks_export(request: Request, format: str = "markdown"):
+    """The same benchmarks as Markdown (default) or JSON, for a customer note."""
+    import benchmarks
+    data = await request.json()
+    if not isinstance(data, dict) or not data.get("checks"):
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    b = benchmarks.benchmark_report(data)
+    org = str((data.get("metadata") or {}).get("org") or "")
+    ts = datetime.now().strftime("%Y%m%d")
+    if format == "json":
+        return Response(content=json.dumps(b, indent=2, default=str), media_type="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=zscaler_benchmarks_{ts}.json"})
+    return Response(content=benchmarks.to_markdown(b, org), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=zscaler_benchmarks_{ts}.md"})
+
+
 # ═════════════════════════════════════════════════════════════════
 # Rule Migration API (Evaluate All Rules mode)
 # ═════════════════════════════════════════════════════════════════

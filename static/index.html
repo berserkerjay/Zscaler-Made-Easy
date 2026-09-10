@@ -926,11 +926,17 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="fw-cb" value="CIS" checked style="width:auto;cursor:pointer;"> 🛡️ CIS Controls v8
           </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="NIST_CSF_2" checked style="width:auto;cursor:pointer;"> 🧭 NIST CSF 2.0
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
+            <input type="checkbox" class="fw-cb" value="GLBA" checked style="width:auto;cursor:pointer;"> 🏦 GLBA Safeguards
+          </label>
         </div>
         <div class="helper">
           <a onclick="toggleFrameworks(true)" style="color:var(--accent);cursor:pointer;margin-right:0.75rem;">Select all</a>
           <a onclick="toggleFrameworks(false)" style="color:var(--accent);cursor:pointer;">Clear all</a>
-          <span style="margin-left:0.75rem;">Uncheck all to skip compliance analysis entirely.</span>
+          <span style="margin-left:0.75rem;">Ticked frameworks narrow the compliance card; with none ticked every framework is shown.</span>
         </div>
       </div>
     </div>
@@ -1161,6 +1167,12 @@
     <div class="card">
       <h2>Scores by Section</h2>
       <div class="section-grid" id="sectionGrid"></div>
+    </div>
+
+    <div class="card" id="benchmarkCard" style="display:none;">
+      <h2>Best Practices &amp; Benchmarks</h2>
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:1rem;">How this tenant measures against Zscaler's stated best practices (every check that names one), the DLP programme checklist as five stages, the compliance frameworks below, and the baseline-pack journey. Each deviation links to the article that says what good looks like.</p>
+      <div id="benchmarkBody"></div>
     </div>
 
     <div class="card" id="complianceCard">
@@ -3267,6 +3279,7 @@ function handleEvent(evt) {
     document.getElementById('progressCard').classList.remove('active');
     if (typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(evt.journey); } catch (e) { console.warn('journey card', e); } }
     if (evt.profile && typeof _gdProfilesLoad === 'function') { try { _gdProfilesLoad(); } catch (e) {} }
+    try { refreshBenchmarkJourney(evt.journey); } catch (e) {}
     setStatus('Assessment complete', 'success');
   } else if (evt.message) {
     setStatus('Error: ' + evt.message + (partialResults.length ? '. Showing partial results.' : ''), 'error');
@@ -3307,9 +3320,100 @@ function showResults(data) {
   }
 
   renderChecks(checks, 'all');
+  loadBenchmarks(data);
   loadCompliance(data);
   expandResultSections();
   window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+}
+
+// ── Best practices & benchmarks card ────────────────────────────────
+let benchmarkData = null;
+async function loadBenchmarks(data) {
+  const card = document.getElementById('benchmarkCard');
+  const body = document.getElementById('benchmarkBody');
+  if (!card || !body) return;
+  try {
+    const resp = await fetch('/api/benchmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    if (!resp.ok) { card.style.display = 'none'; return; }
+    benchmarkData = await resp.json();
+    body.innerHTML = renderBenchmarks(benchmarkData);
+    card.style.display = 'block';
+    const h = card.querySelector(':scope > h2');
+    if (h && typeof _setCardOpen === 'function') _setCardOpen(card, h, true);
+  } catch (e) {
+    card.style.display = 'none';
+  }
+}
+function refreshBenchmarkJourney(journey) {
+  // The journey lands after the results; redraw the card with it.
+  if (!reportData) return;
+  loadBenchmarks({ ...reportData, journey });
+}
+function renderBenchmarks(b) {
+  const E = escapeHtml;
+  const bp = b.best_practices || { areas: [] };
+  const gradeColor = g => ({ A: 'var(--pass)', B: 'var(--pass)', C: 'var(--warn)', D: 'var(--warn)', F: 'var(--fail)' }[g] || 'var(--dim)');
+  const bar = (pct, color) => `<div style="height:8px;border-radius:4px;background:rgba(148,163,184,0.15);overflow:hidden;"><div style="width:${Math.max(0, Math.min(100, pct || 0))}%;height:100%;background:${color};"></div></div>`;
+  const pctColor = p => p >= 75 ? 'var(--pass)' : p >= 50 ? 'var(--warn)' : 'var(--fail)';
+  const areas = (bp.areas || []).map(a => {
+    const gaps = (a.gaps || []).map(g => `<li style="margin:0.35rem 0;">
+        <span style="color:${g.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)'};font-weight:700;">${g.status === 'FAIL' ? '✗' : '◑'}</span>
+        <span style="font-family:monospace;color:var(--dim);margin:0 0.3rem;">[${E(g.id)}]</span><strong>${E(g.label)}</strong>
+        <div style="color:var(--dim);font-size:0.78rem;margin-left:1.6rem;">${E(g.finding || '')}</div>
+        ${g.best_practice ? `<div style="font-size:0.8rem;margin-left:1.6rem;margin-top:0.15rem;"><span style="color:var(--accent);font-weight:600;">Best practice:</span> ${E(g.best_practice)} ${g.reference ? `<a href="${E(g.reference)}" target="_blank" rel="noopener" style="color:var(--accent);">Read the article ↗</a>` : ''}${g.inline ? '' : ' <span style="color:var(--dim);font-size:0.72rem;">(general guidance for this area)</span>'}</div>` : ''}
+      </li>`).join('');
+    return `<details ${a.deviations ? 'open' : ''} style="border:1px solid var(--border);border-radius:10px;padding:0.6rem 0.9rem;margin:0.4rem 0;background:rgba(15,23,42,0.3);">
+      <summary style="cursor:pointer;display:grid;grid-template-columns:1fr auto auto;gap:0.75rem;align-items:center;">
+        <span><strong>${E(a.area)}</strong> <span style="color:var(--dim);font-size:0.8rem;">${a.aligned} of ${a.measured} measured aligned${a.not_measured ? ` · ${a.not_measured} not measured` : ''}</span>${bar(a.pct, pctColor(a.pct))}</span>
+        <span style="font-weight:700;color:${pctColor(a.pct)};">${a.measured ? a.pct + '%' : '—'}</span>
+        <span style="font-weight:800;font-size:1.1rem;color:${gradeColor(a.grade)};min-width:1.2rem;text-align:center;">${E(a.grade)}</span>
+      </summary>
+      ${gaps ? `<ul style="list-style:none;padding:0;margin:0.6rem 0 0;">${gaps}</ul>` : '<div style="color:var(--dim);font-size:0.8rem;margin-top:0.5rem;">No deviations from best practice in this area.</div>'}
+    </details>`;
+  }).join('');
+  const p = b.dlp_programme || { stages: [] };
+  const stages = (p.stages || []).map(s => `<div style="flex:1;min-width:150px;padding:0.6rem 0.75rem;border-radius:10px;border:1px solid ${s.met ? 'rgba(16,185,129,0.45)' : (s.measured ? 'rgba(245,158,11,0.45)' : 'var(--border)')};background:rgba(15,23,42,0.3);">
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${s.met ? 'var(--pass)' : (s.measured ? 'var(--warn)' : 'var(--dim)')};">${s.met ? '✓' : (s.measured ? '○' : '–')} Stage ${s.n}</div>
+      <div style="font-weight:700;">${E(s.name)}</div>
+      <div style="font-size:0.75rem;color:var(--dim);">${E(s.what)}</div>
+      <div style="font-size:0.8rem;margin-top:0.3rem;">${s.measured ? `${s.passed}/${s.measured} · <strong style="color:${pctColor(s.pct)}">${s.pct}%</strong>` : 'not measured in this run'}</div>
+      ${(s.todo || []).length ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.25rem;">Next: ${s.todo.slice(0, 3).map(t => `[${E(t.id)}] ${E(t.label)}`).join(' · ')}${s.todo.length > 3 ? ` · +${s.todo.length - 3} more` : ''}</div>` : ''}
+    </div>`).join('');
+  const fws = (b.frameworks || []).map(f => `<span style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem;border-radius:100px;border:1px solid var(--border);font-size:0.78rem;"><strong>${E(f.name)}</strong> <span style="color:${pctColor(f.alignment_pct)};font-weight:700;">${f.alignment_pct}%</span> <span style="color:var(--dim);">${E(f.status)}</span></span>`).join(' ');
+  const j = b.journey;
+  const journey = !j ? '' : (j.status === 'pending'
+    ? `<div style="color:var(--dim);font-size:0.85rem;"><span class="gd-spin" aria-hidden="true"></span> Baseline journey still being measured; this line fills in when it lands.</div>`
+    : `<div style="font-size:0.85rem;">Baseline journey: <strong>stage ${j.stage || 0} of 5</strong>, ${j.score || 0}% of the way${(j.baselines || []).length ? ' — ' + j.baselines.map(x => `${E(x.name)} stage ${x.stage} (${E(x.stage_name || '')})`).join(', ') : ''}. Details in the Data governance journey card.</div>`);
+  return `
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;padding:0.9rem 1rem;border:1px solid var(--border);border-radius:12px;background:rgba(15,23,42,0.3);margin-bottom:0.9rem;">
+      <div style="text-align:center;"><div style="font-size:2.4rem;font-weight:800;line-height:1;color:${gradeColor(bp.grade)};">${E(bp.grade || '–')}</div><div style="font-size:0.7rem;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;">grade</div></div>
+      <div><div style="font-weight:700;">Zscaler best-practice alignment: <span style="color:${pctColor(bp.pct)};">${bp.pct}%</span></div>
+        <div style="font-size:0.82rem;color:var(--dim);">${bp.aligned} of ${bp.measured} measured checks follow the stated best practice · ${bp.deviations} deviations · ${bp.not_measured} not measured (not licensed or not reachable). Grade A ≥ 90%, B ≥ 75%, C ≥ 60%, D ≥ 40%.</div>
+        ${bar(bp.pct, pctColor(bp.pct))}</div>
+    </div>
+    <h3 style="font-size:0.95rem;margin:0.8rem 0 0.3rem;">By area</h3>
+    ${areas || '<div style="color:var(--dim);">Nothing measured.</div>'}
+    <h3 style="font-size:0.95rem;margin:1rem 0 0.4rem;">DLP programme benchmark — stage ${p.stage || 0} of ${(p.stages || []).length} (${E(p.stage_name || 'Not started')})</h3>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">${stages}</div>
+    <h3 style="font-size:0.95rem;margin:1rem 0 0.4rem;">Frameworks (weakest first)</h3>
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">${fws}</div>
+    <div style="color:var(--dim);font-size:0.75rem;margin-top:0.3rem;">Click a framework card below for the control-by-control view.</div>
+    ${journey ? `<div style="margin-top:0.8rem;">${journey}</div>` : ''}
+    <div style="margin-top:0.9rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <button class="btn btn-ghost" onclick="downloadBenchmarks('markdown')" style="font-size:0.8rem;padding:0.4rem 0.8rem;">Download benchmark note (Markdown)</button>
+      <button class="btn btn-ghost" onclick="downloadBenchmarks('json')" style="font-size:0.8rem;padding:0.4rem 0.8rem;">JSON</button>
+    </div>`;
+}
+async function downloadBenchmarks(format) {
+  if (!reportData) return;
+  try {
+    const resp = await fetch(`/api/benchmarks/export?format=${encodeURIComponent(format)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(reportData) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `zscaler_benchmarks_${new Date().toISOString().slice(0, 10)}.${format === 'json' ? 'json' : 'md'}`;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { setStatus('Benchmark export failed: ' + e.message, 'error'); }
 }
 
 // Every subsection of the report opens when results arrive, so nothing has

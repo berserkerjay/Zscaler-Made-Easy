@@ -174,6 +174,33 @@ An update that reaches nothing is never cached: the library keeps its
 last good state, the failure is shown at the top, and the next click
 tries again. A background refresh also runs every 6 hours.
 
+## 4d. Best practices, benchmarks and frameworks
+
+The results carry a **Best Practices & Benchmarks** card:
+
+- **Zscaler best-practice alignment**: a grade (A to F) and a percentage.
+  Every check that names Zscaler's best practice (most do, in the finding
+  text after *Best Practice:*) counts; a failed or review finding on one of
+  them is a *deviation* and is listed under its area (ZIA policy, Client
+  Connector, SSL inspection, DLP programme, GenAI, ZPA, administration,
+  automation, ZDX) with the guidance and a **Read the article** link.
+  Checks the tenant could not answer (not licensed, not reachable) are
+  *not measured* and do not count against it.
+- **DLP programme benchmark**: the twelve-step DLP checklist as five stages
+  (Foundation, Visibility, Coverage, Operation, Response). A stage is met
+  at 75% of its measured checks; the stage reached stops at the first
+  unmet one, and each stage names the checks to fix next.
+- **Frameworks, weakest first**: NIST 800-53, NIST 800-171, NIST CSF 2.0,
+  SOC 2, GDPR, HIPAA, PCI DSS, ISO 27001, CIS Controls, GLBA Safeguards
+  and CMMC. The **Regulatory & Compliance Alignment** card below it has
+  the control-by-control drilldown with the findings behind each control.
+- **Baseline journey**: the stage the tenant has reached against the
+  baseline packs (fills in when the journey measurement lands).
+
+**Download benchmark note** gives the same as Markdown for the customer
+write-up. Every card on the results page is open by default; click a
+heading to collapse it.
+
 ## 5. Choose a policy pack (step 4)
 
 Click **Deploy Policy Packs**. Each card says who it is for and when to use

@@ -87,6 +87,7 @@ See `docs/DLP_Assessment_Step_by_Step_Guide.docx` for the complete walkthrough.
 | `POST` | `/api/report/bypass` | Bypass / non-inspected traffic inventory (opens at `/report/bypass?id=`) |
 | `POST` | `/api/report/ssl-flow` | SSL Inspection Flow: per traffic class, which SSL rule decides and whether inline DLP can see it (opens at `/report/sslflow?id=`; exports via `/api/report/ssl-flow/export/{id}`) |
 | `GET` | `/report/flow` | Deployment Flow tab: the Deploy Policy Packs dependency diagram (templates → dictionaries → engines → rules) full width, with a details panel; fed live by the assessment tab |
+| `POST` | `/api/benchmarks` | Best-practice alignment per area (deviations with guidance and article), DLP programme stages, framework rows (incl. NIST CSF 2.0, GLBA) and journey, from an assessment report; `/api/benchmarks/export?format=markdown|json` downloads it |
 | `POST` | `/api/dlp-packs/{pack_id}/from-tenant` | Rebuild a pack from the tenant's own Anchor/Signal dictionaries (paired by name, one engine per language); preview unless `confirm` is true; writing is localhost-only |
 
 ### Request Body
