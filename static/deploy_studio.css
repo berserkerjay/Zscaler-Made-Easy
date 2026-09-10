@@ -338,4 +338,6 @@
   /* Light theme: status chips at 4.5:1 on their soft backgrounds. */
   body.theme-light .dz-chip.kind-policy, body.theme-light .st-ok .ic { color: #047857; }
   body.theme-light .dz-status.ready { color: #047857; }
+  body.theme-light .dz-status.warnings { color: #9a3412; }
+  body.theme-light .dz-step.is-done { color: #047857; }
   @media (prefers-reduced-motion: reduce) { .dz-edge.flow { animation: none; } .dz-progress .bar { animation: none; } .dz-flow-wrap svg { transition: none; } }
