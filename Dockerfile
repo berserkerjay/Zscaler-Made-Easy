@@ -4,23 +4,29 @@
 #   docker run --rm -p 127.0.0.1:8000:8000 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
 # The UI token is printed on the container's console (docker logs) and
 # written to /data/ui_token.txt; open http://localhost:8000/?token=<it>.
-FROM python:3.11.9-slim-bookworm AS base
+FROM python:3.11-slim-bookworm AS base
 
-# Pin the base image by digest for a reproducible build:
-#   docker pull python:3.11.9-slim-bookworm && docker inspect --format='{{index .RepoDigests 0}}' python:3.11.9-slim-bookworm
-# then replace the tag above with python@sha256:<digest>.
+# The floating 3.11 tag picks up the current Debian and Python security
+# releases on every build (the image scan in CI fails on a stale base).
+# To pin exactly for a reproducible build, replace the tag with the digest:
+#   docker pull python:3.11-slim-bookworm && docker inspect --format='{{index .RepoDigests 0}}' python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Debian security updates for the packages the base image ships (openssl, perl, ...).
+RUN apt-get update && apt-get -y --no-install-recommends upgrade && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system dlpcheck && useradd --system --gid dlpcheck --home-dir /app --shell /usr/sbin/nologin dlpcheck
 
 WORKDIR /app
 COPY requirements.lock requirements.txt ./
 # Hash-pinned install: every wheel must match requirements.lock.
-RUN python -m pip install --require-hashes --no-deps -r requirements.lock
+RUN python -m pip install --require-hashes --no-deps -r requirements.lock \
+ && python -m pip install --upgrade pip \
+ && python -m pip uninstall -y setuptools wheel   # build tools are not needed at runtime and carry their own CVEs
 
 COPY --chown=dlpcheck:dlpcheck . .
 RUN rm -rf .git tests *.zip && mkdir -p /data && chown dlpcheck:dlpcheck /data
