@@ -25,9 +25,17 @@
     return data;
   }
 
+  // Packs deploy detection only; containment channels are managed
+  // separately and never annotated as part of a pack (kept in step with
+  // pack_channels.CARVED_CHANNELS).
+  const CARVED = ['cloud_app', 'file_type', 'url', 'ssl'];
   function channels(c) {
     const keys = c && typeof c === 'object' && !Array.isArray(c) ? Object.keys(c) : (c || []);
-    return keys.map(k => `<span class="chip">${E(CH[k] || k)}</span>`).join(' ') || '<span class="dim">none</span>';
+    const dlp = keys.filter(k => !CARVED.includes(k));
+    const carved = keys.filter(k => CARVED.includes(k));
+    const chips = dlp.map(k => `<span class="chip">${E(CH[k] || k)}</span>`).join(' ');
+    const note = carved.length ? `<span class="chip carved" title="Detection only. ${carved.map(k => E(CH[k] || k)).join(', ')} are managed separately, not by this pack.">${carved.map(k => E(CH[k] || k)).join(' · ')} carved out</span>` : '';
+    return (chips + (chips && note ? ' ' : '') + note) || '<span class="dim">none</span>';
   }
 
   function renderLibrary(lib) {
