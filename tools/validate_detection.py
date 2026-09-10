@@ -420,7 +420,7 @@ def build_docs(rng, iteration: int) -> List[Dict[str, Any]]:
         for lang, item in json.load(open(fx, encoding="utf-8")).items():
             ex = list(item["examples"]); rng.shuffle(ex)
             docs.append({"pack": "zbp_source_code_baseline", "cls": lang, "positive": True, "text": "\n".join(ex[: max(10, len(ex) // 2)]), "source": "library examples"})
-    for pack, items in (("healthcare_phi_baseline", OTHER_SAMPLES["healthcare"]), ("cui_marking_baseline", OTHER_SAMPLES["cui"]), ("cjis_policy_pack", OTHER_SAMPLES["cjis"]),
+    for pack, items in (("healthcare_phi_baseline", OTHER_SAMPLES["healthcare"]), ("fed_policy_pack", OTHER_SAMPLES["cui"]), ("cjis_policy_pack", OTHER_SAMPLES["cjis"]),
                         ("zbp_enterprise_baseline", OTHER_SAMPLES["zbp"]), ("zbp_endpoint_dlp_baseline", OTHER_SAMPLES["endpoint"]), ("fed_policy_pack", OTHER_SAMPLES["zbp"])):
         for k, fn in items.items():
             docs.append({"pack": pack, "cls": k, "positive": True, "text": fn(rng)})
@@ -453,10 +453,10 @@ EXPECT = {
     },
     "zbp_source_code_baseline": {lang: [f"SRC-{lang}"] for lang in CODE_SAMPLES},
     "healthcare_phi_baseline": {"phi_record": ["E_HEALTHCARE_PHI"], "phi_bulk": ["E_PHI_BULK_EXPORT"]},
-    "cui_marking_baseline": {"cui_banner": ["CUI-Detect-All"], "fouo_legacy": ["CUI-Detect-All"]},
     "cjis_policy_pack": {"rap_sheet": ["CJIS Any-Signal Engine", "Criminal History / RAP Sheet Engine"], "ncic_query": ["CJIS Any-Signal Engine", "NCIC / III Data Engine"], "warrant": ["Warrant / Wanted-Person Engine"]},
     "zbp_enterprise_baseline": {"tax_forms": ["ZBP-Financial Information", "ZBP-US PII"], "private_key": ["ZBP-Private Keys"], "itar_legend": ["ZBP-ITAR Phrases"], "itar_mention": [], "tlp_red": ["ZBP-TLP Red"], "us_pii_export": ["ZBP-US PII"]},
-    "fed_policy_pack": {"tax_forms": ["Financial Information", "US PII"], "private_key": ["Private Keys"], "itar_legend": ["ITAR Phrases"], "itar_mention": [], "tlp_red": ["TLP Red"], "us_pii_export": ["US PII"]},
+    "fed_policy_pack": {"tax_forms": ["Financial Information", "US PII"], "private_key": ["Private Keys"], "itar_legend": ["ITAR Phrases"], "itar_mention": [], "tlp_red": ["TLP Red"], "us_pii_export": ["US PII"],
+                        "cui_banner": ["CUI-Detect-All"], "fouo_legacy": ["CUI-Detect-All", "FOUO Markings High Confidence", "FOUO Markings Medium Confidence"]},
     "zbp_endpoint_dlp_baseline": {"pci_usb": ["PCI - Low", "PCI - Medium"]},
 }
 

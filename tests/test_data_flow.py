@@ -36,7 +36,8 @@ CAC = [{"id": 30, "name": "AI no upload", "state": "ENABLED", "type": "AI_ML", "
        {"id": 31, "name": "File share allow all", "state": "ENABLED", "type": "FILE_SHARE", "cloudAppClasses": ["FILE_SHARE"], "actions": ["ALLOW_FILE_SHARE_UPLOAD", "ALLOW_FILE_SHARE_VIEW"]}]
 FTC = [{"id": 40, "name": "Block archives to file share", "state": "ENABLED", "filteringAction": "BLOCK", "operation": "UPLOAD", "fileTypes": ["FTCATEGORY_ZIP"], "cloudAppClasses": ["FILE_SHARE"]}]
 DLP = [{"id": 50, "name": "Bank-Customer PII-Monitor", "order": 1, "state": "ENABLED", "action": "ALLOW", "dlpEngines": [{"name": "Bank-Customer PII (Global)"}]},
-       {"id": 51, "name": "Bank-Payment Card Data-Bulk-Block", "order": 2, "state": "ENABLED", "action": "BLOCK", "cloudApplications": ["CHATGPT_AI"], "dlpEngines": [{"name": "Bank-Payment Card Data - Bulk"}]}]
+       {"id": 51, "name": "Bank-Payment Card Data-Bulk-Block", "order": 2, "state": "ENABLED", "action": "BLOCK", "cloudApplications": ["CHATGPT_AI"], "dlpEngines": [{"name": "Bank-Payment Card Data - Bulk"}],
+        "zscalerIncidentReceiver": True, "notificationTemplate": {"id": 9, "name": "DLP auditor template"}, "severity": "RULE_SEVERITY_HIGH"}]
 ROUTES = {
     "/zcc/webPolicies": APP_PROFILES, "/zcc/forwardingProfiles": FWD, "/zcc/trustedNetworks": [{"id": 1, "name": "HQ", "dnsServers": ["10.1.1.1"]}],
     "/zia/pacFiles": PAC, "/zia/sslInspectionRules": SSL, "/zia/urlFilteringRules": URL, "/zia/cloudApplicationRules": CAC,
@@ -69,23 +70,46 @@ def test_client_connector_readers_interpret_profiles_forwarding_and_pac():
 def test_trace_follows_every_hop_and_names_the_weak_points():
     rep = df.generate_data_flow_report(_client(), platform="windows")
     by = {(t["destination"]["class"], t["network"]): t for t in rep["traces"]}
-    # AI on Windows off network: tunnelled, decrypted, app control blocks upload, DLP enforces.
+    # AI on Windows off network: tunnelled, decrypted, app control blocks
+    # upload, DLP enforces and forwards to the Incident Receiver. Hops run
+    # in ZIA's enforcement order: firewall, SSL, threat protection, Cloud
+    # App Control before URL Filtering, File Type Control, DLP, incidents.
     t = by[("ai_ml", "off")]
     keys = [h["key"] for h in t["hops"]]
-    assert keys == ["zcc", "forwarding", "ssl", "url", "cac", "ftc", "dlp"] and t["reaches_zscaler"] and t["decrypted"]
-    assert next(h for h in t["hops"] if h["key"] == "cac")["status"] == "blocked"
-    assert next(h for h in t["hops"] if h["key"] == "dlp")["status"] == "enforce" and t["outcome"] == "enforce"
-    # Webmail: left encrypted by the exemption -> blind, high weak point at SSL.
+    assert keys == ["zcc", "forwarding", "firewall", "ssl", "threat", "cac", "url", "ftc", "dlp", "incident"] and t["reaches_zscaler"] and t["decrypted"]
+    hop = lambda k: next(h for h in t["hops"] if h["key"] == k)  # noqa: E731
+    assert hop("firewall")["status"] == "info" and hop("threat")["status"] == "info"
+    assert hop("cac")["status"] == "blocked"
+    # Cloud App Control matched, so URL Filtering is not applied to this transaction.
+    assert hop("url")["status"] == "na" and hop("url")["decided_by"]["name"] == "AI no upload"
+    assert hop("dlp")["status"] == "enforce" and t["outcome"] == "enforce"
+    assert "first match applies" in hop("dlp")["detail"]
+    inc = hop("incident")
+    assert inc["status"] == "pass" and inc["forwarders"] == ["Bank-Payment Card Data-Bulk-Block"] and inc["notifiers"] == ["Bank-Payment Card Data-Bulk-Block"]
+    assert "Workflow Automation" in inc["detail"] and inc["weak_point"] is None
+    rule = next(r for r in hop("dlp")["rules"] if r["name"] == "Bank-Payment Card Data-Bulk-Block")
+    assert rule["incident_receiver"] is True and rule["notification_template"] == "DLP auditor template"
+    # Webmail: left encrypted by the exemption -> blind, high weak point at SSL;
+    # nothing fires, so only the transaction log is written.
     w = by[("webmail", "off")]
     ssl = next(h for h in w["hops"] if h["key"] == "ssl")
     assert ssl["status"] == "blind" and ssl["decided_by"]["name"] == "No decrypt webmail" and w["outcome"] == "blind"
     assert w["weak_points"][0]["severity"] == "high" and w["weak_points"][0]["hop"] == "ssl"
-    # File share: URL allows, app control allows upload (weak), FTC blocks zips, DLP monitor only.
+    assert next(h for h in w["hops"] if h["key"] == "incident")["status"] == "none"
+    # File share: app control matches (allows upload: weak) so URL filtering
+    # is skipped, FTC blocks zips, DLP monitor only and no rule forwards
+    # incidents -> weak point at the incident hop.
     f = by[("file_share", "off")]
-    assert next(h for h in f["hops"] if h["key"] == "url")["decided_by"]["name"] == "Allow file sharing"
-    assert next(h for h in f["hops"] if h["key"] == "cac")["status"] == "warn"
-    assert next(h for h in f["hops"] if h["key"] == "ftc")["status"] == "blocked"
-    assert next(h for h in f["hops"] if h["key"] == "dlp")["status"] == "monitor"
+    fh = lambda k: next(h for h in f["hops"] if h["key"] == k)  # noqa: E731
+    assert fh("cac")["status"] == "warn" and fh("url")["status"] == "na" and "File share allow all" in fh("url")["detail"]
+    assert fh("ftc")["status"] == "blocked"
+    assert fh("dlp")["status"] == "monitor"
+    assert fh("incident")["status"] == "warn" and fh("incident")["weak_point"]["title"] == "Incidents stay in the logs"
+    # A destination no Cloud App Control rule targets falls through to URL Filtering.
+    g = df.trace_from_report(rep, "GAMBLING", "off", "windows")
+    gh = {h["key"]: h for h in g["hops"]}
+    assert gh["cac"]["status"] == "none" and gh["url"]["status"] == "blocked" and gh["url"]["decided_by"]["name"] == "Block gambling"
+    assert "dlp" not in gh and "incident" not in gh and g["outcome"] == "blocked"
     # On VPN the corp forwarding profile forwards nothing: never reaches Zscaler.
     v = by[("ai_ml", "vpn")]
     assert not v["reaches_zscaler"] and v["outcome"] == "bypassed" and v["hops"][1]["status"] == "bypass"

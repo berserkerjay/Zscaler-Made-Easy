@@ -376,8 +376,9 @@ def test_pack_from_terraform_converts_references():
 def test_shipped_baselines_are_discoverable_and_plan():
     from dlp_importer import discover_packs
     packs = {p["id"]: p for p in discover_packs()}
-    for pid in ("zbp_enterprise_baseline", "zbp_source_code_baseline", "healthcare_phi_baseline", "cui_marking_baseline"):
+    for pid in ("zbp_enterprise_baseline", "zbp_source_code_baseline", "healthcare_phi_baseline"):
         assert pid in packs and pd.baseline_meta(packs[pid], pid), pid
+    assert "fed_policy_pack" in packs and "cui_marking_baseline" not in packs   # CUI markings live in the Fed pack now
     # Healthcare PHI: engines reference the tenant's predefined medical dictionaries by name.
     phi = packs["healthcare_phi_baseline"]
     client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
@@ -421,40 +422,71 @@ def test_shipped_packs_ship_disabled_at_info():
                 assert pol.get("severity") == "RULE_SEVERITY_INFO", f"{p['id']}: {pol['name']} ships {pol.get('severity')}"
 
 
-def test_cui_marking_baseline_deploys_and_measures():
-    """28 marking dictionaries, three engines (full surface, block-grade,
-    caution-grade with an AND NOT decontrol exclusion), three web rules,
-    SSL decrypt and an AI upload block; the journey lists SSL first."""
+def _fed():
     from dlp_importer import discover_packs
+    return next(p for p in discover_packs() if p["id"] == "fed_policy_pack")
+
+
+def test_fed_pack_carries_the_cui_marking_design():
+    """The CUI Marking design lives inside the Fed pack: 31 marking
+    dictionaries in seven tiers, four CUI engines (full surface, contextual,
+    block-grade, caution-grade, every one with the AND NOT decontrol
+    exclusion) and three CUI web rules next to the V1.1 monitor rules. The
+    V1.1 CUI engines and the orphan AEA Medium engine are gone."""
+    fed = _fed()
+    dicts = json.load(open(f"{fed['dir']}/configs/dlp_dictionaries.json", encoding="utf-8"))
+    cui = [d for d in dicts if d["name"].startswith(("CUI-", "Legacy-"))]
+    assert len(cui) == 31 and len(dicts) == 72 and all(len(d["description"].encode()) <= 255 for d in dicts)
+    assert not any(d["name"].startswith(("CUI Registry", "CUI Portion", "Declassify Date", "CUI Contextual", "CUI Category")) for d in dicts)
+    engines = {e["name"]: e for e in json.load(open(f"{fed['dir']}/configs/dlp_engines.json", encoding="utf-8"))}
+    cui_e = {n: e for n, e in engines.items() if n.startswith("CUI-")}
+    assert set(cui_e) == {"CUI-Detect-All", "CUI-Detect-Contextual", "CUI-Detect-Block-Grade", "CUI-Detect-Caution-Grade"}
+    assert not any(n.startswith("CUI Engine") for n in engines) and "AEA Medium Confidence" not in engines
+    assert all("AND NOT" in e["expression"] and "(D:CUI-Decontrol-Context > 0)" in e["expression"] for e in cui_e.values())
+    assert all(p["phrase"].startswith('"') for d in cui for p in d["phrases"] if " " in p["phrase"].strip('"'))  # exact, not fuzzy
+    assert "D:CUI-Basic-Bare" not in cui_e["CUI-Detect-Block-Grade"]["expression"]      # never wired to block
+    assert "(D:CUI-Basic-Bare > 2)" in cui_e["CUI-Detect-Caution-Grade"]["expression"]  # min 3 unique
+    assert "(D:CUI-Declassify-Date > 0)" in cui_e["CUI-Detect-Caution-Grade"]["expression"]
+    # The contextual engine (V1.1 low-confidence signal) needs three marking-guide phrases plus a category name.
+    assert cui_e["CUI-Detect-Contextual"]["expression"].startswith("(((D:CUI-Contextual-Phrases > 2) AND (D:CUI-Category-Phrases > 0)))")
+    assert "CUI-Category-Phrases" not in cui_e["CUI-Detect-Block-Grade"]["expression"] + cui_e["CUI-Detect-Caution-Grade"]["expression"]
+    rules = {r["name"]: r for r in json.load(open(f"{fed['dir']}/configs/dlp_policies.json", encoding="utf-8")) if not r.get("channel_mirror")}
+    assert rules["CUI-Monitor-All"]["engines"] == ["CUI-Detect-All", "CUI-Detect-Contextual"]
+    assert rules["CUI-Block-Marked-Documents"]["engines"] == ["CUI-Detect-Block-Grade"]
+    assert "Z-Controlled Unclassified Information-Monitor" not in rules and len(rules) == 12
+    # Every dictionary an engine names is shipped by the pack or is a tenant predefined one.
+    shipped = {d["name"] for d in dicts}
+    import re
+    for e in engines.values():
+        for ref in re.findall(r"D:([^>]+?)\s*>", e["expression"]):
+            assert ref.strip() in shipped or ref.strip().isupper(), f"{e['name']} references {ref!r}"
+
+
+def test_fed_pack_cui_rules_deploy_and_measure():
     from test_pack_channels import add_control_services
-    cui = next(p for p in discover_packs() if p["id"] == "cui_marking_baseline")
-    dicts = json.load(open(f"{cui['dir']}/configs/dlp_dictionaries.json", encoding="utf-8"))
-    assert len(dicts) == 28 and all(len(d["description"].encode()) <= 255 for d in dicts)
-    engines = {e["name"]: e for e in json.load(open(f"{cui['dir']}/configs/dlp_engines.json", encoding="utf-8"))}
-    assert set(engines) == {"CUI-Detect-All", "CUI-Detect-Block-Grade", "CUI-Detect-Caution-Grade"}
-    assert all("AND NOT" in e["expression"] and "(D:CUI-Decontrol-Context > 0)" in e["expression"] for e in engines.values())
-    assert all(p["phrase"].startswith('"') for d in dicts for p in d["phrases"] if " " in p["phrase"].strip('"'))  # exact, not fuzzy
-    assert "D:CUI-Basic-Bare" not in engines["CUI-Detect-Block-Grade"]["expression"]      # never wired to block
-    assert "(D:CUI-Basic-Bare > 2)" in engines["CUI-Detect-Caution-Grade"]["expression"]  # min 3 unique
+    fed = _fed()
     client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
                                                             casb_tenant("Acme OneDrive", "ONEDRIVE", 504)]))
-    client.zia.dlp_dictionary.items = []
-    rep = pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True)
-    assert rep["status"] == "ready", rep["blockers"] + rep["warnings"]
-    assert rep["tenant_mode"]["mode"] == "greenfield"
-    res = pd.apply(client, [{"id": cui["id"], "dir": cui["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    # 28 dicts + 3 engines + 3 rules per channel across web, endpoint, saas, email.
-    assert res["summary"] == {"created": 43}
+    predefined = ["DISEASES_LEAKAGE", "DRUGS_LEAKAGE", "FINANCIAL", "MEDICAL", "ML_CORPORATE_FINANCE_LEAKAGE", "ML_MEDICAL_DOC_LEAKAGE", "ML_TAX_LEAKAGE",
+                  "SSN", "USITIN_LEAKAGE", "USDL_LEAKAGE", "ABA_LEAKAGE", "CREDIT_CARD"]
+    client.zia.dlp_dictionary.items = [Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(predefined)]
+    rep = pd.preflight(client, [{"id": fed["id"], "dir": fed["dir"]}], writes_enabled=True)
+    # "warnings": the V1.1 confidence tweaks raise predefined dictionaries to high confidence.
+    assert rep["status"] in ("ready", "warnings"), rep["blockers"] + rep["warnings"]
+    res = pd.apply(client, [{"id": fed["id"], "dir": fed["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
+    # 72 dicts + 17 engines + 12 rules per channel across web, endpoint, saas, email
+    # (plus the V1.1 confidence tweaks modifying two predefined dictionaries).
+    assert res["summary"]["created"] == 72 + 17 + 48
     full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
-    assert "D:" not in full and full.count(".S") == 28 and full.endswith("AND NOT (D9028.S > 0)")
+    assert "D:" not in full and full.count(".S") == 28 and "AND NOT (D" in full
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")
     assert prox["proximity"] == 300 and prox["match"] == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
     rules = {r["name"]: r for r in client.zia.dlp_web_rules.added}
     assert rules["CUI-Block-Marked-Documents"]["action"] == "BLOCK" and rules["CUI-Caution-Weak-Markings"]["action"] == "CONFIRM"
-    assert all(r["state"] == "DISABLED" and r["ocr_enabled"] for r in rules.values())
-    j = pd.journey(pd.preflight(client, [{"id": cui["id"], "dir": cui["dir"]}], writes_enabled=True))["baselines"][0]
-    # Detection only: the pack ships no SSL rule now; the next step is to enable a CUI DLP rule.
-    assert j["stage"] == 2 and any(n.startswith("Enable rule 'CUI-") for n in j["next_steps"])
+    assert all(r["state"] == "DISABLED" for r in rules.values()) and rules["CUI-Monitor-All"]["ocr_enabled"]
+    # Re-running preflight finds everything present: nothing left to create.
+    again = pd.preflight(client, [{"id": fed["id"], "dir": fed["dir"]}], writes_enabled=True)
+    assert not any(i["status"] == pd.CREATE for i in again["items"])
 
 
 def test_dictionary_limits_block_only_the_offending_dictionary(tmp_path):
@@ -493,8 +525,8 @@ def test_phrase_match_type_and_engine_count_limits(tmp_path):
 
 
 def test_cui_proximity_dictionaries_anchor_pattern_to_phrase():
-    from dlp_importer import discover_packs, build_dict_kwargs
-    cui = next(p for p in discover_packs() if p["id"] == "cui_marking_baseline")
+    from dlp_importer import build_dict_kwargs
+    cui = _fed()
     dicts = {d["name"]: d for d in json.load(open(f"{cui['dir']}/configs/dlp_dictionaries.json", encoding="utf-8"))}
     for name in [n for n in dicts if n.startswith("CUI-Prox-")] + ["CUI-Designation-Indicator"]:
         d = dicts[name]

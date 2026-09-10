@@ -4,6 +4,16 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-11
+
+### Packs
+- Fed Policy Pack 2.0 absorbs the CUI Marking Baseline: the 28 tiered marking dictionaries and their block/caution/monitor rules now ship inside the Fed pack, enhanced with the V1.1 contextual phrases, Registry category names and declassify-date patterns as tier 7 (`CUI-Detect-Contextual`, monitor only). The V1.1 `CUI Engine (High/Medium/Low Confidence)` engines, their eight dictionaries and the orphan `AEA Medium Confidence` engine are gone. `cui_marking_baseline` is removed; a tenant that deployed it keeps its objects and the Fed pack adopts them by name.
+- `tools/pack_from_design.py` can regenerate a design that lives inside a hand-authored pack (`"designs"` in `pack.json`).
+
+### Traffic Flow & Gaps
+- The path now follows ZIA's policy enforcement order (Zscaler, *Understanding Policy Enforcement*): Cloud Firewall, SSL inspection, threat protection, Cloud App Control before URL Filtering (URL Filtering is marked not evaluated when an app-control rule matched), File Type Control, Web DLP, then a "Logs & incidents" hop showing which rules forward to the Zscaler Incident Receiver / ICAP and notify an auditor, with a weak point when none do.
+- A reference diagram at the top of the report, "How ZIA processes a policy: device → incident", in the same style as the traced paths, with an explanation per stage through Nanolog/NSS, the Incident Receiver and Workflow Automation.
+
 ## 2026-09-10
 
 ### Security

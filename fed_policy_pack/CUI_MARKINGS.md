@@ -1,4 +1,4 @@
-# CUI — dictionary notes
+# Fed Policy Pack: CUI markings (tiers 1-7) — dictionary notes
 
 Build metadata from the design file (tier, intended action, minimum match count, notes). The pack configs carry the API fields only; regenerate with `python tools/pack_from_design.py <pack_dir>`.
 
@@ -38,23 +38,17 @@ Build metadata from the design file (tier, intended action, minimum match count,
 | Legacy-Distribution-Statements | 4 | Block | 1 | Very high signal on CTI-bearing engineering documents. |
 | CUI-Designation-Indicator | 5 | Caution | 3 | Rebuilt with a CUI pattern anchor - a phrases-only dictionary has nothing for proximity to measure from. ANY_PATTERN_WITH_ANY_PHRASE gives anchor + at least one label; the 3-of-6 requirement is enforced by the engine threshold (> 2), not the dictionary. |
 | CUI-Decontrol-Context | 6 | Exclude | 1 | DOCUMENT-SCOPED exclusion. A genuine CUI document that cites its own marking guide will suppress. Record this in the residual-risk statement. |
+| CUI-Declassify-Date | 5 | Caution | 1 | From Zscaler Fed Policy Pack V1.1 (Declassify Date Pattern High + Medium). A decontrol date alone is a caution-grade signal; it sits with the designation block. |
+| CUI-Contextual-Phrases | 7 |  |  | From Zscaler Fed Policy Pack V1.1 (CUI Contextual Phrases). No intended action: only the CUI-Detect-Contextual engine uses it, with a minimum of three distinct phrases. |
+| CUI-Category-Phrases | 7 |  |  | From Zscaler Fed Policy Pack V1.1 (CUI Category Phrase). Ordinary words on their own; only meaningful next to contextual phrases, never wired to block or caution. |
 
 ## Engines
 
 - **CUI-Detect-All**: Full CUI detection surface: banner grammar, category tokens, legacy markings, malformed-marking proximity, and designation blocks.
+- **CUI-Detect-Contextual**: Content-based CUI signal: three or more distinct marking-guide phrases together with a Registry category name, minus the decontrol exclusion. Monitor only.
 - **CUI-Detect-Block-Grade**: High-precision signals intended to BLOCK (16 dictionaries with their minimum counts), minus the exclusion dictionaries.
-- **CUI-Detect-Caution-Grade**: Lower-precision signals intended to CAUTION (11 dictionaries with their minimum counts), minus the exclusion dictionaries. Never wire to BLOCK.
+- **CUI-Detect-Caution-Grade**: Lower-precision signals intended to CAUTION (12 dictionaries with their minimum counts), minus the exclusion dictionaries. Never wire to BLOCK.
 
 CUI-Detect-All design note: Split into two nested Any groups solely because of the 16-dictionary-per-operator ceiling, not for logical reasons - the two groups are ORed and behave as one set. Validate the three-level nesting renders in Engine Builder before relying on it; if the builder rejects the depth, restructure as root Any(OR) over the two groups and move the decontrol exclusion into each group.
 
-## Rules
-
-| Rule | Engine | Action | Purpose |
-|---|---|---|---|
-| CUI-Monitor-All | CUI-Detect-All | ALLOW | Size incident volume first |
-| CUI-Block-Marked-Documents | CUI-Detect-Block-Grade | BLOCK | High-precision markings |
-| CUI-Caution-Weak-Markings | CUI-Detect-Caution-Grade | CONFIRM | Low-precision signals; user confirms |
-| CUI-SSL-Decrypt-File-Share-Webmail-AI | — | DECRYPT | Make HTTPS uploads inspectable |
-| CUI-CAC-AI-No-Upload | — | Cloud App Control | Block uploads to AI apps outright |
-
-All rules ship DISABLED at INFO severity.
+CUI-Detect-Contextual design note: Replaces the Fed Policy Pack V1.1 'CUI Engine (Low Confidence)'. It catches documents that discuss controlled categories without carrying a well-formed marking; expect it to be the noisiest CUI engine, which is why only CUI-Monitor-All carries it.

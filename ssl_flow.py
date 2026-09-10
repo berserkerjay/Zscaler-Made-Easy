@@ -194,6 +194,7 @@ def normalize_dlp_rule(r: Dict[str, Any]) -> Dict[str, Any]:
     action = _action_type(r)
     state = str(_f(r, "state", default="ENABLED") or "ENABLED").upper()
     name = str(_f(r, "name", default="") or "").strip() or f"Rule {r.get('id')}"
+    ref = lambda *keys: _ref_name(_f(r, *keys, default=None))  # noqa: E731
     return {
         "id": r.get("id"),
         "name": name,
@@ -210,7 +211,21 @@ def normalize_dlp_rule(r: Dict[str, Any]) -> Dict[str, Any]:
         "scope": _scope(r),
         "parent_rule": _f(r, "parent_rule", "parentRule", default=None),
         "protocols": _upper(_names(_f(r, "protocols", default=[]))),
+        # What happens after a match: the incident and notification path.
+        "incident_receiver": _bool(_f(r, "zscaler_incident_receiver", "zscalerIncidentReceiver", default=False)),
+        "icap_server": ref("icap_server", "icapServer"),
+        "notification_template": ref("notification_template", "notificationTemplate"),
+        "auditor": ref("auditor"),
+        "external_auditor_email": _f(r, "external_auditor_email", "externalAuditorEmail", default=None) or None,
+        "severity": str(_f(r, "severity", default="") or "").upper() or None,
     }
+
+
+def _ref_name(v: Any) -> Optional[str]:
+    """A referenced object ({id, name}), a bare name, or nothing → its name."""
+    if isinstance(v, dict):
+        return str(v.get("name") or v.get("id") or "") or None
+    return (str(v) if v not in (None, "", 0) else None)
 
 
 def _sort_key(rule: Dict[str, Any]) -> Tuple[int, int, int]:

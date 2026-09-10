@@ -133,30 +133,58 @@ def convert(design: dict, prefix: str) -> tuple[list, list, str]:
     return dicts, engines, "".join(lines)
 
 
+def _write_notes(path: str, readme: str) -> None:
+    tail = ""
+    if os.path.exists(path):
+        old = open(path, encoding="utf-8").read()
+        if "\n## Rules\n" in old:
+            tail = "\n## Rules\n" + old.split("\n## Rules\n", 1)[1]
+    open(path, "w", encoding="utf-8").write(readme + tail)
+
+
+def _merge(existing: list, generated: list, owns: list) -> list:
+    """Replace the entries a design owns (by name prefix) and keep the rest
+    of a hand-authored pack untouched, so one pack can carry several
+    designs next to its own dictionaries and engines."""
+    kept = [o for o in existing if not any(o["name"].startswith(p) for p in owns)]
+    return kept + generated
+
+
 def main(argv: list) -> int:
     if len(argv) < 2:
         print(__doc__)
         return 2
     pack_dir = argv[1]
-    design_path = argv[2] if len(argv) > 2 else os.path.join(pack_dir, "design.json")
-    design = json.load(open(design_path, encoding="utf-8"))
     meta_path = os.path.join(pack_dir, "pack.json")
-    prefix = "PACK"
-    if os.path.exists(meta_path):
-        meta = json.load(open(meta_path, encoding="utf-8"))
-        prefix = (meta.get("baseline") or {}).get("prefix", "").rstrip("-") or meta.get("name", "PACK").split()[0]
-    dicts, engines, readme = convert(design, prefix)
+    meta = json.load(open(meta_path, encoding="utf-8")) if os.path.exists(meta_path) else {}
     cfg = os.path.join(pack_dir, "configs")
     os.makedirs(cfg, exist_ok=True)
+    # A pack can declare the designs it carries in pack.json:
+    #   "designs": [{"file": "cui_design.json", "prefix": "CUI", "owns": ["CUI-", "Legacy-"], "notes": "CUI_MARKINGS.md"}]
+    # Each design then replaces only the dictionaries/engines it owns and
+    # writes its notes file; the pack's other objects are left alone.
+    designs = meta.get("designs") if len(argv) < 3 else None
+    if designs:
+        dp, ep = os.path.join(cfg, "dlp_dictionaries.json"), os.path.join(cfg, "dlp_engines.json")
+        all_d = json.load(open(dp, encoding="utf-8")) if os.path.exists(dp) else []
+        all_e = json.load(open(ep, encoding="utf-8")) if os.path.exists(ep) else []
+        for spec in designs:
+            design = json.load(open(os.path.join(pack_dir, spec["file"]), encoding="utf-8"))
+            dicts, engines, readme = convert(design, spec.get("prefix") or "PACK")
+            owns = spec.get("owns") or [f"{spec.get('prefix', 'PACK')}-"]
+            all_d, all_e = _merge(all_d, dicts, owns), _merge(all_e, engines, owns)
+            _write_notes(os.path.join(pack_dir, spec.get("notes") or "README.md"), readme)
+            print(f"{pack_dir}: design {spec['file']} -> {len(dicts)} dictionaries, {len(engines)} engines merged")
+        json.dump(all_d, open(dp, "w", encoding="utf-8"), indent=2)
+        json.dump(all_e, open(ep, "w", encoding="utf-8"), indent=2)
+        return 0
+    design_path = argv[2] if len(argv) > 2 else os.path.join(pack_dir, "design.json")
+    design = json.load(open(design_path, encoding="utf-8"))
+    prefix = (meta.get("baseline") or {}).get("prefix", "").rstrip("-") or meta.get("name", "PACK").split()[0]
+    dicts, engines, readme = convert(design, prefix)
     json.dump(dicts, open(os.path.join(cfg, "dlp_dictionaries.json"), "w", encoding="utf-8"), indent=2)
     json.dump(engines, open(os.path.join(cfg, "dlp_engines.json"), "w", encoding="utf-8"), indent=2)
-    existing = os.path.join(pack_dir, "README.md")
-    tail = ""
-    if os.path.exists(existing):
-        old = open(existing, encoding="utf-8").read()
-        if "\n## Rules\n" in old:
-            tail = "\n## Rules\n" + old.split("\n## Rules\n", 1)[1]
-    open(existing, "w", encoding="utf-8").write(readme + tail)
+    _write_notes(os.path.join(pack_dir, "README.md"), readme)
     print(f"{pack_dir}: {len(dicts)} dictionaries, {len(engines)} engines -> configs/, README.md")
     return 0
 

@@ -148,25 +148,6 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "Z-Controlled Unclassified Information-Monitor",
-    "description": "",
-    "action": "ALLOW",
-    "state": "DISABLED",
-    "rank": 0,
-    "engines": [
-      "CUI Engine (High Confidence)",
-      "CUI Engine (Medium Confidence)"
-    ],
-    "protocols": [
-      "WEBSOCKETSSL_RULE",
-      "WEBSOCKET_RULE",
-      "FTP_RULE",
-      "HTTPS_RULE",
-      "HTTP_RULE"
-    ],
-    "severity": "RULE_SEVERITY_INFO"
-  },
-  {
     "name": "Z-Private Keys-Monitor",
     "description": "",
     "action": "ALLOW",
@@ -183,6 +164,61 @@
       "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "CUI-Block-Marked-Documents",
+    "description": "Inline Web DLP: block uploads carrying high-precision CUI markings (banners, category tokens, legacy FOUO/LES/SBU, distribution statements) via CUI-Detect-Block-Grade. Ships DISABLED at INFO; enable after reviewing monitor incidents from CUI-Monitor-All.",
+    "action": "BLOCK",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CUI-Detect-Block-Grade"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "CUI-Caution-Weak-Markings",
+    "description": "Inline Web DLP: caution (user must confirm) on lower-precision CUI signals: bare CUI, standalone LDCs, malformed markings, designation blocks, via CUI-Detect-Caution-Grade. Never BLOCK on these.",
+    "action": "CONFIRM",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CUI-Detect-Caution-Grade"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
+    "name": "CUI-Monitor-All",
+    "description": "Inline Web DLP: monitor-only rule over the full CUI-Detect-All surface plus the content-based CUI-Detect-Contextual signal. Enable this first to size incident volume and tune before enabling the block and caution rules above it.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CUI-Detect-All",
+      "CUI-Detect-Contextual"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
   },
   {
     "name": "Z-Atomic Energy Act [Endpoint]",
@@ -669,68 +705,6 @@
     "rank": 7
   },
   {
-    "name": "Z-Controlled Unclassified Information [Endpoint]",
-    "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"Z-Controlled Unclassified Information-Monitor\" (CUI Engine (High Confidence), CUI Engine (Medium Confidence)). Monitor-only; enable after reviewing incidents.",
-    "action": "ALLOW",
-    "state": "DISABLED",
-    "severity": "RULE_SEVERITY_INFO",
-    "engines": [
-      "CUI Engine (High Confidence)",
-      "CUI Engine (Medium Confidence)"
-    ],
-    "channel_mirror": true,
-    "device_trust_levels": [
-      "UNKNOWN_DEVICETRUSTLEVEL",
-      "LOW_TRUST",
-      "MEDIUM_TRUST",
-      "HIGH_TRUST"
-    ],
-    "user_risk_score_levels": [
-      "LOW",
-      "MEDIUM",
-      "HIGH",
-      "CRITICAL"
-    ],
-    "without_content_inspection": false,
-    "eun_enabled": false,
-    "rank": 7
-  },
-  {
-    "name": "Z-Controlled Unclassified Information [SaaS]",
-    "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"Z-Controlled Unclassified Information-Monitor\" (CUI Engine (High Confidence), CUI Engine (Medium Confidence)). Monitor-only; enable after reviewing incidents.",
-    "action": "OFLCASB_DLP_REPORT_INCIDENT",
-    "state": "DISABLED",
-    "severity": "RULE_SEVERITY_INFO",
-    "engines": [
-      "CUI Engine (High Confidence)",
-      "CUI Engine (Medium Confidence)"
-    ],
-    "channel_mirror": true,
-    "saas_type": "OFLCASB_DLP_FILE",
-    "tenants": "any",
-    "collaboration_scope": [
-      "ANY"
-    ],
-    "rank": 7
-  },
-  {
-    "name": "Z-Controlled Unclassified Information [Email]",
-    "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"Z-Controlled Unclassified Information-Monitor\" (CUI Engine (High Confidence), CUI Engine (Medium Confidence)). Monitor-only; enable after reviewing incidents.",
-    "action": "ALLOW",
-    "state": "DISABLED",
-    "severity": "RULE_SEVERITY_INFO",
-    "engines": [
-      "CUI Engine (High Confidence)",
-      "CUI Engine (Medium Confidence)"
-    ],
-    "channel_mirror": true,
-    "tenants": "any",
-    "rank": 7
-  },
-  {
     "name": "Z-Private Keys [Endpoint]",
     "channel": "endpoint",
     "description": "Endpoint DLP: the same detection as the inline rule \"Z-Private Keys-Monitor\" (Private Keys). Monitor-only; enable after reviewing incidents.",
@@ -784,6 +758,186 @@
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "Private Keys"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "CUI-Block-Marked-Documents [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Block-Grade"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "CUI-Block-Marked-Documents [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Block-Grade"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "CUI-Block-Marked-Documents [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Block-Grade"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "CUI-Caution-Weak-Markings [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Caution-Grade"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "CUI-Caution-Weak-Markings [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Caution-Grade"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "CUI-Caution-Weak-Markings [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Caution-Grade"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "CUI-Monitor-All [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Monitor-All\" (CUI-Detect-All, CUI-Detect-Contextual). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-All",
+      "CUI-Detect-Contextual"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "CUI-Monitor-All [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-All\" (CUI-Detect-All, CUI-Detect-Contextual). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-All",
+      "CUI-Detect-Contextual"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "CUI-Monitor-All [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"CUI-Monitor-All\" (CUI-Detect-All, CUI-Detect-Contextual). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-All",
+      "CUI-Detect-Contextual"
     ],
     "channel_mirror": true,
     "tenants": "any",

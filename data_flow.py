@@ -445,7 +445,16 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     if not reaches_zscaler:
         hops.append(_hop("zia", "ZIA", "skipped", None, "Never reached: nothing below applies to this traffic.", None))
     else:
-        # 4. SSL inspection
+        # Inside ZIA the order follows Zscaler's "Understanding Policy
+        # Enforcement": Firewall Control first, then SSL inspection, threat
+        # protection, Cloud App Control (which takes precedence over URL
+        # Filtering), URL Filtering, File Type Control and finally DLP;
+        # the first violation ends the transaction.
+        # 4. Cloud Firewall (not read by this tool: informational)
+        hops.append(_hop("firewall", "Cloud Firewall", "info", None,
+                         "Firewall Control rules are evaluated first and hand web traffic (HTTP/HTTPS and any other port the tunnel forwards) to the web proxy. Not read by this tool; a firewall block would end the transaction here.", None))
+
+        # 5. SSL inspection
         cats = dest["categories"]; apps = dest["applications"]
         klass = {"catch_all": dest["kind"] == "class" and dest.get("class") == "general", "key": dest.get("class") or "custom"}
         matching = [(r, _matches(r, klass, cats, apps)) for r in zia["ssl"] if r["enabled"]]
@@ -470,27 +479,18 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                              _weak("high" if dest.get("class") not in ("privacy",) else "info", "Left encrypted",
                                    "Move a DECRYPT rule above this exemption, or narrow the exemption to the categories it is meant for.")))
 
-        # 5. URL filtering
+        # 6. Threat protection (not read by this tool: informational)
         if ends != "ssl":
-            url_rules = sorted([r for r in zia["url"] if r["enabled"]], key=lambda r: (r.get("order") is None, r.get("order") or 0))
-            hit = next(((r, m) for r in url_rules for m in [_generic_matches(r, dest)] if m and not r["scoped"]), None)
-            if hit:
-                r, m = hit
-                if r["action"] in BLOCK_ACTIONS:
-                    ends = "url"
-                    hops.append(_hop("url", "URL filtering", "blocked", {"name": r["name"], "id": r["id"], "order": r["order"]},
-                                     f"'{r['name']}' blocks it (matched on {m}).", None))
-                else:
-                    hops.append(_hop("url", "URL filtering", "pass" if r["action"] in ("ALLOW",) else "warn", {"name": r["name"], "id": r["id"], "order": r["order"]},
-                                     f"'{r['name']}' → {r['action'] or 'ALLOW'} (matched on {m})" + (f", methods {', '.join(r['request_methods'])}" if r["request_methods"] else "") + ".",
-                                     None))
-            else:
-                hops.append(_hop("url", "URL filtering", "pass", None, "No URL filtering rule matches; the default action applies (ALLOW unless the default rule was changed). URL Filtering is a data security control too: it can block or caution posts to a category, and can gate on a user risk profile.", None))
+            hops.append(_hop("threat", "Threat protection", "info", None,
+                             "Security exceptions, Advanced Threat Protection (reputation), Malware Protection and Sandbox are evaluated around the data controls; a violation stops the transaction before DLP ever sees it. Not read by this tool.", None))
 
-        # 6. Cloud App Control
-        if ends not in ("ssl", "url"):
+        # 7. Cloud App Control: evaluated before URL Filtering and, when a
+        # rule matches the application, URL Filtering is not applied.
+        cac_hit = None
+        if ends != "ssl":
             cac = [(r, _cac_matches(r, dest)) for r in zia["cac"] if r["enabled"]]
             cac = [(r, m) for r, m in cac if m]
+            cac_hit = cac[0][0] if cac else None
             if not decrypted and cac:
                 hops.append(_hop("cac", "Cloud App Control", "blind", {"name": cac[0][0]["name"], "id": cac[0][0]["id"]},
                                  f"{len(cac)} rule(s) target this application ('{cac[0][0]['name']}' …) but without decryption Zscaler cannot tell upload from browse: the per-action controls do not apply.",
@@ -507,10 +507,32 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                                      f"'{r['name']}' (matched on {m}) allows {', '.join(a.replace('ALLOW_', '').lower() for a in allows) or 'the actions it lists'}: uploads are not stopped here, so content inspection is the last line. Cloud App Control can also gate on a user risk profile (risk score levels).",
                                      _weak("medium", "Uploads allowed by app control", "Block upload/share on personal instances of this application, or use tenancy restrictions.") if allows else None, actions=r["actions"]))
             else:
-                hops.append(_hop("cac", "Cloud App Control", "none", None, "No Cloud App Control rule targets this application; every action is allowed unless URL filtering or DLP stops it. Cloud App Control is a data security control: it can block upload/share/post per application, and can gate on a user risk profile (risk score levels).",
+                hops.append(_hop("cac", "Cloud App Control", "none", None, "No Cloud App Control rule targets this application, so URL Filtering decides; every action is allowed unless URL filtering or DLP stops it. Cloud App Control is a data security control: it can block upload/share/post per application, and can gate on a user risk profile (risk score levels).",
                                  _weak("medium", "No app-level control", "Add a Cloud App Control rule for this application class (block upload/share on unsanctioned instances); it can also gate on a user risk profile.") if dest["app_classes"] or dest["applications"] else None))
 
-        # 7. File Type Control
+        # 8. URL filtering: first matching rule in order; skipped when Cloud
+        # App Control already matched the application.
+        if ends != "ssl":
+            if cac_hit:
+                hops.append(_hop("url", "URL filtering", "na", {"name": cac_hit["name"], "id": cac_hit["id"]},
+                                 f"Not evaluated: Cloud App Control rule '{cac_hit['name']}' matched this application, and Cloud App Control takes precedence over URL Filtering for the transaction.", None))
+            else:
+                url_rules = sorted([r for r in zia["url"] if r["enabled"]], key=lambda r: (r.get("order") is None, r.get("order") or 0))
+                hit = next(((r, m) for r in url_rules for m in [_generic_matches(r, dest)] if m and not r["scoped"]), None)
+                if hit:
+                    r, m = hit
+                    if r["action"] in BLOCK_ACTIONS:
+                        ends = "url"
+                        hops.append(_hop("url", "URL filtering", "blocked", {"name": r["name"], "id": r["id"], "order": r["order"]},
+                                         f"'{r['name']}' blocks it (matched on {m}); first matching rule in order.", None))
+                    else:
+                        hops.append(_hop("url", "URL filtering", "pass" if r["action"] in ("ALLOW",) else "warn", {"name": r["name"], "id": r["id"], "order": r["order"]},
+                                         f"'{r['name']}' → {r['action'] or 'ALLOW'} (matched on {m}; first matching rule in order)" + (f", methods {', '.join(r['request_methods'])}" if r["request_methods"] else "") + ".",
+                                         None))
+                else:
+                    hops.append(_hop("url", "URL filtering", "pass", None, "No URL filtering rule matches; the default action applies (ALLOW unless the default rule was changed). URL Filtering is a data security control too: it can block or caution posts to a category, and can gate on a user risk profile.", None))
+
+        # 9. File Type Control
         if ends not in ("ssl", "url"):
             ftc = [(r, _generic_matches(r, dest)) for r in zia["ftc"] if r["enabled"] and r["operation"] in ("UPLOAD", "", "ANY")]
             ftc = [(r, m) for r, m in ftc if m]
@@ -521,9 +543,9 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
             else:
                 hops.append(_hop("ftc", "File Type Control", "none", None, "No File Type Control rule limits uploads here; bulk formats (spreadsheets, archives, databases) rely on DLP alone. File Type Control is a data security control: allow, caution or block whole file categories on upload/download.", None))
 
-        # 8. Inline Web DLP
+        # 10. Inline Web DLP
+        covering: List[Dict[str, Any]] = []
         if ends not in ("ssl", "url"):
-            covering = []
             for r in zia["dlp"]:
                 if not r["enabled"]:
                     continue
@@ -542,9 +564,28 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 status = "enforce" if enforcing else "monitor"
                 hops.append(_hop("dlp", "Inline Web DLP", status, {"name": covering[0]["name"], "id": covering[0]["id"]},
                                  f"{len(covering)} rule(s) see this content: " + ", ".join(f"{r['name']} ({r['action']})" for r in covering[:5]) + ("…" if len(covering) > 5 else "")
-                                 + (" None inspects content (without-content-inspection set)." if not content else ""),
+                                 + (" None inspects content (without-content-inspection set)." if not content else "")
+                                 + " Rules are evaluated in order and the first match applies, unless 'Evaluate all DLP rules' is on, in which case the most restrictive action wins and order only breaks ties.",
                                  _weak("low", "Monitor only", "Once tuned, move the high-confidence rules to BLOCK.") if not enforcing else (_weak("medium", "Rules run without content inspection", "Clear the without-content-inspection flag on at least one rule with an engine.") if not content else None),
-                                 rules=[{"name": r["name"], "action": r["action"], "enforcing": r["enforcing"], "engines": r.get("engines") or []} for r in covering]))
+                                 rules=[{"name": r["name"], "action": r["action"], "enforcing": r["enforcing"], "engines": r.get("engines") or [],
+                                         "incident_receiver": bool(r.get("incident_receiver")), "icap_server": r.get("icap_server"), "notification_template": r.get("notification_template")} for r in covering]))
+
+        # 11. After the match: logs, the incident receiver and Workflow Automation
+        if ends not in ("ssl", "url"):
+            dlp_hop = next((h for h in hops if h["key"] == "dlp"), None)
+            if not dlp_hop or dlp_hop["status"] in ("blind", "none"):
+                hops.append(_hop("incident", "Logs & incidents", "none", None,
+                                 "Only the web transaction log is written (Nanolog → Web Insights, and NSS / Cloud NSS feeds to your SIEM): no DLP rule fires here, so there is no DLP log line, no copy to the Incident Receiver and no Workflow Automation incident.", None))
+            else:
+                forwarders = [r for r in covering if r.get("incident_receiver") or r.get("icap_server")]
+                notifiers = [r for r in covering if r.get("notification_template") or r.get("auditor") or r.get("external_auditor_email")]
+                hops.append(_hop("incident", "Logs & incidents", "pass" if forwarders else "warn",
+                                 {"name": forwarders[0]["name"], "id": forwarders[0]["id"]} if forwarders else None,
+                                 f"A match writes a DLP log (rule, engine, dictionaries and counts, user, URL, file) to Nanolog, visible in Web Insights and streamed by NSS / Cloud NSS to your SIEM. "
+                                 f"{len(forwarders)} of {len(covering)} rule(s) also send the transaction and the file to a Zscaler Incident Receiver or ICAP server, which is what Workflow Automation turns into an incident (triage, notifications, resolution); "
+                                 f"{len(notifiers)} notify an auditor through a notification template.",
+                                 None if forwarders else _weak("medium", "Incidents stay in the logs", "Enable 'Zscaler Incident Receiver' (or an ICAP server) on the rule so the match and the file reach Workflow Automation for triage, and attach an auditor notification template."),
+                                 forwarders=[r["name"] for r in forwarders], notifiers=[r["name"] for r in notifiers]))
 
     # Parallel channels
     channels = {}
@@ -593,7 +634,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                         state = "enforcing" if any(a.startswith(("BLOCK", "ISOLATE")) for a in found.get("actions", [])) else "monitoring"
                     else:
                         state = "enforcing" if act in ("BLOCK", "CONFIRM", "CAUTION", "ISOLATE", "CUSTOMHEADERINSERTION") or (act.startswith("OFLCASB") and "REPORT" not in act and "ALLOW" not in act) else "monitoring"
-            on_path = any(h["key"] in ("dlp", "ssl", "url", "cac", "ftc") and h.get("decided_by") and h["decided_by"].get("name") == name for h in hops) \
+            on_path = any(h["key"] in ("dlp", "ssl", "url", "cac", "ftc", "incident") and h.get("decided_by") and h["decided_by"].get("name") == name for h in hops) \
                 or (ch == "web" and any(name == rr["name"] for h in hops if h["key"] == "dlp" for rr in h.get("rules", []))) \
                 or (ch in ("endpoint", "saas", "email") and name in channels[ch]["rules"])
             rows.append({"name": name, "channel": ch, "state": state, "on_path": on_path})
@@ -666,7 +707,8 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
                          "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"), "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                         for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
             "sources": {"client_connector": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks", "pac": "/zia/pacFiles",
-                        "zia": "/zia/sslInspectionRules, /zia/urlFilteringRules, /zia/cloudApplicationRules, /zia/fileTypeControlRules, /zia/webDlpRules, /zia/endpointDlpRules, /zia/casbDlpRules, /zia/emailDlpRules, /zia/cloudApplications/policy, /zia/urlCategories"}}
+                        "zia": "/zia/sslInspectionRules, /zia/urlFilteringRules, /zia/cloudApplicationRules, /zia/fileTypeControlRules, /zia/webDlpRules, /zia/endpointDlpRules, /zia/casbDlpRules, /zia/emailDlpRules, /zia/cloudApplications/policy, /zia/urlCategories",
+                        "order": "Zscaler, Understanding Policy Enforcement (help.zscaler.com/zia/about-policy-enforcement): Firewall Control, SSL inspection, threat protection, Cloud App Control before URL Filtering, File Type Control, DLP; first violation ends the transaction"}}
 
 
 def trace_from_report(report: Dict[str, Any], destination: str, network: str, platform: str) -> Dict[str, Any]:

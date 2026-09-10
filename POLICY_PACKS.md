@@ -623,11 +623,10 @@ python tools/pack_from_terraform.py template.tf.json my_baseline \
 | `zbp_enterprise_baseline` | yes | Any enterprise: Zscaler's best-practice DLP set |
 | `zbp_source_code_baseline` | yes | Engineering organisations: source code to AI apps. 13 languages from the v4.14 pattern library, each an Anchor dictionary (one fingerprint) AND a Signal dictionary (eight counted patterns) in one engine; regenerate from a new library document with `tools/pack_from_pattern_doc.py`, or from the tenant's own Anchor/Signal dictionaries with `pack_from_tenant.py` (also the *Rebuild from tenant dictionaries* button on the pack card) |
 | `healthcare_phi_baseline` | yes | Healthcare: PHI with clinical context, plus containment |
-| `cui_marking_baseline` | yes | Defense industrial base / federal contractors: CUI by its markings (28 dictionaries in six tiers, block/caution/monitor rules, SSL, AI upload block); see the pack's README for the tier table |
 | `zbp_endpoint_dlp_baseline` | yes | Any enterprise with Endpoint DLP: USB, private shares and desktop GenAI apps, graded by PCI confidence (three parent rules, five sub-rules, one application group) |
 | `global_banking_baseline` | yes | Banks, card issuers, payment processors: PCI, bank account and payment instructions (ABA, EU and global IBAN, SWIFT/BIC), customer PII across jurisdictions, KYC/AML and lending files, MNPI, confidentiality markings; premised on Zscaler's predefined dictionaries cloned at high confidence, reusing the ZBP Enterprise engines; web, endpoint, SaaS, email and containment rules; see the pack's README |
 | `cjis_policy_pack` | no | Law enforcement: CJIS content categories |
-| `fed_policy_pack` | no | Federal agencies: content-based CUI categories (superset of ZBP Enterprise) |
+| `fed_policy_pack` | no | Federal agencies, the defense industrial base and federal contractors: Zscaler's Fed Policy Pack V1.1 (FOUO, Atomic Energy Act, Standard Forms, US PII/PHI, financial, ITAR, TLP, private keys) plus CUI by its markings (31 dictionaries in seven tiers behind block, caution and monitor rules; see `fed_policy_pack/CUI_MARKINGS.md` for the tier table). Superset of ZBP Enterprise; do not deploy both |
 
 ### From a design file to a pack
 
@@ -637,8 +636,16 @@ with `_`-prefixed build metadata (`_tier`, `_intended_action`,
 `<pack>/design.json` and generate the configs from it:
 
 ```bash
-python tools/pack_from_design.py cui_marking_baseline
+python tools/pack_from_design.py my_pack
 ```
+
+A hand-authored pack can also carry one or more designs next to its own
+objects: list them in `pack.json` as
+`"designs": [{"file": "cui_design.json", "prefix": "CUI", "owns": ["CUI-", "Legacy-"], "notes": "CUI_MARKINGS.md"}]`
+and the same command regenerates only the dictionaries and engines each
+design owns (by name prefix), leaving the rest of the pack untouched. That
+is how the Fed Policy Pack carries the CUI marking design
+(`python tools/pack_from_design.py fed_policy_pack`).
 
 It writes `configs/dlp_dictionaries.json` and `dlp_engines.json` (the
 designed engines plus derived `<Prefix>-Detect-Block-Grade` and

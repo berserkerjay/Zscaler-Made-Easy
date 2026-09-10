@@ -17,7 +17,7 @@
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "(?i)([(\u201c\"](U[\/]{1,2})?(FOUO|UCI|OUO|SBU)([\/][a-z]{1,5}){0,2}[\"\u201d)]|FOR OFFICIAL USE ONLY|Sensitive but unclassified|(UCI|Unclassified)[\\/]{1,2}(FOUO|UCI|OUO|SBU))"
+        "pattern": "(?i)([(\u201c\"](U[/]{1,2})?(FOUO|UCI|OUO|SBU)([/][a-z]{1,5}){0,2}[\"\u201d)]|FOR OFFICIAL USE ONLY|Sensitive but unclassified|(UCI|Unclassified)[\\/]{1,2}(FOUO|UCI|OUO|SBU))"
       }
     ]
   },
@@ -388,7 +388,7 @@
     "name": "Alien Registration Number - Prox 500",
     "description": "",
     "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
-    "proximity": 500,    
+    "proximity": 500,
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
@@ -524,7 +524,7 @@
     "name": "Date of Birth - Prox 500",
     "description": "",
     "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
-    "proximity": 500,    
+    "proximity": 500,
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
@@ -1354,103 +1354,536 @@
     ]
   },
   {
-    "name": "CUI Registry Marking Pattern (High confidence)",
-    "description": "Identifies CUI Registry Markings with high confidence. Based on CMMC/NIST recommendations.",
+    "name": "CUI-Banner-Structural",
+    "description": "Well-formed CUI banner line with category marking (Basic or Specified). Tier 1 structural marking; intended action Block; min matches 1.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_ALL",
-        "pattern": "\\bC(UI|ONTROLLED)[\\/]{2}[ A-Z\\S]{2,10}\\b"
+        "pattern": "\\bCUI//(SP-)?[A-Z]{2,10}\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Banner-LDC",
+    "description": "CUI banner carrying a limited dissemination control segment. Tier 1 structural marking; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI//([A-Z-]{2,12}//)?(NOFORN|FEDCON|NOCON|PROPIN|DISPLAY ONLY|REL TO|FED ONLY|DL ONLY)\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-PortionMark-Structural",
+    "description": "CUI portion markings in parenthetical form. Tier 1 structural marking; intended action Block; min matches 2.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\((CUI|CUI//(SP-)?[A-Z]{2,10})\\)"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Basic-Bare",
+    "description": "Bare CUI designation with no category segment (Basic CUI). Tier 1 structural marking; intended action Caution; min matches 3.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"CONTROLLED UNCLASSIFIED INFORMATION\""
       }
     ]
   },
   {
-    "name": "CUI Registry Marking Pattern (Medium confidence)",
-    "description": "Identifies CUI Registry Markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations.",
+    "name": "CUI-LDC-Standalone",
+    "description": "Dissemination control markings appearing without an intact banner. Tier 1 structural marking; intended action Caution; min matches 1.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
-    "patterns": [
+    "patterns": [],
+    "phrases": [
       {
-        "action": "PATTERN_COUNT_TYPE_ALL",
-        "pattern": "(?i)\\bC(UI|ONTROLLED)[\\/]{1,2}[ A-Z\\S]{2,10}\\b"
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NOFORN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "FEDCON"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"FED ONLY\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "NOCON"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"DL ONLY\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"REL TO\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"DISPLAY ONLY\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PROPIN"
       }
     ]
   },
   {
-    "name": "CUI Portion Marking Pattern (High confidence)",
-    "description": "Identifies CUI portion markings with high confidence. Based on CMMC/NIST recommendations.",
+    "name": "CUI-Code-CTI",
+    "description": "CUI category marking token for Controlled Technical Information. Tier 2 category token; intended action Block; min matches 1.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_ALL",
-        "pattern": "[(]CUI[)]"
+        "pattern": "\\bSP-CTI\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-PRVCY",
+    "description": "CUI category marking token for Privacy. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bPRVCY\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-PROPIN",
+    "description": "CUI category marking token for Proprietary Business Information. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bPROPIN\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-SSEL",
+    "description": "CUI category marking token for Source Selection. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSP-SSEL\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-ISVI",
+    "description": "CUI category marking token for Information Systems Vulnerability Information. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSP-ISVI\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-OPSEC",
+    "description": "CUI category marking token for Operations Security. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSP-OPSEC\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-NNPI",
+    "description": "CUI category marking token for Naval Nuclear Propulsion Information. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSP-NNPI\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-PCII",
+    "description": "CUI category marking token for Protected Critical Infrastructure Information. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSP-PCII\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Code-CVI",
+    "description": "CUI category marking token for Chemical-terrorism Vulnerability Information. Tier 2 category token; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSP-CVI\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Prox-EXPT",
+    "description": "CUI token co-located with Export Control category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-EXPT"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-TAX",
+    "description": "CUI token co-located with Tax category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-TAX"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-LEI",
+    "description": "CUI token co-located with Law Enforcement category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-LEI"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-CRIT",
+    "description": "CUI token co-located with Critical Infrastructure category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-CRIT"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-NUC",
+    "description": "CUI token co-located with Nuclear category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-NUC"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-INTEL",
+    "description": "CUI token co-located with Intelligence category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-INTEL"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-LEGAL",
+    "description": "CUI token co-located with Legal category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 300,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-LEGAL"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Prox-PROCURE",
+    "description": "CUI token co-located with Procurement and Acquisition category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 400,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "SP-PROCURE"
+      }
+    ]
+  },
+  {
+    "name": "Legacy-FOUO",
+    "description": "Pre-CUI For Official Use Only marking. Tier 4 legacy marking; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bFOUO\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"FOR OFFICIAL USE ONLY\""
+      }
+    ]
+  },
+  {
+    "name": "Legacy-LES",
+    "description": "Law Enforcement Sensitive marking. Tier 4 legacy marking; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bLAW ENFORCEMENT SENSITIVE\\b"
       },
       {
         "action": "PATTERN_COUNT_TYPE_ALL",
-        "pattern": "[(]CONTROLLED[)]"
+        "pattern": "\\b(FOUO|LES)//LES\\b"
       }
-    ]
+    ],
+    "phrases": []
   },
   {
-    "name": "CUI Portion Marking Pattern (Medium confidence)",
-    "description": "Identifies CUI portion markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations.",
+    "name": "Legacy-SBU",
+    "description": "Sensitive But Unclassified marking. Tier 4 legacy marking; intended action Block; min matches 1.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_ALL",
-        "pattern": "(?i)([\\/\"-(]CUI[)\\/\"-]|[/\"-(]CONTROLLED[)\\/\"-])"
+        "pattern": "\\bSBU\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"SENSITIVE BUT UNCLASSIFIED\""
       }
     ]
   },
   {
-    "name": "Declassify Date Pattern (High Confidence)",
-    "description": "Identifies declassification dates with high confidence. Based on CMMC/NIST recommendations.",
+    "name": "Legacy-Distribution-Statements",
+    "description": "DoW distribution statements B through F on technical documents. Tier 4 legacy marking; intended action Block; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bDISTRIBUTION STATEMENT [B-F]\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CUI-Designation-Indicator",
+    "description": "CUI designation indicator block field labels in close proximity. Tier 5 designation block; intended action Caution; min matches 3.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 600,
+    "proximity_enabled_for_custom_dictionary": true,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bCUI\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"Controlled by\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"CUI Category\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"Limited Dissemination Control\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"Distribution Statement\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"Controlled By\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "POC"
+      }
+    ]
+  },
+  {
+    "name": "CUI-Decontrol-Context",
+    "description": "Decontrol and marking-guidance language used as an engine-level exclusion. Tier 6 exclusion; intended action Exclude; min matches 1.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "DECONTROLLED"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"does not contain CUI\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"no longer controlled\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"CUI Marking Guide\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"sample marking\""
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "\"for illustrative purposes\""
+      }
+    ]
+  },
+  {
+    "name": "CUI-Declassify-Date",
+    "description": "Declassification / decontrol date line (DECLASSIFY ON: yyyymmdd), exact form and a looser any-case variant. Tier 5 designation block; intended action Caution; min matches 1.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "patterns": [
       {
         "action": "PATTERN_COUNT_TYPE_ALL",
         "pattern": "(?i)DECLASSIF[YIED]{1,3}[ ON:-]{4,6}\\d{8}"
-      }
-    ]
-  },
-  {
-    "name": "Declassify Date Pattern (Medium Confidence)",
-    "description": "Identifies declassification dates with medium confidence. Based on CMMC/NIST recommendations.",
-    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
-    "patterns": [
+      },
       {
         "action": "PATTERN_COUNT_TYPE_ALL",
         "pattern": "(?i)DECLASSIF[YIED]{1,3}[ON[A-Z]]{1,6}[\\d]{2}[\\d\\S]{2,8}"
       }
-    ]
+    ],
+    "phrases": []
   },
   {
-    "name": "CUI Contextual Phrases",
-    "description": "CUI Contextual Phrases, based on reference documents.",
+    "name": "CUI-Contextual-Phrases",
+    "description": "Marking-guide vocabulary found around CUI designation blocks (Controlled By, Distribution Statement, NOFORN, ...).",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
     "phrases": [
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Controlled Information"
+        "phrase": "\"Controlled Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Unclassified Information"
+        "phrase": "\"Unclassified Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Controlled Data"
+        "phrase": "\"Controlled Data\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Unclassified Data"
+        "phrase": "\"Unclassified Data\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Declassified Information"
+        "phrase": "\"Declassified Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Declassified Data"
+        "phrase": "\"Declassified Data\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1462,43 +1895,43 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Controlled By"
+        "phrase": "\"Controlled By\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution Statement"
+        "phrase": "\"Distribution Statement\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution A"
+        "phrase": "\"Distribution A\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution B"
+        "phrase": "\"Distribution B\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution C"
+        "phrase": "\"Distribution C\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution D"
+        "phrase": "\"Distribution D\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution E"
+        "phrase": "\"Distribution E\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Distribution F"
+        "phrase": "\"Distribution F\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Lawful Government Purpose"
+        "phrase": "\"Lawful Government Purpose\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Dissemination Control"
+        "phrase": "\"Dissemination Control\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1510,7 +1943,7 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Special Access"
+        "phrase": "\"Special Access\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1518,22 +1951,23 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "CUI Category"
+        "phrase": "\"CUI Category\""
       }
     ]
   },
   {
-    "name": "CUI Category Phrase",
-    "description": "CUI Category phrases from https://www.archives.gov/cui/registry/category-marking-list",
+    "name": "CUI-Category-Phrases",
+    "description": "The NARA CUI Registry category names (Privacy, Export Controlled, Critical Infrastructure, ...).",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
     "phrases": [
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Accident Investigation"
+        "phrase": "\"Accident Investigation\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Administrative Proceedings"
+        "phrase": "\"Administrative Proceedings\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1541,11 +1975,11 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Ammonium Nitrate"
+        "phrase": "\"Ammonium Nitrate\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Archaeological Resources"
+        "phrase": "\"Archaeological Resources\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1553,35 +1987,35 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Bank Secrecy"
+        "phrase": "\"Bank Secrecy\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Battered Spouse or Child"
+        "phrase": "\"Battered Spouse or Child\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Campaign Funds"
+        "phrase": "\"Campaign Funds\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Chemical-terrorism Vulnerability Information"
+        "phrase": "\"Chemical-terrorism Vulnerability Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Child Pornography"
+        "phrase": "\"Child Pornography\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Child Victim/Witness"
+        "phrase": "\"Child Victim/Witness\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Collective Bargaining"
+        "phrase": "\"Collective Bargaining\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Committed Person"
+        "phrase": "\"Committed Person\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1589,35 +2023,35 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Comptroller General"
+        "phrase": "\"Comptroller General\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Consumer Complaint Information"
+        "phrase": "\"Consumer Complaint Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Contract Use"
+        "phrase": "\"Contract Use\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Controlled Substances"
+        "phrase": "\"Controlled Substances\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Controlled Technical Information"
+        "phrase": "\"Controlled Technical Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Criminal History Records Information"
+        "phrase": "\"Criminal History Records Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Critical Energy Infrastructure Information"
+        "phrase": "\"Critical Energy Infrastructure Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Death Records"
+        "phrase": "\"Death Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1625,107 +2059,107 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "DoD Critical Infrastructure Security Information"
+        "phrase": "\"DoD Critical Infrastructure Security Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Electronic Funds Transfer"
+        "phrase": "\"Electronic Funds Transfer\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Emergency Management"
+        "phrase": "\"Emergency Management\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Entity Registration Information"
+        "phrase": "\"Entity Registration Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Export Controlled"
+        "phrase": "\"Export Controlled\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Export Controlled Research"
+        "phrase": "\"Export Controlled Research\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Federal Grand Jury"
+        "phrase": "\"Federal Grand Jury\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Federal Housing Finance Non-Public Information"
+        "phrase": "\"Federal Housing Finance Non-Public Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Federal Taxpayer Information"
+        "phrase": "\"Federal Taxpayer Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Financial Supervision Information"
+        "phrase": "\"Financial Supervision Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Foreign Intelligence Surveillance Act"
+        "phrase": "\"Foreign Intelligence Surveillance Act\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Foreign Intelligence Surveillance Act Business Records"
+        "phrase": "\"Foreign Intelligence Surveillance Act Business Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Critical Infrastructure Information"
+        "phrase": "\"General Critical Infrastructure Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Financial Information"
+        "phrase": "\"General Financial Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Intelligence"
+        "phrase": "\"General Intelligence\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Law Enforcement"
+        "phrase": "\"General Law Enforcement\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Nuclear"
+        "phrase": "\"General Nuclear\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Privacy"
+        "phrase": "\"General Privacy\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Procurement and Acquisition"
+        "phrase": "\"General Procurement and Acquisition\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "General Proprietary Business Information"
+        "phrase": "\"General Proprietary Business Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Genetic Information"
+        "phrase": "\"Genetic Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Geodetic Product Information"
+        "phrase": "\"Geodetic Product Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Health Information"
+        "phrase": "\"Health Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Historic Properties"
+        "phrase": "\"Historic Properties\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Homeland Security Agreement Information"
+        "phrase": "\"Homeland Security Agreement Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Homeland Security Enforcement Information"
+        "phrase": "\"Homeland Security Enforcement Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1733,35 +2167,35 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Information Systems Vulnerability Information"
+        "phrase": "\"Information Systems Vulnerability Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Information Systems Vulnerability Information - Homeland"
+        "phrase": "\"Information Systems Vulnerability Information - Homeland\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Inspector General Protected"
+        "phrase": "\"Inspector General Protected\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Intelligence Financial Records"
+        "phrase": "\"Intelligence Financial Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Internal Data"
+        "phrase": "\"Internal Data\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "International Agreement Information"
+        "phrase": "\"International Agreement Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "International Agreement Information - Homeland"
+        "phrase": "\"International Agreement Information - Homeland\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "International Financial Institutions"
+        "phrase": "\"International Financial Institutions\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1773,7 +2207,7 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Investment Survey"
+        "phrase": "\"Investment Survey\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1781,15 +2215,15 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Law Enforcement Financial Records"
+        "phrase": "\"Law Enforcement Financial Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Legal Privilege"
+        "phrase": "\"Legal Privilege\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Legislative Materials"
+        "phrase": "\"Legislative Materials\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1797,123 +2231,123 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Military Personnel Records"
+        "phrase": "\"Military Personnel Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "National Park System Resources"
+        "phrase": "\"National Park System Resources\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "National Security Letter"
+        "phrase": "\"National Security Letter\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "NATO Restricted"
+        "phrase": "\"NATO Restricted\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "NATO Unclassified"
+        "phrase": "\"NATO Unclassified\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Naval Nuclear Propulsion Information"
+        "phrase": "\"Naval Nuclear Propulsion Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Net Worth"
+        "phrase": "\"Net Worth\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Nuclear Recommendation Material"
+        "phrase": "\"Nuclear Recommendation Material\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Nuclear Security-Related Information"
+        "phrase": "\"Nuclear Security-Related Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Ocean Common Carrier and Marine Terminal Operator Agreements"
+        "phrase": "\"Ocean Common Carrier and Marine Terminal Operator Agreements\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Ocean Common Carrier Service Contracts"
+        "phrase": "\"Ocean Common Carrier Service Contracts\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Operations Security"
+        "phrase": "\"Operations Security\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Operations Security Information"
+        "phrase": "\"Operations Security Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Patent Applications"
+        "phrase": "\"Patent Applications\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Pen Register/Trap & Trace"
+        "phrase": "\"Pen Register/Trap & Trace\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Permanent Resident Status"
+        "phrase": "\"Permanent Resident Status\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Personnel Records"
+        "phrase": "\"Personnel Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Personnel Security Information"
+        "phrase": "\"Personnel Security Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Pesticide Producer Survey"
+        "phrase": "\"Pesticide Producer Survey\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Physical Security"
+        "phrase": "\"Physical Security\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Physical Security - Homeland"
+        "phrase": "\"Physical Security - Homeland\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Presentence Report"
+        "phrase": "\"Presentence Report\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Prior Arrest"
+        "phrase": "\"Prior Arrest\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Privacy Information"
+        "phrase": "\"Privacy Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Privileged Safety Information"
+        "phrase": "\"Privileged Safety Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Proprietary Manufacturer"
+        "phrase": "\"Proprietary Manufacturer\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Proprietary Postal"
+        "phrase": "\"Proprietary Postal\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Protected Critical Infrastructure Information"
+        "phrase": "\"Protected Critical Infrastructure Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Protective Order"
+        "phrase": "\"Protective Order\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Railroad Safety Analysis Records"
+        "phrase": "\"Railroad Safety Analysis Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -1925,83 +2359,83 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Safeguards Information"
+        "phrase": "\"Safeguards Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "SAFETY Act Information"
+        "phrase": "\"SAFETY Act Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Secrecy Orders"
+        "phrase": "\"Secrecy Orders\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Sensitive Personally Identifiable Information"
+        "phrase": "\"Sensitive Personally Identifiable Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Sensitive Security Information"
+        "phrase": "\"Sensitive Security Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Sex Crime Victim"
+        "phrase": "\"Sex Crime Victim\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Small Business Research and Technology"
+        "phrase": "\"Small Business Research and Technology\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Source Selection"
+        "phrase": "\"Source Selection\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Statistical Information"
+        "phrase": "\"Statistical Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Status Adjustment"
+        "phrase": "\"Status Adjustment\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Student Records"
+        "phrase": "\"Student Records\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Tax Convention"
+        "phrase": "\"Tax Convention\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Taxpayer Advocate Information"
+        "phrase": "\"Taxpayer Advocate Information\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Temporary Protected Status"
+        "phrase": "\"Temporary Protected Status\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Terrorist Screening"
+        "phrase": "\"Terrorist Screening\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Toxic Substances"
+        "phrase": "\"Toxic Substances\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Unclassified Controlled Nuclear Information - Defense"
+        "phrase": "\"Unclassified Controlled Nuclear Information - Defense\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Unclassified Controlled Nuclear Information - Energy"
+        "phrase": "\"Unclassified Controlled Nuclear Information - Energy\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "US Census"
+        "phrase": "\"US Census\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Victims of Human Trafficking"
+        "phrase": "\"Victims of Human Trafficking\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
@@ -2009,19 +2443,19 @@
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Water Assessments"
+        "phrase": "\"Water Assessments\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Whistleblower Identity"
+        "phrase": "\"Whistleblower Identity\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Witness Protection"
+        "phrase": "\"Witness Protection\""
       },
       {
         "action": "PHRASE_COUNT_TYPE_UNIQUE",
-        "phrase": "Written Determinations"
+        "phrase": "\"Written Determinations\""
       }
     ]
   }

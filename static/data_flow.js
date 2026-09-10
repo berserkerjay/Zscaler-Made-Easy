@@ -1,20 +1,65 @@
 // ── Data Flow Map renderer ──────────────────────────────────────────
-// Draws one traced path as a row of hops (device → Client Connector →
-// forwarding → PAC → SSL → URL → app control → file type → Web DLP) with
-// the parallel channels beneath, the weak points ranked, and every policy
-// pack's coverage on that path. Pure DOM; data comes from
-// /api/report/data-flow. Also used by the assessment page's mirror.
+// Draws one traced path as a row of hops in the order ZIA processes a
+// policy (device → Client Connector → forwarding → PAC → Cloud Firewall →
+// SSL → threat protection → Cloud App Control → URL Filtering → File Type
+// Control → Web DLP → logs & incidents) with the parallel channels
+// beneath, the weak points ranked, and every policy pack's coverage on
+// that path. Pure DOM; data comes from /api/report/data-flow. Also used
+// by the assessment page's mirror.
 const _dfE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DF_STATUS = {
   pass: ['Forwarded', 'ok'], enforce: ['Enforcing', 'ok'], blocked: ['Blocked', 'block'], monitor: ['Monitor only', 'warn'],
   warn: ['Weak', 'warn'], blind: ['Encrypted / blind', 'fail'], bypass: ['Bypassed', 'fail'], none: ['No control', 'warn'],
   unknown: ['Could not read', 'dim'], skipped: ['Not reached', 'dim'], off: ['Not active', 'fail'],
+  info: ['Not read here', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'],
 };
 const DF_OUTCOME = {
   bypassed: ['Never reaches Zscaler', 'fail'], blocked: ['Blocked before content', 'block'], blind: ['Reaches ZIA encrypted: DLP blind', 'fail'],
   enforce: ['Inspected and enforced', 'ok'], monitor: ['Inspected, monitor only', 'warn'], none: ['Inspected, no DLP rule', 'warn'],
 };
-const DF_HOP_ORDER = ['device', 'zcc', 'forwarding', 'pac', 'ssl', 'url', 'cac', 'ftc', 'dlp'];
+const DF_HOP_ORDER = ['device', 'zcc', 'forwarding', 'pac', 'firewall', 'ssl', 'threat', 'cac', 'url', 'ftc', 'dlp', 'incident'];
+
+// How ZIA processes a policy, from the user's device to incident
+// management. Order per Zscaler's "Understanding Policy Enforcement"
+// (help.zscaler.com/zia/about-policy-enforcement) and the ZIA policy
+// training (EDU-200, module 5): Firewall → SSL inspection → threat
+// protection → Cloud App Control → URL Filtering → File Type Control →
+// DLP, first violation ends the transaction; then Nanolog, NSS, the
+// Incident Receiver and Workflow Automation.
+const DF_ENFORCEMENT = [
+  { key: 'device', label: 'Device', sub: 'user action', text: 'A user uploads, posts, pastes, mails or copies a file. On a managed device Client Connector owns the traffic; Endpoint DLP (if installed) inspects USB, print, network share and desktop-app actions locally and reports through the same log and incident path below.' },
+  { key: 'zcc', label: 'Client Connector app profile', sub: 'bypass lists', text: 'The app profile for the platform decides whether this destination is forwarded at all: hostname, IP and application bypasses send it direct, so nothing in ZIA ever sees it. Strict enforcement stops the user switching the client off.' },
+  { key: 'forwarding', label: 'Forwarding profile', sub: 'per network', text: 'For the detected network (trusted, off-trusted, VPN) the forwarding profile chooses Z-Tunnel 2.0, tunnel with local proxy, enforce-PAC, or none. Only tunnelled or proxied traffic reaches ZIA; "none" relies on a site GRE/IPsec tunnel.' },
+  { key: 'pac', label: 'PAC file', sub: 'DIRECT vs proxy', text: 'In PAC-based modes the PAC returns DIRECT or a ZIA proxy per URL. DIRECT never reaches Zscaler; Z-Tunnel 2.0 makes this step moot for most traffic.' },
+  { key: 'firewall', label: 'Cloud Firewall', sub: 'evaluated first', text: 'Inside ZIA, Firewall Control rules run first. Web traffic (HTTP/HTTPS, plus other ports the tunnel forwards) is handed to the web proxy; a firewall block ends the transaction here.' },
+  { key: 'ssl', label: 'SSL inspection', sub: 'decrypt or not', text: 'SSL inspection rules, in order, decide DECRYPT, DO NOT DECRYPT or BLOCK. Without decryption ZIA only sees the domain (SNI or certificate), so URL, app, file type and DLP controls that need content or the request path cannot apply.' },
+  { key: 'threat', label: 'Threat protection', sub: 'ATP · malware · sandbox', text: 'Security exceptions are checked first, then Advanced Threat Protection reputation, Malware Protection and (for downloads) Sandbox. A violation stops the transaction before any data control runs.' },
+  { key: 'cac', label: 'Cloud App Control', sub: 'before URL Filtering', text: 'Cloud App Control is evaluated before URL Filtering. Rules per application category allow, caution, block or isolate specific actions (upload, share, post, view) and can gate on user risk score. When a Cloud App Control rule matches the application, URL Filtering is not applied to that transaction.' },
+  { key: 'url', label: 'URL Filtering', sub: 'first match in order', text: 'If no Cloud App Control rule matched, URL Filtering rules are evaluated in order and the first match applies: ALLOW, CAUTION, BLOCK or ISOLATE per category, user, location, time and risk score.' },
+  { key: 'ftc', label: 'File Type Control', sub: 'category × direction', text: 'File Type Control allows, cautions or blocks whole file categories on upload or download for the matched application or URL category, before content is inspected.' },
+  { key: 'dlp', label: 'Web DLP', sub: 'engines & dictionaries', text: 'DLP rules are evaluated in order and the first match applies (or, with "Evaluate all DLP rules" on, every rule is evaluated and the most restrictive action wins). Each rule scans the content (OCR when enabled) with its engines: dictionaries, match counts and proximity. Actions: ALLOW (monitor), CONFIRM (caution page), BLOCK, or ICAP to an external receiver; sub-rules refine the parent.' },
+  { key: 'action', label: 'Enforcement', sub: 'what the user sees', text: 'BLOCK or CONFIRM shows the end-user notification page (or the caution dialog) and the transaction stops or waits; ALLOW lets it through to the destination and records the match.' },
+  { key: 'log', label: 'Logs', sub: 'Nanolog · NSS', text: 'Every transaction writes a web log; a DLP match adds the DLP log line (rule, engine, dictionaries and counts, user, URL, file name/hash, severity). Logs land in Nanolog and Web Insights and stream through NSS or Cloud NSS to your SIEM.' },
+  { key: 'incident', label: 'Incident Receiver', sub: 'transaction + file', text: 'When the rule has Zscaler Incident Receiver (or an ICAP server) set, ZIA forwards the transaction details and the offending file to it. Without this, the match exists only in the logs.' },
+  { key: 'workflow', label: 'Workflow Automation', sub: 'triage · notify · resolve', text: 'Workflow Automation ingests the incident: it de-duplicates, sets severity and owner, notifies the auditor (notification template), user or manager, and lets analysts triage, resolve or mark false positives. Resolutions feed back into rule tuning.' },
+];
+
+// The reference flow as a diagram in the same style as a traced path,
+// with an explanation per stage; clicking a stage scrolls to its text.
+function renderPolicyEnforcementFlow(container) {
+  const t = { platform: 'Any device', network: 'any network',
+    hops: DF_ENFORCEMENT.filter(s => s.key !== 'device').map(s => ({ key: s.key, label: s.label, status: 'step', detail: s.sub })) };
+  const steps = DF_ENFORCEMENT.map((s, i) => `<li class="df-step" data-hop="${_dfE(s.key)}"><strong>${i + 1}. ${_dfE(s.label)}</strong> <span class="df-by">${_dfE(s.sub)}</span><div class="df-hop-d">${_dfE(s.text)}</div></li>`).join('');
+  container.innerHTML = `<div class="df-flow-wrap">${_dfSvg(t)}</div>
+    <div class="df-hint">The order ZIA applies to every transaction, from the user's device to an incident an analyst can act on. Click a stage for what it does. Endpoint DLP, SaaS Security API and Email DLP evaluate their own rules on the device, at rest and in mail, then join the same logs → incident → Workflow Automation path.</div>
+    <ol class="df-steps">${steps}</ol>
+    <div class="df-hint">Source: Zscaler, <em>Understanding Policy Enforcement</em> (help.zscaler.com/zia/about-policy-enforcement); ZIA policy training module 5 (EDU-200); Zscaler DLP Incident Receiver and Workflow Automation documentation.</div>`;
+  container.querySelectorAll('.df-node').forEach(n => {
+    const go = () => { const el = container.querySelector(`.df-step[data-hop="${n.dataset.hop}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600); } };
+    n.addEventListener('click', go);
+    n.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+}
 
 function _dfSvg(t) {
   const hops = [{ key: 'device', label: 'Device', status: 'pass', detail: `${t.platform}, ${t.network}` }].concat(t.hops.filter(h => h.key !== 'zia'));
@@ -47,10 +92,11 @@ function _dfSvg(t) {
 
 function _dfHopDetail(h) {
   const [lab, cls] = DF_STATUS[h.status] || [h.status, 'dim'];
-  return `<div class="df-hop st-${cls}">
+  return `<div class="df-hop st-${cls}" data-hop="${_dfE(h.key)}">
     <div class="df-hop-h"><span class="df-chip st-${cls}">${_dfE(lab)}</span><strong>${_dfE(h.label)}</strong>${h.decided_by && h.decided_by.name ? `<span class="df-by">decided by <code>${_dfE(h.decided_by.name)}</code>${h.decided_by.order != null ? ` (order ${_dfE(h.decided_by.order)})` : ''}</span>` : ''}</div>
     <div class="df-hop-d">${_dfE(h.detail)}</div>
-    ${h.rules && h.rules.length ? `<ul class="df-rules">${h.rules.map(r => `<li><code>${_dfE(r.name)}</code> ${_dfE(r.action)}${r.enforcing ? ' · enforcing' : ' · monitor'}${r.engines && r.engines.length ? ` · engines: ${_dfE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ''}</li>`).join('')}</ul>` : ''}
+    ${h.rules && h.rules.length ? `<ul class="df-rules">${h.rules.map(r => `<li><code>${_dfE(r.name)}</code> ${_dfE(r.action)}${r.enforcing ? ' · enforcing' : ' · monitor'}${r.engines && r.engines.length ? ` · engines: ${_dfE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ''}${r.incident_receiver || r.icap_server ? ` · → ${_dfE(r.icap_server || 'Zscaler Incident Receiver')}` : ''}${r.notification_template ? ` · notifies via ${_dfE(r.notification_template)}` : ''}</li>`).join('')}</ul>` : ''}
+    ${h.forwarders ? `<div class="df-hop-d">To the Incident Receiver: ${h.forwarders.length ? _dfE(h.forwarders.join(', ')) : 'none'} · auditor notifications: ${h.notifiers && h.notifiers.length ? _dfE(h.notifiers.join(', ')) : 'none'}</div>` : ''}
     ${h.actions && h.actions.length ? `<div class="df-hop-d">Actions: ${_dfE(h.actions.join(', '))}</div>` : ''}
     ${h.raw ? `<div class="df-raw">raw: ${_dfE(JSON.stringify(h.raw))}</div>` : ''}
     ${h.weak_point ? `<div class="df-weak sev-${_dfE(h.weak_point.severity)}"><span class="sev">${_dfE(h.weak_point.severity)}</span> <strong>${_dfE(h.weak_point.title)}</strong> — ${_dfE(h.weak_point.fix)}</div>` : ''}
@@ -82,7 +128,7 @@ function renderDataFlowTrace(t, container) {
       <span class="df-prof"><span class="k">Platform</span><span class="v">${_dfE(t.platform)}</span></span>
     </div>
     <div class="df-flow-wrap" id="dfFlowWrap">${_dfSvg(t)}</div>
-    <div class="df-hint">Each box is a hop the tenant's configuration puts on the path; a dot marks a weak point. Click a box for the rule that decided it. SSL Inspection, Cloud App Control, URL Filtering and File Type Control are data security controls alongside DLP — they stop or scope data movement before content inspection. Cloud App Control can also gate on a user risk profile (risk score levels).</div>
+    <div class="df-hint">Each box is a hop in the order ZIA processes the transaction; a dot marks a weak point. Click a box for the rule that decided it. SSL Inspection, Cloud App Control, URL Filtering and File Type Control are data security controls alongside DLP — they stop or scope data movement before content inspection; Cloud App Control runs before URL Filtering and takes precedence when it matches, and can gate on a user risk profile. The last hop is what happens after a match: logs, the Incident Receiver and Workflow Automation.</div>
     <h2 class="df-h">Hops</h2>
     <div class="df-hops">${t.hops.map(_dfHopDetail).join('')}</div>
     <h2 class="df-h">Channels that do not ride the tunnel</h2>
@@ -163,9 +209,10 @@ function renderDataFlowGaps(report, container) {
 
 // ── Control flow by category ──────────────────────────────────────
 // One left-to-right flow per cloud app category, in the same style as the
-// path above: device -> Client Connector -> forwarding -> SSL -> URL
-// Filtering -> Cloud App Control -> File Type Control -> DLP, each hop the
-// data security control that decides it. Click a category to open its path.
+// path above: device -> Client Connector -> forwarding -> firewall -> SSL
+// -> threat protection -> Cloud App Control -> URL Filtering -> File Type
+// Control -> DLP -> logs & incidents, each hop the control that decides
+// it. Click a category to open its path.
 function renderControlFishbones(report, container, network) {
   const net = network || (report.traces[0] && report.traces[0].network);
   const cats = report.traces.filter(t => t.destination && t.destination.kind === 'class' && t.network === net);
@@ -180,10 +227,11 @@ function renderControlFishbones(report, container, network) {
       <div class="df-cat-h"><strong>${_dfE(t.destination.label)}</strong><span class="df-chip st-${ocls}">${_dfE(olab)}</span></div>
       ${svg}</button>`;
   }).join('');
-  container.innerHTML = `<div class="df-hint">One flow per cloud app category on <strong>${_dfE(netLabel)}</strong>, in the same style as the path above: each hop is the data security control that decides it — SSL Inspection, URL Filtering, Cloud App Control, File Type Control and DLP. Cloud App Control and URL Filtering can also gate on a user risk profile. Click a category to open its full path.</div>
+  container.innerHTML = `<div class="df-hint">One flow per cloud app category on <strong>${_dfE(netLabel)}</strong>, in the order ZIA applies it: each hop is the data security control that decides it — SSL Inspection, Cloud App Control (before URL Filtering), URL Filtering, File Type Control and DLP, then what happens after a match. Cloud App Control and URL Filtering can also gate on a user risk profile. Click a category to open its full path.</div>
     <div class="df-cat-grid">${cards}</div>`;
 }
 
+window.renderPolicyEnforcementFlow = renderPolicyEnforcementFlow;
 window.renderDataFlowTrace = renderDataFlowTrace;
 window.renderDataFlowOverview = renderDataFlowOverview;
 window.renderCategoryVisibility = renderCategoryVisibility;

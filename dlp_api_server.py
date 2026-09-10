@@ -3142,11 +3142,14 @@ async def report_dataflow_page():
 @app.post("/api/report/data-flow")
 async def report_data_flow(req: DataFlowRequest):
     """Trace every traffic class (or the given destinations) through the
-    tenant: Client Connector app profile and forwarding profile, PAC, SSL
-    inspection, URL filtering, Cloud App Control, File Type Control and
-    Web DLP, plus the endpoint, SaaS and email channels, with each policy
-    pack's coverage on the path. Read-only; carries report_id for
-    /report/dataflow?id=... and the exports."""
+    tenant in ZIA's enforcement order: Client Connector app profile and
+    forwarding profile, PAC, Cloud Firewall, SSL inspection, threat
+    protection, Cloud App Control (before URL Filtering), URL filtering,
+    File Type Control, Web DLP and what happens after a match (logs,
+    Incident Receiver, Workflow Automation), plus the endpoint, SaaS and
+    email channels, with each policy pack's coverage on the path.
+    Read-only; carries report_id for /report/dataflow?id=... and the
+    exports."""
     try:
         from data_flow import generate_data_flow_report
     except Exception as e:

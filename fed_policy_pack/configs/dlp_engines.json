@@ -12,10 +12,6 @@
     "expression": "(((D:AEA RD-FRD-Admonishment Phrase > 0) AND (D:AEA RD-FRD-Literal Phrase > 1)) OR ((D:AEA RD-FRD-Literal Phrase > 0) AND (D:AEA RD-FRD-Contextual Phrase > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 2) AND (D:AEA RD-FRD Pattern (High Confidence) > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 2) AND (D:AEA RD-FRD-Contextual Phrase > 0)))"
   },
   {
-    "name": "AEA Medium Confidence",
-    "expression": "(((D:AEA RD-FRD-Admonishment Phrase > 0) AND (D:AEA RD-FRD-Literal Phrase > 0)) OR ((D:AEA RD-FRD-Literal Phrase > 0) AND (D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (High Confidence) > 0) AND (D:AEA RD-FRD Pattern (Medium Confidence) > 0)) OR ((D:AEA RD-FRD-Portion-Marking-Pattern (Medium Confidence) > 0) AND (D:AEA RD-FRD-Contextual Phrase > 0)))"
-  },
-  {
     "name": "Standard Forms",
     "expression": "((D:Standard Forms > 3))"
   },
@@ -56,18 +52,23 @@
     "expression": "((D:TLP Amber > 0))"
   },
   {
-    "name": "CUI Engine (High Confidence)",
-    "expression": "((D:CUI Registry Marking Pattern (High confidence) > 0) OR (D:CUI Portion Marking Pattern (High confidence) > 1) OR (D:Declassify Date Pattern (High Confidence) > 0))",
-    "description": "Engine created by automated script."
+    "name": "CUI-Detect-All",
+    "description": "Full CUI detection surface: banner grammar, category tokens, legacy markings, malformed-marking proximity, and designation blocks.",
+    "expression": "((((D:CUI-Banner-Structural > 0) OR (D:CUI-Banner-LDC > 0) OR (D:CUI-PortionMark-Structural > 1) OR (D:CUI-Code-CTI > 0) OR (D:CUI-Code-PRVCY > 0) OR (D:CUI-Code-PROPIN > 0) OR (D:CUI-Code-SSEL > 0) OR (D:CUI-Code-ISVI > 0) OR (D:CUI-Code-OPSEC > 0) OR (D:CUI-Code-NNPI > 0) OR (D:CUI-Code-PCII > 0) OR (D:CUI-Code-CVI > 0) OR (D:Legacy-FOUO > 0) OR (D:Legacy-LES > 0) OR (D:Legacy-SBU > 0) OR (D:Legacy-Distribution-Statements > 0)) OR ((D:CUI-Prox-EXPT > 0) OR (D:CUI-Prox-TAX > 0) OR (D:CUI-Prox-LEI > 0) OR (D:CUI-Prox-CRIT > 0) OR (D:CUI-Prox-NUC > 0) OR (D:CUI-Prox-INTEL > 0) OR (D:CUI-Prox-LEGAL > 0) OR (D:CUI-Prox-PROCURE > 0) OR (D:CUI-LDC-Standalone > 0) OR (D:CUI-Designation-Indicator > 2) OR (D:CUI-Basic-Bare > 2)))) AND NOT (D:CUI-Decontrol-Context > 0)"
   },
   {
-    "name": "CUI Engine (Medium Confidence)",
-    "expression": "(((D:CUI Registry Marking Pattern (Medium confidence) > 0) AND ((D:CUI Portion Marking Pattern (Medium confidence) > 0) OR (D:CUI Contextual Phrases > 0) OR (D:CUI Category Phrase > 0))) OR ((D:CUI Portion Marking Pattern (Medium confidence) > 0) AND ((D:CUI Contextual Phrases > 2) OR (D:CUI Category Phrase > 1))) OR ((D:Declassify Date Pattern (Medium Confidence) > 0) AND ((D:CUI Portion Marking Pattern (Medium confidence) > 0) OR (D:CUI Contextual Phrases > 2) OR (D:CUI Category Phrase > 1))))",
-    "description": "Engine created by automated script."
+    "name": "CUI-Detect-Contextual",
+    "description": "Content-based CUI signal: three or more distinct marking-guide phrases together with a Registry category name, minus the decontrol exclusion. Monitor only.",
+    "expression": "(((D:CUI-Contextual-Phrases > 2) AND (D:CUI-Category-Phrases > 0))) AND NOT ((D:CUI-Decontrol-Context > 0))"
   },
   {
-    "name": "CUI Engine (Low Confidence)",
-    "expression": "((D:CUI Contextual Phrases > 2) AND (D:CUI Category Phrase > 0))",
-    "description": "Engine created by automated script."
+    "name": "CUI-Detect-Block-Grade",
+    "description": "High-precision signals intended to BLOCK (16 dictionaries with their minimum counts), minus the exclusion dictionaries.",
+    "expression": "(((D:CUI-Banner-Structural > 0) OR (D:CUI-Banner-LDC > 0) OR (D:CUI-PortionMark-Structural > 1) OR (D:CUI-Code-CTI > 0) OR (D:CUI-Code-PRVCY > 0) OR (D:CUI-Code-PROPIN > 0) OR (D:CUI-Code-SSEL > 0) OR (D:CUI-Code-ISVI > 0) OR (D:CUI-Code-OPSEC > 0) OR (D:CUI-Code-NNPI > 0) OR (D:CUI-Code-PCII > 0) OR (D:CUI-Code-CVI > 0) OR (D:Legacy-FOUO > 0) OR (D:Legacy-LES > 0) OR (D:Legacy-SBU > 0) OR (D:Legacy-Distribution-Statements > 0))) AND NOT ((D:CUI-Decontrol-Context > 0))"
+  },
+  {
+    "name": "CUI-Detect-Caution-Grade",
+    "description": "Lower-precision signals intended to CAUTION (12 dictionaries with their minimum counts), minus the exclusion dictionaries. Never wire to BLOCK.",
+    "expression": "(((D:CUI-Basic-Bare > 2) OR (D:CUI-LDC-Standalone > 0) OR (D:CUI-Prox-EXPT > 0) OR (D:CUI-Prox-TAX > 0) OR (D:CUI-Prox-LEI > 0) OR (D:CUI-Prox-CRIT > 0) OR (D:CUI-Prox-NUC > 0) OR (D:CUI-Prox-INTEL > 0) OR (D:CUI-Prox-LEGAL > 0) OR (D:CUI-Prox-PROCURE > 0) OR (D:CUI-Designation-Indicator > 2) OR (D:CUI-Declassify-Date > 0))) AND NOT ((D:CUI-Decontrol-Context > 0))"
   }
 ]

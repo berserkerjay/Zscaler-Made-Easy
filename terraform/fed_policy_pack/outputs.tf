@@ -41,14 +41,37 @@ output "dictionaries" {
     tlp_red = zia_dlp_dictionaries.tlp_red
     tlp_amber_strict = zia_dlp_dictionaries.tlp_amber_strict
     tlp_amber = zia_dlp_dictionaries.tlp_amber
-    cui_registry_marking_pattern_high_confidence = zia_dlp_dictionaries.cui_registry_marking_pattern_high_confidence
-    cui_registry_marking_pattern_medium_confidence = zia_dlp_dictionaries.cui_registry_marking_pattern_medium_confidence
-    cui_portion_marking_pattern_high_confidence = zia_dlp_dictionaries.cui_portion_marking_pattern_high_confidence
-    cui_portion_marking_pattern_medium_confidence = zia_dlp_dictionaries.cui_portion_marking_pattern_medium_confidence
-    declassify_date_pattern_high_confidence = zia_dlp_dictionaries.declassify_date_pattern_high_confidence
-    declassify_date_pattern_medium_confidence = zia_dlp_dictionaries.declassify_date_pattern_medium_confidence
+    cui_banner_structural = zia_dlp_dictionaries.cui_banner_structural
+    cui_banner_ldc = zia_dlp_dictionaries.cui_banner_ldc
+    cui_portionmark_structural = zia_dlp_dictionaries.cui_portionmark_structural
+    cui_basic_bare = zia_dlp_dictionaries.cui_basic_bare
+    cui_ldc_standalone = zia_dlp_dictionaries.cui_ldc_standalone
+    cui_code_cti = zia_dlp_dictionaries.cui_code_cti
+    cui_code_prvcy = zia_dlp_dictionaries.cui_code_prvcy
+    cui_code_propin = zia_dlp_dictionaries.cui_code_propin
+    cui_code_ssel = zia_dlp_dictionaries.cui_code_ssel
+    cui_code_isvi = zia_dlp_dictionaries.cui_code_isvi
+    cui_code_opsec = zia_dlp_dictionaries.cui_code_opsec
+    cui_code_nnpi = zia_dlp_dictionaries.cui_code_nnpi
+    cui_code_pcii = zia_dlp_dictionaries.cui_code_pcii
+    cui_code_cvi = zia_dlp_dictionaries.cui_code_cvi
+    cui_prox_expt = zia_dlp_dictionaries.cui_prox_expt
+    cui_prox_tax = zia_dlp_dictionaries.cui_prox_tax
+    cui_prox_lei = zia_dlp_dictionaries.cui_prox_lei
+    cui_prox_crit = zia_dlp_dictionaries.cui_prox_crit
+    cui_prox_nuc = zia_dlp_dictionaries.cui_prox_nuc
+    cui_prox_intel = zia_dlp_dictionaries.cui_prox_intel
+    cui_prox_legal = zia_dlp_dictionaries.cui_prox_legal
+    cui_prox_procure = zia_dlp_dictionaries.cui_prox_procure
+    legacy_fouo = zia_dlp_dictionaries.legacy_fouo
+    legacy_les = zia_dlp_dictionaries.legacy_les
+    legacy_sbu = zia_dlp_dictionaries.legacy_sbu
+    legacy_distribution_statements = zia_dlp_dictionaries.legacy_distribution_statements
+    cui_designation_indicator = zia_dlp_dictionaries.cui_designation_indicator
+    cui_decontrol_context = zia_dlp_dictionaries.cui_decontrol_context
+    cui_declassify_date = zia_dlp_dictionaries.cui_declassify_date
     cui_contextual_phrases = zia_dlp_dictionaries.cui_contextual_phrases
-    cui_category_phrase = zia_dlp_dictionaries.cui_category_phrase
+    cui_category_phrases = zia_dlp_dictionaries.cui_category_phrases
   } : r.name => r.id }
 }
 
@@ -57,7 +80,6 @@ output "engines" {
     fouo_markings_high_confidence = zia_dlp_engines.fouo_markings_high_confidence
     fouo_markings_medium_confidence = zia_dlp_engines.fouo_markings_medium_confidence
     aea_high_confidence = zia_dlp_engines.aea_high_confidence
-    aea_medium_confidence = zia_dlp_engines.aea_medium_confidence
     standard_forms = zia_dlp_engines.standard_forms
     us_pii = zia_dlp_engines.us_pii
     private_keys = zia_dlp_engines.private_keys
@@ -68,9 +90,10 @@ output "engines" {
     tlp_red = zia_dlp_engines.tlp_red
     tlp_amber_strict = zia_dlp_engines.tlp_amber_strict
     tlp_amber = zia_dlp_engines.tlp_amber
-    cui_engine_high_confidence = zia_dlp_engines.cui_engine_high_confidence
-    cui_engine_medium_confidence = zia_dlp_engines.cui_engine_medium_confidence
-    cui_engine_low_confidence = zia_dlp_engines.cui_engine_low_confidence
+    cui_detect_all = zia_dlp_engines.cui_detect_all
+    cui_detect_contextual = zia_dlp_engines.cui_detect_contextual
+    cui_detect_block_grade = zia_dlp_engines.cui_detect_block_grade
+    cui_detect_caution_grade = zia_dlp_engines.cui_detect_caution_grade
   } : r.name => r.id }
 }
 
@@ -84,8 +107,10 @@ output "rules" {
     zia_dlp_web_rules.z_traffic_light_protocol_monitor.name,
     zia_dlp_web_rules.z_us_pii_monitor.name,
     zia_dlp_web_rules.z_us_phi_monitor.name,
-    zia_dlp_web_rules.z_controlled_unclassified_information_monitor.name,
     zia_dlp_web_rules.z_private_keys_monitor.name,
+    zia_dlp_web_rules.cui_block_marked_documents.name,
+    zia_dlp_web_rules.cui_caution_weak_markings.name,
+    zia_dlp_web_rules.cui_monitor_all.name,
     zia_endpoint_dlp_rules.z_atomic_energy_act_endpoint.name,
     zia_casb_dlp_rules.z_atomic_energy_act_saas.name,
     zia_outbound_email_dlp.z_atomic_energy_act_email.name,
@@ -110,11 +135,17 @@ output "rules" {
     zia_endpoint_dlp_rules.z_us_phi_endpoint.name,
     zia_casb_dlp_rules.z_us_phi_saas.name,
     zia_outbound_email_dlp.z_us_phi_email.name,
-    zia_endpoint_dlp_rules.z_controlled_unclassified_information_endpoint.name,
-    zia_casb_dlp_rules.z_controlled_unclassified_information_saas.name,
-    zia_outbound_email_dlp.z_controlled_unclassified_information_email.name,
     zia_endpoint_dlp_rules.z_private_keys_endpoint.name,
     zia_casb_dlp_rules.z_private_keys_saas.name,
     zia_outbound_email_dlp.z_private_keys_email.name,
+    zia_endpoint_dlp_rules.cui_block_marked_documents_endpoint.name,
+    zia_casb_dlp_rules.cui_block_marked_documents_saas.name,
+    zia_outbound_email_dlp.cui_block_marked_documents_email.name,
+    zia_endpoint_dlp_rules.cui_caution_weak_markings_endpoint.name,
+    zia_casb_dlp_rules.cui_caution_weak_markings_saas.name,
+    zia_outbound_email_dlp.cui_caution_weak_markings_email.name,
+    zia_endpoint_dlp_rules.cui_monitor_all_endpoint.name,
+    zia_casb_dlp_rules.cui_monitor_all_saas.name,
+    zia_outbound_email_dlp.cui_monitor_all_email.name,
   ]
 }

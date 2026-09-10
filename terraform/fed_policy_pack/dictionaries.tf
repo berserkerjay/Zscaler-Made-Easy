@@ -30,7 +30,7 @@ data "zia_dlp_dictionaries" "medical" {
 
 resource "zia_dlp_dictionaries" "fouo_markings_high_confidence" {
   name                         = "FOUO Markings (High Confidence)"
-  description                  = "High confidence looks for case sensitive uppercase markings, without typos. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "High confidence looks for case sensitive uppercase markings, without typos. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -42,7 +42,7 @@ resource "zia_dlp_dictionaries" "fouo_markings_high_confidence" {
 
 resource "zia_dlp_dictionaries" "fouo_markings_medium_confidence" {
   name                         = "FOUO Markings (Medium Confidence)"
-  description                  = "Medium Confidence is not case sensitive and allows for certain typos, such as “FUOU) which was observed in one of the reference docs. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Medium Confidence is not case sensitive and allows for certain typos, such as “FUOU) which was observed in one of the reference docs. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -54,7 +54,7 @@ resource "zia_dlp_dictionaries" "fouo_markings_medium_confidence" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_admonishment_phrase" {
   name                         = "AEA RD-FRD-Admonishment Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -70,7 +70,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_admonishment_phrase" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_literal_phrase" {
   name                         = "AEA RD-FRD-Literal Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -86,7 +86,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_literal_phrase" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_contextual_phrase" {
   name                         = "AEA RD-FRD-Contextual Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -134,7 +134,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_contextual_phrase" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_high_confidence" {
   name                         = "AEA RD-FRD Pattern (High Confidence)"
-  description                  = "High confidence pattern matches uppercase plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "High confidence pattern matches uppercase plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -146,7 +146,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_high_confidence" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_medium_confidence" {
   name                         = "AEA RD-FRD Pattern (Medium Confidence)"
-  description                  = "Medium confidence pattern matches any case plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Medium confidence pattern matches any case plaintext markings with our without dashes and slashes with mid-string matching prevention. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -158,7 +158,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_pattern_medium_confidence" {
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_high_confidence" {
   name                         = "AEA RD-FRD-Portion-Marking-Pattern (High Confidence)"
-  description                  = "High confidence pattern matches uppercase plaintext markings with parenthesis, with or without dashes and slashes, with mid-string matching prevention. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "High confidence pattern matches uppercase plaintext markings with parenthesis, with or without dashes and slashes, with mid-string matching prevention. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -170,7 +170,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_high_confide
 
 resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_medium_confidence" {
   name                         = "AEA RD-FRD-Portion-Marking-Pattern (Medium Confidence)"
-  description                  = "Medium confidence pattern matches any case plaintext portion marking with a pre and post character like parenthesis or double quote. As seen in some typos. Some potential for mid-string matching. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Medium confidence pattern matches any case plaintext portion marking with a pre and post character like parenthesis or double quote. As seen in some typos. Some potential for mid-string matching. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -182,7 +182,7 @@ resource "zia_dlp_dictionaries" "aea_rd_frd_portion_marking_pattern_medium_confi
 
 resource "zia_dlp_dictionaries" "standard_forms" {
   name                         = "Standard Forms"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -302,7 +302,7 @@ resource "zia_dlp_dictionaries" "standard_forms" {
 
 resource "zia_dlp_dictionaries" "us_passport_high_confidence" {
   name                         = "US Passport - High Confidence"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -362,7 +362,7 @@ resource "zia_dlp_dictionaries" "us_passport_high_confidence" {
 
 resource "zia_dlp_dictionaries" "us_passport_prox_500" {
   name                         = "US Passport - Prox 500"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -424,7 +424,7 @@ resource "zia_dlp_dictionaries" "us_passport_prox_500" {
 
 resource "zia_dlp_dictionaries" "alien_registration_number_prox_500" {
   name                         = "Alien Registration Number - Prox 500"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -466,7 +466,7 @@ resource "zia_dlp_dictionaries" "alien_registration_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "alien_registration_number_high_confidence" {
   name                         = "Alien Registration Number - High Confidence"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -506,7 +506,7 @@ resource "zia_dlp_dictionaries" "alien_registration_number_high_confidence" {
 
 resource "zia_dlp_dictionaries" "date_of_birth_high_confidence" {
   name                         = "Date of Birth - High Confidence"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -558,7 +558,7 @@ resource "zia_dlp_dictionaries" "date_of_birth_high_confidence" {
 
 resource "zia_dlp_dictionaries" "date_of_birth_prox_500" {
   name                         = "Date of Birth - Prox 500"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -612,7 +612,7 @@ resource "zia_dlp_dictionaries" "date_of_birth_prox_500" {
 
 resource "zia_dlp_dictionaries" "social_security_numbers_us_high" {
   name                         = "Social Security Numbers (US) - High"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -629,7 +629,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_high" {
 
 resource "zia_dlp_dictionaries" "social_security_numbers_us_prox_500" {
   name                         = "Social Security Numbers (US) - Prox 500"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -647,7 +647,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "tax_identification_number_us_high" {
   name                         = "Tax Identification Number (US) - High"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -660,7 +660,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_high" {
 
 resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
   name                         = "Tax Identification Number (US) - Prox 500"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -674,7 +674,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
   name                         = "Drivers License (United States) - Prox 500"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -693,7 +693,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
 
 resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
   name                         = "Drivers License (United States) - High"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -711,7 +711,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
 
 resource "zia_dlp_dictionaries" "private_keys_plaintext_regex" {
   name                         = "Private Keys-Plaintext Regex"
-  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when... [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when... [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -723,7 +723,7 @@ resource "zia_dlp_dictionaries" "private_keys_plaintext_regex" {
 
 resource "zia_dlp_dictionaries" "jwk_private_key" {
   name                         = "JWK Private Key"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -741,7 +741,7 @@ resource "zia_dlp_dictionaries" "jwk_private_key" {
 
 resource "zia_dlp_dictionaries" "private_key" {
   name                         = "Private Key"
-  description                  = "Detect leakage of credentials and secrets [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of credentials and secrets [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -755,7 +755,7 @@ resource "zia_dlp_dictionaries" "private_key" {
 
 resource "zia_dlp_dictionaries" "encrypted_or_ascii_armored_pgp_keys" {
   name                         = "Encrypted or ASCII Armored PGP Keys"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -767,7 +767,7 @@ resource "zia_dlp_dictionaries" "encrypted_or_ascii_armored_pgp_keys" {
 
 resource "zia_dlp_dictionaries" "encrypted_bouncy_castle_key_exports" {
   name                         = "Encrypted Bouncy Castle Key Exports"
-  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -789,7 +789,7 @@ resource "zia_dlp_dictionaries" "encrypted_bouncy_castle_key_exports" {
 
 resource "zia_dlp_dictionaries" "form_k_1" {
   name                         = "Form K-1"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -825,7 +825,7 @@ resource "zia_dlp_dictionaries" "form_k_1" {
 
 resource "zia_dlp_dictionaries" "form_1099_misc_and_1099_nec" {
   name                         = "Form 1099-MISC and 1099-NEC"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -881,7 +881,7 @@ resource "zia_dlp_dictionaries" "form_1099_misc_and_1099_nec" {
 
 resource "zia_dlp_dictionaries" "w2_or_w4_or_w9_forms" {
   name                         = "W2 or W4 or W9 Forms"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -973,7 +973,7 @@ resource "zia_dlp_dictionaries" "w2_or_w4_or_w9_forms" {
 
 resource "zia_dlp_dictionaries" "form_1040_and_related_schedules" {
   name                         = "Form 1040 and related schedules"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1133,7 +1133,7 @@ resource "zia_dlp_dictionaries" "form_1040_and_related_schedules" {
 
 resource "zia_dlp_dictionaries" "aba_bank_routing_number_high" {
   name                         = "ABA Bank Routing Number - High"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1146,7 +1146,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_high" {
 
 resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
   name                         = "ABA Bank Routing Number - Prox 500"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1160,7 +1160,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "credit_cards_high" {
   name                         = "Credit Cards - High"
-  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1173,7 +1173,7 @@ resource "zia_dlp_dictionaries" "credit_cards_high" {
 
 resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
   name                         = "Credit Cards - Prox 500"
-  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1187,7 +1187,7 @@ resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
 
 resource "zia_dlp_dictionaries" "credit_card_magnetic_tracks" {
   name                         = "Credit Card Magnetic Tracks"
-  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1203,7 +1203,7 @@ resource "zia_dlp_dictionaries" "credit_card_magnetic_tracks" {
 
 resource "zia_dlp_dictionaries" "itar_phrase" {
   name                         = "ITAR Phrase"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1239,7 +1239,7 @@ resource "zia_dlp_dictionaries" "itar_phrase" {
 
 resource "zia_dlp_dictionaries" "itar_pattern" {
   name                         = "ITAR Pattern"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1263,7 +1263,7 @@ resource "zia_dlp_dictionaries" "itar_pattern" {
 
 resource "zia_dlp_dictionaries" "tlp_red" {
   name                         = "TLP Red"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1275,7 +1275,7 @@ resource "zia_dlp_dictionaries" "tlp_red" {
 
 resource "zia_dlp_dictionaries" "tlp_amber_strict" {
   name                         = "TLP Amber Strict"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1287,7 +1287,7 @@ resource "zia_dlp_dictionaries" "tlp_amber_strict" {
 
 resource "zia_dlp_dictionaries" "tlp_amber" {
   name                         = "TLP Amber"
-  description                  = "[DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  description                  = "[DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1297,61 +1297,483 @@ resource "zia_dlp_dictionaries" "tlp_amber" {
   }
 }
 
-resource "zia_dlp_dictionaries" "cui_registry_marking_pattern_high_confidence" {
-  name                         = "CUI Registry Marking Pattern (High confidence)"
-  description                  = "Identifies CUI Registry Markings with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+resource "zia_dlp_dictionaries" "cui_banner_structural" {
+  name                         = "CUI-Banner-Structural"
+  description                  = "Well-formed CUI banner line with category marking (Basic or Specified). Tier 1 structural marking; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "\\bC(UI|ONTROLLED)[\\/]{2}[ A-Z\\S]{2,10}\\b"
+    pattern = "\\bCUI//(SP-)?[A-Z]{2,10}\\b"
   }
 }
 
-resource "zia_dlp_dictionaries" "cui_registry_marking_pattern_medium_confidence" {
-  name                         = "CUI Registry Marking Pattern (Medium confidence)"
-  description                  = "Identifies CUI Registry Markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+resource "zia_dlp_dictionaries" "cui_banner_ldc" {
+  name                         = "CUI-Banner-LDC"
+  description                  = "CUI banner carrying a limited dissemination control segment. Tier 1 structural marking; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "(?i)\\bC(UI|ONTROLLED)[\\/]{1,2}[ A-Z\\S]{2,10}\\b"
+    pattern = "\\bCUI//([A-Z-]{2,12}//)?(NOFORN|FEDCON|NOCON|PROPIN|DISPLAY ONLY|REL TO|FED ONLY|DL ONLY)\\b"
   }
 }
 
-resource "zia_dlp_dictionaries" "cui_portion_marking_pattern_high_confidence" {
-  name                         = "CUI Portion Marking Pattern (High confidence)"
-  description                  = "Identifies CUI portion markings with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+resource "zia_dlp_dictionaries" "cui_portionmark_structural" {
+  name                         = "CUI-PortionMark-Structural"
+  description                  = "CUI portion markings in parenthetical form. Tier 1 structural marking; intended action Block; min matches 2. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "[(]CUI[)]"
-  }
-  patterns {
-    action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "[(]CONTROLLED[)]"
+    pattern = "\\((CUI|CUI//(SP-)?[A-Z]{2,10})\\)"
   }
 }
 
-resource "zia_dlp_dictionaries" "cui_portion_marking_pattern_medium_confidence" {
-  name                         = "CUI Portion Marking Pattern (Medium confidence)"
-  description                  = "Identifies CUI portion markings with medium confidence (case-insensitive). Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+resource "zia_dlp_dictionaries" "cui_basic_bare" {
+  name                         = "CUI-Basic-Bare"
+  description                  = "Bare CUI designation with no category segment (Basic CUI). Tier 1 structural marking; intended action Caution; min matches 3. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
-    pattern = "(?i)([\\/\"-(]CUI[)\\/\"-]|[/\"-(]CONTROLLED[)\\/\"-])"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"CONTROLLED UNCLASSIFIED INFORMATION\""
   }
 }
 
-resource "zia_dlp_dictionaries" "declassify_date_pattern_high_confidence" {
-  name                         = "Declassify Date Pattern (High Confidence)"
-  description                  = "Identifies declassification dates with high confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+resource "zia_dlp_dictionaries" "cui_ldc_standalone" {
+  name                         = "CUI-LDC-Standalone"
+  description                  = "Dissemination control markings appearing without an intact banner. Tier 1 structural marking; intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "NOFORN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "FEDCON"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"FED ONLY\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "NOCON"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"DL ONLY\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"REL TO\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"DISPLAY ONLY\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "PROPIN"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_cti" {
+  name                         = "CUI-Code-CTI"
+  description                  = "CUI category marking token for Controlled Technical Information. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-CTI\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_prvcy" {
+  name                         = "CUI-Code-PRVCY"
+  description                  = "CUI category marking token for Privacy. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bPRVCY\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_propin" {
+  name                         = "CUI-Code-PROPIN"
+  description                  = "CUI category marking token for Proprietary Business Information. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bPROPIN\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_ssel" {
+  name                         = "CUI-Code-SSEL"
+  description                  = "CUI category marking token for Source Selection. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-SSEL\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_isvi" {
+  name                         = "CUI-Code-ISVI"
+  description                  = "CUI category marking token for Information Systems Vulnerability Information. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-ISVI\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_opsec" {
+  name                         = "CUI-Code-OPSEC"
+  description                  = "CUI category marking token for Operations Security. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-OPSEC\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_nnpi" {
+  name                         = "CUI-Code-NNPI"
+  description                  = "CUI category marking token for Naval Nuclear Propulsion Information. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-NNPI\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_pcii" {
+  name                         = "CUI-Code-PCII"
+  description                  = "CUI category marking token for Protected Critical Infrastructure Information. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-PCII\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_code_cvi" {
+  name                         = "CUI-Code-CVI"
+  description                  = "CUI category marking token for Chemical-terrorism Vulnerability Information. Tier 2 category token; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSP-CVI\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_expt" {
+  name                         = "CUI-Prox-EXPT"
+  description                  = "CUI token co-located with Export Control category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-EXPT"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_tax" {
+  name                         = "CUI-Prox-TAX"
+  description                  = "CUI token co-located with Tax category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-TAX"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_lei" {
+  name                         = "CUI-Prox-LEI"
+  description                  = "CUI token co-located with Law Enforcement category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-LEI"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_crit" {
+  name                         = "CUI-Prox-CRIT"
+  description                  = "CUI token co-located with Critical Infrastructure category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-CRIT"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_nuc" {
+  name                         = "CUI-Prox-NUC"
+  description                  = "CUI token co-located with Nuclear category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-NUC"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_intel" {
+  name                         = "CUI-Prox-INTEL"
+  description                  = "CUI token co-located with Intelligence category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-INTEL"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_legal" {
+  name                         = "CUI-Prox-LEGAL"
+  description                  = "CUI token co-located with Legal category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 300
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-LEGAL"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_prox_procure" {
+  name                         = "CUI-Prox-PROCURE"
+  description                  = "CUI token co-located with Procurement and Acquisition category code (malformed marking). Tier 3 malformed marking (proximity); intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 400
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "SP-PROCURE"
+  }
+}
+
+resource "zia_dlp_dictionaries" "legacy_fouo" {
+  name                         = "Legacy-FOUO"
+  description                  = "Pre-CUI For Official Use Only marking. Tier 4 legacy marking; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bFOUO\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"FOR OFFICIAL USE ONLY\""
+  }
+}
+
+resource "zia_dlp_dictionaries" "legacy_les" {
+  name                         = "Legacy-LES"
+  description                  = "Law Enforcement Sensitive marking. Tier 4 legacy marking; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bLAW ENFORCEMENT SENSITIVE\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\b(FOUO|LES)//LES\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "legacy_sbu" {
+  name                         = "Legacy-SBU"
+  description                  = "Sensitive But Unclassified marking. Tier 4 legacy marking; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bSBU\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"SENSITIVE BUT UNCLASSIFIED\""
+  }
+}
+
+resource "zia_dlp_dictionaries" "legacy_distribution_statements" {
+  name                         = "Legacy-Distribution-Statements"
+  description                  = "DoW distribution statements B through F on technical documents. Tier 4 legacy marking; intended action Block; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bDISTRIBUTION STATEMENT [B-F]\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_designation_indicator" {
+  name                         = "CUI-Designation-Indicator"
+  description                  = "CUI designation indicator block field labels in close proximity. Tier 5 designation block; intended action Caution; min matches 3. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 600
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bCUI\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"Controlled by\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"CUI Category\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"Limited Dissemination Control\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"Distribution Statement\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"Controlled By\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "POC"
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_decontrol_context" {
+  name                         = "CUI-Decontrol-Context"
+  description                  = "Decontrol and marking-guidance language used as an engine-level exclusion. Tier 6 exclusion; intended action Exclude; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "DECONTROLLED"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"does not contain CUI\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"no longer controlled\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"CUI Marking Guide\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"sample marking\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "\"for illustrative purposes\""
+  }
+}
+
+resource "zia_dlp_dictionaries" "cui_declassify_date" {
+  name                         = "CUI-Declassify-Date"
+  description                  = "Declassification / decontrol date line (DECLASSIFY ON: yyyymmdd), exact form and a looser any-case variant. Tier 5 designation block; intended action Caution; min matches 1. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1359,14 +1781,6 @@ resource "zia_dlp_dictionaries" "declassify_date_pattern_high_confidence" {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "(?i)DECLASSIF[YIED]{1,3}[ ON:-]{4,6}\\d{8}"
   }
-}
-
-resource "zia_dlp_dictionaries" "declassify_date_pattern_medium_confidence" {
-  name                         = "Declassify Date Pattern (Medium Confidence)"
-  description                  = "Identifies declassification dates with medium confidence. Based on CMMC/NIST recommendations. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
-  dictionary_type              = "PATTERNS_AND_PHRASES"
-  custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   patterns {
     action  = "PATTERN_COUNT_TYPE_ALL"
     pattern = "(?i)DECLASSIF[YIED]{1,3}[ON[A-Z]]{1,6}[\\d]{2}[\\d\\S]{2,8}"
@@ -1374,34 +1788,34 @@ resource "zia_dlp_dictionaries" "declassify_date_pattern_medium_confidence" {
 }
 
 resource "zia_dlp_dictionaries" "cui_contextual_phrases" {
-  name                         = "CUI Contextual Phrases"
-  description                  = "CUI Contextual Phrases, based on reference documents. [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+  name                         = "CUI-Contextual-Phrases"
+  description                  = "Marking-guide vocabulary found around CUI designation blocks (Controlled By, Distribution Statement, NOFORN, ...). [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Controlled Information"
+    phrase = "\"Controlled Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Unclassified Information"
+    phrase = "\"Unclassified Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Controlled Data"
+    phrase = "\"Controlled Data\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Unclassified Data"
+    phrase = "\"Unclassified Data\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Declassified Information"
+    phrase = "\"Declassified Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Declassified Data"
+    phrase = "\"Declassified Data\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1413,43 +1827,43 @@ resource "zia_dlp_dictionaries" "cui_contextual_phrases" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Controlled By"
+    phrase = "\"Controlled By\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution Statement"
+    phrase = "\"Distribution Statement\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution A"
+    phrase = "\"Distribution A\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution B"
+    phrase = "\"Distribution B\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution C"
+    phrase = "\"Distribution C\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution D"
+    phrase = "\"Distribution D\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution E"
+    phrase = "\"Distribution E\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Distribution F"
+    phrase = "\"Distribution F\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Lawful Government Purpose"
+    phrase = "\"Lawful Government Purpose\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Dissemination Control"
+    phrase = "\"Dissemination Control\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1461,7 +1875,7 @@ resource "zia_dlp_dictionaries" "cui_contextual_phrases" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Special Access"
+    phrase = "\"Special Access\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1469,23 +1883,23 @@ resource "zia_dlp_dictionaries" "cui_contextual_phrases" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "CUI Category"
+    phrase = "\"CUI Category\""
   }
 }
 
-resource "zia_dlp_dictionaries" "cui_category_phrase" {
-  name                         = "CUI Category Phrase"
-  description                  = "CUI Category phrases from https://www.archives.gov/cui/registry/category-marking-list [DLP-Check pack fed_policy_pack v1.1] Terraform-managed."
+resource "zia_dlp_dictionaries" "cui_category_phrases" {
+  name                         = "CUI-Category-Phrases"
+  description                  = "The NARA CUI Registry category names (Privacy, Export Controlled, Critical Infrastructure, ...). [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Accident Investigation"
+    phrase = "\"Accident Investigation\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Administrative Proceedings"
+    phrase = "\"Administrative Proceedings\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1493,11 +1907,11 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Ammonium Nitrate"
+    phrase = "\"Ammonium Nitrate\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Archaeological Resources"
+    phrase = "\"Archaeological Resources\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1505,35 +1919,35 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Bank Secrecy"
+    phrase = "\"Bank Secrecy\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Battered Spouse or Child"
+    phrase = "\"Battered Spouse or Child\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Campaign Funds"
+    phrase = "\"Campaign Funds\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Chemical-terrorism Vulnerability Information"
+    phrase = "\"Chemical-terrorism Vulnerability Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Child Pornography"
+    phrase = "\"Child Pornography\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Child Victim/Witness"
+    phrase = "\"Child Victim/Witness\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Collective Bargaining"
+    phrase = "\"Collective Bargaining\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Committed Person"
+    phrase = "\"Committed Person\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1541,35 +1955,35 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Comptroller General"
+    phrase = "\"Comptroller General\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Consumer Complaint Information"
+    phrase = "\"Consumer Complaint Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Contract Use"
+    phrase = "\"Contract Use\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Controlled Substances"
+    phrase = "\"Controlled Substances\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Controlled Technical Information"
+    phrase = "\"Controlled Technical Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Criminal History Records Information"
+    phrase = "\"Criminal History Records Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Critical Energy Infrastructure Information"
+    phrase = "\"Critical Energy Infrastructure Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Death Records"
+    phrase = "\"Death Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1577,107 +1991,107 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "DoD Critical Infrastructure Security Information"
+    phrase = "\"DoD Critical Infrastructure Security Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Electronic Funds Transfer"
+    phrase = "\"Electronic Funds Transfer\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Emergency Management"
+    phrase = "\"Emergency Management\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Entity Registration Information"
+    phrase = "\"Entity Registration Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Export Controlled"
+    phrase = "\"Export Controlled\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Export Controlled Research"
+    phrase = "\"Export Controlled Research\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Federal Grand Jury"
+    phrase = "\"Federal Grand Jury\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Federal Housing Finance Non-Public Information"
+    phrase = "\"Federal Housing Finance Non-Public Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Federal Taxpayer Information"
+    phrase = "\"Federal Taxpayer Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Financial Supervision Information"
+    phrase = "\"Financial Supervision Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Foreign Intelligence Surveillance Act"
+    phrase = "\"Foreign Intelligence Surveillance Act\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Foreign Intelligence Surveillance Act Business Records"
+    phrase = "\"Foreign Intelligence Surveillance Act Business Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Critical Infrastructure Information"
+    phrase = "\"General Critical Infrastructure Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Financial Information"
+    phrase = "\"General Financial Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Intelligence"
+    phrase = "\"General Intelligence\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Law Enforcement"
+    phrase = "\"General Law Enforcement\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Nuclear"
+    phrase = "\"General Nuclear\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Privacy"
+    phrase = "\"General Privacy\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Procurement and Acquisition"
+    phrase = "\"General Procurement and Acquisition\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "General Proprietary Business Information"
+    phrase = "\"General Proprietary Business Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Genetic Information"
+    phrase = "\"Genetic Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Geodetic Product Information"
+    phrase = "\"Geodetic Product Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Health Information"
+    phrase = "\"Health Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Historic Properties"
+    phrase = "\"Historic Properties\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Homeland Security Agreement Information"
+    phrase = "\"Homeland Security Agreement Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Homeland Security Enforcement Information"
+    phrase = "\"Homeland Security Enforcement Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1685,35 +2099,35 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Information Systems Vulnerability Information"
+    phrase = "\"Information Systems Vulnerability Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Information Systems Vulnerability Information - Homeland"
+    phrase = "\"Information Systems Vulnerability Information - Homeland\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Inspector General Protected"
+    phrase = "\"Inspector General Protected\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Intelligence Financial Records"
+    phrase = "\"Intelligence Financial Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Internal Data"
+    phrase = "\"Internal Data\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "International Agreement Information"
+    phrase = "\"International Agreement Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "International Agreement Information - Homeland"
+    phrase = "\"International Agreement Information - Homeland\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "International Financial Institutions"
+    phrase = "\"International Financial Institutions\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1725,7 +2139,7 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Investment Survey"
+    phrase = "\"Investment Survey\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1733,15 +2147,15 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Law Enforcement Financial Records"
+    phrase = "\"Law Enforcement Financial Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Legal Privilege"
+    phrase = "\"Legal Privilege\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Legislative Materials"
+    phrase = "\"Legislative Materials\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1749,123 +2163,123 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Military Personnel Records"
+    phrase = "\"Military Personnel Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "National Park System Resources"
+    phrase = "\"National Park System Resources\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "National Security Letter"
+    phrase = "\"National Security Letter\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "NATO Restricted"
+    phrase = "\"NATO Restricted\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "NATO Unclassified"
+    phrase = "\"NATO Unclassified\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Naval Nuclear Propulsion Information"
+    phrase = "\"Naval Nuclear Propulsion Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Net Worth"
+    phrase = "\"Net Worth\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Nuclear Recommendation Material"
+    phrase = "\"Nuclear Recommendation Material\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Nuclear Security-Related Information"
+    phrase = "\"Nuclear Security-Related Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Ocean Common Carrier and Marine Terminal Operator Agreements"
+    phrase = "\"Ocean Common Carrier and Marine Terminal Operator Agreements\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Ocean Common Carrier Service Contracts"
+    phrase = "\"Ocean Common Carrier Service Contracts\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Operations Security"
+    phrase = "\"Operations Security\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Operations Security Information"
+    phrase = "\"Operations Security Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Patent Applications"
+    phrase = "\"Patent Applications\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Pen Register/Trap & Trace"
+    phrase = "\"Pen Register/Trap & Trace\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Permanent Resident Status"
+    phrase = "\"Permanent Resident Status\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Personnel Records"
+    phrase = "\"Personnel Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Personnel Security Information"
+    phrase = "\"Personnel Security Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Pesticide Producer Survey"
+    phrase = "\"Pesticide Producer Survey\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Physical Security"
+    phrase = "\"Physical Security\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Physical Security - Homeland"
+    phrase = "\"Physical Security - Homeland\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Presentence Report"
+    phrase = "\"Presentence Report\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Prior Arrest"
+    phrase = "\"Prior Arrest\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Privacy Information"
+    phrase = "\"Privacy Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Privileged Safety Information"
+    phrase = "\"Privileged Safety Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Proprietary Manufacturer"
+    phrase = "\"Proprietary Manufacturer\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Proprietary Postal"
+    phrase = "\"Proprietary Postal\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Protected Critical Infrastructure Information"
+    phrase = "\"Protected Critical Infrastructure Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Protective Order"
+    phrase = "\"Protective Order\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Railroad Safety Analysis Records"
+    phrase = "\"Railroad Safety Analysis Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1877,83 +2291,83 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Safeguards Information"
+    phrase = "\"Safeguards Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "SAFETY Act Information"
+    phrase = "\"SAFETY Act Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Secrecy Orders"
+    phrase = "\"Secrecy Orders\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Sensitive Personally Identifiable Information"
+    phrase = "\"Sensitive Personally Identifiable Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Sensitive Security Information"
+    phrase = "\"Sensitive Security Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Sex Crime Victim"
+    phrase = "\"Sex Crime Victim\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Small Business Research and Technology"
+    phrase = "\"Small Business Research and Technology\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Source Selection"
+    phrase = "\"Source Selection\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Statistical Information"
+    phrase = "\"Statistical Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Status Adjustment"
+    phrase = "\"Status Adjustment\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Student Records"
+    phrase = "\"Student Records\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Tax Convention"
+    phrase = "\"Tax Convention\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Taxpayer Advocate Information"
+    phrase = "\"Taxpayer Advocate Information\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Temporary Protected Status"
+    phrase = "\"Temporary Protected Status\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Terrorist Screening"
+    phrase = "\"Terrorist Screening\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Toxic Substances"
+    phrase = "\"Toxic Substances\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Unclassified Controlled Nuclear Information - Defense"
+    phrase = "\"Unclassified Controlled Nuclear Information - Defense\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Unclassified Controlled Nuclear Information - Energy"
+    phrase = "\"Unclassified Controlled Nuclear Information - Energy\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "US Census"
+    phrase = "\"US Census\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Victims of Human Trafficking"
+    phrase = "\"Victims of Human Trafficking\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
@@ -1961,19 +2375,19 @@ resource "zia_dlp_dictionaries" "cui_category_phrase" {
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Water Assessments"
+    phrase = "\"Water Assessments\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Whistleblower Identity"
+    phrase = "\"Whistleblower Identity\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Witness Protection"
+    phrase = "\"Witness Protection\""
   }
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
-    phrase = "Written Determinations"
+    phrase = "\"Written Determinations\""
   }
 }
 
