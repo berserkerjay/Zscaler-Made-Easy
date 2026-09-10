@@ -183,6 +183,15 @@ def test_missing_dictionary_leaves_existing_engine_alone_unless_converging(basel
 # The journey: positions, stages, next steps
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _keep_containment(monkeypatch):
+    """The baseline / journey tests validate full pack contents and the
+    data-governance journey, which spans containment channels. They run
+    with the pack carve-out disabled; the carve-out default is covered in
+    test_pack_channels."""
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")
+
+
 def journey_pack(tmp_path):
     """One DLP rule, one SSL rule, one Cloud App Control rule — enough to
     exercise every stage."""

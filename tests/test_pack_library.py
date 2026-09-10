@@ -66,7 +66,10 @@ output "o" { value = { for k, v in zia_dlp_dictionaries.d1 : k => v } }
 
 
 @pytest.mark.parametrize("pack_id", ["global_banking_baseline", "zbp_source_code_baseline", "zbp_endpoint_dlp_baseline", "cjis_policy_pack"])
-def test_terraform_export_round_trips_into_a_pack(pack_id):
+def test_terraform_export_round_trips_into_a_pack(pack_id, monkeypatch):
+    # Fidelity test: the Terraform workspace must round-trip the whole pack,
+    # so generate it with the containment carve-out disabled.
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")
     pack = next(p for p in discover_packs(ROOT) if p["id"] == pack_id)
     files = {k: v for k, v in pt.generate(pack).items() if k.endswith(".tf")}
     got, warnings = pl.pack_from_terraform(files)

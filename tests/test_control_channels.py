@@ -8,6 +8,14 @@ from __future__ import annotations
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _keep_containment(monkeypatch):
+    """These tests exercise the containment-channel machinery itself, so
+    they run with the pack carve-out disabled (see pack_channels)."""
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")
+
+
 import pack_channels as pc
 import pack_deploy as pd
 import pack_terraform as pt

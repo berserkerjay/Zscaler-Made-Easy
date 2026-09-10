@@ -56,10 +56,16 @@ const DZ_CHANNEL_HELP = {
 const DZ_CHANNEL = { web: 'Web', endpoint: 'Endpoint', saas: 'SaaS', email: 'Email',
                      cloud_app: 'Cloud App Control', file_type: 'File Type Control', url: 'URL Filtering', ssl: 'SSL Inspection' };
 const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
+// Containment channels a pack never deploys: they are carved out and
+// managed separately (kept in step with pack_channels.CARVED_CHANNELS).
+const DZ_CARVED = ['cloud_app', 'file_type', 'url'];
 function _dzChannelChips(channels) {
   if (!channels) return '';
-  return Object.keys(DZ_CHANNEL).filter(c => c !== 'web' && channels[c])
-    .map(c => `<span class="dz-chip kind-channel" title="${_dzChan(c)} DLP rules">${channels[c]} ${_dzChan(c)}</span>`).join('');
+  const chips = Object.keys(DZ_CHANNEL).filter(c => c !== 'web' && !DZ_CARVED.includes(c) && channels[c])
+    .map(c => `<span class="dz-chip kind-channel" title="${_dzChan(c)} rules">${channels[c]} ${_dzChan(c)}</span>`).join('');
+  const carved = DZ_CARVED.filter(c => channels[c]).map(_dzChan);
+  const note = carved.length ? `<span class="dz-chip kind-muted" title="Packs deploy detection only. ${carved.join(', ')} rules in this pack are not deployed; manage containment separately.">${carved.join(' · ')} carved out</span>` : '';
+  return chips + note;
 }
 
 // ── Channel targets ───────────────────────────────────────────────

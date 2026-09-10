@@ -190,6 +190,39 @@ def multi_pack(tmp_path, **overrides):
 # Preflight
 # ---------------------------------------------------------------------------
 
+def _all_channel_policies():
+    return [
+        _policy("Web-Monitor", ["Alpha Engine"]),
+        dict(_policy("EP-Monitor", ["Alpha Engine"]), channel="endpoint"),
+        dict(_policy("SaaS-Monitor", ["Alpha Engine"], action="OFLCASB_DLP_REPORT_INCIDENT"), channel="saas", saas_type="OFLCASB_DLP_FILE"),
+        dict(_policy("Email-Monitor", ["Alpha Engine"]), channel="email"),
+        {"name": "CAC-AI", "channel": "cloud_app", "type": "AI_ML", "state": "DISABLED", "actions_by_verb": {"UPLOAD": "BLOCK", "*": "ALLOW"}},
+        {"name": "FTC-Zip", "channel": "file_type", "filtering_action": "BLOCK", "operation": "UPLOAD", "file_types": ["FTCATEGORY_ZIP"], "state": "DISABLED"},
+        {"name": "URL-Block", "channel": "url", "action": "BLOCK", "url_categories": ["OTHER_MISCELLANEOUS"], "state": "DISABLED"},
+        {"name": "SSL-Decrypt", "channel": "ssl", "cloud_app_classes": ["AI_ML"], "state": "DISABLED", "action": {"type": "DECRYPT", "ssl_interception_cert": {"id": 1}}},
+    ]
+
+
+def test_packs_carve_out_containment_by_default(monkeypatch):
+    monkeypatch.delenv("DLP_CHECK_CARVED_CHANNELS", raising=False)
+    kept, note = pc.apply_channel_targets(_all_channel_policies(), None, pack_name="P", prefix="", engine_names=["Alpha Engine"])
+    names = {p["name"] for p in kept}
+    # Detection (web/endpoint/saas/email) and SSL stay; Cloud App Control,
+    # File Type Control and URL Filtering are carved out.
+    assert names == {"Web-Monitor", "EP-Monitor", "SaaS-Monitor", "Email-Monitor", "SSL-Decrypt"}
+    assert note["carved_channels"] == ["cloud_app", "file_type", "url"]
+    assert set(note["carved_out"]) == {"CAC-AI", "FTC-Zip", "URL-Block"}
+
+
+def test_carve_out_is_configurable(monkeypatch):
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")
+    kept, note = pc.apply_channel_targets(_all_channel_policies(), None, pack_name="P", prefix="", engine_names=["Alpha Engine"])
+    assert len(kept) == 8 and note["carved_channels"] == []
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "ssl,url")
+    kept, note = pc.apply_channel_targets(_all_channel_policies(), None, pack_name="P", prefix="", engine_names=["Alpha Engine"])
+    assert note["carved_channels"] == ["ssl", "url"] and "SSL-Decrypt" not in {p["name"] for p in kept}
+
+
 def test_all_channels_plan_and_resolve_tenants(tmp_path):
     client = make_client(casb_tenants=TENANTS)
     rep = pd.preflight(client, [multi_pack(tmp_path)], writes_enabled=True)

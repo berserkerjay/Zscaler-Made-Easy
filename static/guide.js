@@ -105,13 +105,29 @@ function _gdSteps() {
     },
   ];
 }
+// Evaluate All Rules opens the migration wizard as a modal; the wizard is
+// no longer an always-present section on the page.
 function _gdGoMigration() {
-  const card = [...document.querySelectorAll('div.card')].find(c => ((c.querySelector(':scope > h2, :scope > div h2') || {}).textContent || '').includes('Inline DLP Rule Migration'));
-  if (!card) { alert('The Inline DLP Rule Migration card is not on this page.'); return; }
-  const h = card.querySelector('h2.collapsible');
-  if (h && card.classList.contains('collapsed')) h.click();
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const m = document.getElementById('migrateModal');
+  if (!m) { alert('The Inline DLP Rule Migration wizard is not available on this page.'); return; }
+  m.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  // Expand any collapsed section inside the wizard so it opens ready to use.
+  m.querySelectorAll('.card-toggle[aria-expanded="false"]').forEach(b => b.click());
+  const h = document.getElementById('migrateModalTitle'); if (h && h.focus) h.focus();
 }
+function closeMigrateModal() {
+  const m = document.getElementById('migrateModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+}
+window.closeMigrateModal = closeMigrateModal;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const m = document.getElementById('migrateModal');
+    if (m && m.style.display !== 'none') closeMigrateModal();
+  }
+});
 
 function _gdTlsNote(t) {
   if (!t) return '';

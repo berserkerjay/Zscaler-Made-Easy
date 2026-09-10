@@ -141,6 +141,7 @@ def test_rate_limiter_paces_threads_and_holds_everyone_after_a_429():
 
 
 def test_preflight_reads_the_tenant_once_per_journey(monkeypatch):
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")   # exercise the full channel set
     import pack_deploy as pd
     from test_pack_channels import add_control_services, make_client
     from dlp_importer import discover_packs

@@ -84,7 +84,8 @@ def test_banking_pack_is_premised_on_predefined_dictionaries_at_high_confidence(
     assert meta["baseline"]["immutable"] is True and meta["baseline"]["prefix"] == "Bank-"
 
 
-def test_banking_pack_deploys_across_every_channel():
+def test_banking_pack_deploys_across_every_channel(monkeypatch):
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")   # this test covers the pack's full channel coverage
     pk = _pack("global_banking_baseline")
     client = _client()
     rep = pd.preflight(client, [pk], writes_enabled=True)

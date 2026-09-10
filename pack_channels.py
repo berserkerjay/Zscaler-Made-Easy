@@ -126,6 +126,23 @@ CHANNELS: Dict[str, Dict[str, Any]] = {
     },
 }
 CONTROL_CHANNELS = {CLOUD_APP, FILE_TYPE, URL, SSL}
+# Containment channels carved out of every pack: a pack deploys detection
+# (Web / Endpoint / SaaS / Email DLP) only. Cloud App Control, File Type
+# Control and URL Filtering are managed separately, not by a pack. SSL
+# Inspection stays with the pack because decryption is what lets inline
+# DLP read HTTPS. Override with DLP_CHECK_CARVED_CHANNELS (comma list of
+# channel keys, or "none") if a deployment wants a different split.
+def _carved_channels() -> set:
+    import os
+    raw = os.environ.get("DLP_CHECK_CARVED_CHANNELS")
+    if raw is None:
+        return {CLOUD_APP, FILE_TYPE, URL}
+    if raw.strip().lower() in ("", "none"):
+        return set()
+    return {c.strip().lower() for c in raw.split(",") if c.strip().lower() in CONTROL_CHANNELS}
+
+
+CARVED_CHANNELS = {CLOUD_APP, FILE_TYPE, URL}
 
 # Cloud App Control rule types (application categories). A pack rule's
 # "type" must be one of these; "cloud_app_classes" defaults to [type].
@@ -323,7 +340,20 @@ def apply_channel_targets(policies: List[Dict[str, Any]], targets: Optional[Sequ
     extension rule for every chosen channel the pack has no rule for.
     Returns (policies, note) where note lists what was skipped and added."""
     norm = normalize_targets(targets)
-    note: Dict[str, Any] = {"targets": norm, "skipped_channels": [], "skipped_rules": [], "extended": [], "warnings": []}
+    note: Dict[str, Any] = {"targets": norm, "skipped_channels": [], "skipped_rules": [], "extended": [], "warnings": [],
+                            "carved_out": [], "carved_channels": []}
+    # A pack deploys detection only. Carve the containment channels out
+    # before anything else, whatever the channel choice, so they never
+    # reach a plan, a Terraform workspace or the tenant.
+    carve = _carved_channels()
+    if carve:
+        content, carved = [], []
+        for p in policies:
+            (carved if channel_of(p) in carve else content).append(p)
+        if carved:
+            note["carved_out"] = [p.get("name", "?") for p in carved]
+            note["carved_channels"] = sorted({channel_of(p) for p in carved})
+        policies = content
     if norm is None:
         return list(policies), note
     present = {channel_of(p) for p in policies}

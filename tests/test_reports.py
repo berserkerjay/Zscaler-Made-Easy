@@ -70,7 +70,8 @@ def test_report_tabs_share_the_app_stylesheet_and_theme():
     assert "prefers-color-scheme" not in rcss and "body.theme-light" in rcss
 
 
-def test_terraform_summary_endpoint():
+def test_terraform_summary_endpoint(monkeypatch):
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")   # the workspace here carries the full pack, containment included
     c = TestClient(srv.app)
     r = c.get("/api/dlp-packs/healthcare_phi_baseline/terraform")
     assert r.status_code == 200
