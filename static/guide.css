@@ -34,7 +34,7 @@
 
 .gd-btn { border-radius: 999px; padding: 0.45rem 0.95rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border, #334155);
   background: transparent; color: var(--text, #e2e8f0); transition: background 150ms ease, border-color 150ms ease; }
-.gd-btn.primary { background: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); color: #fff; }
+.gd-btn.primary { background: var(--btn, #2563eb); border-color: var(--btn, #2563eb); color: #fff; }
 .gd-btn.quiet { color: var(--accent, #3b82f6); }
 .gd-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .gd-btn:not(:disabled):hover { border-color: var(--accent, #3b82f6); }

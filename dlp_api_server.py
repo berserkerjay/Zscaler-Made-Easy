@@ -1533,7 +1533,7 @@ async def serve_permissions_page():
             </div>
             <div>
               <h3>Endpoints used</h3>
-              <div class="endpoints">{endpoints or '<span class="muted">(composite — no direct endpoints)</span>'}</div>
+              <div class="endpoints" tabindex="0" aria-label="Endpoints used by this scope">{endpoints or '<span class="muted">(composite — no direct endpoints)</span>'}</div>
             </div>
           </div>
           <div class="license"><strong>License / subscription:</strong> {esc(s.get("license_required", "—"))}</div>

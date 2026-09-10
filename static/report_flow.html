@@ -11,17 +11,17 @@
 </head>
 <body class="report-page flow-page">
   <div class="rp-page fl-page">
-    <div class="hero rp-hero">
+    <header class="hero rp-hero">
       <h1><span class="accent">Deployment</span> Flow <span class="sf-live" id="flLive" hidden><i></i>live</span></h1>
       <p>How the policy pack fits together: predefined templates feed dictionaries, dictionaries feed engines, engines feed rules, and rules apply to what the tenant already has.</p>
       <span class="badge" id="rpMeta"></span>
-    </div>
-    <div class="rp-bar">
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <span class="sep"></span>
       <label class="fl-find"><span class="lbl">Find</span><input type="search" id="flFind" placeholder="dictionary, engine or rule name" aria-label="Find a node by name"></label>
       <a class="rp-btn" id="flRefresh" href="#" title="Read the plan currently shown in Deploy Policy Packs">↻ Refresh</a>
-    </div>
+    </nav>
     <div class="fl-grid">
       <main class="rp-card fl-main">
         <div id="rpBody">

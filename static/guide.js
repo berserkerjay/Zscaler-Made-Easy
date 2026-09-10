@@ -229,7 +229,7 @@ function _gdRender() {
         <button type="button" class="gd-btn quiet" onclick="_gdHelp(true)">? Help &amp; glossary</button>
       </div>
     </div>
-    <div class="gd-progress" aria-label="${doneCount} of ${steps.length} steps done"><div class="bar" style="width:${(doneCount / steps.length) * 100}%"></div></div>
+    <div class="gd-progress" role="progressbar" aria-label="Steps done" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${doneCount}" aria-valuetext="${doneCount} of ${steps.length} steps done"><div class="bar" style="width:${(doneCount / steps.length) * 100}%"></div></div>
     <ol class="gd-steps">
       ${steps.map(s => `
       <li class="gd-step is-${s.state}">

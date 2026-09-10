@@ -40,7 +40,7 @@ function _dfSvg(t) {
       ${h.weak_point ? `<circle class="dot sev-${_dfE(h.weak_point.severity)}" cx="${W - 12}" cy="12" r="5"><title>${_dfE(h.weak_point.title)}</title></circle>` : ''}
     </g>`;
   });
-  return `<svg class="df-svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Path from the device to the destination">${out}</svg>`;
+  return `<svg class="df-svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="Path from the device to the destination">${out}</svg>`;
 }
 
 function _dfHopDetail(h) {
@@ -70,14 +70,15 @@ function renderDataFlowTrace(t, container) {
     <div class="df-outcome st-${ocls}"><span class="df-chip st-${ocls}">${_dfE(olab)}</span><strong>${_dfE(t.destination.label)}</strong> <span class="df-by">${_dfE(t.destination.kind)}${t.destination.categories && t.destination.categories.length ? ` · categories ${_dfE(t.destination.categories.slice(0, 4).join(', '))}` : ''}${t.destination.applications && t.destination.applications.length ? ` · ${t.destination.applications.length} application(s)` : ''}</span></div>
     <div class="df-flow-wrap" id="dfFlowWrap">${_dfSvg(t)}</div>
     <div class="df-hint">Each box is a hop the tenant's configuration puts on the path; a dot marks a weak point. Click a box for the rule that decided it.</div>
-    <h3 class="df-h">Hops</h3>
+    <h2 class="df-h">Hops</h2>
     <div class="df-hops">${t.hops.map(_dfHopDetail).join('')}</div>
-    <h3 class="df-h">Channels that do not ride the tunnel</h3>
+    <h2 class="df-h">Channels that do not ride the tunnel</h2>
     <div class="df-chans">${chans}</div>
-    <h3 class="df-h">Policy packs on this path</h3>
+    <h2 class="df-h">Policy packs on this path</h2>
     ${packs || '<div class="df-hop-d">No policy packs installed.</div>'}
-    <h3 class="df-h">Weak points, worst first</h3>
+    <h2 class="df-h">Weak points, worst first</h2>
     ${weak ? `<ul class="df-weaks">${weak}</ul>` : '<div class="df-hop-d">None on this path.</div>'}`;
+  container.querySelectorAll('.df-node').forEach(n => n.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); n.dispatchEvent(new Event('click')); } }));
   container.querySelectorAll('.df-node').forEach(n => n.addEventListener('click', () => {
     const el = container.querySelector(`.df-hop[data-hop="${n.dataset.hop}"]`) || [...container.querySelectorAll('.df-hop')].find(x => x.textContent.includes(n.getAttribute('aria-label').split(':')[0]));
     if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });

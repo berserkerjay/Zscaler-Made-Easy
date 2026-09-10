@@ -10,12 +10,12 @@
 </head>
 <body class="report-page">
   <div class="rp-page">
-    <div class="hero rp-hero">
+    <header class="hero rp-hero">
       <h1><span class="accent">SSL</span> Inspection Flow <span class="sf-live" id="sfLive" hidden><i></i>live</span></h1>
       <p>What SSL inspection decrypts, what it leaves encrypted, and where that makes inline Web DLP blind.</p>
       <span class="badge" id="rpMeta"></span>
-    </div>
-    <div class="rp-bar">
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <span class="sep"></span>
       <span id="rpControls" hidden>
@@ -26,7 +26,7 @@
         <a class="rp-btn" id="expMd">Markdown</a>
         <a class="rp-btn" id="expJson">JSON</a>
       </span>
-    </div>
+    </nav>
     <main class="rp-card">
       <div id="rpBody" class="bp-body" style="padding:0;">
         <div class="rp-wait"><div class="spin"></div>Reading SSL inspection rules, Web DLP rules and the cloud application catalogue… this tab fills in when the report is ready (5–15 seconds). Keep the assessment tab open.</div>
