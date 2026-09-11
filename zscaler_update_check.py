@@ -91,7 +91,7 @@ SOURCES: List[Dict[str, Any]] = [
         "key": "best_practices",
         "name": "Zscaler Deployment & Operations Best Practices",
         "type": "html_hash",
-        "url": "https://help.zscaler.com/zscaler-deployments-operation",
+        "url": "https://help.zscaler.com/zscaler-deployments-operations",
         "importance": "high",
         "why": "Root of the best-practice documentation. Major guidance updates land here.",
     },
@@ -352,27 +352,76 @@ def _check_pypi(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Opti
     }
 
 
+# ── Is there a page behind the link? ─────────────────────────────────
+# help.zscaler.com answers 200 with a "page not found" page for a slug
+# that has moved, and a plain fetch of a page that only renders in the
+# browser has no text. Neither is a link worth handing to the user.
+_EMPTY_TITLES = re.compile(r"page not found|not found|access denied|error|no longer available|moved", re.I)
+_MIN_TEXT_CHARS = 400
+
+
+def page_quality(body: Optional[bytes], code: int) -> Dict[str, Any]:
+    """{ok, reason, title, text_chars} for a fetched page."""
+    if code in (404, 410):
+        return {"ok": False, "reason": f"HTTP {code}: the page no longer exists", "title": "", "text_chars": 0}
+    if code == 403:
+        return {"ok": False, "reason": "HTTP 403: the page cannot be read from here", "title": "", "text_chars": 0}
+    if not body:
+        return {"ok": False, "reason": "empty response", "title": "", "text_chars": 0}
+    txt = body.decode("utf-8", errors="ignore")
+    m = re.search(r"<title[^>]*>(.*?)</title>", txt, re.I | re.S)
+    title = re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+    main = re.sub(r"<(script|style|noscript|header|footer|nav)[^>]*>.*?</\1>", " ", txt, flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", main)
+    text = re.sub(r"&[a-z#0-9]+;", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if title and _EMPTY_TITLES.search(title) and len(text) < 3000:
+        return {"ok": False, "reason": f'the page says "{title}"', "title": title, "text_chars": len(text)}
+    if re.search(r"page (you are looking for|you requested) (could not be found|does not exist|has moved)", text, re.I):
+        return {"ok": False, "reason": "the page says it could not be found", "title": title, "text_chars": len(text)}
+    if len(text) < _MIN_TEXT_CHARS:
+        return {"ok": False, "reason": f"the page has no readable content ({len(text)} characters of text; it may render only in a browser)", "title": title, "text_chars": len(text)}
+    return {"ok": True, "reason": "", "title": title, "text_chars": len(text)}
+
+
+def section_root(url: str) -> str:
+    """The section index of a help page (https://help.zscaler.com/zia for
+    /zia/...): the fallback link when the page itself is gone."""
+    u = urlparse(url)
+    parts = [p for p in u.path.split("/") if p]
+    return f"{u.scheme}://{u.netloc}/{parts[0]}" if parts else f"{u.scheme}://{u.netloc}/"
+
+
 def _check_html(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Optional[bool] = None) -> Dict[str, Any]:
     url = source["url"]
     body, code, err = _safe_get(url, verify_tls=verify_tls)
     if err or code != 200 or not body:
-        return {**_base_result(source, cached),
-                "status": "error", "error": err or f"HTTP {code}",
-                "link": url}
+        res = {**_base_result(source, cached), "status": "error", "error": err or f"HTTP {code}", "link": url}
+        if code in (403, 404, 410):
+            q = page_quality(body, code)
+            res.update({"link": section_root(url), "link_fallback": True, "page": q,
+                        "link_note": f"{url} — {q['reason']}. The link opens the section index instead; search there for \"{source['name']}\"."})
+        return res
+    q = page_quality(body, code)
     normalized = _strip_volatile(body)
     digest = _hash(normalized)
     size = len(normalized)
     prev_digest = cached.get("hash")
     status = "new" if prev_digest is None else ("changed" if prev_digest != digest else "unchanged")
-    return {
+    res = {
         **_base_result(source, cached),
         "status": status,
         "current": digest,
         "previous": prev_digest,
         "size_bytes": size,
         "link": url,
+        "page": q,
         "action_hint": "Open the link and review the updated section." if status == "changed" else None,
     }
+    if not q["ok"]:
+        res.update({"status": "dead_link", "link": section_root(url), "link_fallback": True, "action_hint": None,
+                    "link_note": f"{url} — {q['reason']}. The link opens the section index instead; search there for \"{source['name']}\"."})
+    return res
 
 
 def _base_result(source: Dict[str, Any], cached: Dict[str, Any]) -> Dict[str, Any]:

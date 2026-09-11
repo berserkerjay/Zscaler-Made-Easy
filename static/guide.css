@@ -124,3 +124,13 @@ body.theme-light .gd-upd-cmd { background: rgba(15,23,42,0.05); }
 /* Inline spinner for "still measuring" notes (journey card while it fills in). */
 .gd-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; vertical-align: -2px; margin-right: 0.35rem; animation: gd-spin 0.9s linear infinite; }
 @keyframes gd-spin { to { transform: rotate(360deg); } }
+
+/* Tenant details live inside step 1 (Connect to the tenant). */
+.gd-tenant { margin-top: 0.6rem; border: 1px solid var(--border, #1e293b); border-radius: 10px; background: color-mix(in srgb, var(--well, #0f172a) 60%, transparent); }
+.gd-tenant > summary { cursor: pointer; padding: 0.6rem 0.9rem; font-weight: 600; font-size: 0.9rem; list-style: none; display: flex; align-items: center; gap: 0.5rem; }
+.gd-tenant > summary::before { content: '▸'; color: var(--accent, #3b82f6); transition: transform 0.15s; }
+.gd-tenant[open] > summary::before { transform: rotate(90deg); }
+.gd-tenant > summary::-webkit-details-marker { display: none; }
+.gd-tenant > summary:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; border-radius: 8px; }
+.gd-tenant .gd-dim { font-weight: 400; color: var(--dim, #94a3b8); font-size: 0.8rem; }
+.gd-tenant #configCard { margin: 0; border: 0; border-top: 1px solid var(--border, #1e293b); border-radius: 0 0 10px 10px; box-shadow: none; }

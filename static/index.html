@@ -597,6 +597,14 @@
     </div>
 
     <div class="hero-toolbar" aria-label="Tools">
+      <div class="tool-group" role="group" aria-label="Start">
+        <div class="tool-group-l">Start</div>
+        <button class="btn btn-ghost" onclick="openQuickStartTab()"
+                aria-label="Open Quick Start Assessment: the four steps from credentials to a scored report (opens in a new tab)"
+                title="The four steps from API credentials to a scored maturity report, and how to get the credentials. Opens in a new tab.">
+          <span aria-hidden="true">🚀</span> Quick Start Assessment
+        </button>
+      </div>
       <div class="tool-group" role="group" aria-label="Find the gaps">
         <div class="tool-group-l">Find the gaps</div>
         <button class="btn btn-ghost" onclick="openDataFlowTab()"
@@ -778,39 +786,9 @@
     <span class="step-item" data-step="review" style="color:var(--dim);">④ Review + Export</span>
   </nav>
 
-  <!-- Quick Start -->
-  <div class="card">
-    <h2>Quick Start</h2>
-    <div class="steps">
-      <div class="step"><div class="step-num">STEP 1</div><div class="step-title">Get API Credentials</div><div class="step-desc">Create an OAuth client in your Zscaler admin portal with read-only access.</div></div>
-      <div class="step"><div class="step-num">STEP 2</div><div class="step-title">Enter Tenant Info</div><div class="step-desc">Fill in your organization details and credentials below.</div></div>
-      <div class="step"><div class="step-num">STEP 3</div><div class="step-title">Choose Scope</div><div class="step-desc">Select DLP, full platform, or a specific service to assess.</div></div>
-      <div class="step"><div class="step-num">STEP 4</div><div class="step-title">Download Report</div><div class="step-desc">Get your scored maturity report in JSON or Word format.</div></div>
-    </div>
-    <a class="help-toggle" onclick="toggleHelp('credHelp')">How do I get API credentials? &rsaquo;</a>
-    <div class="help-content" id="credHelp">
-      <h3>Getting Zscaler OneAPI Credentials</h3>
-      <ol>
-        <li>Log into your Zscaler admin portal (<code>admin.&lt;your-cloud&gt;.net</code>)</li>
-        <li>Go to <strong>Administration &rarr; API Key Management &rarr; OneAPI Credentials</strong></li>
-        <li>Click <strong>Add API Client</strong> and give it a name like <code>DLP Assessment</code></li>
-        <li>Grant these read-only scopes: <code>zia:read</code>, <code>zcc:read</code>, <code>zpa:read</code> (or minimum needed for your scope)</li>
-        <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the form below</li>
-        <li>Note your <strong>Vanity Domain</strong> (e.g., <code>acme</code>) — it's shown in the OneAPI setup page</li>
-      </ol>
-      <h3>Finding your ZPA Customer ID (optional, for ZPA checks)</h3>
-      <ol>
-        <li>Log into the ZPA admin portal</li>
-        <li>Look at the URL — it contains your customer ID: <code>https://admin.private.zscaler.com/app/&lt;CUSTOMER_ID&gt;/dashboard</code></li>
-      </ol>
-      <h3>Security note</h3>
-      <ul>
-        <li>This tool makes <strong>read-only</strong> API calls — nothing is modified</li>
-        <li>Credentials stay on your machine — they are not transmitted to any external service</li>
-        <li>Rotate your client secret periodically per Zscaler best practices</li>
-      </ul>
-    </div>
-  </div>
+  <!-- Quick Start Assessment lives in its own tab (/quickstart), opened from the toolbar. -->
+  <!-- The tenant configuration card is shown inside the guide's "Connect to the tenant" step; this is where it waits while the guide re-renders. -->
+  <div id="configPark" hidden></div>
 
   <!-- Config Form -->
   <div class="card" id="configCard">
@@ -887,7 +865,7 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="dlp" checked style="width:auto;cursor:pointer;">
-            DLP Assessment <span style="color:var(--dim);font-size:0.75rem;">(171 checks)</span>
+            DLP Assessment <span style="color:var(--dim);font-size:0.75rem;">(188 checks)</span>
           </label>
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
             <input type="checkbox" class="scope-cb" value="zia_extras" checked style="width:auto;cursor:pointer;">
@@ -1007,6 +985,9 @@
 
     <!-- Pending-Activations Banner: appears when any step has a dry-run result that still needs to be activated live. -->
     <div id="pendingActivationsBanner" style="display:none;"></div>
+
+    <!-- How Evaluate All Rules decides, and a simulator for ties (static/eval_all.js). -->
+    <div id="evalAllFlow"></div>
 
     <!-- Step 1 -->
     <div style="padding:1rem;background:var(--well);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
@@ -1210,27 +1191,12 @@
     </div>
 
     <div class="card" id="complianceCard">
-      <h2>Regulatory & Compliance Alignment</h2>
-      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:1rem;">Click any framework card to see exactly which controls are met, partially met, or not met — with the specific findings backing each control.</p>
-      <div id="complianceGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.75rem;"></div>
-
-      <!-- Drilldown modal/panel -->
-      <div id="drilldownPanel" style="display:none;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
-          <div>
-            <h3 id="drilldownTitle" style="font-size:1.1rem;margin-bottom:0.25rem;"></h3>
-            <div id="drilldownSummary" style="font-size:0.85rem;color:var(--dim);"></div>
-          </div>
-          <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
-            <button class="filter-btn" data-control-filter="all" onclick="filterControls('all',this)">All</button>
-            <button class="filter-btn" data-control-filter="Not Met" onclick="filterControls('Not Met',this)">Not Met</button>
-            <button class="filter-btn" data-control-filter="Partially Met" onclick="filterControls('Partially Met',this)">Partially Met</button>
-            <button class="filter-btn" data-control-filter="Met" onclick="filterControls('Met',this)">Met</button>
-            <button class="filter-btn" data-control-filter="Not Tested" onclick="filterControls('Not Tested',this)">Not Tested</button>
-            <button class="btn btn-ghost" onclick="closeDrilldown()" style="padding:0.4rem 0.9rem;font-size:0.8rem;">Close</button>
-          </div>
-        </div>
-        <div id="drilldownControls"></div>
+      <h2>Regulatory &amp; Compliance Alignment</h2>
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:0.8rem;">Every check maps to controls in the selected frameworks. The control-by-control view, with the findings behind each control, opens in its own tab.</p>
+      <div id="complianceGrid" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem;" aria-live="polite"></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-primary" onclick="openComplianceTab()" aria-label="Open Regulatory and Compliance Alignment in a new tab" style="padding:0.55rem 1.1rem;font-size:0.85rem;">↗ Open Regulatory &amp; Compliance Alignment</button>
+        <span id="complianceStatus" style="color:var(--dim);font-size:0.78rem;"></span>
       </div>
     </div>
 
@@ -2365,6 +2331,7 @@ async function step2Download() {
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     migrateRules = data.rules || [];
+    if (typeof evalAllLoadRules === 'function') evalAllLoadRules(migrateRules);
     el.innerHTML = `
       <div style="color:var(--pass);font-weight:600;">✓ Downloaded ${migrateRules.length} DLP rules</div>
       <div style="color:var(--dim);margin-top:0.25rem;">Rules are cached in this session. Save a JSON backup before proceeding to Step 3.</div>
@@ -3483,9 +3450,6 @@ function expandResultSections() {
   document.querySelectorAll('#results details').forEach(d => { d.open = true; });
 }
 
-let drilldownData = null;
-let currentFwKey = null;
-
 function getSelectedFrameworks() {
   return Array.from(document.querySelectorAll('.fw-cb:checked')).map(cb => cb.value);
 }
@@ -3509,41 +3473,16 @@ async function loadCompliance(data) {
     });
     if (!resp.ok) { document.getElementById('complianceCard').style.display = 'none'; return; }
     let fw = await resp.json();
-    // Filter to selected frameworks only
     fw = Object.fromEntries(Object.entries(fw).filter(([k]) => selectedFws.includes(k)));
-
-    // Also fetch drilldown data for click-through
-    const drillResp = await fetch('/api/compliance/drilldown', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(data),
-    });
-    drilldownData = drillResp.ok ? await drillResp.json() : null;
-    if (drilldownData) {
-      drilldownData = Object.fromEntries(Object.entries(drilldownData).filter(([k]) => selectedFws.includes(k)));
-    }
-
     const grid = document.getElementById('complianceGrid');
     grid.innerHTML = '';
     for (const [key, s] of Object.entries(fw)) {
       const color = s.status === 'Aligned' ? 'var(--pass)' : s.status === 'Partial' ? 'var(--warn)' : 'var(--fail)';
       const shortName = (s.name || key).split(' — ')[0];
-      const drill = drilldownData ? drilldownData[key] : null;
-      const breakdown = drill ?
-        `<div style="display:flex;gap:0.5rem;font-size:0.7rem;margin-top:0.5rem;">
-          <span style="color:var(--pass);">✓ ${drill.met} Met</span>
-          <span style="color:var(--warn);">◑ ${drill.partially_met} Partial</span>
-          <span style="color:var(--fail);">✗ ${drill.not_met} Not Met</span>
-        </div>` : '';
-      grid.innerHTML += `<div onclick="openDrilldown('${key}')" style="padding:1rem;background:var(--well);border-radius:10px;border:1px solid var(--border);transition:all 0.2s var(--ease);cursor:pointer;" onmouseover="this.style.borderColor='var(--accent)';this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='var(--border)';this.style.transform='translateY(0)';">
-        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;">
-          <span style="font-weight:600;font-size:0.9rem;">${shortName}</span>
-          <span style="font-size:0.7rem;font-weight:700;color:${color};padding:0.2rem 0.55rem;background:${color}1a;border-radius:6px;border:1px solid ${color}55;">${s.status}</span>
-        </div>
-        <div style="font-size:0.78rem;color:var(--dim);">${s.alignment_pct}% alignment • ${s.control_count} controls</div>
-        ${breakdown}
-        <div style="font-size:0.7rem;color:var(--accent);margin-top:0.5rem;">View details →</div>
-      </div>`;
+      grid.innerHTML += `<button type="button" onclick="openComplianceTab('${escapeHtml(key)}')" title="Open ${escapeHtml(shortName)} control by control" style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;background:var(--well);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;font:inherit;font-size:0.8rem;">
+        <span style="font-weight:600;">${escapeHtml(shortName)}</span>
+        <span style="font-size:0.68rem;font-weight:700;color:${color};padding:0.15rem 0.45rem;background:${color}1a;border-radius:5px;border:1px solid ${color}55;">${escapeHtml(s.status)} · ${s.alignment_pct}%</span>
+      </button>`;
     }
     document.getElementById('complianceCard').style.display = 'block';
     const cc = document.getElementById('complianceCard'), ch = cc.querySelector(':scope > h2, :scope > h3');
@@ -3553,73 +3492,26 @@ async function loadCompliance(data) {
   }
 }
 
-function openDrilldown(fwKey) {
-  if (!drilldownData || !drilldownData[fwKey]) return;
-  currentFwKey = fwKey;
-  const data = drilldownData[fwKey];
-  document.getElementById('drilldownTitle').textContent = data.framework_name;
-  document.getElementById('drilldownSummary').textContent =
-    `${data.total_controls} controls · ${data.met} Met · ${data.partially_met} Partially Met · ${data.not_met} Not Met · ${data.not_tested} Not Tested`;
-  document.getElementById('drilldownPanel').style.display = 'block';
-  // Reset filter to "all"
-  document.querySelectorAll('[data-control-filter]').forEach(b => b.classList.remove('active'));
-  document.querySelector('[data-control-filter="all"]').classList.add('active');
-  renderControls('all');
-  document.getElementById('drilldownPanel').scrollIntoView({behavior:'smooth', block:'start'});
-}
-
-function closeDrilldown() {
-  document.getElementById('drilldownPanel').style.display = 'none';
-  currentFwKey = null;
-}
-
-function filterControls(status, btn) {
-  document.querySelectorAll('[data-control-filter]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderControls(status);
-}
-
-function renderControls(filter) {
-  if (!currentFwKey || !drilldownData[currentFwKey]) return;
-  const container = document.getElementById('drilldownControls');
-  const controls = drilldownData[currentFwKey].controls;
-  const colors = {
-    'Met': 'var(--pass)', 'Partially Met': 'var(--warn)',
-    'Not Met': 'var(--fail)', 'Not Tested': 'var(--info)'
-  };
-  const badges = {
-    'Met': '✓ Met', 'Partially Met': '◑ Partially Met',
-    'Not Met': '✗ Not Met', 'Not Tested': '○ Not Tested'
-  };
-  let html = '';
-  let shown = 0;
-  for (const c of controls) {
-    if (filter !== 'all' && c.status !== filter) continue;
-    shown++;
-    const color = colors[c.status] || 'var(--dim)';
-    const evidenceHtml = c.evidence.map(e => {
-      const eColor = e.status === 'PASS' ? 'var(--pass)' : e.status === 'FAIL' ? 'var(--fail)' :
-                     e.status === 'REVIEW' ? 'var(--warn)' : 'var(--info)';
-      const eLabel = {PASS:'✓', FAIL:'✗', REVIEW:'◑', INFO:'○', ERROR:'○'}[e.status] || '·';
-      return `<div style="padding:0.5rem 0.75rem;background:var(--well);border-radius:6px;border-left:3px solid ${eColor};margin:0.25rem 0;font-size:0.8rem;">
-        <span style="color:${eColor};font-weight:700;">${eLabel}</span>
-        <span style="color:var(--dim);font-family:monospace;margin:0 0.5rem;">[${e.check_id}]</span>
-        <span style="font-weight:500;">${e.label}</span>
-        ${e.detail ? `<div style="color:var(--dim);font-size:0.75rem;margin-top:0.25rem;line-height:1.4;">${escapeHtml(e.detail)}</div>` : ''}
-      </div>`;
-    }).join('');
-    html += `<div style="padding:1rem;background:var(--well);border-radius:10px;border:1px solid var(--border);margin-bottom:0.75rem;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.5rem;">
-        <span style="font-weight:600;font-size:0.95rem;">${escapeHtml(c.control)}</span>
-        <span style="font-size:0.75rem;font-weight:700;color:${color};padding:0.25rem 0.6rem;background:${color}1a;border-radius:6px;border:1px solid ${color}55;white-space:nowrap;">${badges[c.status] || c.status}</span>
-      </div>
-      <div style="font-size:0.75rem;color:var(--dim);margin-bottom:0.6rem;">
-        Evidence: ${c.passing_count} passing · ${c.failing_count} failing · ${c.review_count} review · ${c.info_count} N/A (${c.total_evidence} total findings)
-      </div>
-      ${evidenceHtml}
-    </div>`;
+// Regulatory & Compliance Alignment opens in its own tab: the results
+// are remembered on the server (no credentials involved) and the tab
+// renders the framework grid and the control drilldown from them.
+async function openComplianceTab(fwKey) {
+  if (!reportData || !(reportData.checks || []).length) { alert('Run an assessment first.'); return; }
+  const w = window.open('/report/compliance?pending=1', '_blank');
+  if (!w) { alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.'); return; }
+  const st = document.getElementById('complianceStatus');
+  if (st) st.textContent = 'Preparing the compliance view…';
+  try {
+    const resp = await fetch('/api/compliance/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checks: reportData.checks, metadata: reportData.metadata || {}, frameworks: getSelectedFrameworks() }) });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.detail || `HTTP ${resp.status}`);
+    w.location = `/report/compliance?id=${encodeURIComponent(d.report_id)}${fwKey ? '#' + encodeURIComponent(fwKey) : ''}`;
+    if (st) st.textContent = '';
+  } catch (e) {
+    w.location = `/report/compliance?error=${encodeURIComponent(e.message)}`;
+    if (st) st.textContent = 'Could not open the compliance view: ' + e.message;
   }
-  container.innerHTML = html || '<p style="padding:1.5rem;text-align:center;color:var(--dim);">No controls match this filter.</p>';
 }
 
 // ── UI token ──────────────────────────────────────────────────────────
@@ -3676,13 +3568,15 @@ function renderChecks(checks, filter) {
   let curSec = '';
   // Build a set of check_ids that have a registered remediation recipe
   // so we only render the 🔧 Remediate button where it's meaningful.
+  // A recipe names the assessment checks it answers ("4.1", "A.2" …)
+  // in `checks`; its own id is matched too (exact or prefix).
   const remediableIds = new Set(
-    (window._remediationCatalog || []).map(r => r.check_id)
+    (window._remediationCatalog || []).flatMap(r => [r.check_id, ...(r.checks || [])])
   );
   const isRemediable = (cid) => {
     if (remediableIds.has(cid)) return true;
     // Prefix match — a recipe for 'FW-01' covers 'FW-01.dns' etc.
-    for (const r of remediableIds) if (cid && cid.startsWith(r)) return true;
+    for (const r of (window._remediationCatalog || [])) if (cid && cid.startsWith(r.check_id)) return true;
     return false;
   };
 
@@ -3946,10 +3840,9 @@ async function openRemediationReview() {
   const checks = (reportData && reportData.checks) || [];
   const candidates = [];
   const isRem = (cid) => {
-    for (const r of recipes) {
-      if (r.check_id === cid) return r;
-      if (cid && cid.startsWith(r.check_id)) return r;
-    }
+    for (const r of recipes) if (r.check_id === cid) return r;
+    for (const r of recipes) if ((r.checks || []).includes(cid)) return r;
+    for (const r of recipes) if (cid && cid.startsWith(r.check_id)) return r;
     return null;
   };
   for (const c of checks) {
@@ -5075,7 +4968,7 @@ async function runDlpEfficacyCorpus() {
       status.textContent = 'Error: ' + (data.detail || ('HTTP ' + resp.status));
       return;
     }
-    status.textContent = `${data.dicts_tested} custom dict(s) tested against ${data.corpus_length} chars`;
+    status.textContent = `${data.dicts_tested} custom dict(s) and ${data.predefined_simulated || 0} predefined approximation(s) tested against ${data.corpus_length} chars; ${data.engines_firing || 0} engine(s) would fire`;
     const hits = (data.results || []).filter(r => r.total_hits > 0);
     const misses = (data.results || []).filter(r => r.total_hits === 0);
     const renderHit = (h) => `
@@ -5089,6 +4982,41 @@ async function runDlpEfficacyCorpus() {
           ${h.pattern_samples.length ? '<strong>Regex matches:</strong><ul style="margin:0.2rem 0 0.3rem 1.2rem;">' + h.pattern_samples.map(s => `<li><code>${_effEsc(s.pattern)}</code> — ${s.count}×</li>`).join('') + '</ul>' : ''}
         </div>
       </details>`;
+    // Predefined dictionaries: local approximations of the public pattern
+    // shapes (masked samples), or an honest "not simulated".
+    const renderPredefined = (rows) => {
+      const fired = rows.filter(r => r.simulated && r.hits > 0);
+      const quiet = rows.filter(r => r.simulated && !r.hits);
+      const none = rows.filter(r => !r.simulated);
+      if (!rows.length) return '';
+      const row = (r) => `<details style="border:1px solid var(--border);border-radius:6px;margin:0.25rem 0;background:var(--bg);">
+          <summary style="cursor:pointer;padding:0.4rem 0.6rem;"><strong>${_effEsc(r.name)}</strong> <span style="color:var(--dim);">· ~${r.hits} hit(s), approximate</span></summary>
+          <div style="padding:0.4rem 0.7rem;font-size:0.8rem;color:var(--dim);">${_effEsc(r.note)}${r.samples.length ? '<div style="margin-top:0.25rem;">Samples (masked): ' + r.samples.map(x => '<code>' + _effEsc(x) + '</code>').join(' ') + '</div>' : ''}</div>
+        </details>`;
+      return `
+      <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-top:0.3rem;">
+        <summary style="cursor:pointer;font-weight:700;">📚 Predefined dictionaries that would fire (${fired.length} of ${rows.length}, approximate)</summary>
+        <div style="margin-top:0.4rem;">${fired.map(row).join('') || '<div style="color:var(--dim);padding:0.4rem;">None of the predefined dictionaries this tool can approximate matched.</div>'}</div>
+        ${quiet.length ? `<div style="margin-top:0.4rem;color:var(--dim);font-size:0.82rem;"><strong>Approximated, no match:</strong> ${quiet.map(r => _effEsc(r.name)).join(', ')}</div>` : ''}
+        ${none.length ? `<details style="margin-top:0.4rem;"><summary style="cursor:pointer;color:var(--dim);font-size:0.82rem;">Not simulated (${none.length}): machine-learning or content-based, cannot run offline</summary><ul style="margin:0.3rem 0 0 1.2rem;font-size:0.8rem;color:var(--dim);">${none.map(r => `<li><strong>${_effEsc(r.name)}</strong> — ${_effEsc(r.note)}</li>`).join('')}</ul></details>` : ''}
+      </details>`;
+    };
+    // Engines: the expression evaluated on the counts above, and the rules each one drives.
+    const renderEngines = (rows) => {
+      if (!rows.length) return '';
+      const fires = rows.filter(e => e.fires === true), maybe = rows.filter(e => e.fires === null), no = rows.filter(e => e.fires === false);
+      const row = (e) => `<details style="border:1px solid var(--border);border-radius:6px;margin:0.25rem 0;background:var(--bg);">
+          <summary style="cursor:pointer;padding:0.4rem 0.6rem;"><strong>${_effEsc(e.name)}</strong> <span style="color:var(--dim);">· ${e.verdict}${e.rules.length ? ' · rules: ' + _effEsc(e.rules.slice(0, 4).join(', ')) + (e.rules.length > 4 ? '…' : '') : ' · no rule references it'}</span></summary>
+          <div style="padding:0.4rem 0.7rem;font-size:0.8rem;"><code style="color:var(--dim);">${_effEsc(e.expression || '(no expression)')}</code><ul style="margin:0.3rem 0 0 1.2rem;">${e.terms.map(t => '<li>' + _effEsc(t) + '</li>').join('')}</ul>${e.dictionaries.length ? '<div style="color:var(--dim);margin-top:0.25rem;">Dictionaries: ' + _effEsc(e.dictionaries.join(', ')) + '</div>' : ''}</div>
+        </details>`;
+      return `
+      <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-top:0.3rem;">
+        <summary style="cursor:pointer;font-weight:700;">⚙️ Engines that would fire (${fires.length}${maybe.length ? ', ' + maybe.length + ' possible' : ''} of ${rows.length})</summary>
+        <div style="margin-top:0.4rem;">${fires.map(row).join('') || '<div style="color:var(--dim);padding:0.4rem;">No engine expression is satisfied by these matches.</div>'}</div>
+        ${maybe.length ? `<div style="margin-top:0.4rem;font-weight:600;font-size:0.82rem;">Possible (depends on a dictionary that could not be simulated)</div>${maybe.map(row).join('')}` : ''}
+        ${no.length ? `<details style="margin-top:0.4rem;"><summary style="cursor:pointer;color:var(--dim);font-size:0.82rem;">Would not fire (${no.length})</summary>${no.map(row).join('')}</details>` : ''}
+      </details>`;
+    };
     const panel = `
       <details open style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.8rem;margin-top:0.6rem;">
         <summary style="cursor:pointer;font-weight:700;">🎯 Matched dictionaries (${hits.length})</summary>
@@ -5099,7 +5027,10 @@ async function runDlpEfficacyCorpus() {
         <div style="margin-top:0.3rem;color:var(--dim);font-size:0.82rem;">
           ${misses.map(m => _effEsc(m.name)).join(', ') || 'None.'}
         </div>
-      </details>`;
+      </details>
+      ${renderPredefined(data.predefined || [])}
+      ${renderEngines(data.engines || [])}
+      <div style="color:var(--dim);font-size:0.76rem;margin-top:0.4rem;">${_effEsc(data.note || '')}</div>`;
     // Inject under any existing efficacy result, don't replace it
     let r = document.getElementById('dlpEffResult');
     let zone = document.getElementById('dlpEffCorpusResults');
@@ -5368,6 +5299,10 @@ async function openSslFlowTab() {
     w.location = `/report/sslflow?error=${encodeURIComponent(e.message)}`;
   }
 }
+function openQuickStartTab() {
+  const w = window.open('/quickstart', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openAdvancedTab() {
   const w = window.open('/report/advanced', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
@@ -5541,6 +5476,7 @@ function renderUpdateResults(data) {
       new:       ['#60a5fa','NEW'],
       unchanged: ['#64748b','OK'],
       error:     ['#ef4444','ERROR'],
+      dead_link: ['#f59e0b','NO PAGE'],
     };
     const [col, label] = statusColors[r.status] || ['#64748b', (r.status||'?').toUpperCase()];
     const impColor = r.importance === 'high' ? '#f59e0b' : r.importance === 'medium' ? '#64748b' : '#475569';
@@ -5558,7 +5494,12 @@ function renderUpdateResults(data) {
     if (r.action_hint) {
       extra += `<div style="margin-top:0.3rem;padding:0.4rem 0.6rem;background:rgba(59,130,246,0.08);border-left:3px solid var(--accent);border-radius:4px;font-size:0.78rem;">${escapeHtml(r.action_hint)}</div>`;
     }
-    const link = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:0.78rem;">Open ↗</a>` : '';
+    if (r.link_note) {
+      extra += `<div style="margin-top:0.3rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.08);border-left:3px solid #f59e0b;border-radius:4px;font-size:0.78rem;color:var(--dim);">${escapeHtml(r.link_note)}</div>`;
+    } else if (r.page && r.page.title) {
+      extra += `<div style="color:var(--dim);font-size:0.74rem;margin-top:0.2rem;">Page: ${escapeHtml(r.page.title)}</div>`;
+    }
+    const link = r.link ? `<a href="${escapeHtml(r.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-size:0.78rem;">${r.link_fallback ? 'Open section index ↗' : 'Open ↗'}</a>` : '';
     return `
       <div style="padding:0.75rem;background:var(--well);border:1px solid var(--border);border-radius:8px;margin-bottom:0.5rem;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;flex-wrap:wrap;">

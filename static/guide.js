@@ -45,13 +45,14 @@ function _gdSteps() {
     {
       n: 1, title: 'Connect to the tenant',
       state: sameTenant && GD.conn.ok ? 'done' : (creds ? 'ready' : 'todo'),
-      what: 'Enter the customer\'s cloud, vanity domain, API client ID and client secret in Tenant Configuration and click Authenticate. Nothing is changed in the tenant; the tool only reads.',
+      what: 'Open Tenant details below, enter the customer\'s cloud, vanity domain, API client ID and client secret, and click Authenticate. Nothing is changed in the tenant; the tool only reads.',
       need: 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values.',
       status: sameTenant && GD.conn.ok
         ? `Connected to ${_gdE(GD.conn.label)}: ${GD.conn.dictionaries} dictionaries, ${GD.conn.engines} engines, ${GD.conn.web_rules} web DLP rules.`
         : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the four tenant fields, then click Authenticate.'),
+      tenant: true,
       actions: [
-        { label: 'Go to tenant details', fn: '_gdGoConfig()', kind: creds ? 'quiet' : 'primary' },
+        { label: 'Show tenant details', fn: '_gdGoConfig()', kind: creds ? 'quiet' : 'primary' },
         { label: GD.testing ? 'Authenticating…' : 'Authenticate', fn: '_gdTest()', kind: creds ? 'primary' : 'quiet', disabled: !creds || GD.testing },
       ],
     },
@@ -202,11 +203,15 @@ async function _gdUpdateApp() {
   if (!res.ok) { show(); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } return; }
   if (!res.updated) { show('<div class="gd-upd-line ok">Already on the latest build.</div>'); if (btn) { btn.disabled = false; btn.textContent = 'Update app'; } _gdUpdateCheck(); return; }
   lines.push({ name: `Restarting the app on build ${res.after}`, ok: null }); show();
+  let hint = 'Close the app with STOP_Zscaler_Assessment.bat and open it again from the shortcut.';
   try {
     const r = await fetch('/api/app/restart', { method: 'POST' });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`);
+    const rs = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(rs.detail || `HTTP ${r.status}`);
+    if (rs.hint) hint = rs.hint;
+    if (!rs.scheduled) throw new Error(rs.error || 'the relauncher could not be started');
   } catch (e) {
-    lines[lines.length - 1] = { name: 'Restart could not be scheduled', ok: false, detail: e.message + '. Close the app with STOP_Zscaler_Assessment.bat and open it again from the shortcut.' }; show(); return;
+    lines[lines.length - 1] = { name: 'Restart could not be scheduled', ok: false, detail: e.message + '. The update itself succeeded. ' + hint }; show(); return;
   }
   // Wait for the new process: health answers with the new build.
   const started = Date.now();
@@ -215,7 +220,7 @@ async function _gdUpdateApp() {
       const h = await (await fetch('/api/health', { cache: 'no-store' })).json();
       if (h.git_commit && h.git_commit === res.after) { lines[lines.length - 1] = { name: `Restarted on build ${h.git_commit}. Reloading…`, ok: true }; show(); setTimeout(() => location.reload(), 600); return; }
     } catch (_) { /* server is down while it restarts */ }
-    if (Date.now() - started > 90000) { lines[lines.length - 1] = { name: 'The app did not come back within 90 seconds', ok: false, detail: 'Open it again from the desktop shortcut; the update itself succeeded.' }; show(); return; }
+    if (Date.now() - started > 90000) { lines[lines.length - 1] = { name: 'The app did not come back within 90 seconds', ok: false, detail: 'The update itself succeeded. ' + hint }; show(); return; }
     setTimeout(poll, 1500);
   };
   setTimeout(poll, 2500);
@@ -228,7 +233,9 @@ function _gdRender() {
   if (!host) return;
   const steps = _gdSteps();
   const doneCount = steps.filter(s => s.state === 'done').length;
-  host.innerHTML = `
+  const creds1 = steps[0].state !== 'todo';
+  if (GD.tenantOpen == null) GD.tenantOpen = !creds1;
+  const html = `
     <div class="gd-head">
       <div>
         <div class="gd-eyebrow">Start here</div>
@@ -257,9 +264,30 @@ function _gdRender() {
           <div class="gd-status">${s.status}</div>
           ${s.n === 1 ? _gdConnHtml() : ''}
           <div class="gd-actions">${s.actions.map(a => `<button type="button" class="gd-btn ${a.kind}" ${a.disabled ? 'disabled' : ''} onclick="${a.fn}">${_gdE(a.label)}</button>`).join('')}</div>
+          ${s.tenant ? `<details class="gd-tenant" id="gdTenantDetails" ${GD.tenantOpen ? 'open' : ''}><summary>Tenant details <span class="gd-dim">${creds1 ? '· entered; expand to change or to save a profile' : '· organisation, cloud, vanity domain, API client, scope'}</span></summary><div id="gdTenantSlot"></div></details>` : ''}
         </div>
       </li>`).join('')}
     </ol>`;
+  // The tenant configuration card is a live form (the operator may be
+  // typing in it), so it is never re-created: it is parked while the
+  // panel's HTML is replaced and moved back into step 1 afterwards, and
+  // the panel is only re-rendered when something actually changed.
+  const card = document.getElementById('configCard');
+  const park = document.getElementById('configPark');
+  const slotNow = document.getElementById('gdTenantSlot');
+  if (html === GD._lastHtml && card && slotNow && card.parentNode === slotNow) return;
+  const active = document.activeElement, sel = active && active.value != null && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+  if (card && park && card.parentNode !== park) park.appendChild(card);
+  host.innerHTML = html;
+  GD._lastHtml = html;
+  const slot = document.getElementById('gdTenantSlot');
+  if (card && slot) slot.appendChild(card);
+  const det = document.getElementById('gdTenantDetails');
+  if (det) det.addEventListener('toggle', () => { GD.tenantOpen = det.open; });
+  if (active && active.id && document.getElementById(active.id) && document.activeElement !== active) {
+    const el = document.getElementById(active.id);
+    try { el.focus({ preventScroll: true }); if (sel) el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* not a text field */ }
+  }
 }
 
 function _gdAuthStatus() {
@@ -282,6 +310,9 @@ function _gdConnHtml() {
 
 // ── Actions ────────────────────────────────────────────────────────
 function _gdGoConfig() {
+  GD.tenantOpen = true;
+  const det = document.getElementById('gdTenantDetails');
+  if (det) det.open = true;
   const card = document.getElementById('configCard');
   if (card) {
     const h = card.querySelector('h2.collapsible');

@@ -161,3 +161,39 @@ def test_detection_health_endpoints(monkeypatch):
     assert md.status_code == 200 and "Detection Health" in md.text
     assert c.get("/report/health").status_code == 200
     assert c.get("/api/detection-health/schedule").json()["interval_seconds"] == 6 * 3600
+
+
+def test_noisy_dictionary_is_explained_with_evidence_pattern_and_definition():
+    incidents = []
+    # "SSN - High" fires alone, thinly (1 match), from one sanctioned app and one department: 10 not real, 2 real (bulk).
+    for i in range(10):
+        incidents.append(_inc(f"n{i}", "Z-US PII-Monitor", "US PII", ["SSN - High"], days_ago=1 + i, resolution="False Positive", app="ServiceNow", dept="IT"))
+        incidents[-1]["matchingPolicies"]["dictionaries"][0]["matchCount"] = 1
+    for i in range(2):
+        incidents.append(_inc(f"r{i}", "Z-US PII-Monitor", "US PII", ["SSN - High"], days_ago=1 + i, resolution="Confirmed", app="chatgpt.com", dept="Finance"))
+        incidents[-1]["matchingPolicies"]["dictionaries"][0]["matchCount"] = 40
+    normalised = [dh.normalize_incident(i, dh.DEFAULTS["not_real"]) for i in incidents]
+    from pack_removal import inventory
+    rules = inventory(_client([]))["rules"]
+    defs = {"SSN - High": {"custom": False, "type": "PATTERNS_AND_PHRASES", "predefined_confidence": "CONFIDENCE_LEVEL_MEDIUM", "phrases": 0, "patterns": 0}}
+    ev = dh.evaluate(normalised, rules, now=NOW, definitions=defs)
+    d = {x["name"]: x for x in ev["dictionaries"]}["SSN - High"]
+    assert d["noisy"] and d["fp_rate_pct"] == 83
+    why = " ".join(d["why"])
+    assert "only dictionary in 10 of 10" in why and "thin" in why.lower() and "ServiceNow" in why and "IT" in why
+    assert "nine-digit numbers" in why and "medium confidence" in why
+    assert "Real incidents carry far more matches" in why
+    assert d["fix"].startswith("Raise the match count") and "ServiceNow" in d["fix"] and "high-confidence SSN" in d["fix"]
+    e = d["evidence"]
+    assert e["alone"] == 10 and e["median_matches_not_real"] == 1 and e["median_matches_real"] == 40 and e["applications"][0] == ("ServiceNow", 10)
+    f = next(x for x in ev["findings"] if x["kind"] == "noisy_dictionary")
+    assert "Why:" in f["text"] and "Fix:" in f["text"] and f["why"] == d["why"]
+    md = dh.to_markdown({"summary": ev["summary"], "settings": ev["settings"], "rules": [], "dictionaries": ev["dictionaries"], "findings": [], "days": 30}, "acme")
+    assert "Why it is noisy" in md and "ServiceNow" in md
+    # A co-fired dictionary is told apart from the one that carries the noise.
+    inc2 = [_inc(f"c{i}", "R", "E", ["Date of Birth", "SSN - High"], days_ago=1, resolution="Benign") for i in range(10)]
+    for i in inc2:
+        i["matchingPolicies"]["dictionaries"][1]["matchCount"] = 9
+    ev2 = dh.evaluate([dh.normalize_incident(i, dh.DEFAULTS["not_real"]) for i in inc2], rules, now=NOW)
+    dob = {x["name"]: x for x in ev2["dictionaries"]}["Date of Birth"]
+    assert "never fired alone" in " ".join(dob["why"]) and "SSN - High" in " ".join(dob["why"]) and "any date matches" in " ".join(dob["why"])

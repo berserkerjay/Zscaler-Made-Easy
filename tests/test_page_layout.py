@@ -1,0 +1,42 @@
+"""Page layout requests: Quick Start Assessment in its own tab from the top
+toolbar, tenant details folded into the Connect step, the Evaluate All
+Rules flow and simulator in the migration wizard."""
+from fastapi.testclient import TestClient
+
+import dlp_api_server as srv
+import security
+
+
+def _page():
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    return c
+
+
+def test_quick_start_is_a_top_button_that_opens_its_own_tab():
+    c = _page()
+    html = c.get("/").text
+    assert "Quick Start Assessment" in html and "openQuickStartTab()" in html
+    assert '<h2>Quick Start</h2>' not in html, "the Quick Start card must be gone from the page body"
+    assert html.index('aria-label="Start"') < html.index('aria-label="Find the gaps"'), "Start comes first in the toolbar"
+    qs = c.get("/quickstart")
+    assert qs.status_code == 200 and "Quick Start</span> Assessment" in qs.text and "OneAPI credentials" in qs.text
+    assert TestClient(srv.app).get("/quickstart").status_code == 200   # no token needed for the page itself
+
+
+def test_tenant_details_live_inside_the_connect_step():
+    c = _page()
+    html = c.get("/").text
+    assert 'id="configPark"' in html and 'id="configCard"' in html
+    guide = c.get("/static/guide.js").text
+    assert "gdTenantSlot" in guide and "gdTenantDetails" in guide and "Show tenant details" in guide
+    assert "slot.appendChild(card)" in guide and "GD._lastHtml" in guide
+    assert ".gd-tenant" in c.get("/static/guide.css").text
+
+
+def test_evaluate_all_rules_flow_and_simulator_are_in_the_wizard():
+    c = _page()
+    html = c.get("/").text
+    assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules(migrateRules)" in html
+    js = c.get("/static/eval_all.js").text
+    assert "Tie on the action" in js and "lowest order number" in js and "about-first-match-wins-and-evaluate-all-rules-for-dlp" in js

@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 import app_update as au
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def _git(cwd, *args):
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
@@ -199,12 +201,40 @@ def test_restart_command_and_dry_run(tmp_path, monkeypatch):
     monkeypatch.setattr(au.sys, "platform", "win32")
     (tmp_path / "START_Zscaler_Assessment.vbs").write_text("x")
     cmd = au.restart_command(app)
-    assert cmd[:2] == ["cmd", "/c"] and "wscript.exe" in cmd[2] and "START_Zscaler_Assessment.vbs" in cmd[2] and "timeout /t 3" in cmd[2]
+    # The launcher runs in batch mode (no Windows Script Host dialogs) with
+    # /restart so it waits for the port; never `cmd /c timeout`, which
+    # refuses to run without a console and silently never relaunched.
+    assert cmd[0] == "wscript.exe" and "//B" in cmd and cmd[-2].endswith("START_Zscaler_Assessment.vbs") and cmd[-1] == "/restart"
+    assert "timeout" not in " ".join(cmd)
+    (tmp_path / "START_Zscaler_Assessment.vbs").unlink()
+    cmd = au.restart_command(app)
+    assert cmd[:2] == ["cmd", "/c"] and "ping -n 4" in cmd[2] and "START_Zscaler_Assessment.bat" in cmd[2]
+    assert "STOP_Zscaler_Assessment.bat" in au.manual_restart_hint(app)
     monkeypatch.setattr(au.sys, "platform", "linux")
     cmd = au.restart_command(app)
     assert cmd[:2] == ["sh", "-c"] and "dlp_api_server.py" in cmd[2] and "sleep 3" in cmd[2]
     out = au.schedule_restart(app, dry_run=True)
     assert out["scheduled"] is False and out["command"] == cmd
+    # The relauncher inherits this process's UI token so the page stays unlocked after the restart.
+    seen = {}
+    monkeypatch.setattr(au.subprocess, "Popen", lambda c, env=None, **kw: seen.update({"cmd": c, "env": env}))
+    monkeypatch.setattr(au.threading, "Thread", lambda *a, **k: type("T", (), {"start": lambda self: None})())
+    import security
+    out = au.schedule_restart(app)
+    assert out["scheduled"] and seen["env"]["ZSCALER_UI_TOKEN"] == security.ui_token() and "DLPCHECK_HIDDEN" not in seen["env"] and out["hint"]
+    def fail(c, env=None, **kw):
+        raise OSError("wscript missing")
+    monkeypatch.setattr(au.subprocess, "Popen", fail)
+    out = au.schedule_restart(app)
+    assert out["scheduled"] is False and "wscript missing" in out["error"] and out["hint"]
+
+
+def test_launcher_never_shows_a_script_host_dialog():
+    vbs = open(os.path.join(ROOT, "START_Zscaler_Assessment.vbs"), encoding="utf-8").read()
+    assert "On Error Resume Next" in vbs and "launcher.log" in vbs and "/restart" in vbs
+    assert 'WScript.Arguments' in vbs and "Do While Pinging()" in vbs and "WScript.Quit 0" in vbs
+    # The .gitignore keeps the launcher log out of commits.
+    assert "launcher.log" in open(os.path.join(ROOT, ".gitignore")).read()
 
 
 def test_endpoints(repos, monkeypatch):

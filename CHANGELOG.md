@@ -6,6 +6,35 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### Page layout
+- **Quick Start Assessment** is a button at the top of the page (toolbar, group *Start*) that opens the four steps and the credential instructions in their own tab (`/quickstart`); the card at the bottom of the page is gone.
+- **Tenant details** (organisation, assessor, cloud, vanity domain, API client, scope, tenant profiles) are an expandable section inside step 1, *Connect to the tenant*, of the Start-here panel. The form is the same one (same fields, same ids); it opens by itself until the four connection fields are filled in.
+- **Regulatory & Compliance Alignment opens in its own tab** (`/report/compliance`): framework cards, the control-by-control drilldown with the findings behind each control, filters, and Markdown / CSV / JSON export. The results page keeps one chip per framework and a button to open the tab; the inline drilldown is gone.
+
+### Evaluate All Rules
+- The Inline DLP Rule Migration wizard opens with **how Evaluate All Rules decides**: a two-lane flow (Rule Order versus Evaluate All Rules) and a **simulator**. Type or load rules (Step 2's download feeds it), name the engines a transaction matches, and read the decision step by step: every enabled rule evaluated, the matching set, the most restrictive action (Block › Isolate › Confirm › Allow), **the tie on the action broken by rule order (lowest order number wins)**, whose template, auditor, Incident Receiver and severity apply, and what Rule Order would have done instead. Presets cover a tie between two Block rules, a monitor rule shadowing a block rule, and Confirm versus Allow.
+
+### Local corpus test (DLP Efficacy)
+- Besides the custom dictionaries, the corpus test now reports the **predefined dictionaries that would fire** (local approximations of the public pattern shapes, check digits validated: card numbers, SSN, ITIN, ABA routing, IBAN, SWIFT, NPI, Medicare MBI, e-mail, phone, IPv4, AWS / Google / GitHub / Slack keys, private keys, JWT, passport and driver-licence shapes, dates of birth, ICD-10, VIN, MAC, UK NINO and NHS, Canadian SIN, Australian TFN), with masked samples; machine-learning and content-based dictionaries are listed as *not simulated*, never guessed.
+- **Which engines would fire**: every engine's expression (`D<id>.S > n` with AND / OR / NOT and parentheses) is evaluated on those counts — fires, does not fire, or *possible* when it hinges on a dictionary that cannot be simulated — and the Web DLP rules each firing engine drives are named.
+
+### Detection Health
+- A noisy dictionary now says **why**: whether it carries the noise itself or only co-fires with another dictionary, how thin its matches are compared with the real incidents, which applications and departments the not-real incidents come from, what is known about the pattern (nine-digit numbers, dates, names, Luhn-valid numbers, clinical or financial vocabulary …), and the dictionary's own settings (custom or predefined, confidence, phrases, patterns, proximity). Each comes with a concrete fix, in the findings, the table and the Markdown export.
+
+### Strict Client Connector evaluation
+- Seventeen new checks read the app profiles field by field (anti-tampering, every service-disable / uninstall / exit password, log level, QUIC dropped, fail-close and app fail-open, revert password, intercept on all adapters and VPN gateways, the disable window, bypass hygiene including exclusions wider than a /16), the forwarding profiles (Z-Tunnel 2.0 per network type, DTLS with TLS fallback, filter driver, IPv6, RFC1918, PAC use, trusted-network criteria), the company settings (Endpoint DLP entitlement, phased rollout, telemetry, inactive-device cleanup), the privacy settings, the device fleet (strict enforcement, anti-tampering, tunnel version, Endpoint DLP, version spread) and the **DLP notification templates** (TLS, content attachment, placeholders, plain-text body, enforcing rules that notify nobody). Each names the profile or object at fault and cites the Zscaler guidance it applies. Numeric platform codes and the `policyExtension` blob are read.
+
+### Zscaler Update Check
+- A source whose page is gone (HTTP 404, a "page not found" page, or a page with no readable text) is shown as **NO PAGE** with the reason, and its link opens the section index instead of an empty page. The Deployment & Operations root uses the right slug.
+
+
+### Fixes
+- **Traffic Flow map no longer fails with "Internal error".** When no Client Connector app profile matched the platform (the profile list unreadable, or the tenant's profiles carrying the numeric platform codes of the Client Connector API), the forwarding hop dereferenced a missing profile and the whole map died. The tracer now degrades hop by hop, the numeric codes (1 iOS, 2 Android, 3 Windows, 4 macOS, 5 Linux) are read, the ZPA action list of a forwarding profile no longer overwrites the ZIA tunnel mode, one destination that cannot be traced is reported in the diagnostics instead of taking the map down, and a failure names the exception and points to `server.log` (which now carries the traceback for every internal error).
+- **Client Connector reads use the right endpoint.** App profiles are read from `web/policy/listByCompany` (the earlier `webPolicies/listByCompany` answered 404 on every tenant, so the ZCC findings said "not readable" while the portal was fine); the client tries each known path and caches the one that works, and a failure names the path and status it tried.
+- **Update app restarts reliably.** The relaunch used `cmd /c timeout`, which refuses to run without a console, so the new server never started; it is now the silent launcher itself in batch mode (`wscript //B … /restart`), which waits for the old server to release the port, never shows a Windows Script Host dialog (problems go to `launcher.log`) and keeps the UI token so the page stays unlocked after the restart. If the relaunch cannot be scheduled the page says what to do by hand.
+- **Review & Remediate works.** The recipes named ids the assessment never produces (`SSL-01`, `DLP-01` …), so no finding was ever remediable; each recipe now lists the assessment checks it answers (`4.1`, `A.2`, `E.2`, `5.3`, `A.1`, `E.1` …) and the Remediate buttons and the review list match on them.
+
+
 ### Packs
 - Fed Policy Pack 2.0 absorbs the CUI Marking Baseline: the 28 tiered marking dictionaries and their block/caution/monitor rules now ship inside the Fed pack, enhanced with the V1.1 contextual phrases, Registry category names and declassify-date patterns as tier 7 (`CUI-Detect-Contextual`, monitor only). The V1.1 `CUI Engine (High/Medium/Low Confidence)` engines, their eight dictionaries and the orphan `AEA Medium Confidence` engine are gone. `cui_marking_baseline` is removed; a tenant that deployed it keeps its objects and the Fed pack adopts them by name.
 - `tools/pack_from_design.py` can regenerate a design that lives inside a hand-authored pack (`"designs"` in `pack.json`).

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regulatory &amp; Compliance Alignment — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; padding: 1rem; }
+  .cp-card { text-align: left; width: 100%; padding: 1rem; background: var(--well); border-radius: 10px; border: 1px solid var(--border); color: var(--text); cursor: pointer; font: inherit; transition: border-color 0.15s, transform 0.15s; }
+  .cp-card:hover, .cp-card:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+  .cp-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .cp-card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.4rem; }
+  .cp-card .name { font-weight: 600; font-size: 0.95rem; }
+  .cp-card .desc { color: var(--dim); font-size: 0.76rem; line-height: 1.35; }
+  .cp-status { font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 6px; border: 1px solid; white-space: nowrap; }
+  .cp-status.aligned { color: var(--pass); background: color-mix(in srgb, var(--pass) 10%, transparent); border-color: color-mix(in srgb, var(--pass) 35%, transparent); }
+  .cp-status.partial { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .cp-status.gap { color: var(--fail); background: color-mix(in srgb, var(--fail) 10%, transparent); border-color: color-mix(in srgb, var(--fail) 35%, transparent); }
+  .cp-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--dim) 25%, transparent); overflow: hidden; margin: 0.5rem 0 0.35rem; }
+  .cp-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); }
+  .cp-counts { display: flex; gap: 0.6rem; font-size: 0.72rem; }
+  .cp-drill { padding: 0 1rem 1rem; }
+  .cp-drill-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; margin: 0.5rem 0 0.8rem; }
+  .cp-filters { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .cp-control { padding: 0.9rem 1rem; background: var(--well); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.7rem; }
+  .cp-control .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .cp-control .sum { font-size: 0.74rem; color: var(--dim); margin-bottom: 0.5rem; }
+  .cp-ev { padding: 0.45rem 0.7rem; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--dim); margin: 0.25rem 0; font-size: 0.8rem; }
+  .cp-ev code { color: var(--dim); margin: 0 0.4rem; }
+  .cp-ev .d { color: var(--dim); font-size: 0.74rem; margin-top: 0.2rem; line-height: 1.4; }
+  .cp-empty { padding: 1.5rem; text-align: center; color: var(--dim); }
+</style>
+</head>
+<body class="report-page df-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Regulatory</span> &amp; Compliance Alignment</h1>
+      <p>Every assessment check maps to controls in the regulatory frameworks below. Pick a framework to see which controls are met, partially met or not met, with the findings that back each one.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <span id="rpControls" hidden>
+        <label class="df-ctl"><span class="lbl">Frameworks</span><select id="cpScope" aria-label="Which frameworks to show"><option value="selected">Selected in the assessment</option><option value="all">All frameworks</option></select></label>
+        <span class="lbl">Export</span>
+        <a class="rp-btn" id="expMd">Markdown</a>
+        <a class="rp-btn" id="expJson">JSON</a>
+        <a class="rp-btn" id="expCsv">CSV</a>
+      </span>
+    </nav>
+    <main class="rp-card">
+      <div id="rpBody" class="bp-body" style="padding:0;">
+        <div class="rp-wait"><div class="spin"></div>Loading the assessment's compliance mapping…</div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/report_theme.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const q = new URLSearchParams(location.search);
+    const body = document.getElementById('rpBody');
+    const meta = document.getElementById('rpMeta');
+    let report = null, current = null, filter = 'all';
+    const fail = (title, msg) => { body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`; };
+    const cls = st => st === 'Aligned' ? 'aligned' : st === 'Partial' ? 'partial' : 'gap';
+    const evColor = st => ({ PASS: 'var(--pass)', FAIL: 'var(--fail)', REVIEW: 'var(--warn)' }[st] || 'var(--info)');
+    const evMark = st => ({ PASS: '✓', FAIL: '✗', REVIEW: '◑', INFO: '○', ERROR: '○' }[st] || '·');
+    const badges = { 'Met': '✓ Met', 'Partially Met': '◑ Partially Met', 'Not Met': '✗ Not Met', 'Not Tested': '○ Not Tested' };
+    const colors = { 'Met': 'var(--pass)', 'Partially Met': 'var(--warn)', 'Not Met': 'var(--fail)', 'Not Tested': 'var(--info)' };
+
+    function keys() {
+      const scope = document.getElementById('cpScope').value;
+      const all = Object.keys(report.summary || {});
+      const sel = (report.frameworks_selected || []).filter(k => all.includes(k));
+      return scope === 'selected' && sel.length ? sel : all;
+    }
+    function render() {
+      const ks = keys();
+      const cards = ks.map(k => {
+        const s = report.summary[k] || {}, d = (report.drilldown || {})[k] || {};
+        const name = (s.name || k).split(' — ')[0];
+        const desc = (report.descriptions || {})[k] || s.name || '';
+        return `<button type="button" class="cp-card" data-fw="${E(k)}" aria-pressed="${current === k}" aria-label="${E(name)}: ${E(s.status || '')}, ${s.alignment_pct || 0} percent alignment">
+          <div class="row"><span class="name">${E(name)}</span><span class="cp-status ${cls(s.status)}">${E(s.status || '?')}</span></div>
+          <div class="desc">${E(desc.split(' — ').slice(1).join(' — ') || desc)}</div>
+          <div class="cp-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, s.alignment_pct || 0))}%"></i></div>
+          <div class="cp-counts"><span>${s.alignment_pct || 0}% · ${s.control_count || 0} controls</span>${d.total_controls != null ? `<span style="color:var(--pass);">✓ ${d.met}</span><span style="color:var(--warn);">◑ ${d.partially_met}</span><span style="color:var(--fail);">✗ ${d.not_met}</span>` : ''}</div>
+        </button>`;
+      }).join('');
+      body.innerHTML = `<div class="cp-grid" role="group" aria-label="Frameworks">${cards || '<div class="cp-empty">No framework is mapped for this assessment.</div>'}</div><div class="cp-drill" id="cpDrill"></div>`;
+      body.querySelectorAll('.cp-card').forEach(b => b.addEventListener('click', () => { current = b.dataset.fw; filter = 'all'; render(); document.getElementById('cpDrill').scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
+      if (current && ks.includes(current)) renderDrill(current); else current = null;
+    }
+    function renderDrill(k) {
+      const d = (report.drilldown || {})[k];
+      const host = document.getElementById('cpDrill');
+      if (!d) { host.innerHTML = ''; return; }
+      const controls = (d.controls || []).filter(c => filter === 'all' || c.status === filter);
+      const fbtn = (v, label) => `<button type="button" class="rp-btn ${filter === v ? 'primary' : ''}" data-filter="${E(v)}" aria-pressed="${filter === v}">${label}</button>`;
+      host.innerHTML = `
+        <div class="cp-drill-h">
+          <div><h2 class="df-h" style="margin:0 0 0.2rem;">${E(d.framework_name || k)}</h2><div class="df-hint">${d.total_controls} controls · ${d.met} met · ${d.partially_met} partially met · ${d.not_met} not met · ${d.not_tested} not tested</div></div>
+          <div class="cp-filters">${fbtn('all', 'All')}${fbtn('Not Met', 'Not Met')}${fbtn('Partially Met', 'Partially Met')}${fbtn('Met', 'Met')}${fbtn('Not Tested', 'Not Tested')}<button type="button" class="rp-btn" id="cpClose">Close</button></div>
+        </div>
+        ${controls.map(c => `<div class="cp-control">
+            <div class="head"><span style="font-weight:600;">${E(c.control)}</span><span class="cp-status" style="color:${colors[c.status] || 'var(--dim)'};border-color:${colors[c.status] || 'var(--dim)'};">${E(badges[c.status] || c.status)}</span></div>
+            <div class="sum">Evidence: ${c.passing_count} passing · ${c.failing_count} failing · ${c.review_count} review · ${c.info_count} not applicable (${c.total_evidence} findings)</div>
+            ${(c.evidence || []).map(e => `<div class="cp-ev" style="border-left-color:${evColor(e.status)};"><span style="color:${evColor(e.status)};font-weight:700;">${evMark(e.status)}</span><code>[${E(e.check_id)}]</code><span>${E(e.label)}</span>${e.detail ? `<div class="d">${E(e.detail)}</div>` : ''}</div>`).join('')}
+          </div>`).join('') || '<div class="cp-empty">No controls match this filter.</div>'}`;
+      host.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => { filter = b.dataset.filter; renderDrill(k); }));
+      document.getElementById('cpClose').addEventListener('click', () => { current = null; render(); });
+    }
+    async function load(id) {
+      const r = await fetch(`/api/compliance/report/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
+      report = data;
+      meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · ' + new Date(data.generated_at).toLocaleString() : ''} · ${data.check_count || 0} checks`;
+      const ctl = document.getElementById('rpControls'); ctl.hidden = false;
+      document.getElementById('expMd').href = `/api/compliance/export/${encodeURIComponent(id)}?format=markdown`;
+      document.getElementById('expJson').href = `/api/compliance/export/${encodeURIComponent(id)}?format=json`;
+      document.getElementById('expCsv').href = `/api/compliance/export/${encodeURIComponent(id)}?format=csv`;
+      document.getElementById('cpScope').value = (data.frameworks_selected || []).length ? 'selected' : 'all';
+      document.getElementById('cpScope').addEventListener('change', render);
+      const want = decodeURIComponent((location.hash || '').slice(1));
+      if (want && (data.summary || {})[want]) current = want;
+      history.replaceState(null, '', `/report/compliance?id=${encodeURIComponent(id)}`);
+      render();
+    }
+    if (q.get('error')) { fail('The compliance view could not be generated', q.get('error')); return; }
+    const id = q.get('id');
+    if (!id) { fail('No assessment selected', 'Run an assessment and click "Open Regulatory & Compliance Alignment" on the results page.'); return; }
+    load(id).catch(e => fail('This view is no longer available', `${e.message}. Reports are kept in memory while the server runs; open it again from the assessment page.`));
+  })();
+  </script>
+</body>
+</html>

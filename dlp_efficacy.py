@@ -807,10 +807,35 @@ def corpus_test(client, corpus: str, max_dicts: int = 200) -> Dict[str, Any]:
         })
 
     results.sort(key=lambda x: x["total_hits"], reverse=True)
+
+    # Predefined dictionaries (approximated locally where the pattern is
+    # public), then every engine's expression with the counts we have,
+    # and the rules each firing engine drives.
+    import corpus_engines as ce
+    predefined = ce.predefined_results(dicts, corpus, _is_custom_dict)
+    counts: Dict[int, Optional[int]] = {}
+    names: Dict[int, str] = {}
+    for r in results:
+        if r["id"] is not None:
+            counts[r["id"]] = r["total_hits"]; names[r["id"]] = r["name"]
+    for r in predefined:
+        did = _safe_int(r["id"])
+        if did is not None:
+            counts[did] = r["hits"] if r["simulated"] else None; names[did] = r["name"]
+    engines = ce.engine_results(_fetch_engines(client), _fetch_rules(client), counts, names)
     return {
         "corpus_length": len(corpus),
         "dicts_tested": tested,
         "results": results,
+        "predefined": predefined,
+        "predefined_simulated": sum(1 for r in predefined if r["simulated"]),
+        "engines": engines,
+        "engines_firing": sum(1 for e in engines if e["fires"] is True),
+        "engines_possible": sum(1 for e in engines if e["fires"] is None),
+        "note": "Custom dictionaries: exact local regex. Predefined dictionaries: local approximations of the public "
+                "pattern shapes (checksums validated) where one exists; machine-learning and content-based ones are not "
+                "simulated. Engines: expression evaluated on these counts; 'possible' means it depends on a dictionary "
+                "that could not be simulated. Zscaler's own evaluation also applies proximity, confidence and file context.",
     }
 
 

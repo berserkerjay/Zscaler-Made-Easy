@@ -45,9 +45,11 @@ def _token_url(vd, cloud):
 
 # OneAPI service path prefixes (confirmed via SDK source + Postman)
 # ZCC OneAPI uses function-style endpoints (not REST collections)
+# A value may be a list of candidate paths: the first that does not answer
+# 400/404/405 wins (the app-profile path differs between API generations).
 _ZCC_MAP = {
-    "appProfiles":        "webPolicies/listByCompany",
-    "webPolicies":        "webPolicies/listByCompany",
+    "appProfiles":        ["web/policy/listByCompany", "webPolicy/listByCompany", "webPolicies/listByCompany"],
+    "webPolicies":        ["web/policy/listByCompany", "webPolicy/listByCompany", "webPolicies/listByCompany"],
     "forwardingProfiles": "webForwardingProfile/listByCompany",
     "forwardingProfile":  "webForwardingProfile/listByCompany",
     "devices":            "getDevices",
@@ -64,7 +66,7 @@ _ZCC_MAP = {
     "pacFiles":           "getPacFiles",
     "zpnModuleMode":      "webZPNModuleMode/listByCompany",
     "appBypass":          "webBypassAppConfig/listByCompany",
-    "privacyInfo":        "webPrivacyInfo/listByCompany",
+    "privacyInfo":        ["getWebPrivacyInfo", "webPrivacyInfo/listByCompany"],
     "deviceCleanup":      "webDeviceCleanupInfo/listByCompany",
     "deviceGroups":       "webDeviceGroups/listByCompany",
     "lastPostureFields":  "web/getLastAppPostureFields",
@@ -97,6 +99,17 @@ _ZID_MAP = {
     "userEntitlement":   "user_entitlement",
 }
 
+def _resolve_candidates(ep, customer_id=""):
+    """Every real OneAPI path a short endpoint may live at, best first."""
+    if ep.startswith("/zcc/"):
+        suffix = ep[5:]
+        mapped = _ZCC_MAP.get(suffix, suffix)
+        if isinstance(mapped, (list, tuple)):
+            return ["/zcc/papi/public/v1/" + m for m in mapped]
+        return ["/zcc/papi/public/v1/" + mapped]
+    return [_resolve_ep(ep, customer_id)]
+
+
 def _resolve_ep(ep, customer_id=""):
     """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path.
 
@@ -110,6 +123,8 @@ def _resolve_ep(ep, customer_id=""):
     if ep.startswith("/zcc/"):
         suffix = ep[5:]
         mapped = _ZCC_MAP.get(suffix, suffix)
+        if isinstance(mapped, (list, tuple)):
+            mapped = mapped[0]
         return "/zcc/papi/public/v1/" + mapped
     if ep.startswith("/zdx/"):
         suffix = ep[5:]
@@ -201,6 +216,27 @@ class Client:
         # Self-healing: skip ZPA calls if no customer_id provided
         if ep.startswith("/zpa/") and not s.customer_id:
             return ({"error":"ZPA customer ID not configured","status":404}, 404)
+        candidates = _resolve_candidates(ep, s.customer_id)
+        if len(candidates) > 1 and _retry == 0:
+            # An endpoint that lives at different paths across API
+            # generations: the first path that is not "no such route" wins,
+            # and the answer is cached under the short endpoint.
+            k = f"{ep}|{json.dumps(p or {},sort_keys=True)}"
+            with s._lock:
+                if k in s._c:
+                    s._c.move_to_end(k)
+                    return s._c[k]
+            tried = []
+            res = None
+            for cand in candidates:
+                res = s.get("raw:" + cand, p)
+                tried.append(f"{cand} -> HTTP {res[1]}")
+                if res[1] not in (400, 404, 405):
+                    break
+            if res is not None and res[1] not in (200, 204) and isinstance(res[0], dict):
+                res = (dict(res[0], path=candidates[0], tried=tried), res[1])
+            s._cache_set(k, res)
+            return res
         real_ep = _resolve_ep(ep, s.customer_id)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         with s._lock:
@@ -240,11 +276,11 @@ class Client:
                     return s.get(ep, p, _retry+1)
                 res = ({"error":f"service unavailable","status":r.status_code}, r.status_code)
             else:
-                res = ({"error":r.text[:200] if r.text else "error","status":r.status_code}, r.status_code)
+                res = ({"error":r.text[:200] if r.text else "error","status":r.status_code,"path":real_ep}, r.status_code)
         except requests.exceptions.Timeout:
             # One retry: a second 40 s read timeout on the same listing is not going to help.
             if _retry < 1: return s.get(ep, p, _retry+1)
-            res = ({"error":"request timeout","status":0}, 0)
+            res = ({"error":"request timeout","status":0,"path":real_ep}, 0)
         except requests.exceptions.ConnectionError as e:
             if _retry < 2:
                 time.sleep(2 ** _retry)
@@ -311,10 +347,14 @@ _HTTP_EXPLAIN = {
     429: "Rate limited. Too many API requests.",
 }
 
-def _explain(label, code):
-    """Return a friendly explanation instead of a raw error."""
+def _explain(label, code, path=None, tried=None):
+    """A friendly explanation that still names the call that failed, so a
+    wrong path and a missing scope can be told apart."""
     reason = _HTTP_EXPLAIN.get(code, f"Unexpected response (HTTP {code}).")
-    return R(R.INFO, f"{label}: Not configured or not accessible. {reason}")
+    where = f" (HTTP {code} on {path})" if path else f" (HTTP {code})"
+    if tried and len(tried) > 1:
+        where = " (tried " + "; ".join(tried) + ")"
+    return R(R.INFO, f"{label}: not readable{where}. {reason}")
 
 def _ls(d):
     if isinstance(d,list): return d
@@ -328,7 +368,9 @@ def _ls(d):
 
 def _g(cl, path, label):
     d,c = cl.get(path)
-    if c not in (200,204): return None, _explain(label, c)
+    if c not in (200,204):
+        info = d if isinstance(d, dict) else {}
+        return None, _explain(label, c, info.get("path") or _resolve_ep(path, getattr(cl, "customer_id", "")), info.get("tried"))
     items = _ls(d)
     return items, None
 
@@ -981,6 +1023,15 @@ REG = [
     ("B.1","Ch.B — Endpoint","ZDP installed",c_b1),("B.2","Ch.B — Endpoint","ZCC versions",c_b2),("B.3","Ch.B — Endpoint","macOS FDA",c_b3),("B.4","Ch.B — Endpoint","Scan allowlists",c_b4),("B.5","Ch.B — Endpoint","Rule count",c_b5),("B.6","Ch.B — Endpoint","Printer coverage",c_b6),("B.7","Ch.B — Endpoint","USB coverage",c_b7),("B.8","Ch.B — Endpoint","Share coverage",c_b8),("B.9","Ch.B — Endpoint","Cloud coverage",c_b9),("B.10","Ch.B — Endpoint","OCR",c_b10),("B.11","Ch.B — Endpoint","EUN templates",c_b11),("B.12","Ch.B — Endpoint","Disable password",c_b12),("B.13","Ch.B — Endpoint","Endpoint Report",c_b13),("B.14","Ch.B — Endpoint","Discovery scan",c_b14),("B.15","Ch.B — Endpoint","Workflow Automation",c_b15),("B.16","Ch.B — Endpoint","User coaching",c_b16),
     ("E.1","Ch.E — GenAI","GenAI categories",c_e1),("E.2","Ch.E — GenAI","SSL for GenAI",c_e2),("E.3","Ch.E — GenAI","CAC actions",c_e3),("E.4","Ch.E — GenAI","Prompt/upload/download",c_e4),("E.5","Ch.E — GenAI","Source code rule",c_e5),("E.6","Ch.E — GenAI","PII/PAN/PHI rule",c_e6),("E.7","Ch.E — GenAI","Prompt/Confirm EUN",c_e7),("E.8","Ch.E — GenAI","Shadow GenAI",c_e8),("E.9","Ch.E — GenAI","AUP enforcement",c_e9),("E.10","Ch.E — GenAI","GenAI Report",c_e10),("E.11","Ch.E — GenAI","FP review",c_e11),("E.12","Ch.E — GenAI","Adversarial patterns",c_e12),("E.13","Ch.E — GenAI","Browser Isolation",c_e13),("E.14","Ch.E — GenAI","Copilot oversharing",c_e14),("E.15","Ch.E — GenAI","GenAI logging",c_e15),
 ]
+
+# Strict Client Connector evaluation (app profiles, forwarding profiles,
+# trusted networks, fail-open, privacy, company, devices, notification
+# templates), spliced into sections 1, 6 and 12.
+try:
+    import zcc_evaluation as _zcc_eval
+    REG = _zcc_eval.splice(REG)
+except Exception as _e:  # noqa: BLE001
+    print(f"[warn] strict ZCC checks not loaded: {_e}")
 
 # === RUNNER ===
 def run(client, con=None):

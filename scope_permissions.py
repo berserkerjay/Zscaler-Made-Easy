@@ -151,7 +151,7 @@ SCOPE_PERMISSIONS: Dict[str, Dict[str, Any]] = {
         ],
         "permissions_write": [],
         "endpoints_used": [
-            "/zcc/getDevices", "/zcc/webPolicies/listByCompany",
+            "/zcc/getDevices", "/zcc/web/policy/listByCompany",
             "/zcc/webForwardingProfile/listByCompany",
             "/zcc/webTrustedNetwork/listByCompany",
             "/zcc/webFailOpenPolicy/listByCompany",

@@ -226,3 +226,27 @@ def test_update_endpoints(env, monkeypatch):
     html = c.get("/").text
     assert "Update library now" in html and "Force refresh" not in html and "/api/best-practices/crawl/status" in html
     zbp.reset_discovered()
+
+
+def test_update_check_never_links_to_an_empty_page(monkeypatch):
+    import zscaler_update_check as zuc
+    good = b"<html><head><title>About DLP Engines | Zscaler</title></head><body><main>" + b"Real guidance text. " * 60 + b"</main></body></html>"
+    gone = b"<html><head><title>Page not found | Zscaler</title></head><body><p>The page you are looking for could not be found.</p></body></html>"
+    shell = b"<html><head><title>Zscaler Help</title></head><body><div id=app></div><script>window.x=1</script></body></html>"
+    assert zuc.page_quality(good, 200)["ok"] and zuc.page_quality(good, 200)["title"].startswith("About DLP Engines")
+    assert not zuc.page_quality(gone, 200)["ok"] and "Page not found" in zuc.page_quality(gone, 200)["reason"]
+    assert not zuc.page_quality(shell, 200)["ok"] and "no readable content" in zuc.page_quality(shell, 200)["reason"]
+    assert not zuc.page_quality(None, 404)["ok"]
+    assert zuc.section_root("https://help.zscaler.com/zia/about-dlp-engines") == "https://help.zscaler.com/zia"
+    src = {"key": "k", "name": "DLP Engines Best Practices", "type": "html_hash", "url": "https://help.zscaler.com/zia/about-dlp-engines"}
+    monkeypatch.setattr(zuc, "_safe_get", lambda url, verify_tls=None: (good, 200, ""))
+    r = zuc._check_html(src, {})
+    assert r["status"] == "new" and r["link"] == src["url"] and r["page"]["ok"] and "link_note" not in r
+    monkeypatch.setattr(zuc, "_safe_get", lambda url, verify_tls=None: (gone, 200, ""))
+    r = zuc._check_html(src, {})
+    assert r["status"] == "dead_link" and r["link"] == "https://help.zscaler.com/zia" and r["link_fallback"] and "could not be found" in r["link_note"] or "Page not found" in r["link_note"]
+    monkeypatch.setattr(zuc, "_safe_get", lambda url, verify_tls=None: (b"", 404, ""))
+    r = zuc._check_html(src, {})
+    assert r["status"] == "error" and r["link"] == "https://help.zscaler.com/zia" and "no longer exists" in r["link_note"]
+    # The deployments & operations root uses the real slug.
+    assert any(s.get("url") == "https://help.zscaler.com/zscaler-deployments-operations" for s in zuc.SOURCES)

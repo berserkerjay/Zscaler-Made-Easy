@@ -40,7 +40,9 @@ from typing import Any, Dict, List, Optional
 # Remediation catalog
 #
 # Each recipe:
-#   check_id        : which assessment finding this fixes (exact ID or prefix)
+#   check_id        : the recipe's own id (also matched as an exact id or prefix)
+#   checks          : assessment check ids this recipe answers ("4.1", "A.2" …);
+#                     the Review & Remediate flow matches on these
 #   label           : short human name for the Remediate button
 #   summary         : 1-sentence description of what this will do
 #   destructive     : True if it writes to the tenant
@@ -54,6 +56,7 @@ from typing import Any, Dict, List, Optional
 REMEDIATIONS: List[Dict[str, Any]] = [
     {
         "check_id": "FW-01",
+        "checks": [],   # the assessment has no Cloud Firewall check yet
         "label": "Add Cloud Firewall Rule",
         "summary": "Creates a new Cloud Firewall rule from the criteria you provide. Best for the common 'no firewall rules configured' finding.",
         "destructive": True,
@@ -95,6 +98,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "URL-01",
+        # E.1/E.8/E.9: no GenAI URL categories governed, shadow GenAI, no AUP enforcement.
+        "checks": ["E.1", "E.8", "E.9"],
         "label": "Add URL Filtering Rule",
         "summary": "Creates a URL filtering rule that blocks or allows a set of categories. Use to implement the finding 'no default URL-filter block rule exists'.",
         "destructive": True,
@@ -136,6 +141,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "RULE-DESC",
+        "checks": [],   # offered from the catalogue; no check flags a missing rule description yet
         "label": "Add Description to a Rule",
         "summary": "Updates an existing rule to include a description so it stops showing up as 'Needs Review'.",
         "destructive": True,
@@ -159,6 +165,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "SSL-01",
+        # 4.1 inspection scope, A.2 SSL+DNI, E.2 SSL for GenAI, 6.4 inspect list, 7.3 no enabled SSL rules.
+        "checks": ["4.1", "A.2", "E.2", "6.4", "7.3"],
         "label": "Add SSL Inspection Rule",
         "summary": "Creates an SSL inspection rule with an explicit action. Addresses 'SSL inspection not configured' findings.",
         "destructive": True,
@@ -197,6 +205,8 @@ REMEDIATIONS: List[Dict[str, Any]] = [
 
     {
         "check_id": "DLP-01",
+        # 5.3 / A.1 / MC.1 no active Web DLP rules, E.5 no source-code rule, E.6 no PII rule, 8.5 inline pilot.
+        "checks": ["5.3", "A.1", "MC.1", "E.5", "E.6", "8.5"],
         "label": "Add Inline Web DLP Rule",
         "summary": "Creates a new Inline Web DLP rule with the action and scope you specify. Use to satisfy 'no DLP rules configured' findings.",
         "destructive": True,
@@ -245,6 +255,7 @@ def get_catalog() -> List[Dict[str, Any]]:
     return [
         {
             "check_id":    r["check_id"],
+            "checks":      list(r.get("checks") or []),
             "label":       r["label"],
             "summary":     r["summary"],
             "destructive": r.get("destructive", False),
@@ -255,15 +266,25 @@ def get_catalog() -> List[Dict[str, Any]]:
 
 
 def get_recipe(check_id: str) -> Optional[Dict[str, Any]]:
-    """Find the recipe whose check_id matches (exact or prefix)."""
+    """Find the recipe for a check: the recipe's own id, an assessment
+    check id it lists in `checks`, or a prefix of the recipe id."""
+    check_id = str(check_id or "")
     for r in REMEDIATIONS:
         if r["check_id"] == check_id:
+            return r
+    for r in REMEDIATIONS:
+        if check_id in (r.get("checks") or []):
             return r
     # Prefix match (e.g. check "FW-01.dns" matches recipe "FW-01")
     for r in REMEDIATIONS:
         if check_id.startswith(r["check_id"]):
             return r
     return None
+
+
+def remediable_checks() -> Dict[str, str]:
+    """{assessment check id: recipe id} for every check a recipe answers."""
+    return {c: r["check_id"] for r in REMEDIATIONS for c in (r.get("checks") or [])}
 
 
 # ─────────────────────────────────────────────────────────────────

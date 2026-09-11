@@ -201,6 +201,8 @@ body.flow-page .dz-flow-wrap { max-height: calc(100vh - 300px); min-height: 320p
 .df-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
 .df-table th { text-align: left; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
 .df-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); }
+.df-table tr.dh-why td { background: color-mix(in srgb, var(--fail) 8%, transparent); border-left: 3px solid var(--fail); font-size: 0.8rem; }
+.df-table tr.dh-why .dh-ev { color: var(--dim); }
 .df-row { cursor: pointer; } .df-row:hover td { background: rgba(59,130,246,0.06); } .df-row.sel td { background: rgba(59,130,246,0.12); }
 .df-chip { display: inline-flex; align-items: center; padding: 0.12rem 0.55rem; border-radius: 100px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: rgba(148,163,184,0.16); color: var(--dim); }
 .df-chip.st-ok { background: rgba(16,185,129,0.14); color: var(--chip-ok, #34d399); }

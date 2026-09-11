@@ -231,7 +231,7 @@ def _tally(incs: List[Dict[str, Any]]) -> Dict[str, int]:
 
 
 def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], settings: Optional[Dict[str, Any]] = None,
-             now: Optional[datetime] = None) -> Dict[str, Any]:
+             now: Optional[datetime] = None, definitions: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Per rule / engine / dictionary / channel / application metrics and
     the findings they imply. `rules` is the tenant's DLP rule inventory
     (name, channel, state, action, engines) so dead and monitor-only rules
@@ -307,6 +307,12 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
 
     engines = group(lambda i: i["engines"] or [], incidents, fp_win)
     dictionaries = group(lambda i: [d["name"] for d in i["dictionaries"]], incidents, fp_win)
+    for d in dictionaries:
+        if d["noisy"]:
+            d.update(dictionary_why(d["name"], [i for i in fp_win if any(x["name"] == d["name"] for x in i["dictionaries"])],
+                                    (definitions or {}).get(d["name"])))
+        else:
+            d["why"], d["fix"], d["evidence"] = [], "", {}
     channels = group(lambda i: [i["channel"]], incidents, fp_win)
     applications = group(lambda i: [i["application"] or "(unknown application)"], incidents, fp_win)
     departments = group(lambda i: [i["department"] or "(unknown department)"], incidents, fp_win)
@@ -331,8 +337,9 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     for d in dictionaries:
         if d["noisy"]:
             findings.append({"kind": "noisy_dictionary", "severity": "medium", "name": d["name"], "channel": None,
-                             "text": f"Dictionary {d['name']}: {d['fp_rate_pct']}% of {d['fp_closed']} closed incidents in {s['fp_window_days']} days were not real (rules: {', '.join(d['rules'][:4])}). Raise its confidence or match count, or add an exclusion.",
-                             "proposal": "tune_dictionary"})
+                             "text": f"Dictionary {d['name']}: {d['fp_rate_pct']}% of {d['fp_closed']} closed incidents in {s['fp_window_days']} days were not real (rules: {', '.join(d['rules'][:4])}). "
+                                     f"Why: {' '.join(d['why']) if d['why'] else 'the analysts closed most of its matches as not real.'} Fix: {d['fix']}",
+                             "why": d["why"], "fix": d["fix"], "evidence": d["evidence"], "proposal": "tune_dictionary"})
     sev = {"medium": 0, "low": 1, "info": 2}
     findings.sort(key=lambda f: (sev.get(f["severity"], 9), f["name"]))
 
@@ -350,6 +357,136 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
             "channels": channels, "applications": applications[:40], "departments": departments[:40], "findings": findings}
 
 
+# ── why a dictionary is false-positive prone ───────────────────────────
+# What is known about the predefined patterns, keyed by a regex on the
+# dictionary name: (why it over-matches, what to do about it).
+KNOWN_PATTERNS = [
+    (r"social.?security|\bssn\b", "nine-digit numbers with no context also match: order numbers, phone numbers, account and employee ids pass the format check",
+     "use the high-confidence SSN dictionary (needs 'SSN' or 'social security' nearby), raise the match count so one stray number is not an incident, or exclude the sanctioned applications that legitimately carry ids"),
+    (r"date.?of.?birth|\bdob\b|\bbirth", "any date matches: invoices, schedules and logs are full of dates, and a birth date is only sensitive next to a name or identifier",
+     "keep it only inside an engine that also requires a name or id dictionary (AND), never on its own"),
+    (r"\bname|first.?name|last.?name|full.?name", "name lists match ordinary words and common surnames in business documents and e-mail signatures",
+     "use it only as a second condition in an engine (AND with an identifier), and raise the match count"),
+    (r"credit.?card|payment.?card|\bpan\b|card.?number", "any 13–19 digit number that passes the Luhn check matches: order numbers, IMEIs, tracking and serial numbers often do",
+     "use the high-confidence card dictionary (issuer prefix plus expiry or CVV context), raise the match count for bulk detection, or exclude internal applications that carry serial numbers"),
+    (r"phone|telephone", "any ten-digit number in phone shape matches: reference numbers, fax lines in signatures and vendor contact details",
+     "only pair it with a real identifier in an engine; on its own it is not sensitive data"),
+    (r"e-?mail", "every e-mail address matches, including the sender's own signature and internal addresses",
+     "restrict to bulk (high match count) or to external domains; a single address is not a leak"),
+    (r"address|street|postal|zip", "postal addresses appear in every letterhead, invoice and signature",
+     "pair with an identifier in an engine and raise the match count"),
+    (r"\bip\b|ipv4|ipv6", "IP addresses appear in logs, tickets, monitoring exports and configuration files that are routine for IT staff",
+     "exclude the IT groups and ticketing applications, or retire it unless network diagrams are the asset to protect"),
+    (r"medical|\bphi\b|health|hipaa|clinical|diagnos|icd", "clinical vocabulary occurs in ordinary e-mail (sick leave, insurance questions, wellness newsletters) and short codes like ICD look like product codes",
+     "require a patient identifier (MRN, member id) in the engine and lower the weight of vocabulary-only terms"),
+    (r"financ|balance.?sheet|income.?statement|earnings|corporate", "financial vocabulary is everyday language for finance, sales and procurement; the classifier fires on budgets, quotes and forecasts",
+     "scope the rule to the groups and applications where the statements are confidential (pre-release), and set the confidence to high"),
+    (r"salary|payroll|compensation", "salary words appear in HR templates, job postings and internal FAQs",
+     "scope the rule to HR systems and exclude HR staff, or require an employee id alongside"),
+    (r"password|credential|secret|token|api.?key", "the words 'password' and 'token' appear in guidance documents, help-desk tickets and reset e-mails without a real secret",
+     "prefer the shaped secret dictionaries (AWS, Google, private key headers) over the keyword one; exclude the help-desk application"),
+    (r"source.?code|\bcode\b", "configuration files, log snippets, SQL and scripts in tickets look like source code",
+     "restrict to the repositories' file types and the engineering groups; exclude ticketing"),
+    (r"resume|\bcv\b|curriculum", "resumes match every candidate e-mail and HR workflow, which is legitimate traffic",
+     "scope to the recruiting application or retire it"),
+    (r"legal|contract|agreement|\bnda\b", "contract vocabulary is routine for sales, procurement and legal",
+     "scope to the groups who must not send drafts outside and set the confidence to high"),
+    (r"passport|driver|licen[cs]e|national.?id", "identifier shapes without context match booking references, invoice and serial numbers",
+     "use the context-aware variant of the dictionary and raise the match count"),
+    (r"\biban\b|routing|\baba\b|bank.?account|swift", "account numbers appear in the company's own invoices, remittance advice and supplier onboarding, all legitimate",
+     "exclude the finance groups and the banking applications, or require a customer identifier in the engine"),
+]
+
+
+def _top(counter: Dict[str, int], n: int = 3) -> List[Tuple[str, int]]:
+    return sorted(((k, v) for k, v in counter.items() if k), key=lambda kv: (-kv[1], kv[0]))[:n]
+
+
+def dictionary_why(name: str, incs: List[Dict[str, Any]], definition: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Why this dictionary's matches are closed as not real, from the
+    incidents themselves (alone or co-fired, thin match counts, where the
+    noise comes from), what is known about the pattern, and the
+    dictionary's own settings. Returns {why: [..], fix: str, evidence}."""
+    nr = [i for i in incs if i["real"] is False]
+    real = [i for i in incs if i["real"] is True]
+    why: List[str] = []
+    fixes: List[str] = []
+    ev: Dict[str, Any] = {"not_real": len(nr), "real": len(real)}
+    if nr:
+        alone = sum(1 for i in nr if len(i["dictionaries"]) == 1)
+        led = sum(1 for i in nr if max((d["count"] for d in i["dictionaries"]), default=0) == next((d["count"] for d in i["dictionaries"] if d["name"] == name), 0) > 0)
+        ev.update({"alone": alone, "led": led})
+        co: Dict[str, int] = {}
+        for i in nr:
+            for d in i["dictionaries"]:
+                if d["name"] != name:
+                    co[d["name"]] = co.get(d["name"], 0) + 1
+        ev["co_fired"] = _top(co)
+        counts = sorted(next((d["count"] for d in i["dictionaries"] if d["name"] == name), 0) for i in nr)
+        median = counts[len(counts) // 2] if counts else 0
+        ev["median_matches_not_real"] = median
+        real_counts = sorted(next((d["count"] for d in i["dictionaries"] if d["name"] == name), 0) for i in real)
+        ev["median_matches_real"] = real_counts[len(real_counts) // 2] if real_counts else None
+        if alone == 0 and co:
+            top = ev["co_fired"][0]
+            why.append(f"It never fired alone: every not-real incident also matched {top[0]} ({top[1]} of {len(nr)}), so the noise may belong to that dictionary rather than this one.")
+        elif alone >= max(1, len(nr) // 2):
+            why.append(f"It carries the noise itself: it was the only dictionary in {alone} of {len(nr)} not-real incidents.")
+        if led and led >= max(1, len(nr) // 2) and alone < len(nr):
+            why.append(f"It led the match (highest count) in {led} of {len(nr)} not-real incidents.")
+        if median and median <= 2:
+            why.append(f"Matches are thin: typically {median} hit(s) per not-real incident, the signature of a pattern that catches stray look-alike values rather than a data set.")
+            fixes.append("raise the match count on the rule (or the dictionary's threshold) so one or two look-alike values are not an incident")
+        if ev["median_matches_real"] and median and ev["median_matches_real"] >= 3 * max(1, median):
+            why.append(f"Real incidents carry far more matches (typically {ev['median_matches_real']}) than the not-real ones ({median}): a count threshold separates them.")
+        apps: Dict[str, int] = {}
+        depts: Dict[str, int] = {}
+        for i in nr:
+            apps[i.get("application") or ""] = apps.get(i.get("application") or "", 0) + 1
+            depts[i.get("department") or ""] = depts.get(i.get("department") or "", 0) + 1
+        ev["applications"] = _top(apps)
+        ev["departments"] = _top(depts)
+        if ev["applications"] and ev["applications"][0][1] >= max(2, len(nr) // 2):
+            a, n = ev["applications"][0]
+            why.append(f"Most of the noise ({n} of {len(nr)}) comes from {a}: the analysts treat that traffic as legitimate.")
+            fixes.append(f"exclude {a} from the rule (or move it to a sanctioned-application rule with a higher threshold)")
+        if ev["departments"] and ev["departments"][0][1] >= max(2, len(nr) // 2):
+            dpt, n = ev["departments"][0]
+            why.append(f"{n} of {len(nr)} not-real incidents come from {dpt}, whose work legitimately involves this data.")
+            fixes.append(f"scope the rule away from {dpt}, or give that department a monitor-only rule")
+    for rx, reason, fix in KNOWN_PATTERNS:
+        if re.search(rx, name or "", re.I):
+            why.append(f"Known for this pattern: {reason}.")
+            fixes.append(fix)
+            break
+    d = definition or {}
+    if d:
+        ev["definition"] = d
+        if d.get("custom"):
+            if d.get("patterns") and not d.get("phrases"):
+                why.append("It is a custom dictionary built only on regular expressions, with no phrases to anchor them.")
+                fixes.append("add anchoring phrases or word boundaries to the patterns, and validate check digits where the identifier has them")
+            if d.get("phrase_match", "").upper().startswith("MATCH_ANY") and (d.get("phrases") or 0) > 20:
+                why.append(f"It matches on any one of {d['phrases']} phrases (match-any), so a single common word is enough.")
+                fixes.append("switch to match-all for the phrases that must co-occur, or split the list")
+            if not d.get("proximity_enabled") and d.get("patterns") and d.get("phrases"):
+                why.append("Proximity is off: its phrases and patterns do not have to appear near each other.")
+                fixes.append("turn on proximity so the identifier must sit close to its keyword")
+        else:
+            conf = str(d.get("predefined_confidence") or "").upper()
+            if conf and ("LOW" in conf or "MEDIUM" in conf):
+                why.append(f"It runs at {conf.replace('CONFIDENCE_LEVEL_', '').lower()} confidence, which accepts the identifier without context.")
+                fixes.append("raise the predefined dictionary's confidence to high (the variant that needs supporting context)")
+        if d.get("confidence_threshold") is not None:
+            ev["confidence_threshold"] = d["confidence_threshold"]
+    if not why:
+        why.append("The analysts closed most of its matches as not real; the incidents do not show a single cause.")
+    if not fixes:
+        fixes.append("raise the match count, add an exclusion for the sanctioned application, or pair the dictionary with an identifier in the engine")
+    fix = "; ".join(dict.fromkeys(fixes))
+    return {"why": why, "fix": fix[0].upper() + fix[1:] + ".", "evidence": ev}
+
+
 # ── report ─────────────────────────────────────────────────────────────
 def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None) -> Dict[str, Any]:
     """The Detection Health report for one tenant: incidents from
@@ -363,17 +500,19 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     incidents, errs = fetch_incidents(client, days, _log)
     errors.extend(errs)
     rules: List[Dict[str, Any]] = []
+    definitions: Dict[str, Dict[str, Any]] = {}
     try:
         from pack_removal import inventory
         inv = inventory(client)
         rules = inv.get("rules") or []
+        definitions = inv.get("dictionaries") or {}
         for ch, err in (inv.get("errors") or {}).items():
             if err:
                 errors.append(f"{ch} rules could not be listed: {err}")
     except Exception as e:  # noqa: BLE001
         errors.append(f"rule inventory failed: {str(e)[:200]}")
     _log(f"{len(incidents)} incident(s), {len(rules)} rule(s); evaluating…")
-    ev = evaluate(incidents, rules, s)
+    ev = evaluate(incidents, rules, s, definitions=definitions)
     delivery = incident_delivery(client)
     errors.extend(delivery.pop("errors", []))
     ev["delivery"] = delivery
@@ -410,10 +549,11 @@ def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
                      f"{r['fp_rate_pct'] if r['fp_rate_pct'] is not None else '–'} | {r['status']} |")
     lines.append("")
     lines.append("## Dictionaries")
-    lines.append("| Dictionary | Incidents | Closed | Not real | FP % |")
-    lines.append("|---|---:|---:|---:|---:|")
+    lines.append("| Dictionary | Incidents | Closed | Not real | FP % | Why it is noisy | Fix |")
+    lines.append("|---|---:|---:|---:|---:|---|---|")
     for d in rep.get("dictionaries", []):
-        lines.append(f"| {d['name']} | {d['incidents']} | {d['closed']} | {d['not_real']} | {d['fp_rate_pct'] if d['fp_rate_pct'] is not None else '–'} |")
+        lines.append(f"| {d['name']} | {d['incidents']} | {d['closed']} | {d['not_real']} | {d['fp_rate_pct'] if d['fp_rate_pct'] is not None else '–'} | "
+                     f"{' '.join(d.get('why') or [])} | {d.get('fix') or ''} |")
     if rep.get("errors"):
         lines += ["", "## Read problems"] + [f"- {e}" for e in rep["errors"]]
     return "\n".join(lines)

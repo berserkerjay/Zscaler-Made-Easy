@@ -16,12 +16,25 @@ function renderDetectionHealth(rep, container) {
   const tile = (n, l, bad) => `<div class="df-stat ${bad ? 'bad' : ''}"><div class="n">${_dhE(n)}</div><div class="l">${_dhE(l)}</div></div>`;
   const deliveryCls = { cloud: 'st-ok', icap: 'st-ok', both: 'st-ok', none: 'st-fail' }[d.path] || 'st-dim';
   const deliveryLab = { cloud: 'Cloud-to-cloud forwarding', icap: 'On-premises Incident Receiver (ICAP)', both: 'Cloud-to-cloud and ICAP', none: 'No incident forwarding' }[d.path] || 'Unknown';
-  const findings = (rep.findings || []).map(f => `<li class="${_dhSev(f.severity)}"><span class="sev">${_dhE(f.severity)}</span> <strong>${_dhE(f.name)}</strong>${f.channel ? ` <span class="df-by">${_dhE(DH_CHAN[f.channel] || f.channel)}</span>` : ''}<div class="df-hop-d">${_dhE(f.text)}</div></li>`).join('');
+  const findings = (rep.findings || []).map(f => `<li class="${_dhSev(f.severity)}"><span class="sev">${_dhE(f.severity)}</span> <strong>${_dhE(f.name)}</strong>${f.channel ? ` <span class="df-by">${_dhE(DH_CHAN[f.channel] || f.channel)}</span>` : ''}<div class="df-hop-d">${_dhE(f.why && f.why.length ? f.text.split(' Why: ')[0] : f.text)}</div>${f.why && f.why.length ? `<div class="df-hop-d"><strong>Why:</strong> ${_dhE(f.why.join(' '))}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(f.fix || '')}</div>` : ''}</li>`).join('');
   const ruleRow = r => {
     const [lab, cls] = DH_STATUS[r.status] || [r.status, 'dim'];
     return `<tr><td>${_dhE(r.name)}${r.tagged ? ' <span class="df-chip st-dim" title="created by DLP-Check">pack</span>' : ''}</td><td>${_dhE(DH_CHAN[r.channel] || r.channel || '')}</td><td>${_dhE((r.state || '').toLowerCase())}${r.monitor_only ? ' · monitor' : ''}</td><td class="num">${r.incidents}</td><td class="num">${r.open}</td><td class="num">${r.closed}</td><td class="num">${r.not_real}</td><td class="num">${_dhPct(r.fp_rate_pct)}</td><td><span class="df-chip st-${cls}" title="${_dhE(r.why || '')}">${_dhE(lab)}</span></td></tr>`;
   };
-  const grpRow = g => `<tr><td>${_dhE(g.name)}</td><td class="num">${g.incidents}</td><td class="num">${g.closed}</td><td class="num">${g.not_real}</td><td class="num">${_dhPct(g.fp_rate_pct)}</td><td>${g.noisy ? '<span class="df-chip st-fail">Noisy</span>' : ''}</td><td>${_dhE((g.rules || []).slice(0, 4).join(', '))}${(g.rules || []).length > 4 ? '…' : ''}</td></tr>`;
+  const grpRow = g => `<tr><td>${_dhE(g.name)}</td><td class="num">${g.incidents}</td><td class="num">${g.closed}</td><td class="num">${g.not_real}</td><td class="num">${_dhPct(g.fp_rate_pct)}</td><td>${g.noisy ? '<span class="df-chip st-fail">Noisy</span>' : ''}</td><td>${_dhE((g.rules || []).slice(0, 4).join(', '))}${(g.rules || []).length > 4 ? '…' : ''}</td></tr>`
+    + (g.noisy && (g.why || []).length ? `<tr class="dh-why"><td colspan="7"><div class="df-hop-d"><strong>Why it is noisy:</strong> ${_dhE(g.why.join(' '))}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(g.fix || '')}</div>${_dhEvidence(g.evidence)}</td></tr>` : '');
+  const _dhEvidence = ev => {
+    if (!ev || !ev.not_real) return '';
+    const bits = [];
+    if (ev.alone != null) bits.push(`fired alone in ${ev.alone} of ${ev.not_real} not-real incidents`);
+    if (ev.co_fired && ev.co_fired.length) bits.push(`co-fired with ${ev.co_fired.map(([n, c]) => `${n} (${c})`).join(', ')}`);
+    if (ev.median_matches_not_real != null) bits.push(`typical matches per not-real incident: ${ev.median_matches_not_real}${ev.median_matches_real != null ? `, per real incident: ${ev.median_matches_real}` : ''}`);
+    if (ev.applications && ev.applications.length) bits.push(`top applications: ${ev.applications.map(([n, c]) => `${n} (${c})`).join(', ')}`);
+    if (ev.departments && ev.departments.length) bits.push(`top departments: ${ev.departments.map(([n, c]) => `${n} (${c})`).join(', ')}`);
+    const d = ev.definition;
+    if (d) bits.push(`dictionary: ${d.custom ? 'custom' : 'predefined'}${d.type ? ', ' + d.type.toLowerCase().replace(/_/g, ' ') : ''}${d.predefined_confidence ? ', confidence ' + String(d.predefined_confidence).replace(/CONFIDENCE_LEVEL_/i, '').toLowerCase() : ''}${d.confidence_threshold != null ? ', threshold ' + d.confidence_threshold : ''}${d.custom ? `, ${d.phrases} phrase(s), ${d.patterns} pattern(s)${d.proximity_enabled ? ', proximity on' : ''}` : ''}`);
+    return `<div class="df-hop-d dh-ev">Evidence: ${_dhE(bits.join(' · '))}.</div>`;
+  };
   const table = (head, rows) => `<div class="df-tablewrap"><table class="df-table"><thead><tr>${head.map(h => `<th>${_dhE(h)}</th>`).join('')}</tr></thead><tbody>${rows || '<tr><td colspan="9" class="df-hop-d">Nothing in this window.</td></tr>'}</tbody></table></div>`;
   container.innerHTML = `
     <div class="df-stats">

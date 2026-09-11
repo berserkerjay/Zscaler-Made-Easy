@@ -116,7 +116,9 @@ def forwarding_actions(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     applies it to every network."""
     out: Dict[str, Dict[str, Any]] = {}
     for k, v in profile.items():
-        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v) and re.search(r"action|forward|network|tunnel", str(k), re.I):
+        # The ZPA action list (forwardingProfileZpaActions) describes the
+        # private-access tunnel, not how web traffic reaches ZIA: skip it.
+        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v) and re.search(r"action|forward|network|tunnel", str(k), re.I) and not re.search(r"zpa", str(k), re.I):
             for entry in v:
                 net_raw = next((entry[kk] for kk in entry if re.search(r"network", str(kk), re.I)), None)
                 mode_raw = next((entry[kk] for kk in entry if re.search(r"tunnel|action|forward|proxy|mode", str(kk), re.I) and not re.search(r"network|dns|timeout|port|id$", str(kk), re.I)), None)
@@ -145,8 +147,10 @@ def read_client_connector(client) -> Dict[str, Any]:
         for p in _rules_to_list(data) if code == 200 else []:
             if not isinstance(p, dict):
                 continue
-            plat = str(p.get("os") or p.get("platform") or p.get("osType") or p.get("device_type") or "").lower()
-            plat = {"win": "windows", "windows": "windows", "mac": "macos", "macos": "macos", "osx": "macos", "ios": "ios", "android": "android", "linux": "linux"}.get(plat, plat or "all")
+            plat = str(p.get("os") or p.get("platform") or p.get("osType") or p.get("device_type") or p.get("deviceType") or "").lower()
+            # The Client Connector API numbers the platforms: 1 iOS, 2 Android, 3 Windows, 4 macOS, 5 Linux.
+            plat = {"win": "windows", "windows": "windows", "mac": "macos", "macos": "macos", "osx": "macos", "ios": "ios", "android": "android", "linux": "linux",
+                    "1": "ios", "2": "android", "3": "windows", "4": "macos", "5": "linux"}.get(plat, plat or "all")
             domains, apps, processes, ips, vpn = [], [], [], [], []
             for k, v in p.items():
                 kl = str(k).lower()
@@ -399,11 +403,17 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     if reaches_zscaler:
         if not fwd:
             fps_n = len(zcc.get("forwarding_profiles", []))
-            hops.append(_hop("forwarding", "Forwarding profile", "assumed", None,
-                             f"The app profile '{prof['name']}' does not name a forwarding profile the tool could match"
-                             + (f" (the tenant has {fps_n} forwarding profiles, so none can be assumed)" if fps_n > 1 else (" and the forwarding profile list could not be read" if fps_n == 0 else ""))
-                             + "; assuming a tunnel. Check the app profile's Forwarding Profile field in the Client Connector portal.",
-                             None, why=("no forwarding profile linked" if fps_n else "forwarding profiles not readable")))
+            if prof:
+                text = (f"The app profile '{prof['name']}' does not name a forwarding profile the tool could match"
+                        + (f" (the tenant has {fps_n} forwarding profiles, so none can be assumed)" if fps_n > 1 else (" and the forwarding profile list could not be read" if fps_n == 0 else ""))
+                        + "; assuming a tunnel. Check the app profile's Forwarding Profile field in the Client Connector portal.")
+                why = "no forwarding profile linked" if fps_n else "forwarding profiles not readable"
+            else:
+                text = (f"No app profile for {platform}, so no forwarding profile can be linked"
+                        + (f" (the tenant has {fps_n} forwarding profile(s))" if fps_n else " and the forwarding profile list could not be read")
+                        + "; assuming a tunnel.")
+                why = f"no app profile for {platform}"
+            hops.append(_hop("forwarding", "Forwarding profile", "assumed", None, text, None, why=why))
         else:
             act = fwd["actions"].get(network) or fwd["actions"].get("any") or {}
             mode_kind = act.get("mode_kind", "unknown")
@@ -692,10 +702,18 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
     packs = load_packs()
     dests = list(destinations) if destinations else [k["key"] for k in TRAFFIC_CLASSES]
     traces = []
+    failed: List[Dict[str, Any]] = []
     for d in dests:
         rd = resolve_destination(d, zia)
         for net in NETWORKS:
-            traces.append(trace(rd, net["key"], platform, zcc, zia, packs))
+            # One destination the tracer cannot handle must not take the
+            # whole map down: it is reported in the diagnostics instead.
+            try:
+                traces.append(trace(rd, net["key"], platform, zcc, zia, packs))
+            except Exception as e:  # noqa: BLE001
+                failed.append({"section": f"trace {rd.get('label') or d} ({net['key']})", "error_type": type(e).__name__, "error": str(e)[:200]})
+    if not traces and failed:
+        raise RuntimeError(f"no path could be traced: {failed[0]['error_type']}: {failed[0]['error']}")
     summary = {
         "destinations": len(dests), "traces": len(traces),
         "bypassed": sum(1 for t in traces if not t["reaches_zscaler"]),
@@ -709,7 +727,7 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
     return {"summary": summary, "platform": platform, "networks": NETWORKS, "platforms": PLATFORMS,
             "destinations": [{"key": k["key"], "label": k["label"], "why": k.get("why", "")} for k in TRAFFIC_CLASSES],
             "traces": traces, "client_connector": zcc, "packs": [{"id": p["id"], "name": p["name"], "rules": len(p["policies"])} for p in packs],
-            "diagnostics": zia.get("diagnostics", []) + [{"section": "Client Connector", "error": e} for e in zcc.get("errors", [])],
+            "diagnostics": zia.get("diagnostics", []) + [{"section": "Client Connector", "error": e} for e in zcc.get("errors", [])] + failed,
             "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
                          "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"), "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                         for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},

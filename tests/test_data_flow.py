@@ -173,3 +173,39 @@ def test_data_flow_api_page_trace_and_export(monkeypatch):
     page = c.get("/report/dataflow?id=x").text
     assert '<script src="/static/data_flow.js"></script>' in page and 'id="dfDest"' in page
     assert "openDataFlowTab()" in c.get("/").text and "__dataFlowGenerate" in c.get("/").text
+
+
+def test_no_profile_for_the_platform_still_traces_and_numeric_zcc_codes_are_read():
+    # A tenant whose profiles use the numeric platform codes of the Client
+    # Connector API (3 = Windows, 4 = macOS) and whose forwarding profile
+    # also lists ZPA actions (which must not overwrite the ZIA tunnel mode).
+    routes = dict(ROUTES)
+    routes["/zcc/webPolicies"] = {"list": [{"id": 1, "name": "Win", "device_type": 3, "active": 1, "ruleOrder": "1", "forwardingProfileId": "5", "groups": None},
+                                           {"id": 2, "name": "Mac", "device_type": 4, "active": True, "ruleOrder": 2, "forwardingProfileId": 5}]}
+    routes["/zcc/forwardingProfiles"] = [{"id": 5, "name": "fp", "forwardingProfileActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "ZSCALER_TUNNEL_2"}],
+                                          "forwardingProfileZpaActions": [{"networkType": "OFF_TRUSTED_NETWORK", "actionType": "NONE"}]}]
+    rep = df.generate_data_flow_report(FakeCl(routes, CATALOGUE), None, "windows")
+    zcc = rep["client_connector"]
+    assert [p["platform"] for p in zcc["app_profiles"]] == ["windows", "macos"]
+    assert zcc["forwarding_profiles"][0]["actions"]["off"]["mode_kind"] == "tunnel"
+    t = rep["traces"][0]
+    assert t["hops"][0]["status"] == "pass" and t["hops"][1]["status"] == "pass"
+    # No profile for Linux: the trace still completes (this used to crash the map).
+    rep2 = df.generate_data_flow_report(FakeCl(routes, CATALOGUE), None, "linux")
+    hops = {h["key"]: h for h in rep2["traces"][0]["hops"]}
+    assert hops["zcc"]["status"] == "warn" and hops["forwarding"]["status"] == "assumed" and "no app profile for linux" in hops["forwarding"]["why"]
+    assert rep2["summary"]["traces"] == len(df.TRAFFIC_CLASSES) * 3
+    # Nothing readable at all: every hop degrades, nothing raises.
+    rep3 = df.generate_data_flow_report(FakeCl({}, {}), None, "windows")
+    assert rep3["summary"]["traces"] == len(df.TRAFFIC_CLASSES) * 3 and rep3["diagnostics"]
+
+
+def test_data_flow_endpoint_names_a_tracer_failure(monkeypatch):
+    monkeypatch.setattr(srv, "_build_client", lambda req: _client())
+    def boom(client, dests, plat):
+        raise KeyError("platform")
+    monkeypatch.setattr(df, "generate_data_flow_report", boom)
+    import dlp_api_server as s2
+    c = TestClient(s2.app)
+    r = c.post("/api/report/data-flow", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
+    assert r.status_code == 500 and "KeyError" in r.json()["detail"] and "server.log" in r.json()["detail"]

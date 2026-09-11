@@ -261,7 +261,7 @@ _REMEDIATION_PATHS = [
      "ZIA Admin → ZCC → App Profiles → Add (or edit existing). Enable strict "
      "enforcement, tamper-protection password, Z-Tunnel 2.0, attach a "
      "Posture Profile. Require MFA via ZIdentity for enrollment.",
-     "PUT /zcc/papi/public/v1/webPolicies/listByCompany (update profile)"),
+     "PUT /zcc/papi/public/v1/web/policy/edit (update profile)"),
 
     ("genai",
      "ZIA Admin → Policy → URL & Cloud App Control → Cloud App Control → AI "

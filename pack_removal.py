@@ -316,7 +316,19 @@ def inventory(client) -> Dict[str, Any]:
                       "tagged": pack is not None, "pack": pack})
     order = {ch: i for i, ch in enumerate(pc.DLP_CHANNELS)}
     rules.sort(key=lambda r: (order.get(r["channel"], 9), str(r["name"]).lower()))
-    return {"status": "ready", "rules": rules, "errors": (snap.get("channels") or {}).get("errors") or {}}
+    # The dictionary definitions, for whoever needs to explain a match
+    # (Detection Health): custom or predefined, type, confidence, proximity.
+    dicts = {}
+    for name, d in (snap.get("dictionaries") or {}).items():
+        dicts[str(name)] = {"id": pd._field(d, "id"), "custom": bool(pd._field(d, "custom", "customDictionary", default=False)),
+                            "type": str(pd._field(d, "dictionary_type", "dictionaryType", default="") or ""),
+                            "confidence_threshold": pd._field(d, "confidence_threshold", "confidenceThreshold"),
+                            "predefined_confidence": pd._field(d, "confidence_level_for_predefined_dict", "confidenceLevelForPredefinedDict"),
+                            "phrase_match": str(pd._field(d, "custom_phrase_match_type", "customPhraseMatchType", default="") or ""),
+                            "proximity": pd._field(d, "proximity"),
+                            "proximity_enabled": bool(pd._field(d, "proximity_enabled_for_custom_dictionary", "proximityEnabledForCustomDictionary", default=False)),
+                            "phrases": len(pd._field(d, "phrases", default=[]) or []), "patterns": len(pd._field(d, "patterns", default=[]) or [])}
+    return {"status": "ready", "rules": rules, "dictionaries": dicts, "errors": (snap.get("channels") or {}).get("errors") or {}}
 
 
 def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

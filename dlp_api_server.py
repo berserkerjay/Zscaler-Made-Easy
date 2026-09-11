@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -156,7 +156,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -181,10 +181,12 @@ async def _safe_exception_handler(request: Request, exc: Exception):
             {"detail": f"{type(exc).__name__}: {exc}", "trace": traceback.format_exc()},
             status_code=500,
         )
-    # In normal mode, return a generic message — log details server-side only.
-    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path}: {exc}")
+    # In normal mode, return a generic message — log details server-side only
+    # (server.log carries the traceback so the failure can be reported).
+    import traceback
+    print(f"[error] {type(exc).__name__} on {request.method} {request.url.path}: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
-        {"detail": "Internal error. Run with ZSCALER_DEBUG=1 for details."},
+        {"detail": f"Internal error ({type(exc).__name__}). The traceback is in server.log next to the app; run with ZSCALER_DEBUG=1 to see it here."},
         status_code=500,
     )
 
@@ -249,6 +251,7 @@ GUI_ADDONS = [
     ("reports.css", "style"),
     ("deploy_studio.js", "script"),
     ("guide.js", "script"),
+    ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
 ]
@@ -2464,6 +2467,90 @@ async def compliance_drilldown(request: Request):
     return get_control_drilldown(results)
 
 
+@app.post("/api/compliance/report")
+async def compliance_report(request: Request):
+    """Remember an assessment's compliance view so it can open in its own
+    tab (/report/compliance?id=...): the framework summary, the control
+    drilldown and the frameworks the assessment page had selected."""
+    try:
+        from compliance_mapping import get_framework_summary, get_control_drilldown, FRAMEWORK_DESCRIPTIONS
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"compliance_mapping not available: {e}")
+    data = await request.json()
+    results = data.get("checks", [])
+    if not results:
+        raise HTTPException(status_code=400, detail="No checks in request body")
+    selected = [str(k) for k in (data.get("frameworks") or []) if str(k) in FRAMEWORK_DESCRIPTIONS]
+    meta = data.get("metadata") or {}
+    rep = {"summary": get_framework_summary(results), "drilldown": get_control_drilldown(results),
+           "descriptions": dict(FRAMEWORK_DESCRIPTIONS), "frameworks_selected": selected, "check_count": len(results),
+           "metadata": {k: meta.get(k) for k in ("org", "assessor", "vanity_domain", "cloud", "date") if meta.get(k)}}
+    rid = _remember_report("compliance", rep, str(meta.get("org") or meta.get("vanity_domain") or ""))
+    return {"report_id": rid}
+
+
+@app.get("/api/compliance/report/{report_id}")
+async def compliance_report_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("compliance-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.get("/api/compliance/export/{report_id}")
+async def compliance_report_export(report_id: str, format: str = "markdown"):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("compliance-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired.")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    if format == "json":
+        return JSONResponse(rep, headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.json"'})
+    keys = rep.get("frameworks_selected") or list(rep.get("summary") or {})
+    if format == "csv":
+        import csv, io
+        buf = io.StringIO(); w = csv.writer(buf)
+        w.writerow(["framework", "control", "status", "passing", "failing", "review", "not_applicable", "evidence_check_ids"])
+        for k in keys:
+            d = (rep.get("drilldown") or {}).get(k) or {}
+            for c in d.get("controls") or []:
+                w.writerow([d.get("framework_name") or k, c.get("control"), c.get("status"), c.get("passing_count"), c.get("failing_count"),
+                            c.get("review_count"), c.get("info_count"), " ".join(str(e.get("check_id")) for e in (c.get("evidence") or []))])
+        return PlainTextResponse(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.csv"'})
+    lines = [f"# Regulatory & Compliance Alignment{' — ' + rep['tenant_label'] if rep.get('tenant_label') else ''}", "",
+             f"{rep.get('check_count', 0)} checks mapped. Generated {rep.get('generated_at', '')}.", ""]
+    for k in keys:
+        sm = (rep.get("summary") or {}).get(k) or {}
+        d = (rep.get("drilldown") or {}).get(k) or {}
+        lines += [f"## {sm.get('name') or k}", "", f"**{sm.get('status', '?')}** — {sm.get('alignment_pct', 0)}% alignment, {sm.get('control_count', 0)} controls"
+                  + (f": {d.get('met', 0)} met, {d.get('partially_met', 0)} partially met, {d.get('not_met', 0)} not met, {d.get('not_tested', 0)} not tested" if d else ""), ""]
+        for c in d.get("controls") or []:
+            lines.append(f"- **{c.get('control')}** — {c.get('status')} ({c.get('passing_count', 0)} passing, {c.get('failing_count', 0)} failing, {c.get('review_count', 0)} review)")
+            for e in (c.get("evidence") or [])[:8]:
+                lines.append(f"  - [{e.get('status')}] {e.get('check_id')} {e.get('label')}{': ' + str(e.get('detail'))[:160] if e.get('detail') else ''}")
+        lines.append("")
+    return PlainTextResponse("\n".join(lines), media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.md"'})
+
+
+@app.get("/quickstart")
+async def quickstart_page():
+    """Quick Start Assessment in its own tab (static/quickstart.html)."""
+    page = os.path.join(STATIC_DIR, "quickstart.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/report/compliance")
+async def report_compliance_page():
+    """Standalone tab for Regulatory & Compliance Alignment (static/report_compliance.html)."""
+    page = os.path.join(STATIC_DIR, "report_compliance.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 @app.post("/api/benchmarks")
 async def benchmarks_report(request: Request):
     """Best-practice alignment per area (with each deviation's guidance and
@@ -3313,7 +3400,14 @@ async def report_data_flow(req: DataFlowRequest):
     client = await asyncio.to_thread(_build_client, req)
     plat = req.platform if req.platform in ("windows", "macos", "ios", "android", "linux") else "windows"
     dests = [str(d)[:200] for d in (req.destinations or [])][:40]
-    report = await asyncio.to_thread(generate_data_flow_report, client, dests or None, plat)
+    try:
+        report = await asyncio.to_thread(generate_data_flow_report, client, dests or None, plat)
+    except Exception as e:  # noqa: BLE001
+        # The tracer's own failure is not a secret: name it so the tab can
+        # say what went wrong instead of "internal error".
+        import traceback
+        print(f"[error] data flow map: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
     rid = _remember_report("dataflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
     return _REPORTS[rid]
 

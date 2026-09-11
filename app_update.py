@@ -426,15 +426,31 @@ def _restore(app_dir: str, stashed: bool, step, result: Dict[str, Any]) -> None:
 
 def restart_command(app_dir: str) -> List[str]:
     """The detached command that relaunches the server the same way the
-    shortcuts do, after this process has exited."""
+    shortcuts do, after this process has exited.
+
+    Windows: the silent launcher itself, in batch mode (//B: Windows
+    Script Host never shows an error dialog) with /restart, which makes
+    it wait for this process to release the port before starting the
+    new one. No `cmd /c timeout`: timeout refuses to run without a
+    console ("Input redirection is not supported") and the relaunch
+    silently never happened."""
     if sys.platform == "win32":
         vbs = os.path.join(app_dir, "START_Zscaler_Assessment.vbs")
         bat = os.path.join(app_dir, "START_Zscaler_Assessment.bat")
-        launch = f'wscript.exe "{vbs}"' if os.path.isfile(vbs) else f'"{bat}"'
-        return ["cmd", "/c", f"timeout /t 3 /nobreak >nul && {launch}"]
+        if os.path.isfile(vbs):
+            return ["wscript.exe", "//B", "//Nologo", vbs, "/restart"]
+        return ["cmd", "/c", f'ping -n 4 127.0.0.1 >nul && "{bat}"']
     server = os.path.join(app_dir, "dlp_api_server.py")
     log = os.path.join(app_dir, "server.log")
     return ["sh", "-c", f'sleep 3; cd "{app_dir}" && nohup "{sys.executable}" "{server}" >> "{log}" 2>&1 &']
+
+
+def manual_restart_hint(app_dir: str) -> str:
+    """What to do by hand when the relaunch does not come back."""
+    if sys.platform == "win32":
+        return ("Close the app with STOP_Zscaler_Assessment.bat and open it again from the desktop shortcut "
+                f"(or run START_Zscaler_Assessment.bat in {app_dir}). launcher.log next to the app records why a silent start failed.")
+    return f"Start it again: cd \"{app_dir}\" && python dlp_api_server.py"
 
 
 def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) -> Dict[str, Any]:
@@ -452,14 +468,25 @@ def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) ->
         kwargs["start_new_session"] = True
     env = dict(os.environ)
     env.pop("DLPCHECK_HIDDEN", None)   # the launcher sets it itself
-    subprocess.Popen(cmd, env=env, **kwargs)
+    # The new process keeps this one's UI token, so the page that asked
+    # for the restart is still unlocked when it reloads (a fresh random
+    # token would make the browser ask for ui_token.txt again).
+    try:
+        from security import ui_token
+        env["ZSCALER_UI_TOKEN"] = ui_token()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        subprocess.Popen(cmd, env=env, **kwargs)
+    except Exception as e:  # noqa: BLE001
+        return {"scheduled": False, "command": cmd, "error": f"{type(e).__name__}: {e}", "hint": manual_restart_hint(app_dir)}
 
     def _exit_soon() -> None:
         time.sleep(delay)
         os._exit(0)
 
     threading.Thread(target=_exit_soon, daemon=True).start()
-    return {"scheduled": True, "command": cmd}
+    return {"scheduled": True, "command": cmd, "hint": manual_restart_hint(app_dir)}
 
 
 # ── Command line (used by UPDATE_Zscaler_Assessment.bat) ──────────────
