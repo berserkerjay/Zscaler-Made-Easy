@@ -1257,6 +1257,10 @@ def preflight(
         note = src.get("channel_note") or {}
         for w in note.get("warnings") or []:
             warnings.append(f"{src['name']}: {w}")
+        if note.get("skipped_channels"):
+            labels = ", ".join(pc.label(ch) for ch in note["skipped_channels"])
+            warnings.append(f"{src['name']}: {labels} rules are packed but not selected ({len(note.get('skipped_rules') or [])} rule(s)); "
+                            f"they will NOT be deployed. Tick the channel in the pack card to deploy them.")
     if read_only_note:
         warnings.append(read_only_note)
 
@@ -1594,6 +1598,14 @@ def apply(
             return dict(definition, description=pack_description(item, definition.get("description") or fallback, limit=limit))
         return definition
 
+    # Say up front what the channel selection left out, so a missing
+    # channel in the log is never a mystery.
+    for src in report.get("packs") or []:
+        note = src.get("channels") or {}
+        if note.get("skipped_channels"):
+            labels = ", ".join(pc.label(ch) for ch in note["skipped_channels"])
+            _log(f"[channels] {src.get('name') or src.get('id')}: {labels} NOT deployed: unticked in the pack card "
+                 f"({len(note.get('skipped_rules') or [])} rule(s) skipped). Tick the channel and deploy again to add them.")
     _log("Phase 1: dictionaries")
     for item in merged["dictionary"].values():
         if item["status"] in (REUSE, REUSE_DIFFERS):

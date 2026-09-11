@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 import deployments
 import pack_channels as pc
 import pack_deploy as pd
-from test_pack_channels import TENANTS, make_client, multi_pack  # noqa: F401
+from test_pack_channels import TENANTS, add_control_services, make_client, multi_pack  # noqa: F401
 from test_pack_deploy import Obj, _dict, _engine, _policy, items_by, write_pack  # noqa: F401
 
 ALL = ["web", "endpoint", "saas", "email"]
@@ -222,3 +222,23 @@ def test_undo_endpoints(store, tmp_path, monkeypatch):
     r = c.post(f"/api/deployments/{rec['id']}/undo", json=body)
     assert r.status_code == 200 and r.json()["status"] == "undone" and r.json()["deployment"]["remaining"] == 0
     assert client.zia.dlp_web_rules.items == [] and client.zia.dlp_engine.items == []
+
+
+def test_a_deselected_packed_channel_is_never_silent():
+    """A channel choice that leaves out mirrors a pack ships (a choice
+    remembered from before the mirrors existed, say) is named in the
+    plan's warnings and at the top of the deploy log, with the rule count
+    and how to put it right."""
+    from dlp_importer import discover_packs
+    fed = next(p for p in discover_packs() if p["id"] == "fed_policy_pack")
+    pack = {"id": fed["id"], "dir": fed["dir"]}
+    client = add_control_services(make_client(casb_tenants=TENANTS))
+    rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets={"fed_policy_pack": ["web"]})
+    w = [x for x in rep["warnings"] if "packed but not selected" in x]
+    assert w and "Endpoint DLP" in w[0] and "Email DLP" in w[0] and "51 rule(s)" in w[0] and "Tick the channel" in w[0], rep["warnings"]
+    logs = []
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, channel_targets={"fed_policy_pack": ["web"]}, verify=False, log=logs.append)
+    assert res["status"] == "applied"
+    head = [l for l in logs if l.startswith("[channels]")]
+    assert head and "NOT deployed" in head[0] and "Endpoint DLP" in head[0] and "51 rule(s) skipped" in head[0] and logs.index(head[0]) < logs.index("Phase 1: dictionaries")
+    assert client.zia.endpoint_dlp_rules.added == [] and client.zia.outbound_email_dlp_rules.added == [] and len(client.zia.dlp_web_rules.added) == 17

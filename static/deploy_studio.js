@@ -84,16 +84,24 @@ function _dzSaveChannels() {
   try { localStorage.setItem(DZ_LS_CHANNELS, JSON.stringify(DZ.channels)); } catch (e) { /* storage unavailable */ }
 }
 function _dzDefaultChannels(p) { return DZ_DLP.filter(c => (p.channels || {})[c]); }
+// A remembered choice is only trusted while the pack still ships rules on
+// the same channels it did when the choice was made. A pack that gained
+// mirrors since (a channel it had no rule for then) goes back to the
+// default, every packed channel, so an old choice can never silently drop
+// the new rules.
 function _dzChannelsFor(id) {
   const p = DZ.packs.find(x => x.id === id);
   if (!p) return [];
-  if (!Array.isArray(DZ.channels[id])) return _dzDefaultChannels(p);
-  return DZ.channels[id].filter(c => DZ_DLP.includes(c));
+  const saved = DZ.channels[id];
+  const packed = _dzDefaultChannels(p).join(',');
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved) || saved.packed !== packed) return _dzDefaultChannels(p);
+  return (saved.on || []).filter(c => DZ_DLP.includes(c));
 }
 function _dzSetChannel(id, ch, on) {
+  const p = DZ.packs.find(x => x.id === id);
   const cur = new Set(_dzChannelsFor(id));
   if (on) cur.add(ch); else cur.delete(ch);
-  DZ.channels[id] = DZ_DLP.filter(c => cur.has(c));
+  DZ.channels[id] = { on: DZ_DLP.filter(c => cur.has(c)), packed: p ? _dzDefaultChannels(p).join(',') : '' };
   _dzSaveChannels();
   _dzRenderSelect();
 }
@@ -115,10 +123,12 @@ function _dzChannelsHtml(p) {
       <span class="nm">${_dzE(DZ_DLP_LABEL[c])}</span><span class="hint">${_dzE(hint)}</span></label>`;
   }).join('');
   const added = DZ_DLP.filter(c => chosen.has(c) && !has(c) && engines).length;
-  const skipped = DZ_DLP.filter(c => !chosen.has(c) && has(c)).length;
+  const skippedCh = DZ_DLP.filter(c => !chosen.has(c) && has(c));
+  const skippedRules = skippedCh.reduce((n, c) => n + has(c), 0);
   return `<div class="dz-channels" onclick="event.stopPropagation()">
-    <div class="dz-channels-h">Deploy the engines into <span class="d">${added ? `· ${_dzN(added, 'channel')} added with a monitor rule` : ''}${skipped ? ` · ${_dzN(skipped, 'packed channel')} skipped` : ''}</span></div>
-    <div class="dz-chans">${boxes}</div></div>`;
+    <div class="dz-channels-h">Deploy the engines into <span class="d">${added ? `· ${_dzN(added, 'channel')} added with a monitor rule` : ''}</span></div>
+    <div class="dz-chans">${boxes}</div>
+    ${skippedCh.length ? `<div class="dz-chan-warn" role="status">⚠ ${_dzE(skippedCh.map(c => DZ_DLP_LABEL[c]).join(', '))} ${skippedCh.length === 1 ? 'is' : 'are'} unticked: the ${_dzN(skippedRules, 'rule')} this pack ships there will NOT be deployed. Tick the channel to deploy them.</div>` : ''}</div>`;
 }
 function _dzTargetsSummary(ids) {
   return ids.map(id => {
