@@ -307,13 +307,26 @@ def _not(a):
     return UNKNOWN if a is None else (not a)
 
 
+_SUM_RE = re.compile(r"\(\s*D\(?\s*\d+\s*\)?(?:\.S)?(?:\s*\+\s*D\(?\s*\d+\s*\)?(?:\.S)?)+\s*\)\s*(>=|<=|==|!=|>|<|=)\s*(\d+)")
+
+
 def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Optional[bool], List[int], List[str]]:
     """(result, dictionary ids referenced, terms explained). `counts`
-    maps dictionary id → hit count, or None when the count is unknown."""
+    maps dictionary id → hit count, or None when the count is unknown.
+    Sum groups — `(D1.S + D2.S) > n`, the Engine Builder's Sum — are
+    totalled first; an unknown count makes the sum unknown."""
     toks: List[Tuple[str, Any]] = []
     ids: List[int] = []
     pos = 0
     s = (expr or "").strip()
+    sums: Dict[str, Tuple[List[int], str, int]] = {}
+
+    def _sum(m):
+        sids = [int(x) for x in re.findall(r"D\(?\s*(\d+)", m.group(0).split(")")[0] + ")")]
+        key = f"D{900000 + len(sums)}.S"
+        sums[key] = (sids, m.group(1), int(m.group(2)))
+        return f"{key} {m.group(1)} {m.group(2)}"
+    s = _SUM_RE.sub(_sum, s)
     while pos < len(s):
         m = _TOKEN.match(s, pos)
         if not m or m.end() == pos:
@@ -378,6 +391,15 @@ def evaluate_expression(expr: str, counts: Dict[int, Optional[int]]) -> Tuple[Op
         if kind == "T":
             i += 1
             did, op, n = val
+            key = f"D{did}.S"
+            if key in sums:
+                sids, sop, sn = sums[key]
+                ids.extend(x for x in sids if x not in ids)
+                parts = [counts.get(x, UNKNOWN) for x in sids]
+                total = None if any(v is None for v in parts) else sum(parts)
+                r = _cmp(total, sop, sn)
+                explained.append(f"Sum({' + '.join(f'D{x}.S' for x in sids)}) {sop} {sn}: " + ("unknown (a dictionary is not simulated)" if total is None else f"{total} → {'true' if r else 'false'}"))
+                return r
             c = counts.get(did, UNKNOWN)
             r = _cmp(c, op, n)
             explained.append(f"D{did}.S {op} {n}: " + ("unknown (not simulated)" if c is None else f"{c} → {'true' if r else 'false'}"))

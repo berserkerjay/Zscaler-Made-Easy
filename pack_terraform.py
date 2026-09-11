@@ -43,7 +43,7 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
-from dlp_importer import DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, fit_description, load_pack_metadata
+from dlp_importer import find_refs, DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, fit_description, load_pack_metadata
 
 PROVIDER_SOURCE = "zscaler/zia"
 PROVIDER_VERSION = "~> 4.8"
@@ -213,7 +213,7 @@ def _control_rule_hcl(channel: str, res: str, label: str, p: Dict[str, Any], met
 # ("Social Security Numbers (US)"); it ends at the comparison operator that
 # follows every dictionary term in a ZIA expression, at AND/OR, or at a
 # closing paren that closes the group rather than the name.
-_REF_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\)|$)|$))")
+_REF_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\)|$)|$))")   # kept for callers; find_refs is paren-aware
 
 
 # ---------------------------------------------------------------------------
@@ -378,12 +378,14 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         for name in sorted(dict_names, key=len, reverse=True):
             if f"D:{name}" in expr:
                 expr = expr.replace(f"D:{name}", f"D${{zia_dlp_dictionaries.{S.get('dict', name)}.id}}.S")
-        for name in sorted({m.group(1).strip() for m in _REF_RE.finditer(expr)}, key=lambda n: (-len(n), n)):   # deterministic: equal lengths by name
+        for name in sorted(set(find_refs(expr)), key=lambda n: (-len(n), n)):   # deterministic: equal lengths by name
             if name not in predefined_refs:
                 predefined_refs[name] = S.get("pre", name)
             expr = expr.replace(f"D:{name}", f"D${{data.zia_dlp_dictionaries.{predefined_refs[name]}.id}}.S")
         # ZIA compares every term to a count; a bare term means "at least one match".
-        expr = re.sub(r"(D\$\{[^}]+\}\.S)(?!\s*[<>=])", r"\1 > 0", expr)
+        # A term inside a Sum (D1.S + D2.S) > n carries no comparison of its own.
+        from dlp_importer import default_counts
+        expr = default_counts(expr, re.compile(r"(D\$\{[^}]+\}\.S)(?!\s*[<>=+])"))
         eng.append(f'resource "zia_dlp_engines" "{label}" {{\n')
         eng.append(_attr("name", hcl_str(e["name"])))
         eng.append(_attr("description", hcl_str(_provenance(meta, pack_id, e.get("description", "")))))

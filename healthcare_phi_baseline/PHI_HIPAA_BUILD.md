@@ -53,7 +53,7 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 | 3 | HIPAA Identity Trifecta | single record + state breach law, critical | SSN + DOB + name, OR name + DOB + (driver's licence, enhanced driver's licence or TIN). Without a DOB the expanded branch never fires |
 | 4 | HIPAA Sensitive Subcategory | single record + 42 CFR Part 2 / GINA, critical (elevated) | (sensitive markers, Diseases Information, Self-Harm & Cyberbullying or Illegal Drugs) AND (name, SSN, DOB, MRN or member id). Route to a restricted reviewer queue |
 | 5 | HIPAA Pharmacy / Claims / Billing | single record reportable | pharmacy: (Drugs > 2 or NDC) + identifier + (NPI or clinical narrative); claims: (billing phrases > 2 or Insurance Document) + (diseases or treatments) + identifier incl. Credit Cards |
-| 6 | HIPAA Bulk PHI — Small / Significant / Major | > 1 / > 50 / > 500 identifiers | the design is a Sum over SSN, MRN, member id, NPI, TIN, driver's licence and enhanced driver's licence. The API exposes no Sum, so each tier is "any one of those dictionaries above the threshold": three engines behind three rules |
+| 6 | HIPAA Bulk PHI — Small / Significant / Major | > 1 / > 50 / > 500 identifiers | Sum of the matches of SSN, MRN, member id, NPI, TIN, driver's licence and enhanced driver's licence (the Engine Builder's Sum operator, `((D1.S + D2.S + …) > n)` in the API). One design engine, three thresholds: three engines behind three rules, because a rule has no match-count condition of its own |
 
 ## Rules and reporting tiers
 

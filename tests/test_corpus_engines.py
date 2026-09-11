@@ -56,3 +56,10 @@ def test_corpus_test_reports_predefined_engines_and_rules():
     assert eng["Financials"]["verdict"] == "possible" and eng["Nothing"]["verdict"] == "does not fire"
     assert out["engines_firing"] == 2 and out["engines_possible"] == 1 and out["predefined_simulated"] == 2
     assert eng["PCI"]["dictionaries"] == ["Credit Cards"] and "4111" not in str(out)
+
+
+def test_sum_groups_are_totalled():
+    assert ce.evaluate_expression("((D1.S + D2.S + D3.S) > 4)", {1: 2, 2: 3, 3: 0})[0] is True
+    assert ce.evaluate_expression("((D1.S + D2.S) > 4)", {1: 2, 2: 1})[0] is False
+    r = ce.evaluate_expression("((D1.S + D2.S) > 4) AND (D3.S > 0)", {1: 2, 2: None, 3: 1})
+    assert r[0] is None and "Sum(D1.S + D2.S) > 4: unknown" in r[2][0]

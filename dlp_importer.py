@@ -437,22 +437,40 @@ def resolve_engine_expression(expr: str, dict_name_to_id: Dict[str, Any]) -> Tup
         if placeholder in expr:
             expr = expr.replace(placeholder, f"D{dict_name_to_id[dict_name]}.S")
     # ZIA's grammar wants every dictionary term compared to a count
-    # (`D63.S > 1`); a bare term means "at least one match".
-    expr = _BARE_TERM_RE.sub(r"\1 > 0", expr)
+    # (`D63.S > 1`); a bare term means "at least one match". Terms inside a
+    # Sum — `(D63.S + D64.S) > 1`, the Engine Builder's Sum operator — carry
+    # no comparison of their own.
+    expr = default_counts(expr, _BARE_TERM_RE)
     unresolved = [u.strip() for u in re.findall(_UNRESOLVED_REF_RE, expr) if u.strip()]
     return expr, unresolved
 
 
-_BARE_TERM_RE = re.compile(r"(D\d+\.S)(?!\s*[<>=])")
+_BARE_TERM_RE = re.compile(r"(D\d+\.S)(?!\s*[<>=+])")
+
+
+def default_counts(expr: str, term_re: "re.Pattern") -> str:
+    """Append `> 0` to every dictionary term that has no comparison and is
+    not part of a Sum (`a + b`)."""
+    out, last = [], 0
+    for m in term_re.finditer(expr):
+        before = expr[:m.start()].rstrip()
+        after = expr[m.end():].lstrip()
+        in_sum = before.endswith("+") or after.startswith("+")
+        out.append(expr[last:m.end()])
+        if not in_sum:
+            out.append(" > 0")
+        last = m.end()
+    out.append(expr[last:])
+    return "".join(out)
 
 
 # A leftover `D:<name>` runs until the next boolean operator, closing paren,
 # proximity operator, or end of expression. (The original script's pattern
 # skipped any name beginning with "D", hiding e.g. "Date of Birth".)
-_UNRESOLVED_REF_RE = re.compile(r"D:([^&|>]+?)\s*(?=\bAND\b|\bOR\b|\)|>|$)")
+_UNRESOLVED_REF_RE = re.compile(r"D:([^&|>+]+?)\s*(?=\bAND\b|\bOR\b|\)|>|\+|$)")
 
 
-_ENGINE_TOKEN_RE = re.compile(r"\(|\)|\bAND\s+NOT\b|\bAND\b|\bOR\b|§[KP]\d+§(?:\s*[<>=]+\s*\d+)?|\s+")
+_ENGINE_TOKEN_RE = re.compile(r"\(|\)|\bAND\s+NOT\b|\bAND\b|\bOR\b|\+|§[KP]\d+§(?:\s*[<>=]+\s*\d+)?|[<>=]+\s*\d+|\s+")
 
 
 def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) -> Tuple[Optional[str], List[str]]:
@@ -471,7 +489,7 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
     work = expr
     for i, (n, tag) in enumerate(names):
         key = f"§{tag}{i}§"
-        pat = re.compile(r"D:" + re.escape(n) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|<|=|$))")
+        pat = re.compile(r"D:" + re.escape(n) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|<|=|\+|$))")
         if pat.search(work):
             work = pat.sub(key, work)
             back[key] = f"D:{n}"
@@ -494,11 +512,17 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
                 node, i = parse(i + 1)
                 if i >= len(toks) or toks[i] != ")":
                     raise ValueError("unbalanced")
-                items.append((op, node)); op = None; i += 1
+                i += 1
+                # A Sum group carries its comparison after the parenthesis: (a + b) > n
+                if i < len(toks) and re.fullmatch(r"[<>=]+\s*\d+", toks[i]):
+                    node = ("group", node[1], re.sub(r"\s+", " ", toks[i])); i += 1
+                items.append((op, node)); op = None
             elif t == ")":
                 break
-            elif re.fullmatch(r"AND\s+NOT|AND|OR", t):
+            elif re.fullmatch(r"AND\s+NOT|AND|OR|\+", t):
                 op = re.sub(r"\s+", " ", t); i += 1
+            elif re.fullmatch(r"[<>=]+\s*\d+", t):
+                raise ValueError("comparison without a group")
             else:
                 items.append((op, ("term", t))); op = None; i += 1
         return ("group", items), i
@@ -526,7 +550,7 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
         if not kept:
             return None
         kept[0] = (None, kept[0][1])
-        return ("group", kept)
+        return ("group", kept) + tuple(node[2:])
 
     def render(node, root: bool = False) -> str:
         if node[0] == "term":
@@ -538,8 +562,9 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
         for op, child in node[1]:
             parts.append((op + " " if op else "") + render(child))
         body = " ".join(parts)
+        cmp = (" " + node[2]) if len(node) > 2 and node[2] else ""
         # The root is the expression itself, not a parenthesised group.
-        return body if root else "(" + body + ")"
+        return body if root else "(" + body + ")" + cmp
 
     pruned_tree = cut(tree)
     if pruned_tree is None:
@@ -550,6 +575,39 @@ def prune_engine_terms(expr: str, prune: Iterable[str], known: Iterable[str]) ->
     return out, sorted(dropped)
 
 
+def find_refs(expr: str) -> List[str]:
+    """Every `D:<name>` reference in an engine expression, in order, with
+    the name read paren-aware: a name may contain balanced parentheses
+    ("Names (US)"), and ends at a comparison, an AND / OR / +, a closing
+    parenthesis that is not the name's own, or the end."""
+    out: List[str] = []
+    i = 0
+    n = len(expr or "")
+    while True:
+        i = expr.find("D:", i)
+        if i < 0:
+            break
+        j = i + 2
+        depth = 0
+        while j < n:
+            ch = expr[j]
+            rest = expr[j:]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif depth == 0 and (ch in "<>=+" or re.match(r"\s+(?:AND|OR)\b", rest) or re.match(r"\s+[<>=+]", rest) or re.match(r"\s+\)", rest)):
+                break
+            j += 1
+        name = expr[i + 2:j].strip()
+        if name:
+            out.append(name)
+        i = j if j > i + 2 else i + 2
+    return out
+
+
 def engine_references(expr: str, candidate_names: Iterable[str]) -> List[str]:
     """Return the candidate dictionary names an expression references as
     `D:<name>`, requiring an operator/paren/end boundary after the name so
@@ -557,7 +615,7 @@ def engine_references(expr: str, candidate_names: Iterable[str]) -> List[str]:
     false hit."""
     found = []
     for name in candidate_names:
-        if re.search(r"D:" + re.escape(name) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|$))", expr):
+        if re.search(r"D:" + re.escape(name) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|\+|$))", expr):
             found.append(name)
     return found
 

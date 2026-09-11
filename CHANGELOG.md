@@ -6,6 +6,11 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### Engines: the Sum operator
+- **Sum is supported end to end.** The Engine Builder's Sum operator is written in the API's form, `((D1.S + D2.S + …) > n)`, and every part of the app now understands it: pack expressions (`D:<name> + D:<name>`), the deploy's resolver and the pruning of missing predefined terms, the pack validator, the Terraform renderer and the local corpus test's engine evaluator (a Sum with an unsimulated dictionary is "possible"). Names with parentheses ("Names (US)") are read paren-aware, so a Sum that ends with such a name renders correctly.
+- **Healthcare PHI Policy Pack 3.0, Engine 6 is a real Sum** as the build document specifies: the identifier matches of SSN, MRN, member id, NPI, TIN, driver's licence and enhanced driver's licence are totalled, in three engines at > 1, > 50 and > 500 behind the three Bulk rules (a rule has no match-count condition of its own).
+
+
 ### Assessment scoped to the profile's vertical
 - **The tenant profile's industry decides what the app suggests.** Selecting a profile ticks the compliance frameworks for its industry (Healthcare: HIPAA, NIST CSF 2.0, SOC 2, NIST 800-53; Federal: NIST 800-53 / 800-171, CMMC L2, NIST CSF; Financial services: PCI DSS, GLBA, SOC 2, GDPR, ISO 27001; and so on) unless the profile saved its own choice, so the results page and the Regulatory & Compliance tab report deficiencies for those frameworks only. The data-governance journey (pack deficiencies) is measured against the packs ticked on the profile, or the industry's packs when none are ticked. Deploy Policy Packs lists the vertical's packs first with a *For Healthcare* chip and folds the others away behind *Show all packs*. The scope note under Tenant profiles says what was narrowed and why (`GET /api/vertical-scope`; the assessment result carries `scope`).
 

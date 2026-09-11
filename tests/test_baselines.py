@@ -408,6 +408,10 @@ def test_shipped_baselines_are_discoverable_and_plan():
     # Engine 1 starts with the Medical Document (id 1) and Medical Imaging (id 2) classifiers, resolved from display names.
     e1 = client.zia.dlp_engine.added[0]["engine_expression"]
     assert e1.startswith("((((D1.S > 0) OR (D2.S > 0))") and "D:" not in e1 and "D9.S > 0" in e1   # Names (US) is id 9
+    # Engine 6 is the Engine Builder's Sum, in the API's form: identifier matches totalled, three thresholds.
+    bulk = {e["name"]: e["engine_expression"] for e in client.zia.dlp_engine.added if "Bulk" in e["name"]}
+    assert bulk["HIPAA Bulk PHI - Small"].startswith("((D10.S + D") and bulk["HIPAA Bulk PHI - Small"].endswith(") > 1)") and "> 0" not in bulk["HIPAA Bulk PHI - Small"]
+    assert bulk["HIPAA Bulk PHI - Major"].endswith(") > 500)")
     names = {r["name"] for r in client.zia.dlp_web_rules.added}
     assert names == {"HC-HIPAA Critical-Block", "HC-HIPAA Narrative Low Volume-Monitor", "HC-HIPAA Identity Trifecta-Block", "HC-HIPAA Sensitive Subcategory-Block",
                      "HC-HIPAA Pharmacy Claims Billing-Monitor", "HC-HIPAA Bulk PHI Major-Block", "HC-HIPAA Bulk PHI Significant-Block", "HC-HIPAA Bulk PHI Small-Monitor"}

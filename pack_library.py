@@ -709,7 +709,7 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
 # Validation
 # ---------------------------------------------------------------------------
 
-_REF_NAME_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\)|$)|$))")
+_REF_NAME_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\)|$)|$))")   # find_refs is the paren-aware reader
 
 
 def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
@@ -767,7 +767,8 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
             problems.append(f"engine '{n}': unbalanced parentheses in expression")
         for m in _NUMERIC_REF_RE.finditer(expr):
             problems.append(f"engine '{n}': references dictionary id {m.group(1)}; use D:<dictionary name> so the pack works on any tenant")
-        refs = {m.group(1).strip() for m in _REF_NAME_RE.finditer(expr)}
+        from dlp_importer import find_refs
+        refs = set(find_refs(expr))
         if not refs and "D:" not in expr and not _NUMERIC_REF_RE.search(expr):
             problems.append(f"engine '{n}': expression references no dictionary (expected D:<name> terms)")
         for r in refs:

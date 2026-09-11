@@ -37,22 +37,22 @@ resource "zia_dlp_engines" "hipaa_pharmacy_claims_billing" {
 
 resource "zia_dlp_engines" "hipaa_bulk_phi_small" {
   name                         = "HIPAA Bulk PHI - Small"
-  description                  = "Engine 6, small tier (> 1 identifiers): any multi-record exposure of SSN, MRN, member id, NPI, TIN, driver's licence or enhanced driver's licence. The API has no Sum operator, so the tier is expressed per dictionary; a transaction with 2 or more of one identifier kind matches. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "Engine 6, small tier: the Sum of identifier matches (SSN, MRN, member id, NPI, TIN, driver's licence, enhanced driver's licence) above 1, i.e. any multi-record exposure. The Engine Builder's Sum operator, as the build specifies; the tiers differ only in the threshold. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   custom_dlp_engine            = true
-  engine_expression            = "((D${data.zia_dlp_dictionaries.social_security_numbers_us.id}.S > 1) OR (D${zia_dlp_dictionaries.custom_medical_record_number.id}.S > 1) OR (D${zia_dlp_dictionaries.custom_health_plan_member_identifier.id}.S > 1) OR (D${data.zia_dlp_dictionaries.national_provider_identifier.id}.S > 1) OR (D${data.zia_dlp_dictionaries.tax_identification_number_us.id}.S > 1) OR (D${data.zia_dlp_dictionaries.driver_s_license_united_states.id}.S > 1) OR (D${data.zia_dlp_dictionaries.enhanced_driver_s_license_united_states.id}.S > 1))"
+  engine_expression            = "((D${data.zia_dlp_dictionaries.social_security_numbers_us.id}.S + D${zia_dlp_dictionaries.custom_medical_record_number.id}.S + D${zia_dlp_dictionaries.custom_health_plan_member_identifier.id}.S + D${data.zia_dlp_dictionaries.national_provider_identifier.id}.S + D${data.zia_dlp_dictionaries.tax_identification_number_us.id}.S + D${data.zia_dlp_dictionaries.driver_s_license_united_states.id}.S + D${data.zia_dlp_dictionaries.enhanced_driver_s_license_united_states.id}.S) > 1)"
 }
 
 resource "zia_dlp_engines" "hipaa_bulk_phi_significant" {
   name                         = "HIPAA Bulk PHI - Significant"
-  description                  = "Engine 6, significant tier (> 50 identifiers of one kind): executive escalation, still under the 500-individual notification threshold. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "Engine 6, significant tier: the same Sum of identifier matches above 50. Executive escalation; still under the 500-individual notification threshold. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   custom_dlp_engine            = true
-  engine_expression            = "((D${data.zia_dlp_dictionaries.social_security_numbers_us.id}.S > 50) OR (D${zia_dlp_dictionaries.custom_medical_record_number.id}.S > 50) OR (D${zia_dlp_dictionaries.custom_health_plan_member_identifier.id}.S > 50) OR (D${data.zia_dlp_dictionaries.national_provider_identifier.id}.S > 50) OR (D${data.zia_dlp_dictionaries.tax_identification_number_us.id}.S > 50) OR (D${data.zia_dlp_dictionaries.driver_s_license_united_states.id}.S > 50) OR (D${data.zia_dlp_dictionaries.enhanced_driver_s_license_united_states.id}.S > 50))"
+  engine_expression            = "((D${data.zia_dlp_dictionaries.social_security_numbers_us.id}.S + D${zia_dlp_dictionaries.custom_medical_record_number.id}.S + D${zia_dlp_dictionaries.custom_health_plan_member_identifier.id}.S + D${data.zia_dlp_dictionaries.national_provider_identifier.id}.S + D${data.zia_dlp_dictionaries.tax_identification_number_us.id}.S + D${data.zia_dlp_dictionaries.driver_s_license_united_states.id}.S + D${data.zia_dlp_dictionaries.enhanced_driver_s_license_united_states.id}.S) > 50)"
 }
 
 resource "zia_dlp_engines" "hipaa_bulk_phi_major" {
   name                         = "HIPAA Bulk PHI - Major"
-  description                  = "Engine 6, MAJOR tier (> 500 identifiers of one kind): a potential 500+ individual breach; routes straight to the Privacy Officer, legal counsel and executive incident response. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "Engine 6, MAJOR tier: the same Sum of identifier matches above 500, a potential 500+ individual breach; routes straight to the Privacy Officer, legal counsel and executive incident response. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   custom_dlp_engine            = true
-  engine_expression            = "((D${data.zia_dlp_dictionaries.social_security_numbers_us.id}.S > 500) OR (D${zia_dlp_dictionaries.custom_medical_record_number.id}.S > 500) OR (D${zia_dlp_dictionaries.custom_health_plan_member_identifier.id}.S > 500) OR (D${data.zia_dlp_dictionaries.national_provider_identifier.id}.S > 500) OR (D${data.zia_dlp_dictionaries.tax_identification_number_us.id}.S > 500) OR (D${data.zia_dlp_dictionaries.driver_s_license_united_states.id}.S > 500) OR (D${data.zia_dlp_dictionaries.enhanced_driver_s_license_united_states.id}.S > 500))"
+  engine_expression            = "((D${data.zia_dlp_dictionaries.social_security_numbers_us.id}.S + D${zia_dlp_dictionaries.custom_medical_record_number.id}.S + D${zia_dlp_dictionaries.custom_health_plan_member_identifier.id}.S + D${data.zia_dlp_dictionaries.national_provider_identifier.id}.S + D${data.zia_dlp_dictionaries.tax_identification_number_us.id}.S + D${data.zia_dlp_dictionaries.driver_s_license_united_states.id}.S + D${data.zia_dlp_dictionaries.enhanced_driver_s_license_united_states.id}.S) > 500)"
 }
 

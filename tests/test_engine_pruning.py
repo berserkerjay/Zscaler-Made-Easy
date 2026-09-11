@@ -61,3 +61,19 @@ def test_packs_without_a_baseline_section_are_tagged_too(tmp_path):
     assert "[DLP-Check pack plainpack v3.1]" in z.dlp_engine.added[0]["description"]
     assert "[DLP-Check pack plainpack v3.1]" in z.dlp_web_rules.added[0]["description"]
     assert pd.BASELINE_MARK not in z.dlp_engine.added[0]["description"]
+
+
+def test_sum_operator_is_resolved_pruned_and_referenced():
+    """The Engine Builder's Sum: ((D:A + D:B + D:C) > n). Terms inside a Sum
+    carry no comparison of their own; a pruned term leaves the Sum intact."""
+    from dlp_importer import resolve_engine_expression, prune_engine_terms, engine_references, default_counts
+    ids = {"A": 1, "B": 2, "C": 3}
+    assert resolve_engine_expression("((D:A + D:B + D:C) > 1)", ids) == ("((D1.S + D2.S + D3.S) > 1)", [])
+    assert resolve_engine_expression("((D:A > 0) AND ((D:B + D:C) > 4))", ids) == ("((D1.S > 0) AND ((D2.S + D3.S) > 4))", [])
+    assert resolve_engine_expression("((D:A) OR (D:B > 2))", ids) == ("((D1.S > 0) OR (D2.S > 2))", [])
+    assert resolve_engine_expression("((D:A + D:Nope) > 1)", ids)[1] == ["Nope"]
+    assert engine_references("((D:A + D:B) > 1)", ["A", "B", "C"]) == ["A", "B"]
+    assert prune_engine_terms("((D:A + D:B + D:C) > 1)", ["B"], ["A", "C"]) == ("((D:A + D:C) > 1)", ["B"])
+    assert prune_engine_terms("((D:A > 0) AND ((D:B + D:C) > 4))", ["B", "C"], ["A"]) == ("((D:A > 0))", ["B", "C"])
+    import re
+    assert default_counts("D1.S + D2.S > 3 AND D3.S", re.compile(r"(D\d+\.S)(?!\s*[<>=+])")) == "D1.S + D2.S > 3 AND D3.S > 0"
