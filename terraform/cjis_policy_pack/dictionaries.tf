@@ -95,7 +95,7 @@ resource "zia_dlp_dictionaries" "ncic_ori_pattern" {
 }
 
 resource "zia_dlp_dictionaries" "fbi_ucn_universal_control_number" {
-  name                         = "FBI UCN / Universal Control Number"
+  name                         = "FBI UCN - Universal Control Number"
   description                  = "FBI Universal Control Number (UCN, formerly 'FBI Number') — typically referenced by 'UCN' or 'FBI#' label followed by alphanumeric identifier. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -164,7 +164,7 @@ resource "zia_dlp_dictionaries" "ncic_purpose_code_pattern" {
 }
 
 resource "zia_dlp_dictionaries" "criminal_history_rap_sheet_phrases" {
-  name                         = "Criminal History / RAP Sheet Phrases"
+  name                         = "Criminal History - RAP Sheet Phrases"
   description                  = "Terminology that signals transmission of criminal-history record information — RAP sheets, booking reports, wants/warrants, court dispositions. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -229,7 +229,7 @@ resource "zia_dlp_dictionaries" "criminal_history_rap_sheet_phrases" {
 }
 
 resource "zia_dlp_dictionaries" "ncic_iii_query_terminology" {
-  name                         = "NCIC / III Query Terminology"
+  name                         = "NCIC - III Query Terminology"
   description                  = "Phrases indicating an NCIC or Interstate Identification Index (III) query — wanted-person, stolen-property, missing-person, III hit. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -290,7 +290,7 @@ resource "zia_dlp_dictionaries" "ncic_iii_query_terminology" {
 }
 
 resource "zia_dlp_dictionaries" "warrant_wanted_person_phrases" {
-  name                         = "Warrant / Wanted-Person Phrases"
+  name                         = "Warrant - Wanted-Person Phrases"
   description                  = "Active-warrant and wanted-person terminology. High-signal when seen alongside subject PII. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -331,7 +331,7 @@ resource "zia_dlp_dictionaries" "warrant_wanted_person_phrases" {
 }
 
 resource "zia_dlp_dictionaries" "biometric_afis_terminology" {
-  name                         = "Biometric / AFIS Terminology"
+  name                         = "Biometric - AFIS Terminology"
   description                  = "Biometric data referenced in criminal-justice workflows — fingerprints, palm prints, AFIS/IAFIS/NGI identifiers, mugshot booking. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -380,7 +380,7 @@ resource "zia_dlp_dictionaries" "biometric_afis_terminology" {
 }
 
 resource "zia_dlp_dictionaries" "nics_firearms_background_check_phrases" {
-  name                         = "NICS / Firearms Background Check Phrases"
+  name                         = "NICS - Firearms Background Check Phrases"
   description                  = "National Instant Criminal Background Check System (NICS) and firearms-eligibility terminology. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -413,7 +413,7 @@ resource "zia_dlp_dictionaries" "nics_firearms_background_check_phrases" {
 }
 
 resource "zia_dlp_dictionaries" "n_dex_criminal_justice_info_sharing" {
-  name                         = "N-DEx / Criminal-Justice Info Sharing"
+  name                         = "N-DEx - Criminal-Justice Info Sharing"
   description                  = "Law Enforcement National Data Exchange (N-DEx) and related info-sharing system references. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true

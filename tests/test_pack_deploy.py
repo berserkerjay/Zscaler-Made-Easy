@@ -94,6 +94,12 @@ class FakeEngines:
         self.added.append(kw)
         if kw["name"] in self.fail_names:
             return None, None, {"message": "simulated engine failure"}
+        # The real tenant's rules, verbatim (seen on api.zsapi.net).
+        import re as _re
+        if not _re.match(r"^[A-Za-z0-9_\-. ()]+$", kw["name"]):
+            return None, None, {"status": 400, "code": "INVALID_NAME", "message": "DLP Engine name can only have alphanumeric, underscore, hyphen, dot, paranthesis and space."}
+        if len(kw.get("description") or "") > 255:
+            return None, None, {"status": 400, "code": "INVALID_INPUT_ARGUMENT", "message": "DLP engine description can not be more than 255 characters.."}
         self._next += 1
         obj = Obj(id=self._next, name=kw["name"], engine_expression=kw["engine_expression"],
                   description=kw.get("description"))

@@ -24,7 +24,7 @@ output "dictionaries" {
 
 output "engines" {
   value = { for k, r in {
-    hipaa_critical_strong_signature_clinical_document = zia_dlp_engines.hipaa_critical_strong_signature_clinical_document
+    hipaa_critical_strong_signature_and_clinical_document = zia_dlp_engines.hipaa_critical_strong_signature_and_clinical_document
     hipaa_narrative_low_volume = zia_dlp_engines.hipaa_narrative_low_volume
     hipaa_identity_trifecta = zia_dlp_engines.hipaa_identity_trifecta
     hipaa_sensitive_subcategory = zia_dlp_engines.hipaa_sensitive_subcategory

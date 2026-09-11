@@ -1,6 +1,8 @@
-# Healthcare PHI Policy Pack 3.0 — PHI / HIPAA DLP Build
+# Healthcare PHI Policy Pack 3.1 — PHI / HIPAA DLP Build
 
-Predefined-first dictionary and engine reference for Zscaler ZIA, six-engine architecture. Built from the customer's build document; the pack configs carry the API fields only. Every rule ships DISABLED, monitor-only (ALLOW) at INFO severity and is mirrored one-for-one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (8 × 4 rules).
+Predefined-first dictionary and engine reference for Zscaler ZIA, six-engine architecture plus the Fed pack's US PII and US PHI engines. Built from the customer's build document; the pack configs carry the API fields only. Every rule ships DISABLED, monitor-only (ALLOW) at INFO severity and is mirrored one-for-one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (11 × 4 rules).
+
+Engine names use only the characters ZIA accepts (letters, digits, underscore, hyphen, dot, parentheses and space): "Narrative - Low Volume", "Pharmacy - Claims - Billing", "Strong Signature and Clinical Document". The long engine descriptions in this pack are documentation; the deploy clamps what it sends to ZIA's 255-character limit.
 
 ## What is PHI (and what the engines test for)
 
@@ -48,11 +50,11 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 
 | # | Engine | Reporting tier | Logic |
 |---|---|---|---|
-| 1 | HIPAA Critical (Strong Signature + Clinical Document) | single record reportable, high priority | Any of: Medical Document or Medical Imaging + identifier; Medical Information + clinical density (Drugs > 4, Diseases > 2, Treatments > 4, or NDC) + identifier; Custom-Clinical-Narrative > 3 + clinical content + identifier. Identifier = SSN, DOB, MRN or name |
-| 2 | HIPAA Narrative / Low Volume | single record reportable | clinical terms > 2 (diseases, drugs or treatments) AND a name AND SSN, DOB, MRN or member id |
+| 1 | HIPAA Critical (Strong Signature and Clinical Document) | single record reportable, high priority | Any of: Medical Document or Medical Imaging + identifier; Medical Information + clinical density (Drugs > 4, Diseases > 2, Treatments > 4, or NDC) + identifier; Custom-Clinical-Narrative > 3 + clinical content + identifier. Identifier = SSN, DOB, MRN or name |
+| 2 | HIPAA Narrative - Low Volume | single record reportable | clinical terms > 2 (diseases, drugs or treatments) AND a name AND SSN, DOB, MRN or member id |
 | 3 | HIPAA Identity Trifecta | single record + state breach law, critical | SSN + DOB + name, OR name + DOB + (driver's licence, enhanced driver's licence or TIN). Without a DOB the expanded branch never fires |
 | 4 | HIPAA Sensitive Subcategory | single record + 42 CFR Part 2 / GINA, critical (elevated) | (sensitive markers, Diseases Information, Self-Harm & Cyberbullying or Illegal Drugs) AND (name, SSN, DOB, MRN or member id). Route to a restricted reviewer queue |
-| 5 | HIPAA Pharmacy / Claims / Billing | single record reportable | pharmacy: (Drugs > 2 or NDC) + identifier + (NPI or clinical narrative); claims: (billing phrases > 2 or Insurance Document) + (diseases or treatments) + identifier incl. Credit Cards |
+| 5 | HIPAA Pharmacy - Claims - Billing | single record reportable | pharmacy: (Drugs > 2 or NDC) + identifier + (NPI or clinical narrative); claims: (billing phrases > 2 or Insurance Document) + (diseases or treatments) + identifier incl. Credit Cards |
 | 6 | HIPAA Bulk PHI — Small / Significant / Major | > 1 / > 50 / > 500 identifiers | Sum of the matches of SSN, MRN, member id, NPI, TIN, driver's licence and enhanced driver's licence (the Engine Builder's Sum operator, `((D1.S + D2.S + …) > n)` in the API). One design engine, three thresholds: three engines behind three rules, because a rule has no match-count condition of its own |
 | 7 | HIPAA US PII | identity data, no clinical context | From the Fed pack's US PII engine, plus passports: SSN, TIN, alien registration or passport > 4 at high confidence, or any one within 500 bytes of its label, or a date of birth with driver's licences > 4. Covers the patient, member and staff identity data a covered entity holds that state breach law reaches even without a diagnosis |
 | 8 | HIPAA US PHI — Medium Confidence | single record, second opinion | From the Fed pack: Medical Document, or Medical Information with Drugs > 9 or Diseases > 9, AND one identifier (SSN, passport, alien number, or DOB beside a driver's licence). Independent of Engine 1's custom dictionaries; the two should agree on real records |

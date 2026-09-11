@@ -12,7 +12,7 @@ resource "zia_dlp_web_rules" "hc_hipaa_critical_monitor" {
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
   # ocr_enabled = true  (not in provider 4.8.x schema; enable OCR on this rule in the portal)
   dlp_engines {
-    id = [zia_dlp_engines.hipaa_critical_strong_signature_clinical_document.id]
+    id = [zia_dlp_engines.hipaa_critical_strong_signature_and_clinical_document.id]
   }
 }
 
@@ -178,7 +178,7 @@ resource "zia_dlp_web_rules" "hc_us_phi_high_confidence_monitor" {
 
 resource "zia_endpoint_dlp_rules" "hc_hipaa_critical_endpoint" {
   name                         = "HC-HIPAA Critical [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -189,13 +189,13 @@ resource "zia_endpoint_dlp_rules" "hc_hipaa_critical_endpoint" {
   user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
   eun_enabled                  = false
   dlp_engines {
-    id = [zia_dlp_engines.hipaa_critical_strong_signature_clinical_document.id]
+    id = [zia_dlp_engines.hipaa_critical_strong_signature_and_clinical_document.id]
   }
 }
 
 resource "zia_casb_dlp_rules" "hc_hipaa_critical_saas" {
   name                         = "HC-HIPAA Critical [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -205,7 +205,7 @@ resource "zia_casb_dlp_rules" "hc_hipaa_critical_saas" {
   type                         = "OFLCASB_DLP_FILE"
   collaboration_scope          = ["ANY"]
   dlp_engines {
-    id = [zia_dlp_engines.hipaa_critical_strong_signature_clinical_document.id]
+    id = [zia_dlp_engines.hipaa_critical_strong_signature_and_clinical_document.id]
   }
   cloud_app_tenants {
     id = var.saas_tenant_ids_hc_hipaa_critical_saas
@@ -214,14 +214,14 @@ resource "zia_casb_dlp_rules" "hc_hipaa_critical_saas" {
 
 resource "zia_outbound_email_dlp" "hc_hipaa_critical_email" {
   name                         = "HC-HIPAA Critical [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "Email DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 0
   state                        = "DISABLED"
   action                       = "ALLOW"
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   dlp_engines {
-    id = [zia_dlp_engines.hipaa_critical_strong_signature_clinical_document.id]
+    id = [zia_dlp_engines.hipaa_critical_strong_signature_and_clinical_document.id]
   }
   email_tenants {
     id = var.saas_tenant_ids_hc_hipaa_critical_email
@@ -230,7 +230,7 @@ resource "zia_outbound_email_dlp" "hc_hipaa_critical_email" {
 
 resource "zia_endpoint_dlp_rules" "hc_hipaa_narrative_low_volume_endpoint" {
   name                         = "HC-HIPAA Narrative Low Volume [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative / Low Volume). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -247,7 +247,7 @@ resource "zia_endpoint_dlp_rules" "hc_hipaa_narrative_low_volume_endpoint" {
 
 resource "zia_casb_dlp_rules" "hc_hipaa_narrative_low_volume_saas" {
   name                         = "HC-HIPAA Narrative Low Volume [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative / Low Volume). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -266,7 +266,7 @@ resource "zia_casb_dlp_rules" "hc_hipaa_narrative_low_volume_saas" {
 
 resource "zia_outbound_email_dlp" "hc_hipaa_narrative_low_volume_email" {
   name                         = "HC-HIPAA Narrative Low Volume [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative / Low Volume). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "Email DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 1
   state                        = "DISABLED"
   action                       = "ALLOW"
@@ -386,7 +386,7 @@ resource "zia_outbound_email_dlp" "hc_hipaa_sensitive_subcategory_email" {
 
 resource "zia_endpoint_dlp_rules" "hc_hipaa_pharmacy_claims_billing_endpoint" {
   name                         = "HC-HIPAA Pharmacy Claims Billing [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy / Claims / Billing). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 4
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -403,7 +403,7 @@ resource "zia_endpoint_dlp_rules" "hc_hipaa_pharmacy_claims_billing_endpoint" {
 
 resource "zia_casb_dlp_rules" "hc_hipaa_pharmacy_claims_billing_saas" {
   name                         = "HC-HIPAA Pharmacy Claims Billing [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy / Claims / Billing). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 4
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -422,7 +422,7 @@ resource "zia_casb_dlp_rules" "hc_hipaa_pharmacy_claims_billing_saas" {
 
 resource "zia_outbound_email_dlp" "hc_hipaa_pharmacy_claims_billing_email" {
   name                         = "HC-HIPAA Pharmacy Claims Billing [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy / Claims / Billing). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  description                  = "Email DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   order                        = var.rule_starting_order + 4
   state                        = "DISABLED"
   action                       = "ALLOW"

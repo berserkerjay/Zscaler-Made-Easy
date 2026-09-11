@@ -50,7 +50,7 @@
     ]
   },
   {
-    "name": "FBI UCN / Universal Control Number",
+    "name": "FBI UCN - Universal Control Number",
     "description": "FBI Universal Control Number (UCN, formerly 'FBI Number') — typically referenced by 'UCN' or 'FBI#' label followed by alphanumeric identifier.",
     "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
@@ -92,7 +92,7 @@
     ]
   },
   {
-    "name": "Criminal History / RAP Sheet Phrases",
+    "name": "Criminal History - RAP Sheet Phrases",
     "description": "Terminology that signals transmission of criminal-history record information — RAP sheets, booking reports, wants/warrants, court dispositions.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
@@ -116,7 +116,7 @@
     ]
   },
   {
-    "name": "NCIC / III Query Terminology",
+    "name": "NCIC - III Query Terminology",
     "description": "Phrases indicating an NCIC or Interstate Identification Index (III) query — wanted-person, stolen-property, missing-person, III hit.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
@@ -139,7 +139,7 @@
     ]
   },
   {
-    "name": "Warrant / Wanted-Person Phrases",
+    "name": "Warrant - Wanted-Person Phrases",
     "description": "Active-warrant and wanted-person terminology. High-signal when seen alongside subject PII.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
@@ -157,7 +157,7 @@
     ]
   },
   {
-    "name": "Biometric / AFIS Terminology",
+    "name": "Biometric - AFIS Terminology",
     "description": "Biometric data referenced in criminal-justice workflows — fingerprints, palm prints, AFIS/IAFIS/NGI identifiers, mugshot booking.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
@@ -177,7 +177,7 @@
     ]
   },
   {
-    "name": "NICS / Firearms Background Check Phrases",
+    "name": "NICS - Firearms Background Check Phrases",
     "description": "National Instant Criminal Background Check System (NICS) and firearms-eligibility terminology.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
@@ -193,7 +193,7 @@
     ]
   },
   {
-    "name": "N-DEx / Criminal-Justice Info Sharing",
+    "name": "N-DEx - Criminal-Justice Info Sharing",
     "description": "Law Enforcement National Data Exchange (N-DEx) and related info-sharing system references.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_MEDIUM",

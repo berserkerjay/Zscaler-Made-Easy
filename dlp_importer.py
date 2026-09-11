@@ -297,9 +297,28 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
     return out
 
 # ZIA caps a DLP dictionary description at 255 characters (the Terraform
-# provider validates the same range). Rule and engine descriptions allow
-# far more, so only dictionaries are clamped.
+# provider validates the same range) and a DLP engine description at the
+# same 255 ("DLP engine description can not be more than 255 characters"
+# from a real tenant); rule descriptions allow far more.
 DICT_DESCRIPTION_MAX = 255
+ENGINE_DESCRIPTION_MAX = 255
+# "DLP Engine name can only have alphanumeric, underscore, hyphen, dot,
+# paranthesis and space" (a real tenant's answer to "HIPAA Narrative / Low
+# Volume"). Dictionaries are held to the same characters, which every
+# production-deployed pack satisfies.
+NAME_ALLOWED_RE = re.compile(r"^[A-Za-z0-9_\-. ()]+$")
+NAME_RULE = "only letters, digits, underscore, hyphen, dot, parentheses and space"
+
+
+def name_problems(name: str, kind: str = "engine") -> List[str]:
+    """Plain-language reasons ZIA would refuse an object name."""
+    n = (name or "").strip()
+    if not n:
+        return [f"{kind} has no name"]
+    if not NAME_ALLOWED_RE.match(n):
+        bad = sorted({c for c in n if not NAME_ALLOWED_RE.match(c)})
+        return [f"{kind} name '{n}' uses {', '.join(repr(c) for c in bad)}; ZIA allows {NAME_RULE}"]
+    return []
 
 
 def _blen(s: str) -> int:

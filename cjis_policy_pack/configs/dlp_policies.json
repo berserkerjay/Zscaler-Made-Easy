@@ -40,7 +40,7 @@
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "Criminal History / RAP Sheet Engine"
+      "Criminal History - RAP Sheet Engine"
     ],
     "protocols": [
       "HTTP_RULE",
@@ -57,7 +57,7 @@
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "NCIC / III Data Engine"
+      "NCIC - III Data Engine"
     ],
     "protocols": [
       "HTTP_RULE",
@@ -74,7 +74,7 @@
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "Warrant / Wanted-Person Engine"
+      "Warrant - Wanted-Person Engine"
     ],
     "protocols": [
       "HTTP_RULE",
@@ -288,12 +288,12 @@
   {
     "name": "Z-CJIS Criminal History [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History / RAP Sheet Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "Criminal History / RAP Sheet Engine"
+      "Criminal History - RAP Sheet Engine"
     ],
     "channel_mirror": true,
     "device_trust_levels": [
@@ -315,12 +315,12 @@
   {
     "name": "Z-CJIS Criminal History [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History / RAP Sheet Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "Criminal History / RAP Sheet Engine"
+      "Criminal History - RAP Sheet Engine"
     ],
     "channel_mirror": true,
     "saas_type": "OFLCASB_DLP_FILE",
@@ -333,12 +333,12 @@
   {
     "name": "Z-CJIS Criminal History [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History / RAP Sheet Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "Criminal History / RAP Sheet Engine"
+      "Criminal History - RAP Sheet Engine"
     ],
     "channel_mirror": true,
     "tenants": "any",
@@ -347,12 +347,12 @@
   {
     "name": "Z-CJIS NCIC III Data [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC / III Data Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "NCIC / III Data Engine"
+      "NCIC - III Data Engine"
     ],
     "channel_mirror": true,
     "device_trust_levels": [
@@ -374,12 +374,12 @@
   {
     "name": "Z-CJIS NCIC III Data [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC / III Data Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "NCIC / III Data Engine"
+      "NCIC - III Data Engine"
     ],
     "channel_mirror": true,
     "saas_type": "OFLCASB_DLP_FILE",
@@ -392,12 +392,12 @@
   {
     "name": "Z-CJIS NCIC III Data [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC / III Data Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "NCIC / III Data Engine"
+      "NCIC - III Data Engine"
     ],
     "channel_mirror": true,
     "tenants": "any",
@@ -406,12 +406,12 @@
   {
     "name": "Z-CJIS Warrants [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant / Wanted-Person Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "Warrant / Wanted-Person Engine"
+      "Warrant - Wanted-Person Engine"
     ],
     "channel_mirror": true,
     "device_trust_levels": [
@@ -433,12 +433,12 @@
   {
     "name": "Z-CJIS Warrants [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant / Wanted-Person Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "Warrant / Wanted-Person Engine"
+      "Warrant - Wanted-Person Engine"
     ],
     "channel_mirror": true,
     "saas_type": "OFLCASB_DLP_FILE",
@@ -451,12 +451,12 @@
   {
     "name": "Z-CJIS Warrants [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant / Wanted-Person Engine). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "Warrant / Wanted-Person Engine"
+      "Warrant - Wanted-Person Engine"
     ],
     "channel_mirror": true,
     "tenants": "any",

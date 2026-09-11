@@ -59,6 +59,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set,
 import pack_channels as pc
 from dlp_importer import (resolve_template, engine_limit_problems, 
     DICT_DESCRIPTION_MAX,
+    ENGINE_DESCRIPTION_MAX,
+    name_problems,
     EMPTY_DICT_REASON,
     fit_description,
     _extract_error,
@@ -572,7 +574,7 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
         if item["status"] == CONFLICT:
             continue
         expr = item["definition"].get("expression", "")
-        limit_problems = engine_limit_problems(expr)
+        limit_problems = name_problems(name, "engine") + engine_limit_problems(expr)
         if limit_problems:
             item["status"] = BLOCKED_DEPENDENCY
             item["reason"] = "Outside ZIA's documented engine limits: " + "; ".join(limit_problems) + "."
@@ -1585,7 +1587,7 @@ def apply(
     def described(item: Dict[str, Any], definition: Dict[str, Any], fallback: str = "") -> Dict[str, Any]:
         """Definition with the policy pack provenance tag in its description
         (clamped to the API limit for dictionaries)."""
-        limit = DICT_DESCRIPTION_MAX if item["kind"] == "dictionary" else None
+        limit = {"dictionary": DICT_DESCRIPTION_MAX, "engine": ENGINE_DESCRIPTION_MAX}.get(item["kind"])
         if item.get("baseline"):
             return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit))
         if item.get("pack"):

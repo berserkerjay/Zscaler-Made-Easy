@@ -450,7 +450,7 @@ EXPECT = {
     },
     "zbp_source_code_baseline": {lang: [f"SRC-{lang}"] for lang in CODE_SAMPLES},
     "healthcare_phi_baseline": {"phi_record": ["E_HEALTHCARE_PHI"], "phi_bulk": ["E_PHI_BULK_EXPORT"]},
-    "cjis_policy_pack": {"rap_sheet": ["CJIS Any-Signal Engine", "Criminal History / RAP Sheet Engine"], "ncic_query": ["CJIS Any-Signal Engine", "NCIC / III Data Engine"], "warrant": ["Warrant / Wanted-Person Engine"]},
+    "cjis_policy_pack": {"rap_sheet": ["CJIS Any-Signal Engine", "Criminal History - RAP Sheet Engine"], "ncic_query": ["CJIS Any-Signal Engine", "NCIC - III Data Engine"], "warrant": ["Warrant - Wanted-Person Engine"]},
     "zbp_enterprise_baseline": {"tax_forms": ["ZBP-Financial Information", "ZBP-US PII"], "private_key": ["ZBP-Private Keys"], "itar_legend": ["ZBP-ITAR Phrases"], "itar_mention": [], "tlp_red": ["ZBP-TLP Red"], "us_pii_export": ["ZBP-US PII"]},
     "fed_policy_pack": {"tax_forms": ["Financial Information", "US PII"], "private_key": ["Private Keys"], "itar_legend": ["ITAR Phrases"], "itar_mention": [], "tlp_red": ["TLP Red"], "us_pii_export": ["US PII"],
                         "cui_banner": ["CUI-Detect-All"], "fouo_legacy": ["CUI-Detect-All", "FOUO Markings High Confidence", "FOUO Markings Medium Confidence"]},

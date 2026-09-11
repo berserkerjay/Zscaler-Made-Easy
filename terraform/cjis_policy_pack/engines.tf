@@ -22,21 +22,21 @@ resource "zia_dlp_engines" "cjis_identifier_engine" {
 }
 
 resource "zia_dlp_engines" "criminal_history_rap_sheet_engine" {
-  name                         = "Criminal History / RAP Sheet Engine"
+  name                         = "Criminal History - RAP Sheet Engine"
   description                  = "RAP-sheet / criminal-history terminology correlated with subject PII (SSN, DL, or DOB) within 500 chars. Suppresses matches on news articles that casually mention arrests. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   custom_dlp_engine            = true
   engine_expression            = "((D${zia_dlp_dictionaries.criminal_history_rap_sheet_phrases.id}.S > 0) AND ((D${zia_dlp_dictionaries.social_security_numbers_us_cjis_prox_500.id}.S > 0) OR (D${zia_dlp_dictionaries.drivers_license_us_cjis_prox_500.id}.S > 0) OR (D${zia_dlp_dictionaries.date_of_birth_cjis_prox_500.id}.S > 0)))"
 }
 
 resource "zia_dlp_engines" "ncic_iii_data_engine" {
-  name                         = "NCIC / III Data Engine"
+  name                         = "NCIC - III Data Engine"
   description                  = "NCIC or III query/response terminology correlated with subject PII — indicates a live CJI data transfer. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   custom_dlp_engine            = true
   engine_expression            = "((D${zia_dlp_dictionaries.ncic_iii_query_terminology.id}.S > 0) AND ((D${zia_dlp_dictionaries.social_security_numbers_us_cjis_prox_500.id}.S > 0) OR (D${zia_dlp_dictionaries.drivers_license_us_cjis_prox_500.id}.S > 0) OR (D${zia_dlp_dictionaries.date_of_birth_cjis_prox_500.id}.S > 0)))"
 }
 
 resource "zia_dlp_engines" "warrant_wanted_person_engine" {
-  name                         = "Warrant / Wanted-Person Engine"
+  name                         = "Warrant - Wanted-Person Engine"
   description                  = "Warrant/wanted terminology near subject PII — extradition, bench, arrest warrants referencing a named subject. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   custom_dlp_engine            = true
   engine_expression            = "((D${zia_dlp_dictionaries.warrant_wanted_person_phrases.id}.S > 0) AND ((D${zia_dlp_dictionaries.social_security_numbers_us_cjis_prox_500.id}.S > 0) OR (D${zia_dlp_dictionaries.drivers_license_us_cjis_prox_500.id}.S > 0) OR (D${zia_dlp_dictionaries.date_of_birth_cjis_prox_500.id}.S > 0)))"

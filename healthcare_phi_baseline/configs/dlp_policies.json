@@ -6,7 +6,7 @@
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "HIPAA Critical (Strong Signature + Clinical Document)"
+      "HIPAA Critical (Strong Signature and Clinical Document)"
     ],
     "protocols": [
       "HTTP_RULE",
@@ -24,7 +24,7 @@
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "HIPAA Narrative / Low Volume"
+      "HIPAA Narrative - Low Volume"
     ],
     "protocols": [
       "HTTP_RULE",
@@ -78,7 +78,7 @@
     "state": "DISABLED",
     "rank": 7,
     "engines": [
-      "HIPAA Pharmacy / Claims / Billing"
+      "HIPAA Pharmacy - Claims - Billing"
     ],
     "protocols": [
       "HTTP_RULE",
@@ -200,12 +200,12 @@
   {
     "name": "HC-HIPAA Critical [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Critical (Strong Signature + Clinical Document)"
+      "HIPAA Critical (Strong Signature and Clinical Document)"
     ],
     "channel_mirror": true,
     "device_trust_levels": [
@@ -227,12 +227,12 @@
   {
     "name": "HC-HIPAA Critical [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Critical (Strong Signature + Clinical Document)"
+      "HIPAA Critical (Strong Signature and Clinical Document)"
     ],
     "channel_mirror": true,
     "saas_type": "OFLCASB_DLP_FILE",
@@ -245,12 +245,12 @@
   {
     "name": "HC-HIPAA Critical [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Critical (Strong Signature + Clinical Document)"
+      "HIPAA Critical (Strong Signature and Clinical Document)"
     ],
     "channel_mirror": true,
     "tenants": "any",
@@ -259,12 +259,12 @@
   {
     "name": "HC-HIPAA Narrative Low Volume [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative / Low Volume). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Narrative / Low Volume"
+      "HIPAA Narrative - Low Volume"
     ],
     "channel_mirror": true,
     "device_trust_levels": [
@@ -286,12 +286,12 @@
   {
     "name": "HC-HIPAA Narrative Low Volume [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative / Low Volume). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Narrative / Low Volume"
+      "HIPAA Narrative - Low Volume"
     ],
     "channel_mirror": true,
     "saas_type": "OFLCASB_DLP_FILE",
@@ -304,12 +304,12 @@
   {
     "name": "HC-HIPAA Narrative Low Volume [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative / Low Volume). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Narrative / Low Volume"
+      "HIPAA Narrative - Low Volume"
     ],
     "channel_mirror": true,
     "tenants": "any",
@@ -436,12 +436,12 @@
   {
     "name": "HC-HIPAA Pharmacy Claims Billing [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy / Claims / Billing). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Pharmacy / Claims / Billing"
+      "HIPAA Pharmacy - Claims - Billing"
     ],
     "channel_mirror": true,
     "device_trust_levels": [
@@ -463,12 +463,12 @@
   {
     "name": "HC-HIPAA Pharmacy Claims Billing [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy / Claims / Billing). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Pharmacy / Claims / Billing"
+      "HIPAA Pharmacy - Claims - Billing"
     ],
     "channel_mirror": true,
     "saas_type": "OFLCASB_DLP_FILE",
@@ -481,12 +481,12 @@
   {
     "name": "HC-HIPAA Pharmacy Claims Billing [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy / Claims / Billing). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
-      "HIPAA Pharmacy / Claims / Billing"
+      "HIPAA Pharmacy - Claims - Billing"
     ],
     "channel_mirror": true,
     "tenants": "any",

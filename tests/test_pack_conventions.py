@@ -142,3 +142,38 @@ def test_no_shipped_dictionary_sets_proximity_on_a_type_zia_rejects():
     assert any("needs match type" in p for p in dictionary_limit_problems(
         {"custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY", "proximity": 50,
          "patterns": [{"pattern": r"\bMRN\d{6}\b"}], "phrases": [{"phrase": "medical record"}]}))
+
+
+def test_every_shipped_name_uses_characters_zia_accepts_and_engine_descriptions_fit(tmp_path):
+    """A real tenant refused "HIPAA Narrative / Low Volume" (INVALID_NAME: only
+    alphanumeric, underscore, hyphen, dot, parentheses and space) and every
+    engine whose description passed 255 characters. Engine names are checked
+    in the pack and by preflight; descriptions are clamped on deploy, which
+    is exercised here against the fake tenant that refuses both like the
+    real one. Dictionary names keep clear of the same slash / plus / ampersand."""
+    from dlp_importer import name_problems
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_engines.json"))):
+        for e in json.load(open(f, encoding="utf-8")):
+            assert name_problems(e["name"]) == [], (f, e["name"])
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_dictionaries.json"))):
+        for d in json.load(open(f, encoding="utf-8")):
+            assert not any(c in d["name"] for c in "/+&"), (f, d["name"])
+    assert name_problems("HIPAA Narrative / Low Volume") and name_problems("A + B") and not name_problems("HIPAA Critical (Strong Signature and Clinical Document)")
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from test_pack_channels import TENANTS, make_client
+    client = make_client(casb_tenants=TENANTS)
+    pack = {"id": "healthcare_phi_baseline", "dir": os.path.join(ROOT, "healthcare_phi_baseline")}
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
+    assert res["summary"]["created"] == (7 + 12 - 4) + 11 + 44, res["summary"]
+    assert len(client.zia.dlp_engine.added) == 11
+    for e in client.zia.dlp_engine.added:
+        assert len(e["description"].encode("utf-8")) <= 255 and "[DLP-Check baseline healthcare_phi_baseline" in e["description"], e["name"]
+    # A bad engine name is stopped in the plan, with the reason, before any write.
+    from test_pack_channels import _dict, _engine, _policy, write_pack
+    bad_pack = write_pack(tmp_path / "badname", "badname", dicts=[_dict("Alpha Dict")], engines=[_engine("Alpha / Beta", "(D:Alpha Dict)")],
+                          policies=[_policy("Web-Monitor", ["Alpha / Beta"])], meta={"name": "Bad", "confidence_tweaks": []})
+    bad = pd.preflight(make_client(casb_tenants=TENANTS), [bad_pack], writes_enabled=True)
+    eng = next(i for i in bad["items"] if i["kind"] == "engine")
+    assert eng["status"] == pd.BLOCKED_DEPENDENCY and "ZIA allows" in eng["reason"] and "'/'" in eng["reason"]
