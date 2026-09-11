@@ -259,6 +259,38 @@ are kept next to every interpretation because Client Connector schemas
 vary by version; if a mode reads *unknown*, the raw value tells you what
 the portal says.
 
+## 4f. Log Analyzer (when a user says "Zscaler is broken")
+
+Toolbar › *Troubleshoot › Log Analyzer* (`/report/logs`). Ask the user for
+their logs: Zscaler tray icon → **More** → **Export Logs**. It saves a ZIP.
+Drop that ZIP into the analyzer as it is (single `.log` files, `.tgz`
+bundles and PAC files work too), click **Analyze**, and read from the top:
+
+1. **The verdict**: one line. "The user was not protected for part of this
+   period" or "Nothing wrong was found".
+2. **What we read**: client version, OS, user, cloud, tunnel version and
+   last state, the period the logs cover. If the problem happened outside
+   that period, ask for a fresh export taken right after it happens.
+3. **What we found, most urgent first**: each finding says what happened,
+   what it means for the user, and numbered next steps. A blue note under
+   a finding tells you when it is a symptom of another one (errors while
+   behind a hotel Wi-Fi sign-in page are not a fault).
+4. For a PAC file: the default action, the gateways and macros, every
+   bypass with its risk, and what to change.
+
+Nothing leaves the laptop and nothing is stored; evidence lines have
+passwords and tokens blanked out. *Download findings* gives you a Markdown
+file for the ticket.
+
+## 4g. What does everything do?
+
+Toolbar › *Start › What does everything do?* (`/help`) lists every function
+of the app in plain English (what it is, why the customer cares, when to
+use it, what you get, what to do next), in the order of a first
+engagement, with the glossary. Every report tab also opens with a
+*What is this page, and why it matters* box; hide them from any box once
+you no longer need them.
+
 ## 5. Choose a policy pack (step 4)
 
 Click **Deploy Policy Packs**. Each card says who it is for and when to use

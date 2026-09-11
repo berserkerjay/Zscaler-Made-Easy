@@ -50,6 +50,9 @@ def test_evaluate_all_rules_has_its_own_tab_with_the_tie_breaker():
     assert "SaaS Security API DLP" in page.text and "first match" in page.text
     js = c.get("/static/eval_all.js").text
     assert "EA_EVAL_ALL = { web: true, endpoint: true, email: true, saas: false }" in js and "No tie-breaker on this channel" in js
+    # The reference tab is the decision only: the simulator stays in the migration wizard.
+    assert "const EA_SIMULATOR = location.pathname !== '/report/evalall'" in js and "if (EA_SIMULATOR) _eaRun()" in js
+    assert "simulator" not in page.text.lower().replace("the simulator that runs", "")
     assert TestClient(srv.app).get("/report/evalall").status_code == 200
     html = c.get("/").text
     assert "openEvalAllTab()" in html and "How Evaluate All Rules decides" in html

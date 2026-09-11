@@ -35,6 +35,7 @@
     "Bare LES is deliberately excluded from Legacy-LES (collides with French text, surnames and unrelated acronyms); only the spelled form or banner context matches.",
     "CUI-Decontrol-Context is a document-scoped exclusion: a genuine CUI document that cites its own marking guide is suppressed. Record this in the residual-risk statement.",
     "Documented limits enforced at preflight: 8 patterns per dictionary, 256 bytes per pattern, proximity 0-10000 bytes, no lookaround. Proximity windows (300-600 bytes) are bidirectional over extracted text and unreliable for spreadsheets, multi-column PDFs and OCR output.",
-    "Deploy order for a customer: enable CUI-Monitor-All and the Z-*-Monitor rules; review incidents for a week; then CUI-Block-Marked-Documents, then CUI-Caution-Weak-Markings."
+    "Deploy order for a customer: enable CUI-Monitor-All and the Z-*-Monitor rules; review incidents for a week; then CUI-Block-Marked-Documents, then CUI-Caution-Weak-Markings.",
+    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed."
   ]
 }

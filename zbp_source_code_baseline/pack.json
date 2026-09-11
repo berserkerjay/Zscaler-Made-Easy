@@ -11,7 +11,8 @@
     "Regenerate from a new library version with: python tools/pack_from_pattern_doc.py <descriptions.docx> --pack zbp_source_code_baseline, then python pack_terraform.py zbp_source_code_baseline --out terraform.",
     "Signal thresholds: > 4 unique matches for every language, > 3 for HTML (its structure is constrained, per the library notes). Change --threshold / --html-threshold when regenerating if the specification document sets different counts.",
     "The three ZBP dictionaries and engines this pack used to ship (ZBP-Python/JavaScript/Shell Code Detection) are gone. A tenant that has them from an earlier deploy keeps them; delete them in the portal or undo that deployment, they are no longer referenced by any rule of this pack.",
-    "Patterns use (?m) line anchors and non-capturing groups, which ZIA's PCRE accepts; none uses lookaround. Every pattern is within ZIA's 256-byte limit and every Signal dictionary has exactly eight patterns (the ZIA maximum)."
+    "Patterns use (?m) line anchors and non-capturing groups, which ZIA's PCRE accepts; none uses lookaround. Every pattern is within ZIA's 256-byte limit and every Signal dictionary has exactly eight patterns (the ZIA maximum).",
+    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed."
   ],
   "confidence_tweaks": [],
   "baseline": {

@@ -81,7 +81,8 @@ def test_banking_pack_is_premised_on_predefined_dictionaries_at_high_confidence(
     # Inspection) is managed separately and is not part of any pack.
     channels = {p.get("channel", "web") for p in policies}
     assert channels == {"web", "endpoint", "saas", "email"}
-    assert {p["action"] for p in policies if p.get("channel", "web") == "web"} == {"ALLOW", "BLOCK"}
+    assert {p["action"] for p in policies if p.get("channel", "web") == "web"} == {"ALLOW"}, "every rule ships monitor-only"
+    assert {p["target_action"] for p in policies if p["name"].endswith("-Block")} == {"BLOCK"}, "the designed action is kept as the target"
     assert all(p["state"] == "DISABLED" for p in policies)
     assert meta["baseline"]["immutable"] is True and meta["baseline"]["prefix"] == "Bank-"
 

@@ -50,7 +50,7 @@
           <td>${p.source === 'uploaded' ? '<span class="chip ok">Uploaded</span>' : '<span class="chip">Built-in</span>'}${p.uploaded_at ? `<div class="dim">${E(String(p.uploaded_at).replace('T', ' ').replace('Z', ' UTC'))}</div>` : ''}</td>
           <td class="num">${p.dictionaries || 0}</td><td class="num">${p.engines || 0}</td><td class="num">${p.policies || 0}</td>
           <td>${channels(p.channels)}</td>
-          <td class="adv-acts"><a class="rp-btn" href="/api/pack-library/${encodeURIComponent(p.id)}/bundle" title="Download this pack as one JSON file">JSON</a>${p.source === 'uploaded' ? `<button type="button" class="rp-btn danger" data-remove="${E(p.id)}" title="Remove this uploaded pack from the library">Remove</button>` : ''}</td>
+          <td class="adv-acts"><a class="rp-btn" href="/api/pack-library/${encodeURIComponent(p.id)}/bundle" title="Download this pack as one JSON file">JSON</a><a class="rp-btn" href="/api/pack-library/${encodeURIComponent(p.id)}/terraform.zip" title="Download this pack as a Terraform workspace for the zscaler/zia provider (static mode)">Terraform</a>${p.source === 'uploaded' ? `<button type="button" class="rp-btn danger" data-remove="${E(p.id)}" title="Remove this uploaded pack from the library">Remove</button>` : ''}</td>
         </tr>`).join('');
     }
     const up = packs.filter(p => p.source === 'uploaded').length;
@@ -142,7 +142,11 @@
     try {
       const r = await api('/api/pack-library/upload', payload());
       const p = r.pack || {};
-      say('ok', `<strong>Added “${E(p.name || p.id)}”.</strong> It is now offered in Deploy Policy Packs, the Data Flow Map and the Terraform hand-off. Rules are created DISABLED when deployed, so nothing changes in the tenant until you review and enable them.${r.validation && r.validation.native ? ' The upload was a native Zscaler export: ids became names and tenant-specific scope was dropped (see the warnings above).' : ''} <button type="button" class="btn btn-ghost" onclick="advTerraform('${E(p.id)}')" style="padding:0.3rem 0.7rem;font-size:0.8rem;">⬇ Download as Terraform (static)</button>`);
+      const tf = r.terraform || {};
+      const tfHtml = tf.ok
+        ? `<div style="margin-top:0.5rem;"><strong>Transcribed to Terraform.</strong> ${tf.resources} resource${tf.resources === 1 ? '' : 's'} and ${tf.data_sources} data source${tf.data_sources === 1 ? '' : 's'} in ${(tf.files || []).length} files (${(tf.files || []).map(E).join(', ')}), saved beside the pack in <code>${E(tf.dir)}</code>. Same policy, vendor-neutral and reviewable in a pull request. <a class="rp-btn" href="${E(tf.download)}" style="margin-left:0.4rem;">⬇ Export Terraform</a></div>`
+        : `<div style="margin-top:0.5rem;color:var(--warn);"><strong>Added, but the Terraform transcription failed:</strong> ${E(tf.error || 'unknown error')}. The pack is usable; use the Terraform button in the library once the cause is fixed.</div>`;
+      say('ok', `<strong>Added “${E(p.name || p.id)}”.</strong> It is now offered in Deploy Policy Packs, the Data Flow Map and the Terraform hand-off. Rules are created DISABLED and monitor-only when deployed, so nothing changes in the tenant until you review and enable them.${r.validation && r.validation.native ? ' The upload was a native Zscaler export: ids became names and tenant-specific scope was dropped (see the warnings above).' : ''}${tfHtml}`);
       chosen = []; preview = null; $('advFiles').value = ''; $('advFileList').innerHTML = ''; $('advPreview').hidden = true;
       $('advName').value = ''; $('advId').value = ''; $('advDesc').value = '';
       await loadLibrary();

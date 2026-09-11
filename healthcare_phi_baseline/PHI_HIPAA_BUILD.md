@@ -1,6 +1,6 @@
 # Healthcare PHI Policy Pack 3.0 — PHI / HIPAA DLP Build
 
-Predefined-first dictionary and engine reference for Zscaler ZIA, six-engine architecture. Built from the customer's build document; the pack configs carry the API fields only. Every rule ships DISABLED at INFO severity and is mirrored one-for-one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (8 × 4 rules).
+Predefined-first dictionary and engine reference for Zscaler ZIA, six-engine architecture. Built from the customer's build document; the pack configs carry the API fields only. Every rule ships DISABLED, monitor-only (ALLOW) at INFO severity and is mirrored one-for-one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (8 × 4 rules).
 
 ## What is PHI (and what the engines test for)
 
@@ -57,18 +57,18 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 
 ## Rules and reporting tiers
 
-| Rule | Engine | Action | Handling |
+| Rule | Engine | Ships as → target | Handling |
 |---|---|---|---|
-| HC-HIPAA Critical-Block | 1 | Block | immediate investigation; likely reportable if exfiltrated unsecured |
-| HC-HIPAA Narrative Low Volume-Monitor | 2 | Monitor | immediate investigation; member id + diagnosis triggers state breach law |
-| HC-HIPAA Identity Trifecta-Block | 3 | Block | immediate investigation; often reportable under state law |
-| HC-HIPAA Sensitive Subcategory-Block | 4 | Block | restricted reviewer queue; elevated SLA; separate notification template and auditor |
-| HC-HIPAA Pharmacy Claims Billing-Monitor | 5 | Monitor | immediate investigation; watch the false-positive rate of the merged pathways |
-| HC-HIPAA Bulk PHI Major-Block | 6, > 500 | Block | CRITICAL: bypass tier-2 review; Privacy Officer, legal counsel, executive incident response, forensics; breach risk assessment within 1 hour |
-| HC-HIPAA Bulk PHI Significant-Block | 6, > 50 | Block | HIGH: executive escalation, immediate forensic investigation |
-| HC-HIPAA Bulk PHI Small-Monitor | 6, > 1 | Monitor | MEDIUM: standard tier-2 review; document for the annual HHS log |
+| HC-HIPAA Critical-Block | 1 | Monitor (ALLOW), DISABLED → Block | immediate investigation; likely reportable if exfiltrated unsecured |
+| HC-HIPAA Narrative Low Volume-Monitor | 2 | Monitor (ALLOW), DISABLED | immediate investigation; member id + diagnosis triggers state breach law |
+| HC-HIPAA Identity Trifecta-Block | 3 | Monitor (ALLOW), DISABLED → Block | immediate investigation; often reportable under state law |
+| HC-HIPAA Sensitive Subcategory-Block | 4 | Monitor (ALLOW), DISABLED → Block | restricted reviewer queue; elevated SLA; separate notification template and auditor |
+| HC-HIPAA Pharmacy Claims Billing-Monitor | 5 | Monitor (ALLOW), DISABLED | immediate investigation; watch the false-positive rate of the merged pathways |
+| HC-HIPAA Bulk PHI Major-Block | 6, > 500 | Monitor (ALLOW), DISABLED → Block | CRITICAL: bypass tier-2 review; Privacy Officer, legal counsel, executive incident response, forensics; breach risk assessment within 1 hour |
+| HC-HIPAA Bulk PHI Significant-Block | 6, > 50 | Monitor (ALLOW), DISABLED → Block | HIGH: executive escalation, immediate forensic investigation |
+| HC-HIPAA Bulk PHI Small-Monitor | 6, > 1 | Monitor (ALLOW), DISABLED | MEDIUM: standard tier-2 review; document for the annual HHS log |
 
-Under Rule Order, enable the Bulk rules ordered Major, Significant, Small so a transaction lands in exactly one tier; under Evaluate All Rules the Block on Major or Significant wins regardless. Every rule ships DISABLED at INFO: enable, then raise the severity per the tier.
+Under Rule Order, enable the Bulk rules ordered Major, Significant, Small so a transaction lands in exactly one tier; under Evaluate All Rules the Block on Major or Significant wins regardless. Every rule ships DISABLED, at INFO and in monitor (ALLOW): enable, review the incidents, raise the severity per the tier, and only then harden the Block-tier rules to their target action (kept in the pack as `target_action`).
 
 ## From a DLP incident to a breach decision
 

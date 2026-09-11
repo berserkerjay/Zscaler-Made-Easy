@@ -14,7 +14,8 @@
     "Bank-IBAN (Global) and Bank-SWIFT BIC Code are custom pattern dictionaries anchored to phrases by proximity; the patterns alone would match ordinary text. Non-EU IBANs have no Zscaler checksum validation, so expect a few false positives from product codes near the word 'account'.",
     "The two national-ID dictionaries are regex approximations (no checksum). Zscaler ships predefined dictionaries for many of these countries; if your tenant has them, replace the custom dictionary in the engines with the predefined name.",
     "Bulk engines use 'more than 24 distinct matches' as the export threshold. Tune against real exports: a monthly statement run may legitimately carry hundreds of account numbers on a sanctioned channel, which is what the SaaS tenant scope and rule ordering are for.",
-    "If the ZBP Enterprise Policy pack is deployed as well, the shared ZBP-* dictionaries and engines are created once and reused by both packs; preflight shows them as 'already present'."
+    "If the ZBP Enterprise Policy pack is deployed as well, the shared ZBP-* dictionaries and engines are created once and reused by both packs; preflight shows them as 'already present'.",
+    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed."
   ],
   "confidence_tweaks": [],
   "baseline": {

@@ -179,8 +179,9 @@ An array of DLP web rules. Each policy points to one or more engines by **name**
 | Field | Required | Default | Notes |
 |---|---|---|---|
 | `name` | yes | — | Starts with `Z-` by convention (groups visually in ZIA UI) |
-| `action` | no | `ALLOW` | `ALLOW` (monitor only) or `BLOCK` (enforce) |
-| `state` | no | `ENABLED` | `ENABLED` / `DISABLED` |
+| `action` | no | `ALLOW` | What the rule is designed to do. **Every pack ships monitor-only**: at load time DLP-Check turns `BLOCK` / `CONFIRM` into `target_action` and creates the rule with the channel's monitor action (`ALLOW`; `OFLCASB_DLP_REPORT_INCIDENT` on SaaS). |
+| `target_action` | no | — | The action to harden to once incidents are tuned (`BLOCK`, `CONFIRM`). Set automatically from `action`; the data-governance journey names it as the enforcement step. |
+| `state` | no | `DISABLED` | **Every pack ships `DISABLED`**; an `ENABLED` value is kept as `target_state` and the rule is still created disabled. |
 | `rank` | no | 7 | 0 = highest priority (use Rank 0 import button for conflict resolution) |
 | `engines` | yes | — | Array of engine **names** from this pack or pre-existing in tenant |
 | `protocols` | no | `["ANY_RULE"]` | `HTTP_RULE`, `HTTPS_RULE`, `FTP_RULE`, `NATIVE_FTP_RULE` |
@@ -430,7 +431,7 @@ All phases are idempotent: re-running against a tenant that already has the pack
 
 ## 8. Deployment Tips
 
-- **First deploy**: set `action: "ALLOW"` on every policy — this monitors without blocking. Let it run a week, review triggers, tune dictionaries, then flip to `BLOCK`.
+- **First deploy is always monitor-only.** Whatever a pack says, every DLP rule is created `ALLOW` (report on SaaS) and `DISABLED`; the designed action is kept as `target_action`. Enable in the portal, let it run a week, review the incidents, tune dictionaries, then flip the rule to its target action. The journey card lists exactly which rules still need that.
 - **Rank 0 mode**: only use when a conflicting rule already exists at a higher priority. Rank 0 beats everything, including other Rank 0s, on a first-match basis — don't leave policies here long-term.
 - **Naming**: prefix policy names with `Z-` (or your own convention) so they group in the ZIA admin UI. Keep dictionary names short enough that engine expressions stay readable.
 - **Proximity**: start at `500` for SSN/DOB/MRN pairings; drop to `250` if you see bleed-over false positives.

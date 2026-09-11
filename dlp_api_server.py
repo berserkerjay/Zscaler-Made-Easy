@@ -250,6 +250,7 @@ GUI_ADDONS = [
     ("guide.css", "style"),
     ("reports.css", "style"),
     ("deploy_studio.js", "script"),
+    ("explain.js", "script"),
     ("guide.js", "script"),
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
@@ -390,25 +391,6 @@ async def serve_app_css():
         css = ""
     return Response(content=css, media_type="text/css",
                     headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
-
-
-# ── Text-prompt command interface ────────────────────────────────
-# Lets the GUI accept natural-language-ish input and dispatch it to
-# one of the explicit actions in commands.COMMAND_CATALOG.
-
-class CommandParseRequest(BaseModel):
-    text: str = ""
-    # Opt-in LLM parsing (default off).
-    # For kind=ollama / openai → endpoint MUST be loopback (enforced
-    # in llm_parser.py).
-    # For kind=anthropic → endpoint MUST be api.anthropic.com and
-    # llm_api_key is required. Sends the user's query to Anthropic's
-    # Messages API. The user explicitly opts into this in the GUI.
-    use_llm: bool = False
-    llm_endpoint: str = "http://localhost:11434/api/chat"
-    llm_model: str = "llama3.1"
-    llm_kind: str = "ollama"   # "ollama" | "openai" | "anthropic"
-    llm_api_key: str = ""      # required when llm_kind == "anthropic"
 
 
 # ── Guided Auto-Remediation ──────────────────────────────────────
@@ -1882,8 +1864,42 @@ async def pack_library_upload(req: PackLibraryUploadRequest):
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # The pack is transcribed to Terraform right away (static mode: no
+    # tenant read) and the workspace is kept beside the pack, so the
+    # customer gets the same policy in a vendor-neutral, reviewable form.
+    terraform = _transcribe_pack_to_terraform(saved["id"], saved["dir"])
     return {"ok": True, "pack": {k: saved.get(k) for k in ("id", "name", "version", "description", "dictionaries", "engines", "policies", "app_groups", "channels", "source")},
-            "validation": saved["validation"], "dir": saved["dir"]}
+            "validation": saved["validation"], "dir": saved["dir"], "terraform": terraform}
+
+
+def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]:
+    """Render the static Terraform workspace for one pack into
+    <pack_dir>/terraform/. Returns what was written, or the error."""
+    try:
+        import pack_terraform
+        files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
+        out_dir = os.path.join(pack_dir, "terraform")
+        pack_terraform.write_workspace(files, out_dir)
+        resources = sum(len(re.findall(r'(?m)^resource "', body)) for body in files.values())
+        data_sources = sum(len(re.findall(r'(?m)^data "', body)) for body in files.values())
+        return {"ok": True, "dir": out_dir, "files": sorted(files), "resources": resources, "data_sources": data_sources,
+                "download": f"/api/pack-library/{pack_id}/terraform.zip", "mode": "static"}
+    except Exception as e:  # noqa: BLE001 - the pack is saved; the transcription failure is reported, not fatal
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+@app.get("/api/pack-library/{pack_id}/terraform.zip")
+async def pack_library_terraform(pack_id: str):
+    """The pack as a Terraform workspace for the official zscaler/zia
+    provider, static mode (no tenant read), for any pack in the library.
+    Gap mode (imports of what already exists) is the Terraform hand-off."""
+    import pack_library as pl
+    import pack_terraform
+    pack = _resolve_pack_ids([pack_id])[0]
+    files = await asyncio.to_thread(pack_terraform.generate, pack)
+    data = pack_terraform.zip_workspaces({pack["id"]: files})
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}-terraform.zip"', "X-DLP-Check-Mode": "static"})
 
 
 @app.post("/api/pack-library/{pack_id}/remove")
@@ -2095,162 +2111,6 @@ async def permissions_required():
     except Exception:  # noqa: BLE001
         pass
     return out
-
-
-@app.get("/api/llm/status")
-async def llm_status():
-    """Probe the local Ollama instance. Reports whether it's running
-    and which models are available so the GUI can pre-fill the picker.
-    Loopback-only — calls 127.0.0.1:11434 directly."""
-    import requests
-    try:
-        r = requests.get("http://127.0.0.1:11434/api/tags", timeout=3)
-        if r.status_code == 200:
-            data = r.json()
-            models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
-            return {
-                "ollama_running": True,
-                "models": models,
-                "model_count": len(models),
-                "recommended_model": next(
-                    (m for m in models if m.startswith(("llama3.1", "llama3.2", "qwen2.5", "phi3"))),
-                    (models[0] if models else None),
-                ),
-                "endpoint": "http://127.0.0.1:11434/api/chat",
-            }
-    except Exception as e:
-        return {
-            "ollama_running": False,
-            "models": [],
-            "error": f"{type(e).__name__}: {str(e)[:100]}",
-            "hint": "Install Ollama from https://ollama.com/download, then `ollama pull llama3.2:3b`.",
-        }
-    return {"ollama_running": False, "models": []}
-
-
-@app.get("/api/commands")
-async def commands_catalog():
-    """Return the list of supported commands so the GUI can render
-    autocomplete + help without hardcoding."""
-    try:
-        from commands import COMMAND_CATALOG
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"commands module unavailable: {e}")
-    return {"catalog": COMMAND_CATALOG}
-
-
-class LlmValidateRequest(BaseModel):
-    llm_kind: str = "ollama"        # "ollama" | "openai" | "anthropic"
-    llm_endpoint: str = ""
-    llm_model: str = ""
-    llm_api_key: str = ""
-
-
-@app.post("/api/llm/validate")
-async def llm_validate(req: LlmValidateRequest):
-    """Probe the configured LLM with a one-token request to confirm the
-    integration works. Returns ok=true on success or a specific error
-    message if model ID / API key / endpoint / network is wrong.
-    Same loopback / allowlist rules as the real parse endpoint."""
-    kind = req.llm_kind or "ollama"
-    if kind == "anthropic":
-        endpoint = req.llm_endpoint or "https://api.anthropic.com/v1/messages"
-        model = req.llm_model or "claude-haiku-4-5-20251001"
-        api_key = req.llm_api_key or ""
-        if not api_key:
-            return {"ok": False, "error": "API key required for Anthropic provider."}
-        try:
-            from llm_parser import _is_allowed_endpoint, _call_anthropic
-            if not _is_allowed_endpoint(endpoint, kind):
-                return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
-            raw = await asyncio.to_thread(
-                _call_anthropic, endpoint, model,
-                "You are a test probe. Respond with exactly the word: OK",
-                "ping", api_key,
-            )
-            return {"ok": True, "provider": "anthropic", "model": model,
-                    "response_preview": (raw or "")[:80]}
-        except Exception as e:
-            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
-
-    if kind == "openai_cloud":
-        endpoint = req.llm_endpoint or "https://api.openai.com/v1/chat/completions"
-        model = req.llm_model or "gpt-4o-mini"
-        api_key = req.llm_api_key or ""
-        if not api_key:
-            return {"ok": False, "error": "API key required for OpenAI provider."}
-        try:
-            from llm_parser import _is_allowed_endpoint, _call_openai_compatible
-            if not _is_allowed_endpoint(endpoint, kind):
-                return {"ok": False, "error": f"Endpoint refused by allowlist: {endpoint}"}
-            raw = await asyncio.to_thread(
-                _call_openai_compatible, endpoint, model,
-                'You are a test probe. Respond with JSON: {"status":"ok"}',
-                "ping", api_key,
-            )
-            return {"ok": True, "provider": "openai", "model": model,
-                    "response_preview": (raw or "")[:80]}
-        except Exception as e:
-            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
-
-    if kind == "ollama":
-        endpoint = req.llm_endpoint or "http://localhost:11434/api/chat"
-        model = req.llm_model or "llama3.2:3b"
-        try:
-            from llm_parser import _is_allowed_endpoint, _call_ollama
-            if not _is_allowed_endpoint(endpoint, kind):
-                return {"ok": False, "error": f"Endpoint refused: must be loopback for Ollama."}
-            raw = await asyncio.to_thread(
-                _call_ollama, endpoint, model,
-                "You are a test probe. Respond with exactly: OK",
-                "ping",
-            )
-            return {"ok": True, "provider": "ollama", "model": model, "response_preview": (raw or "")[:80]}
-        except Exception as e:
-            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:250]}"}
-    return {"ok": False, "error": f"Unknown kind: {kind}"}
-
-
-@app.post("/api/commands/parse")
-async def commands_parse(req: CommandParseRequest):
-    """Parse arbitrary user text into a structured action.
-
-    Default path (use_llm=false) is purely deterministic — never runs
-    user code, never calls an LLM, never leaves the machine.
-
-    Opt-in path (use_llm=true) routes the query through a LOCAL LLM
-    on a loopback endpoint (Ollama / llama.cpp / LM Studio). The LLM
-    result is schema-validated against the command catalog and FALLS
-    BACK to the deterministic parser on any error, parsing failure,
-    or non-allowlisted action/scope."""
-    try:
-        from commands import parse, to_dict
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"commands module unavailable: {e}")
-
-    raw = (req.text or "")[:500]
-
-    if req.use_llm:
-        try:
-            from llm_parser import parse_with_llm
-        except Exception as e:
-            # Module unavailable — fall back to deterministic parser
-            result = await asyncio.to_thread(parse, raw)
-            result.suggestion = (result.suggestion or "") + f" [LLM module unavailable: {e}]"
-            return to_dict(result)
-        result = await asyncio.to_thread(
-            parse_with_llm, raw,
-            req.llm_endpoint, req.llm_model, req.llm_kind, req.llm_api_key,
-        )
-        d = to_dict(result)
-        d["parser"] = "llm"  # tag so GUI can display which path was used
-        d["llm_kind"] = req.llm_kind
-        return d
-
-    result = await asyncio.to_thread(parse, raw)
-    d = to_dict(result)
-    d["parser"] = "deterministic"
-    return d
 
 
 @app.get("/api/branding")
@@ -2657,6 +2517,49 @@ async def quickstart_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
+@app.get("/report/logs")
+async def report_logs_page():
+    """Log Analyzer in its own tab: Client Connector log bundles and PAC files (static/report_logs.html)."""
+    page = os.path.join(STATIC_DIR, "report_logs.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/help")
+async def help_page():
+    """Every function of the app explained in plain English (static/help.html)."""
+    page = os.path.join(STATIC_DIR, "help.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class LogAnalyzeRequest(BaseModel):
+    files: List[PackUploadFile]
+
+
+@app.get("/api/logs/catalogue")
+async def logs_catalogue():
+    """What the Log Analyzer looks for, and the upload limit, for the page."""
+    import log_analyzer
+    return {"checked": log_analyzer.catalogue(), "max_body_mb": get_max_body_bytes() // (1024 * 1024),
+            "accepts": ["Client Connector Export Logs ZIP", ".log / .txt files", ".tar / .tgz / .gz bundles", "PAC files (.pac, .dat, .js)"]}
+
+
+@app.post("/api/logs/analyze")
+async def logs_analyze(req: LogAnalyzeRequest):
+    """Analyse uploaded Client Connector logs and PAC files in memory.
+    Nothing is written to disk; evidence lines are redacted of secrets."""
+    import log_analyzer
+    try:
+        return log_analyzer.analyze([f.model_dump() for f in req.files])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/report/compliance")
 async def report_compliance_page():
     """Standalone tab for Regulatory & Compliance Alignment (static/report_compliance.html)."""
@@ -2775,7 +2678,7 @@ async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
     """Test a user-supplied text sample against every custom
     dictionary's phrases + regex patterns. Runs locally with stdlib
     re — the corpus never leaves this server, never reaches Zscaler,
-    never reaches any LLM. 256 KB hard cap on input."""
+    never leaves this machine. 256 KB hard cap on input."""
     try:
         from dlp_efficacy import corpus_test
     except Exception as e:

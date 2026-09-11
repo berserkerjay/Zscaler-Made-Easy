@@ -383,25 +383,8 @@ function _gdApplyMode() {
 }
 
 // ── Help drawer ────────────────────────────────────────────────────
-const GD_GLOSSARY = [
-  ['Dictionary', 'The thing to look for: a list of phrases and/or regular-expression patterns (for example, "MRN" next to a 7-digit number). Zscaler ships predefined ones (SSN, credit cards, medical terms); packs add custom ones.'],
-  ['Engine', 'How dictionaries combine into a decision, using AND / OR and match counts, for example "(SSN more than 4 times) OR (passport number at least once)". Rules point at engines, never directly at dictionaries.'],
-  ['Rule (policy)', 'Where and how an engine is enforced: which traffic (web uploads, email, SaaS apps, endpoints), which users, and the action. Rules run in order from the top; the first match wins unless the tenant is set to evaluate all rules.'],
-  ['Action: ALLOW vs BLOCK', 'ALLOW means monitor: the transaction goes through and an incident is logged. BLOCK stops it. CONFIRM asks the user first. Every pack ships its rules in ALLOW or BLOCK as designed, but DISABLED, so nothing happens until you enable a rule.'],
-  ['Severity', 'The label an incident gets in reports (INFO, LOW, MEDIUM, HIGH). It does not change what the rule does. Packs ship at INFO; raise it once a rule is tuned.'],
-  ['Policy pack', 'A folder of dictionaries, engines and rules for one purpose: CJIS, the Fed pack, Zscaler\'s enterprise best practice, healthcare PHI. Deploying a pack creates those objects in the tenant.'],
-  ['Reference policy pack', 'A policy pack that is the reference a tenant is measured against. Deploy it greenfield (empty tenant: everything is created) or brownfield (existing tenant: what exists is kept exactly as the customer has it, the rest is created). Nothing is ever overwritten. Objects the policy pack does not define are never touched.'],
-  ['Greenfield / brownfield', 'Greenfield: none of the pack\'s objects exist yet, so the whole pack is created from scratch. Brownfield: some already exist (perhaps from an earlier deploy, perhaps built by hand); they are kept, only the missing ones are created.'],
-  ['Preflight', 'The read-only check Deploy Studio runs before anything is written: it reads the tenant, works out what is missing, what already exists, what conflicts, and what the impact would be. You approve that exact plan.'],
-  ['Plan hash', 'A fingerprint of the plan you approved. If the tenant changes between approval and deploy, the fingerprint no longer matches and nothing is written until you review again.'],
-  ['Journey (where is this tenant?)', 'The data-governance journey has five stages: Foundation (dictionaries and engines exist), Policies deployed (every rule exists), Visibility (SSL decrypts the risky app classes and DLP rules are enabled), Containment (Cloud App Control, File Type and URL rules are enabled), Enforcement (DLP rules block). The assessment and the pack card place the tenant on that ladder and list the exact rules to enable or harden next.'],
-  ['Customized', 'A policy pack object the customer changed: a rule they enabled, an action they hardened from ALLOW to BLOCK, a dictionary they tuned. That is progress, not drift. It is kept as-is and shown as customized; converge mode (an explicit API option) is the only thing that overwrites it.'],
-  ['Activation', 'ZIA saves changes as pending. After a deploy, an admin must click Activate in the ZIA Admin Portal for the new rules to take effect for users.'],
-  ['Read-only vs write mode', 'The server starts read-only: assessment, preflight and journey checks all work, deploying is refused. Deploy Policy Packs shows the current mode and an Enable write mode button (type the confirmation phrase; it lasts until the server restarts). START_Zscaler_Assessment_WRITES_ENABLED.bat starts in write mode from the outset. Stay read-only when you only want to show the customer the plan.'],
-  ['OneAPI credentials', 'The client ID and secret of an API client created in ZIdentity, plus the vanity domain (the short name in the login URL, acme for acme.zslogin.net) and the cloud (Production for almost everyone).'],
-  ['Terraform hand-off', 'The same pack as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Gap mode reads the tenant and imports existing objects so the first plan shows exactly the gap; static mode needs no credentials. Terraform then owns the objects: a later plan shows how the tenant moved, and apply would converge it, so use plan to assess and apply deliberately.'],
-  ['Outbound Email DLP', 'Rules that inspect mail leaving onboarded Microsoft 365 / Gmail tenants (Administration > SaaS Application Tenants). The policy packs ship a monitor-only email rule; preflight skips it, with the reason, when no email tenant is onboarded.'],
-];
+// The glossary lives in explain.js (shared with /help); this fallback covers a page served without it.
+const GD_GLOSSARY = window.DLP_GLOSSARY || [['Dictionary', 'The thing to look for: phrases and patterns.'], ['Engine', 'How dictionaries combine into a decision.'], ['Rule (policy)', 'Where and how an engine is enforced.']];
 function _gdHelp(open) {
   GD.helpOpen = open;
   let d = document.getElementById('gdHelp');
@@ -429,18 +412,14 @@ function _gdHelp(open) {
         <dt>DLP Efficacy</dt><dd>Scores every custom dictionary and engine for false-positive risk and lets you test sample text against them.</dd>
         <dt>Best Practices</dt><dd>Curated Zscaler best-practice articles rated by source credibility. <em>Update library now</em> reads the sitemaps of help.zscaler.com, the Zscaler blog and the developer portal (and walks the partner sites), adds every new best-practice or leading-practice article, and shows per source whether it answered and why not. New finds are kept across restarts; a background refresh runs every 6 hours.</dd>
         <dt>Zscaler Updates</dt><dd>A check of PyPI and help.zscaler.com for SDK and documentation changes since last time.</dd>
+        <dt>Log Analyzer</dt><dd>Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Tells you what happened, what it means for the user and what to do next.</dd>
         <dt>Packs from a design file (command line)</dt><dd><code>python tools/pack_from_design.py &lt;pack&gt;</code> turns a DLP engineer's dictionary/engine design into a pack, enforcing ZIA's documented limits.</dd>
       </dl>
       <h3>Glossary</h3>
       <dl>${GD_GLOSSARY.map(([t, d2]) => `<dt>${_gdE(t)}</dt><dd>${_gdE(d2)}</dd>`).join('')}</dl>
       <h3>If something goes wrong</h3>
-      <ul>
-        <li><strong>"Could not connect"</strong> under step 1 tells you the cause and the fix. Nine times out of ten it is a pasted secret that was not the real secret, or a machine behind TLS inspection.</li>
-        <li><strong>"0 endpoints probed" or empty results</strong>: the credentials were rejected; test the connection.</li>
-        <li><strong>Preflight says blocked</strong>: read the red card. It names the object and the missing prerequisite (a predefined dictionary, an onboarded SaaS tenant, a licensed feature).</li>
-        <li><strong>"Write actions require ENABLE_WRITE_ACTIONS"</strong> or a read-only banner in Deploy Policy Packs: click <em>Enable write mode</em> there and type the phrase, or start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.</li>
-      </ul>
-      <p class="gd-dim">Full walkthrough: GETTING_STARTED.md in the project folder.</p>
+      <ul>${(window.DLP_TROUBLE || []).map(([t, d2]) => `<li><strong>${_gdE(t)}</strong>: ${_gdE(d2)}</li>`).join('')}</ul>
+      <p class="gd-dim"><a href="/help" target="_blank" rel="noopener">What does everything do?</a> explains every function in plain English. Full walkthrough: GETTING_STARTED.md in the project folder.</p>
     </div>`;
   d.querySelector('.gd-help-sheet').focus?.();
 }

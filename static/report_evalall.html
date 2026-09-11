@@ -31,7 +31,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Evaluate All Rules</span> and the tie-breaker</h1>
-      <p>How ZIA decides which DLP rule applies when every rule is evaluated, what happens when two matching rules carry the same action, and a simulator to try it on your own rules. Inline Web DLP (with the switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the one exception: rule order, first match wins, per rule type.</p>
+      <p>How ZIA decides which DLP rule applies when every rule is evaluated, and what happens when two matching rules carry the same action. Inline Web DLP (with the switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the one exception: rule order, first match wins, per rule type.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
@@ -76,11 +76,12 @@
         </svg>
       </div>
       <div class="ea-legend"><span><i></i>Decision</span><span>Solid blue edge: the tie path</span><span><strong>Applies to</strong> Inline Web DLP, Endpoint DLP and Outbound Email DLP.</span><span><strong>SaaS Security API DLP</strong> does not evaluate all rules: rules are walked in order per rule type, the first match decides, and there is no tie-breaker (a stricter rule further down is shadowed until it is moved up).</span></div>
-      <h2 class="df-h" style="padding:1rem 1.2rem 0;">Two lanes side by side, and a simulator</h2>
+      <h2 class="df-h" style="padding:1rem 1.2rem 0;">Two lanes side by side</h2>
       <div id="evalAllFlow"></div>
     </main>
   </div>
   <script src="/static/report_theme.js"></script>
+  <script src="/static/explain.js"></script>
   <script src="/static/eval_all.js"></script>
 </body>
 </html>

@@ -530,6 +530,37 @@ def default_action(channel: str) -> str:
     return {SAAS: "OFLCASB_DLP_REPORT_INCIDENT", SSL: "DO_NOT_DECRYPT", CLOUD_APP: ""}.get(channel, "ALLOW")
 
 
+def target_action(p: Dict[str, Any]) -> str:
+    """The action a rule is designed to reach once tuned: `target_action`
+    when the pack carries one, otherwise the action it ships with."""
+    return str(p.get("target_action") or policy_action(p))
+
+
+def ship_monitor(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """DLP-Check's convention, applied to every pack (built-in or uploaded)
+    the moment it is loaded: every rule ships DISABLED, and every DLP rule
+    (Web, Endpoint, SaaS, Email) ships with the channel's monitor action
+    (ALLOW / report incident). A rule designed to block or confirm keeps
+    that as `target_action`: the data-governance journey names it as the
+    step to harden to once incidents have been reviewed. Containment rules
+    (Cloud App Control, File Type, URL, SSL) have no monitor form and are
+    left as designed. The DISABLED state is forced where the rule is
+    created (build_payload and the web payload builder), so an existing
+    rule the customer enabled still compares as their progress. The
+    originals are never modified."""
+    out: List[Dict[str, Any]] = []
+    for p in policies:
+        q = dict(p)
+        ch = channel_of(q)
+        if has_engines(ch):
+            action = policy_action(q)
+            if is_enforcing(ch, action):
+                q["target_action"] = q.get("target_action") or action
+                q["action"] = default_action(ch)
+        out.append(q)
+    return out
+
+
 def validate(policy_def: Dict[str, Any]) -> Optional[str]:
     """Static pack-level validation. Returns an error string or None."""
     ch = channel_of(policy_def)
@@ -1117,8 +1148,9 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
     body: Dict[str, Any] = {
         "name": p["name"],
         "order": 1,
-        "state": p.get("state", "ENABLED"),
-        "action": p.get("action", default_action(channel)),
+        # Every rule is created DISABLED and monitor-only, whatever the pack says.
+        "state": "DISABLED",
+        "action": p.get("action", default_action(channel)) if not is_enforcing(channel, str(p.get("action") or "")) else default_action(channel),
         "dlp_engines": _ids(engine_ids),
         "without_content_inspection": bool(p.get("without_content_inspection", False)),
     }
@@ -1167,7 +1199,7 @@ def _build_control_payload(channel: str, p: Dict[str, Any], resolved: Dict[str, 
     body: Dict[str, Any] = {
         "name": p["name"],
         "order": 1,
-        "state": p.get("state", "ENABLED"),
+        "state": "DISABLED",   # every rule is created disabled, containment rules included
         "rank": 0 if use_rank_0 else p.get("rank", 7),
     }
     if p.get("description"):

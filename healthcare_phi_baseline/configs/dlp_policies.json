@@ -2,7 +2,8 @@
   {
     "name": "HC-HIPAA Critical-Block",
     "description": "Inline Web DLP, Engine 1: strong PHI signature with an identity anchor. Single record reportable: immediate investigation. Block-grade; ships DISABLED at INFO, raise to HIGH when enabled.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -38,7 +39,8 @@
   {
     "name": "HC-HIPAA Identity Trifecta-Block",
     "description": "Inline Web DLP, Engine 3: name + DOB + SSN (or licence / TIN). Reportable under state breach law regardless of healthcare context. Block-grade.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -56,7 +58,8 @@
   {
     "name": "HC-HIPAA Sensitive Subcategory-Block",
     "description": "Inline Web DLP, Engine 4: SUD, mental health, HIV, genetic and reproductive PHI beside an identifier. 42 CFR Part 2 and GINA: route to the restricted reviewer queue (attach a dedicated notification template and auditor). Block-grade.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -92,7 +95,8 @@
   {
     "name": "HC-HIPAA Bulk PHI Major-Block",
     "description": "Inline Web DLP, Engine 6 MAJOR tier (> 500 identifiers): a potential 500+ individual breach. Bypass tier-2 review: Privacy Officer, legal counsel, executive incident response and forensics; breach risk assessment within 1 hour. Block-grade.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -110,7 +114,8 @@
   {
     "name": "HC-HIPAA Bulk PHI Significant-Block",
     "description": "Inline Web DLP, Engine 6 significant tier (> 50 identifiers): executive escalation and immediate forensic investigation; still under the 500-individual notification threshold. Block-grade.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [

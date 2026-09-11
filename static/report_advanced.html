@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Advanced</span> settings</h1>
-      <p>Add your own policy packs so they show up everywhere the app offers a pack: Deploy Policy Packs, the Data Flow Map, the Terraform hand-off and the detection validator. A pack is a set of dictionaries, engines and rules; you can bring one as JSON, as Terraform for the Zscaler provider, or as a ZIP of either.</p>
+      <p>Add your own policy packs so they show up everywhere the app offers a pack: Deploy Policy Packs, the Data Flow Map, the Terraform hand-off and the detection validator. A pack is a set of dictionaries, engines and rules; you can bring one as JSON (including Zscaler's own API export), as Terraform for the Zscaler provider, or as a ZIP of either. Every pack you add is transcribed to Terraform on the spot, so the same policy exists in a vendor-neutral form you can export from the library.</p>
       <span class="badge" id="rpMeta">Loading the library…</span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -99,6 +99,7 @@
     </main>
   </div>
   <script src="/static/report_theme.js"></script>
+  <script src="/static/explain.js"></script>
   <script src="/static/advanced.js"></script>
 </body>
 </html>

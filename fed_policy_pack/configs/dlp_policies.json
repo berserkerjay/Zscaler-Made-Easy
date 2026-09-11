@@ -168,7 +168,8 @@
   {
     "name": "CUI-Block-Marked-Documents",
     "description": "Inline Web DLP: block uploads carrying high-precision CUI markings (banners, category tokens, legacy FOUO/LES/SBU, distribution statements) via CUI-Detect-Block-Grade. Ships DISABLED at INFO; enable after reviewing monitor incidents from CUI-Monitor-All.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -186,7 +187,8 @@
   {
     "name": "CUI-Caution-Weak-Markings",
     "description": "Inline Web DLP: caution (user must confirm) on lower-precision CUI signals: bare CUI, standalone LDCs, malformed markings, designation blocks, via CUI-Detect-Caution-Grade. Never BLOCK on these.",
-    "action": "CONFIRM",
+    "action": "ALLOW",
+    "target_action": "CONFIRM",
     "state": "DISABLED",
     "rank": 7,
     "engines": [

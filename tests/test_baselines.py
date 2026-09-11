@@ -404,7 +404,10 @@ def test_shipped_baselines_are_discoverable_and_plan():
     for svc in (client.zia.dlp_web_rules, client.zia.endpoint_dlp_rules, client.zia.casb_dlp_rules, client.zia.outbound_email_dlp_rules):
         assert len(svc.added) == 8, "one rule per inline rule on every channel"
     rule = client.zia.dlp_web_rules.added[0]
-    assert rule["ocr_enabled"] is True and rule["action"] == "BLOCK" and rule["state"] == "DISABLED"
+    # Ships monitor-only and DISABLED; the API never sees the target, the plan does.
+    assert rule["ocr_enabled"] is True and rule["action"] == "ALLOW" and rule["state"] == "DISABLED" and "target_action" not in rule
+    crit = next(i for i in rep["items"] if i["kind"] == "policy" and i["name"] == "HC-HIPAA Critical-Block")
+    assert crit["detail"]["action"] == "ALLOW" and crit["detail"]["target_action"] == "BLOCK"
     # Engine 1 starts with the Medical Document (id 1) and Medical Imaging (id 2) classifiers, resolved from display names.
     e1 = client.zia.dlp_engine.added[0]["engine_expression"]
     assert e1.startswith("((((D1.S > 0) OR (D2.S > 0))") and "D:" not in e1 and "D9.S > 0" in e1   # Names (US) is id 9
@@ -503,7 +506,9 @@ def test_fed_pack_cui_rules_deploy_and_measure():
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")
     assert prox["proximity"] == 300 and prox["match"] == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
     rules = {r["name"]: r for r in client.zia.dlp_web_rules.added}
-    assert rules["CUI-Block-Marked-Documents"]["action"] == "BLOCK" and rules["CUI-Caution-Weak-Markings"]["action"] == "CONFIRM"
+    assert rules["CUI-Block-Marked-Documents"]["action"] == "ALLOW" and rules["CUI-Caution-Weak-Markings"]["action"] == "ALLOW"
+    targets = {i["name"]: i["detail"]["target_action"] for i in rep["items"] if i["kind"] == "policy" and i["detail"].get("channel") == "web"}
+    assert targets["CUI-Block-Marked-Documents"] == "BLOCK" and targets["CUI-Caution-Weak-Markings"] == "CONFIRM" and targets["CUI-Monitor-All"] is None
     assert all(r["state"] == "DISABLED" for r in rules.values()) and rules["CUI-Monitor-All"]["ocr_enabled"]
     # Re-running preflight finds everything present: nothing left to create.
     again = pd.preflight(client, [{"id": fed["id"], "dir": fed["dir"]}], writes_enabled=True)

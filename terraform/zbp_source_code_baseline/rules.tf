@@ -11,7 +11,8 @@ resource "zia_dlp_web_rules" "src_dlp_block_source_code_uploads" {
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["WEBSOCKETSSL_RULE", "WEBSOCKET_RULE", "FTP_RULE", "HTTPS_RULE", "HTTP_RULE"]

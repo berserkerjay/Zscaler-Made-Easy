@@ -355,7 +355,7 @@ _ui_token: "str | None" = None
 # its assets, the standalone report pages (they then call the API with the
 # cookie) and the unlock/status/ping calls.
 _UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
-_UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico"}
+_UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico"}
 
 
 def ui_auth_enabled() -> bool:

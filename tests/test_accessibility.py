@@ -43,6 +43,26 @@ def test_report_pages_have_landmarks_and_headings():
         assert "<h1>" in html or "<h1 " in html, name
     df = _read("report_dataflow.html") + _read("data_flow.js")
     assert "<h3" not in df, "data flow tab uses h2 under the page h1"
+    for name in ("report_logs.html", "help.html", "report_evalall.html", "quickstart.html"):
+        html = _read(name)
+        assert '<header class="hero rp-hero">' in html and '<nav class="rp-bar" aria-label="Page actions">' in html, name
+        assert "<main" in html and ("<h1>" in html or "<h1 " in html), name
+        if name == "report_logs.html":
+            assert 'role="status"' in html and 'aria-live' in html, "the analyzer announces progress and results"
+
+
+def test_log_analyzer_page_is_operable_without_a_mouse():
+    html = _read("report_logs.html")
+    assert '<label for="laFiles">' in html and 'id="laFiles"' in html, "the file input has a visible label"
+    assert 'aria-describedby="laHow laLimit"' in html, "the input is described by the how-to and the limit"
+    assert 'id="liveRegion" class="sr-only" role="status" aria-live="polite"' in html
+    assert "aria-disabled" in html and 'type="button"' in html
+    assert "summary:focus-visible" in html and "prefers-reduced-motion" in html
+    assert '<th scope="col">' in html, "data tables have column headers"
+    assert "<h3" in html and "<h2" in html and html.index("<h2") < html.index("<h3"), "headings nest h1 > h2 > h3"
+    js = _read("explain.js")
+    assert "summary:focus-visible" in js and ".xp-link:focus-visible" in js, "the explainer box is keyboard-visible"
+    assert 'aria-labelledby' in js and "<details" in js
 
 
 def test_diagrams_are_keyboard_operable():

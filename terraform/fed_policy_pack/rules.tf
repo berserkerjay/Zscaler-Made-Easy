@@ -141,7 +141,8 @@ resource "zia_dlp_web_rules" "cui_block_marked_documents" {
   order                        = var.rule_starting_order + 9
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -157,7 +158,8 @@ resource "zia_dlp_web_rules" "cui_caution_weak_markings" {
   order                        = var.rule_starting_order + 10
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "CONFIRM"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is CONFIRM.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]

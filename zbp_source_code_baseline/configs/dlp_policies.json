@@ -2,7 +2,8 @@
   {
     "name": "SRC-[DLP] Block Source Code Uploads",
     "description": "Blocks uploads containing Python, JavaScript, or shell-script source code to AI/ML applications. Application scope is resolved from the tenant's AI_ML catalogue at deploy time.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [

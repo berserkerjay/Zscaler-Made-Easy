@@ -131,7 +131,7 @@ def test_endpoint_pack_plans_and_applies_groups_and_sub_rules(tmp_path, raw):
     parent_id = next(r["id"] for r in res["results"] if r["name"] == "EP-USB")
     subs = raw.subs[parent_id]
     assert [s["name"] for s in subs] == ["EP-USB-High", "EP-USB-Low"] and [s["order"] for s in subs] == [1, 2]
-    assert subs[0]["action"] == "BLOCK" and subs[0]["dlp_engines"]
+    assert subs[0]["action"] == "ALLOW" and subs[0]["state"] == "DISABLED" and subs[0]["dlp_engines"]   # ships monitor-only, whatever the pack says
     assert all("parent_rule" not in s for s in subs)
     created = {r["name"]: r for r in res["results"] if r["status"] == "created"}
     assert created["EP-USB-High"]["parent_id"] == parent_id

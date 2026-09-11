@@ -6,7 +6,8 @@ resource "zia_dlp_web_rules" "hc_hipaa_critical_block" {
   order                        = var.rule_starting_order + 0
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -38,7 +39,8 @@ resource "zia_dlp_web_rules" "hc_hipaa_identity_trifecta_block" {
   order                        = var.rule_starting_order + 2
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -54,7 +56,8 @@ resource "zia_dlp_web_rules" "hc_hipaa_sensitive_subcategory_block" {
   order                        = var.rule_starting_order + 3
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -86,7 +89,8 @@ resource "zia_dlp_web_rules" "hc_hipaa_bulk_phi_major_block" {
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -102,7 +106,8 @@ resource "zia_dlp_web_rules" "hc_hipaa_bulk_phi_significant_block" {
   order                        = var.rule_starting_order + 6
   rank                         = var.policy_rank
   state                        = "DISABLED"
-  action                       = "BLOCK"
+  action                       = "ALLOW"
+  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]

@@ -232,7 +232,7 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
         configs = _resolve_configs(p["dir"])
         meta = load_pack_metadata(p["dir"])
         engines = _load_json(configs, "dlp_engines.json")
-        policies = pc.expand_sub_rules(_load_json(configs, "dlp_policies.json"))
+        policies = pc.ship_monitor(pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")))
         targets = (channel_targets or {}).get(p["id"])
         baseline = baseline_meta(meta, p["id"])
         policies, note = pc.apply_channel_targets(
@@ -1085,7 +1085,10 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     elif item["kind"] == "policy":
         channel = item.get("channel") or pc.channel_of(d)
         resolved = item.get("resolved") or {}
+        target = pc.target_action(d)
         out["detail"] = {"action": pc.policy_action(d), "severity": d.get("severity"),
+                         # Every rule ships monitor-only and DISABLED; a rule designed to enforce carries the action to harden to.
+                         "target_action": target if d.get("target_action") and pc.is_enforcing(channel, target) else None,
                          "engines": d.get("engines", []), "protocols": d.get("protocols", ["ANY_RULE"]),
                          "channel": channel, "channel_label": pc.label(channel),
                          "saas_type": d.get("saas_type"),
@@ -1393,7 +1396,7 @@ def _next_step(item: Dict[str, Any], position: str, need: str) -> str:
             return f"Enable rule '{name}' in {portal} (it is customized; check the action still fits)."
         return f"Enable rule '{name}' in {portal} after reviewing its scope."
     if need == "enforcing":
-        want = pc.policy_action(item["definition"])
+        want = pc.target_action(item["definition"])
         return (f"Switch rule '{name}' in {portal} from monitor to an enforcing action ({want if pc.is_enforcing(ch or pc.WEB, want) else 'BLOCK'}) "
                 "once incidents have been reviewed and tuned.")
     return f"Review {kind} '{name}'."

@@ -626,11 +626,14 @@ def build_policy_payload(
     """Translate one pack policy definition into `add_rule` kwargs. New
     rules are always inserted at order 1 (top of the policy), which is
     why the planner reports an order shift for existing rules."""
+    action = str(policy_def.get("action", "ALLOW") or "ALLOW")
     payload: Dict[str, Any] = {
         "name": policy_def["name"],
         "order": "1",
-        "state": policy_def.get("state", "ENABLED"),
-        "action": policy_def.get("action", "ALLOW"),
+        # Every rule is created DISABLED and monitor-only, whatever the pack
+        # says; a designed BLOCK / CONFIRM stays in the plan as the target.
+        "state": "DISABLED",
+        "action": "ALLOW" if action.upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE") else action,
         "dlp_engines": engine_ids,
         "protocols": policy_def.get("protocols", ["ANY_RULE"]),
         "rank": 0 if use_rank_0 else policy_def.get("rank", 7),

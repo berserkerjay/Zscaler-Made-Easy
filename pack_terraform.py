@@ -278,7 +278,7 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     configs = _resolve_configs(pack["dir"])
     meta = load_pack_metadata(pack["dir"])
     engines = _load_json(configs, "dlp_engines.json")
-    policies = pc.expand_sub_rules(_load_json(configs, "dlp_policies.json"))
+    policies = pc.ship_monitor(pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")))
     b = meta.get("baseline") or {}
     policies, note = pc.apply_channel_targets(policies, channel_targets, pack_name=meta.get("name", pack["id"]),
                                               prefix=b.get("prefix") or "", engine_names=[e.get("name") for e in engines if e.get("name")],
@@ -468,6 +468,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
             r.append(_attr("rank", "var.policy_rank"))
         r.append(_attr("state", hcl_str(p.get("state", "ENABLED"))))
         r.append(_attr("action", hcl_str(p.get("action", pc.default_action(channel)))))
+        if p.get("target_action"):
+            r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {p['target_action']}.\n")
         if p.get("severity"):
             r.append(_attr("severity", hcl_str(p["severity"])))
         r.append(_attr("without_content_inspection", "true" if p.get("without_content_inspection") else "false"))

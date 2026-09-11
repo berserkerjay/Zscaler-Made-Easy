@@ -331,15 +331,21 @@ def test_rule_cap_blocks_and_order_shift_is_explained(tmp_path, base_pack):
 
 
 def test_enforcing_action_is_flagged(tmp_path):
+    # A pack may be designed to block; it still ships monitor-only and
+    # DISABLED, and the plan carries the designed action as the target.
     pack = write_pack(tmp_path, "block", dicts=[_dict("BD")], engines=[_engine("BE", "D:BD")],
                       policies=[_policy("Z-Block", ["BE"], action="BLOCK")])
     client = FakeClient()
     rep = pd.preflight(client, [pack], writes_enabled=True)
-    assert rep["status"] == "warnings"
-    assert "enforcing action" in items_by(rep, "policy")["Z-Block"]["warnings"]
-    enf = next(i for i in rep["impacts"] if i["type"] == "enforcement")
-    assert "Z-Block" in enf["detail"] and enf["severity"] == "warning"
-    assert not any(i["type"] == "monitor_only" for i in rep["impacts"])
+    assert rep["status"] == "ready", rep["warnings"]
+    item = items_by(rep, "policy")["Z-Block"]
+    assert "enforcing action" not in item["warnings"]
+    assert item["detail"]["action"] == "ALLOW" and item["detail"]["target_action"] == "BLOCK"
+    assert not any(i["type"] == "enforcement" for i in rep["impacts"])
+    assert any(i["type"] == "monitor_only" for i in rep["impacts"])
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    posted = next(r for r in client.zia.dlp_web_rules.added if r["name"] == "Z-Block")
+    assert posted["action"] == "ALLOW" and posted["state"] == "DISABLED" and "target_action" not in posted
 
 
 def test_confidence_tweak_is_explicit_modification(tmp_path):

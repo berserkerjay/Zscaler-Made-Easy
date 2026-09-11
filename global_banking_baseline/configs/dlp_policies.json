@@ -20,7 +20,8 @@
   {
     "name": "Bank-Payment Card Data-Bulk-Block",
     "description": "Inline Web DLP: block bulk card-number exports (25+ distinct PANs or 5+ track records). Enforcing by design; ships disabled so you choose when.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -75,7 +76,8 @@
   {
     "name": "Bank-Customer PII-Bulk-Block",
     "description": "Inline Web DLP: block bulk customer-data exports (25+ distinct identifiers or 50+ dates of birth). Enforcing by design; ships disabled.",
-    "action": "BLOCK",
+    "action": "ALLOW",
+    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [

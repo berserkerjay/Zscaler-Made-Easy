@@ -45,7 +45,7 @@ engines and rules into a tenant. Everything else is different.
 | Write protection | None beyond Terraform's plan/apply prompt | Server refuses all writes unless `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`; separate launcher |
 | Tests / CI | None | 32 pytest tests; GitHub Actions runs compile, JS syntax, tests, and a server smoke test on every push |
 | Reproducibility | Generators hard-code `/Users/michaelkoyfman/...` paths to a private MCP skill and private tenant exports; only the generated output is usable by others | Everything needed is in the repo; packs are plain JSON under `configs/` |
-| Docs | Clear per-workspace READMEs; honest about provider limitations; migration guide | README, ARCHITECTURE, POLICY_PACKS guide, LLM setup, Word checklists |
+| Docs | Clear per-workspace READMEs; honest about provider limitations; migration guide | README, ARCHITECTURE, POLICY_PACKS guide, GETTING_STARTED, Word checklists |
 | Distribution | `terraform init/apply` from a checkout | Windows installer, desktop shortcut, update/stop scripts |
 
 ## 3. zbp-automation
