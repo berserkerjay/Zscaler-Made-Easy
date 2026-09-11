@@ -303,3 +303,27 @@ def test_deployment_undo_goes_through_the_guided_removal(tmp_path, monkeypatch):
     assert {i["name"]: i["status"] for i in plan2["items"]} == {"RM-Web-Monitor": "remove", "RM-Engine": "remove", "RM-Dict": "remove", "Gone-Dict": "not-found"}
     res2 = pr.remove_deployment(client2, record, plan_hash=plan2["plan_hash"], writes_enabled=True)
     assert res2["summary"] == {"deleted": 3} and res2["verification"]["clean"]
+
+
+def test_plan_says_what_it_read_and_never_calls_a_partial_read_nothing(tmp_path):
+    """A tenant listing that omits the custom flag must not hide our own
+    tagged dictionary; a preview that could not list a whole kind says so
+    instead of "nothing to remove"; every plan carries a read summary."""
+    pack = _pack_dir(tmp_path)
+    # 1. The custom flag is absent from the listing: the tag still identifies our dictionary.
+    client = _tenant(with_survivors=False)
+    client.zia.dlp_dictionary.items = [Obj(id=9001, name="RM-Dict", description="United States SSNs " + TAG)]
+    rep = pr.plan_removal(client, [pack])
+    assert rep["status"] == "ready" and any(i["kind"] == "dictionary" and i["name"] == "RM-Dict" for i in rep["items"])
+    assert rep["read"]["dictionaries"] == 1 and rep["read"]["tagged_dictionaries"] == 1 and rep["read"]["engines"] == 1 and rep["read"]["rules"]["web"] == 1
+    # 2. Dictionaries could not be listed but engines and rules could: warned, still ready.
+    client = _tenant(with_survivors=False)
+    client.zia.dlp_dictionary.fail = True
+    rep = pr.plan_removal(client, [pack])
+    assert rep["status"] == "ready" and any("Could not list the tenant's dictionaries" in w for w in rep["warnings"])
+    assert rep["read"]["unreadable"]["dictionaries"]
+    # 3. Nothing matched AND part of the tenant could not be read: blocked with the reason, not "nothing".
+    client = FakeClient(dicts=[], engines=[], rules=[])
+    client.zia.dlp_dictionary.fail = True
+    rep = pr.plan_removal(client, [pack])
+    assert rep["status"] == "blocked" and "could not be fully read" in rep["blockers"][0] and "dictionaries" in rep["blockers"][0]

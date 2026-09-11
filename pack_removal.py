@@ -87,6 +87,38 @@ def _matched(desc: Any, name: str, marks: Tuple[str, str], def_names: set) -> Op
     return None
 
 
+def _is_custom_dictionary(d: Any, how: Optional[str] = None) -> bool:
+    """A dictionary this tool may delete: the tenant flags it custom, or it
+    carries our provenance tag (a predefined dictionary never does). A
+    listing that omits the custom flag must not hide our own objects."""
+    custom = pd._field(d, "custom", "customDictionary", default=None)
+    if custom is not None:
+        return bool(custom)   # the tenant said so, either way
+    # No flag at all in this listing: our tag on a dictionary whose name is
+    # not one of Zscaler's localised predefined names means it is ours.
+    return how == "tag" and not pd._field(d, "name_l10n_tag", "nameL10nTag", default=False)
+
+
+def _read_summary(snap: Dict[str, Any]) -> Dict[str, Any]:
+    """What the preview could see, so "nothing to remove" can say what was
+    read (and what was not) instead of leaving the operator guessing."""
+    dicts = snap.get("dictionaries") or {}
+    custom = [d for d in dicts.values() if pd._field(d, "custom", "customDictionary", default=False)]
+    tagged = [d for d in dicts.values() if any(m in str(pd._field(d, "description", default="") or "") for m in _ANY_MARKS)]
+    engines = snap.get("engines") or {}
+    tagged_engines = [e for e in engines.values() if any(m in str(pd._field(e, "description", default="") or "") for m in _ANY_MARKS)]
+    rules = {pc.WEB: len(snap.get("rules") or [])}
+    for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items():
+        rules[ch] = len(rs or [])
+    tagged_rules = sum(1 for r in (snap.get("rules") or []) if any(m in str(r.get("description") or "") for m in _ANY_MARKS))
+    for rs in ((snap.get("channels") or {}).get("rules") or {}).values():
+        tagged_rules += sum(1 for r in (rs or []) if any(m in str(r.get("description") or "") for m in _ANY_MARKS))
+    return {"dictionaries": len(dicts), "custom_dictionaries": len(custom), "tagged_dictionaries": len(tagged),
+            "engines": len(engines), "tagged_engines": len(tagged_engines), "rules": rules, "tagged_rules": tagged_rules,
+            "unreadable": dict(snap.get("unreadable") or {}), "channel_errors": dict(((snap.get("channels") or {}).get("errors") or {})),
+            "errors": list(snap.get("errors") or [])}
+
+
 def _engine_dict_ids(eng_obj: Any) -> set:
     expr = str(pd._field(eng_obj, "engine_expression", "expression", default="") or "")
     return {m.group(1) for m in _DICT_ID_RE.finditer(expr)}
@@ -122,7 +154,14 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     if not snap.get("reachable", True):
         return {"status": "blocked", "found": False, "items": [], "summary": {},
                 "blockers": ["Could not read the tenant (no dictionaries, engines or rules listed). Check credentials and permissions."],
-                "warnings": snap.get("errors", []), "plan_hash": ""}
+                "warnings": snap.get("errors", []), "plan_hash": "", "read": _read_summary(snap)}
+    # A partial read must never look like "nothing to remove": say what
+    # could not be listed, and block when it is the very kind the packs own.
+    unreadable = snap.get("unreadable") or {}
+    for kind, err in unreadable.items():
+        warnings.append(f"Could not list the tenant's {kind}: {err}. Anything of that kind is invisible to this preview.")
+    for ch, err in ((snap.get("channels") or {}).get("errors") or {}).items():
+        warnings.append(f"Could not list the {pc.CHANNELS.get(ch, {}).get('label', ch)} rules: {err}.")
 
     # Pack definitions and provenance marks.
     def_dicts, def_engines, def_policies = set(), set(), set()
@@ -221,11 +260,11 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
             continue
         dict_ids_used_by_survivors |= _engine_dict_ids(e)
     for name, d in dicts.items():
-        if not pd._field(d, "custom", default=False):
-            continue   # never touch a predefined dictionary
         how = any_match(pd._field(d, "description"), name, def_dicts)
         if not how:
             continue
+        if not _is_custom_dictionary(d, how):
+            continue   # never touch a predefined dictionary
         did = str(pd._field(d, "id"))
         item = {"kind": "dictionary", "channel": None, "id": pd._field(d, "id"), "name": name, "match": how}
         if did in dict_ids_used_by_survivors:
@@ -260,10 +299,17 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         [(i["kind"], i.get("channel"), str(i["id"]), i["name"]) for i in to_remove], sort_keys=True).encode()).hexdigest()[:16]
 
     status = "ready" if to_remove else "nothing"
+    blockers: List[str] = []
+    if not items and unreadable:
+        # Nothing matched, but part of the tenant could not be read: that is
+        # not "nothing to remove", it is "could not look".
+        status = "blocked"
+        blockers.append("Nothing matched, but the tenant could not be fully read: " + "; ".join(f"{k}: {v}" for k, v in unreadable.items())
+                        + ". Check the API client's permissions for that area, then run the preview again.")
     return {
         "status": status, "found": bool(items), "packs": pack_ids, "everything": everything, "items": items,
         "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
-        "plan_hash": plan_hash, "warnings": warnings, "blockers": [],
+        "plan_hash": plan_hash, "warnings": warnings, "blockers": blockers, "read": _read_summary(snap),
     }
 
 

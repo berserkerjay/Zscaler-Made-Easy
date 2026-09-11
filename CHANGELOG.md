@@ -6,6 +6,11 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### Removal preview: "nothing to remove" now says what it read
+- **A partial read is never "nothing".** When the removal preview could not list a whole kind of object (dictionaries, engines, a channel's rules), it says so in the preview, and when nothing matched at all it blocks with the reason ("Nothing matched, but the tenant could not be fully read: dictionaries: …") instead of reporting an empty plan.
+- **The "Nothing to remove" card shows what the preview saw**: how many dictionaries (custom, DLP-Check-tagged), engines and rules per channel were read, and what could not be listed, so an empty result can be traced to its cause in one look.
+- **A listing that omits the custom flag no longer hides the app's own dictionaries**: a dictionary carrying the DLP-Check tag whose name is not one of Zscaler's localised predefined names is treated as ours. A dictionary the tenant flags as predefined is still never touched.
+
 ### Engines the tenant refused: names and description length
 - **Names.** A real tenant answered `INVALID_NAME: DLP Engine name can only have alphanumeric, underscore, hyphen, dot, paranthesis and space` for `HIPAA Narrative / Low Volume`, `HIPAA Pharmacy / Claims / Billing` and `HIPAA Critical (Strong Signature + Clinical Document)`. They are now `HIPAA Narrative - Low Volume`, `HIPAA Pharmacy - Claims - Billing` and `HIPAA Critical (Strong Signature and Clinical Document)`; the CJIS pack's three engines and six dictionaries with a slash are renamed the same way. Preflight now refuses an engine name outside that character set with the reason, before any write, and a convention test holds every shipped pack to it.
 - **Descriptions.** The same tenant answered `DLP engine description can not be more than 255 characters` for every other engine: the packs' engine descriptions are documentation and run long. The deploy now clamps what it sends to 255 bytes (the provenance tag is kept whole, the text is shortened with an ellipsis), as it already did for dictionaries; the pack files keep the full text. The fake tenant in the tests refuses both, exactly as the real one does.

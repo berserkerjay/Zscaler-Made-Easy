@@ -867,6 +867,19 @@ async function _dzRemove(id) {
 
 function _dzRemovalClose() { DZ.removal = null; DZ.step = 1; _dzRender(); }
 
+// One sentence on what the removal preview could see, for the "nothing to
+// remove" card: counts per kind, how many carry a DLP-Check tag, and what
+// could not be listed.
+function _dzReadSummary(rd) {
+  if (!rd) return '';
+  const rules = Object.entries(rd.rules || {}).map(([ch, n]) => `${_dzChan(ch)} ${n}`).join(', ');
+  const parts = [`${rd.dictionaries} dictionaries (${rd.custom_dictionaries} custom, ${rd.tagged_dictionaries} tagged by DLP-Check)`,
+                 `${rd.engines} engines (${rd.tagged_engines} tagged)`, `rules: ${rules || 'none'} (${rd.tagged_rules} tagged)`];
+  const bad = Object.entries(rd.unreadable || {}).map(([k, v]) => `${k} could not be listed (${v})`)
+    .concat(Object.entries(rd.channel_errors || {}).map(([k, v]) => `${_dzChan(k)} rules could not be listed (${v})`));
+  return parts.join('; ') + (bad.length ? '. ' + bad.join('; ') + '.' : '.');
+}
+
 function _dzRemovalRender() {
   const R = DZ.removal; if (!R) return;
   const pick = R.mode === 'pick';
@@ -991,7 +1004,9 @@ function _dzRemovalPreview() {
   </div>`;
   const removeSorted = remove.slice().sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9) || a.name.localeCompare(b.name));
   body.innerHTML = `
-    ${!remove.length ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Nothing to remove</div><div class="d">No objects in the tenant carry this pack’s DLP-Check tag or its names.${keep.length ? ` ${keep.length} matching object(s) are kept because something else still uses them.` : ''}</div></div></div>` : `
+    ${!remove.length ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Nothing to remove</div><div class="d">No objects in the tenant carry this pack’s DLP-Check tag or its names.${keep.length ? ` ${keep.length} matching object(s) are kept because something else still uses them.` : ''}</div>
+      ${R.plan.read ? `<div class="d" style="margin-top:0.4rem;">What the preview read from ${_dzE(R.plan.tenant_label || 'the tenant')}: ${_dzE(_dzReadSummary(R.plan.read))}</div>` : ''}
+      ${(R.plan.warnings || []).length ? `<div class="d" style="margin-top:0.4rem;">${(R.plan.warnings || []).map(w => `⚠ ${_dzE(w)}`).join('<br>')}</div>` : ''}</div></div>` : `
     <div class="dz-flow-hint" style="margin-bottom:0.6rem;">How ${_dzE(R.pack.name || R.id)} flows through the tenant: each dictionary feeds its engines, which feed the rules on every channel. Red is removed; grey is kept because another rule or engine still uses it.</div>
     ${_dzFlowHtml(items, null, { standalone: true })}
     <div class="dz-h" style="margin-top:1rem;">Will remove<span class="count">${remove.length}</span></div>
