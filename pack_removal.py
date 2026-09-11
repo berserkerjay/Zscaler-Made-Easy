@@ -282,6 +282,141 @@ def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
         time.sleep(3)
 
 
+def _all_need() -> Dict[str, Any]:
+    need = pc.needs([])
+    need["channels"] = set(pc.DLP_CHANNELS)
+    need["casb"] = True
+    need["endpoint_app_groups"] = True
+    return need
+
+
+def _tag_pack(desc: Any) -> Optional[str]:
+    """The pack id inside a DLP-Check provenance tag, or None."""
+    d = str(desc or "")
+    for mk in _ANY_MARKS:
+        if mk in d:
+            rest = d.split(mk, 1)[1].strip()
+            return rest.split("]", 1)[0].split(" v")[0].strip() or None
+    return None
+
+
+def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
+    web = [dict(r, channel=pc.WEB) for r in snap.get("rules", [])]
+    others = [dict(r, channel=ch) for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items() for r in (rs or [])]
+    return web + others
+
+
+def inventory(client) -> Dict[str, Any]:
+    """Every DLP rule the tenant has, on every channel, with its engines
+    and provenance, so an operator can pick the leftovers to remove."""
+    snap = pd.fetch_tenant(client, _all_need())
+    if not snap.get("reachable", True):
+        return {"status": "blocked", "rules": [], "blockers": ["Could not read the tenant. Check credentials and permissions."],
+                "errors": snap.get("errors", [])}
+    engines = snap.get("engines") or {}
+    eng_name = {str(pd._field(e, "id")): n for n, e in engines.items()}
+    rules = []
+    for r in _tenant_rules(snap):
+        desc = r.get("description")
+        pack = _tag_pack(desc)
+        rules.append({"channel": r["channel"], "id": r.get("id"), "name": r.get("name"), "state": r.get("state"),
+                      "action": r.get("action"), "parent_id": r.get("parent_id"), "type": r.get("type"),
+                      "engine_ids": [str(x) for x in (r.get("engine_ids") or [])],
+                      "engines": [eng_name.get(str(x), str(x)) for x in (r.get("engine_ids") or [])],
+                      "tagged": pack is not None, "pack": pack})
+    order = {ch: i for i, ch in enumerate(pc.DLP_CHANNELS)}
+    rules.sort(key=lambda r: (order.get(r["channel"], 9), str(r["name"]).lower()))
+    return {"status": "ready", "rules": rules, "errors": (snap.get("channels") or {}).get("errors") or {}}
+
+
+def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Preview the removal of the chosen rules ({channel, id} each) and of
+    the engines and dictionaries only they use, with the same keep rule
+    as a pack removal: an engine a rule outside the selection still uses,
+    or a dictionary a surviving engine still uses, is kept. Predefined
+    objects are never touched."""
+    keys = {(str(x.get("channel") or pc.WEB), str(x.get("id"))) for x in (selected or []) if x.get("id") is not None}
+    snap = tenant_cache or pd.fetch_tenant(client, _all_need())
+    if not snap.get("reachable", True):
+        return {"status": "blocked", "found": False, "items": [], "summary": {},
+                "blockers": ["Could not read the tenant (no dictionaries, engines or rules listed). Check credentials and permissions."],
+                "warnings": snap.get("errors", []), "plan_hash": ""}
+    warnings: List[str] = []
+    tenant_rules = _tenant_rules(snap)
+    rule_items = []
+    for r in tenant_rules:
+        if (r["channel"], str(r.get("id"))) in keys:
+            rule_items.append({"kind": "policy", "channel": r["channel"], "id": r.get("id"), "name": r.get("name"),
+                               "parent_id": r.get("parent_id"), "type": r.get("type"), "match": "selected",
+                               "engine_ids": [str(x) for x in (r.get("engine_ids") or [])]})
+    found_keys = {(i["channel"], str(i["id"])) for i in rule_items}
+    for k in sorted(keys - found_keys):
+        warnings.append(f"rule {k[1]} on {k[0]} is no longer in the tenant; skipped.")
+    remove_rule_ids = {str(i["id"]) for i in rule_items}
+
+    engines = snap.get("engines") or {}
+    wanted_engine_ids = {eid for i in rule_items for eid in i["engine_ids"]}
+    engine_ids_used_by_survivors: set = set()
+    for r in tenant_rules:
+        if str(r.get("id")) in remove_rule_ids:
+            continue
+        engine_ids_used_by_survivors |= {str(e) for e in (r.get("engine_ids") or [])}
+    engine_items = []
+    remove_engine_ids: set = set()
+    for name, e in engines.items():
+        eid = str(pd._field(e, "id"))
+        if eid not in wanted_engine_ids:
+            continue
+        if pd._field(e, "predefined_engine", default=False) or pd._field(e, "custom_dlp_engine", default=True) is False:
+            continue   # never a predefined engine
+        item = {"kind": "engine", "channel": None, "id": pd._field(e, "id"), "name": name, "match": "dependency",
+                "dict_ids": sorted(_engine_dict_ids(e))}
+        if eid in engine_ids_used_by_survivors:
+            item["keep"] = "still used by a rule you did not select"
+        else:
+            remove_engine_ids.add(eid)
+        engine_items.append(item)
+
+    dicts = snap.get("dictionaries") or {}
+    wanted_dict_ids = {did for i in engine_items if "keep" not in i for did in i["dict_ids"]}
+    dict_ids_used_by_survivors: set = set()
+    for name, e in engines.items():
+        if str(pd._field(e, "id")) in remove_engine_ids:
+            continue
+        dict_ids_used_by_survivors |= _engine_dict_ids(e)
+    dict_items = []
+    for name, d in dicts.items():
+        did = str(pd._field(d, "id"))
+        if did not in wanted_dict_ids or not pd._field(d, "custom", default=False):
+            continue
+        item = {"kind": "dictionary", "channel": None, "id": pd._field(d, "id"), "name": name, "match": "dependency"}
+        if did in dict_ids_used_by_survivors:
+            item["keep"] = "still used by an engine that stays"
+        dict_items.append(item)
+
+    items = rule_items + engine_items + dict_items
+    for it in items:
+        it["status"] = "keep" if it.get("keep") else "remove"
+    eng_id_to_name = {str(i["id"]): i["name"] for i in engine_items}
+    dict_id_to_name = {str(i["id"]): i["name"] for i in dict_items}
+    for it in rule_items:
+        it["depends_on"] = [f"engine:{eng_id_to_name[eid]}" for eid in it["engine_ids"] if eid in eng_id_to_name]
+    for it in engine_items:
+        it["depends_on"] = [f"dictionary:{dict_id_to_name[did]}" for did in it.get("dict_ids", []) if did in dict_id_to_name]
+    rank = {k: i for i, k in enumerate(UNDO_ORDER)}
+    items.sort(key=lambda c: (rank.get(c["kind"], 9), 0 if c.get("parent_id") is not None else 1, str(c["name"])))
+    summary: Dict[str, int] = {}
+    for it in items:
+        key = f"{it['status']}_{it['kind']}"
+        summary[key] = summary.get(key, 0) + 1
+    to_remove = [it for it in items if it["status"] == "remove"]
+    plan_hash = hashlib.sha256(json.dumps(
+        [(i["kind"], i.get("channel"), str(i["id"]), i["name"]) for i in to_remove], sort_keys=True).encode()).hexdigest()[:16]
+    return {"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": [], "selection": sorted(keys),
+            "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
+            "plan_hash": plan_hash, "warnings": warnings, "blockers": []}
+
+
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
            log: pd.LogFn = None, settle_seconds: float = 45.0, everything: bool = False) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal. Re-reads the tenant,
@@ -291,10 +426,23 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     Activates, waits for the activation to settle, then VERIFIES BY
     READING the tenant again: the result's `verification` says whether
     anything of the pack is still there."""
+    return _execute(client, lambda: plan_removal(client, packs, everything=everything),
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+
+
+def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
+                    log: pd.LogFn = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
+    """Execute a removal previewed by plan_removal_selected: the chosen
+    rules, then the engines and dictionaries only they used."""
+    return _execute(client, lambda: plan_removal_selected(client, selected),
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+
+
+def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
-    plan = plan_removal(client, packs, everything=everything)
+    plan = planner()
     if plan["status"] == "blocked":
         return {"status": "blocked", "blockers": plan["blockers"], "results": []}
     if plan_hash and plan["plan_hash"] != plan_hash:
@@ -366,9 +514,25 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     # the tenant as it is now. Anything of the pack still there is
     # reported as still present, and the removal is not called complete.
     _log("Re-reading the tenant to verify the removal…")
-    verify = plan_removal(client, packs, everything=everything)
+    verify = planner()
     remaining = [it for it in verify.get("items", []) if it["status"] == "remove"]
     remaining_keys = {(it["kind"], it.get("channel"), str(it["id"])) for it in remaining}
+    # Also look for every object this run deleted, by id and name: a plan
+    # keyed on rules (pick mode) cannot see a leftover engine once its
+    # rules are gone, but a fresh listing can.
+    names_cache.clear()
+    for entry in results:
+        if entry["status"] != "deleted":
+            continue
+        key = (entry["kind"], entry.get("channel") if entry["kind"] == "policy" else None)
+        if key not in names_cache:
+            names_cache[key] = pd._current_names(zia, entry["kind"], entry.get("channel"))
+        current, _err = names_cache[key]
+        if current is not None and current.get(str(entry["id"])) == entry["name"] \
+                and (entry["kind"], entry.get("channel"), str(entry["id"])) not in remaining_keys:
+            remaining.append({"kind": entry["kind"], "channel": entry.get("channel"), "id": entry["id"], "name": entry["name"],
+                              "status": "remove", "match": entry.get("match")})
+            remaining_keys.add((entry["kind"], entry.get("channel"), str(entry["id"])))
     for entry in results:
         if entry["status"] == "deleted" and (entry["kind"], entry.get("channel"), str(entry["id"])) in remaining_keys:
             entry.update(status="still_present",

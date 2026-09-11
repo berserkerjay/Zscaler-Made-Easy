@@ -317,6 +317,10 @@ function _dzRenderSelect() {
           <div><div class="t">Remove every deployed policy pack</div><div class="d">Finds everything DLP-Check ever put in this tenant — any object carrying a DLP-Check tag whatever pack or version wrote it, plus the names of every pack in the library and of objects earlier pack versions shipped — on every channel, and removes it in one pass with the same per-object rules as a single pack (anything something else still uses is kept). Previewed first, double-confirmed, then verified by a fresh read. Needs write mode.</div></div>
           <button type="button" class="dz-btn danger" onclick="_dzRemove(RM_ALL)" ${(DZ.remove || {})[RM_ALL] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_ALL] === 'busy' ? 'Scanning…' : 'Remove all…'}</button>
         </div>
+        <div class="dz-option">
+          <div><div class="t">Pick rules to remove</div><div class="d">Lists every DLP rule in the tenant on every channel — with its state, engines and whether DLP-Check created it — so you tick the leftovers yourself. The plan removes those rules plus the engines and dictionaries only they use, keeps anything something else still uses, previews, double-confirms and verifies by a fresh read. Needs write mode.</div></div>
+          <button type="button" class="dz-btn" onclick="_dzRemovePick()" ${(DZ.remove || {})[RM_PICK] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_PICK] === 'busy' ? 'Listing…' : 'Pick rules…'}</button>
+        </div>
       </div>
       ${_dzDeploymentsHtml()}`;
   }
@@ -817,17 +821,112 @@ function _dzRemovalClose() { DZ.removal = null; DZ.step = 1; _dzRender(); }
 
 function _dzRemovalRender() {
   const R = DZ.removal; if (!R) return;
+  const pick = R.mode === 'pick';
+  const names = pick ? ['Select', ...RM_STEPS] : RM_STEPS;
+  const base = pick ? 0 : 1;
   const steps = document.getElementById('dzSteps');
-  steps.innerHTML = RM_STEPS.map((s, i) => {
-    const n = i + 1, cls = n === R.step ? 'is-active' : (n < R.step ? 'is-done' : '');
-    return `<div class="dz-step ${cls}" ${n === R.step ? 'aria-current="step"' : ''}><span class="n">${n < R.step ? '✓' : n}</span>${s}</div>`;
+  steps.innerHTML = names.map((s, i) => {
+    const n = base + i, cls = n === R.step ? 'is-active' : (n < R.step ? 'is-done' : '');
+    return `<div class="dz-step ${cls}" ${n === R.step ? 'aria-current="step"' : ''}><span class="n">${n < R.step ? '✓' : i + 1}</span>${s}</div>`;
   }).join('');
-  const subs = { 1: `Removing ${R.pack.name || R.id}: what it put in ${_dzE(R.plan.tenant_label || 'the tenant')}, and how it flows. Nothing is deleted yet.`,
+  const subs = { 0: `Every DLP rule in ${_dzE((R.inventory && R.inventory.tenant_label) || 'the tenant')} on every channel. Tick the leftovers; their engines and dictionaries follow, unless something else still uses them. Nothing is deleted yet.`,
+                 1: `Removing ${R.pack.name || R.id}: what it put in ${_dzE((R.plan && R.plan.tenant_label) || 'the tenant')}, and how it flows. Nothing is deleted yet.`,
                  2: 'Review, then approve. Deletion is in dependency order and needs write mode.',
                  3: 'Removing, activating, then waiting for ZIA to report the activation — keep this window open.',
                  4: 'Verified by a fresh read of the tenant after activation.' };
   document.getElementById('dzSub').textContent = subs[R.step];
-  ({ 1: _dzRemovalPreview, 2: _dzRemovalApprove, 3: _dzRemovalBusy, 4: _dzRemovalDone })[R.step]();
+  ({ 0: _dzRemovalSelect, 1: _dzRemovalPreview, 2: _dzRemovalApprove, 3: _dzRemovalBusy, 4: _dzRemovalDone })[R.step]();
+}
+
+// The request body that identifies what this wizard removes: the packs,
+// everything, or the rules the operator picked.
+function _dzRemovalScope() {
+  const R = DZ.removal;
+  if (R.mode === 'pick') return { pack_ids: [], rules: R.rules || [] };
+  return { pack_ids: R.ids || [R.id], all: R.id === RM_ALL };
+}
+
+const RM_PICK = '__pick__';
+
+// Pick mode: list every DLP rule the tenant has, let the operator tick
+// the leftovers, and plan their removal with the engines and
+// dictionaries only they use.
+async function _dzRemovePick() {
+  DZ.remove = DZ.remove || {}; DZ.remove[RM_PICK] = 'busy'; _dzRenderSelect();
+  let inv;
+  try {
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds() }) });
+    inv = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
+  } catch (e) {
+    DZ.remove[RM_PICK] = null; _dzRenderSelect();
+    alert(`Could not list the tenant's DLP rules: ${e.message}`);
+    return;
+  }
+  DZ.remove[RM_PICK] = null;
+  if (inv.status === 'blocked') { alert((inv.blockers || ['Could not read the tenant.']).join('\n')); _dzRenderSelect(); return; }
+  DZ.removal = { id: RM_PICK, mode: 'pick', pack: { id: RM_PICK, name: 'the selected rules' }, inventory: inv, selected: new Set(), filter: '', plan: null, step: 0, result: null };
+  _dzRemovalRender();
+}
+
+function _dzRemovalSelect() {
+  const R = DZ.removal, body = document.getElementById('dzBody');
+  const rules = (R.inventory.rules || []);
+  const key = r => `${r.channel}:${r.id}`;
+  const q = (R.filter || '').toLowerCase();
+  const shown = rules.filter(r => !q || (r.name || '').toLowerCase().includes(q) || (r.engines || []).join(' ').toLowerCase().includes(q) || (r.pack || '').toLowerCase().includes(q));
+  const byChan = {};
+  shown.forEach(r => { (byChan[r.channel] = byChan[r.channel] || []).push(r); });
+  const row = r => `<label class="dz-row dz-pick ${R.selected.has(key(r)) ? 'on' : ''}">
+      <input type="checkbox" ${R.selected.has(key(r)) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(key(r))}', this.checked)" aria-label="Remove ${_dzE(r.name)}">
+      <div><div class="nm">${_dzE(r.name)} <span class="dz-chip ${String(r.state).toUpperCase() === 'ENABLED' ? 'kind-policy' : ''}">${_dzE(String(r.state || '').toLowerCase() || 'state ?')}</span>${r.parent_id != null ? '<span class="dz-chip">sub-rule</span>' : ''}</div>
+        <div class="rs">${r.tagged ? `DLP-Check · ${_dzE(r.pack || 'pack')}` : 'not created by DLP-Check'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
+    </label>`;
+  const groups = Object.keys(byChan).map(ch => `<div class="dz-h" style="margin-top:0.8rem;">${_dzE(_dzChan(ch))}<span class="count">${byChan[ch].length}</span></div><div class="dz-rows">${byChan[ch].map(row).join('')}</div>`).join('');
+  const errs = Object.entries(R.inventory.errors || {}).filter(([, v]) => v);
+  body.innerHTML = `
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${rules.length} DLP rule(s) in the tenant</div>
+      <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
+    <div class="dz-pick-tools">
+      <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="DZ.removal.filter=this.value;_dzRemovalRender()" aria-label="Filter rules">
+      <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select DLP-Check rules</button>
+      <button type="button" class="dz-link" onclick="_dzPickSet(r => String(r.state).toUpperCase() !== 'ENABLED')">Select disabled rules</button>
+      <button type="button" class="dz-link" onclick="_dzPickSet(() => true)">Select all shown</button>
+      <button type="button" class="dz-link" onclick="_dzPickSet(() => false)">Clear</button>
+    </div>
+    ${groups || '<div class="dz-empty">No rules match the filter.</div>'}
+    <div class="dz-actions">
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
+      <button type="button" class="dz-btn primary" onclick="_dzRemovalPickPreview()" ${R.selected.size && !DZ.busy ? '' : 'disabled'}>${DZ.busy ? 'Planning…' : `Preview removal of ${R.selected.size} rule(s)`}</button>
+    </div>`;
+}
+
+function _dzPickToggle(k, on) { const R = DZ.removal; if (!R) return; if (on) R.selected.add(k); else R.selected.delete(k); _dzRemovalRender(); }
+function _dzPickSet(pred) {
+  const R = DZ.removal; if (!R) return;
+  const q = (R.filter || '').toLowerCase();
+  (R.inventory.rules || []).forEach(r => {
+    const vis = !q || (r.name || '').toLowerCase().includes(q) || (r.engines || []).join(' ').toLowerCase().includes(q) || (r.pack || '').toLowerCase().includes(q);
+    if (!vis) return;
+    const k = `${r.channel}:${r.id}`;
+    if (pred(r)) R.selected.add(k); else R.selected.delete(k);
+  });
+  _dzRemovalRender();
+}
+
+async function _dzRemovalPickPreview() {
+  const R = DZ.removal; if (!R || !R.selected.size || DZ.busy) return;
+  R.rules = (R.inventory.rules || []).filter(r => R.selected.has(`${r.channel}:${r.id}`)).map(r => ({ channel: r.channel, id: r.id }));
+  DZ.busy = true; _dzRemovalRender();
+  try {
+    const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pack_ids: [], rules: R.rules, ..._dzCreds() }) });
+    const plan = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
+    plan.tenant_label = plan.tenant_label || R.inventory.tenant_label;
+    R.plan = plan; R.step = 1;
+  } catch (e) {
+    alert(`Could not plan the removal: ${e.message}`);
+  } finally { DZ.busy = false; _dzRemovalRender(); }
 }
 
 function _dzRemovalPreview() {
@@ -851,6 +950,7 @@ function _dzRemovalPreview() {
     ${keep.length ? `<div class="dz-h" style="margin-top:1rem;">Kept (still used elsewhere)<span class="count">${keep.length}</span></div><div class="dz-rows">${keep.map(row).join('')}</div>` : ''}`}
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
+      ${R.mode === 'pick' ? '<button type="button" class="dz-btn quiet" onclick="DZ.removal.step=0;_dzRemovalRender()">Back to the rules</button>' : ''}
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()" ${remove.length ? '' : 'disabled'}>Print / Save as PDF</button>
       <button type="button" class="dz-btn primary" onclick="DZ.removal.step=2;_dzRemovalRender()" ${remove.length ? '' : 'disabled'}>Continue to approve</button>
     </div>`;
@@ -921,7 +1021,7 @@ async function _dzRemovalVerifyAgain() {
   const R = DZ.removal; if (!R || DZ.busy) return;
   DZ.busy = true; announce('Re-reading the tenant…');
   try {
-    const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pack_ids: R.ids || [R.id], all: R.id === RM_ALL, ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzRemovalScope(), ..._dzCreds() }) });
     const plan = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
     const remaining = (plan.items || []).filter(i => i.status === 'remove');
@@ -939,7 +1039,7 @@ function _dzRemovalLeftovers() {
   const R = DZ.removal; if (!R || !R.result || !R.result.verification || !R.result.verification.plan) return;
   const plan = R.result.verification.plan;
   plan.tenant_label = plan.tenant_label || R.plan.tenant_label;
-  DZ.removal = { id: R.id, ids: R.ids, pack: R.pack, plan, step: 2, result: null, consent: false };
+  DZ.removal = { id: R.id, ids: R.ids, mode: R.mode, rules: R.rules, inventory: R.inventory, selected: R.selected, pack: R.pack, plan, step: 2, result: null, consent: false };
   _dzRemovalRender();
 }
 
@@ -954,7 +1054,7 @@ async function _dzRemovalApply() {
   try {
     const r = await fetch('/api/dlp-packs/removal/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: R.ids || [R.id], all: R.id === RM_ALL, plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
+      body: JSON.stringify({ ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);

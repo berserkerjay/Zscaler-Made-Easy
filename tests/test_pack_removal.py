@@ -213,6 +213,45 @@ def test_remove_everything_covers_retired_packs_and_old_names(tmp_path, monkeypa
     assert {d.name for d in client.zia.dlp_dictionary.items} == {"CUI Category Phrase", "Hand-made Dict"}
 
 
+def test_pick_rules_removes_them_with_the_engines_and_dictionaries_only_they_use(tmp_path, monkeypatch):
+    """Pick mode: the operator selects rules from the inventory; the plan
+    removes those rules plus the engines and dictionaries only they used,
+    keeping anything an unselected rule or a surviving engine still uses."""
+    from test_pack_channels import make_client
+    client = make_client(saas_rules=[Obj(id=8501, name="Old [SaaS]", type="OFLCASB_DLP_FILE", state="DISABLED",
+                                         action="OFLCASB_DLP_REPORT_INCIDENT", dlp_engines=[{"id": 5001}], description="")])
+    client.zia.dlp_dictionary.items = [Obj(id=9001, name="Old-Dict", custom=True, description=""),
+                                       Obj(id=9002, name="Shared-Dict", custom=True, description=""),
+                                       Obj(id=1, name="SSN", custom=False, description="")]
+    client.zia.dlp_engine.items = [Obj(id=5001, name="Old-Engine", engine_expression="D9001.S > 0 OR D9002.S > 0", description=""),
+                                   Obj(id=5002, name="Shared-Engine", engine_expression="D9002.S > 0", description=""),
+                                   Obj(id=5003, name="Keep-Engine", engine_expression="D1.S > 0", description="")]
+    client.zia.dlp_web_rules.items = [
+        Obj(id=7001, name="Old-Monitor", order=1, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5001}, {"id": 5002}], description="[DLP-Check pack oldpack v1] x"),
+        Obj(id=7002, name="Keep-Monitor", order=2, action="BLOCK", state="ENABLED", dlp_engines=[{"id": 5002}, {"id": 5003}], description="mine")]
+    _deletable(client)
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    inv = pr.inventory(client)
+    by = {(r["channel"], r["name"]): r for r in inv["rules"]}
+    assert inv["status"] == "ready" and set(by) == {("web", "Old-Monitor"), ("web", "Keep-Monitor"), ("saas", "Old [SaaS]")}
+    assert by[("web", "Old-Monitor")]["tagged"] and by[("web", "Old-Monitor")]["pack"] == "oldpack" and by[("web", "Old-Monitor")]["engines"] == ["Old-Engine", "Shared-Engine"]
+    assert not by[("web", "Keep-Monitor")]["tagged"]
+    sel = [{"channel": "web", "id": 7001}, {"channel": "saas", "id": 8501}]
+    plan = pr.plan_removal_selected(client, sel)
+    st = {i["name"]: i for i in plan["items"]}
+    assert st["Old-Monitor"]["status"] == "remove" and st["Old [SaaS]"]["status"] == "remove" and "Keep-Monitor" not in st
+    assert st["Old-Engine"]["status"] == "remove" and st["Shared-Engine"]["status"] == "keep" and "Keep-Engine" not in st
+    assert st["Old-Dict"]["status"] == "remove" and st["Shared-Dict"]["status"] == "keep" and "SSN" not in st
+    assert st["Old-Monitor"]["depends_on"] == ["engine:Old-Engine", "engine:Shared-Engine"] and st["Old-Engine"]["depends_on"] == ["dictionary:Old-Dict", "dictionary:Shared-Dict"]
+    res = pr.remove_selected(client, sel, plan_hash=plan["plan_hash"], writes_enabled=True)
+    assert res["status"] == "removed" and res["verification"]["clean"] and res["summary"] == {"deleted": 4}
+    assert {r.name for r in client.zia.dlp_web_rules.items} == {"Keep-Monitor"} and client.zia.casb_dlp_rules.items == []
+    assert {e.name for e in client.zia.dlp_engine.items} == {"Shared-Engine", "Keep-Engine"}
+    assert {d.name for d in client.zia.dlp_dictionary.items} == {"Shared-Dict", "SSN"}
+    # A stale hash (tenant changed) is refused, as for a pack.
+    assert pr.remove_selected(client, sel, plan_hash="stale", writes_enabled=True)["status"] in ("stale", "nothing")
+
+
 def test_remove_is_refused_read_only_and_when_stale(tmp_path):
     pack = _pack_dir(tmp_path)
     client = _deletable(_tenant(with_survivors=False))

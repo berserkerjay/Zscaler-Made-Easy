@@ -826,6 +826,7 @@ class PackRemovalRequest(TenantCredsRequest):
     plan_hash: str = ""
     confirm: bool = False
     all: bool = False      # everything DLP-Check ever put in the tenant, not just the listed packs
+    rules: List[Dict[str, Any]] = []   # pick mode: the rules ({channel, id}) to remove with their engines and dictionaries
 
 
 _WRITES_DISABLED_MSG = (
@@ -1016,12 +1017,32 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         import pack_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
-    if not req.pack_ids:
-        raise HTTPException(status_code=400, detail="Select at least one pack to remove.")
-    packs = _resolve_pack_ids(req.pack_ids)
+    if not req.pack_ids and not req.rules:
+        raise HTTPException(status_code=400, detail="Select at least one pack, or pick the rules, to remove.")
+    packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
+    if req.rules:
+        out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
+    else:
+        out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
+    out["writes_enabled"] = writes_enabled()
+    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    return out
+
+
+@app.post("/api/dlp-packs/removal/inventory")
+async def dlp_pack_removal_inventory(req: TenantCredsRequest):
+    """Every DLP rule the tenant has on every channel (web, endpoint, SaaS,
+    email) with its state, engines and DLP-Check provenance, so the
+    operator can pick the leftovers to remove. Read-only."""
+    try:
+        import pack_removal
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    out = await asyncio.to_thread(pack_removal.inventory, client)
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
@@ -1039,17 +1060,20 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
         import pack_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
-    if not req.pack_ids:
-        raise HTTPException(status_code=400, detail="Select at least one pack to remove.")
+    if not req.pack_ids and not req.rules:
+        raise HTTPException(status_code=400, detail="Select at least one pack, or pick the rules, to remove.")
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
-    packs = _resolve_pack_ids(req.pack_ids)
+    packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
-    result = await asyncio.to_thread(lambda: pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append, everything=bool(req.all)))
+    if req.rules:
+        result = await asyncio.to_thread(lambda: pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append))
+    else:
+        result = await asyncio.to_thread(lambda: pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append, everything=bool(req.all)))
     result["logs"] = logs
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
