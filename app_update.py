@@ -96,6 +96,36 @@ def clear_stale_index_lock(app_dir: str) -> Optional[str]:
         return f"could not remove the stale git lock {lock}: {e}"
 
 
+def unmerged_files(app_dir: str) -> List[str]:
+    """Paths git holds in a conflicted (unmerged) state: what a stash pop
+    that hit a conflict leaves behind. While any exist, git refuses to
+    stash or pull."""
+    cp = _git(app_dir, "diff", "--name-only", "--diff-filter=U")
+    if cp.returncode != 0:
+        return []
+    return [ln.strip() for ln in (cp.stdout or "").splitlines() if ln.strip()]
+
+
+def recover_unmerged(app_dir: str) -> Optional[Dict[str, Any]]:
+    """A half-applied earlier update (re-applying the edits conflicted)
+    leaves unmerged paths, and every later update fails at the stash
+    step. Copy the conflicted files aside, reset the tree to the last
+    build and carry on; the earlier edits are still in git stash. Returns
+    {files, backup, ok} or None when there was nothing to recover."""
+    files = unmerged_files(app_dir)
+    if not files:
+        return None
+    backup = os.path.join(app_dir, "updater_backup", time.strftime("%Y%m%d-%H%M%S"))
+    for rel in files:
+        src = os.path.join(app_dir, rel)
+        if os.path.isfile(src):
+            dst = os.path.join(backup, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+    cp = _git(app_dir, "reset", "--hard", "HEAD")
+    return {"files": files, "backup": backup, "ok": cp.returncode == 0, "error": _err(cp) if cp.returncode else ""}
+
+
 def _index_hint(msg: str) -> str:
     low = msg.lower()
     if "could not write index" in low or "index.lock" in low or "unable to write" in low or "permission denied" in low or "unable to create" in low:
@@ -246,7 +276,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     `steps` and a failure sets `error`. `updated` is True when HEAD moved."""
     steps: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {"ok": False, "updated": False, "before": None, "after": None, "steps": steps, "error": None,
-                              "deps_ok": None, "restart_required": False, "preserved": [], "migrated": []}
+                              "deps_ok": None, "restart_required": False, "preserved": [], "migrated": [], "recovered": None}
 
     def step(name: str, ok: bool, detail: str = "", soft: bool = False) -> None:
         # soft: a failure here does not stop the update (dependencies, re-applying edits).
@@ -266,8 +296,22 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     if note and note.startswith("removed"):
         step("Clear a stale git lock", True, note)
 
+    # Unmerged paths from an earlier update whose re-apply conflicted: git
+    # refuses every stash and pull until they are gone.
+    rec = recover_unmerged(app_dir)
+    if rec:
+        step("Recover a half-applied earlier update", rec["ok"],
+             f"{len(rec['files'])} conflicted file(s) ({', '.join(rec['files'][:6])}{' …' if len(rec['files']) > 6 else ''}) "
+             f"copied to {rec['backup']} and the folder reset to the last build; the edits from that update also remain in git stash "
+             f"(run  git stash list  in the app folder)." if rec["ok"] else "git reset failed: " + rec["error"])
+        if not rec["ok"]:
+            result["error"] = ("An earlier update was left half-applied (unmerged files: " + ", ".join(rec["files"]) +
+                               ") and could not be reset: " + rec["error"] + _index_hint(rec["error"]))
+            return result
+        result["recovered"] = rec
+
     # Local edits: settings move to local_settings.bat; the rest is stashed.
-    dirty = list(st.get("dirty_files") or [])
+    dirty = dirty_files(app_dir) if rec else list(st.get("dirty_files") or [])
     stashed = False
     if dirty:
         migrated, restored = migrate_settings(app_dir, dirty)

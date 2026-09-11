@@ -127,6 +127,35 @@ def test_stale_index_lock_is_cleared_before_setting_edits_aside(repos):
     assert "# my note" in (repos["app"] / "requirements.txt").read_text()
 
 
+def test_half_applied_update_with_unmerged_paths_is_recovered(repos):
+    """Re-applying stashed edits after a pull can conflict; git then holds
+    unmerged paths and refuses to stash or pull. The next update copies the
+    conflicted files aside, resets to the last build and completes."""
+    app = str(repos["app"])
+    # An edit to the file the next release also changes, then the old flow:
+    # stash, pull, stash pop -> conflict left in place.
+    (repos["app"] / "dlp_api_server.py").write_text("print('mine')\n")
+    _git(app, "stash", "push", "-q", "-m", "old update")
+    _push_v2(repos["work"])
+    _git(app, "pull", "-q", "--ff-only", "origin", "main")
+    cp = subprocess.run(["git", "stash", "pop"], cwd=app, capture_output=True, text=True)
+    assert cp.returncode != 0 and au.unmerged_files(app) == ["dlp_api_server.py"]
+    assert subprocess.run(["git", "stash", "push", "-m", "x"], cwd=app, capture_output=True, text=True).returncode != 0   # git refuses
+    (repos["work"] / "dlp_api_server.py").write_text("print('v3')\n")
+    _git(repos["work"], "commit", "-q", "-am", "v3"); _git(repos["work"], "push", "-q", "origin", "HEAD:main")
+    v3 = _git(repos["work"], "rev-parse", "--short", "HEAD")
+    res = au.update(app, install_deps=False)
+    assert res["ok"] and res["updated"] and res["after"] == v3, res
+    names = [s["name"] for s in res["steps"]]
+    assert names == ["Check this folder", "Recover a half-applied earlier update", "Fetch from GitHub", "Pull latest code"]
+    rec = res["recovered"]
+    assert rec["files"] == ["dlp_api_server.py"] and os.path.isfile(os.path.join(rec["backup"], "dlp_api_server.py"))
+    assert "<<<<<<<" in open(os.path.join(rec["backup"], "dlp_api_server.py")).read()    # the conflicted copy is kept
+    assert (repos["app"] / "dlp_api_server.py").read_text() == "print('v3')\n" and au.unmerged_files(app) == []
+    assert "old update" in _git(app, "stash", "list")                                    # the edits are still in the stash
+    assert au.status(app)["can_update"]
+
+
 def test_fresh_index_lock_is_left_alone_and_explained(repos):
     """A lock that is only seconds old may belong to a running git: the
     updater does not delete it, fails cleanly and says what to do."""

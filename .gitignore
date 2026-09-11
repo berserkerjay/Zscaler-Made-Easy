@@ -43,3 +43,4 @@ audit.log*
 
 # Policy packs added from Advanced settings (local library)
 user_packs/
+updater_backup/

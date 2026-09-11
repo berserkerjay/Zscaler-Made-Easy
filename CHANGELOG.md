@@ -16,6 +16,7 @@ what each batch of changes did, newest first.
 - Preflight no longer skips an engine (and every rule behind it) because a predefined dictionary the pack references is not exposed by the tenant: the term is dropped, the engine is created without it, and the plan and warnings say which names were left out (`pruned`). This is what stopped the Global Banking pack on tenants without the EU/APAC passport and IBAN predefined dictionaries.
 
 ### Updater
+- A half-applied earlier update (re-applying the edits conflicted, leaving "unmerged paths") no longer blocks every later update: the conflicted files are copied to `updater_backup\<timestamp>\`, the folder is reset to the last build and the update continues; the edits from that update remain in `git stash`.
 - "Could not set aside the hand-edited files: error: could not write index" is handled: a stale `.git\index.lock` (left by an interrupted git) is removed automatically before the update, a lock that is only seconds old is left alone and explained, and the error now says what to check (editor/IDE, OneDrive or antivirus holding the folder, read-only `.git`).
 
 ### Removal
