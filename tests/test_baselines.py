@@ -500,7 +500,7 @@ def test_fed_pack_cui_rules_deploy_and_measure():
     client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
                                                             casb_tenant("Acme OneDrive", "ONEDRIVE", 504)]))
     predefined = ["DISEASES_LEAKAGE", "DRUGS_LEAKAGE", "FINANCIAL", "MEDICAL", "ML_CORPORATE_FINANCE_LEAKAGE", "ML_MEDICAL_DOC_LEAKAGE", "ML_TAX_LEAKAGE",
-                  "SSN", "USITIN_LEAKAGE", "USDL_LEAKAGE", "ABA_LEAKAGE", "CREDIT_CARD"]
+                  "SSN", "USITIN_LEAKAGE", "USDL_LEAKAGE", "ABA_LEAKAGE", "CREDIT_CARD", "CRED_LEAKAGE"]
     client.zia.dlp_dictionary.items = [Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(predefined)]
     rep = pd.preflight(client, [{"id": fed["id"], "dir": fed["dir"]}], writes_enabled=True)
     # "warnings": the V1.1 confidence tweaks raise predefined dictionaries to high confidence.

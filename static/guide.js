@@ -358,7 +358,7 @@ async function _gdTest() {
 }
 function _gdSetMode(mode) {
   GD.mode = mode; _gdSave(); _gdApplyMode(); _gdRender();
-  try { if (typeof announce === 'function') announce(mode === 'guided' ? 'Guided mode on: advanced cards and reference tools hidden.' : 'Guided mode off: everything shown.'); } catch (e) { /* ignore */ }
+  try { if (typeof announce === 'function') announce(mode === 'guided' ? 'Guided mode on: the Compliance Coverage card is folded away; every tool stays in the toolbar.' : 'Guided mode off: everything shown.'); } catch (e) { /* ignore */ }
   const panel = document.getElementById('gdPanel') || document.querySelector('.gd-panel');
   if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -366,10 +366,12 @@ function _gdSetMode(mode) {
 // Guided mode hides the advanced tools. Cards are found by their heading
 // text so index.html needs no markup changes.
 const GD_ADVANCED_HEADINGS = ['Compliance Coverage'];
-// Guided mode keeps the seven steps in focus: it hides the Compliance
-// Coverage card and the Reference tool group (Best Practices, Zscaler
-// Update Check). The gap-finding and deploy tools stay in the toolbar.
-const GD_ADVANCED_TOOLGROUPS = ['Reference'];
+// Guided mode keeps the seven steps in focus by hiding the Compliance
+// Coverage card. Every tool stays in the toolbar in both modes: a tool a
+// first-week engineer cannot see is a tool they cannot click, and the
+// Reference group holds Advanced settings, Best Practices, Zscaler
+// Updates and the Evaluate All Rules reference.
+const GD_ADVANCED_TOOLGROUPS = [];
 function _gdApplyMode() {
   document.body.classList.toggle('gd-guided', GD.mode === 'guided');
   document.querySelectorAll('div.card').forEach(card => {

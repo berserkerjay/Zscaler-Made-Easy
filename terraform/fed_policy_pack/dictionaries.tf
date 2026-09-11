@@ -1,5 +1,29 @@
 # Dictionaries — generated from the pack; predefined Zscaler dictionaries are looked up by name.
 
+data "zia_dlp_dictionaries" "ssn" {
+  name = "SSN"
+}
+
+data "zia_dlp_dictionaries" "usitin_leakage" {
+  name = "USITIN_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "usdl_leakage" {
+  name = "USDL_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "cred_leakage" {
+  name = "CRED_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "aba_leakage" {
+  name = "ABA_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "credit_card" {
+  name = "CREDIT_CARD"
+}
+
 data "zia_dlp_dictionaries" "ml_corporate_finance_leakage" {
   name = "ML_CORPORATE_FINANCE_LEAKAGE"
 }
@@ -616,7 +640,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_high" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 62
+  dict_template_id             = data.zia_dlp_dictionaries.ssn.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
@@ -633,7 +657,7 @@ resource "zia_dlp_dictionaries" "social_security_numbers_us_prox_500" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 62
+  dict_template_id             = data.zia_dlp_dictionaries.ssn.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
@@ -651,7 +675,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_high" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 163
+  dict_template_id             = data.zia_dlp_dictionaries.usitin_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
@@ -664,7 +688,7 @@ resource "zia_dlp_dictionaries" "tax_identification_number_us_prox_500" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 163
+  dict_template_id             = data.zia_dlp_dictionaries.usitin_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
@@ -678,7 +702,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_prox_500" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 170
+  dict_template_id             = data.zia_dlp_dictionaries.usdl_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
@@ -697,7 +721,7 @@ resource "zia_dlp_dictionaries" "drivers_license_united_states_high" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 170
+  dict_template_id             = data.zia_dlp_dictionaries.usdl_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
@@ -745,7 +769,7 @@ resource "zia_dlp_dictionaries" "private_key" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 172
+  dict_template_id             = data.zia_dlp_dictionaries.cred_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_MEDIUM"
   include_bin_numbers          = true
@@ -1137,7 +1161,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_high" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 38
+  dict_template_id             = data.zia_dlp_dictionaries.aba_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
@@ -1150,7 +1174,7 @@ resource "zia_dlp_dictionaries" "aba_bank_routing_number_prox_500" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 38
+  dict_template_id             = data.zia_dlp_dictionaries.aba_leakage.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
@@ -1164,7 +1188,7 @@ resource "zia_dlp_dictionaries" "credit_cards_high" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 63
+  dict_template_id             = data.zia_dlp_dictionaries.credit_card.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   include_bin_numbers          = true
@@ -1177,7 +1201,7 @@ resource "zia_dlp_dictionaries" "credit_cards_prox_500" {
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
-  dict_template_id             = 63
+  dict_template_id             = data.zia_dlp_dictionaries.credit_card.id
   confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500

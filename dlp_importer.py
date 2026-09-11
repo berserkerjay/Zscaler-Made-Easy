@@ -413,10 +413,15 @@ def build_dict_kwargs(
     fails it)."""
     is_clone = bool(d.get("predefined_clone"))
     if is_clone:
-        template_id = d.get("dict_template_id")
         template_name = d.get("dict_template_name")
-        if not template_id and template_name:
-            template_id = resolve_template(template_name, predefined_name_to_id)
+        # The template is resolved by name in THIS tenant first: an id carried
+        # in a pack came from the tenant the pack was exported from, and a
+        # predefined dictionary's id is not the same on every tenant.
+        template_id = resolve_template(template_name, predefined_name_to_id) if template_name else None
+        if not template_id:
+            template_id = d.get("dict_template_id")
+            if template_id and predefined_name_to_id and int(template_id) not in {int(v) for v in predefined_name_to_id.values() if str(v).isdigit()}:
+                return None, f"Template '{template_name or template_id}' is not a predefined dictionary in this tenant (id {template_id} came from another tenant)"
         if not template_id:
             return None, f"No template ID for '{template_name}'"
         kwargs: Dict[str, Any] = {
