@@ -142,7 +142,7 @@
     try {
       const r = await api('/api/pack-library/upload', payload());
       const p = r.pack || {};
-      say('ok', `<strong>Added “${E(p.name || p.id)}”.</strong> It is now offered in Deploy Policy Packs, the Data Flow Map and the Terraform hand-off. Rules are created DISABLED when deployed, so nothing changes in the tenant until you review and enable them.`);
+      say('ok', `<strong>Added “${E(p.name || p.id)}”.</strong> It is now offered in Deploy Policy Packs, the Data Flow Map and the Terraform hand-off. Rules are created DISABLED when deployed, so nothing changes in the tenant until you review and enable them.${r.validation && r.validation.native ? ' The upload was a native Zscaler export: ids became names and tenant-specific scope was dropped (see the warnings above).' : ''} <button type="button" class="btn btn-ghost" onclick="advTerraform('${E(p.id)}')" style="padding:0.3rem 0.7rem;font-size:0.8rem;">⬇ Download as Terraform (static)</button>`);
       chosen = []; preview = null; $('advFiles').value = ''; $('advFileList').innerHTML = ''; $('advPreview').hidden = true;
       $('advName').value = ''; $('advId').value = ''; $('advDesc').value = '';
       await loadLibrary();
@@ -229,3 +229,19 @@
   $('advRefresh').addEventListener('click', e => { e.preventDefault(); loadLibrary(); });
   loadLibrary();
 })();
+
+
+// Terraform workspace for one pack, static mode: no tenant read, no
+// credentials, no import blocks — the pack transcribed as HCL.
+async function advTerraform(id) {
+  try {
+    const r = await fetch('/api/dlp-packs/terraform', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack_ids: [id], mode: 'static', client_id: '', client_secret: '', vanity_domain: '' }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`); }
+    const blob = await r.blob();
+    const m = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = m ? m[1] : `${id}-terraform.zip`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { alert(`Terraform export failed: ${e.message}`); }
+}
+window.advTerraform = advTerraform;

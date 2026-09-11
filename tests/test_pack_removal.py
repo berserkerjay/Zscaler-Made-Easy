@@ -269,3 +269,37 @@ def test_name_only_match_is_flagged(tmp_path):
     rep = pr.plan_removal(client, [pack])
     assert rep["remove_count"] == 3 and all(i["match"] == "name" for i in rep["items"])
     assert any("matched by name only" in w for w in rep["warnings"])
+
+
+def test_deployment_undo_goes_through_the_guided_removal(tmp_path, monkeypatch):
+    """The undo of a recorded deployment is planned, executed and verified
+    exactly like a pack removal: objects the tenant still lists under the
+    name we gave them are removed in tiers; a renamed id is kept and said;
+    an object already gone is reported; the read-back proves the rest."""
+    client = _deletable(_tenant(with_survivors=True))
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    record = {"id": "dep-1", "at": "2026-09-11T00:00:00+00:00", "tenant_label": "acme (production)", "packs": ["removeme"],
+              "created": [{"kind": "policy", "channel": "web", "id": 7001, "name": "RM-Web-Monitor"},
+                          {"kind": "engine", "channel": None, "id": 5001, "name": "RM-Engine"},
+                          {"kind": "dictionary", "channel": None, "id": 9001, "name": "RM-Dict"},
+                          {"kind": "dictionary", "channel": None, "id": 9999, "name": "Gone-Dict"}]}
+    plan = pr.plan_removal_deployment(client, record)
+    st = {i["name"]: i for i in plan["items"]}
+    assert plan["status"] == "ready" and plan["deployment"]["id"] == "dep-1" and plan["plan_hash"]
+    assert st["RM-Web-Monitor"]["status"] == "remove" and st["RM-Web-Monitor"]["match"] == "deployment"
+    # The engine and the dictionary are still used by someone else's rule and engine: kept, not deleted.
+    assert st["RM-Engine"]["status"] == "keep" and "outside this deployment" in st["RM-Engine"]["keep"]
+    assert st["RM-Dict"]["status"] == "keep" and st["Gone-Dict"]["status"] == "not-found"
+    res = pr.remove_deployment(client, record, plan_hash=plan["plan_hash"], writes_enabled=True)
+    assert res["status"] == "removed" and res["summary"] == {"deleted": 1} and res["verification"]["read"]
+    assert {r.name for r in client.zia.dlp_web_rules.items} == {"Someone Else's Rule"}
+    assert {e.name for e in client.zia.dlp_engine.items} == {"RM-Engine", "Someone Else's Engine"}
+    # A stale hash is refused, and read-only mode blocks it, as for every removal.
+    assert pr.remove_deployment(client, record, plan_hash="stale", writes_enabled=True)["status"] in ("stale", "nothing")
+    assert pr.remove_deployment(client, record, plan_hash=plan["plan_hash"], writes_enabled=False)["status"] == "blocked"
+    # Without survivors everything the deployment created goes, in tiers.
+    client2 = _deletable(_tenant(with_survivors=False))
+    plan2 = pr.plan_removal_deployment(client2, record)
+    assert {i["name"]: i["status"] for i in plan2["items"]} == {"RM-Web-Monitor": "remove", "RM-Engine": "remove", "RM-Dict": "remove", "Gone-Dict": "not-found"}
+    res2 = pr.remove_deployment(client2, record, plan_hash=plan2["plan_hash"], writes_enabled=True)
+    assert res2["summary"] == {"deleted": 3} and res2["verification"]["clean"]

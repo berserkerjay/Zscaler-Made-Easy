@@ -369,3 +369,13 @@ body.theme-light .df-gap-h.st-fail { color: #b91c1c; } body.theme-light .df-gap-
 .df-step { border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.7rem; background: var(--card); transition: box-shadow 0.2s, border-color 0.2s; }
 .df-step.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
 .df-step strong { font-size: 0.86rem; }
+
+/* Detection Health: the proposals queue */
+.dh-props { padding: 1rem 1.2rem 0.4rem; border-bottom: 1px solid var(--border); }
+.dh-ptop { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+.dh-plist { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+.dh-prop { padding: 0.7rem 0.9rem; margin-bottom: 0.6rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px; background: var(--well); }
+.dh-prop.st-warn { border-left-color: var(--warn); } .dh-prop.st-ok { border-left-color: var(--pass); } .dh-prop.st-fail { border-left-color: var(--fail); } .dh-prop.st-dim { opacity: 0.8; }
+.dh-phead { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+.dh-pactions { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.dh-pactions input[type=text], .dh-confirm { padding: 0.35rem 0.55rem; font-size: 0.8rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }

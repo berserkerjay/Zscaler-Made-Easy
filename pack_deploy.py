@@ -1688,6 +1688,14 @@ def apply(
 
     _log("Phase 3: policies")
     policy_ids: Dict[str, Any] = {}
+    # SaaS Security API rules are ordered per rule type and the API does
+    # not shuffle the others down for a new order 1 the way Web DLP does:
+    # every rule of a type must have its own order, so each new SaaS rule
+    # takes the next free order of its type.
+    saas_orders: Dict[str, int] = {}
+    for r in tenant["channels"]["rules"].get(pc.SAAS) or []:
+        t = str(r.get("type") or "ANY")
+        saas_orders[t] = max(saas_orders.get(t, 0), int(r.get("order") or 0))
     for ch_rules in tenant["channels"]["rules"].values():
         for r in ch_rules:
             policy_ids.setdefault(r["name"], r.get("id"))
@@ -1750,11 +1758,22 @@ def apply(
                     policy_ids[item["name"]] = new_id
                     record(item, "created", id=new_id, channel=channel, parent_id=parent_id)
                 continue
+            if channel == pc.SAAS:
+                t = str(payload.get("type") or "ANY")
+                saas_orders[t] = saas_orders.get(t, 0) + 1
+                payload["order"] = saas_orders[t]
             resp = pc.add_rule(zia, channel, payload)
             new_id = _extract_id(resp)
+            if new_id is None and channel == pc.SAAS and "order" in str(_extract_error(resp) or "").lower():
+                # The tenant had more rules of this type than the plan saw: step past them.
+                t = str(payload.get("type") or "ANY")
+                saas_orders[t] = saas_orders.get(t, 0) + 1
+                payload["order"] = saas_orders[t]
+                resp = pc.add_rule(zia, channel, payload)
+                new_id = _extract_id(resp)
             if new_id:
                 policy_ids[item["name"]] = new_id
-                record(item, "created", id=new_id, channel=channel)
+                record(item, "created", id=new_id, channel=channel, order=payload.get("order"))
             else:
                 record(item, "failed", error=_extract_error(resp), channel=channel)
         except Exception as ex:  # noqa: BLE001
@@ -1814,6 +1833,16 @@ def apply(
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    channels: Dict[str, Dict[str, Any]] = {}
+    for r in results:
+        if r.get("kind") != "policy":
+            continue
+        ch = channels.setdefault(str(r.get("channel") or pc.WEB), {"created": 0, "reused": 0, "failed": 0, "skipped": 0, "restored": 0, "errors": []})
+        st = r.get("status")
+        if st in ch:
+            ch[st] += 1
+        if st == "failed" and r.get("error") and len(ch["errors"]) < 3 and r["error"] not in ch["errors"]:
+            ch["errors"].append(str(r["error"])[:200])
     wrote = bool(counts.get("created") or counts.get("modified") or counts.get("restored"))
     if counts.get("failed"):
         status = "partial" if wrote else "failed"
@@ -1860,6 +1889,7 @@ def apply(
     return {
         "status": status,
         "summary": counts,
+        "channels": channels,
         "results": results,
         "verification": verification,
         "read_check": read_check,

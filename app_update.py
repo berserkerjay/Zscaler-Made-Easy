@@ -52,9 +52,23 @@ START_SCRIPTS = ("START_Zscaler_Assessment.bat", "START_Zscaler_Assessment_WRITE
 _SET_RE = re.compile(r"^\s*set\s+\"?([A-Z_][A-Z0-9_]*)=([^\"\r\n]*)\"?\s*$", re.I)
 
 
+def git_env() -> Dict[str, str]:
+    """The environment git runs with: no interactive prompts, and the same
+    corporate CA bundle the app uses for its own HTTPS calls (git does not
+    read REQUESTS_CA_BUNDLE, so behind TLS inspection a fetch fails with
+    'SSL certificate problem' unless GIT_SSL_CAINFO names the bundle)."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    if not env.get("GIT_SSL_CAINFO"):
+        for key in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE", "CURL_CA_BUNDLE", "ZSCALER_CA_BUNDLE"):
+            path = (env.get(key) or "").strip()
+            if path and os.path.isfile(path):
+                env["GIT_SSL_CAINFO"] = path
+                break
+    return env
+
+
 def _git(app_dir: str, *args: str, timeout: int = GIT_TIMEOUT) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=app_dir, capture_output=True, text=True, timeout=timeout,
-                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    return subprocess.run(["git", *args], cwd=app_dir, capture_output=True, text=True, timeout=timeout, env=git_env())
 
 
 def _out(cp: subprocess.CompletedProcess) -> str:
@@ -141,6 +155,17 @@ def _auth_hint(msg: str) -> str:
     if "could not read username" in low or "authentication failed" in low or "terminal prompts disabled" in low or "403" in low:
         return (" The repository is private and this machine is not signed in to GitHub for git. "
                 "Open a Command Prompt in the app folder, run  git fetch  once and sign in when asked, then update again.")
+    if "ssl certificate problem" in low or "unable to get local issuer" in low or "self-signed certificate" in low or "certificate verify" in low or "schannel" in low:
+        ca = git_env().get("GIT_SSL_CAINFO")
+        if ca:
+            return (f" Corporate TLS inspection is in the way and git did not accept the CA bundle it was given ({ca}). "
+                    "Add the proxy's root certificate to that bundle file (it is the one the app uses for its own HTTPS calls), then update again.")
+        return (" Corporate TLS inspection is in the way: the proxy re-signs github.com and git does not trust its certificate. "
+                "Put the proxy's root CA in a .pem file and set REQUESTS_CA_BUNDLE to it in local_settings.bat next to the app "
+                "(the updater passes it to git as GIT_SSL_CAINFO), restart the app, then update again.")
+    if "could not resolve host" in low or "connection timed out" in low or "failed to connect" in low or "proxy" in low and "407" in low:
+        return (" GitHub could not be reached from this machine. If a proxy is required, set HTTPS_PROXY in local_settings.bat "
+                "(git reads it), restart the app, then update again.")
     return ""
 
 

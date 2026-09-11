@@ -53,18 +53,5 @@ output "rules" {
     zia_endpoint_dlp_rules.src_dlp_block_source_code_uploads_endpoint.name,
     zia_casb_dlp_rules.src_dlp_block_source_code_uploads_saas.name,
     zia_outbound_email_dlp.src_dlp_block_source_code_uploads_email.name,
-    zia_endpoint_dlp_rules.src_csharp_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_cplusplus_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_go_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_html_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_java_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_javascript_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_kotlin_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_python_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_rust_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_sql_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_swift_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_typescript_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.src_vbnet_endpoint_removable_media.name,
   ]
 }

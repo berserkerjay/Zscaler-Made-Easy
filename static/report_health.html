@@ -27,6 +27,7 @@
       </span>
     </nav>
     <main class="rp-card">
+      <section id="dhProposals" class="dh-props" aria-label="Proposals" hidden></section>
       <div id="rpBody" class="bp-body" style="padding:0;">
         <div class="rp-wait"><div class="spin"></div>Reading Workflow Automation incidents and the tenant's DLP rules… this tab fills in when the report is ready (10–60 seconds). Keep the assessment tab open.</div>
       </div>
@@ -55,6 +56,7 @@
       document.getElementById('expJson').href = `/api/detection-health/export/${encodeURIComponent(id)}?format=json`;
       history.replaceState(null, '', `/report/health?id=${encodeURIComponent(id)}`);
       renderDetectionHealth(report, body);
+      if (data.tenant_key && typeof renderProposals === 'function') renderProposals(data.tenant_key, document.getElementById('dhProposals'));
     }
     async function refresh(ev) {
       ev.preventDefault();

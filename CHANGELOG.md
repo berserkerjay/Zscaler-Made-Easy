@@ -6,6 +6,30 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### Pack library
+- **Native Zscaler JSON uploads.** The Advanced settings upload now accepts the API's own export shapes (`dlpDictionaries`, `dlpEngines`, `webDlpRules`, `endpointDlpRules`, `casbDlpRules`, `emailDlpRules`: camelCase fields, numeric ids, `D<id>.S` expressions): ids become names, expressions become `D:<name>`, sub-rules are kept, predefined dictionaries and engines are left out (every tenant has them), tenant-specific scope (locations, groups, departments, users, SaaS and email tenant ids, auditor/ICAP) is dropped with a warning that says so. The result is an ordinary pack, and a **Download as Terraform (static)** button appears right after the upload.
+
+### Updater
+- **"Fetch from GitHub" behind TLS inspection.** git does not read `REQUESTS_CA_BUNDLE`, so on a laptop where the proxy re-signs github.com the update failed at the fetch with an SSL certificate problem while the app's own HTTPS calls worked. The updater and the GitHub build check now hand git the same bundle (`GIT_SSL_CAINFO`), and an SSL, sign-in or connectivity failure says exactly what to set in `local_settings.bat`.
+
+### Terraform hand-off
+- **Static or gap, your choice.** The mode is a radio choice instead of being implied by the credentials: static sends no credentials and reads nothing (no `imports.tf`); gap needs the tenant details and is refused without them.
+
+### Removal
+- **Every removal goes through the same guided path.** The history's *Undo* and the Done step's *Undo this deployment* used to delete straight away after a browser confirm; they now open the removal wizard (Preview → Approve with consent → Remove in tiers with activation → Verify by a fresh read) on exactly what that deployment created, with a plan hash, the keep rule for engines and dictionaries something else still uses, and the deployment record marked undone from the read-back (`deployment_id` on `/api/dlp-packs/removal/preflight` and `/apply`).
+
+
+### Packs
+- **Equal counts on every channel, Web DLP as the cue.** Each pack now carries exactly one Endpoint, one SaaS and one Email rule per inline Web DLP rule (CJIS 9 × 4, Fed 12 × 4, Global Banking 9 × 4, Enterprise 6 × 4, Healthcare 1 × 4, Source Code 1 × 4). The separate per-engine `[Endpoint Removable Media]` rules are gone: the Endpoint mirror carries no `data_transfer_method`, so it already covers removable media (USB) along with every other transfer method, and incidents name the engine either way. `tools/fan_out_channels.py` regenerates the mirrors and reports UNEQUAL when a pack drifts; Terraform regenerated.
+
+### Deploy
+- **Every SaaS mirror of a pack is created.** SaaS Security API rules are ordered per rule type and the API does not shuffle the others down for a new order 1 the way Web DLP does, so a pack with nine `[SaaS]` mirrors landed one and the rest were refused. Each new SaaS rule now takes the next free order of its type (an order conflict is retried once), and the Done step shows, per channel, how many rules were created, reused, skipped or failed and the first errors (`channels` in the apply result).
+
+### Continuous evaluation, phase 2: proposals and the approval queue
+- Detection Health findings become **typed proposals** with evidence, expected effect and rollback: promote a monitor rule (confirm phrase required), retire a dead rule, tune a noisy dictionary (exclude the application behind the noise or raise the match count), forward the matches of rules that reach no Incident Receiver. Ids are stable, so the next evaluation refreshes an open proposal instead of duplicating it.
+- The **queue** lives in `proposals.json` next to the app (never committed) and shows at the top of the Detection Health tab: approve, snooze (14 days) or dismiss (remembered 30 days) each one, with your name for the audit log; a proposal whose signal disappears resolves itself. `GET /api/proposals?tenant=`, `POST /api/proposals/{tenant}/{id}/decide`, Markdown/JSON export. The 6-hour refresh feeds the queue for every profile that remembers its secret. Nothing is written to the tenant by a decision; approved proposals wait for the apply step (phase 3).
+
+
 ### Page layout
 - **Quick Start Assessment** is a button at the top of the page (toolbar, group *Start*) that opens the four steps and the credential instructions in their own tab (`/quickstart`); the card at the bottom of the page is gone.
 - **Tenant details** (organisation, assessor, cloud, vanity domain, API client, scope, tenant profiles) are an expandable section inside step 1, *Connect to the tenant*, of the Start-here panel. The form is the same one (same fields, same ids); it opens by itself until the four connection fields are filled in.

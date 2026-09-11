@@ -69,39 +69,3 @@ resource "zia_outbound_email_dlp" "r_healthcare_phi_mrn_acct_dob_email" {
   }
 }
 
-resource "zia_endpoint_dlp_rules" "e_healthcare_phi_endpoint_removable_media" {
-  name                         = "E_HEALTHCARE_PHI [Endpoint Removable Media]"
-  description                  = "Endpoint DLP: E_HEALTHCARE_PHI on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
-  order                        = var.rule_starting_order + 1
-  rank                         = var.policy_rank
-  state                        = "DISABLED"
-  action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_INFO"
-  without_content_inspection   = false
-  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
-  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-  eun_enabled                  = false
-  dlp_engines {
-    id = [zia_dlp_engines.e_healthcare_phi.id]
-  }
-}
-
-resource "zia_endpoint_dlp_rules" "e_phi_bulk_export_endpoint_removable_media" {
-  name                         = "E_PHI_BULK_EXPORT [Endpoint Removable Media]"
-  description                  = "Endpoint DLP: E_PHI_BULK_EXPORT on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline healthcare_phi_baseline v1.0] Terraform-managed."
-  order                        = var.rule_starting_order + 2
-  rank                         = var.policy_rank
-  state                        = "DISABLED"
-  action                       = "ALLOW"
-  severity                     = "RULE_SEVERITY_INFO"
-  without_content_inspection   = false
-  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
-  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
-  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-  eun_enabled                  = false
-  dlp_engines {
-    id = [zia_dlp_engines.e_phi_bulk_export.id]
-  }
-}
-

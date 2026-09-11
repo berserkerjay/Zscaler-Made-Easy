@@ -279,7 +279,7 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
             status, why = "unknown_rule", "incidents name a rule the inventory does not list (renamed or deleted?)"
         elif t_all["closed"] == 0 and incs:
             status, why = "no_verdicts", "incidents exist but none has been closed yet"
-        rule_rows.append({"name": name, "channel": r.get("channel") or (incs[0]["channel"] if incs else None),
+        rule_rows.append({"name": name, "id": r.get("id"), "pack": r.get("pack"), "channel": r.get("channel") or (incs[0]["channel"] if incs else None),
                           "state": r.get("state"), "action": r.get("action"), "monitor_only": monitor, "tagged": r.get("tagged"),
                           "engines": r.get("engines") or sorted({e for i in incs for e in i["engines"]}),
                           "incidents": t_all["incidents"], "open": t_all["open"], "closed": t_all["closed"], "not_real": t_all["not_real"],

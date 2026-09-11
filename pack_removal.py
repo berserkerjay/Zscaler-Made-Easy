@@ -267,6 +267,102 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     }
 
 
+def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Preview the undo of one recorded deployment through the same plan
+    shape as a pack removal: every object the deployment created (and
+    has not undone yet) that the tenant still lists under the name we
+    gave it is removed; an id that now carries another name is kept and
+    said so; an object already gone is reported as not found. Engines and
+    dictionaries a rule outside the deployment still uses are kept."""
+    snap = tenant_cache or pd.fetch_tenant(client, _all_need())
+    if not snap.get("reachable", True):
+        return {"status": "blocked", "found": False, "items": [], "summary": {},
+                "blockers": ["Could not read the tenant (no dictionaries, engines or rules listed). Check credentials and permissions."],
+                "warnings": snap.get("errors", []), "plan_hash": ""}
+    created = [c for c in (record.get("created") or []) if not c.get("undone")]
+    warnings: List[str] = []
+    web = [dict(r, channel=pc.WEB) for r in snap.get("rules", [])]
+    others = [dict(r, channel=ch) for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items() for r in (rs or [])]
+    tenant_rules = web + others
+    rules_by_key = {(r["channel"], str(r.get("id"))): r for r in tenant_rules}
+    engines = {str(pd._field(e, "id")): (n, e) for n, e in (snap.get("engines") or {}).items()}
+    dicts = {str(pd._field(d, "id")): (n, d) for n, d in (snap.get("dictionaries") or {}).items()}
+    groups = {str(g.get("id")): (n, g) for n, g in ((snap.get("channels") or {}).get("app_groups") or {}).items()}
+    items: List[Dict[str, Any]] = []
+    remove_rule_ids: set = set()
+    for c in created:
+        kind, cid, name = c.get("kind"), str(c.get("id")), str(c.get("name") or "")
+        item = {"kind": kind, "channel": c.get("channel") if kind == "policy" else None, "id": c.get("id"), "name": name,
+                "parent_id": c.get("parent_id"), "match": "deployment"}
+        if kind == "policy":
+            cur = rules_by_key.get((str(c.get("channel") or pc.WEB), cid))
+            item["type"] = (cur or {}).get("type")
+            item["engine_ids"] = [str(x) for x in ((cur or {}).get("engine_ids") or [])]
+        elif kind == "engine":
+            cur = {"name": engines[cid][0]} if cid in engines else None
+            if cur:
+                item["dict_ids"] = sorted(_engine_dict_ids(engines[cid][1]))
+        elif kind == "dictionary":
+            cur = {"name": dicts[cid][0]} if cid in dicts else None
+        elif kind == "app_group":
+            cur = {"name": groups[cid][0]} if cid in groups else None
+        else:
+            continue
+        if cur is None:
+            item["status"] = "not-found"; item["reason"] = "already gone from the tenant"
+        elif str(cur.get("name") or "") != name:
+            item["status"] = "keep"; item["keep"] = f"id {cid} now carries the name '{cur.get('name')}', not '{name}'"
+        else:
+            item["status"] = "remove"
+            if kind == "policy":
+                remove_rule_ids.add(cid)
+        items.append(item)
+    # Keep rule: an engine a surviving rule still uses, a dictionary a surviving engine still uses.
+    used_engines = {str(eid) for r in tenant_rules if str(r.get("id")) not in remove_rule_ids for eid in (r.get("engine_ids") or [])}
+    remove_engine_ids = set()
+    for it in items:
+        if it["kind"] == "engine" and it["status"] == "remove":
+            if str(it["id"]) in used_engines:
+                it["status"] = "keep"; it["keep"] = "still used by a rule outside this deployment"
+            else:
+                remove_engine_ids.add(str(it["id"]))
+    used_dicts: set = set()
+    for eid, (n, e) in engines.items():
+        if eid not in remove_engine_ids:
+            used_dicts |= _engine_dict_ids(e)
+    for it in items:
+        if it["kind"] == "dictionary" and it["status"] == "remove" and str(it["id"]) in used_dicts:
+            it["status"] = "keep"; it["keep"] = "still used by an engine outside this deployment"
+    eng_id_to_name = {str(i["id"]): i["name"] for i in items if i["kind"] == "engine"}
+    dict_id_to_name = {str(i["id"]): i["name"] for i in items if i["kind"] == "dictionary"}
+    for it in items:
+        if it["kind"] == "policy":
+            it["depends_on"] = [f"engine:{eng_id_to_name[e]}" for e in it.get("engine_ids", []) if e in eng_id_to_name]
+        elif it["kind"] == "engine":
+            it["depends_on"] = [f"dictionary:{dict_id_to_name[d]}" for d in it.get("dict_ids", []) if d in dict_id_to_name]
+    rank = {k: i for i, k in enumerate(UNDO_ORDER)}
+    items.sort(key=lambda c: (rank.get(c["kind"], 9), 0 if c.get("parent_id") is not None else 1, str(c["name"])))
+    summary: Dict[str, int] = {}
+    for it in items:
+        key = f"{it['status']}_{it['kind']}"
+        summary[key] = summary.get(key, 0) + 1
+    to_remove = [it for it in items if it["status"] == "remove"]
+    plan_hash = hashlib.sha256(json.dumps([(i["kind"], i.get("channel"), str(i["id"]), i["name"]) for i in to_remove], sort_keys=True).encode()).hexdigest()[:16]
+    return {"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": list(record.get("packs") or []),
+            "deployment": {"id": record.get("id"), "at": record.get("at"), "tenant_label": record.get("tenant_label"), "packs": record.get("packs")},
+            "everything": False, "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
+            "plan_hash": plan_hash, "warnings": warnings, "blockers": []}
+
+
+def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_enabled: Optional[bool] = None,
+                      log: pd.LogFn = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
+    """Undo one recorded deployment through the guided path: the plan
+    previewed by plan_removal_deployment, tiered deletes with activation,
+    then the same read-back verification as a pack removal."""
+    return _execute(client, lambda: plan_removal_deployment(client, record),
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+
+
 def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
     """Wait for ZIA to report the activation as ACTIVE (see pc.wait_active)."""
     return pc.wait_active(zia, settle_seconds, _log)

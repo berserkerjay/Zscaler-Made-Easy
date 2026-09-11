@@ -289,3 +289,23 @@ def test_worktree_and_nested_folders_count_as_checkouts(repos, tmp_path):
     # A plain folder is not.
     plain = tmp_path / "plain"; plain.mkdir()
     assert not au.is_checkout(str(plain))
+
+
+def test_git_gets_the_corporate_ca_bundle_and_ssl_failures_are_explained(tmp_path, monkeypatch):
+    bundle = tmp_path / "corp-ca.pem"; bundle.write_text("-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n")
+    for k in ("GIT_SSL_CAINFO", "SSL_CERT_FILE", "CURL_CA_BUNDLE", "ZSCALER_CA_BUNDLE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(bundle))
+    env = au.git_env()
+    assert env["GIT_SSL_CAINFO"] == str(bundle) and env["GIT_TERMINAL_PROMPT"] == "0"
+    # A bundle that does not exist is not handed to git.
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(tmp_path / "missing.pem"))
+    assert "GIT_SSL_CAINFO" not in au.git_env()
+    # The explanation names the fix for TLS inspection, with and without a bundle.
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(bundle))
+    hint = au._auth_hint("fatal: unable to access 'https://github.com/x': SSL certificate problem: unable to get local issuer certificate")
+    assert "TLS inspection" in hint and str(bundle) in hint
+    monkeypatch.delenv("REQUESTS_CA_BUNDLE")
+    hint = au._auth_hint("fatal: SSL certificate problem: self-signed certificate in certificate chain")
+    assert "REQUESTS_CA_BUNDLE" in hint and "local_settings.bat" in hint
+    assert "could not be reached" in au._auth_hint("fatal: unable to access: Could not resolve host: github.com")

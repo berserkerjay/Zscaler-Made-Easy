@@ -95,18 +95,5 @@ output "rules" {
     zia_endpoint_dlp_rules.bank_credentials_endpoint.name,
     zia_casb_dlp_rules.bank_credentials_saas.name,
     zia_outbound_email_dlp.bank_credentials_email.name,
-    zia_endpoint_dlp_rules.bank_payment_card_data_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_payment_card_data_bulk_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_account_and_payment_instructions_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_customer_pii_global_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.zbp_us_pii_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_customer_pii_bulk_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_customer_financial_records_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_kyc_and_aml_files_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_credit_and_loan_applications_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_mnpi_and_deal_information_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.zbp_financial_information_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.bank_confidential_markings_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.zbp_private_keys_endpoint_removable_media.name,
   ]
 }

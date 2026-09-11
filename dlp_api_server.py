@@ -815,6 +815,9 @@ class DLPPackDeployRequest(TenantCredsRequest):
     # channel the pack has no rule for gets a monitor-only extension rule
     # carrying the pack's engines; a deselected channel is skipped.
     channel_targets: Dict[str, List[str]] = {}
+    # Terraform hand-off only: "static" never reads the tenant (credentials
+    # are ignored); "gap" needs them; "" decides by whether they are present.
+    mode: str = ""
     # apply-only: the hash of the plan the user approved, plus explicit consent
     plan_hash: str = ""
     confirm: bool = False
@@ -830,6 +833,7 @@ class PackRemovalRequest(TenantCredsRequest):
     confirm: bool = False
     all: bool = False      # everything DLP-Check ever put in the tenant, not just the listed packs
     rules: List[Dict[str, Any]] = []   # pick mode: the rules ({channel, id}) to remove with their engines and dictionaries
+    deployment_id: str = ""            # undo mode: what one recorded deployment created
 
 
 _WRITES_DISABLED_MSG = (
@@ -1033,8 +1037,56 @@ async def detection_health_generate(req: DetectionHealthRequest):
     logs: list = []
     report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append))
     report["logs"] = logs
+    report["tenant_key"] = creds.get("vanity_domain") or "unknown"
+    try:
+        import proposals
+        report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
+    except Exception as e:  # noqa: BLE001
+        report["proposals"] = {"error": str(e)[:200]}
     rid = _remember_report("health", report, f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})")
     return _REPORTS[rid]
+
+
+# ── Proposals: the approval queue (continuous evaluation, phase 2) ────────
+class ProposalDecision(BaseModel):
+    decision: str            # approve | dismiss | snooze | reopen
+    note: str = ""
+    by: str = ""
+    days: int = 14           # snooze length
+    confirm: str = ""        # the confirm phrase for approve_double gates
+
+
+@app.get("/api/proposals")
+async def proposals_list(tenant: str = "", include_closed: bool = False):
+    """The queue for one tenant (vanity domain): open and approved
+    proposals, or everything with include_closed."""
+    import proposals
+    if not tenant.strip():
+        raise HTTPException(status_code=400, detail="tenant (vanity domain) is required")
+    return {"tenant": proposals.tenant_key(tenant), "items": proposals.list_queue(tenant, include_closed=include_closed),
+            "summary": proposals.summary(tenant), "confirm_phrase": proposals.CONFIRM_PHRASE, "dismiss_days": proposals.DISMISS_DAYS}
+
+
+@app.get("/api/proposals/export")
+async def proposals_export(tenant: str = "", format: str = "markdown"):
+    import proposals
+    items = proposals.list_queue(tenant, include_closed=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    if format == "json":
+        return JSONResponse({"tenant": proposals.tenant_key(tenant), "items": items}, headers={"Content-Disposition": f'attachment; filename="proposals_{stamp}.json"'})
+    return PlainTextResponse(proposals.to_markdown(proposals.tenant_key(tenant), items), media_type="text/markdown",
+                             headers={"Content-Disposition": f'attachment; filename="proposals_{stamp}.md"'})
+
+
+@app.post("/api/proposals/{tenant}/{pid}/decide")
+async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
+    """A person decides: approve (a double gate needs the confirm phrase),
+    dismiss (remembered 30 days), snooze (days), reopen. Recorded in audit.log."""
+    import proposals
+    try:
+        return proposals.decide(tenant, pid, req.decision, by=req.by[:80], note=req.note[:500], days=req.days, confirm=req.confirm)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/detection-health/schedule")
@@ -1136,6 +1188,19 @@ async def _start_dh_refresh() -> None:
         _DH_REFRESH_STATE["last_status"] = "disabled"
 
 
+def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) -> Dict[str, Any]:
+    """The recorded deployment a removal names, checked against the tenant
+    the credentials point at."""
+    import deployments
+    rec = deployments.get(req.deployment_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Deployment not found.")
+    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    if rec.get("tenant_label") and rec["tenant_label"] != label:
+        raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
+    return rec
+
+
 @app.post("/api/dlp-packs/removal/preflight")
 async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     """Find what a deployed pack or baseline put into the tenant — by its
@@ -1148,12 +1213,15 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
         import pack_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
-    if not req.pack_ids and not req.rules:
-        raise HTTPException(status_code=400, detail="Select at least one pack, or pick the rules, to remove.")
+    if not req.pack_ids and not req.rules and not req.deployment_id:
+        raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
+    rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    if req.rules:
+    if rec is not None:
+        out = await asyncio.to_thread(lambda: pack_removal.plan_removal_deployment(client, rec))
+    elif req.rules:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal_selected(client, req.rules))
     else:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
@@ -1191,17 +1259,24 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
         import pack_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
-    if not req.pack_ids and not req.rules:
-        raise HTTPException(status_code=400, detail="Select at least one pack, or pick the rules, to remove.")
+    if not req.pack_ids and not req.rules and not req.deployment_id:
+        raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
+    rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
-    if req.rules:
+    if rec is not None:
+        result = await asyncio.to_thread(lambda: pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append))
+        if result.get("status") not in ("blocked", "stale"):
+            import deployments
+            updated = deployments.mark_undo(rec["id"], result.get("results") or [], complete=bool((result.get("verification") or {}).get("clean")))
+            result["deployment"] = deployments.summary(updated) if updated else None
+    elif req.rules:
         result = await asyncio.to_thread(lambda: pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append))
     else:
         result = await asyncio.to_thread(lambda: pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append, everything=bool(req.all)))
@@ -1517,6 +1592,10 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
     report = None
     mode = "static"
     creds = _tenant_creds(req)
+    if req.mode == "static":
+        creds = dict(creds, client_id="", client_secret="")
+    elif req.mode == "gap" and not creds.get("client_id"):
+        raise HTTPException(status_code=400, detail="Gap mode needs the tenant credentials; choose static mode or fill in the tenant details.")
     if creds.get("client_id"):
         client = await asyncio.to_thread(_build_sdk_client, creds)
         full = await asyncio.to_thread(
@@ -2237,14 +2316,16 @@ def _latest_remote_commit() -> Optional[str]:
     _LATEST["at"] = _t.time()
     sha, err = None, None
     try:
+        import app_update
         cp = subprocess.run(["git", "ls-remote", "origin", "-h", "refs/heads/main"], cwd=_APP_DIR,
-                            capture_output=True, text=True, timeout=8, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                            capture_output=True, text=True, timeout=8, env=app_update.git_env())
         if cp.returncode == 0 and cp.stdout.strip():
             sha = cp.stdout.split()[0][:7]
         else:
             lines = [ln.strip() for ln in (cp.stderr or cp.stdout or "").splitlines() if ln.strip()]
             fatal = [ln for ln in lines if ln.lower().startswith("fatal:")]
             err = (fatal[0] if fatal else (lines[0] if lines else "git ls-remote failed"))[:200]
+            err += app_update._auth_hint(err)
     except FileNotFoundError:
         err = "git is not installed or not on PATH for the server process"
     except subprocess.TimeoutExpired:

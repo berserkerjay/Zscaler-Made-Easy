@@ -425,3 +425,27 @@ def test_web_only_packs_never_touch_channel_services(tmp_path, base_pack):
     rep = pd.preflight(client, [base_pack], writes_enabled=True)
     assert rep["status"] == "ready"
     assert rep["dependencies"] and {d["channel"] for d in rep["dependencies"]} == {"web"}
+
+
+class StrictCasbRules(FakeCasbRules):
+    """Like the real SaaS Security API: two rules of one type cannot share an order."""
+    def add_rule(self, **kw):
+        t, order = kw.get("type"), kw.get("order")
+        if any(getattr(i, "type", None) == t and getattr(i, "order", None) == order for i in self.items):
+            return None, None, {"message": f"Invalid rule order {order}: another {t} rule already has it"}
+        return super().add_rule(**kw)
+
+
+def test_every_saas_mirror_is_created_with_its_own_order(tmp_path):
+    client = make_client(casb_tenants=TENANTS, saas_rules=[Obj(id=1, name="Existing SaaS", order=1, type="OFLCASB_DLP_FILE", action="OFLCASB_DLP_REPORT_INCIDENT")])
+    client.zia.casb_dlp_rules = StrictCasbRules(client.zia.casb_dlp_rules.items, start=8500)
+    mirrors = [dict(_policy(f"SaaS-{n} [SaaS]", ["Alpha Engine"], action="OFLCASB_DLP_REPORT_INCIDENT"), channel="saas", saas_type="OFLCASB_DLP_FILE") for n in ("PII", "PCI", "PHI")]
+    pack = write_pack(tmp_path / f"v{next(_pack_seq)}", "saas3", dicts=[_dict("Alpha Dict")], engines=[_engine("Alpha Engine", "(D:Alpha Dict)")],
+                      policies=[_policy("Web-Monitor", ["Alpha Engine"])] + mirrors, meta={"name": "SaaS3", "confidence_tweaks": []})
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    added = client.zia.casb_dlp_rules.added
+    assert [a["name"] for a in added] == ["SaaS-PII [SaaS]", "SaaS-PCI [SaaS]", "SaaS-PHI [SaaS]"], res["results"]
+    assert [a["order"] for a in added] == [2, 3, 4]
+    assert res["channels"]["saas"] == {"created": 3, "reused": 0, "failed": 0, "skipped": 0, "restored": 0, "errors": []}
+    assert res["channels"]["web"]["created"] == 1 and res["status"] == "applied"

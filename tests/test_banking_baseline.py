@@ -116,11 +116,10 @@ def test_banking_pack_deploys_across_every_channel(monkeypatch):
     ep = [r["name"] for r in client.zia.endpoint_dlp_rules.added]
     saas = [r["name"] for r in client.zia.casb_dlp_rules.added]
     email = [r["name"] for r in client.zia.outbound_email_dlp_rules.added]
-    mirrors = [n for n in ep if n.endswith("[Endpoint]")]
-    usb = [n for n in ep if n.endswith("[Endpoint Removable Media]")]
-    assert len(mirrors) == len(web) and len(ep) == len(mirrors) + len(usb)
-    # One removable-media (USB) rule per engine the inline rules use, so Endpoint DLP shows every engine on removable media.
-    assert len(usb) == len(engines) and all(r["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER" for r in client.zia.endpoint_dlp_rules.added if r["name"].endswith("[Endpoint Removable Media]"))
+    # Web DLP is the cue: exactly one Endpoint, one SaaS and one Email rule per inline rule.
+    assert len(ep) == len(web) and all(n.endswith("[Endpoint]") for n in ep)
+    # The Endpoint mirror carries no data_transfer_method, so it covers removable media too.
+    assert all("data_transfer_method" not in r for r in client.zia.endpoint_dlp_rules.added)
     assert len(saas) == len(web) and all(n.endswith("[SaaS]") for n in saas)
     assert len(email) == len(web) and all(n.endswith("[Email]") for n in email)
     # Nothing to do the second time: the baseline is in sync.

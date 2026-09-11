@@ -32,6 +32,8 @@ import os
 import re
 import shutil
 import zipfile
+
+from native_zscaler import convert_parts, is_native, kind_of
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -559,6 +561,9 @@ def _looks_like(items: List[Any]) -> Optional[str]:
     if not items or not all(isinstance(x, dict) for x in items):
         return None
     keys = set().union(*(x.keys() for x in items))
+    native = {kind_of(x) for x in items if is_native(x)}
+    if len(native) == 1 and None not in native:
+        return next(iter(native))
     if "expression" in keys:
         return "engines"
     if keys & {"patterns", "phrases", "predefined_clone", "dict_template_name"}:
@@ -621,6 +626,7 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
     warnings: List[str] = []
     sources: List[str] = []
     formats = set()
+    native_hints: Dict[str, List[str]] = {}
     for path, data in entries:
         base = os.path.basename(path)
         low = base.lower()
@@ -657,6 +663,10 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
                     kind = key
                     break
             kind = kind or _looks_like(obj)
+            if kind == "policies":
+                hint = "endpoint" if "endpoint" in low else ("saas" if ("casb" in low or "saas" in low) else ("email" if "email" in low else ""))
+                if hint:
+                    native_hints.setdefault(hint, []).extend(str(x.get("name")) for x in obj if isinstance(x, dict) and x.get("name"))
             if not kind:
                 if not obj:
                     continue
@@ -669,6 +679,15 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
         warnings.extend(tf_warn)
         for k in parts:
             parts[k].extend(tf_pack.get(k) or [])
+    # Native Zscaler API exports (dlpDictionaries, dlpEngines, webDlpRules,
+    # endpointDlpRules, casbDlpRules, emailDlpRules) are rewritten into the
+    # pack schema: ids become names, D<id>.S becomes D:<name>.
+    native_counts = {}
+    if any(is_native(x) for part in parts.values() for x in part):
+        parts, nwarn, native_counts = convert_parts(parts, hints=native_hints)
+        warnings.extend(nwarn)
+        formats.discard("json")
+        formats.add("zscaler")
     if not any(parts.values()):
         raise ValueError("no dictionaries, engines or rules were found in the upload")
     name = (pack_name or meta.get("name") or "").strip()
@@ -683,7 +702,7 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
     meta.setdefault("description", f"Uploaded pack: {name}")
     meta.setdefault("version", "1.0")
     fmt = "mixed" if len(formats) > 1 else (next(iter(formats)) if formats else "json")
-    return {"meta": meta, "format": fmt, "sources": sources, "warnings": warnings, **parts}
+    return {"meta": meta, "format": fmt, "sources": sources, "warnings": warnings, "native": native_counts, **parts}
 
 
 # ---------------------------------------------------------------------------
@@ -792,6 +811,7 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         "ok": not problems,
         "problems": problems,
         "warnings": warnings,
+        "native": pack.get("native") or {},
         "counts": {"dictionaries": len(dicts), "engines": len(engines), "policies": len(policies), "app_groups": len(groups),
                    "clones": sum(1 for d in dicts if isinstance(d, dict) and d.get("predefined_clone"))},
         "channels": sorted({pc.channel_of(p) for p in policies if isinstance(p, dict)}),

@@ -9,7 +9,5 @@ resource "zia_activation_status" "this" {
     zia_endpoint_dlp_rules.r_healthcare_phi_mrn_acct_dob_endpoint,
     zia_casb_dlp_rules.r_healthcare_phi_mrn_acct_dob_saas,
     zia_outbound_email_dlp.r_healthcare_phi_mrn_acct_dob_email,
-    zia_endpoint_dlp_rules.e_healthcare_phi_endpoint_removable_media,
-    zia_endpoint_dlp_rules.e_phi_bulk_export_endpoint_removable_media,
   ]
 }

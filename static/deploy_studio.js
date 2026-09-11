@@ -435,14 +435,15 @@ async function _dzJourney(id) {
 // provider. With credentials the server runs a preflight first and emits
 // import blocks for existing objects (gap mode), so `terraform plan` is the
 // gap between the tenant and the pack.
-async function _dzTerraform(ids) {
+async function _dzTerraform(ids, mode) {
   DZ.tfBusy = ids.length === 1 ? ids[0] : '*';
   if (DZ.step === 1) _dzRenderSelect();
   try {
-    const creds = _dzCreds();
+    // Static mode sends no credentials at all, so the server never reads the tenant.
+    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', cloud: (_dzCreds() || {}).cloud || 'production' } : _dzCreds();
     const r = await fetch('/api/dlp-packs/terraform', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), ...creds }),
+      body: JSON.stringify({ pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '', ...creds }),
     });
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
@@ -759,6 +760,7 @@ function _dzRenderDeploy() {
   body.innerHTML = `
     <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created${s.restored ? ` · ${s.restored} overwritten` : ''} · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
     ${readCard}
+    ${Object.keys(X.channels || {}).length ? `<div class="dz-card ${Object.values(X.channels).some(c => c.failed) ? 'sev-high' : 'sev-info'}" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Rules per channel</div><div class="d">${Object.entries(X.channels).map(([ch, c]) => `<div><strong>${_dzE(_dzChan(ch))}</strong>: ${c.created} created${c.restored ? `, ${c.restored} overwritten` : ''}${c.reused ? `, ${c.reused} reused` : ''}${c.skipped ? `, ${c.skipped} skipped` : ''}${c.failed ? `, <strong>${c.failed} failed</strong>${c.errors.length ? ` — ${_dzE(c.errors.join(' | '))}` : ''}` : ''}</div>`).join('')}</div></div></div>` : ''}
     ${X.activation && X.activation.activated ? `<div class="dz-card sev-info" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activated in ZIA</div><div class="d">The changes were activated automatically, so they are live now.</div></div></div>` : ''}
     ${X.activation_required ? `<div class="dz-card sev-warning" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activate to take effect</div><div class="d">ZIA saved these changes as pending and automatic activation did not run${X.activation && X.activation.error ? ` (${_dzE(X.activation.error)})` : ''}. Open the ZIA Admin Portal and click Activate (or run ziaActivator) — users are unaffected until you do.</div></div></div>` : ''}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What to do next</div><div class="d">
@@ -801,27 +803,34 @@ const RM_ALL = '__all__';
 
 // id is one pack id, or RM_ALL to find and remove what EVERY pack in the
 // library put in the tenant, in one plan and one pass.
+// Every removal — a pack, everything, picked rules, or the undo of one
+// deployment — enters the same wizard: Preview → Approve → Remove → Verify.
+// `id` is a pack id, RM_ALL, or { deployment: <record> } for an undo.
 async function _dzRemove(id) {
+  const dep = id && typeof id === 'object' ? id.deployment : null;
+  const key = dep ? `dep:${dep.id}` : id;
   const all = id === RM_ALL;
-  const ids = all ? (DZ.packs || []).map(x => x.id) : [id];
-  const pack = all ? { id: RM_ALL, name: 'every deployed policy pack' } : ((DZ.packs || []).find(x => x.id === id) || { id, name: id });
-  DZ.remove = DZ.remove || {}; DZ.remove[id] = 'busy'; _dzRenderSelect();
+  const ids = dep ? [] : (all ? (DZ.packs || []).map(x => x.id) : [id]);
+  const pack = dep
+    ? { id: dep.id, name: `the deployment of ${(dep.packs || []).join(', ')} on ${new Date(dep.at).toLocaleString()}` }
+    : (all ? { id: RM_ALL, name: 'every deployed policy pack' } : ((DZ.packs || []).find(x => x.id === id) || { id, name: id }));
+  DZ.remove = DZ.remove || {}; DZ.remove[key] = 'busy'; if (dep) DZ.undoBusy = dep.id; _dzRenderSelect();
   let plan;
   try {
     const r = await fetch('/api/dlp-packs/removal/preflight', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: ids, all, ..._dzCreds() }),
+      body: JSON.stringify(dep ? { pack_ids: [], deployment_id: dep.id, ..._dzCreds() } : { pack_ids: ids, all, ..._dzCreds() }),
     });
     plan = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
   } catch (e) {
-    DZ.remove[id] = null; _dzRenderSelect();
+    DZ.remove[key] = null; DZ.undoBusy = null; _dzRenderSelect();
     alert(`Could not scan the tenant for ${pack.name || id}: ${e.message}`);
     return;
   }
-  DZ.remove[id] = null;
+  DZ.remove[key] = null; DZ.undoBusy = null;
   if (plan.status === 'blocked') { alert((plan.blockers || ['Could not read the tenant.']).join('\n')); _dzRenderSelect(); return; }
-  DZ.removal = { id, ids, pack, plan, step: 1, result: null };
+  DZ.removal = { id: dep ? dep.id : id, ids, mode: dep ? 'deployment' : undefined, deployment: dep || null, pack, plan, step: 1, result: null };
   _dzRemovalRender();
 }
 
@@ -851,6 +860,7 @@ function _dzRemovalRender() {
 function _dzRemovalScope() {
   const R = DZ.removal;
   if (R.mode === 'pick') return { pack_ids: [], rules: R.rules || [] };
+  if (R.mode === 'deployment') return { pack_ids: [], deployment_id: R.id };
   return { pack_ids: R.ids || [R.id], all: R.id === RM_ALL };
 }
 
@@ -1152,32 +1162,11 @@ function _dzDeploymentsHtml() {
 async function _dzUndo(id) {
   const d = (DZ.deployments || []).find(x => x.id === id);
   if (!d) return;
-  const kinds = Object.entries(d.created_by_kind || {}).map(([k, n]) => _dzN(n, ...(DZ_KIND_PLURAL[k] || [k]))).join(', ');
-  if (!window.confirm(`Undo the deployment of ${(d.packs || []).join(', ')} made ${new Date(d.at).toLocaleString()} in ${d.tenant_label}?\n\nThis DELETES the ${d.remaining} object${d.remaining === 1 ? '' : 's'} it created (${kinds}) from the tenant, in dependency order. Objects the customer renamed, and engines or dictionaries another rule still uses, are left alone and reported.\n\nThe tenant fields on the page must be for ${d.tenant_label}.`)) return;
-  DZ.undoBusy = id; DZ.undoResult = null; _dzRenderSelect();
-  try {
-    const r = await fetch(`/api/deployments/${encodeURIComponent(id)}/undo`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirm: true, ..._dzCreds() }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
-    const s = data.summary || {};
-    const parts = [];
-    if (s.deleted) parts.push(`${s.deleted} deleted`);
-    if (s.gone) parts.push(`${s.gone} already gone`);
-    if (s.still_present) parts.push(`${s.still_present} still present`);
-    if (s.skipped) parts.push(`${s.skipped} left alone (renamed)`);
-    if (s.failed) parts.push(`${s.failed} could not be deleted`);
-    const detail = (data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').map(x => `${x.name}: ${x.error || x.reason}`).join('; ');
-    DZ.undoResult = { id, text: `Undo ${data.status}: ${parts.join(', ') || 'nothing to do'}.${detail ? ' ' + detail : ''}${data.activation_required ? ' Activate in ZIA to make the deletions live.' : ''}` };
-    announce(`Undo ${data.status}.`);
-    await _dzLoadDeployments();
-  } catch (e) {
-    DZ.undoResult = { id, text: `Undo failed: ${e.message}` };
-  } finally {
-    DZ.undoBusy = null; if (DZ.step === 1) _dzRenderSelect();
-  }
+  // The undo of a deployment is a removal like any other: it goes
+  // through Preview → Approve → Remove → Verify with a plan hash, the
+  // consent step, tiered deletes with activation and a read-back.
+  DZ.undoResult = null;
+  await _dzRemove({ deployment: d });
 }
 async function _dzUndoLast() {
   const id = DZ.result && DZ.result.deployment_id;
@@ -1186,6 +1175,13 @@ async function _dzUndoLast() {
   DZ.step = 1; DZ.report = null; DZ.result = null; _dzRender();
   _dzUndo(id);
 }
+// After a deployment undo finishes in the wizard, the history reflects it.
+const _dzRemovalRenderBase = _dzRemovalRender;
+_dzRemovalRender = function () {
+  const R = DZ.removal;
+  if (R && R.mode === 'deployment' && R.result && !R._reloaded) { R._reloaded = true; _dzLoadDeployments().then(() => { if (DZ.removal === R) _dzRemovalRenderBase(); }); }
+  return _dzRemovalRenderBase();
+};
 
 // ── Flow diagram ────────────────────────────────────────────────
 // Visualises how the selected packs wire into the tenant:
@@ -1525,16 +1521,28 @@ async function _tfToggle(id, on) {
   if (on) { TF.selected.add(id); await _tfLoadSummary(id); } else TF.selected.delete(id);
   _tfRender();
 }
-function _tfMode() {
+// Gap mode needs tenant credentials; static never does. The operator
+// picks either (TF.mode); with no pick, gap is used when credentials
+// are there and static otherwise.
+function _tfCanGap() {
   const c = _dzCreds();
   const prof = (window.GD && GD.profile && GD.profileHasSecret);
-  return (c.client_id && (c.client_secret || prof)) || (c.client_id && prof) ? 'gap' : 'static';
+  return !!((c.client_id && (c.client_secret || prof)) || (c.client_id && prof));
+}
+function _tfMode() {
+  if (TF.mode === 'static') return 'static';
+  if (TF.mode === 'gap' && _tfCanGap()) return 'gap';
+  return _tfCanGap() ? 'gap' : 'static';
+}
+function _tfSetMode(m) {
+  if (m === 'gap' && !_tfCanGap()) { alert('Gap mode needs the tenant details on the assessment page (or a profile with a remembered secret). Static mode needs nothing.'); return; }
+  TF.mode = m; _tfRender();
 }
 async function _tfDownload() {
   const ids = [...TF.selected];
   if (!ids.length) return;
   TF.busy = true; _tfRender();
-  try { await _dzTerraform(ids); } finally { TF.busy = false; _tfRender(); }
+  try { await _dzTerraform(ids, _tfMode()); } finally { TF.busy = false; _tfRender(); }
 }
 function _tfRender() {
   const host = document.getElementById('terraformBody');
@@ -1557,13 +1565,12 @@ function _tfRender() {
     <div class="dz-h">1 · Which packs</div>
     <div class="tf-packs">${packs || '<span class="d">Loading packs…</span>'}</div>
     <div class="dz-h">2 · Which mode</div>
-    <div class="tf-modes">
-      <div class="tf-mode ${mode === 'gap' ? 'on' : ''}"><div class="t">Gap mode ${mode === 'gap' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</div>
-        <div class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest. Choose this when you have credentials.</div></div>
-      <div class="tf-mode ${mode === 'static' ? 'on' : ''}"><div class="t">Static ${mode === 'static' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</div>
-        <div class="d">No tenant access needed. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. Choose this to hand over a reference before you have credentials.</div></div>
+    <div class="tf-modes" role="radiogroup" aria-label="Terraform mode">
+      <label class="tf-mode ${mode === 'gap' ? 'on' : ''}"><input type="radio" name="tfMode" value="gap" ${mode === 'gap' ? 'checked' : ''} ${_tfCanGap() ? '' : 'disabled'} onchange="_tfSetMode('gap')"> <span><span class="t">Gap mode ${mode === 'gap' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
+        <span class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
+      <label class="tf-mode ${mode === 'static' ? 'on' : ''}"><input type="radio" name="tfMode" value="static" ${mode === 'static' ? 'checked' : ''} onchange="_tfSetMode('static')"> <span><span class="t">Static ${mode === 'static' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
+        <span class="d">No tenant access, no credentials sent, no import blocks. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. Choose this to hand over a reference, or to transcribe an uploaded pack as it is.</span></span></label>
     </div>
-    ${mode === 'static' ? '<div class="d" style="margin:0.3rem 0 0.6rem;">To get gap mode, fill in the tenant fields (or pick a profile with a remembered secret) on the assessment page and reopen this page.</div>' : ''}
     <div class="dz-h">3 · What you get</div>
     ${sums || '<div class="d">Select at least one pack.</div>'}
     <div class="dz-h">4 · Download and hand over</div>

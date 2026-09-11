@@ -3,7 +3,11 @@
 Give every pack the same rule coverage on Endpoint, SaaS and Email DLP as
 it has inline (Web DLP): for each Web rule, generate a matching rule on
 each of the other three channels carrying the SAME engines. So if a pack
-has five Web rules, each channel ends up with five rules, one per topic.
+has five Web rules, each channel ends up with exactly five rules, one per
+topic: the Web rules are the cue and the counts line up on every channel.
+The Endpoint mirror carries no data_transfer_method, so it covers every
+transfer method including removable media (USB); incidents name the
+engine either way.
 
 The Web rules are the canonical set. Existing Endpoint / SaaS / Email
 rules are replaced by the fanned-out set so the counts line up exactly.
@@ -76,36 +80,12 @@ def _mirror(web_rule: dict, channel: str) -> dict:
     return r
 
 
-REMOVABLE_SUFFIX = "[Endpoint Removable Media]"
-
-
-def _removable(engine: str) -> dict:
-    """One Endpoint DLP rule for this engine on removable media (USB and
-    other removable drives), so incidents name the engine and the USB
-    control can be enabled engine by engine."""
-    return {
-        "name": f"{engine} {REMOVABLE_SUFFIX}",
-        "channel": pc.ENDPOINT,
-        "description": (f"Endpoint DLP: {engine} on removable media (USB and other removable drives). "
-                        "One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents."),
-        "action": pc.default_action(pc.ENDPOINT),
-        "state": "DISABLED",
-        "severity": "RULE_SEVERITY_INFO",
-        "engines": [engine],
-        "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
-        "device_trust_levels": list(pc.ENDPOINT_TRUST_LEVELS),
-        "user_risk_score_levels": list(pc.ENDPOINT_RISK_LEVELS),
-        "without_content_inspection": False, "eun_enabled": False, "rank": 7,
-        GEN_KEY: True,
-    }
-
-
 def fan_out(policies: list) -> list:
     """Return policies with Endpoint/SaaS/Email mirrors regenerated from
-    the Web rules, plus one Endpoint DLP removable-media rule per engine
-    the Web rules use. Web rules and any non-DLP rules are kept as-is;
-    the previous generated mirrors (and any hand-written
-    Endpoint/SaaS/Email rules) are dropped and rebuilt so counts match."""
+    the Web rules: one mirror per Web rule per channel, nothing more, so
+    the four channels carry the same number of rules. Web rules and any
+    non-DLP rules are kept as-is; the previous generated mirrors (and any
+    hand-written Endpoint/SaaS/Email rules) are dropped and rebuilt."""
     web = [p for p in policies if pc.channel_of(p) == pc.WEB]
     if not web:
         return list(policies)   # channel-specific pack; nothing to mirror from
@@ -114,13 +94,7 @@ def fan_out(policies: list) -> list:
     for w in web:
         for ch in FAN_CHANNELS:
             mirrors.append(_mirror(w, ch))
-    engines: list = []
-    for w in web:
-        for e in w.get("engines") or []:
-            if e not in engines:
-                engines.append(e)
-    removable = [_removable(e) for e in engines]
-    return kept + mirrors + removable
+    return kept + mirrors
 
 
 def process(pack: dict, *, write: bool) -> tuple[bool, str]:
@@ -133,9 +107,9 @@ def process(pack: dict, *, write: bool) -> tuple[bool, str]:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(new, f, indent=2)
     counts = {ch: sum(1 for p in new if pc.channel_of(p) == ch) for ch in (pc.WEB,) + FAN_CHANNELS}
-    usb = sum(1 for p in new if pc.channel_of(p) == pc.ENDPOINT and p.get("data_transfer_method") == "REMOVABLE_DRIVE_TRANSFER")
-    return changed, (f"web {counts[pc.WEB]}, endpoint {counts[pc.ENDPOINT]} ({usb} removable-media, one per engine), "
-                     f"saas {counts[pc.SAAS]}, email {counts[pc.EMAIL]}")
+    equal = len({counts[ch] for ch in (pc.WEB,) + FAN_CHANNELS}) == 1
+    return changed, (f"web {counts[pc.WEB]}, endpoint {counts[pc.ENDPOINT]}, saas {counts[pc.SAAS]}, email {counts[pc.EMAIL]}"
+                     + ("" if equal or not counts[pc.WEB] else " (UNEQUAL)"))
 
 
 def main(argv=None) -> int:

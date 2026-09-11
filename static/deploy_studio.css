@@ -352,3 +352,9 @@
 .dz-row.dz-pick { cursor: pointer; align-items: flex-start; }
 .dz-row.dz-pick input[type="checkbox"] { margin-top: 0.35rem; width: 1rem; height: 1rem; flex: 0 0 auto; }
 .dz-row.dz-pick.on { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Terraform hand-off: the mode cards are radio labels */
+.tf-mode { display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; }
+.tf-mode input[type=radio] { margin-top: 0.35rem; }
+.tf-mode input[type=radio]:disabled + span { opacity: 0.7; }
+.tf-mode:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }

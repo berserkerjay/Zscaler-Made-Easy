@@ -72,14 +72,5 @@ output "rules" {
     zia_endpoint_dlp_rules.z_cjis_any_signal_endpoint.name,
     zia_casb_dlp_rules.z_cjis_any_signal_saas.name,
     zia_outbound_email_dlp.z_cjis_any_signal_email.name,
-    zia_endpoint_dlp_rules.cjis_markings_high_confidence_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.cjis_identifier_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.criminal_history_rap_sheet_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.ncic_iii_data_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.warrant_wanted_person_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.biometric_cji_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.nics_firearms_background_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.info_sharing_portal_engine_endpoint_removable_media.name,
-    zia_endpoint_dlp_rules.cjis_any_signal_engine_endpoint_removable_media.name,
   ]
 }

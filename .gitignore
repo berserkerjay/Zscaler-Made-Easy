@@ -45,3 +45,6 @@ audit.log*
 # Policy packs added from Advanced settings (local library)
 user_packs/
 updater_backup/
+# Continuous evaluation: the per-tenant approval queue (local, never committed)
+proposals.json
+proposals.json.tmp

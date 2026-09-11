@@ -68,3 +68,90 @@ function renderDetectionHealth(rep, container) {
     <div class="df-cc">Sources: ${_dhE((rep.sources || {}).incidents || '')} · ${_dhE((rep.sources || {}).rules || '')}. No user identities are kept in this report.</div>`;
 }
 window.renderDetectionHealth = renderDetectionHealth;
+
+
+// ── Proposals: the approval queue ───────────────────────────────────
+// Typed proposals built from this report (and the 6-hour refresh):
+// a person approves, dismisses or snoozes each one. Nothing is written
+// to the tenant from here; approved proposals wait for the apply step.
+const DH_PSTATUS = { open: ['Open', 'warn'], approved: ['Approved, waiting to apply', 'ok'], snoozed: ['Snoozed', 'dim'], dismissed: ['Dismissed', 'dim'], applied: ['Applied', 'ok'], resolved: ['Resolved', 'dim'], failed: ['Apply failed', 'fail'] };
+let _dhPTenant = null, _dhPShowClosed = false;
+async function renderProposals(tenant, host) {
+  if (!host) return;
+  _dhPTenant = tenant;
+  host.hidden = false;
+  host.innerHTML = '<div class="df-hint">Loading the proposals…</div>';
+  let data;
+  try {
+    const r = await fetch(`/api/proposals?tenant=${encodeURIComponent(tenant)}${_dhPShowClosed ? '&include_closed=true' : ''}`, { cache: 'no-store' });
+    data = await r.json();
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+  } catch (e) { host.innerHTML = `<div class="df-hint">Proposals could not be loaded: ${_dhE(e.message)}</div>`; return; }
+  const s = data.summary || {};
+  const ev = (p) => {
+    const e = p.evidence || {}, bits = [];
+    if (e.fp_rate_pct != null) bits.push(`${e.fp_rate_pct}% not real over ${e.closed || '?'} closed in ${e.window_days || '?'} days`);
+    if (e.incidents != null) bits.push(`${e.incidents} incidents`);
+    if (e.last_incident_at) bits.push(`last incident ${new Date(e.last_incident_at).toLocaleDateString()}`); else if (p.kind === 'retire_rule') bits.push('no incident in the window');
+    if (e.alone != null) bits.push(`fired alone in ${e.alone} of ${e.not_real} not-real incidents`);
+    if (e.applications && e.applications.length) bits.push(`top applications: ${e.applications.map(([n, c]) => `${n} (${c})`).join(', ')}`);
+    if (e.rules_silent && e.rules_silent.length) bits.push(`rules: ${e.rules_silent.slice(0, 6).join(', ')}`);
+    if (e.engines && e.engines.length) bits.push(`engines: ${e.engines.join(', ')}`);
+    if (e.why) bits.push(Array.isArray(e.why) ? e.why.join(' ') : e.why);
+    return bits.join(' · ');
+  };
+  const change = (p) => {
+    const c = p.change || {};
+    if (c.apply === 'rule' && c.field) return `${c.field}: ${c.from != null ? c.from + ' → ' : ''}${c.to}${c.rules ? ' on ' + c.rules.length + ' rule(s)' : ''}`;
+    if (c.kind === 'exclude_application') return `exclude ${c.application} from ${(c.rules || []).join(', ') || 'the rule'}`;
+    if (c.kind === 'raise_match_count') return `raise the match count for ${c.dictionary}`;
+    if (c.kind === 'review_engine') return `review engines ${(c.engines || []).join(', ')}`;
+    return JSON.stringify(c);
+  };
+  const row = (p) => {
+    const [lab, cls] = DH_PSTATUS[p.status] || [p.status, 'dim'];
+    const dbl = p.gate === 'approve_double';
+    const actions = p.status === 'open' ? `
+      <div class="dh-pactions">
+        ${dbl ? `<input type="text" class="dh-confirm" placeholder="type ${_dhE(data.confirm_phrase)}" aria-label="Confirm phrase for ${_dhE(p.title)}" data-for="${_dhE(p.id)}">` : ''}
+        <button type="button" class="rp-btn primary" data-act="approve" data-id="${_dhE(p.id)}">Approve${dbl ? ' (stricter for users)' : ''}</button>
+        <button type="button" class="rp-btn" data-act="snooze" data-id="${_dhE(p.id)}" title="Quiet for 14 days">Snooze</button>
+        <button type="button" class="rp-btn" data-act="dismiss" data-id="${_dhE(p.id)}" title="Not raised again for ${data.dismiss_days} days">Dismiss</button>
+      </div>` : (p.status === 'approved' || p.status === 'snoozed' || p.status === 'dismissed' ? `<div class="dh-pactions"><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div>` : '');
+    return `<li class="dh-prop st-${cls}">
+      <div class="dh-phead"><span class="df-chip st-${cls}">${_dhE(lab)}</span><span class="df-chip st-dim">${_dhE(p.label)}</span><strong>${_dhE(p.title)}</strong>${p.times_seen > 1 ? ` <span class="df-by">seen ${p.times_seen}×</span>` : ''}</div>
+      <div class="df-hop-d"><strong>Change:</strong> ${_dhE(change(p))} <span class="df-by">(${p.applies_via === 'phase 3' ? 'applied from here once approved' : 'made in the ZIA portal; the proposal tracks it'})</span></div>
+      <div class="df-hop-d"><strong>Evidence:</strong> ${_dhE(ev(p))}</div>
+      <div class="df-hop-d"><strong>Expected:</strong> ${_dhE(p.expected_effect)} <strong>Rollback:</strong> ${_dhE(p.rollback && (p.rollback.note || (p.rollback.field + ' back to ' + p.rollback.to)))}</div>
+      ${p.note ? `<div class="df-hop-d"><strong>Note:</strong> ${_dhE(p.note)}${p.decided_by ? ` — ${_dhE(p.decided_by)}` : ''}</div>` : ''}
+      ${actions}
+    </li>`;
+  };
+  host.innerHTML = `
+    <div class="dh-ptop">
+      <h2 class="df-h" style="margin:0;">Proposals <span class="df-by">${s.open || 0} open · ${s.approved || 0} approved · ${s.snoozed || 0} snoozed · ${s.dismissed || 0} dismissed</span></h2>
+      <div class="dh-pactions">
+        <label class="df-ctl"><span class="lbl">Decided by</span><input type="text" id="dhBy" placeholder="your name" aria-label="Your name for the audit log"></label>
+        <label class="df-ctl"><input type="checkbox" id="dhClosed" ${_dhPShowClosed ? 'checked' : ''}> <span class="lbl">show closed</span></label>
+        <a class="rp-btn" href="/api/proposals/export?tenant=${encodeURIComponent(tenant)}">Markdown</a>
+      </div>
+    </div>
+    <div class="df-hint">Each proposal names one change, the evidence behind it, the expected effect and the way back. Approving never writes anything by itself: approved proposals are applied from the deploy path with a read-back, and a change that makes the tenant stricter for users (monitor → confirm or block) needs the confirm phrase. A dismissal is remembered for ${data.dismiss_days} days.</div>
+    <ul class="dh-plist">${(data.items || []).map(row).join('') || '<li class="df-hop-d">Nothing to decide: the evaluation raised no proposal for this tenant.</li>'}</ul>`;
+  host.querySelector('#dhClosed').addEventListener('change', e => { _dhPShowClosed = e.target.checked; renderProposals(tenant, host); });
+  host.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', async () => {
+    const id = b.dataset.id, act = b.dataset.act;
+    const conf = host.querySelector(`.dh-confirm[data-for="${CSS.escape(id)}"]`);
+    let note = '';
+    if (act === 'dismiss') { note = window.prompt('Why dismiss it? (kept with the proposal and in the audit log)') || ''; }
+    b.disabled = true;
+    try {
+      const r = await fetch(`/api/proposals/${encodeURIComponent(tenant)}/${encodeURIComponent(id)}/decide`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: act, by: (host.querySelector('#dhBy') || {}).value || '', note, days: 14, confirm: conf ? conf.value : '' }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      renderProposals(tenant, host);
+    } catch (e) { alert(`Could not record the decision: ${e.message}`); b.disabled = false; }
+  }));
+}
+window.renderProposals = renderProposals;
