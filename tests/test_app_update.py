@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -105,6 +106,41 @@ def test_hand_edited_files_are_preserved_and_settings_move_to_local_settings(rep
     # Untracked files (settings, caches) never appear as edits.
     (repos["app"] / "tenant_profiles.json").write_text("{}")
     assert "tenant_profiles.json" not in au.status(app)["dirty_files"]
+
+
+def test_stale_index_lock_is_cleared_before_setting_edits_aside(repos):
+    """An interrupted git leaves .git/index.lock behind; git then refuses
+    every write ("could not write index"). The updater removes a lock old
+    enough that nothing can still hold it, and carries on."""
+    app = str(repos["app"])
+    (repos["app"] / "requirements.txt").write_text("requests>=2.28.0\n# my note\n")
+    lock = repos["app"] / ".git" / "index.lock"
+    lock.write_text("")
+    old = time.time() - 600
+    os.utime(lock, (old, old))
+    v2 = _push_v2(repos["work"])
+    res = au.update(app, install_deps=False)
+    assert res["ok"] and res["updated"] and res["after"] == v2, res
+    names = [s["name"] for s in res["steps"]]
+    assert names[:3] == ["Check this folder", "Clear a stale git lock", "Set aside hand-edited files"]
+    assert "removed a stale git lock" in res["steps"][1]["detail"] and not lock.exists()
+    assert "# my note" in (repos["app"] / "requirements.txt").read_text()
+
+
+def test_fresh_index_lock_is_left_alone_and_explained(repos):
+    """A lock that is only seconds old may belong to a running git: the
+    updater does not delete it, fails cleanly and says what to do."""
+    app = str(repos["app"])
+    (repos["app"] / "requirements.txt").write_text("requests>=2.28.0\n# my note\n")
+    lock = repos["app"] / ".git" / "index.lock"
+    lock.write_text("")
+    res = au.update(app, install_deps=False)
+    assert not res["ok"] and lock.exists()
+    assert "Could not set aside the hand-edited files" in res["error"]
+    assert "index.lock" in res["error"] and ("holding" in res["error"] or "delete it" in res["error"])
+    # Nothing was pulled and the edit is untouched.
+    assert "# my note" in (repos["app"] / "requirements.txt").read_text()
+    lock.unlink()
 
 
 def test_cli_reports_steps_and_exit_code(repos, capsys):

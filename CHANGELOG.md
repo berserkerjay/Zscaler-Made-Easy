@@ -15,6 +15,9 @@ what each batch of changes did, newest first.
 - Wording: everything is a **policy pack** now (the word "baseline" is gone from the UI, docs and pack names; ids, JSON keys and the provenance tag are unchanged). `Global Banking Policy Pack`, `Healthcare PHI Policy Pack`, `ZBP Enterprise Policy Pack`, `Source Code to AI Policy Pack`.
 - Preflight no longer skips an engine (and every rule behind it) because a predefined dictionary the pack references is not exposed by the tenant: the term is dropped, the engine is created without it, and the plan and warnings say which names were left out (`pruned`). This is what stopped the Global Banking pack on tenants without the EU/APAC passport and IBAN predefined dictionaries.
 
+### Updater
+- "Could not set aside the hand-edited files: error: could not write index" is handled: a stale `.git\index.lock` (left by an interrupted git) is removed automatically before the update, a lock that is only seconds old is left alone and explained, and the error now says what to check (editor/IDE, OneDrive or antivirus holding the folder, read-only `.git`).
+
 ### Removal
 - **Verified by reading.** After the deletes and the activation, the removal polls ZIA until it reports ACTIVE (up to 45 s), then runs the same discovery the preview ran against the tenant. The wizard's new **Verify** step says "nothing of the pack remains" or lists exactly what is still there, with *Verify again* (a fresh read on demand) and *Remove leftovers* (runs the removal again on exactly those objects). A removal is only called complete when the read comes back clean.
 - **Remove every deployed pack at once**: one button in Deploy Policy Packs plans and removes what every pack in the library put in the tenant, in one pass with one verification.

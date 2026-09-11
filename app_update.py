@@ -67,6 +67,45 @@ def _err(cp: subprocess.CompletedProcess, default: str = "") -> str:
     return (fatal[0] if fatal else (lines[-1] if lines else default))[:400]
 
 
+INDEX_LOCK_STALE_S = 20   # a lock older than this was left behind by an interrupted git
+
+
+def _git_dir(app_dir: str) -> str:
+    cp = _git(app_dir, "rev-parse", "--git-dir", timeout=15)
+    path = _out(cp) if cp.returncode == 0 else ".git"
+    return path if os.path.isabs(path) else os.path.join(app_dir, path)
+
+
+def clear_stale_index_lock(app_dir: str) -> Optional[str]:
+    """git refuses to touch the index while .git/index.lock exists; an
+    interrupted git (closed window, crash, antivirus scan) leaves one
+    behind and every later update fails with "could not write index".
+    Remove it when it is old enough that no git can still be using it.
+    Returns a note describing what was done, or None when there was no
+    lock."""
+    lock = os.path.join(_git_dir(app_dir), "index.lock")
+    if not os.path.exists(lock):
+        return None
+    age = time.time() - os.path.getmtime(lock)
+    if age < INDEX_LOCK_STALE_S:
+        return f"another git operation is holding {lock} ({int(age)}s old); wait a moment and run the update again"
+    try:
+        os.remove(lock)
+        return f"removed a stale git lock ({lock}, {int(age)}s old)"
+    except OSError as e:
+        return f"could not remove the stale git lock {lock}: {e}"
+
+
+def _index_hint(msg: str) -> str:
+    low = msg.lower()
+    if "could not write index" in low or "index.lock" in low or "unable to write" in low or "permission denied" in low or "unable to create" in low:
+        return (" Git could not write its index file in the app folder. That is usually a file in use by another program "
+                "(an editor or IDE with the folder open, OneDrive or antivirus scanning it) or a read-only .git folder. "
+                "Close those, then in the app folder run  git status  ; if .git\\index.lock exists and nothing is running, "
+                "delete it and run the update again.")
+    return ""
+
+
 def _auth_hint(msg: str) -> str:
     low = msg.lower()
     if "could not read username" in low or "authentication failed" in low or "terminal prompts disabled" in low or "403" in low:
@@ -221,6 +260,12 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
         return result
     step("Check this folder", True, f"git checkout on branch {st.get('branch')}, build {st.get('local_commit')}")
 
+    # A lock left behind by an interrupted git makes every write fail with
+    # "could not write index"; clear it before touching anything.
+    note = clear_stale_index_lock(app_dir)
+    if note and note.startswith("removed"):
+        step("Clear a stale git lock", True, note)
+
     # Local edits: settings move to local_settings.bat; the rest is stashed.
     dirty = list(st.get("dirty_files") or [])
     stashed = False
@@ -232,14 +277,24 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
                  ", ".join(migrated) + " (the script itself was restored; its old copy is in git stash)")
         remaining = dirty_files(app_dir)
         if remaining:
-            cp = _git(app_dir, "stash", "push", "-m", f"DLP-Check updater: local edits before update {time.strftime('%Y-%m-%d %H:%M')}")
+            msg_stash = f"DLP-Check updater: local edits before update {time.strftime('%Y-%m-%d %H:%M')}"
+            cp = _git(app_dir, "stash", "push", "-m", msg_stash)
+            if cp.returncode != 0 and _index_hint(_err(cp)):
+                # The index could not be written: clear a lock that appeared
+                # meanwhile and try once more before giving up.
+                note = clear_stale_index_lock(app_dir)
+                if note:
+                    step("Clear a stale git lock", note.startswith("removed"), note, soft=True)
+                cp = _git(app_dir, "stash", "push", "-m", msg_stash)
             if cp.returncode == 0 and "no local changes" not in (cp.stdout or "").lower():
                 stashed = True
                 result["preserved"] = remaining
                 step("Set aside hand-edited files", True, ", ".join(remaining) + " (re-applied after the pull)")
             else:
-                step("Set aside hand-edited files", False, _err(cp, "git stash failed"))
-                result["error"] = "Could not set aside the hand-edited files: " + _err(cp, "git stash failed")
+                msg = _err(cp, "git stash failed")
+                step("Set aside hand-edited files", False, msg)
+                result["error"] = "Could not set aside the hand-edited files: " + msg + _index_hint(msg) \
+                    + ((" " + note) if note and not note.startswith("removed") else "")
                 return result
 
     try:
@@ -269,7 +324,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     cp = _git(app_dir, "pull", "--ff-only", "origin", "main", timeout=GIT_TIMEOUT)
     if cp.returncode != 0:
         msg = _err(cp, "git pull failed")
-        result["error"] = "Pull refused: " + msg + _auth_hint(msg)
+        result["error"] = "Pull refused: " + msg + _auth_hint(msg) + _index_hint(msg)
         step("Pull latest code", False, result["error"])
         _restore(app_dir, stashed, step, result)
         return result
