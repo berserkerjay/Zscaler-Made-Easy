@@ -72,15 +72,15 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     by = {(t["destination"]["class"], t["network"]): t for t in rep["traces"]}
     # AI on Windows off network: tunnelled, decrypted, app control blocks
     # upload, DLP enforces and forwards to the Incident Receiver. Hops run
-    # in ZIA's request order (Understanding Policy Enforcement): Browser &
-    # FTP Control, Cloud App Control before URL Filtering, SSL, threat
-    # protection, File Type Control, Bandwidth, DLP, Firewall & DNS, then
-    # the incident path.
+    # in ZIA's request order (Understanding Policy Enforcement), data
+    # security controls only: Cloud App Control before URL Filtering, SSL,
+    # File Type Control, DLP, then the incident path.
     t = by[("ai_ml", "off")]
     keys = [h["key"] for h in t["hops"]]
-    assert keys == ["zcc", "forwarding", "browser", "cac", "url", "ssl", "threat", "ftc", "bandwidth", "dlp", "firewall", "incident"] and t["reaches_zscaler"] and t["decrypted"]
+    assert keys == ["zcc", "forwarding", "cac", "url", "ssl", "ftc", "dlp", "incident"] and t["reaches_zscaler"] and t["decrypted"]
     hop = lambda k: next(h for h in t["hops"] if h["key"] == k)  # noqa: E731
-    assert all(hop(k)["status"] == "info" for k in ("browser", "threat", "bandwidth", "firewall"))
+    # Every hop on the path is a control the tool read, never a placeholder.
+    assert all(h["status"] not in ("info", "unknown") for h in t["hops"])
     assert hop("cac")["status"] == "blocked"
     # Cloud App Control matched, so URL Filtering is not applied to this transaction.
     assert hop("url")["status"] == "na" and hop("url")["decided_by"]["name"] == "AI no upload"

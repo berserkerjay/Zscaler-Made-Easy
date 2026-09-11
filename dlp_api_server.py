@@ -3142,12 +3142,11 @@ async def report_dataflow_page():
 @app.post("/api/report/data-flow")
 async def report_data_flow(req: DataFlowRequest):
     """Trace every traffic class (or the given destinations) through the
-    tenant in ZIA's request order (Understanding Policy Enforcement):
-    Client Connector app profile and forwarding profile, PAC, Browser &
-    FTP Control, Cloud App Control (before URL Filtering), URL filtering,
-    SSL inspection, threat protection, File Type Control, Bandwidth
-    Control, Web DLP, Firewall & DNS Control and what happens after a
-    match (logs, Incident Receiver, Workflow Automation), plus the
+    tenant in ZIA's request order (Understanding Policy Enforcement),
+    data security controls only: Client Connector app profile and
+    forwarding profile, PAC, Cloud App Control (before URL Filtering),
+    URL filtering, SSL inspection, File Type Control, Web DLP and what
+    happens after a match (logs, Incident Receiver, Workflow Automation), plus the
     endpoint, SaaS and email channels, with each policy pack's coverage
     on the path.
     Read-only; carries report_id for /report/dataflow?id=... and the

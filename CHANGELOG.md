@@ -6,6 +6,9 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### Traffic Flow & Gaps
+- The path shows only data security controls: the Browser & FTP Control, Threat protection, Bandwidth Control and Firewall & DNS Control hops (shown as "Not read here") are gone from traced paths, the per-category flows and the reference diagram. They govern access and threats, not what data leaves or whether its content is inspected.
+
 ### Packs
 - Fed Policy Pack 2.0 absorbs the CUI Marking Baseline: the 28 tiered marking dictionaries and their block/caution/monitor rules now ship inside the Fed pack, enhanced with the V1.1 contextual phrases, Registry category names and declassify-date patterns as tier 7 (`CUI-Detect-Contextual`, monitor only). The V1.1 `CUI Engine (High/Medium/Low Confidence)` engines, their eight dictionaries and the orphan `AEA Medium Confidence` engine are gone. `cui_marking_baseline` is removed; a tenant that deployed it keeps its objects and the Fed pack adopts them by name.
 - `tools/pack_from_design.py` can regenerate a design that lives inside a hand-authored pack (`"designs"` in `pack.json`).
