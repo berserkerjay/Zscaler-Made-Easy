@@ -1,5 +1,17 @@
 # Dictionaries — generated from the pack; predefined Zscaler dictionaries are looked up by name.
 
+data "zia_dlp_dictionaries" "ssn" {
+  name = "SSN"
+}
+
+data "zia_dlp_dictionaries" "usitin_leakage" {
+  name = "USITIN_LEAKAGE"
+}
+
+data "zia_dlp_dictionaries" "usdl_leakage" {
+  name = "USDL_LEAKAGE"
+}
+
 data "zia_dlp_dictionaries" "social_security_numbers_us" {
   # Social Security Numbers (US)
   name = "SSN"
@@ -82,7 +94,7 @@ data "zia_dlp_dictionaries" "credit_cards" {
 
 resource "zia_dlp_dictionaries" "custom_medical_record_number" {
   name                         = "Custom-Medical-Record-Number"
-  description                  = "HIPAA identifier 8: an MRN, chart, encounter, visit, account or EMPI label within 50 bytes of a 6-10 digit number (optional 1-3 letter prefix). Both the phrase and the pattern must ma... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "HIPAA identifier 8: an MRN, chart, encounter, visit, account or EMPI label within 50 bytes of a 6-10 digit number (optional 1-3 letter prefix). Both the phrase and the pattern must ma... [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -144,7 +156,7 @@ resource "zia_dlp_dictionaries" "custom_medical_record_number" {
 
 resource "zia_dlp_dictionaries" "custom_date_of_birth" {
   name                         = "Custom-Date-of-Birth"
-  description                  = "HIPAA identifier 3: a birth-date label within 50 bytes of a date in US, ISO or long form (years 1920-2026). Both the phrase and the pattern must match. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "HIPAA identifier 3: a birth-date label within 50 bytes of a date in US, ISO or long form (years 1920-2026). Both the phrase and the pattern must match. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -190,7 +202,7 @@ resource "zia_dlp_dictionaries" "custom_date_of_birth" {
 
 resource "zia_dlp_dictionaries" "custom_sensitive_condition_markers" {
   name                         = "Custom-Sensitive-Condition-Markers"
-  description                  = "Elevated-protection PHI (42 CFR Part 2, GINA, state HIV / mental-health / reproductive statutes): SUD and MAT terms, mental-health markers, HIV markers, genetic-testing terms and gene... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "Elevated-protection PHI (42 CFR Part 2, GINA, state HIV / mental-health / reproductive statutes): SUD and MAT terms, mental-health markers, HIV markers, genetic-testing terms and gene... [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -370,7 +382,7 @@ resource "zia_dlp_dictionaries" "custom_sensitive_condition_markers" {
 
 resource "zia_dlp_dictionaries" "custom_health_plan_member_identifier" {
   name                         = "Custom-Health-Plan-Member-Identifier"
-  description                  = "HIPAA identifier 9: a member, subscriber, policy, group, plan, beneficiary, Medicare/Medicaid or pharmacy-benefit label within 50 bytes of a Medicare Beneficiary Identifier or a 2-3 l... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "HIPAA identifier 9: a member, subscriber, policy, group, plan, beneficiary, Medicare/Medicaid or pharmacy-benefit label within 50 bytes of a Medicare Beneficiary Identifier or a 2-3 l... [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -468,7 +480,7 @@ resource "zia_dlp_dictionaries" "custom_health_plan_member_identifier" {
 
 resource "zia_dlp_dictionaries" "custom_insurance_billing" {
   name                         = "Custom-Insurance-Billing"
-  description                  = "Payer names, EDI transaction and billing vocabulary (EOB, remittance, claim, copay, prior authorization). Phrases only; counted per phrase so the claims pathway can require density (>... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "Payer names, EDI transaction and billing vocabulary (EOB, remittance, claim, copay, prior authorization). Phrases only; counted per phrase so the claims pathway can require density (>... [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -632,7 +644,7 @@ resource "zia_dlp_dictionaries" "custom_insurance_billing" {
 
 resource "zia_dlp_dictionaries" "custom_clinical_narrative" {
   name                         = "Custom-Clinical-Narrative"
-  description                  = "Structural markers of clinical documents (chief complaint, history, review of systems, discharge, progress and operative notes, provider roles, admission and discharge dates, medicati... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "Structural markers of clinical documents (chief complaint, history, review of systems, discharge, progress and operative notes, provider roles, admission and discharge dates, medicati... [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -752,7 +764,7 @@ resource "zia_dlp_dictionaries" "custom_clinical_narrative" {
 
 resource "zia_dlp_dictionaries" "custom_address_zip" {
   name                         = "Custom-Address-ZIP"
-  description                  = "HIPAA identifier 2: an address label within 50 bytes of a ZIP+4 or a street address. ZIP alone is very noisy; this dictionary is only used beside insurance and billing context. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
+  description                  = "HIPAA identifier 2: an address label within 50 bytes of a ZIP+4 or a street address. ZIP alone is very noisy; this dictionary is only used beside insurance and billing context. [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -809,6 +821,415 @@ resource "zia_dlp_dictionaries" "custom_address_zip" {
   phrases {
     action = "PHRASE_COUNT_TYPE_ALL"
     phrase = "Suite"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_social_security_numbers_us_high" {
+  name                         = "HC-Social Security Numbers (US) - High"
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.ssn.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ssn"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_social_security_numbers_us_prox_500" {
+  name                         = "HC-Social Security Numbers (US) - Prox 500"
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.ssn.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ssn"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_tax_identification_number_us_high" {
+  name                         = "HC-Tax Identification Number (US) - High"
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usitin_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+}
+
+resource "zia_dlp_dictionaries" "hc_tax_identification_number_us_prox_500" {
+  name                         = "HC-Tax Identification Number (US) - Prox 500"
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usitin_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+}
+
+resource "zia_dlp_dictionaries" "hc_drivers_license_united_states_high" {
+  name                         = "HC-Drivers License (United States) - High"
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usdl_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+  hierarchical_identifiers     = ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL", "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME", "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH", "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI", "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"]
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Driver License"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_drivers_license_united_states_prox_500" {
+  name                         = "HC-Drivers License (United States) - Prox 500"
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.usdl_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_HIGH"
+  confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
+  proximity                    = 500
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+  hierarchical_identifiers     = ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL", "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME", "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH", "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI", "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"]
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Driver License"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_alien_registration_number_high_confidence" {
+  name                         = "HC-Alien Registration Number - High Confidence"
+  description                  = "From the Fed pack's US PII set: USCIS alien registration / A-number beside an immigration label [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ARN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Registration"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "'A-Number'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Immigrant data"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "USCIS Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Employment Authorization"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_alien_registration_number_prox_500" {
+  name                         = "HC-Alien Registration Number - Prox 500"
+  description                  = "From the Fed pack's US PII set: USCIS alien registration / A-number beside an immigration label (any pattern within 500 bytes of any phrase) [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "ARN"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Registration"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Alien Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "'A-Number'"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Immigrant data"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "USCIS Number"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Employment Authorization"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_date_of_birth_high_confidence" {
+  name                         = "HC-Date of Birth - High Confidence"
+  description                  = "From the Fed pack's US PII set: US, ISO or dotted dates beside a birth-date label [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Date of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "year of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "month of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "day of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birthday"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth year"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth month"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "dob"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "d.o.b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_date_of_birth_prox_500" {
+  name                         = "HC-Date of Birth - Prox 500"
+  description                  = "From the Fed pack's US PII set: US, ISO or dotted dates beside a birth-date label (any pattern within 500 bytes of any phrase) [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Date of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "year of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "month of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "day of birth"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birthday"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth year"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "birth month"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "dob"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "d.o.b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_us_passport_high_confidence" {
+  name                         = "HC-US Passport - High Confidence"
+  description                  = "From the Fed pack's US PII set: 8-9 digit or letter+8 digit passport numbers beside a passport label [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b\\d{8,9}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\b[A-Z]\\d{8}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport Number "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport No"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport#"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "PassportID"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportno"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportnumber "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. du Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. de Pasaporte"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Pasaporte"
+  }
+}
+
+resource "zia_dlp_dictionaries" "hc_us_passport_prox_500" {
+  name                         = "HC-US Passport - Prox 500"
+  description                  = "From the Fed pack's US PII set: 8-9 digit or letter+8 digit passport numbers beside a passport label (any pattern within 500 bytes of any phrase) [DLP-Check baseline healthcare_phi_baseline v3.1] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\\b\\d{8,9}\\b"
+  }
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "(?i)\\b[A-Z]\\d{8}\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport Number "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport No"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport#"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "PassportID"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportno"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passportnumber "
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. du Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "No. de Pasaporte"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Passeport"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Pasaporte"
   }
 }
 

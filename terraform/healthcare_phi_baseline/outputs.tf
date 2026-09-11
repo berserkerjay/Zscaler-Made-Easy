@@ -7,6 +7,18 @@ output "dictionaries" {
     custom_insurance_billing = zia_dlp_dictionaries.custom_insurance_billing
     custom_clinical_narrative = zia_dlp_dictionaries.custom_clinical_narrative
     custom_address_zip = zia_dlp_dictionaries.custom_address_zip
+    hc_social_security_numbers_us_high = zia_dlp_dictionaries.hc_social_security_numbers_us_high
+    hc_social_security_numbers_us_prox_500 = zia_dlp_dictionaries.hc_social_security_numbers_us_prox_500
+    hc_tax_identification_number_us_high = zia_dlp_dictionaries.hc_tax_identification_number_us_high
+    hc_tax_identification_number_us_prox_500 = zia_dlp_dictionaries.hc_tax_identification_number_us_prox_500
+    hc_drivers_license_united_states_high = zia_dlp_dictionaries.hc_drivers_license_united_states_high
+    hc_drivers_license_united_states_prox_500 = zia_dlp_dictionaries.hc_drivers_license_united_states_prox_500
+    hc_alien_registration_number_high_confidence = zia_dlp_dictionaries.hc_alien_registration_number_high_confidence
+    hc_alien_registration_number_prox_500 = zia_dlp_dictionaries.hc_alien_registration_number_prox_500
+    hc_date_of_birth_high_confidence = zia_dlp_dictionaries.hc_date_of_birth_high_confidence
+    hc_date_of_birth_prox_500 = zia_dlp_dictionaries.hc_date_of_birth_prox_500
+    hc_us_passport_high_confidence = zia_dlp_dictionaries.hc_us_passport_high_confidence
+    hc_us_passport_prox_500 = zia_dlp_dictionaries.hc_us_passport_prox_500
   } : r.name => r.id }
 }
 
@@ -20,6 +32,9 @@ output "engines" {
     hipaa_bulk_phi_small = zia_dlp_engines.hipaa_bulk_phi_small
     hipaa_bulk_phi_significant = zia_dlp_engines.hipaa_bulk_phi_significant
     hipaa_bulk_phi_major = zia_dlp_engines.hipaa_bulk_phi_major
+    hipaa_us_pii = zia_dlp_engines.hipaa_us_pii
+    hipaa_us_phi_medium_confidence = zia_dlp_engines.hipaa_us_phi_medium_confidence
+    hipaa_us_phi_high_confidence = zia_dlp_engines.hipaa_us_phi_high_confidence
   } : r.name => r.id }
 }
 
@@ -33,6 +48,9 @@ output "rules" {
     zia_dlp_web_rules.hc_hipaa_bulk_phi_major_monitor.name,
     zia_dlp_web_rules.hc_hipaa_bulk_phi_significant_monitor.name,
     zia_dlp_web_rules.hc_hipaa_bulk_phi_small_monitor.name,
+    zia_dlp_web_rules.hc_us_pii_monitor.name,
+    zia_dlp_web_rules.hc_us_phi_medium_confidence_monitor.name,
+    zia_dlp_web_rules.hc_us_phi_high_confidence_monitor.name,
     zia_endpoint_dlp_rules.hc_hipaa_critical_endpoint.name,
     zia_casb_dlp_rules.hc_hipaa_critical_saas.name,
     zia_outbound_email_dlp.hc_hipaa_critical_email.name,
@@ -57,5 +75,14 @@ output "rules" {
     zia_endpoint_dlp_rules.hc_hipaa_bulk_phi_small_endpoint.name,
     zia_casb_dlp_rules.hc_hipaa_bulk_phi_small_saas.name,
     zia_outbound_email_dlp.hc_hipaa_bulk_phi_small_email.name,
+    zia_endpoint_dlp_rules.hc_us_pii_endpoint.name,
+    zia_casb_dlp_rules.hc_us_pii_saas.name,
+    zia_outbound_email_dlp.hc_us_pii_email.name,
+    zia_endpoint_dlp_rules.hc_us_phi_medium_confidence_endpoint.name,
+    zia_casb_dlp_rules.hc_us_phi_medium_confidence_saas.name,
+    zia_outbound_email_dlp.hc_us_phi_medium_confidence_email.name,
+    zia_endpoint_dlp_rules.hc_us_phi_high_confidence_endpoint.name,
+    zia_casb_dlp_rules.hc_us_phi_high_confidence_saas.name,
+    zia_outbound_email_dlp.hc_us_phi_high_confidence_email.name,
   ]
 }

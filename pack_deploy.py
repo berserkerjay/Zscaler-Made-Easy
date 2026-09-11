@@ -582,6 +582,15 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
         item["depends_on"] = [("dictionary", n) for n in referenced]
         missing = [u for u in unresolved]
         blocked_deps = [n for n in referenced if n in dict_items and dict_items[n]["status"] not in AVAILABLE_STATUSES]
+        # A pack clone whose predefined template this tenant does not expose
+        # is the same case as a missing predefined dictionary: drop its terms
+        # from the engine (named in the plan) instead of blocking the engine
+        # and every rule behind it.
+        template_less = [n for n in blocked_deps
+                         if dict_items[n]["status"] == BLOCKED_DEPENDENCY and any(k == "predefined" for k, _ in dict_items[n].get("depends_on") or [])]
+        if template_less and not restore:
+            missing = missing + [n for n in template_less if n not in missing]
+            blocked_deps = [n for n in blocked_deps if n not in template_less]
         if missing and not blocked_deps and not restore:
             # A dictionary that exists in neither the packs nor the tenant is
             # a predefined one this tenant does not expose (or a typo). Rather

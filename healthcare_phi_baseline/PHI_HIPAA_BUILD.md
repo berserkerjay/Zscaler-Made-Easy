@@ -15,7 +15,7 @@ PHI (45 CFR § 160.103) needs both components: one or more of the 18 HIPAA ident
 | 3 | Dates (DOB, admission, discharge, death) | Custom-Date-of-Birth |
 | 4, 5 | Telephone and fax numbers | Not in this build; add a Custom-Phone-US dictionary if in scope |
 | 6 | E-mail addresses | Not in this build; transport-layer detection (Email DLP) covers mail |
-| 7 | Social Security Numbers | Social Security Numbers (US), predefined |
+| 7 | Social Security Numbers | Social Security Numbers (US), predefined; HC- clones at high confidence and 500-byte proximity (Engines 7-9) |
 | 8 | Medical record numbers | Custom-Medical-Record-Number (MRN, chart, encounter, visit, account, EMPI) |
 | 9 | Health plan beneficiary numbers | Custom-Health-Plan-Member-Identifier (member, subscriber, policy, group, Medicare MBI, HICN, Medicaid, pharmacy BIN/PCN) |
 | 10 | Account numbers | Custom-Health-Plan-Member-Identifier; Credit Cards (predefined) on claim documents |
@@ -54,6 +54,13 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 | 4 | HIPAA Sensitive Subcategory | single record + 42 CFR Part 2 / GINA, critical (elevated) | (sensitive markers, Diseases Information, Self-Harm & Cyberbullying or Illegal Drugs) AND (name, SSN, DOB, MRN or member id). Route to a restricted reviewer queue |
 | 5 | HIPAA Pharmacy / Claims / Billing | single record reportable | pharmacy: (Drugs > 2 or NDC) + identifier + (NPI or clinical narrative); claims: (billing phrases > 2 or Insurance Document) + (diseases or treatments) + identifier incl. Credit Cards |
 | 6 | HIPAA Bulk PHI — Small / Significant / Major | > 1 / > 50 / > 500 identifiers | Sum of the matches of SSN, MRN, member id, NPI, TIN, driver's licence and enhanced driver's licence (the Engine Builder's Sum operator, `((D1.S + D2.S + …) > n)` in the API). One design engine, three thresholds: three engines behind three rules, because a rule has no match-count condition of its own |
+| 7 | HIPAA US PII | identity data, no clinical context | From the Fed pack's US PII engine, plus passports: SSN, TIN, alien registration or passport > 4 at high confidence, or any one within 500 bytes of its label, or a date of birth with driver's licences > 4. Covers the patient, member and staff identity data a covered entity holds that state breach law reaches even without a diagnosis |
+| 8 | HIPAA US PHI — Medium Confidence | single record, second opinion | From the Fed pack: Medical Document, or Medical Information with Drugs > 9 or Diseases > 9, AND one identifier (SSN, passport, alien number, or DOB beside a driver's licence). Independent of Engine 1's custom dictionaries; the two should agree on real records |
+| 9 | HIPAA US PHI — High Confidence | patient-record sets | From the Fed pack: Medical Document, or Medical Information with Drugs > 14 or Diseases > 14, AND identifiers > 4 at high confidence (or DOB > 1 beside licences > 1), or any identifier within 500 bytes of its label |
+
+### Fed-derived PII dictionaries (HC- prefix)
+
+Twelve dictionaries copied from the Fed pack's US PII set and renamed with an `HC-` prefix so the two packs can share a tenant. Three clones, each in a *High* (confidence) and a *Prox 500* (proximity) variant: Social Security Numbers (US), Tax Identification Number (US) and Drivers License (United States); the template is resolved per tenant by name, and a tenant that does not expose one has the clone skipped and the engine created without that term (the plan names it). Three custom pairs: Alien Registration Number, Date of Birth and US Passport, each as a High Confidence and a Prox 500 variant on the *Match any Patterns and any Phrases* type.
 
 ## Rules and reporting tiers
 
@@ -67,6 +74,9 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 | HC-HIPAA Bulk PHI Major-Monitor | 6, > 500 | Monitor (ALLOW), DISABLED | CRITICAL: bypass tier-2 review; Privacy Officer, legal counsel, executive incident response, forensics; breach risk assessment within 1 hour |
 | HC-HIPAA Bulk PHI Significant-Monitor | 6, > 50 | Monitor (ALLOW), DISABLED | HIGH: executive escalation, immediate forensic investigation |
 | HC-HIPAA Bulk PHI Small-Monitor | 6, > 1 | Monitor (ALLOW), DISABLED | MEDIUM: standard tier-2 review; document for the annual HHS log |
+| HC-US PII-Monitor | 7 | Monitor (ALLOW), DISABLED | identity data without clinical context: state breach law review; often HR, billing or member-services traffic |
+| HC-US PHI Medium Confidence-Monitor | 8 | Monitor (ALLOW), DISABLED | second PHI opinion: compare with Engine 1's incidents during tuning; investigate where only this rule fired |
+| HC-US PHI High Confidence-Monitor | 9 | Monitor (ALLOW), DISABLED | immediate investigation; a set of patient records is leaving |
 
 Under Rule Order, enable the Bulk rules ordered Major, Significant, Small so a transaction lands in exactly one tier; under Evaluate All Rules every matching tier logs its own incident. Every rule ships DISABLED, at INFO and in monitor (ALLOW): enable, review the incidents, raise the severity per the tier. Every rule in every pack monitors; if the customer later decides to enforce a tier, that is their change in the portal, and the journey card records it as progress.
 

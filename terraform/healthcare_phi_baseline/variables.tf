@@ -122,3 +122,33 @@ variable "saas_tenant_ids_hc_hipaa_bulk_phi_small_email" {
   type        = list(number)
 }
 
+variable "saas_tenant_ids_hc_us_pii_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_hc_us_pii_email" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PII [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_hc_us_phi_medium_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_hc_us_phi_medium_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI Medium Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_hc_us_phi_high_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_hc_us_phi_high_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI High Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+

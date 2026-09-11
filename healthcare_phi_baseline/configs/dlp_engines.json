@@ -38,5 +38,20 @@
     "name": "HIPAA Bulk PHI - Major",
     "description": "Engine 6, MAJOR tier: the same Sum of identifier matches above 500, a potential 500+ individual breach; routes straight to the Privacy Officer, legal counsel and executive incident response.",
     "expression": "((D:Social Security Numbers (US) + D:Custom-Medical-Record-Number + D:Custom-Health-Plan-Member-Identifier + D:National Provider Identifier + D:Tax Identification Number (US) + D:Driver's License (United States) + D:Enhanced Driver's License (United States)) > 500)"
+  },
+  {
+    "name": "HIPAA US PII",
+    "description": "Engine 7 (from the Fed pack's US PII engine, plus passports). Personally identifiable information outside a clinical context: five or more SSNs, TINs, alien registration or passport numbers, any one of them within 500 bytes of its label, or a date of birth with five or more driver's licence numbers. Catches the identity data a covered entity holds on patients, members and staff that is reportable under state breach law even when no diagnosis travels with it.",
+    "expression": "((D:HC-Social Security Numbers (US) - High > 4) OR (D:HC-Social Security Numbers (US) - Prox 500 > 0) OR (D:HC-Tax Identification Number (US) - High > 4) OR (D:HC-Tax Identification Number (US) - Prox 500 > 0) OR (D:HC-Alien Registration Number - High Confidence > 4) OR (D:HC-Alien Registration Number - Prox 500 > 0) OR ((D:HC-Date of Birth - High Confidence > 1) AND (D:HC-Drivers License (United States) - High > 4)) OR (D:HC-US Passport - High Confidence > 4) OR (D:HC-US Passport - Prox 500 > 0))"
+  },
+  {
+    "name": "HIPAA US PHI - Medium Confidence",
+    "description": "Engine 8 (from the Fed pack's US PHI - Medium Confidence). Medical content (Medical Document, or Medical Information with ten or more drug or disease terms) together with one identifier: an SSN, passport or alien number, or a date of birth beside a driver's licence. A second, independent PHI opinion beside Engine 1; the two are expected to overlap on real records and disagree on edge cases, which is what the tuning phase measures.",
+    "expression": "(((D:Medical Document > 0) OR ((D:Medical Information > 0) AND ((D:Drugs Information > 9) OR (D:Diseases Information > 9)))) AND ((D:HC-Social Security Numbers (US) - High > 0) OR (D:HC-US Passport - High Confidence > 0) OR (D:HC-Alien Registration Number - High Confidence > 0) OR ((D:HC-Date of Birth - High Confidence > 0) AND (D:HC-Drivers License (United States) - Prox 500 > 0))))"
+  },
+  {
+    "name": "HIPAA US PHI - High Confidence",
+    "description": "Engine 9 (from the Fed pack's US PHI - High Confidence). Denser medical content (fifteen or more drug or disease terms) together with five or more identifiers, or any identifier within 500 bytes of its label. Fires on documents that are unmistakably a set of patient records.",
+    "expression": "(((D:Medical Document > 0) OR ((D:Medical Information > 0) AND ((D:Drugs Information > 14) OR (D:Diseases Information > 14)))) AND ((D:HC-Social Security Numbers (US) - High > 4) OR (D:HC-US Passport - High Confidence > 4) OR (D:HC-Alien Registration Number - High Confidence > 4) OR ((D:HC-Date of Birth - Prox 500 > 1) AND (D:HC-Drivers License (United States) - Prox 500 > 1)) OR (D:HC-Social Security Numbers (US) - Prox 500 > 0) OR (D:HC-US Passport - Prox 500 > 0) OR (D:HC-Alien Registration Number - Prox 500 > 0)))"
   }
 ]

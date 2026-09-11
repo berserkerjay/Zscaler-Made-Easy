@@ -113,10 +113,13 @@ def test_healthcare_deploys_on_a_tenant_without_the_medical_bundle():
     assert engines and all(i["status"] == pd.CREATE for i in engines), [(i["name"], i["status"], i.get("reason")) for i in engines if i["status"] != pd.CREATE]
     pruned = {i["name"]: i["pruned"] for i in engines}
     assert "Names (US)" in pruned["HIPAA Identity Trifecta"] and "Driver's License (United States)" in pruned["HIPAA Identity Trifecta"]
+    # The Fed-derived PII clones of TIN and driver's licence have no template on this tenant:
+    # they are blocked, and the engines that use them are created without those terms.
+    assert "HC-Tax Identification Number (US) - High" in pruned["HIPAA US PII"] and "HC-Drivers License (United States) - Prox 500" in pruned["HIPAA US PHI - High Confidence"]
     rules = [i for i in rep["items"] if i["kind"] == "policy"]
-    assert len(rules) == 32 and all(i["status"] == pd.CREATE for i in rules), [(i["name"], i["status"]) for i in rules if i["status"] != pd.CREATE]
+    assert len(rules) == 44 and all(i["status"] == pd.CREATE for i in rules), [(i["name"], i["status"]) for i in rules if i["status"] != pd.CREATE]
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
-    assert res["summary"]["created"] == 7 + 8 + 32
+    assert res["summary"]["created"] == (7 + 12 - 4) + 11 + 44
 
 
 def test_no_shipped_dictionary_sets_proximity_on_a_type_zia_rejects():

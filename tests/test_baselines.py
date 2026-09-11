@@ -398,11 +398,12 @@ def test_shipped_baselines_are_discoverable_and_plan():
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
     assert not any(i.get("pruned") for i in rep["items"]), "every predefined dictionary resolved by code, display name or description"
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    # Predefined-first build: 7 custom dictionaries, 8 engines (six, with the
-    # bulk one in three tiers), 8 inline rules x 4 channels.
-    assert res["summary"] == {"created": 7 + 8 + 32}
+    # Predefined-first build: 7 custom dictionaries plus the 12 Fed-derived PII
+    # ones, 11 engines (six, with the bulk one in three tiers, plus US PII and
+    # US PHI at two confidences), 11 inline rules x 4 channels.
+    assert res["summary"] == {"created": 19 + 11 + 44}
     for svc in (client.zia.dlp_web_rules, client.zia.endpoint_dlp_rules, client.zia.casb_dlp_rules, client.zia.outbound_email_dlp_rules):
-        assert len(svc.added) == 8, "one rule per inline rule on every channel"
+        assert len(svc.added) == 11, "one rule per inline rule on every channel"
     rule = client.zia.dlp_web_rules.added[0]
     # Ships monitor-only and DISABLED; the API never sees the target, the plan does.
     assert rule["ocr_enabled"] is True and rule["action"] == "ALLOW" and rule["state"] == "DISABLED" and "target_action" not in rule
@@ -417,7 +418,12 @@ def test_shipped_baselines_are_discoverable_and_plan():
     assert bulk["HIPAA Bulk PHI - Major"].endswith(") > 500)")
     names = {r["name"] for r in client.zia.dlp_web_rules.added}
     assert names == {"HC-HIPAA Critical-Monitor", "HC-HIPAA Narrative Low Volume-Monitor", "HC-HIPAA Identity Trifecta-Monitor", "HC-HIPAA Sensitive Subcategory-Monitor",
-                     "HC-HIPAA Pharmacy Claims Billing-Monitor", "HC-HIPAA Bulk PHI Major-Monitor", "HC-HIPAA Bulk PHI Significant-Monitor", "HC-HIPAA Bulk PHI Small-Monitor"}
+                     "HC-HIPAA Pharmacy Claims Billing-Monitor", "HC-HIPAA Bulk PHI Major-Monitor", "HC-HIPAA Bulk PHI Significant-Monitor", "HC-HIPAA Bulk PHI Small-Monitor",
+                     "HC-US PII-Monitor", "HC-US PHI Medium Confidence-Monitor", "HC-US PHI High Confidence-Monitor"}
+    # The Fed-derived clones resolve their template per tenant (SSN, USITIN_LEAKAGE, USDL_LEAKAGE are all here).
+    added_dicts = {d["name"]: d for d in client.zia.dlp_dictionary.added}
+    assert added_dicts["HC-Social Security Numbers (US) - Prox 500"]["dict_template_id"] == 10 and added_dicts["HC-Social Security Numbers (US) - Prox 500"]["proximity"] == 500
+    assert added_dicts["HC-Tax Identification Number (US) - High"]["dict_template_id"] == 14
     ent = packs["zbp_enterprise_baseline"]
     templates = sorted({d["dict_template_name"] for d in json.load(open(f"{ent['dir']}/configs/dlp_dictionaries.json")) if d.get("predefined_clone")})
     # Predefined dictionaries the engines reference directly (API names, as a tenant exports them).
