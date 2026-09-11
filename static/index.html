@@ -643,6 +643,11 @@
       </div>
       <div class="tool-group" role="group" aria-label="Reference">
         <div class="tool-group-l">Reference</div>
+        <button class="btn btn-ghost" onclick="openEvalAllTab()"
+                aria-label="Open Evaluate All Rules: the decision flow with the tie-breaker and a simulator (opens in a new tab)"
+                title="How ZIA decides with Evaluate All Rules: every rule evaluated, the most restrictive action wins, a tie on the action is broken by rule order. With a simulator. Opens in a new tab.">
+          <span aria-hidden="true">🔀</span> How Evaluate All Rules decides
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('bestpractices')"
                 aria-label="Open curated Zscaler Best Practices reference library (opens in a new tab)"
                 title="Curated Zscaler best-practice articles. Opens in a new tab.">
@@ -5298,6 +5303,10 @@ async function openSslFlowTab() {
   } catch (e) {
     w.location = `/report/sslflow?error=${encodeURIComponent(e.message)}`;
   }
+}
+function openEvalAllTab() {
+  const w = window.open('/report/evalall', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openQuickStartTab() {
   const w = window.open('/quickstart', '_blank');

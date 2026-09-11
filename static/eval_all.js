@@ -48,12 +48,20 @@ const EA_PRESETS = {
   },
 };
 let EA_RULES = JSON.parse(JSON.stringify(EA_PRESETS.tie.rules));
+// Which channels evaluate every rule: Inline Web DLP, Endpoint DLP and
+// Outbound Email DLP. SaaS Security API DLP rules are the exception:
+// they are walked in order per rule type and the first match decides.
+const EA_CHANNELS = { web: 'Inline Web DLP', endpoint: 'Endpoint DLP', email: 'Outbound Email DLP', saas: 'SaaS Security API DLP' };
+const EA_EVAL_ALL = { web: true, endpoint: true, email: true, saas: false };
+let EA_CHANNEL = 'web';
 
 function _eaSplit(s) { return String(s || '').split(',').map(x => x.trim()).filter(Boolean); }
 function _eaAct(a) { return String(a || 'ALLOW').toUpperCase().replace(/[^A-Z_]/g, ''); }
 
-// The decision, as data: every step ZIA takes, in order.
-function evalAllSimulate(rules, matchEngines) {
+// The decision, as data: every step ZIA takes, in order. `channel`
+// picks the evaluation model: evaluate-all (web, endpoint, email) or
+// first match by order (saas).
+function evalAllSimulate(rules, matchEngines, channel) {
   const want = new Set(_eaSplit(matchEngines).map(x => x.toLowerCase()));
   const enabled = rules.filter(r => r.enabled !== false);
   const byOrder = [...enabled].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
@@ -62,6 +70,15 @@ function evalAllSimulate(rules, matchEngines) {
     return eng.length === 0 || eng.some(e => want.has(e.toLowerCase()));
   });
   const steps = [];
+  const ch = channel || 'web';
+  if (!EA_EVAL_ALL[ch]) {
+    // SaaS Security API: rule order, first match wins, no tie is possible.
+    steps.push({ n: 1, title: `${EA_CHANNELS[ch]}: rules are walked in order`, text: `${enabled.length} enabled rule(s) of this rule type, lowest order number first. This channel does not evaluate all rules.` });
+    const first = matching[0] || null;
+    steps.push({ n: 2, title: 'The first matching rule decides', text: first ? `${first.name} (order ${first.order}) matches first → ${EA_LABEL[_eaAct(first.action)] || first.action}. Nothing below it is looked at${matching.length > 1 ? `, so ${matching.slice(1).map(r => r.name).join(', ')} never run` : ''}.` : 'no rule matches; the file is left as it is.' });
+    if (first) steps.push({ n: 3, title: 'No tie-breaker on this channel', text: `Only one rule can win: whichever matching rule has the lowest order number. A stricter rule further down is shadowed until it is moved up.`, shadow: matching.length > 1 && matching.slice(1).some(r => (EA_RANK[_eaAct(r.action)] ?? 3) < (EA_RANK[_eaAct(first.action)] ?? 3)) });
+    return { steps, winner: first, matching, firstMatch: first, tie: false, action: first ? (EA_LABEL[_eaAct(first.action)] || first.action) : null, model: 'first_match' };
+  }
   steps.push({ n: 1, title: 'Every enabled rule is evaluated', text: `${enabled.length} enabled rule(s) (${rules.length - enabled.length} disabled skipped). Order never stops the evaluation in this mode.` });
   steps.push({ n: 2, title: 'Rules whose criteria match this transaction', text: matching.length ? matching.map(r => `${r.name} (order ${r.order}, ${EA_LABEL[_eaAct(r.action)] || r.action})`).join('; ') : 'none: the transaction is allowed by default and no DLP log line is written.', rules: matching.map(r => r.name) });
   if (!matching.length) return { steps, winner: null, matching, firstMatch: null, tie: false };
@@ -126,9 +143,9 @@ window.evalAllLoadRules = evalAllLoadRules;
 
 function _eaRun() {
   const out = document.getElementById('eaResult'); if (!out) return;
-  const res = evalAllSimulate(EA_RULES, (document.getElementById('eaMatch') || {}).value || '');
+  const res = evalAllSimulate(EA_RULES, (document.getElementById('eaMatch') || {}).value || '', EA_CHANNEL);
   out.innerHTML = `<ol class="ea-steps">${res.steps.map(s => `<li class="${s.tie ? 'tie' : ''} ${s.shadow ? 'shadow' : ''}"><strong>${_eaE(s.title)}</strong><div>${_eaE(s.text)}</div></li>`).join('')}</ol>
-    <div class="ea-verdict ${res.winner ? 'has' : ''}" role="status">${res.winner ? `Result: <strong>${_eaE(res.action)}</strong> by <strong>${_eaE(res.winner.name)}</strong> (order ${_eaE(res.winner.order)})${res.tie ? ' — decided on order, because more than one rule carried that action' : ''}.` : 'Result: no rule matches; allowed by default.'}</div>`;
+    <div class="ea-verdict ${res.winner ? 'has' : ''}" role="status">${res.winner ? `Result on ${_eaE(EA_CHANNELS[EA_CHANNEL])}: <strong>${_eaE(res.action)}</strong> by <strong>${_eaE(res.winner.name)}</strong> (order ${_eaE(res.winner.order)})${res.tie ? ' — decided on order, because more than one rule carried that action' : (res.model === 'first_match' ? ' — first match by order; this channel has no tie-breaker' : '')}.` : 'Result: no rule matches; allowed by default.'}</div>`;
 }
 
 function _eaRender() {
@@ -136,15 +153,15 @@ function _eaRender() {
   const match = (document.getElementById('eaMatch') || {}).value || EA_PRESETS.tie.match;
   host.innerHTML = `
   <details class="ea-wrap" open>
-    <summary><span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">HOW IT WORKS</span> <strong>Evaluate All Rules: how ZIA decides, and what happens on a tie</strong></summary>
+    <summary><span style="font-size:0.7rem;color:var(--accent);font-weight:700;letter-spacing:0.1em;">HOW IT WORKS</span> <strong>Evaluate All Rules: how ZIA decides, and what happens on a tie</strong> ${location.pathname === '/report/evalall' ? '' : '<a href="/report/evalall" target="_blank" rel="noopener" style="margin-left:0.6rem;font-size:0.8rem;font-weight:400;">Open the decision diagram in its own tab ↗</a>'}</summary>
     <div class="ea-flow" role="list" aria-label="Decision flow">
-      <div class="ea-lane" role="listitem"><div class="ea-lane-t">Rule Order (first match wins)</div>
+      <div class="ea-lane" role="listitem"><div class="ea-lane-t">Rule Order (first match wins) — SaaS Security API DLP rules, per rule type; also Inline Web DLP before the switch</div>
         <div class="ea-box">Transaction</div><div class="ea-arrow" aria-hidden="true">→</div>
         <div class="ea-box">Walk rules by order</div><div class="ea-arrow" aria-hidden="true">→</div>
         <div class="ea-box warn">First rule that matches decides</div><div class="ea-arrow" aria-hidden="true">→</div>
         <div class="ea-box dim">Everything below is never looked at</div>
       </div>
-      <div class="ea-lane" role="listitem"><div class="ea-lane-t">Evaluate All Rules</div>
+      <div class="ea-lane" role="listitem"><div class="ea-lane-t">Evaluate All Rules — Inline Web DLP (once switched on), Endpoint DLP, Outbound Email DLP</div>
         <div class="ea-box">Transaction</div><div class="ea-arrow" aria-hidden="true">→</div>
         <div class="ea-box">Every enabled rule evaluated</div><div class="ea-arrow" aria-hidden="true">→</div>
         <div class="ea-box">Matching set</div><div class="ea-arrow" aria-hidden="true">→</div>
@@ -154,9 +171,9 @@ function _eaRender() {
         <div class="ea-box dim">DLP log → Incident Receiver → Workflow Automation</div>
       </div>
     </div>
-    <p class="ea-note">Source: Zscaler, <a href="${EA_SOURCE}" target="_blank" rel="noopener noreferrer">About First Match Wins and Evaluate All Rules for DLP</a>. Rule order still matters in Evaluate All Rules: it is the tie-breaker among rules that carry the same action, and the winning rule is the one whose notification and incident settings are used.</p>
+    <p class="ea-note">Source: Zscaler, <a href="${EA_SOURCE}" target="_blank" rel="noopener noreferrer">About First Match Wins and Evaluate All Rules for DLP</a>. <strong>Channels:</strong> Inline Web DLP (with the Advanced Settings switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the exception, walked in order per rule type with the first match deciding. Rule order still matters in Evaluate All Rules: it is the tie-breaker among rules that carry the same action, and the winning rule is the one whose notification and incident settings are used.</p>
     <div class="ea-sim">
-      <div class="ea-sim-h"><strong>Simulate a transaction</strong>
+      <div class="ea-sim-h"><strong>Simulate a transaction</strong> <label class="ea-note" style="margin:0;">on <select id="eaChannel" aria-label="Channel" onchange="EA_CHANNEL=this.value;_eaRun()">${Object.entries(EA_CHANNELS).map(([k, v]) => `<option value="${k}" ${EA_CHANNEL === k ? 'selected' : ''}>${v}${EA_EVAL_ALL[k] ? '' : ' (first match, no tie-breaker)'}</option>`).join('')}</select></label>
         <span class="ea-presets">${Object.entries(EA_PRESETS).map(([k, p]) => `<button type="button" class="btn btn-ghost" style="padding:0.3rem 0.7rem;font-size:0.76rem;" onclick="_eaPreset('${k}')">${_eaE(p.label)}</button>`).join('')}<button type="button" class="btn btn-ghost" style="padding:0.3rem 0.7rem;font-size:0.76rem;" onclick="_eaAdd()">+ Add rule</button><span id="eaLoaded" class="ea-note" style="margin:0;"></span></span>
       </div>
       ${_eaRulesHtml()}

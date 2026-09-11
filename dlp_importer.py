@@ -330,16 +330,41 @@ PREDEFINED_TEMPLATE_ALIASES: Dict[str, str] = {
     "ABA Bank Routing Number": "ABA_LEAKAGE", "Tax Identification Number (US)": "USITIN_LEAKAGE",
     "International Bank Account Number (EU)": "EUIBAN_LEAKAGE", "Credentials Leakage": "CRED_LEAKAGE",
     "Financial Statements": "FINANCIAL", "Medical Information": "MEDICAL",
+    # Portal display names the healthcare build uses (codes as the API exports them).
+    "Medical Document": "ML_MEDICAL_DOC_LEAKAGE", "Drugs Information": "DRUGS_LEAKAGE", "Diseases Information": "DISEASES_LEAKAGE",
+    "Credentials and Secrets": "CRED_LEAKAGE", "Tax Document": "ML_TAX_LEAKAGE", "ABA Bank Routing Numbers": "ABA_LEAKAGE",
+    "Driver's License (United States)": "USDL_LEAKAGE",
 }
-PREDEFINED_TEMPLATE_ALIASES.update({v: k for k, v in list(PREDEFINED_TEMPLATE_ALIASES.items())})
+# Codes map back to ONE display name (the first written above wins).
+_display = {}
+for _k, _v in list(PREDEFINED_TEMPLATE_ALIASES.items()):
+    _display.setdefault(_v, _k)
+PREDEFINED_TEMPLATE_ALIASES.update(_display)
+# Every display name of a code resolves to the code as well.
+_CODE_DISPLAY_NAMES: Dict[str, List[str]] = {}
+for _k, _v in list(PREDEFINED_TEMPLATE_ALIASES.items()):
+    if _k != _display.get(_v, _k):
+        _CODE_DISPLAY_NAMES.setdefault(_v, []).append(_k)
+
+
+def predefined_candidates(name: Optional[str]) -> List[str]:
+    """The name as written, its API code, and every display name of that code."""
+    if not name:
+        return []
+    out = [name]
+    code = PREDEFINED_TEMPLATE_ALIASES.get(name)
+    if code and code != name:
+        out.append(code)
+    for c in list(out):
+        for disp in _CODE_DISPLAY_NAMES.get(c, []):
+            if disp not in out:
+                out.append(disp)
+    return out
 
 
 def template_candidates(name: Optional[str]) -> List[str]:
-    """The name as written plus its known alias."""
-    if not name:
-        return []
-    alt = PREDEFINED_TEMPLATE_ALIASES.get(name)
-    return [name] + ([alt] if alt and alt != name else [])
+    """The name as written plus its known aliases (API code and display names)."""
+    return predefined_candidates(name)
 
 
 def resolve_template(name: Optional[str], predefined_name_to_id: Dict[str, Any]) -> Any:

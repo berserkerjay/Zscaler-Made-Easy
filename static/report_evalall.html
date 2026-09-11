@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluate All Rules — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .ea-page .ea-wrap { margin: 0; border: 0; border-radius: 0; background: transparent; padding: 0.5rem 1.2rem 1rem; }
+  .ea-page .ea-wrap > summary { display: none; }
+  .ea-svgwrap { padding: 1rem 1.2rem 0; overflow-x: auto; }
+  .ea-svg { width: 100%; max-width: 1100px; height: auto; display: block; margin: 0 auto; font-family: inherit; }
+  .ea-svg .box { fill: var(--well); stroke: var(--border); stroke-width: 1.2; }
+  .ea-svg .box.start { stroke: var(--accent); }
+  .ea-svg .box.ok { stroke: var(--pass); }
+  .ea-svg .box.warn { stroke: var(--warn); }
+  .ea-svg .box.end { stroke: var(--dim); }
+  .ea-svg .diamond { fill: color-mix(in srgb, var(--accent) 14%, var(--well)); stroke: var(--accent); stroke-width: 1.4; }
+  .ea-svg text { fill: var(--text); font-size: 13px; }
+  .ea-svg text.sub { fill: var(--dim); font-size: 11.5px; }
+  .ea-svg text.lab { fill: var(--accent); font-size: 11.5px; font-weight: 700; }
+  .ea-svg .edge { stroke: var(--dim); stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+  .ea-svg .edge.tie { stroke: var(--accent); stroke-width: 1.8; }
+  .ea-legend { display: flex; gap: 1rem; flex-wrap: wrap; padding: 0.4rem 1.2rem 0; font-size: 0.8rem; color: var(--dim); }
+  .ea-legend i { display: inline-block; width: 0.9rem; height: 0.9rem; border-radius: 3px; border: 2px solid var(--accent); vertical-align: -2px; margin-right: 0.3rem; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+</style>
+</head>
+<body class="report-page df-page ea-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Evaluate All Rules</span> and the tie-breaker</h1>
+      <p>How ZIA decides which DLP rule applies when every rule is evaluated, what happens when two matching rules carry the same action, and a simulator to try it on your own rules. Inline Web DLP (with the switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the one exception: rule order, first match wins, per rule type.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <a class="rp-btn" href="https://help.zscaler.com/zia/about-first-match-wins-and-evaluate-all-rules-for-dlp" target="_blank" rel="noopener noreferrer">Zscaler: First Match Wins vs Evaluate All Rules ↗</a>
+    </nav>
+    <main class="rp-card">
+      <h2 class="df-h" style="padding:1rem 1.2rem 0;">The decision, step by step</h2>
+      <div class="ea-svgwrap">
+        <svg class="ea-svg" viewBox="0 0 1100 560" role="img" aria-labelledby="eaTitle eaDesc">
+          <title id="eaTitle">Evaluate All Rules decision flow</title>
+          <desc id="eaDesc">A transaction is checked against every enabled DLP rule. The matching rules are grouped by action and the most restrictive action wins: Block, then Isolate, then Confirm, then Allow. If exactly one matching rule carries that action it is applied. If several do, that is a tie, and the rule with the highest priority, the lowest order number, is applied. The winning rule's notification template, auditor, Incident Receiver and severity settings are used, and the match goes to the DLP log, the Incident Receiver and Workflow Automation.</desc>
+          <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--dim)"/></marker></defs>
+          <!-- row 1 -->
+          <rect class="box start" x="20" y="40" width="170" height="64" rx="10"/><text x="105" y="67" text-anchor="middle">Transaction</text><text class="sub" x="105" y="86" text-anchor="middle">upload, post, e-mail…</text>
+          <path class="edge" d="M190,72 L235,72"/>
+          <rect class="box" x="237" y="40" width="200" height="64" rx="10"/><text x="337" y="67" text-anchor="middle">Every enabled rule</text><text class="sub" x="337" y="86" text-anchor="middle">is evaluated; order does not stop it</text>
+          <path class="edge" d="M437,72 L482,72"/>
+          <rect class="box" x="484" y="40" width="180" height="64" rx="10"/><text x="574" y="67" text-anchor="middle">Matching set</text><text class="sub" x="574" y="86" text-anchor="middle">rules whose criteria match</text>
+          <path class="edge" d="M664,72 L709,72"/>
+          <rect class="box ok" x="711" y="40" width="210" height="64" rx="10"/><text x="816" y="62" text-anchor="middle">Most restrictive action</text><text class="sub" x="816" y="80" text-anchor="middle">Block › Isolate › Confirm › Allow</text><text class="sub" x="816" y="95" text-anchor="middle">(most restrictive wins)</text>
+          <!-- down to the diamond -->
+          <path class="edge" d="M816,104 L816,160"/>
+          <polygon class="diamond" points="816,162 946,232 816,302 686,232"/>
+          <text x="816" y="222" text-anchor="middle">More than one rule</text><text x="816" y="240" text-anchor="middle">with that action?</text>
+          <text class="sub" x="816" y="258" text-anchor="middle">(a tie)</text>
+          <!-- no branch -->
+          <text class="lab" x="600" y="222">No</text>
+          <path class="edge" d="M686,232 L500,232"/>
+          <rect class="box" x="300" y="200" width="198" height="64" rx="10"/><text x="399" y="227" text-anchor="middle">That one rule applies</text><text class="sub" x="399" y="246" text-anchor="middle">it alone carries the action</text>
+          <!-- yes branch: tie -->
+          <text class="lab" x="826" y="330">Yes: the tie-breaker</text>
+          <path class="edge tie" d="M816,302 L816,352"/>
+          <rect class="box warn" x="676" y="354" width="280" height="76" rx="10"/><text x="816" y="380" text-anchor="middle">Rule order breaks the tie</text><text class="sub" x="816" y="399" text-anchor="middle">the highest priority rule wins:</text><text class="sub" x="816" y="415" text-anchor="middle">the lowest order number among the tied rules</text>
+          <!-- both to winner -->
+          <path class="edge" d="M399,264 L399,480 L520,480"/>
+          <path class="edge tie" d="M816,430 L816,480 L720,480"/>
+          <rect class="box ok" x="522" y="448" width="196" height="64" rx="10"/><text x="620" y="473" text-anchor="middle">The winner's settings apply</text><text class="sub" x="620" y="491" text-anchor="middle">action, template, auditor,</text><text class="sub" x="620" y="504" text-anchor="middle">Incident Receiver, severity</text>
+          <!-- outcome -->
+          <path class="edge" d="M620,512 L620,540 L200,540 L200,516"/>
+          <rect class="box end" x="20" y="448" width="360" height="66" rx="10"/><text x="200" y="473" text-anchor="middle">DLP log → Incident Receiver → Workflow Automation</text><text class="sub" x="200" y="492" text-anchor="middle">the log line and the incident carry the winning rule's name,</text><text class="sub" x="200" y="505" text-anchor="middle">engines and dictionary counts</text>
+        </svg>
+      </div>
+      <div class="ea-legend"><span><i></i>Decision</span><span>Solid blue edge: the tie path</span><span><strong>Applies to</strong> Inline Web DLP, Endpoint DLP and Outbound Email DLP.</span><span><strong>SaaS Security API DLP</strong> does not evaluate all rules: rules are walked in order per rule type, the first match decides, and there is no tie-breaker (a stricter rule further down is shadowed until it is moved up).</span></div>
+      <h2 class="df-h" style="padding:1rem 1.2rem 0;">Two lanes side by side, and a simulator</h2>
+      <div id="evalAllFlow"></div>
+    </main>
+  </div>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/eval_all.js"></script>
+</body>
+</html>

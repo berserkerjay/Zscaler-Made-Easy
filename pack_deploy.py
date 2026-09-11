@@ -427,6 +427,15 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
             snap["dictionaries"][name] = d
             if not _field(d, "custom", default=False):
                 snap["predefined"][name] = _field(d, "id")
+                # A predefined dictionary is exported under its API code with the
+                # portal's display name in the description ("CREDIT_CARD" /
+                # "Credit Cards"); packs may reference either, so both resolve.
+                disp = str(_field(d, "description", default="") or "").strip()
+                if disp and disp not in snap["predefined"] and len(disp) <= 80:
+                    snap["predefined"][disp] = _field(d, "id")
+                from dlp_importer import predefined_candidates
+                for alias in predefined_candidates(name):
+                    snap["predefined"].setdefault(alias, _field(d, "id"))
     except Exception as e:  # noqa: BLE001 — surfaced to the user, not hidden
         snap["unreadable"]["dictionaries"] = str(e)[:200]
         snap["errors"].append(f"dictionaries: {str(e)[:200]}")
@@ -555,6 +564,7 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
 def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
     # Every dictionary name that could satisfy a D:<name> reference.
     candidates: Dict[str, Any] = {n: n for n in tenant["dictionaries"]}
+    candidates.update({n: n for n in (tenant.get("predefined") or {})})   # predefined ones by code, display name and alias
     candidates.update({n: n for n in dict_items})
     tenant_ids = {n: _field(t, "id") for n, t in tenant["dictionaries"].items()}
 
@@ -1556,6 +1566,8 @@ def apply(
 
     # Name → ID maps, extended as objects are created so later phases resolve them.
     dict_ids: Dict[str, Any] = {n: _field(t, "id") for n, t in tenant["dictionaries"].items()}
+    for n, i in (tenant.get("predefined") or {}).items():
+        dict_ids.setdefault(n, i)   # predefined dictionaries by display name and alias too
     engine_ids: Dict[str, Any] = {n: _field(t, "id") for n, t in tenant["engines"].items()}
 
     def described(item: Dict[str, Any], definition: Dict[str, Any], fallback: str = "") -> Dict[str, Any]:

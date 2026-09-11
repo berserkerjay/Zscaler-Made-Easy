@@ -134,3 +134,5 @@ body.theme-light .gd-upd-cmd { background: rgba(15,23,42,0.05); }
 .gd-tenant > summary:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; border-radius: 8px; }
 .gd-tenant .gd-dim { font-weight: 400; color: var(--dim, #94a3b8); font-size: 0.8rem; }
 .gd-tenant #configCard { margin: 0; border: 0; border-top: 1px solid var(--border, #1e293b); border-radius: 0 0 10px 10px; box-shadow: none; }
+
+.gd-scope { margin: 0.5rem 0 0.2rem; padding: 0.5rem 0.7rem; border-left: 3px solid var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent); border-radius: 6px; }

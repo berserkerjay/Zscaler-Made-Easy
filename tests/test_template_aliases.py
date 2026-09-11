@@ -20,7 +20,9 @@ def test_resolve_template_accepts_either_name():
     assert resolve_template("SSN", {"Social Security Numbers (US)": 12}) == 12
     assert resolve_template("CREDIT_CARD", {"CREDIT_CARD": 3, "Credit Cards": 4}) == 3     # exact name first
     assert resolve_template("Unknown Thing", {"SSN": 1}) is None
-    assert template_candidates("USDL_LEAKAGE") == ["USDL_LEAKAGE", "Drivers License (United States)"]
+    c = template_candidates("USDL_LEAKAGE")
+    assert c[:2] == ["USDL_LEAKAGE", "Drivers License (United States)"] and "Driver's License (United States)" in c   # every display name of the code
+    assert template_candidates("Medical Document")[:2] == ["Medical Document", "ML_MEDICAL_DOC_LEAKAGE"]
     kw, err = build_dict_kwargs({"name": "x", "predefined_clone": True, "dict_template_name": "Drivers License (United States)", "proximity": 500}, {"USDL_LEAKAGE": 77})
     assert err is None and kw["dict_template_id"] == 77
 

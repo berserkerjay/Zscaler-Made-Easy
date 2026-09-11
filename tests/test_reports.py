@@ -80,8 +80,8 @@ def test_terraform_summary_endpoint():
     assert "rules.tf" in names and "README.md" in names and all(f["purpose"] for f in d["files"] if f["name"].endswith(".tf"))
     # Detection only, mirrored to every channel: one rule each on web,
     # endpoint, saas and email; no containment channels.
-    assert d["counts"]["rules"] == 4 and d["provider"] == "zscaler/zia"   # 1 web rule and its endpoint, saas and email mirrors: equal counts per channel
-    assert {k: v for k, v in d["counts"]["channels"].items()} == {"web": 1, "endpoint": 1, "saas": 1, "email": 1}
+    assert d["counts"]["rules"] == 32 and d["provider"] == "zscaler/zia"   # 8 web rules and their endpoint, saas and email mirrors: equal counts per channel
+    assert {k: v for k, v in d["counts"]["channels"].items()} == {"web": 8, "endpoint": 8, "saas": 8, "email": 8}
     assert not (set(d["counts"]["channels"]) & {"ssl", "cloud_app", "file_type", "url"})
     assert c.get("/api/dlp-packs/nope/terraform").status_code == 404
     html = c.get("/").text

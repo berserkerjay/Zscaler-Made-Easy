@@ -265,13 +265,19 @@ function _dzRenderSelect() {
   } else if (!DZ.packs.length) {
     body.innerHTML = `<div class="dz-empty">No policy packs found.<br><span style="font-size:0.8rem;">Drop a folder with <code>configs/dlp_*.json</code> in the project root, or see POLICY_PACKS.md.</span></div>`;
   } else {
-    const cards = DZ.packs.map(p => {
+    const scope = (window.GD && GD.scope && GD.scope.scoped) ? GD.scope : null;
+    const inScope = p => !scope || scope.packs.includes(p.id) || DZ.selected.has(p.id);
+    const ordered = scope ? [...DZ.packs].sort((a, b) => (inScope(a) ? 0 : 1) - (inScope(b) ? 0 : 1)) : DZ.packs;
+    const cards = ordered.map(p => {
       const sel = DZ.selected.has(p.id);
+      const foldable = scope && !inScope(p) && !DZ.showAllPacks;
+      if (foldable) return '';
+      const scopeChip = scope && scope.packs.includes(p.id) ? `<span class="dz-chip kind-baseline" title="Recommended for ${_dzE(scope.industry)}">For ${_dzE(scope.industry)}</span>` : '';
       const det = DZ.open.has(p.id) ? _dzDetailHtml(p.id) : '';
       return `
       <div class="dz-pack ${sel ? 'is-selected' : ''}" role="group" aria-label="${_dzE(p.name || p.id)}" onclick="_dzCardClick(event, '${_dzE(p.id)}')">
         <div class="dz-pack-top">
-          <h3>${_dzE(p.name || p.id)}${p.version ? `<span class="v">v${_dzE(p.version)}</span>` : ''}</h3>
+          <h3>${_dzE(p.name || p.id)}${p.version ? `<span class="v">v${_dzE(p.version)}</span>` : ''} ${scopeChip}</h3>
           <label class="dz-switch" title="${sel ? 'Deselect' : 'Select'} ${_dzE(p.name || p.id)}" onclick="event.stopPropagation()">
             <input type="checkbox" ${sel ? 'checked' : ''} onchange="_dzTogglePack('${_dzE(p.id)}', this.checked)" aria-label="Select ${_dzE(p.name || p.id)}">
             <span class="track"><span class="knob"></span></span>
@@ -304,6 +310,7 @@ function _dzRenderSelect() {
     body.innerHTML = `
       ${_dzWriteBanner()}
       <div class="dz-grid">${cards}</div>
+      ${(() => { const sc = (window.GD && GD.scope && GD.scope.scoped) ? GD.scope : null; if (!sc) return ''; const hidden = DZ.packs.filter(p => !sc.packs.includes(p.id) && !DZ.selected.has(p.id)); if (!hidden.length) return ''; return `<div class="dz-scope-fold"><span class="d">Scope: ${_dzE(sc.industry)} (from the tenant profile). ${DZ.showAllPacks ? `All packs shown; ${hidden.length} are outside this vertical.` : `${hidden.length} pack(s) for other verticals are folded away: ${_dzE(hidden.map(p => p.name || p.id).join(', '))}.`}</span> <button type="button" class="dz-link" onclick="DZ.showAllPacks = !DZ.showAllPacks; _dzRenderSelect()">${DZ.showAllPacks ? 'Show only this vertical' : 'Show all packs'}</button></div>`; })()}
       <div class="dz-options">
         <div class="dz-option">
           <div><div class="t">Apply confidence tweaks</div><div class="d">Lets packs adjust confidence on existing dictionaries (e.g. Medical → Low). Each change is listed for approval.</div></div>

@@ -40,3 +40,16 @@ def test_evaluate_all_rules_flow_and_simulator_are_in_the_wizard():
     assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules(migrateRules)" in html
     js = c.get("/static/eval_all.js").text
     assert "Tie on the action" in js and "lowest order number" in js and "about-first-match-wins-and-evaluate-all-rules-for-dlp" in js
+
+
+def test_evaluate_all_rules_has_its_own_tab_with_the_tie_breaker():
+    c = _page()
+    page = c.get("/report/evalall")
+    assert page.status_code == 200 and "tie-breaker" in page.text and "Rule order breaks the tie" in page.text and "lowest order number" in page.text
+    assert 'id="evalAllFlow"' in page.text and "/static/eval_all.js" in page.text and 'role="img"' in page.text
+    assert "SaaS Security API DLP" in page.text and "first match" in page.text
+    js = c.get("/static/eval_all.js").text
+    assert "EA_EVAL_ALL = { web: true, endpoint: true, email: true, saas: false }" in js and "No tie-breaker on this channel" in js
+    assert TestClient(srv.app).get("/report/evalall").status_code == 200
+    html = c.get("/").text
+    assert "openEvalAllTab()" in html and "How Evaluate All Rules decides" in html

@@ -396,7 +396,13 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     for name, label in templates.items():
         data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n  name = {hcl_str(name)}\n}}\n\n')
     for name, label in predefined_refs.items():
-        data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n  name = {hcl_str(name)}\n}}\n\n')
+        # The provider looks a predefined dictionary up by its API code; a pack
+        # may reference it by the portal's display name.
+        from dlp_importer import PREDEFINED_TEMPLATE_ALIASES
+        code = PREDEFINED_TEMPLATE_ALIASES.get(name, name)
+        api_name = code if (code.isupper() and " " not in code) else name
+        note = "" if api_name == name else f"  # {name}\n"
+        data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n{note}  name = {hcl_str(api_name)}\n}}\n\n')
     files["dictionaries.tf"] = out[0] + "".join(data) + "".join(out[1:])
     files["engines.tf"] = "".join(eng)
 

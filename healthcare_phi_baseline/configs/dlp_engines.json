@@ -1,12 +1,42 @@
 [
   {
-    "name": "E_HEALTHCARE_PHI",
-    "description": "Presence-based PHI. Branch A: clinical context (predefined MEDICAL (Medical Information) or ML_MEDICAL_DOC_LEAKAGE (Medical Document), or the custom clinical phrases) AND at least one strong identifier. Branch B: two distinct strong identifiers. Branch C: the legal-sex booster beside a strong identifier.",
-    "expression": "((((D:MEDICAL > 0) OR (D:ML_MEDICAL_DOC_LEAKAGE > 0) OR (D:D_CLINICAL_PHRASES > 0)) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))) OR (((D:D_MRN > 0) AND (D:D_ACCT > 0)) OR ((D:D_MRN > 0) AND (D:D_DOB > 0)) OR ((D:D_ACCT > 0) AND (D:D_DOB > 0))) OR ((D:D_LEGAL_SEX > 0) AND ((D:D_MRN > 0) OR (D:D_ACCT > 0) OR (D:D_DOB > 0))))"
+    "name": "HIPAA Critical (Strong Signature + Clinical Document)",
+    "description": "Engine 1. High-confidence PHI with a strong identity anchor; single record reportable. Three pathways: (1) Medical Document or Medical Imaging classifier + identifier; (2) Medical Information context with clinical density (Drugs > 4, Diseases > 2, Treatments > 4, or an NDC code) + identifier; (3) clinical-narrative structure (> 3 markers) with clinical content + identifier.",
+    "expression": "((((D:Medical Document > 0) OR (D:Medical Imaging > 0)) AND ((D:Social Security Numbers (US) > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Names (US) > 0))) OR ((D:Medical Information > 0) AND ((D:Drugs Information > 4) OR (D:Diseases Information > 2) OR (D:Treatments Information > 4) OR (D:NDC Number (Package) > 0) OR (D:NDC Number (Product) > 0)) AND ((D:Social Security Numbers (US) > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Names (US) > 0))) OR ((D:Custom-Clinical-Narrative > 3) AND ((D:Diseases Information > 0) OR (D:Drugs Information > 0) OR (D:Treatments Information > 0)) AND ((D:Social Security Numbers (US) > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Names (US) > 0))))"
   },
   {
-    "name": "E_PHI_BULK_EXPORT",
-    "description": "Volume-based PHI for mass exposure: any strong identifier appearing 10 or more times in one transaction (a record dump or spreadsheet). Tune the threshold to your export sizes.",
-    "expression": "((D:D_MRN > 9) OR (D:D_ACCT > 9) OR (D:D_DOB > 9))"
+    "name": "HIPAA Narrative / Low Volume",
+    "description": "Engine 2. Short-form clinical content (referral letters, prior authorizations, prescription notes) that will not reach Engine 1's density: clinical terms > 2 with a name and a second identifier (SSN, DOB, MRN or member id).",
+    "expression": "(((D:Diseases Information > 2) OR (D:Drugs Information > 2) OR (D:Treatments Information > 2)) AND (D:Names (US) > 0) AND ((D:Social Security Numbers (US) > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Custom-Health-Plan-Member-Identifier > 0)))"
+  },
+  {
+    "name": "HIPAA Identity Trifecta",
+    "description": "Engine 3. Identity-theft-grade combinations independent of clinical content, reportable under most state breach laws: strict trifecta (SSN + DOB + name) or the expanded branch (name + DOB + driver's licence, enhanced driver's licence or TIN). Without a DOB the expanded branch never fires.",
+    "expression": "(((D:Social Security Numbers (US) > 0) AND (D:Custom-Date-of-Birth > 0) AND (D:Names (US) > 0)) OR ((D:Names (US) > 0) AND (D:Custom-Date-of-Birth > 0) AND ((D:Driver's License (United States) > 0) OR (D:Enhanced Driver's License (United States) > 0) OR (D:Tax Identification Number (US) > 0))))"
+  },
+  {
+    "name": "HIPAA Sensitive Subcategory",
+    "description": "Engine 4. Mental health, substance use disorder (42 CFR Part 2), HIV, genetic (GINA) and reproductive PHI beside an identifier: elevated handling, restricted reviewer queue. Terms and gene names from the custom markers, ICD-10 codes from Diseases Information, informal language from Self-Harm & Cyberbullying and Illegal Drugs.",
+    "expression": "(((D:Custom-Sensitive-Condition-Markers > 0) OR (D:Diseases Information > 0) OR (D:Self-Harm & Cyberbullying > 0) OR (D:Illegal Drugs > 0)) AND ((D:Names (US) > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Social Security Numbers (US) > 0) OR (D:Custom-Health-Plan-Member-Identifier > 0)))"
+  },
+  {
+    "name": "HIPAA Pharmacy / Claims / Billing",
+    "description": "Engine 5. Pharmacy pathway: drug evidence (Drugs > 2 or an NDC code) + identifier + a provider or narrative anchor (NPI or clinical narrative). Claims pathway: billing density (> 2 billing phrases) or the Insurance Document classifier + clinical evidence + identifier (including a card number on a claim document; the clinical gate keeps pure payments out).",
+    "expression": "((((D:Drugs Information > 2) OR (D:NDC Number (Package) > 0) OR (D:NDC Number (Product) > 0)) AND ((D:Names (US) > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Social Security Numbers (US) > 0) OR (D:Custom-Health-Plan-Member-Identifier > 0)) AND ((D:National Provider Identifier > 0) OR (D:Custom-Clinical-Narrative > 0))) OR (((D:Custom-Insurance-Billing > 2) OR (D:Insurance Document > 0)) AND ((D:Diseases Information > 0) OR (D:Treatments Information > 0)) AND ((D:Names (US) > 0) OR (D:Custom-Medical-Record-Number > 0) OR (D:Custom-Date-of-Birth > 0) OR (D:Social Security Numbers (US) > 0) OR (D:Custom-Health-Plan-Member-Identifier > 0) OR (D:Credit Cards > 0))))"
+  },
+  {
+    "name": "HIPAA Bulk PHI - Small",
+    "description": "Engine 6, small tier (> 1 identifiers): any multi-record exposure of SSN, MRN, member id, NPI, TIN, driver's licence or enhanced driver's licence. The API has no Sum operator, so the tier is expressed per dictionary; a transaction with 2 or more of one identifier kind matches.",
+    "expression": "((D:Social Security Numbers (US) > 1) OR (D:Custom-Medical-Record-Number > 1) OR (D:Custom-Health-Plan-Member-Identifier > 1) OR (D:National Provider Identifier > 1) OR (D:Tax Identification Number (US) > 1) OR (D:Driver's License (United States) > 1) OR (D:Enhanced Driver's License (United States) > 1))"
+  },
+  {
+    "name": "HIPAA Bulk PHI - Significant",
+    "description": "Engine 6, significant tier (> 50 identifiers of one kind): executive escalation, still under the 500-individual notification threshold.",
+    "expression": "((D:Social Security Numbers (US) > 50) OR (D:Custom-Medical-Record-Number > 50) OR (D:Custom-Health-Plan-Member-Identifier > 50) OR (D:National Provider Identifier > 50) OR (D:Tax Identification Number (US) > 50) OR (D:Driver's License (United States) > 50) OR (D:Enhanced Driver's License (United States) > 50))"
+  },
+  {
+    "name": "HIPAA Bulk PHI - Major",
+    "description": "Engine 6, MAJOR tier (> 500 identifiers of one kind): a potential 500+ individual breach; routes straight to the Privacy Officer, legal counsel and executive incident response.",
+    "expression": "((D:Social Security Numbers (US) > 500) OR (D:Custom-Medical-Record-Number > 500) OR (D:Custom-Health-Plan-Member-Identifier > 500) OR (D:National Provider Identifier > 500) OR (D:Tax Identification Number (US) > 500) OR (D:Driver's License (United States) > 500) OR (D:Enhanced Driver's License (United States) > 500))"
   }
 ]

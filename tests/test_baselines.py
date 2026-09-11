@@ -386,17 +386,31 @@ def test_shipped_baselines_are_discoverable_and_plan():
     phi = packs["healthcare_phi_baseline"]
     client = add_control_services(make_client(casb_tenants=[casb_tenant("Acme M365 Mail", "OFFICE_365", 503),
                                                             casb_tenant("Acme OneDrive", "ONEDRIVE", 504)]))
-    client.zia.dlp_dictionary.items = [Obj(id=1, name="MEDICAL", custom=False), Obj(id=2, name="ML_MEDICAL_DOC_LEAKAGE", custom=False)]
+    # The tenant's predefined dictionaries as the API exports them: some by
+    # code with the display name in the description, some by display name.
+    pre = [("ML_MEDICAL_DOC_LEAKAGE", "Medical Document"), ("Medical Imaging", ""), ("MEDICAL", "Medical Information"), ("DRUGS_LEAKAGE", "Drugs Information"),
+           ("DISEASES_LEAKAGE", "Diseases Information"), ("Treatments Information", ""), ("NDC Number (Package)", ""), ("NDC Number (Product)", ""),
+           ("Names (US)", ""), ("SSN", "Social Security Numbers (US)"), ("National Provider Identifier", ""), ("USDL_LEAKAGE", "Driver's License (United States)"),
+           ("Enhanced Driver's License (United States)", ""), ("USITIN_LEAKAGE", "Tax Identification Number (US)"), ("Insurance Document", ""),
+           ("Self-Harm & Cyberbullying", ""), ("Illegal Drugs", ""), ("CREDIT_CARD", "Credit Cards")]
+    client.zia.dlp_dictionary.items = [Obj(id=i + 1, name=n, description=d, custom=False) for i, (n, d) in enumerate(pre)]
     rep = pd.preflight(client, [{"id": phi["id"], "dir": phi["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
+    assert not any(i.get("pruned") for i in rep["items"]), "every predefined dictionary resolved by code, display name or description"
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    # Detection only, mirrored to every channel: 5 dicts + 2 engines + one
-    # rule per channel (web, endpoint, saas, email).
-    assert res["summary"] == {"created": 11}   # 5 dicts + 2 engines + 1 rule x 4 channels (web is the cue; every channel carries the same count)
-    assert any(r["name"].endswith("[Email]") for r in client.zia.outbound_email_dlp_rules.added)
+    # Predefined-first build: 7 custom dictionaries, 8 engines (six, with the
+    # bulk one in three tiers), 8 inline rules x 4 channels.
+    assert res["summary"] == {"created": 7 + 8 + 32}
+    for svc in (client.zia.dlp_web_rules, client.zia.endpoint_dlp_rules, client.zia.casb_dlp_rules, client.zia.outbound_email_dlp_rules):
+        assert len(svc.added) == 8, "one rule per inline rule on every channel"
     rule = client.zia.dlp_web_rules.added[0]
-    assert rule["ocr_enabled"] is True and rule["min_size"] == 10
-    assert client.zia.dlp_engine.added[0]["engine_expression"].startswith("((((D1.S > 0) OR (D2.S > 0)")
+    assert rule["ocr_enabled"] is True and rule["action"] == "BLOCK" and rule["state"] == "DISABLED"
+    # Engine 1 starts with the Medical Document (id 1) and Medical Imaging (id 2) classifiers, resolved from display names.
+    e1 = client.zia.dlp_engine.added[0]["engine_expression"]
+    assert e1.startswith("((((D1.S > 0) OR (D2.S > 0))") and "D:" not in e1 and "D9.S > 0" in e1   # Names (US) is id 9
+    names = {r["name"] for r in client.zia.dlp_web_rules.added}
+    assert names == {"HC-HIPAA Critical-Block", "HC-HIPAA Narrative Low Volume-Monitor", "HC-HIPAA Identity Trifecta-Block", "HC-HIPAA Sensitive Subcategory-Block",
+                     "HC-HIPAA Pharmacy Claims Billing-Monitor", "HC-HIPAA Bulk PHI Major-Block", "HC-HIPAA Bulk PHI Significant-Block", "HC-HIPAA Bulk PHI Small-Monitor"}
     ent = packs["zbp_enterprise_baseline"]
     templates = sorted({d["dict_template_name"] for d in json.load(open(f"{ent['dir']}/configs/dlp_dictionaries.json")) if d.get("predefined_clone")})
     # Predefined dictionaries the engines reference directly (API names, as a tenant exports them).

@@ -529,6 +529,33 @@ function _gdProfileFill(p) {
   set('csec', '');
   if (Array.isArray(p.scopes) && p.scopes.length && typeof setSelectedScopes === 'function') setSelectedScopes(p.scopes);
   if (Array.isArray(p.frameworks) && p.frameworks.length) document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = p.frameworks.includes(cb.value); });
+  _gdApplyScope(p);
+}
+// The profile's industry decides what the assessment suggests: the
+// frameworks it reports on (ticked here unless the profile saved its own
+// choice) and the packs the journey is measured against and Deploy Policy
+// Packs offers first. Everything else stays reachable, folded away.
+async function _gdApplyScope(p) {
+  GD.scope = null;
+  if (!p || !p.industry) { _gdScopeNote(); return; }
+  try {
+    const r = await fetch(`/api/vertical-scope?profile_id=${encodeURIComponent(p.id || '')}&industry=${encodeURIComponent(p.industry)}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    GD.scope = await r.json();
+    if (GD.scope.scoped && !(Array.isArray(p.frameworks) && p.frameworks.length)) {
+      document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = GD.scope.frameworks.includes(cb.value); });
+    }
+  } catch (e) { GD.scope = null; }
+  _gdScopeNote();
+  if (typeof _dzRenderSelect === 'function' && document.getElementById('dzBody')) { try { _dzRenderSelect(); } catch (e) { /* studio closed */ } }
+}
+function _gdScopeNote() {
+  const host = document.getElementById('gdScopeNote');
+  if (!host) return;
+  const sc = GD.scope;
+  if (!sc || !sc.scoped) { host.hidden = true; host.innerHTML = ''; return; }
+  host.hidden = false;
+  host.innerHTML = `<strong>Scope: ${_gdE(sc.industry)}.</strong> ${_gdE(sc.reason)} Frameworks reported: ${_gdE(sc.frameworks.join(', '))}. Packs measured and offered first: ${_gdE((sc.pack_names || sc.packs).join(', '))}${sc.packs_from === 'profile' ? ' (ticked on the profile)' : ' (the industry\'s packs; tick packs on the profile to override)'}. Other frameworks and packs stay available under "show all".`;
 }
 async function _gdProfileSelect(id) {
   GD.profile = id || ''; _gdSave();
@@ -589,6 +616,7 @@ function _gdHistoryHtml(p) {
 function _gdProfilesRender() {
   const card = document.getElementById('configCard');
   if (!card) return;
+  setTimeout(_gdScopeNote, 0);
   let bar = document.getElementById('gdProfiles');
   if (!bar) {
     bar = document.createElement('div'); bar.id = 'gdProfiles'; bar.className = 'gd-profiles';
@@ -611,6 +639,7 @@ function _gdProfilesRender() {
         ${sel ? `<button type="button" class="gd-btn primary" onclick="_gdProfileSave(false)" ${GD.profileBusy ? 'disabled' : ''}>Update "${_gdE(sel.name)}"</button><button type="button" class="gd-btn quiet" onclick="_gdProfileDelete()">Forget</button>` : ''}
       </div>
     </div>
+    <div id="gdScopeNote" class="gd-need gd-scope" hidden></div>
     <details class="gd-prof-more" ${sel ? 'open' : ''}>
       <summary>${sel ? `Profile details${det.has_secret ? ' · secret remembered on this laptop' : ' · secret not stored (paste it below)'}` : 'Profile details (industry, applicable policy packs, notes, secret)'}</summary>
       <div class="gd-prof-grid">

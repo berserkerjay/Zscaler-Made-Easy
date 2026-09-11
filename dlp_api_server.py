@@ -156,7 +156,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart", "/report/evalall"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1405,6 +1405,31 @@ async def tenant_profiles_list():
     return {"profiles": tenant_profiles.list_profiles(), "store": os.path.basename(tenant_profiles.store_path())}
 
 
+@app.get("/api/vertical-scope")
+async def vertical_scope(profile_id: str = "", industry: str = ""):
+    """What the profile's industry (or an industry name) narrows the app to:
+    the compliance frameworks to show, the policy packs to measure and
+    offer first, and why. Nothing is hidden for good; the operator can
+    widen it."""
+    import vertical
+    from compliance_mapping import FRAMEWORK_DESCRIPTIONS
+    from dlp_importer import discover_packs
+    profile = None
+    if profile_id:
+        import tenant_profiles
+        profile = tenant_profiles.get(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail=f"No tenant profile '{profile_id}'.")
+    if industry:
+        profile = dict(profile or {}, industry=industry)
+    packs = discover_packs()
+    scope = vertical.scope_for(profile, all_frameworks=list(FRAMEWORK_DESCRIPTIONS), all_packs=[p["id"] for p in packs])
+    names = {p["id"]: p.get("name") or p["id"] for p in packs}
+    scope["pack_names"] = [names.get(pid, pid) for pid in scope["packs"]]
+    scope["industries"] = vertical.INDUSTRIES
+    return scope
+
+
 @app.get("/api/tenant-profiles/{profile_id}")
 async def tenant_profile_get(profile_id: str):
     import tenant_profiles
@@ -2612,6 +2637,16 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
     return PlainTextResponse("\n".join(lines), media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.md"'})
 
 
+@app.get("/report/evalall")
+async def report_evalall_page():
+    """Evaluate All Rules: the decision flow with the tie-breaker, and the simulator (static/report_evalall.html)."""
+    page = os.path.join(STATIC_DIR, "report_evalall.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 @app.get("/quickstart")
 async def quickstart_page():
     """Quick Start Assessment in its own tab (static/quickstart.html)."""
@@ -3088,7 +3123,11 @@ async def assess_stream(req: AssessRequest):
     sec = validate_credential("client_secret", req.client_secret, required=True)
     cust = validate_customer_id(req.customer_id)
     checks = _get_checks(req.scope, req.scopes)
-    journey_pack_ids = [str(b) for b in (profile or {}).get("baseline_packs") or []]
+    # The journey (pack deficiencies) is measured against the profile's
+    # packs, or the packs of its industry when none are ticked.
+    import vertical as _vertical
+    _scope = _vertical.scope_for(profile, all_packs=[p["id"] for p in __import__("dlp_importer").discover_packs()])
+    journey_pack_ids = list(_scope["packs"]) if _scope["scoped"] else [str(b) for b in (profile or {}).get("baseline_packs") or []]
 
     async def event_generator():
         results = []
@@ -3234,6 +3273,7 @@ async def assess_stream(req: AssessRequest):
                 report["permissions"] = None
             if not want_journey:
                 report["profile"] = _record_history(report)
+            report["scope"] = _scope   # the profile's industry: frameworks and packs the suggestions are limited to
             yield _sse("complete", report)
 
             if want_journey:
