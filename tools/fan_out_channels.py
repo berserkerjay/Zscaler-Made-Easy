@@ -76,11 +76,36 @@ def _mirror(web_rule: dict, channel: str) -> dict:
     return r
 
 
+REMOVABLE_SUFFIX = "[Endpoint Removable Media]"
+
+
+def _removable(engine: str) -> dict:
+    """One Endpoint DLP rule for this engine on removable media (USB and
+    other removable drives), so incidents name the engine and the USB
+    control can be enabled engine by engine."""
+    return {
+        "name": f"{engine} {REMOVABLE_SUFFIX}",
+        "channel": pc.ENDPOINT,
+        "description": (f"Endpoint DLP: {engine} on removable media (USB and other removable drives). "
+                        "One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents."),
+        "action": pc.default_action(pc.ENDPOINT),
+        "state": "DISABLED",
+        "severity": "RULE_SEVERITY_INFO",
+        "engines": [engine],
+        "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+        "device_trust_levels": list(pc.ENDPOINT_TRUST_LEVELS),
+        "user_risk_score_levels": list(pc.ENDPOINT_RISK_LEVELS),
+        "without_content_inspection": False, "eun_enabled": False, "rank": 7,
+        GEN_KEY: True,
+    }
+
+
 def fan_out(policies: list) -> list:
     """Return policies with Endpoint/SaaS/Email mirrors regenerated from
-    the Web rules. Web rules and any non-DLP rules are kept as-is; the
-    previous generated mirrors (and any hand-written Endpoint/SaaS/Email
-    rules) are dropped and rebuilt so counts match Web exactly."""
+    the Web rules, plus one Endpoint DLP removable-media rule per engine
+    the Web rules use. Web rules and any non-DLP rules are kept as-is;
+    the previous generated mirrors (and any hand-written
+    Endpoint/SaaS/Email rules) are dropped and rebuilt so counts match."""
     web = [p for p in policies if pc.channel_of(p) == pc.WEB]
     if not web:
         return list(policies)   # channel-specific pack; nothing to mirror from
@@ -89,7 +114,13 @@ def fan_out(policies: list) -> list:
     for w in web:
         for ch in FAN_CHANNELS:
             mirrors.append(_mirror(w, ch))
-    return kept + mirrors
+    engines: list = []
+    for w in web:
+        for e in w.get("engines") or []:
+            if e not in engines:
+                engines.append(e)
+    removable = [_removable(e) for e in engines]
+    return kept + mirrors + removable
 
 
 def process(pack: dict, *, write: bool) -> tuple[bool, str]:
@@ -102,7 +133,9 @@ def process(pack: dict, *, write: bool) -> tuple[bool, str]:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(new, f, indent=2)
     counts = {ch: sum(1 for p in new if pc.channel_of(p) == ch) for ch in (pc.WEB,) + FAN_CHANNELS}
-    return changed, f"web {counts[pc.WEB]}, endpoint {counts[pc.ENDPOINT]}, saas {counts[pc.SAAS]}, email {counts[pc.EMAIL]}"
+    usb = sum(1 for p in new if pc.channel_of(p) == pc.ENDPOINT and p.get("data_transfer_method") == "REMOVABLE_DRIVE_TRANSFER")
+    return changed, (f"web {counts[pc.WEB]}, endpoint {counts[pc.ENDPOINT]} ({usb} removable-media, one per engine), "
+                     f"saas {counts[pc.SAAS]}, email {counts[pc.EMAIL]}")
 
 
 def main(argv=None) -> int:

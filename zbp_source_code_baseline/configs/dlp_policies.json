@@ -126,5 +126,369 @@
     "channel_mirror": true,
     "tenants": "any",
     "rank": 7
+  },
+  {
+    "name": "SRC-CSharp [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-CSharp on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-CSharp"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-CPlusPlus [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-CPlusPlus on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-CPlusPlus"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-Go [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-Go on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Go"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-HTML [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-HTML on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-HTML"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-Java [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-Java on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Java"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-JavaScript [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-JavaScript on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-JavaScript"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-Kotlin [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-Kotlin on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Kotlin"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-Python [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-Python on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Python"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-Rust [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-Rust on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Rust"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-SQL [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-SQL on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-SQL"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-Swift [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-Swift on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Swift"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-TypeScript [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-TypeScript on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-TypeScript"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "SRC-VBNet [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: SRC-VBNet on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-VBNet"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
   }
 ]

@@ -74,5 +74,14 @@ output "rules" {
     zia_endpoint_dlp_rules.zbp_private_keys_endpoint.name,
     zia_casb_dlp_rules.zbp_private_keys_saas.name,
     zia_outbound_email_dlp.zbp_private_keys_email.name,
+    zia_endpoint_dlp_rules.zbp_financial_information_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_itar_phrases_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_tlp_red_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_tlp_amber_strict_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_tlp_amber_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_us_pii_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_us_phi_medium_confidence_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_us_phi_high_confidence_endpoint_removable_media.name,
+    zia_endpoint_dlp_rules.zbp_private_keys_endpoint_removable_media.name,
   ]
 }

@@ -268,18 +268,8 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
 
 
 def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
-    """Wait (up to settle_seconds) for ZIA to report the activation as
-    ACTIVE, so the verification read sees the saved configuration. Stops
-    early when the status cannot be read."""
-    deadline = time.monotonic() + max(0.0, float(settle_seconds or 0))
-    while True:
-        status, err = pc.activation_status(zia)
-        if err or status in (None, "ACTIVE"):
-            return status
-        if time.monotonic() >= deadline:
-            _log(f"Activation still {status} after {int(settle_seconds)}s; verifying anyway.")
-            return status
-        time.sleep(3)
+    """Wait for ZIA to report the activation as ACTIVE (see pc.wait_active)."""
+    return pc.wait_active(zia, settle_seconds, _log)
 
 
 def _all_need() -> Dict[str, Any]:

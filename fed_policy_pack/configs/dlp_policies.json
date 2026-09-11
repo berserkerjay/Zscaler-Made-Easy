@@ -942,5 +942,481 @@
     "channel_mirror": true,
     "tenants": "any",
     "rank": 7
+  },
+  {
+    "name": "AEA High Confidence [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: AEA High Confidence on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "AEA High Confidence"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "Financial Information [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: Financial Information on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Financial Information"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "FOUO Markings High Confidence [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: FOUO Markings High Confidence on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "FOUO Markings High Confidence"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "FOUO Markings Medium Confidence [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: FOUO Markings Medium Confidence on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "FOUO Markings Medium Confidence"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "ITAR Phrases [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: ITAR Phrases on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ITAR Phrases"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "Standard Forms [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: Standard Forms on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Standard Forms"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "TLP Red [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: TLP Red on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "TLP Red"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "TLP Amber Strict [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: TLP Amber Strict on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "TLP Amber Strict"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "TLP Amber [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: TLP Amber on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "TLP Amber"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "US PII [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: US PII on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "US PII"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "US PHI - Medium Confidence [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: US PHI - Medium Confidence on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "US PHI - Medium Confidence"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "US PHI - High Confidence [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: US PHI - High Confidence on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "US PHI - High Confidence"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "Private Keys [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: Private Keys on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Private Keys"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "CUI-Detect-Block-Grade [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: CUI-Detect-Block-Grade on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Block-Grade"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "CUI-Detect-Caution-Grade [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: CUI-Detect-Caution-Grade on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Caution-Grade"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "CUI-Detect-All [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: CUI-Detect-All on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-All"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
+  },
+  {
+    "name": "CUI-Detect-Contextual [Endpoint Removable Media]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: CUI-Detect-Contextual on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CUI-Detect-Contextual"
+    ],
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7,
+    "channel_mirror": true
   }
 ]

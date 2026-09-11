@@ -185,6 +185,23 @@ def activation_status(zia) -> Tuple[Optional[str], Optional[str]]:
     return (str((data or {}).get("status") or "").upper() or None), None
 
 
+def wait_active(zia, seconds: float = 45.0, log=None) -> Optional[str]:
+    """Poll the activation status until ZIA reports ACTIVE (or `seconds`
+    pass, or the status cannot be read), so a verification read sees the
+    saved configuration. Returns the last status seen."""
+    import time as _t
+    _log = log or (lambda m: None)
+    deadline = _t.monotonic() + max(0.0, float(seconds or 0))
+    while True:
+        status, err = activation_status(zia)
+        if err or status in (None, "ACTIVE"):
+            return status
+        if _t.monotonic() >= deadline:
+            _log(f"Activation still {status} after {int(seconds)}s; reading anyway.")
+            return status
+        _t.sleep(3)
+
+
 def activate(zia) -> Dict[str, Any]:
     """Activate pending ZIA configuration (POST /status/activate). ZIA saves
     every create/delete as pending until this runs, so a deploy or removal

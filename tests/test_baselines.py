@@ -88,6 +88,9 @@ def test_missing_baseline_objects_are_created_with_provenance(baseline_pack):
     assert res["status"] == "applied"
     # A deploy that wrote objects activates them so they are live for users.
     assert acts == [1] and res["activation"]["activated"] and res["activation_required"] is False
+    # ...and reads the tenant back: every object it created is found by a fresh preflight.
+    rc = res["read_check"]
+    assert rc["read"] and rc["clean"] and rc["expected"] == 3 and rc["present"] == 3 and rc["missing"] == []
     z = client.zia
     assert pd.BASELINE_MARK in z.dlp_dictionary.added[0]["description"]
     assert "v2.1" in z.dlp_dictionary.added[0]["description"]
@@ -389,7 +392,7 @@ def test_shipped_baselines_are_discoverable_and_plan():
     res = pd.apply(client, [{"id": phi["id"], "dir": phi["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
     # Detection only, mirrored to every channel: 5 dicts + 2 engines + one
     # rule per channel (web, endpoint, saas, email).
-    assert res["summary"] == {"created": 11}
+    assert res["summary"] == {"created": 13}   # 5 dicts + 2 engines + 1 rule x 4 channels + 2 removable-media endpoint rules (one per engine)
     assert any(r["name"].endswith("[Email]") for r in client.zia.outbound_email_dlp_rules.added)
     rule = client.zia.dlp_web_rules.added[0]
     assert rule["ocr_enabled"] is True and rule["min_size"] == 10
@@ -404,7 +407,7 @@ def test_shipped_baselines_are_discoverable_and_plan():
     client.zia.dlp_dictionary.items = [Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(predefined)]
     rep = pd.preflight(client, [{"id": ent["id"], "dir": ent["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
-    assert rep["baselines"][0]["missing"] == 64   # detection rules mirrored across web, endpoint, saas, email
+    assert rep["baselines"][0]["missing"] == 73   # 31 dicts + 9 engines + 6 rules x 4 channels + 9 removable-media endpoint rules
 
 
 def test_shipped_packs_ship_disabled_at_info():
@@ -476,7 +479,7 @@ def test_fed_pack_cui_rules_deploy_and_measure():
     res = pd.apply(client, [{"id": fed["id"], "dir": fed["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
     # 72 dicts + 17 engines + 12 rules per channel across web, endpoint, saas, email
     # (plus the V1.1 confidence tweaks modifying two predefined dictionaries).
-    assert res["summary"]["created"] == 72 + 17 + 48
+    assert res["summary"]["created"] == 72 + 17 + 48 + 17   # + one removable-media endpoint rule per engine
     full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
     assert "D:" not in full and full.count(".S") == 28 and "AND NOT (D" in full
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")

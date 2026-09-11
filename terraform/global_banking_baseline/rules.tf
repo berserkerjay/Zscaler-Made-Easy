@@ -611,3 +611,237 @@ resource "zia_outbound_email_dlp" "bank_credentials_email" {
   }
 }
 
+resource "zia_endpoint_dlp_rules" "bank_payment_card_data_endpoint_removable_media" {
+  name                         = "Bank-Payment Card Data [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Payment Card Data on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 9
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_payment_card_data.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_payment_card_data_bulk_endpoint_removable_media" {
+  name                         = "Bank-Payment Card Data - Bulk [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Payment Card Data - Bulk on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 10
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_payment_card_data_bulk.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_account_and_payment_instructions_endpoint_removable_media" {
+  name                         = "Bank-Account and Payment Instructions [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Account and Payment Instructions on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 11
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_account_and_payment_instructions.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_customer_pii_global_endpoint_removable_media" {
+  name                         = "Bank-Customer PII (Global) [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Customer PII (Global) on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 12
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_customer_pii_global.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "zbp_us_pii_endpoint_removable_media" {
+  name                         = "ZBP-US PII [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: ZBP-US PII on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 13
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.zbp_us_pii.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_customer_pii_bulk_endpoint_removable_media" {
+  name                         = "Bank-Customer PII - Bulk [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Customer PII - Bulk on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 14
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_customer_pii_bulk.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_customer_financial_records_endpoint_removable_media" {
+  name                         = "Bank-Customer Financial Records [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Customer Financial Records on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 15
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_customer_financial_records.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_kyc_and_aml_files_endpoint_removable_media" {
+  name                         = "Bank-KYC and AML Files [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-KYC and AML Files on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 16
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_kyc_and_aml_files.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_credit_and_loan_applications_endpoint_removable_media" {
+  name                         = "Bank-Credit and Loan Applications [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Credit and Loan Applications on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 17
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_credit_and_loan_applications.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_mnpi_and_deal_information_endpoint_removable_media" {
+  name                         = "Bank-MNPI and Deal Information [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-MNPI and Deal Information on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 18
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_mnpi_and_deal_information.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "zbp_financial_information_endpoint_removable_media" {
+  name                         = "ZBP-Financial Information [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: ZBP-Financial Information on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 19
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.zbp_financial_information.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "bank_confidential_markings_endpoint_removable_media" {
+  name                         = "Bank-Confidential Markings [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: Bank-Confidential Markings on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 20
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.bank_confidential_markings.id]
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "zbp_private_keys_endpoint_removable_media" {
+  name                         = "ZBP-Private Keys [Endpoint Removable Media]"
+  description                  = "Endpoint DLP: ZBP-Private Keys on removable media (USB and other removable drives). One rule per engine so incidents name the engine. Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 21
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  data_transfer_method         = "REMOVABLE_DRIVE_TRANSFER"
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.zbp_private_keys.id]
+  }
+}
+

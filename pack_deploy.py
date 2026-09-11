@@ -1517,6 +1517,7 @@ def apply(
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
     activate: bool = True,
     log: LogFn = None,
+    settle_seconds: float = 45.0,
 ) -> Dict[str, Any]:
     """Execute a previously approved plan.
 
@@ -1821,15 +1822,47 @@ def apply(
     # ZIA saves every change as pending; activate so the deployment is live
     # for users without a manual step in the portal.
     activation = None
+    settled = None
     if wrote and activate:
         _log("Activating pending ZIA changes…")
         activation = pc.activate(client.zia)
         _log("Activation " + ("done." if activation.get("activated") else f"could not run: {activation.get('error')}"))
+        if activation.get("activated"):
+            settled = pc.wait_active(client.zia, settle_seconds, _log)
+
+    # READ BACK: run the same preflight again against the tenant as it is
+    # now. Every object this run created, overwrote, modified or reused
+    # must be found; anything the fresh read would still create is missing.
+    read_check: Dict[str, Any] = {"read": False, "clean": False, "expected": 0, "present": 0, "missing": [], "activation_status": settled}
+    if wrote or counts.get("reused"):
+        _log("Reading the tenant back to verify the deployment…")
+        try:
+            again = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
+                              restore_drift=restore_drift, channel_targets=channel_targets)
+            fresh = {(i["kind"], i["name"]): i for i in again.get("items", [])}
+            read_check["read"] = bool(again.get("tenant", {}).get("reachable", True))
+            for r in results:
+                if r.get("status") not in ("created", "restored", "modified", "reused") or r.get("kind") == "tweak":
+                    continue
+                read_check["expected"] += 1
+                f = fresh.get((r["kind"], r["name"]))
+                if f is not None and f.get("status") not in (CREATE, BLOCKED_DEPENDENCY, CONFLICT, SKIP_EMPTY):
+                    read_check["present"] += 1
+                else:
+                    read_check["missing"].append({"kind": r["kind"], "name": r["name"], "channel": r.get("channel"),
+                                                  "reason": (f or {}).get("reason") or "not listed by the tenant"})
+            read_check["clean"] = read_check["read"] and not read_check["missing"]
+            _log("Read-back: " + (f"all {read_check['present']} object(s) present." if read_check["clean"]
+                                  else f"{len(read_check['missing'])} object(s) not found."))
+        except Exception as ex:  # noqa: BLE001
+            read_check["error"] = str(ex)[:300]
+            _log(f"Read-back failed: {read_check['error']}")
     return {
         "status": status,
         "summary": counts,
         "results": results,
         "verification": verification,
+        "read_check": read_check,
         "plan_hash": plan_hash,
         "elapsed_seconds": round(time.time() - started, 2),
         "activation_required": wrote and not (activation and activation.get("activated")),
