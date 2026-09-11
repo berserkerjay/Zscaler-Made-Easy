@@ -313,6 +313,10 @@ function _dzRenderSelect() {
           <div><div class="t">Rank 0 (override rule ordering)</div><div class="d">New rules take precedence over rules made by lower-ranked admins. Only for resolving ordering conflicts.</div></div>
           <label class="dz-switch"><input type="checkbox" ${DZ.options.use_rank_0 ? 'checked' : ''} onchange="DZ.options.use_rank_0=this.checked" aria-label="Use rank 0"><span class="track"><span class="knob"></span></span></label>
         </div>
+        <div class="dz-option">
+          <div><div class="t">Remove every deployed policy pack</div><div class="d">Finds what every pack in the library put in this tenant — by its DLP-Check tag and its names, on every channel — and removes it in one pass: previewed first, double-confirmed, then verified by a fresh read of the tenant. Needs write mode.</div></div>
+          <button type="button" class="dz-btn danger" onclick="_dzRemove(RM_ALL)" ${(DZ.remove || {})[RM_ALL] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_ALL] === 'busy' ? 'Scanning…' : 'Remove all…'}</button>
+        </div>
       </div>
       ${_dzDeploymentsHtml()}`;
   }
@@ -779,16 +783,22 @@ function _dzRenderDeploy() {
 // what goes and what is kept) -> Approve -> Remove. The same flow diagram
 // as a deploy shows how each dictionary feeds its engines feed its rules.
 const RM_KIND = { policy: 'rule', app_group: 'application group', engine: 'engine', dictionary: 'dictionary' };
-const RM_STEPS = ['Preview', 'Approve', 'Remove'];
+const RM_STEPS = ['Preview', 'Approve', 'Remove', 'Verify'];
 
+const RM_ALL = '__all__';
+
+// id is one pack id, or RM_ALL to find and remove what EVERY pack in the
+// library put in the tenant, in one plan and one pass.
 async function _dzRemove(id) {
-  const pack = (DZ.packs || []).find(x => x.id === id) || { id, name: id };
+  const all = id === RM_ALL;
+  const ids = all ? (DZ.packs || []).map(x => x.id) : [id];
+  const pack = all ? { id: RM_ALL, name: 'every deployed policy pack' } : ((DZ.packs || []).find(x => x.id === id) || { id, name: id });
   DZ.remove = DZ.remove || {}; DZ.remove[id] = 'busy'; _dzRenderSelect();
   let plan;
   try {
     const r = await fetch('/api/dlp-packs/removal/preflight', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [id], ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: ids, ..._dzCreds() }),
     });
     plan = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
@@ -799,7 +809,7 @@ async function _dzRemove(id) {
   }
   DZ.remove[id] = null;
   if (plan.status === 'blocked') { alert((plan.blockers || ['Could not read the tenant.']).join('\n')); _dzRenderSelect(); return; }
-  DZ.removal = { id, pack, plan, step: 1, result: null };
+  DZ.removal = { id, ids, pack, plan, step: 1, result: null };
   _dzRemovalRender();
 }
 
@@ -814,9 +824,10 @@ function _dzRemovalRender() {
   }).join('');
   const subs = { 1: `Removing ${R.pack.name || R.id}: what it put in ${_dzE(R.plan.tenant_label || 'the tenant')}, and how it flows. Nothing is deleted yet.`,
                  2: 'Review, then approve. Deletion is in dependency order and needs write mode.',
-                 3: DZ.busy ? 'Removing — keep this window open.' : 'Removal finished.' };
+                 3: 'Removing, activating, then waiting for ZIA to report the activation — keep this window open.',
+                 4: 'Verified by a fresh read of the tenant after activation.' };
   document.getElementById('dzSub').textContent = subs[R.step];
-  ({ 1: _dzRemovalPreview, 2: _dzRemovalApprove, 3: _dzRemovalDone })[R.step]();
+  ({ 1: _dzRemovalPreview, 2: _dzRemovalApprove, 3: _dzRemovalBusy, 4: _dzRemovalDone })[R.step]();
 }
 
 function _dzRemovalPreview() {
@@ -866,12 +877,29 @@ function _dzRemovalApprove() {
     </div>`;
 }
 
+function _dzRemovalBusy() {
+  const R = DZ.removal, body = document.getElementById('dzBody');
+  const n = (R.plan.items || []).filter(i => i.status === 'remove').length;
+  body.innerHTML = `<div class="dz-card sev-info"><div class="bar"></div><div>
+      <div class="t"><span class="gd-spin" aria-hidden="true"></span> Removing ${n} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}</div>
+      <div class="d">Rules first, then engines, then dictionaries, activating between tiers. When the deletes are done the tenant is activated, ZIA is polled until it reports ACTIVE, and the tenant is read again to prove nothing of the pack is left. This can take a minute or two.</div></div></div>`;
+}
+
 function _dzRemovalDone() {
   const R = DZ.removal, body = document.getElementById('dzBody'), data = R.result || {};
   const s = data.summary || {};
   const kept = data.kept || [];
   const line = (label, n, cls) => n ? `<div class="dz-row ${cls}"><span class="ic">•</span><div><div class="nm">${n} ${label}</div></div></div>` : '';
+  const v = data.verification || {};
+  const remaining = v.remaining || [];
+  const verifyCard = !v.read
+    ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">Not verified</div><div class="d">The tenant could not be re-read after the removal${(v.blockers || []).length ? `: ${_dzE(v.blockers.join('; '))}` : ''}. Click <strong>Verify again</strong> once the API is reachable.</div></div></div>`
+    : (v.clean
+      ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Verified: nothing of ${_dzE(R.pack.name || R.id)} remains in the tenant</div><div class="d">A fresh read after activation${v.activation_status ? ` (ZIA status ${_dzE(v.activation_status)})` : ''} found no rule, engine, application group or dictionary of this pack on any channel.${(v.kept || []).length ? ` ${v.kept.length} object(s) were kept on purpose because something else still uses them.` : ''}</div></div></div>`
+      : `<div class="dz-card sev-high"><div class="bar"></div><div><div class="t">Verification found ${remaining.length} object(s) still in the tenant</div><div class="d">A fresh read after activation${v.activation_status ? ` (ZIA status ${_dzE(v.activation_status)})` : ''} still lists these. Activate in ZIA if the status is not ACTIVE, then click <strong>Remove leftovers</strong> to run the removal again on exactly these objects.</div></div></div>
+         <div class="dz-rows">${remaining.map(i => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div></div></div>`).join('')}</div>`);
   body.innerHTML = `
+    ${verifyCard}
     <div class="dz-card ${data.status === 'removed' ? 'sev-info' : 'sev-medium'}"><div class="bar"></div><div>
       <div class="t">Removal ${_dzE(data.status || '')}</div>
       <div class="d">${data.activation && data.activation.activated ? 'Activated in ZIA automatically — the deletions are live.' : (data.activation_required ? `Automatic activation did not run${data.activation && data.activation.error ? ` (${_dzE(data.activation.error)})` : ''}; activate in ZIA to make the deletions live.` : 'Nothing needed activation.')}</div></div></div>
@@ -881,8 +909,38 @@ function _dzRemovalDone() {
     ${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').length ? `<div class="dz-h" style="margin-top:0.8rem;">Not removed</div><div class="dz-rows">${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').map(x => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(x.name)}</div><div class="rs">${_dzE(x.error || x.reason || '')}</div></div></div>`).join('')}</div>` : ''}
     ${kept.length ? `<div class="dz-h" style="margin-top:0.8rem;">Kept (still in use)<span class="count">${kept.length}</span></div><div class="dz-rows">${kept.map(i => `<div class="dz-row st-reuse"><span class="ic">↺</span><div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}</div><div class="rs">${_dzE(i.keep || '')}</div></div></div>`).join('')}</div>` : ''}
     <div class="dz-actions">
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalVerifyAgain()" ${DZ.busy ? 'disabled' : ''}>Verify again</button>
+      ${remaining.length && v.plan ? `<button type="button" class="dz-btn danger" onclick="_dzRemovalLeftovers()">Remove leftovers</button>` : ''}
       <button type="button" class="dz-btn primary" onclick="_dzRemovalClose()">Back to packs</button>
     </div>`;
+}
+
+// A fresh read of the tenant, on demand: the same discovery the preview
+// runs, so "nothing remains" is proven the same way it was planned.
+async function _dzRemovalVerifyAgain() {
+  const R = DZ.removal; if (!R || DZ.busy) return;
+  DZ.busy = true; announce('Re-reading the tenant…');
+  try {
+    const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pack_ids: R.ids || [R.id], ..._dzCreds() }) });
+    const plan = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
+    const remaining = (plan.items || []).filter(i => i.status === 'remove');
+    R.result = R.result || { status: 'nothing', summary: {}, results: [] };
+    R.result.verification = { read: plan.status !== 'blocked', clean: plan.status !== 'blocked' && !remaining.length, remaining, kept: (plan.items || []).filter(i => i.status === 'keep'), plan, blockers: plan.blockers || [] };
+    announce(remaining.length ? `${remaining.length} object(s) still present.` : 'Verified: nothing remains.');
+  } catch (e) {
+    R.result = R.result || { status: 'nothing', summary: {}, results: [] };
+    R.result.verification = { read: false, clean: false, remaining: [], blockers: [e.message] };
+  } finally { DZ.busy = false; _dzRemovalRender(); }
+}
+
+// Run the wizard again on exactly what the verification read found.
+function _dzRemovalLeftovers() {
+  const R = DZ.removal; if (!R || !R.result || !R.result.verification || !R.result.verification.plan) return;
+  const plan = R.result.verification.plan;
+  plan.tenant_label = plan.tenant_label || R.plan.tenant_label;
+  DZ.removal = { id: R.id, ids: R.ids, pack: R.pack, plan, step: 2, result: null, consent: false };
+  _dzRemovalRender();
 }
 
 async function _dzRemovalApply() {
@@ -892,10 +950,11 @@ async function _dzRemovalApply() {
   // explicit yes naming the count and tenant before anything is deleted.
   if (!window.confirm(`Final confirmation.\n\nPermanently delete ${remove.length} object(s) that ${R.pack.name || R.id} put in ${R.plan.tenant_label || 'this tenant'}?\n\nThis cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
   DZ.busy = true; R.step = 3; _dzRemovalRender();
+  R.step = 4;
   try {
     const r = await fetch('/api/dlp-packs/removal/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [R.id], plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: R.ids || [R.id], plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);

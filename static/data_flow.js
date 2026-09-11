@@ -1,9 +1,11 @@
 // ── Data Flow Map renderer ──────────────────────────────────────────
-// Draws one traced path as a row of hops in the order ZIA processes a
-// web request (device → Client Connector → forwarding → PAC → Browser &
-// FTP Control → Cloud App Control → URL Filtering → SSL → threat
-// protection → File Type Control → Bandwidth Control → Web DLP →
-// Firewall & DNS Control → logs & incidents) with the parallel channels
+// Draws one traced path as a row of hops: the data security controls in
+// the order ZIA processes a web request (device → Client Connector →
+// forwarding → PAC → Cloud App Control → URL Filtering → SSL → File Type
+// Control → Web DLP → logs & incidents); the controls that are not
+// data-leak controls (browser/FTP, threat protection, bandwidth,
+// firewall) are not drawn here, only in the reference diagram. Plus the
+// parallel channels
 // beneath, the weak points ranked, and every policy pack's coverage on
 // that path. Pure DOM; data comes from /api/report/data-flow. Also used
 // by the assessment page's mirror.
@@ -12,13 +14,13 @@ const DF_STATUS = {
   pass: ['Forwarded', 'ok'], enforce: ['Enforcing', 'ok'], blocked: ['Blocked', 'block'], monitor: ['Monitor only', 'warn'],
   warn: ['Weak', 'warn'], blind: ['Encrypted / blind', 'fail'], bypass: ['Bypassed', 'fail'], none: ['No control', 'warn'],
   unknown: ['Could not read', 'dim'], skipped: ['Not reached', 'dim'], off: ['Not active', 'fail'],
-  info: ['Not read here', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'],
+  assumed: ['Assumed tunnel', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'],
 };
 const DF_OUTCOME = {
   bypassed: ['Never reaches Zscaler', 'fail'], blocked: ['Blocked before content', 'block'], blind: ['Reaches ZIA encrypted: DLP blind', 'fail'],
   enforce: ['Inspected and enforced', 'ok'], monitor: ['Inspected, monitor only', 'warn'], none: ['Inspected, no DLP rule', 'warn'],
 };
-const DF_HOP_ORDER = ['device', 'zcc', 'forwarding', 'pac', 'browser', 'cac', 'url', 'ssl', 'threat', 'ftc', 'bandwidth', 'dlp', 'firewall', 'incident'];
+const DF_HOP_ORDER = ['device', 'zcc', 'forwarding', 'pac', 'cac', 'url', 'ssl', 'ftc', 'dlp', 'incident'];
 
 // How ZIA processes a policy, from the user's device to incident
 // management. Order per Zscaler's "Understanding Policy Enforcement"
@@ -75,7 +77,8 @@ function _dfSvg(t) {
   hops.forEach((h, i) => {
     const x = PAD + i * (W + GAP), y = TOP;
     const [lab, cls] = DF_STATUS[h.status] || [h.status, 'dim'];
-    const name = h.decided_by && h.decided_by.name ? h.decided_by.name : (h.mode || h.profile || '');
+    // An unreadable hop shows its reason on the box, not just "could not read".
+    const name = h.why ? h.why : (h.decided_by && h.decided_by.name ? h.decided_by.name : (h.mode || h.profile || ''));
     if (i > 0) {
       const px = x - GAP, cy = y + H / 2;
       const prev = hops[i - 1];
@@ -99,6 +102,7 @@ function _dfHopDetail(h) {
   const [lab, cls] = DF_STATUS[h.status] || [h.status, 'dim'];
   return `<div class="df-hop st-${cls}" data-hop="${_dfE(h.key)}">
     <div class="df-hop-h"><span class="df-chip st-${cls}">${_dfE(lab)}</span><strong>${_dfE(h.label)}</strong>${h.decided_by && h.decided_by.name ? `<span class="df-by">decided by <code>${_dfE(h.decided_by.name)}</code>${h.decided_by.order != null ? ` (order ${_dfE(h.decided_by.order)})` : ''}</span>` : ''}</div>
+    ${h.why ? `<div class="df-hop-d"><strong>Why:</strong> ${_dfE(h.why)}.</div>` : ''}
     <div class="df-hop-d">${_dfE(h.detail)}</div>
     ${h.rules && h.rules.length ? `<ul class="df-rules">${h.rules.map(r => `<li><code>${_dfE(r.name)}</code> ${_dfE(r.action)}${r.enforcing ? ' · enforcing' : ' · monitor'}${r.engines && r.engines.length ? ` · engines: ${_dfE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ''}${r.incident_receiver || r.icap_server ? ` · → ${_dfE(r.icap_server || 'Zscaler Incident Receiver')}` : ''}${r.notification_template ? ` · notifies via ${_dfE(r.notification_template)}` : ''}</li>`).join('')}</ul>` : ''}
     ${h.forwarders ? `<div class="df-hop-d">To the Incident Receiver: ${h.forwarders.length ? _dfE(h.forwarders.join(', ')) : 'none'} · auditor notifications: ${h.notifiers && h.notifiers.length ? _dfE(h.notifiers.join(', ')) : 'none'}</div>` : ''}
@@ -133,7 +137,7 @@ function renderDataFlowTrace(t, container) {
       <span class="df-prof"><span class="k">Platform</span><span class="v">${_dfE(t.platform)}</span></span>
     </div>
     <div class="df-flow-wrap" id="dfFlowWrap">${_dfSvg(t)}</div>
-    <div class="df-hint">Each box is a hop in the order ZIA processes the transaction; a dot marks a weak point. Click a box for the rule that decided it. SSL Inspection, Cloud App Control, URL Filtering and File Type Control are data security controls alongside DLP — they stop or scope data movement before content inspection; Cloud App Control runs with URL Filtering ahead of SSL inspection, takes precedence when it matches, and can gate on a user risk profile; Firewall & DNS Control is last on the request. The last hop is what happens after a match: logs, the Incident Receiver and Workflow Automation.</div>
+    <div class="df-hint">Each box is a data security control on the path, in the order ZIA applies them; a dot marks a weak point. Click a box for the rule that decided it. SSL Inspection, Cloud App Control, URL Filtering and File Type Control are data security controls alongside DLP — they stop or scope data movement before content inspection; Cloud App Control runs with URL Filtering ahead of SSL inspection, takes precedence when it matches, and can gate on a user risk profile. Controls that are not data-leak controls (browser/FTP, threat protection, bandwidth, firewall) are left out here; the reference diagram above shows the full order. The last hop is what happens after a match: logs, the Incident Receiver and Workflow Automation.</div>
     <h2 class="df-h">Hops</h2>
     <div class="df-hops">${t.hops.map(_dfHopDetail).join('')}</div>
     <h2 class="df-h">Channels that do not ride the tunnel</h2>
@@ -214,11 +218,10 @@ function renderDataFlowGaps(report, container) {
 
 // ── Control flow by category ──────────────────────────────────────
 // One left-to-right flow per cloud app category, in the same style as the
-// path above: device -> Client Connector -> forwarding -> Browser & FTP
-// Control -> Cloud App Control -> URL Filtering -> SSL -> threat protection
-// -> File Type Control -> Bandwidth Control -> DLP -> Firewall & DNS
-// Control -> logs & incidents, each hop the control that decides it.
-// Click a category to open its path.
+// path above: device -> Client Connector -> forwarding -> Cloud App
+// Control -> URL Filtering -> SSL -> File Type Control -> DLP -> logs &
+// incidents, each hop the data security control that decides it. Click a
+// category to open its path.
 function renderControlFishbones(report, container, network) {
   const net = network || (report.traces[0] && report.traces[0].network);
   const cats = report.traces.filter(t => t.destination && t.destination.kind === 'class' && t.network === net);

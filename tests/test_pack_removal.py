@@ -130,6 +130,30 @@ def test_remove_clears_saas_rules_using_their_rule_type(tmp_path, monkeypatch):
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
     assert res["status"] == "removed" and res["complete"] and res["summary"] == {"deleted": 4}
     assert client.zia.casb_dlp_rules.deleted == [(8501, "OFLCASB_DLP_FILE")] and client.zia.casb_dlp_rules.items == []
+    # Verified by a fresh read: the same discovery the preview ran finds nothing left.
+    v = res["verification"]
+    assert v["read"] and v["clean"] and v["remaining"] == [] and v["plan"]["status"] == "nothing"
+
+
+def test_remove_several_packs_in_one_pass(tmp_path, monkeypatch):
+    """Removing every deployed pack at once: one plan, one pass, one verification."""
+    a = write_pack(tmp_path, "packa", dicts=[_dict("A-Dict")], engines=[_engine("A-Engine", "(D:A-Dict > 0)")],
+                   policies=[_policy("A-Monitor", ["A-Engine"])], meta={"name": "A", "confidence_tweaks": []})
+    b = write_pack(tmp_path, "packb", dicts=[_dict("B-Dict")], engines=[_engine("B-Engine", "(D:B-Dict > 0)")],
+                   policies=[_policy("B-Monitor", ["B-Engine"])], meta={"name": "B", "confidence_tweaks": []})
+    packs = [{"id": "packa", "dir": a["dir"]}, {"id": "packb", "dir": b["dir"]}]
+    client = _deletable(FakeClient(
+        dicts=[Obj(id=1, name="A-Dict", custom=True, description="[DLP-Check pack packa] x"), Obj(id=2, name="B-Dict", custom=True, description="[DLP-Check pack packb] x")],
+        engines=[Obj(id=11, name="A-Engine", engine_expression="D1.S > 0", description="[DLP-Check pack packa] x"),
+                 Obj(id=12, name="B-Engine", engine_expression="D2.S > 0", description="[DLP-Check pack packb] x")],
+        rules=[Obj(id=21, name="A-Monitor", order=1, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 11}], description="[DLP-Check pack packa] x"),
+               Obj(id=22, name="B-Monitor", order=2, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 12}], description="[DLP-Check pack packb] x")]))
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    plan = pr.plan_removal(client, packs)
+    assert plan["packs"] == ["packa", "packb"] and plan["remove_count"] == 6
+    res = pr.remove(client, packs, plan_hash=plan["plan_hash"], writes_enabled=True)
+    assert res["status"] == "removed" and res["summary"] == {"deleted": 6} and res["verification"]["clean"]
+    assert not client.zia.dlp_web_rules.items and not client.zia.dlp_engine.items and not client.zia.dlp_dictionary.items
 
 
 def test_remove_reports_objects_the_tenant_still_lists(tmp_path, monkeypatch):
@@ -144,6 +168,9 @@ def test_remove_reports_objects_the_tenant_still_lists(tmp_path, monkeypatch):
     rule = next(r for r in res["results"] if r["kind"] == "policy")
     assert rule["status"] == "still_present" and "still lists" in rule["error"]
     assert res["complete"] is False and res["status"] == "partial" and res["summary"]["still_present"] == 1
+    v = res["verification"]
+    assert v["read"] and not v["clean"] and [i["name"] for i in v["remaining"]] == ["RM-Web-Monitor"]
+    assert v["plan"]["plan_hash"]   # a plan for exactly the leftovers, ready to run again
 
 
 def test_remove_is_refused_read_only_and_when_stale(tmp_path):

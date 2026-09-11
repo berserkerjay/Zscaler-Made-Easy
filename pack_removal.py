@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
@@ -220,12 +221,30 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     }
 
 
+def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
+    """Wait (up to settle_seconds) for ZIA to report the activation as
+    ACTIVE, so the verification read sees the saved configuration. Stops
+    early when the status cannot be read."""
+    deadline = time.monotonic() + max(0.0, float(settle_seconds or 0))
+    while True:
+        status, err = pc.activation_status(zia)
+        if err or status in (None, "ACTIVE"):
+            return status
+        if time.monotonic() >= deadline:
+            _log(f"Activation still {status} after {int(settle_seconds)}s; verifying anyway.")
+            return status
+        time.sleep(3)
+
+
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-           log: pd.LogFn = None) -> Dict[str, Any]:
+           log: pd.LogFn = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal. Re-reads the tenant,
     verifies the plan_hash still matches, then deletes each object in
     reverse dependency order, re-checking that the id still carries the
-    name the plan saw (so a renamed/replaced object is left alone)."""
+    name the plan saw (so a renamed/replaced object is left alone).
+    Activates, waits for the activation to settle, then VERIFIES BY
+    READING the tenant again: the result's `verification` says whether
+    anything of the pack is still there."""
     _log = log or (lambda m: None)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
@@ -286,38 +305,47 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
             _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))
             names_cache.clear()   # re-read after activation
 
-    # Final activation so every deletion is live.
+    # Final activation so every deletion is live, then wait for ZIA to
+    # report ACTIVE (an activation is not instantaneous).
     final_activation = None
+    settled_status = None
     if any(r["status"] == "deleted" for r in results):
         _log("Activating pending ZIA changes…")
         final_activation = pc.activate(zia)
         activations.append(final_activation)
         _log("Activation " + ("done." if final_activation.get("activated") else f"could not run: {final_activation.get('error')}"))
+        settled_status = _settle(zia, settle_seconds, _log)
 
-    # Verify: re-read every kind/channel the plan touched and report any
-    # object that is still there, so "removed" means removed — not "the
-    # delete calls returned".
-    names_cache.clear()
-    still: List[str] = []
+    # VERIFY BY READING: run the same discovery the preview ran, against
+    # the tenant as it is now. Anything of the pack still there is
+    # reported as still present, and the removal is not called complete.
+    _log("Re-reading the tenant to verify the removal…")
+    verify = plan_removal(client, packs)
+    remaining = [it for it in verify.get("items", []) if it["status"] == "remove"]
+    remaining_keys = {(it["kind"], it.get("channel"), str(it["id"])) for it in remaining}
     for entry in results:
-        if entry["status"] != "deleted":
-            continue
-        key = (entry["kind"], entry.get("channel") if entry["kind"] == "policy" else None)
-        if key not in names_cache:
-            names_cache[key] = pd._current_names(zia, entry["kind"], entry.get("channel"))
-        current, _err = names_cache[key]
-        if current is not None and current.get(str(entry["id"])) == entry["name"]:
-            entry.update(status="still_present", error="the delete call returned no error but the tenant still lists this object; activate in the portal and run the removal again")
-            still.append(f"{entry['kind']} '{entry['name']}'")
-    if still:
-        _log("Still present after removal: " + ", ".join(still))
+        if entry["status"] == "deleted" and (entry["kind"], entry.get("channel"), str(entry["id"])) in remaining_keys:
+            entry.update(status="still_present",
+                         error="the delete call returned no error but a fresh read still lists this object; activate in ZIA and remove the leftovers")
+    verification = {
+        "read": verify.get("status") != "blocked",
+        "clean": not remaining and verify.get("status") != "blocked",
+        "remaining": remaining,
+        "kept": [it for it in verify.get("items", []) if it["status"] == "keep"],
+        "activation_status": settled_status,
+        "plan": verify,
+        "blockers": verify.get("blockers", []),
+    }
+    _log("Verification: " + ("nothing of the pack remains in the tenant." if verification["clean"]
+                             else (f"{len(remaining)} object(s) still present." if remaining else "could not re-read the tenant.")))
 
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    complete = not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
+    complete = verification["clean"] and not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
     status = "removed" if complete and results else ("partial" if counts.get("deleted") else ("nothing" if not results else "failed"))
     return {"status": status, "summary": counts, "results": results, "complete": complete,
             "kept": [it for it in plan["items"] if it["status"] == "keep"],
+            "verification": verification,
             "activation": final_activation, "activations": activations,
             "activation_required": bool(counts.get("deleted")) and not (final_activation and final_activation.get("activated"))}

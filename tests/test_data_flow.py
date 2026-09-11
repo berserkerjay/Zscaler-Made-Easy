@@ -78,9 +78,12 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     # the incident path.
     t = by[("ai_ml", "off")]
     keys = [h["key"] for h in t["hops"]]
-    assert keys == ["zcc", "forwarding", "browser", "cac", "url", "ssl", "threat", "ftc", "bandwidth", "dlp", "firewall", "incident"] and t["reaches_zscaler"] and t["decrypted"]
+    # Only the data security controls are drawn; browser/FTP, threat
+    # protection, bandwidth and firewall are not data-leak controls and are
+    # not read, so they never appear as unreadable boxes.
+    assert keys == ["zcc", "forwarding", "cac", "url", "ssl", "ftc", "dlp", "incident"] and t["reaches_zscaler"] and t["decrypted"]
     hop = lambda k: next(h for h in t["hops"] if h["key"] == k)  # noqa: E731
-    assert all(hop(k)["status"] == "info" for k in ("browser", "threat", "bandwidth", "firewall"))
+    assert not any(h["status"] in ("info", "unknown") for h in t["hops"])
     assert hop("cac")["status"] == "blocked"
     # Cloud App Control matched, so URL Filtering is not applied to this transaction.
     assert hop("url")["status"] == "na" and hop("url")["decided_by"]["name"] == "AI no upload"
