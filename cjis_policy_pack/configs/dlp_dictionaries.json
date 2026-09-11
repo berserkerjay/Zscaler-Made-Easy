@@ -37,7 +37,7 @@
   {
     "name": "NCIC ORI Pattern",
     "description": "NCIC Originating Agency Identifier — 9-character alphanumeric (2-letter state + 7 alphanum). Used by every criminal-justice agency that queries NCIC.",
-    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
     "proximity": 250,
     "patterns": [
@@ -52,7 +52,7 @@
   {
     "name": "FBI UCN / Universal Control Number",
     "description": "FBI Universal Control Number (UCN, formerly 'FBI Number') — typically referenced by 'UCN' or 'FBI#' label followed by alphanumeric identifier.",
-    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
     "proximity": 250,
     "patterns": [
@@ -66,7 +66,7 @@
   {
     "name": "State ID Number (SID) Reference",
     "description": "State Identification Number — phrase-anchored (state-specific formats vary too widely for a single regex).",
-    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "confidence_threshold": "CONFIDENCE_LEVEL_MEDIUM",
     "proximity": 250,
     "patterns": [
@@ -80,7 +80,7 @@
   {
     "name": "NCIC Purpose Code Pattern",
     "description": "NCIC query purpose codes — C (criminal justice), J (criminal justice employment), S (national security), F (firearms), X (exigent), etc. Valid codes appearing in message headers indicate a lawful NCIC lookup result.",
-    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
     "proximity": 250,
     "patterns": [
@@ -96,7 +96,7 @@
     "description": "Terminology that signals transmission of criminal-history record information — RAP sheets, booking reports, wants/warrants, court dispositions.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
-    "proximity": 500,
+    "proximity": 0,
     "patterns": [],
     "phrases": [
       { "action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "rap sheet" },
@@ -120,7 +120,7 @@
     "description": "Phrases indicating an NCIC or Interstate Identification Index (III) query — wanted-person, stolen-property, missing-person, III hit.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
-    "proximity": 500,
+    "proximity": 0,
     "patterns": [],
     "phrases": [
       { "action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "NCIC hit" },
@@ -143,7 +143,7 @@
     "description": "Active-warrant and wanted-person terminology. High-signal when seen alongside subject PII.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
-    "proximity": 500,
+    "proximity": 0,
     "patterns": [],
     "phrases": [
       { "action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "active warrant" },
@@ -161,7 +161,7 @@
     "description": "Biometric data referenced in criminal-justice workflows — fingerprints, palm prints, AFIS/IAFIS/NGI identifiers, mugshot booking.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
-    "proximity": 500,
+    "proximity": 0,
     "patterns": [],
     "phrases": [
       { "action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "fingerprint card" },
@@ -181,7 +181,7 @@
     "description": "National Instant Criminal Background Check System (NICS) and firearms-eligibility terminology.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
-    "proximity": 500,
+    "proximity": 0,
     "patterns": [],
     "phrases": [
       { "action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "NICS" },
@@ -197,7 +197,7 @@
     "description": "Law Enforcement National Data Exchange (N-DEx) and related info-sharing system references.",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "confidence_threshold": "CONFIDENCE_LEVEL_MEDIUM",
-    "proximity": 500,
+    "proximity": 0,
     "patterns": [],
     "phrases": [
       { "action": "PHRASE_COUNT_TYPE_UNIQUE", "phrase": "N-DEx" },
@@ -230,7 +230,7 @@
   {
     "name": "Date of Birth - CJIS Prox 500",
     "description": "Date-of-birth detection with 500-char proximity — couples with warrant / RAP-sheet phrases to reduce false positives on non-CJI DOB mentions.",
-    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
     "proximity": 500,
     "patterns": [

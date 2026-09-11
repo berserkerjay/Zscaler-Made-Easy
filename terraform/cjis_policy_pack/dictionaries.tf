@@ -72,7 +72,7 @@ resource "zia_dlp_dictionaries" "ncic_ori_pattern" {
   description                  = "NCIC Originating Agency Identifier — 9-character alphanumeric (2-letter state + 7 alphanum). Used by every criminal-justice agency that queries NCIC. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 250
   proximity_enabled_for_custom_dictionary = true
@@ -99,7 +99,7 @@ resource "zia_dlp_dictionaries" "fbi_ucn_universal_control_number" {
   description                  = "FBI Universal Control Number (UCN, formerly 'FBI Number') — typically referenced by 'UCN' or 'FBI#' label followed by alphanumeric identifier. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 250
   proximity_enabled_for_custom_dictionary = true
@@ -122,7 +122,7 @@ resource "zia_dlp_dictionaries" "state_id_number_sid_reference" {
   description                  = "State Identification Number — phrase-anchored (state-specific formats vary too widely for a single regex). [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   confidence_threshold         = "CONFIDENCE_LEVEL_MEDIUM"
   proximity                    = 250
   proximity_enabled_for_custom_dictionary = true
@@ -145,7 +145,7 @@ resource "zia_dlp_dictionaries" "ncic_purpose_code_pattern" {
   description                  = "NCIC query purpose codes — C (criminal justice), J (criminal justice employment), S (national security), F (firearms), X (exigent), etc. Valid codes appearing in message headers indicate a law... [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 250
   proximity_enabled_for_custom_dictionary = true
@@ -170,8 +170,6 @@ resource "zia_dlp_dictionaries" "criminal_history_rap_sheet_phrases" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
-  proximity                    = 500
-  proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
     phrase = "rap sheet"
@@ -237,8 +235,6 @@ resource "zia_dlp_dictionaries" "ncic_iii_query_terminology" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
-  proximity                    = 500
-  proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
     phrase = "NCIC hit"
@@ -300,8 +296,6 @@ resource "zia_dlp_dictionaries" "warrant_wanted_person_phrases" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
-  proximity                    = 500
-  proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
     phrase = "active warrant"
@@ -343,8 +337,6 @@ resource "zia_dlp_dictionaries" "biometric_afis_terminology" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
-  proximity                    = 500
-  proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
     phrase = "fingerprint card"
@@ -394,8 +386,6 @@ resource "zia_dlp_dictionaries" "nics_firearms_background_check_phrases" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
-  proximity                    = 500
-  proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
     phrase = "NICS"
@@ -429,8 +419,6 @@ resource "zia_dlp_dictionaries" "n_dex_criminal_justice_info_sharing" {
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
   confidence_threshold         = "CONFIDENCE_LEVEL_MEDIUM"
-  proximity                    = 500
-  proximity_enabled_for_custom_dictionary = true
   phrases {
     action = "PHRASE_COUNT_TYPE_UNIQUE"
     phrase = "N-DEx"
@@ -488,7 +476,7 @@ resource "zia_dlp_dictionaries" "date_of_birth_cjis_prox_500" {
   description                  = "Date-of-birth detection with 500-char proximity — couples with warrant / RAP-sheet phrases to reduce false positives on non-CJI DOB mentions. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   confidence_threshold         = "CONFIDENCE_LEVEL_HIGH"
   proximity                    = 500
   proximity_enabled_for_custom_dictionary = true

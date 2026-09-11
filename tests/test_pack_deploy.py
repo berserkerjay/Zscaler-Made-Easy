@@ -46,6 +46,10 @@ class FakeDicts:
         self.added.append({"name": name, "match": match_type, **kw})
         if name in self.fail_names:
             return None, None, {"message": "simulated API error"}
+        # The real tenant's rule, verbatim (seen on api.zsapi.net).
+        if (kw.get("proximity") or 0) > 0 and not kw.get("dict_template_id") and match_type != "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE":
+            return None, None, {"status": 400, "code": "INVALID_INPUT_ARGUMENT",
+                                "message": "Proximity can be enabled only for 'Match any Patterns and any Phrases' or 'Match Near or Not Near Phrases' match types."}
         self._next += 1
         # The SDK takes (action, value) tuples but the API returns objects;
         # store the response shape so verification can read it back.

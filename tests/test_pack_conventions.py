@@ -117,3 +117,25 @@ def test_healthcare_deploys_on_a_tenant_without_the_medical_bundle():
     assert len(rules) == 32 and all(i["status"] == pd.CREATE for i in rules), [(i["name"], i["status"]) for i in rules if i["status"] != pd.CREATE]
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
     assert res["summary"]["created"] == 7 + 8 + 32
+
+
+def test_no_shipped_dictionary_sets_proximity_on_a_type_zia_rejects():
+    """ZIA accepts a proximity window only on MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE
+    (a real tenant answered 400 "Proximity can be enabled only for 'Match any
+    Patterns and any Phrases'..." for four healthcare dictionaries on the
+    Match All type, which blocked every engine and rule behind them)."""
+    from dlp_importer import DICT_PROXIMITY_MATCH_TYPE, dictionary_limit_problems
+    bad = []
+    files = sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_dictionaries.json")))
+    assert len(files) >= 6
+    for f in files:
+        for d in json.load(open(f, encoding="utf-8")):
+            if d.get("predefined_clone"):
+                continue    # a clone's proximity rides the template (proximity_length_enabled); the Fed pack deployed them on Match Any
+            if (d.get("proximity") or 0) > 0 and d.get("custom_phrase_match_type") != DICT_PROXIMITY_MATCH_TYPE:
+                bad.append((f, d["name"], d.get("custom_phrase_match_type")))
+            assert not dictionary_limit_problems(d), (f, d["name"], dictionary_limit_problems(d))
+    assert bad == []
+    assert any("needs match type" in p for p in dictionary_limit_problems(
+        {"custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY", "proximity": 50,
+         "patterns": [{"pattern": r"\bMRN\d{6}\b"}], "phrases": [{"phrase": "medical record"}]}))

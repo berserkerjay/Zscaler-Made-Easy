@@ -34,15 +34,15 @@ Tenants created before April 4, 2025 may need Zscaler Support to enable the medi
 
 | Dictionary | Match | Proximity | Content |
 |---|---|---|---|
-| Custom-Medical-Record-Number | phrase and pattern | 50 | MRN / chart / encounter / account labels beside a 6–10 digit number (optional 1–3 letter prefix) |
-| Custom-Date-of-Birth | phrase and pattern | 50 | birth-date labels beside US, ISO or long-form dates (1920–2026) |
+| Custom-Medical-Record-Number | any pattern near any phrase | 50 | MRN / chart / encounter / account labels beside a 6–10 digit number (optional 1–3 letter prefix) |
+| Custom-Date-of-Birth | any pattern near any phrase | 50 | birth-date labels beside US, ISO or long-form dates (1920–2026) |
 | Custom-Sensitive-Condition-Markers | any | — | SUD and MAT terms, mental-health, HIV, genetic (incl. gene names BRCA1/2, APOE, MTHFR, CFTR, HLA, MLH1, MSH2/6, PMS2, TP53, PTEN, APC, VHL, RET, JAK2, FLT3, EGFR, ALK, KRAS, NRAS, BRAF, HER2) and reproductive-health markers |
-| Custom-Health-Plan-Member-Identifier | phrase and pattern | 50 | member / subscriber / policy / group / Medicare labels beside an MBI or a 2–3 letter + 6–12 digit id |
+| Custom-Health-Plan-Member-Identifier | any pattern near any phrase | 50 | member / subscriber / policy / group / Medicare labels beside an MBI or a 2–3 letter + 6–12 digit id |
 | Custom-Insurance-Billing | phrases | — | major payers, EDI transactions (837/835/271, HL7, FHIR, X12), billing terms (EOB, remittance, copay, prior authorization) |
 | Custom-Clinical-Narrative | phrases | — | structural markers of clinical documents (chief complaint, HPI, ROS, discharge, progress and operative notes, provider roles, admission/discharge dates) |
-| Custom-Address-ZIP | phrase and pattern | 50 | address labels beside ZIP+4 or a street address |
+| Custom-Address-ZIP | any pattern near any phrase | 50 | address labels beside ZIP+4 or a street address |
 
-Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximity 0–10000 bytes, PCRE without lookaround, phrases 3–128 bytes and up to 256 per dictionary; phrases match case-insensitively and ignore punctuation.
+Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximity 0–10000 bytes, PCRE without lookaround, phrases 3–128 bytes and up to 256 per dictionary; phrases match case-insensitively and ignore punctuation. A proximity window is accepted only on the *Match any Patterns and any Phrases* type (`MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE`: a number counts when a label sits within the window); the tenant rejects proximity on the *Match All* and *Match Any* types, so the four structured-identifier dictionaries use it.
 
 ## Engines
 

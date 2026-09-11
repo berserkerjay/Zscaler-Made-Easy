@@ -238,6 +238,9 @@ DICT_PHRASE_MIN_BYTES, DICT_PHRASE_MAX_BYTES = 3, 128
 ENGINE_COUNT_MAX = 999          # engine match counts accept any value under 1000
 DICT_MATCH_TYPES = ("MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY", "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
                     "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE")
+# The only pattern-and-phrase match type on which ZIA accepts a proximity
+# window ("Match any Patterns and any Phrases" in the portal).
+DICT_PROXIMITY_MATCH_TYPE = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
 _LOOKAROUND_RE = re.compile(r"\(\?<?[=!]")
 _COUNT_RE = re.compile(r"[<>=]=?\s*(\d+)")
 
@@ -286,6 +289,11 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
         prox = 0
     if prox < 0 or prox > DICT_PROXIMITY_MAX:
         out.append(f"proximity {prox} is outside 0-{DICT_PROXIMITY_MAX} bytes")
+    if prox > 0 and mt and mt != DICT_PROXIMITY_MATCH_TYPE and not d.get("predefined_clone"):
+        # ZIA: "Proximity can be enabled only for 'Match any Patterns and any
+        # Phrases' or 'Match Near or Not Near Phrases' match types."
+        out.append(f"proximity {prox} needs match type {DICT_PROXIMITY_MATCH_TYPE} (any pattern within {prox} bytes of any phrase); "
+                   f"ZIA rejects proximity on {mt}")
     return out
 
 # ZIA caps a DLP dictionary description at 255 characters (the Terraform

@@ -36,6 +36,8 @@ _NATIVE_RULE_KEYS = {"dlpEngines", "urlCategories", "cloudApplications", "fileTy
 _SCOPE_FIELDS = ("locations", "locationGroups", "groups", "departments", "users", "excludedGroups", "excludedDepartments", "excludedUsers",
                  "timeWindows", "workloadGroups")
 _TERM_RE = re.compile(r"D(\d+)\.S")
+# The only custom match type ZIA accepts a proximity window on.
+PROXIMITY_MATCH_TYPE = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
 _EMAIL_ACTIONS = {"ALLOW", "BLOCK", "CUSTOMHEADERINSERTION", "CUSTOM_HEADER_INSERTION"}
 
 
@@ -113,6 +115,16 @@ def convert_dictionary(d: Dict[str, Any], warnings: List[str]) -> Optional[Dict[
             pass
     out["phrases"] = [{"action": p.get("action") or "PHRASE_COUNT_TYPE_ALL", "phrase": p.get("phrase")} for p in (d.get("phrases") or []) if isinstance(p, dict) and p.get("phrase")]
     out["patterns"] = [{"action": p.get("action") or "PATTERN_COUNT_TYPE_ALL", "pattern": p.get("pattern")} for p in (d.get("patterns") or []) if isinstance(p, dict) and p.get("pattern")]
+    if out.get("proximity") and not d.get("predefinedClone") and out.get("custom_phrase_match_type", PROXIMITY_MATCH_TYPE) != PROXIMITY_MATCH_TYPE:
+        # ZIA accepts a proximity window on a custom dictionary only with
+        # "Match any Patterns and any Phrases"; anything else is refused on
+        # create, so the pack is made deployable here and the change named.
+        if out["phrases"] and out["patterns"]:
+            warnings.append(f"dictionary '{name}': proximity {out['proximity']} is only accepted on {PROXIMITY_MATCH_TYPE}; match type changed from {out.get('custom_phrase_match_type')}")
+            out["custom_phrase_match_type"] = PROXIMITY_MATCH_TYPE
+        else:
+            warnings.append(f"dictionary '{name}': proximity {out['proximity']} dropped; it needs both patterns and phrases on {PROXIMITY_MATCH_TYPE}")
+            out.pop("proximity", None)
     if d.get("predefinedClone"):
         out["predefined_clone"] = True
     if d.get("dictTemplateName"):

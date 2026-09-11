@@ -60,7 +60,7 @@ A JSON array. Each entry is either a **custom** dictionary (with patterns/phrase
 {
   "name": "HIPAA Medical Record Numbers",
   "description": "Custom regex for MRN formats",
-  "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+  "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
   "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
   "proximity": 250,
   "patterns": [
@@ -75,11 +75,11 @@ A JSON array. Each entry is either a **custom** dictionary (with patterns/phrase
 | Field | Required | Notes |
 |---|---|---|
 | `name` | yes | Must be unique in tenant |
-| `custom_phrase_match_type` | yes | `MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY` or `MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY` |
+| `custom_phrase_match_type` | yes | `MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY` (any phrase or pattern), `MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY` (all of them), or `MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE` (a pattern counts when a phrase is near it; the only type ZIA accepts a `proximity` window on) |
 | `patterns` or `phrases` | at least one | Empty dicts are skipped |
 | `description` | no | Shown in ZIA admin UI |
 | `confidence_threshold` | no | `CONFIDENCE_LEVEL_LOW` / `MEDIUM` / `HIGH` |
-| `proximity` | no | 0 = disabled. Typical values: 100–500 (character window) |
+| `proximity` | no | 0 = disabled. Typical values: 100–500 (byte window). Needs `MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE` with at least one pattern and one phrase; the tenant answers 400 "Proximity can be enabled only for 'Match any Patterns and any Phrases'…" on the other types, and preflight names it before any write |
 | `include_bin_numbers` | no | `true` for PCI-style BIN validation |
 | `include_ssn_numbers` | no | `true` for SSN validation |
 
@@ -94,7 +94,7 @@ A JSON array. Each entry is either a **custom** dictionary (with patterns/phrase
   "description": "Clone of predefined SSN dict with high confidence",
   "predefined_clone": true,
   "dict_template_name": "Social Security Numbers (US)",
-  "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+  "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
   "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
   "proximity": 500
 }

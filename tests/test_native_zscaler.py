@@ -49,6 +49,9 @@ def test_upload_transcribes_native_json_into_a_pack_and_terraform(tmp_path):
     assert pack["format"] == "zscaler" and pack["native"]["dictionaries"] == 2 and pack["native"]["engines"] == 2 and pack["native"]["policies"] == 4
     d = {x["name"]: x for x in pack["dictionaries"]}
     assert set(d) == {"Project Codenames", "Card Clone"} and d["Project Codenames"]["proximity"] == 20 and d["Project Codenames"]["patterns"][0]["pattern"] == "\\bFALC-\\d{4}\\b"
+    # Proximity is only accepted on the any-pattern-with-any-phrase type: the export's Match Any is switched and the change is named.
+    assert d["Project Codenames"]["custom_phrase_match_type"] == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+    assert any("Project Codenames" in w and "match type changed" in w for w in pack.get("warnings") or pack.get("native", {}).get("warnings") or [])
     assert d["Card Clone"]["predefined_clone"] and d["Card Clone"]["dict_template_name"] == "Credit Cards" and d["Card Clone"]["confidence_threshold"] == "CONFIDENCE_LEVEL_HIGH"
     e = {x["name"]: x for x in pack["engines"]}
     assert e["Codenames + Cards"]["expression"] == "((D:Project Codenames > 0) AND (D:Credit Cards > 1))"

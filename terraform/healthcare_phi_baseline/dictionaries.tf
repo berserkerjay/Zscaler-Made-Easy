@@ -85,7 +85,7 @@ resource "zia_dlp_dictionaries" "custom_medical_record_number" {
   description                  = "HIPAA identifier 8: an MRN, chart, encounter, visit, account or EMPI label within 50 bytes of a 6-10 digit number (optional 1-3 letter prefix). Both the phrase and the pattern must ma... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 50
   proximity_enabled_for_custom_dictionary = true
   patterns {
@@ -147,7 +147,7 @@ resource "zia_dlp_dictionaries" "custom_date_of_birth" {
   description                  = "HIPAA identifier 3: a birth-date label within 50 bytes of a date in US, ISO or long form (years 1920-2026). Both the phrase and the pattern must match. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 50
   proximity_enabled_for_custom_dictionary = true
   patterns {
@@ -373,7 +373,7 @@ resource "zia_dlp_dictionaries" "custom_health_plan_member_identifier" {
   description                  = "HIPAA identifier 9: a member, subscriber, policy, group, plan, beneficiary, Medicare/Medicaid or pharmacy-benefit label within 50 bytes of a Medicare Beneficiary Identifier or a 2-3 l... [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 50
   proximity_enabled_for_custom_dictionary = true
   patterns {
@@ -755,7 +755,7 @@ resource "zia_dlp_dictionaries" "custom_address_zip" {
   description                  = "HIPAA identifier 2: an address label within 50 bytes of a ZIP+4 or a street address. ZIP alone is very noisy; this dictionary is only used beside insurance and billing context. [DLP-Check baseline healthcare_phi_baseline v3.0] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
-  custom_phrase_match_type     = "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
   proximity                    = 50
   proximity_enabled_for_custom_dictionary = true
   patterns {
