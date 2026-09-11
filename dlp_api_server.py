@@ -3239,6 +3239,11 @@ async def assess_stream(req: AssessRequest):
                     r = R(R.INFO, f"{label}: Invalid check result.")
                 result = {"id": check_id, "section": section, "label": label,
                           "status": str(r.status), "detail": str(r.detail)[:500]}
+                try:
+                    import plain_english
+                    plain_english.enrich(result)      # what we found / what it means / what to do / outcome
+                except Exception:  # noqa: BLE001
+                    pass
                 done[idx] = result
                 return result
 

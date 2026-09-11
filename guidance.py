@@ -240,7 +240,7 @@ def evaluate(entries: Sequence[Dict[str, Any]], *, now: Optional[float] = None) 
                 "gate": proposals.GATES.get(m["kind"], "approve"), "applies_via": "guidance",
             }
             fresh.append(p)
-            raised.append({"url": url, "title": e.get("title"), "kind": m["kind"], "topics": m["labels"], "checks": m["checks"]})
+            raised.append({"url": url, "title": e.get("title"), "kind": m["kind"], "topics": m["labels"], "checks": m["checks"], "outcome": outcome_for_checks(m["checks"])})
             seen[url] = {"at": _now(), "action": m["kind"], "topics": m["topics"]}
         if first_run:
             state["baselined_at"] = _now()
@@ -284,6 +284,19 @@ def record_approval(proposal: Dict[str, Any], *, by: str = "") -> Dict[str, Any]
         cfg["updated_at"] = _now()
         _write_json(config_path(), cfg)
     return {"checks": touched, "config": config_path()}
+
+
+def outcome_for_checks(check_ids: Sequence[str]) -> str:
+    """The plain-English business outcome for the first check an article maps to."""
+    try:
+        import plain_english
+        by_id = {c["id"]: c["section"] for c in all_checks()}
+        for cid in check_ids or []:
+            if cid in by_id:
+                return plain_english.outcome_for(cid, by_id[cid])
+        return plain_english.FALLBACK_OUTCOME if check_ids else ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def references_for(check_id: str) -> List[Dict[str, Any]]:

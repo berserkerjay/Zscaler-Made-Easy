@@ -6,6 +6,9 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### Every finding in four plain sentences, the same in every output
+- **What we found, what it means for the business, what to do, once fixed.** Every check result now carries the same four sentences (`plain_english.py`), written for a first-week engineer to read to a customer: what the tenant does today, why it matters to the business, the next step with the portal path, and the business outcome once it is fixed (or, for a configured control, what it gives the business). The outcome comes from one table per area of the product, so the same control reads the same everywhere: the results tab (the technical detail folds under *Technical detail*), the JSON the assessment saves, the Word report (critical findings, the review table's *Once fixed* line, and every detailed finding) and the digest, where each mapped article names the outcome once acted on.
+
 ### Every pack monitors, and says so
 - **No rule in any pack is named or targeted as blocking.** The healthcare tiers (`HC-HIPAA Critical-Monitor`, `Identity Trifecta-Monitor`, `Sensitive Subcategory-Monitor`, `Bulk PHI Major-Monitor`, `Bulk PHI Significant-Monitor`), the banking bulk rules, the Fed CUI marked-documents and weak-markings rules and the 13 source-code rules are renamed `-Monitor`; the shipped packs carry no `target_action`, so the plan shows no *target BLOCK* chip. Enforcing a rule is the customer's decision in the portal once incidents have been reviewed; the journey records it as progress. `ship_monitor` still turns an uploaded pack's BLOCK / CONFIRM into monitor with the designed action kept aside.
 - **Why can't I deploy?** The plan and the approval step list every gate a deployment needs, each with its state and what opens it: the plan itself (blocked reasons named), something to create, write mode (with the Enable button or the start script to use), and the approval box.

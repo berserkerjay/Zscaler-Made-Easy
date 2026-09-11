@@ -1038,6 +1038,15 @@ def run(client, con=None):
     """Run the DLP checks (backwards compatible)."""
     return run_checks(client, REG, con)
 
+def _plain(row):
+    """Attach the plain-English block (plain_english.explain) to a result."""
+    try:
+        import plain_english
+        return plain_english.enrich(row)
+    except Exception:  # noqa: BLE001
+        return row
+
+
 def run_checks(client, checks, con=None):
     """Run an arbitrary list of checks."""
     results=[]
@@ -1048,14 +1057,14 @@ def run_checks(client, checks, con=None):
                 prog.update(task,description=f"[cyan]{id}[/] {label}")
                 try: r=fn(client)
                 except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
-                results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
+                results.append(_plain({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail}))
                 prog.advance(task)
     else:
         for i,(id,sec,label,fn) in enumerate(checks,1):
             print(f"  [{i}/{len(checks)}] {id}: {label}...",end=" ",flush=True)
             try: r=fn(client)
             except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
-            results.append({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail})
+            results.append(_plain({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail}))
             print(r.status)
     return results
 

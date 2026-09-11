@@ -471,6 +471,49 @@ def _generate_recommendation(check_id: str, label: str, as_is: str, best_practic
     return f"Manually verify {label} and document the rationale. Re-run the assessment after any change."
 
 
+def _plain_for(r: dict) -> dict:
+    """The four plain-English sentences for a result: the ones the server
+    attached (so the Word report says exactly what the results tab said),
+    or freshly generated for a result that came from an older run."""
+    pl = r.get("plain")
+    if isinstance(pl, dict) and pl.get("found"):
+        return pl
+    try:
+        import plain_english
+        return plain_english.explain(r)
+    except Exception:  # noqa: BLE001 - never let the explanation break the report
+        return {"found": r.get("label", ""), "means": "", "do": "", "outcome": ""}
+
+
+def _add_plain_block(doc, r: dict, indent=None, size=None):
+    """Write the plain-English block under a finding: what we found, what it
+    means for the business, what to do, and the outcome once fixed (or what
+    a configured control gives the business)."""
+    pl = _plain_for(r)
+    status = str(r.get("status") or "").upper()
+    lines = [("What we found: ", pl.get("found", ""))]
+    if status != "PASS" and pl.get("means"):
+        lines.append(("What it means for the business: ", pl["means"]))
+    if status != "PASS" and pl.get("do"):
+        lines.append(("What to do: ", pl["do"]))
+    lines.append(("What this gives the business: " if status == "PASS" else "Once fixed: ", pl.get("outcome", "")))
+    for head, text in lines:
+        if not text:
+            continue
+        p = doc.add_paragraph()
+        if indent is not None:
+            p.paragraph_format.left_indent = indent
+        p.paragraph_format.space_after = Pt(2)
+        rh = p.add_run(head)
+        rh.bold = True
+        rt = p.add_run(text)
+        if size is not None:
+            rh.font.size = size
+            rt.font.size = size
+    if lines:
+        p.paragraph_format.space_after = Pt(8)
+
+
 def _safe_style(doc, preferred_names):
     """Return the first style name from preferred_names that exists in doc, else 'Table Grid' (always present)."""
     available = {s.name for s in doc.styles}
@@ -783,6 +826,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             run.font.color.rgb = COLORS["FAIL"]
             detail = doc.add_paragraph(r["detail"], style="List Bullet")
             detail.paragraph_format.space_after = Pt(6)
+            _add_plain_block(doc, r)
         doc.add_page_break()
 
     # ── Review Items ──────────────────────────────────────────────
@@ -839,6 +883,9 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             wp = why_cell.paragraphs[0]
             why_run = wp.add_run(why_matters)
             why_run.bold = True
+            wp2 = why_cell.add_paragraph()
+            wp2.add_run("Once fixed: ").bold = True
+            wp2.add_run(_plain_for(r).get("outcome", ""))
             # Column 4: Remediation Steps — portal path + optional API hint
             rem_cell = row.cells[4]
             rem_cell.text = ""
@@ -896,6 +943,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             run_d = detail_p.add_run(r["detail"])
             run_d.font.size = Pt(9)
             run_d.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+        _add_plain_block(doc, r, indent=Cm(1), size=Pt(9))
 
     # ── Not Configured Summary ────────────────────────────────────
     infos = [r for r in results if r["status"] in ("INFO", "ERROR")]

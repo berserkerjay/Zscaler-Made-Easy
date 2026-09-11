@@ -291,6 +291,8 @@ def to_markdown(d: Dict[str, Any]) -> str:
         L.append(f"First run: {g.get('baselined', 0)} existing articles were baselined (no proposals); from now on every new article is mapped.")
     for r in g.get("raised") or []:
         L.append(f"- **{r.get('title') or r.get('url')}** ({r.get('kind')}): {', '.join(r.get('topics') or [])}; checks {', '.join((r.get('checks') or [])[:6])}. {r.get('url')}")
+        if r.get("outcome"):
+            L.append(f"  - Once acted on: {r['outcome']}")
     if not g.get("raised"):
         L.append(f"- No new article on a mapped topic ({g.get('no_action', 0)} new article(s) recorded as no action).")
     src = d.get("sources") or {}

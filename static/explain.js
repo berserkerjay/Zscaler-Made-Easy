@@ -38,7 +38,7 @@
     what: 'The full results in their own tab: Summary (score and maturity), Scores by section, Best practices and benchmarks, Regulatory alignment, the Data governance journey, and Detailed findings with a fix for each.',
     why: 'This is the deliverable. Critical findings are configuration that exposes data today; the score gives the customer a number to improve.',
     when: 'Right after the assessment runs, and again on every return visit to show progress.',
-    get: 'Every failed or warned check with what it means, why it matters and how to fix it, plus Word and JSON downloads.',
+    get: 'Every finding in four plain sentences: what we found, what it means for the business, what to do, and the outcome once fixed (the technical detail folds away underneath), plus Word and JSON downloads.',
     next: 'Walk the customer through the critical findings first. Then open Traffic Flow & Gaps and Detection Health for the "show me" evidence.',
   };
   X.dataflow = {
