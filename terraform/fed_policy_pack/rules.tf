@@ -195,14 +195,13 @@ resource "zia_dlp_web_rules" "z_private_keys_monitor" {
   }
 }
 
-resource "zia_dlp_web_rules" "cui_block_marked_documents" {
-  name                         = "CUI-Block-Marked-Documents"
+resource "zia_dlp_web_rules" "cui_monitor_marked_documents" {
+  name                         = "CUI-Monitor-Marked-Documents"
   description                  = "Inline Web DLP: block uploads carrying high-precision CUI markings (banners, category tokens, legacy FOUO/LES/SBU, distribution statements) via CUI-Detect-Block-Grade. Ships DISABLED at INFO; enable after reviewing monitor incidents from CUI-Monitor-All. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 13
   rank                         = var.policy_rank
   state                        = "DISABLED"
   action                       = "ALLOW"
-  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -212,14 +211,13 @@ resource "zia_dlp_web_rules" "cui_block_marked_documents" {
   }
 }
 
-resource "zia_dlp_web_rules" "cui_caution_weak_markings" {
-  name                         = "CUI-Caution-Weak-Markings"
+resource "zia_dlp_web_rules" "cui_monitor_weak_markings" {
+  name                         = "CUI-Monitor-Weak-Markings"
   description                  = "Inline Web DLP: caution (user must confirm) on lower-precision CUI signals: bare CUI, standalone LDCs, malformed markings, designation blocks, via CUI-Detect-Caution-Grade. Never BLOCK on these. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 14
   rank                         = var.policy_rank
   state                        = "DISABLED"
   action                       = "ALLOW"
-  # Ships monitor-only; the designed action once incidents are tuned is CONFIRM.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -937,9 +935,9 @@ resource "zia_outbound_email_dlp" "z_private_keys_email" {
   }
 }
 
-resource "zia_endpoint_dlp_rules" "cui_block_marked_documents_endpoint" {
-  name                         = "CUI-Block-Marked-Documents [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+resource "zia_endpoint_dlp_rules" "cui_monitor_marked_documents_endpoint" {
+  name                         = "CUI-Monitor-Marked-Documents [Endpoint]"
+  description                  = "Endpoint DLP: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 13
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -954,9 +952,9 @@ resource "zia_endpoint_dlp_rules" "cui_block_marked_documents_endpoint" {
   }
 }
 
-resource "zia_casb_dlp_rules" "cui_block_marked_documents_saas" {
-  name                         = "CUI-Block-Marked-Documents [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+resource "zia_casb_dlp_rules" "cui_monitor_marked_documents_saas" {
+  name                         = "CUI-Monitor-Marked-Documents [SaaS]"
+  description                  = "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 13
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -969,13 +967,13 @@ resource "zia_casb_dlp_rules" "cui_block_marked_documents_saas" {
     id = [zia_dlp_engines.cui_detect_block_grade.id]
   }
   cloud_app_tenants {
-    id = var.saas_tenant_ids_cui_block_marked_documents_saas
+    id = var.saas_tenant_ids_cui_monitor_marked_documents_saas
   }
 }
 
-resource "zia_outbound_email_dlp" "cui_block_marked_documents_email" {
-  name                         = "CUI-Block-Marked-Documents [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+resource "zia_outbound_email_dlp" "cui_monitor_marked_documents_email" {
+  name                         = "CUI-Monitor-Marked-Documents [Email]"
+  description                  = "Email DLP: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 13
   state                        = "DISABLED"
   action                       = "ALLOW"
@@ -985,13 +983,13 @@ resource "zia_outbound_email_dlp" "cui_block_marked_documents_email" {
     id = [zia_dlp_engines.cui_detect_block_grade.id]
   }
   email_tenants {
-    id = var.saas_tenant_ids_cui_block_marked_documents_email
+    id = var.saas_tenant_ids_cui_monitor_marked_documents_email
   }
 }
 
-resource "zia_endpoint_dlp_rules" "cui_caution_weak_markings_endpoint" {
-  name                         = "CUI-Caution-Weak-Markings [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+resource "zia_endpoint_dlp_rules" "cui_monitor_weak_markings_endpoint" {
+  name                         = "CUI-Monitor-Weak-Markings [Endpoint]"
+  description                  = "Endpoint DLP: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 14
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -1006,9 +1004,9 @@ resource "zia_endpoint_dlp_rules" "cui_caution_weak_markings_endpoint" {
   }
 }
 
-resource "zia_casb_dlp_rules" "cui_caution_weak_markings_saas" {
-  name                         = "CUI-Caution-Weak-Markings [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+resource "zia_casb_dlp_rules" "cui_monitor_weak_markings_saas" {
+  name                         = "CUI-Monitor-Weak-Markings [SaaS]"
+  description                  = "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 14
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -1021,13 +1019,13 @@ resource "zia_casb_dlp_rules" "cui_caution_weak_markings_saas" {
     id = [zia_dlp_engines.cui_detect_caution_grade.id]
   }
   cloud_app_tenants {
-    id = var.saas_tenant_ids_cui_caution_weak_markings_saas
+    id = var.saas_tenant_ids_cui_monitor_weak_markings_saas
   }
 }
 
-resource "zia_outbound_email_dlp" "cui_caution_weak_markings_email" {
-  name                         = "CUI-Caution-Weak-Markings [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
+resource "zia_outbound_email_dlp" "cui_monitor_weak_markings_email" {
+  name                         = "CUI-Monitor-Weak-Markings [Email]"
+  description                  = "Email DLP: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents. [DLP-Check pack fed_policy_pack v2.0] Terraform-managed."
   order                        = var.rule_starting_order + 14
   state                        = "DISABLED"
   action                       = "ALLOW"
@@ -1037,7 +1035,7 @@ resource "zia_outbound_email_dlp" "cui_caution_weak_markings_email" {
     id = [zia_dlp_engines.cui_detect_caution_grade.id]
   }
   email_tenants {
-    id = var.saas_tenant_ids_cui_caution_weak_markings_email
+    id = var.saas_tenant_ids_cui_monitor_weak_markings_email
   }
 }
 

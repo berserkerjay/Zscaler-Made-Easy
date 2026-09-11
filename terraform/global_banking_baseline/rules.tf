@@ -16,14 +16,13 @@ resource "zia_dlp_web_rules" "bank_payment_card_data_monitor" {
   }
 }
 
-resource "zia_dlp_web_rules" "bank_payment_card_data_bulk_block" {
-  name                         = "Bank-Payment Card Data-Bulk-Block"
+resource "zia_dlp_web_rules" "bank_payment_card_data_bulk_monitor" {
+  name                         = "Bank-Payment Card Data-Bulk-Monitor"
   description                  = "Inline Web DLP: block bulk card-number exports (25+ distinct PANs or 5+ track records). Enforcing by design; ships disabled so you choose when. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
   state                        = "DISABLED"
   action                       = "ALLOW"
-  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -81,14 +80,13 @@ resource "zia_dlp_web_rules" "bank_us_pii_monitor" {
   }
 }
 
-resource "zia_dlp_web_rules" "bank_customer_pii_bulk_block" {
-  name                         = "Bank-Customer PII-Bulk-Block"
+resource "zia_dlp_web_rules" "bank_customer_pii_bulk_monitor" {
+  name                         = "Bank-Customer PII-Bulk-Monitor"
   description                  = "Inline Web DLP: block bulk customer-data exports (25+ distinct identifiers or 50+ dates of birth). Enforcing by design; ships disabled. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
   state                        = "DISABLED"
   action                       = "ALLOW"
-  # Ships monitor-only; the designed action once incidents are tuned is BLOCK.
   severity                     = "RULE_SEVERITY_INFO"
   without_content_inspection   = false
   protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
@@ -263,7 +261,7 @@ resource "zia_outbound_email_dlp" "bank_payment_card_data_email" {
 
 resource "zia_endpoint_dlp_rules" "bank_payment_card_data_bulk_endpoint" {
   name                         = "Bank-Payment Card Data-Bulk [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Block\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -280,7 +278,7 @@ resource "zia_endpoint_dlp_rules" "bank_payment_card_data_bulk_endpoint" {
 
 resource "zia_casb_dlp_rules" "bank_payment_card_data_bulk_saas" {
   name                         = "Bank-Payment Card Data-Bulk [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Block\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "SaaS Security API: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -299,7 +297,7 @@ resource "zia_casb_dlp_rules" "bank_payment_card_data_bulk_saas" {
 
 resource "zia_outbound_email_dlp" "bank_payment_card_data_bulk_email" {
   name                         = "Bank-Payment Card Data-Bulk [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Block\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Email DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 1
   state                        = "DISABLED"
   action                       = "ALLOW"
@@ -471,7 +469,7 @@ resource "zia_outbound_email_dlp" "bank_us_pii_email" {
 
 resource "zia_endpoint_dlp_rules" "bank_customer_pii_bulk_endpoint" {
   name                         = "Bank-Customer PII-Bulk [Endpoint]"
-  description                  = "Endpoint DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Block\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Endpoint DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -488,7 +486,7 @@ resource "zia_endpoint_dlp_rules" "bank_customer_pii_bulk_endpoint" {
 
 resource "zia_casb_dlp_rules" "bank_customer_pii_bulk_saas" {
   name                         = "Bank-Customer PII-Bulk [SaaS]"
-  description                  = "SaaS Security API: the same detection as the inline rule \"Bank-Customer PII-Bulk-Block\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "SaaS Security API: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 5
   rank                         = var.policy_rank
   state                        = "DISABLED"
@@ -507,7 +505,7 @@ resource "zia_casb_dlp_rules" "bank_customer_pii_bulk_saas" {
 
 resource "zia_outbound_email_dlp" "bank_customer_pii_bulk_email" {
   name                         = "Bank-Customer PII-Bulk [Email]"
-  description                  = "Email DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Block\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Email DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
   order                        = var.rule_starting_order + 5
   state                        = "DISABLED"
   action                       = "ALLOW"

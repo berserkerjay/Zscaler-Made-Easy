@@ -36,7 +36,7 @@ CAC = [{"id": 30, "name": "AI no upload", "state": "ENABLED", "type": "AI_ML", "
        {"id": 31, "name": "File share allow all", "state": "ENABLED", "type": "FILE_SHARE", "cloudAppClasses": ["FILE_SHARE"], "actions": ["ALLOW_FILE_SHARE_UPLOAD", "ALLOW_FILE_SHARE_VIEW"]}]
 FTC = [{"id": 40, "name": "Block archives to file share", "state": "ENABLED", "filteringAction": "BLOCK", "operation": "UPLOAD", "fileTypes": ["FTCATEGORY_ZIP"], "cloudAppClasses": ["FILE_SHARE"]}]
 DLP = [{"id": 50, "name": "Bank-Customer PII (Global)-Monitor", "order": 1, "state": "ENABLED", "action": "ALLOW", "dlpEngines": [{"name": "Bank-Customer PII (Global)"}]},
-       {"id": 51, "name": "Bank-Payment Card Data-Bulk-Block", "order": 2, "state": "ENABLED", "action": "BLOCK", "cloudApplications": ["CHATGPT_AI"], "dlpEngines": [{"name": "Bank-Payment Card Data - Bulk"}],
+       {"id": 51, "name": "Bank-Payment Card Data-Bulk-Monitor", "order": 2, "state": "ENABLED", "action": "BLOCK", "cloudApplications": ["CHATGPT_AI"], "dlpEngines": [{"name": "Bank-Payment Card Data - Bulk"}],
         "zscalerIncidentReceiver": True, "notificationTemplate": {"id": 9, "name": "DLP auditor template"}, "severity": "RULE_SEVERITY_HIGH"}]
 ROUTES = {
     "/zcc/webPolicies": APP_PROFILES, "/zcc/forwardingProfiles": FWD, "/zcc/trustedNetworks": [{"id": 1, "name": "HQ", "dnsServers": ["10.1.1.1"]}],
@@ -90,9 +90,9 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     assert hop("dlp")["status"] == "enforce" and t["outcome"] == "enforce"
     assert "first match applies" in hop("dlp")["detail"]
     inc = hop("incident")
-    assert inc["status"] == "pass" and inc["forwarders"] == ["Bank-Payment Card Data-Bulk-Block"] and inc["notifiers"] == ["Bank-Payment Card Data-Bulk-Block"]
+    assert inc["status"] == "pass" and inc["forwarders"] == ["Bank-Payment Card Data-Bulk-Monitor"] and inc["notifiers"] == ["Bank-Payment Card Data-Bulk-Monitor"]
     assert "Workflow Automation" in inc["detail"] and inc["weak_point"] is None
-    rule = next(r for r in hop("dlp")["rules"] if r["name"] == "Bank-Payment Card Data-Bulk-Block")
+    rule = next(r for r in hop("dlp")["rules"] if r["name"] == "Bank-Payment Card Data-Bulk-Monitor")
     assert rule["incident_receiver"] is True and rule["notification_template"] == "DLP auditor template"
     # Webmail: left encrypted by the exemption -> blind, high weak point at SSL;
     # nothing fires, so only the transaction log is written.
@@ -127,7 +127,7 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     assert st["Bank-Customer PII (Global)-Monitor"]["state"] == "monitoring" and st["Bank-Customer PII (Global)-Monitor"]["on_path"]
     # Each inline rule is mirrored to every channel; the tenant here has the
     # email mirror disabled and no SaaS rule, so coverage is partial.
-    assert st["Bank-Payment Card Data-Bulk-Block"]["state"] == "enforcing" and st["Bank-Customer PII (Global) [Email]"]["state"] == "disabled"
+    assert st["Bank-Payment Card Data-Bulk-Monitor"]["state"] == "enforcing" and st["Bank-Customer PII (Global) [Email]"]["state"] == "disabled"
     assert st["Bank-Customer PII (Global) [SaaS]"]["state"] == "missing" and bank["coverage"] == "partial"
     s = rep["summary"]
     assert s["traces"] == len(df.TRAFFIC_CLASSES) * 3 and s["bypassed"] >= len(df.TRAFFIC_CLASSES) and s["high"] > 0

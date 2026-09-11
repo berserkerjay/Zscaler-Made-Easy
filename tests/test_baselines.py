@@ -406,8 +406,8 @@ def test_shipped_baselines_are_discoverable_and_plan():
     rule = client.zia.dlp_web_rules.added[0]
     # Ships monitor-only and DISABLED; the API never sees the target, the plan does.
     assert rule["ocr_enabled"] is True and rule["action"] == "ALLOW" and rule["state"] == "DISABLED" and "target_action" not in rule
-    crit = next(i for i in rep["items"] if i["kind"] == "policy" and i["name"] == "HC-HIPAA Critical-Block")
-    assert crit["detail"]["action"] == "ALLOW" and crit["detail"]["target_action"] == "BLOCK"
+    crit = next(i for i in rep["items"] if i["kind"] == "policy" and i["name"] == "HC-HIPAA Critical-Monitor")
+    assert crit["detail"]["action"] == "ALLOW" and crit["detail"]["target_action"] is None   # monitoring, with no block target
     # Engine 1 starts with the Medical Document (id 1) and Medical Imaging (id 2) classifiers, resolved from display names.
     e1 = client.zia.dlp_engine.added[0]["engine_expression"]
     assert e1.startswith("((((D1.S > 0) OR (D2.S > 0))") and "D:" not in e1 and "D9.S > 0" in e1   # Names (US) is id 9
@@ -416,8 +416,8 @@ def test_shipped_baselines_are_discoverable_and_plan():
     assert bulk["HIPAA Bulk PHI - Small"].startswith("((D10.S + D") and bulk["HIPAA Bulk PHI - Small"].endswith(") > 1)") and "> 0" not in bulk["HIPAA Bulk PHI - Small"]
     assert bulk["HIPAA Bulk PHI - Major"].endswith(") > 500)")
     names = {r["name"] for r in client.zia.dlp_web_rules.added}
-    assert names == {"HC-HIPAA Critical-Block", "HC-HIPAA Narrative Low Volume-Monitor", "HC-HIPAA Identity Trifecta-Block", "HC-HIPAA Sensitive Subcategory-Block",
-                     "HC-HIPAA Pharmacy Claims Billing-Monitor", "HC-HIPAA Bulk PHI Major-Block", "HC-HIPAA Bulk PHI Significant-Block", "HC-HIPAA Bulk PHI Small-Monitor"}
+    assert names == {"HC-HIPAA Critical-Monitor", "HC-HIPAA Narrative Low Volume-Monitor", "HC-HIPAA Identity Trifecta-Monitor", "HC-HIPAA Sensitive Subcategory-Monitor",
+                     "HC-HIPAA Pharmacy Claims Billing-Monitor", "HC-HIPAA Bulk PHI Major-Monitor", "HC-HIPAA Bulk PHI Significant-Monitor", "HC-HIPAA Bulk PHI Small-Monitor"}
     ent = packs["zbp_enterprise_baseline"]
     templates = sorted({d["dict_template_name"] for d in json.load(open(f"{ent['dir']}/configs/dlp_dictionaries.json")) if d.get("predefined_clone")})
     # Predefined dictionaries the engines reference directly (API names, as a tenant exports them).
@@ -476,7 +476,7 @@ def test_fed_pack_carries_the_cui_marking_design():
     assert "CUI-Category-Phrases" not in cui_e["CUI-Detect-Block-Grade"]["expression"] + cui_e["CUI-Detect-Caution-Grade"]["expression"]
     rules = {r["name"]: r for r in json.load(open(f"{fed['dir']}/configs/dlp_policies.json", encoding="utf-8")) if not r.get("channel_mirror")}
     assert rules["CUI-Monitor-All"]["engines"] == ["CUI-Detect-All"] and rules["CUI-Monitor-Contextual"]["engines"] == ["CUI-Detect-Contextual"]   # one rule per engine
-    assert rules["CUI-Block-Marked-Documents"]["engines"] == ["CUI-Detect-Block-Grade"]
+    assert rules["CUI-Monitor-Marked-Documents"]["engines"] == ["CUI-Detect-Block-Grade"]
     assert "Z-Controlled Unclassified Information-Monitor" not in rules and len(rules) == 17   # one rule per engine
     # Every dictionary an engine names is shipped by the pack or is a tenant predefined one.
     shipped = {d["name"] for d in dicts}
@@ -506,9 +506,9 @@ def test_fed_pack_cui_rules_deploy_and_measure():
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")
     assert prox["proximity"] == 300 and prox["match"] == "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
     rules = {r["name"]: r for r in client.zia.dlp_web_rules.added}
-    assert rules["CUI-Block-Marked-Documents"]["action"] == "ALLOW" and rules["CUI-Caution-Weak-Markings"]["action"] == "ALLOW"
+    assert rules["CUI-Monitor-Marked-Documents"]["action"] == "ALLOW" and rules["CUI-Monitor-Weak-Markings"]["action"] == "ALLOW"
     targets = {i["name"]: i["detail"]["target_action"] for i in rep["items"] if i["kind"] == "policy" and i["detail"].get("channel") == "web"}
-    assert targets["CUI-Block-Marked-Documents"] == "BLOCK" and targets["CUI-Caution-Weak-Markings"] == "CONFIRM" and targets["CUI-Monitor-All"] is None
+    assert targets["CUI-Monitor-Marked-Documents"] is None and targets["CUI-Monitor-Weak-Markings"] is None and targets["CUI-Monitor-All"] is None   # every rule monitors
     assert all(r["state"] == "DISABLED" for r in rules.values()) and rules["CUI-Monitor-All"]["ocr_enabled"]
     # Re-running preflight finds everything present: nothing left to create.
     again = pd.preflight(client, [{"id": fed["id"], "dir": fed["dir"]}], writes_enabled=True)

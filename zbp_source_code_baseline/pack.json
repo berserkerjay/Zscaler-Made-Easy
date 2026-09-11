@@ -12,7 +12,7 @@
     "Signal thresholds: > 4 unique matches for every language, > 3 for HTML (its structure is constrained, per the library notes). Change --threshold / --html-threshold when regenerating if the specification document sets different counts.",
     "The three ZBP dictionaries and engines this pack used to ship (ZBP-Python/JavaScript/Shell Code Detection) are gone. A tenant that has them from an earlier deploy keeps them; delete them in the portal or undo that deployment, they are no longer referenced by any rule of this pack.",
     "Patterns use (?m) line anchors and non-capturing groups, which ZIA's PCRE accepts; none uses lookaround. Every pattern is within ZIA's 256-byte limit and every Signal dictionary has exactly eight patterns (the ZIA maximum).",
-    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed.",
+    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). Nothing in the pack blocks; enforcing a rule is the customer's decision in the portal once incidents have been reviewed, and the journey records it as progress.",
     "One rule per engine: each language has its own rule so it has its own incident count and can be enabled, tuned or hardened on its own; the four channels carry the same 13 rules."
   ],
   "confidence_tweaks": [],

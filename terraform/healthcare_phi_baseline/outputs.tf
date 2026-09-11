@@ -25,13 +25,13 @@ output "engines" {
 
 output "rules" {
   value = [
-    zia_dlp_web_rules.hc_hipaa_critical_block.name,
+    zia_dlp_web_rules.hc_hipaa_critical_monitor.name,
     zia_dlp_web_rules.hc_hipaa_narrative_low_volume_monitor.name,
-    zia_dlp_web_rules.hc_hipaa_identity_trifecta_block.name,
-    zia_dlp_web_rules.hc_hipaa_sensitive_subcategory_block.name,
+    zia_dlp_web_rules.hc_hipaa_identity_trifecta_monitor.name,
+    zia_dlp_web_rules.hc_hipaa_sensitive_subcategory_monitor.name,
     zia_dlp_web_rules.hc_hipaa_pharmacy_claims_billing_monitor.name,
-    zia_dlp_web_rules.hc_hipaa_bulk_phi_major_block.name,
-    zia_dlp_web_rules.hc_hipaa_bulk_phi_significant_block.name,
+    zia_dlp_web_rules.hc_hipaa_bulk_phi_major_monitor.name,
+    zia_dlp_web_rules.hc_hipaa_bulk_phi_significant_monitor.name,
     zia_dlp_web_rules.hc_hipaa_bulk_phi_small_monitor.name,
     zia_endpoint_dlp_rules.hc_hipaa_critical_endpoint.name,
     zia_casb_dlp_rules.hc_hipaa_critical_saas.name,

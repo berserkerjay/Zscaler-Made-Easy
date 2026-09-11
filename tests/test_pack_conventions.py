@@ -29,7 +29,7 @@ def test_every_shipped_pack_rule_is_disabled_and_monitor_only():
                 if r.get("target_action"):
                     assert pc.is_enforcing(ch, r["target_action"]), (f, r["name"])
                     targets += 1
-    assert targets >= 10, "the designed block/confirm actions are kept as targets"
+    assert targets == 0, "shipped packs carry no block target: every rule simply monitors (uploaded packs keep target_action via ship_monitor)"
 
 
 def test_ship_monitor_normalises_uploaded_rules_and_keeps_the_design():
@@ -59,14 +59,14 @@ def test_ship_monitor_normalises_uploaded_rules_and_keeps_the_design():
 def test_loaders_apply_the_convention_and_the_journey_names_the_target():
     pack = {"id": "healthcare_phi_baseline", "dir": os.path.join(ROOT, "healthcare_phi_baseline")}
     src = pd.load_sources([pack])[0]
-    crit = next(p for p in src["policies"] if p["name"] == "HC-HIPAA Critical-Block")
-    assert crit["action"] == "ALLOW" and crit["target_action"] == "BLOCK" and crit["state"] == "DISABLED"
+    crit = next(p for p in src["policies"] if p["name"] == "HC-HIPAA Critical-Monitor")
+    assert crit["action"] == "ALLOW" and "target_action" not in crit and crit["state"] == "DISABLED"
     step = pd._next_step({"kind": "policy", "name": crit["name"], "definition": crit, "channel": "web"}, "monitoring", "enforcing")
     assert "from monitor to an enforcing action (BLOCK)" in step
     files = pack_terraform.generate(pack)
     main = "\n".join(files.values())
     assert 'action                       = "ALLOW"' in main or 'action = "ALLOW"' in main.replace("  ", " ")
-    assert "designed action once incidents are tuned is BLOCK" in main
+    assert "designed action once incidents are tuned" not in main, "no shipped rule carries a block target"
     assert '"BLOCK"' not in main.split("zia_dlp_web_rules")[1].split("zia_endpoint_dlp_rules")[0] if "zia_endpoint_dlp_rules" in main else True
 
 
@@ -94,3 +94,26 @@ def test_one_rule_per_engine_and_equal_counts_on_every_channel():
         assert len(set(counts.values())) == 1, (pack, counts)
         names = [r["name"] for r in rules]
         assert len(names) == len(set(names)), (pack, "rule names are unique")
+
+
+def test_healthcare_deploys_on_a_tenant_without_the_medical_bundle():
+    """A tenant that exposes only the SSN dictionary (no medical bundle, no
+    driver's-licence or NDC dictionaries) still gets every healthcare
+    engine (pruned, with the missing terms named) and every rule on every
+    channel. Names with parentheses used to be reported truncated, which
+    blocked the engines and skipped all 32 rules."""
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from test_pack_channels import TENANTS, make_client
+    client = make_client(casb_tenants=TENANTS)
+    pack = {"id": "healthcare_phi_baseline", "dir": os.path.join(ROOT, "healthcare_phi_baseline")}
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    assert rep["status"] != "blocked", rep["blockers"]
+    engines = [i for i in rep["items"] if i["kind"] == "engine"]
+    assert engines and all(i["status"] == pd.CREATE for i in engines), [(i["name"], i["status"], i.get("reason")) for i in engines if i["status"] != pd.CREATE]
+    pruned = {i["name"]: i["pruned"] for i in engines}
+    assert "Names (US)" in pruned["HIPAA Identity Trifecta"] and "Driver's License (United States)" in pruned["HIPAA Identity Trifecta"]
+    rules = [i for i in rep["items"] if i["kind"] == "policy"]
+    assert len(rules) == 32 and all(i["status"] == pd.CREATE for i in rules), [(i["name"], i["status"]) for i in rules if i["status"] != pd.CREATE]
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
+    assert res["summary"]["created"] == 7 + 8 + 32

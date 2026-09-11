@@ -57,18 +57,18 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 
 ## Rules and reporting tiers
 
-| Rule | Engine | Ships as → target | Handling |
+| Rule | Engine | Action | Handling |
 |---|---|---|---|
-| HC-HIPAA Critical-Block | 1 | Monitor (ALLOW), DISABLED → Block | immediate investigation; likely reportable if exfiltrated unsecured |
+| HC-HIPAA Critical-Monitor | 1 | Monitor (ALLOW), DISABLED | immediate investigation; likely reportable if exfiltrated unsecured |
 | HC-HIPAA Narrative Low Volume-Monitor | 2 | Monitor (ALLOW), DISABLED | immediate investigation; member id + diagnosis triggers state breach law |
-| HC-HIPAA Identity Trifecta-Block | 3 | Monitor (ALLOW), DISABLED → Block | immediate investigation; often reportable under state law |
-| HC-HIPAA Sensitive Subcategory-Block | 4 | Monitor (ALLOW), DISABLED → Block | restricted reviewer queue; elevated SLA; separate notification template and auditor |
+| HC-HIPAA Identity Trifecta-Monitor | 3 | Monitor (ALLOW), DISABLED | immediate investigation; often reportable under state law |
+| HC-HIPAA Sensitive Subcategory-Monitor | 4 | Monitor (ALLOW), DISABLED | restricted reviewer queue; elevated SLA; separate notification template and auditor |
 | HC-HIPAA Pharmacy Claims Billing-Monitor | 5 | Monitor (ALLOW), DISABLED | immediate investigation; watch the false-positive rate of the merged pathways |
-| HC-HIPAA Bulk PHI Major-Block | 6, > 500 | Monitor (ALLOW), DISABLED → Block | CRITICAL: bypass tier-2 review; Privacy Officer, legal counsel, executive incident response, forensics; breach risk assessment within 1 hour |
-| HC-HIPAA Bulk PHI Significant-Block | 6, > 50 | Monitor (ALLOW), DISABLED → Block | HIGH: executive escalation, immediate forensic investigation |
+| HC-HIPAA Bulk PHI Major-Monitor | 6, > 500 | Monitor (ALLOW), DISABLED | CRITICAL: bypass tier-2 review; Privacy Officer, legal counsel, executive incident response, forensics; breach risk assessment within 1 hour |
+| HC-HIPAA Bulk PHI Significant-Monitor | 6, > 50 | Monitor (ALLOW), DISABLED | HIGH: executive escalation, immediate forensic investigation |
 | HC-HIPAA Bulk PHI Small-Monitor | 6, > 1 | Monitor (ALLOW), DISABLED | MEDIUM: standard tier-2 review; document for the annual HHS log |
 
-Under Rule Order, enable the Bulk rules ordered Major, Significant, Small so a transaction lands in exactly one tier; under Evaluate All Rules the Block on Major or Significant wins regardless. Every rule ships DISABLED, at INFO and in monitor (ALLOW): enable, review the incidents, raise the severity per the tier, and only then harden the Block-tier rules to their target action (kept in the pack as `target_action`).
+Under Rule Order, enable the Bulk rules ordered Major, Significant, Small so a transaction lands in exactly one tier; under Evaluate All Rules every matching tier logs its own incident. Every rule ships DISABLED, at INFO and in monitor (ALLOW): enable, review the incidents, raise the severity per the tier. Every rule in every pack monitors; if the customer later decides to enforce a tier, that is their change in the portal, and the journey card records it as progress.
 
 ## From a DLP incident to a breach decision
 

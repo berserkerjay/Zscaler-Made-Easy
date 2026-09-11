@@ -65,7 +65,7 @@ def test_rebuild_replaces_the_pack_objects_and_rewires_the_rules(tmp_path):
     res = pft.rebuild_from_tenant(_tenant(), str(pack), dry_run=False)
     # Every rule that used the old engines is rewired: the inline rule and its per-channel mirrors.
     assert res["status"] == "written" and "SRC-Python" in res["removed_engines"]
-    assert "SRC-Python Code to AI-Block" in res["rules_rewired"] and len([r for r in res["rules_rewired"] if r.startswith("SRC-") and "[" not in r]) == 13   # one rule per engine
+    assert "SRC-Python Code to AI-Monitor" in res["rules_rewired"] and len([r for r in res["rules_rewired"] if r.startswith("SRC-") and "[" not in r]) == 13   # one rule per engine
     engines = json.load(open(pack / "configs" / "dlp_engines.json"))
     dicts = json.load(open(pack / "configs" / "dlp_dictionaries.json"))
     policies = json.load(open(pack / "configs" / "dlp_policies.json"))

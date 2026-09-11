@@ -180,7 +180,7 @@ An array of DLP web rules. Each policy points to one or more engines by **name**
 |---|---|---|---|
 | `name` | yes | — | Starts with `Z-` by convention (groups visually in ZIA UI) |
 | `action` | no | `ALLOW` | What the rule is designed to do. **Every pack ships monitor-only**: at load time DLP-Check turns `BLOCK` / `CONFIRM` into `target_action` and creates the rule with the channel's monitor action (`ALLOW`; `OFLCASB_DLP_REPORT_INCIDENT` on SaaS). |
-| `target_action` | no | — | The action to harden to once incidents are tuned (`BLOCK`, `CONFIRM`). Set automatically from `action`; the data-governance journey names it as the enforcement step. |
+| `target_action` | no | — | Only for packs you upload with `BLOCK` / `CONFIRM` rules: the app keeps the designed action here and creates the rule monitor-only. The shipped packs carry none: every rule simply monitors, and enforcing is the customer's decision in the portal. |
 | `state` | no | `DISABLED` | **Every pack ships `DISABLED`**; an `ENABLED` value is kept as `target_state` and the rule is still created disabled. |
 | `rank` | no | 7 | 0 = highest priority (use Rank 0 import button for conflict resolution) |
 | `engines` | yes | — | Exactly **one** engine name per rule (pack convention: one rule per engine, so each detection has its own incident count and can be enabled, tuned or hardened on its own; every engine gets a rule, and `tools/fan_out_channels.py` mirrors each Web rule onto Endpoint, SaaS and Email so every channel carries the same rules) |

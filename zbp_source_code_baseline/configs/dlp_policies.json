@@ -1,9 +1,8 @@
 [
   {
-    "name": "SRC-CSharp Code to AI-Block",
+    "name": "SRC-CSharp Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing C# source code to AI/ML applications (engine SRC-CSharp). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -22,10 +21,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-CPlusPlus Code to AI-Block",
+    "name": "SRC-CPlusPlus Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing C++ source code to AI/ML applications (engine SRC-CPlusPlus). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -44,10 +42,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-Go Code to AI-Block",
+    "name": "SRC-Go Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing Go source code to AI/ML applications (engine SRC-Go). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -66,10 +63,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-HTML Code to AI-Block",
+    "name": "SRC-HTML Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing HTML source code to AI/ML applications (engine SRC-HTML). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -88,10 +84,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-Java Code to AI-Block",
+    "name": "SRC-Java Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing Java source code to AI/ML applications (engine SRC-Java). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -110,10 +105,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-JavaScript Code to AI-Block",
+    "name": "SRC-JavaScript Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing JavaScript source code to AI/ML applications (engine SRC-JavaScript). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -132,10 +126,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-Kotlin Code to AI-Block",
+    "name": "SRC-Kotlin Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing Kotlin source code to AI/ML applications (engine SRC-Kotlin). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -154,10 +147,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-Python Code to AI-Block",
+    "name": "SRC-Python Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing Python source code to AI/ML applications (engine SRC-Python). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -176,10 +168,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-Rust Code to AI-Block",
+    "name": "SRC-Rust Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing Rust source code to AI/ML applications (engine SRC-Rust). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -198,10 +189,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-SQL Code to AI-Block",
+    "name": "SRC-SQL Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing SQL source code to AI/ML applications (engine SRC-SQL). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -220,10 +210,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-Swift Code to AI-Block",
+    "name": "SRC-Swift Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing Swift source code to AI/ML applications (engine SRC-Swift). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -242,10 +231,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-TypeScript Code to AI-Block",
+    "name": "SRC-TypeScript Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing TypeScript source code to AI/ML applications (engine SRC-TypeScript). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -264,10 +252,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "SRC-VBNet Code to AI-Block",
+    "name": "SRC-VBNet Code to AI-Monitor",
     "description": "Inline Web DLP: uploads containing VB.NET source code to AI/ML applications (engine SRC-VBNet). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -288,7 +275,7 @@
   {
     "name": "SRC-CSharp Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-CSharp Code to AI-Block\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-CSharp Code to AI-Monitor\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -315,7 +302,7 @@
   {
     "name": "SRC-CSharp Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-CSharp Code to AI-Block\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-CSharp Code to AI-Monitor\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -333,7 +320,7 @@
   {
     "name": "SRC-CSharp Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-CSharp Code to AI-Block\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-CSharp Code to AI-Monitor\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -347,7 +334,7 @@
   {
     "name": "SRC-CPlusPlus Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-CPlusPlus Code to AI-Block\" (SRC-CPlusPlus). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-CPlusPlus Code to AI-Monitor\" (SRC-CPlusPlus). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -374,7 +361,7 @@
   {
     "name": "SRC-CPlusPlus Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-CPlusPlus Code to AI-Block\" (SRC-CPlusPlus). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-CPlusPlus Code to AI-Monitor\" (SRC-CPlusPlus). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -392,7 +379,7 @@
   {
     "name": "SRC-CPlusPlus Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-CPlusPlus Code to AI-Block\" (SRC-CPlusPlus). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-CPlusPlus Code to AI-Monitor\" (SRC-CPlusPlus). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -406,7 +393,7 @@
   {
     "name": "SRC-Go Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Go Code to AI-Block\" (SRC-Go). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Go Code to AI-Monitor\" (SRC-Go). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -433,7 +420,7 @@
   {
     "name": "SRC-Go Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Go Code to AI-Block\" (SRC-Go). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Go Code to AI-Monitor\" (SRC-Go). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -451,7 +438,7 @@
   {
     "name": "SRC-Go Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-Go Code to AI-Block\" (SRC-Go). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Go Code to AI-Monitor\" (SRC-Go). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -465,7 +452,7 @@
   {
     "name": "SRC-HTML Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-HTML Code to AI-Block\" (SRC-HTML). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-HTML Code to AI-Monitor\" (SRC-HTML). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -492,7 +479,7 @@
   {
     "name": "SRC-HTML Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-HTML Code to AI-Block\" (SRC-HTML). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-HTML Code to AI-Monitor\" (SRC-HTML). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -510,7 +497,7 @@
   {
     "name": "SRC-HTML Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-HTML Code to AI-Block\" (SRC-HTML). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-HTML Code to AI-Monitor\" (SRC-HTML). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -524,7 +511,7 @@
   {
     "name": "SRC-Java Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Java Code to AI-Block\" (SRC-Java). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Java Code to AI-Monitor\" (SRC-Java). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -551,7 +538,7 @@
   {
     "name": "SRC-Java Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Java Code to AI-Block\" (SRC-Java). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Java Code to AI-Monitor\" (SRC-Java). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -569,7 +556,7 @@
   {
     "name": "SRC-Java Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-Java Code to AI-Block\" (SRC-Java). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Java Code to AI-Monitor\" (SRC-Java). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -583,7 +570,7 @@
   {
     "name": "SRC-JavaScript Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-JavaScript Code to AI-Block\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-JavaScript Code to AI-Monitor\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -610,7 +597,7 @@
   {
     "name": "SRC-JavaScript Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-JavaScript Code to AI-Block\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-JavaScript Code to AI-Monitor\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -628,7 +615,7 @@
   {
     "name": "SRC-JavaScript Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-JavaScript Code to AI-Block\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-JavaScript Code to AI-Monitor\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -642,7 +629,7 @@
   {
     "name": "SRC-Kotlin Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Kotlin Code to AI-Block\" (SRC-Kotlin). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Kotlin Code to AI-Monitor\" (SRC-Kotlin). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -669,7 +656,7 @@
   {
     "name": "SRC-Kotlin Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Kotlin Code to AI-Block\" (SRC-Kotlin). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Kotlin Code to AI-Monitor\" (SRC-Kotlin). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -687,7 +674,7 @@
   {
     "name": "SRC-Kotlin Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-Kotlin Code to AI-Block\" (SRC-Kotlin). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Kotlin Code to AI-Monitor\" (SRC-Kotlin). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -701,7 +688,7 @@
   {
     "name": "SRC-Python Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Python Code to AI-Block\" (SRC-Python). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Python Code to AI-Monitor\" (SRC-Python). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -728,7 +715,7 @@
   {
     "name": "SRC-Python Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Python Code to AI-Block\" (SRC-Python). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Python Code to AI-Monitor\" (SRC-Python). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -746,7 +733,7 @@
   {
     "name": "SRC-Python Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-Python Code to AI-Block\" (SRC-Python). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Python Code to AI-Monitor\" (SRC-Python). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -760,7 +747,7 @@
   {
     "name": "SRC-Rust Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Rust Code to AI-Block\" (SRC-Rust). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Rust Code to AI-Monitor\" (SRC-Rust). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -787,7 +774,7 @@
   {
     "name": "SRC-Rust Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Rust Code to AI-Block\" (SRC-Rust). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Rust Code to AI-Monitor\" (SRC-Rust). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -805,7 +792,7 @@
   {
     "name": "SRC-Rust Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-Rust Code to AI-Block\" (SRC-Rust). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Rust Code to AI-Monitor\" (SRC-Rust). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -819,7 +806,7 @@
   {
     "name": "SRC-SQL Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-SQL Code to AI-Block\" (SRC-SQL). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-SQL Code to AI-Monitor\" (SRC-SQL). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -846,7 +833,7 @@
   {
     "name": "SRC-SQL Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-SQL Code to AI-Block\" (SRC-SQL). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-SQL Code to AI-Monitor\" (SRC-SQL). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -864,7 +851,7 @@
   {
     "name": "SRC-SQL Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-SQL Code to AI-Block\" (SRC-SQL). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-SQL Code to AI-Monitor\" (SRC-SQL). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -878,7 +865,7 @@
   {
     "name": "SRC-Swift Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Swift Code to AI-Block\" (SRC-Swift). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Swift Code to AI-Monitor\" (SRC-Swift). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -905,7 +892,7 @@
   {
     "name": "SRC-Swift Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Swift Code to AI-Block\" (SRC-Swift). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Swift Code to AI-Monitor\" (SRC-Swift). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -923,7 +910,7 @@
   {
     "name": "SRC-Swift Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-Swift Code to AI-Block\" (SRC-Swift). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Swift Code to AI-Monitor\" (SRC-Swift). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -937,7 +924,7 @@
   {
     "name": "SRC-TypeScript Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-TypeScript Code to AI-Block\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-TypeScript Code to AI-Monitor\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -964,7 +951,7 @@
   {
     "name": "SRC-TypeScript Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-TypeScript Code to AI-Block\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-TypeScript Code to AI-Monitor\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -982,7 +969,7 @@
   {
     "name": "SRC-TypeScript Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-TypeScript Code to AI-Block\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-TypeScript Code to AI-Monitor\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -996,7 +983,7 @@
   {
     "name": "SRC-VBNet Code to AI [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-VBNet Code to AI-Block\" (SRC-VBNet). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-VBNet Code to AI-Monitor\" (SRC-VBNet). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1023,7 +1010,7 @@
   {
     "name": "SRC-VBNet Code to AI [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"SRC-VBNet Code to AI-Block\" (SRC-VBNet). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-VBNet Code to AI-Monitor\" (SRC-VBNet). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1041,7 +1028,7 @@
   {
     "name": "SRC-VBNet Code to AI [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"SRC-VBNet Code to AI-Block\" (SRC-VBNet). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-VBNet Code to AI-Monitor\" (SRC-VBNet). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",

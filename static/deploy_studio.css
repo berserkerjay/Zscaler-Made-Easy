@@ -360,3 +360,11 @@
 .tf-mode:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .dz-scope-fold { margin: 0.6rem 0 0; padding: 0.5rem 0.7rem; border: 1px dashed var(--border); border-radius: 8px; font-size: 0.8rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+
+/* What a deployment needs: every gate with its state */
+.dz-gates { list-style: none; margin: 0 0 0.6rem; padding: 0.5rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--well); font-size: 0.82rem; display: grid; gap: 0.25rem; }
+.dz-gates li { display: flex; gap: 0.5rem; align-items: flex-start; }
+.dz-gates li .ic { font-weight: 700; width: 1.1rem; flex: none; }
+.dz-gates li.ok .ic { color: var(--pass, #10b981); } .dz-gates li.closed .ic { color: var(--fail, #ef4444); }
+.dz-gates li.closed { color: var(--text); font-weight: 600; }
+.dz-gates .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }

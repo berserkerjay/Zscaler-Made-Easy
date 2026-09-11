@@ -77,3 +77,22 @@ def test_sum_operator_is_resolved_pruned_and_referenced():
     assert prune_engine_terms("((D:A > 0) AND ((D:B + D:C) > 4))", ["B", "C"], ["A"]) == ("((D:A > 0))", ["B", "C"])
     import re
     assert default_counts("D1.S + D2.S > 3 AND D3.S", re.compile(r"(D\d+\.S)(?!\s*[<>=+])")) == "D1.S + D2.S > 3 AND D3.S > 0"
+
+
+def test_missing_names_with_parentheses_are_reported_whole_and_pruned():
+    """A tenant without "Names (US)" or the driver's-licence dictionaries
+    must get the engine without those terms, not a blocked engine and 32
+    skipped rules."""
+    from dlp_importer import resolve_engine_expression, prune_engine_terms
+    expr = ("((D:Social Security Numbers (US) > 0) AND (D:Names (US) > 0) AND (D:Custom-Date-of-Birth > 0)) "
+            "OR ((D:Names (US) > 0) AND (D:Custom-Date-of-Birth > 0) AND ((D:Driver's License (United States) > 0) OR (D:Tax Identification Number (US) > 0)))")
+    known = {"Social Security Numbers (US)": 1, "Custom-Date-of-Birth": 2}
+    resolved, unresolved = resolve_engine_expression(expr, known)
+    assert set(unresolved) == {"Names (US)", "Driver's License (United States)", "Tax Identification Number (US)"}, unresolved
+    pruned, dropped = prune_engine_terms(expr, unresolved, list(known))
+    assert set(dropped) == set(unresolved) and "Names (US" not in pruned and "D:Social Security Numbers (US)" in pruned and "D:Custom-Date-of-Birth" in pruned
+    total = "((D:Social Security Numbers (US) + D:Custom-Medical-Record-Number + D:National Provider Identifier + D:Tax Identification Number (US) + D:Driver's License (United States)) > 50)"
+    resolved, unresolved = resolve_engine_expression(total, {"Social Security Numbers (US)": 1, "Custom-Medical-Record-Number": 2})
+    assert set(unresolved) == {"National Provider Identifier", "Tax Identification Number (US)", "Driver's License (United States)"}
+    pruned, dropped = prune_engine_terms(total, unresolved, ["Social Security Numbers (US)", "Custom-Medical-Record-Number"])
+    assert pruned and "Driver" not in pruned and "> 50" in pruned and "D:Social Security Numbers (US) + D:Custom-Medical-Record-Number" in pruned.replace("  ", " ")

@@ -48,3 +48,18 @@ def test_security_policy_is_documented():
     assert "Reporting a vulnerability" in sec and "Known limitations" in sec
     readme = open(os.path.join(root, "README.md"), encoding="utf-8").read()
     assert "SECURITY.md" in readme and "read-only GET requests" not in readme
+
+
+def test_same_origin_requests_pass_on_any_port_cross_origin_is_refused():
+    """The CSRF check trusts the allowlist and the page the server itself
+    served (Origin == scheme://Host), so a spare port or a machine name
+    works; a page on another local port is still refused."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    c = TestClient(srv.app, base_url="http://127.0.0.1:8013")
+    ok = c.post("/api/auth/unlock", json={"token": "nope"}, headers={"Origin": "http://127.0.0.1:8013", "Host": "127.0.0.1:8013"})
+    assert ok.status_code != 403, ok.text
+    bad = c.post("/api/auth/unlock", json={"token": "nope"}, headers={"Origin": "http://127.0.0.1:9999", "Host": "127.0.0.1:8013"})
+    assert bad.status_code == 403 and "Origin not allowed" in bad.text
+    named = c.post("/api/auth/unlock", json={"token": "nope"}, headers={"Origin": "http://laptop-42:8000", "Host": "laptop-42:8000"})
+    assert named.status_code != 403

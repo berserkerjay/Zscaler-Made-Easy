@@ -6,11 +6,11 @@ resource "zia_activation_status" "this" {
 
   depends_on = [
     zia_dlp_web_rules.bank_payment_card_data_monitor,
-    zia_dlp_web_rules.bank_payment_card_data_bulk_block,
+    zia_dlp_web_rules.bank_payment_card_data_bulk_monitor,
     zia_dlp_web_rules.bank_payment_instructions_monitor,
     zia_dlp_web_rules.bank_customer_pii_global_monitor,
     zia_dlp_web_rules.bank_us_pii_monitor,
-    zia_dlp_web_rules.bank_customer_pii_bulk_block,
+    zia_dlp_web_rules.bank_customer_pii_bulk_monitor,
     zia_dlp_web_rules.bank_customer_financial_records_monitor,
     zia_dlp_web_rules.bank_kyc_and_aml_files_monitor,
     zia_dlp_web_rules.bank_credit_and_loan_applications_monitor,

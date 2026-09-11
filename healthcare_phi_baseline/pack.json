@@ -14,7 +14,7 @@
     "Proximity is bytes across the extracted text stream: 50 for MRN, DOB, member id and address; the sensitive-condition markers match on any phrase or gene pattern instead.",
     "Custom-Address-ZIP is not wired into an engine by default (ZIP alone is very noisy); add it to the claims pathway only where ZIP appears beside billing context.",
     "Rules ship without file_types and with OCR on. The three Bulk rules should be ordered Major, Significant, Small once enabled so a transaction lands in exactly one tier under Rule Order; under Evaluate All Rules the Block on Major or Significant wins anyway.",
-    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed."
+    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). Nothing in the pack blocks; enforcing a rule is the customer's decision in the portal once incidents have been reviewed, and the journey records it as progress."
   ],
   "confidence_tweaks": [],
   "baseline": {

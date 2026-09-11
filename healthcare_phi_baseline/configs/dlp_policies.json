@@ -1,9 +1,8 @@
 [
   {
-    "name": "HC-HIPAA Critical-Block",
+    "name": "HC-HIPAA Critical-Monitor",
     "description": "Inline Web DLP, Engine 1: strong PHI signature with an identity anchor. Single record reportable: immediate investigation. Block-grade; ships DISABLED at INFO, raise to HIGH when enabled.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -37,10 +36,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "HC-HIPAA Identity Trifecta-Block",
+    "name": "HC-HIPAA Identity Trifecta-Monitor",
     "description": "Inline Web DLP, Engine 3: name + DOB + SSN (or licence / TIN). Reportable under state breach law regardless of healthcare context. Block-grade.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -56,10 +54,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "HC-HIPAA Sensitive Subcategory-Block",
+    "name": "HC-HIPAA Sensitive Subcategory-Monitor",
     "description": "Inline Web DLP, Engine 4: SUD, mental health, HIV, genetic and reproductive PHI beside an identifier. 42 CFR Part 2 and GINA: route to the restricted reviewer queue (attach a dedicated notification template and auditor). Block-grade.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -93,10 +90,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "HC-HIPAA Bulk PHI Major-Block",
+    "name": "HC-HIPAA Bulk PHI Major-Monitor",
     "description": "Inline Web DLP, Engine 6 MAJOR tier (> 500 identifiers): a potential 500+ individual breach. Bypass tier-2 review: Privacy Officer, legal counsel, executive incident response and forensics; breach risk assessment within 1 hour. Block-grade.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -112,10 +108,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "HC-HIPAA Bulk PHI Significant-Block",
+    "name": "HC-HIPAA Bulk PHI Significant-Monitor",
     "description": "Inline Web DLP, Engine 6 significant tier (> 50 identifiers): executive escalation and immediate forensic investigation; still under the 500-individual notification threshold. Block-grade.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -151,7 +146,7 @@
   {
     "name": "HC-HIPAA Critical [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Block\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -178,7 +173,7 @@
   {
     "name": "HC-HIPAA Critical [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Critical-Block\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -196,7 +191,7 @@
   {
     "name": "HC-HIPAA Critical [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Critical-Block\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature + Clinical Document)). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -269,7 +264,7 @@
   {
     "name": "HC-HIPAA Identity Trifecta [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Block\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Monitor\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -296,7 +291,7 @@
   {
     "name": "HC-HIPAA Identity Trifecta [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Block\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Monitor\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -314,7 +309,7 @@
   {
     "name": "HC-HIPAA Identity Trifecta [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Block\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Monitor\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -328,7 +323,7 @@
   {
     "name": "HC-HIPAA Sensitive Subcategory [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Block\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Monitor\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -355,7 +350,7 @@
   {
     "name": "HC-HIPAA Sensitive Subcategory [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Block\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Monitor\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -373,7 +368,7 @@
   {
     "name": "HC-HIPAA Sensitive Subcategory [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Block\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Monitor\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -446,7 +441,7 @@
   {
     "name": "HC-HIPAA Bulk PHI Major [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Major-Block\" (HIPAA Bulk PHI - Major). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Major-Monitor\" (HIPAA Bulk PHI - Major). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -473,7 +468,7 @@
   {
     "name": "HC-HIPAA Bulk PHI Major [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Bulk PHI Major-Block\" (HIPAA Bulk PHI - Major). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Bulk PHI Major-Monitor\" (HIPAA Bulk PHI - Major). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -491,7 +486,7 @@
   {
     "name": "HC-HIPAA Bulk PHI Major [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Major-Block\" (HIPAA Bulk PHI - Major). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Major-Monitor\" (HIPAA Bulk PHI - Major). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -505,7 +500,7 @@
   {
     "name": "HC-HIPAA Bulk PHI Significant [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Block\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Monitor\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -532,7 +527,7 @@
   {
     "name": "HC-HIPAA Bulk PHI Significant [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Block\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Monitor\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -550,7 +545,7 @@
   {
     "name": "HC-HIPAA Bulk PHI Significant [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Block\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Monitor\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",

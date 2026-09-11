@@ -656,6 +656,7 @@ function _dzRenderReview() {
   if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
   _dzFlowSyncTab(items, null);
   foot.innerHTML = `
+    ${_dzGatesHtml(R, { step: 2 })}
     <div class="dz-summary">${R.status === 'blocked' ? 'Resolve the blockers above, then run preflight again.' : 'Nothing has been written yet.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=1;_dzRender()">← Back</button>
@@ -663,6 +664,26 @@ function _dzRenderReview() {
       <button type="button" class="dz-btn" title="Close this gap with Terraform instead: opens the hand-off page for the selected packs (what you get, how to run it, download in gap mode so terraform plan shows exactly these changes)." onclick="openToolTab('terraform', [...DZ.selected].join(','))">Hand off as Terraform</button>
       <button type="button" class="dz-btn primary" ${R.status === 'blocked' ? 'disabled' : ''} onclick="DZ.step=3;DZ.consent=false;_dzRender()">Review &amp; approve <span aria-hidden="true">→</span></button>
     </div>`;
+}
+
+
+// ── Why can't I deploy? Every gate in one list ───────────────────
+// A person who cannot find the Deploy button enabled sees which gate is
+// closed and what opens it, instead of a greyed-out button.
+function _dzGatesHtml(R, { step } = {}) {
+  const w = DZ.write || {};
+  const items = R ? (R.items || []) : [];
+  const creates = items.filter(i => ['create', 'restore', 'modify'].includes(i.status)).length;
+  const gates = [];
+  if (!R) gates.push({ ok: false, text: 'Run preflight first: it reads the tenant and builds the plan.' });
+  else if (R.status === 'blocked') gates.push({ ok: false, text: `The plan is blocked: ${(R.blockers || ['see the reason above']).join(' ')}` });
+  else gates.push({ ok: true, text: `The plan can be deployed (${_dzN(creates, 'object')} to create${R.status === 'warnings' ? '; read the warnings' : ''}).` });
+  if (R && R.status !== 'blocked') gates.push(creates ? { ok: true, text: 'There is something to create.' } : { ok: false, text: 'Nothing to create: every object of this pack already exists in the tenant (the journey card shows how far it is).' });
+  if (w.enabled) gates.push({ ok: true, text: 'Write mode is on for this server session.' });
+  else gates.push({ ok: false, text: w.can_toggle ? 'Write mode is off: click Enable write mode and type the confirmation phrase.' : `Write mode is off and cannot be enabled from here${w.reason ? ': ' + w.reason : ''}. Start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.` });
+  if (step === 3) gates.push(DZ.consent ? { ok: true, text: 'You have ticked the approval box.' } : { ok: false, text: 'Tick the approval box above.' });
+  else gates.push({ ok: true, text: 'Next: Review & approve, tick the approval box, then Deploy to tenant.' });
+  return `<ul class="dz-gates" aria-label="What a deployment needs">${gates.map(g => `<li class="${g.ok ? 'ok' : 'closed'}"><span class="ic" aria-hidden="true">${g.ok ? '✓' : '✕'}</span><span class="sr-only">${g.ok ? 'Open: ' : 'Closed: '}</span>${_dzE(g.text)}</li>`).join('')}</ul>`;
 }
 
 // ── Step 3: approve ───────────────────────────────────────────────
@@ -695,6 +716,7 @@ function _dzRenderApprove() {
     </div>`;
   const writeOff = DZ.write && !DZ.write.enabled;
   document.getElementById('dzFoot').innerHTML = `
+    ${_dzGatesHtml(R, { step: 3 })}
     <div class="dz-summary">${writeOff ? 'The server is read-only: enable write mode to deploy.' : (DZ.consent ? 'Ready when you are.' : 'Tick the box to enable deployment.')}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=2;_dzRender()">← Back</button>

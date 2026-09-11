@@ -234,10 +234,9 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
-    "name": "CUI-Block-Marked-Documents",
+    "name": "CUI-Monitor-Marked-Documents",
     "description": "Inline Web DLP: block uploads carrying high-precision CUI markings (banners, category tokens, legacy FOUO/LES/SBU, distribution statements) via CUI-Detect-Block-Grade. Ships DISABLED at INFO; enable after reviewing monitor incidents from CUI-Monitor-All.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -253,10 +252,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "CUI-Caution-Weak-Markings",
+    "name": "CUI-Monitor-Weak-Markings",
     "description": "Inline Web DLP: caution (user must confirm) on lower-precision CUI signals: bare CUI, standalone LDCs, malformed markings, designation blocks, via CUI-Detect-Caution-Grade. Never BLOCK on these.",
     "action": "ALLOW",
-    "target_action": "CONFIRM",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -1075,9 +1073,9 @@
     "rank": 7
   },
   {
-    "name": "CUI-Block-Marked-Documents [Endpoint]",
+    "name": "CUI-Monitor-Marked-Documents [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1102,9 +1100,9 @@
     "rank": 7
   },
   {
-    "name": "CUI-Block-Marked-Documents [SaaS]",
+    "name": "CUI-Monitor-Marked-Documents [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1120,9 +1118,9 @@
     "rank": 7
   },
   {
-    "name": "CUI-Block-Marked-Documents [Email]",
+    "name": "CUI-Monitor-Marked-Documents [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"CUI-Block-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1134,9 +1132,9 @@
     "rank": 7
   },
   {
-    "name": "CUI-Caution-Weak-Markings [Endpoint]",
+    "name": "CUI-Monitor-Weak-Markings [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1161,9 +1159,9 @@
     "rank": 7
   },
   {
-    "name": "CUI-Caution-Weak-Markings [SaaS]",
+    "name": "CUI-Monitor-Weak-Markings [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -1179,9 +1177,9 @@
     "rank": 7
   },
   {
-    "name": "CUI-Caution-Weak-Markings [Email]",
+    "name": "CUI-Monitor-Weak-Markings [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"CUI-Caution-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",

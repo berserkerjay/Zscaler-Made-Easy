@@ -82,7 +82,8 @@ def test_banking_pack_is_premised_on_predefined_dictionaries_at_high_confidence(
     channels = {p.get("channel", "web") for p in policies}
     assert channels == {"web", "endpoint", "saas", "email"}
     assert {p["action"] for p in policies if p.get("channel", "web") == "web"} == {"ALLOW"}, "every rule ships monitor-only"
-    assert {p["target_action"] for p in policies if p["name"].endswith("-Block")} == {"BLOCK"}, "the designed action is kept as the target"
+    assert not any("target_action" in p for p in policies), "nothing in a shipped pack blocks: no target action either"
+    assert not any("Block" in p["name"] for p in policies), "no rule is named as blocking"
     assert all(p["state"] == "DISABLED" for p in policies)
     assert meta["baseline"]["immutable"] is True and meta["baseline"]["prefix"] == "Bank-"
 
@@ -113,7 +114,7 @@ def test_banking_pack_deploys_across_every_channel(monkeypatch):
     # Every channel mirrors the inline (web) rules one-for-one: same count,
     # same engines, so Endpoint / SaaS / Email match Web DLP.
     web = [r["name"] for r in client.zia.dlp_web_rules.added]
-    assert "Bank-Payment Card Data-Monitor" in web and "Bank-Customer PII-Bulk-Block" in web
+    assert "Bank-Payment Card Data-Monitor" in web and "Bank-Customer PII-Bulk-Monitor" in web
     ep = [r["name"] for r in client.zia.endpoint_dlp_rules.added]
     saas = [r["name"] for r in client.zia.casb_dlp_rules.added]
     email = [r["name"] for r in client.zia.outbound_email_dlp_rules.added]

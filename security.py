@@ -261,13 +261,26 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
+    @staticmethod
+    def _trusted(origin: str, request: Request) -> bool:
+        """The allowlist, or the page the server itself served: a browser
+        sends Origin equal to scheme://Host for a same-origin request, so
+        the app works on any port or host name it is reached at (a spare
+        port, the machine name, a container mapping) while a page on
+        another origin, another local port included, is still refused."""
+        o = origin.lower().rstrip("/")
+        if o in ALLOWED_ORIGINS:
+            return True
+        host = (request.headers.get("host") or "").lower()
+        return bool(host) and o == f"{request.url.scheme}://{host}"
+
     async def dispatch(self, request: Request, call_next):
         if request.method not in self.SAFE_METHODS:
             origin = request.headers.get("origin")
             if origin:
-                if origin.lower() not in ALLOWED_ORIGINS:
+                if not self._trusted(origin, request):
                     return JSONResponse(
-                        {"detail": f"Origin not allowed: {origin}"},
+                        {"detail": f"Origin not allowed: {origin}. Open the app at the address the server printed (the launcher does), or set ZSCALER_PORT to the port you use."},
                         status_code=403,
                     )
             else:
@@ -276,7 +289,7 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
                 if ref:
                     p = urlparse(ref)
                     base = f"{p.scheme}://{p.netloc}".lower()
-                    if base and base not in ALLOWED_ORIGINS:
+                    if base and not self._trusted(base, request):
                         return JSONResponse(
                             {"detail": f"Referer not allowed: {base}"},
                             status_code=403,

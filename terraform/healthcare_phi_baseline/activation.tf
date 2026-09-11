@@ -5,13 +5,13 @@ resource "zia_activation_status" "this" {
   status = "ACTIVE"
 
   depends_on = [
-    zia_dlp_web_rules.hc_hipaa_critical_block,
+    zia_dlp_web_rules.hc_hipaa_critical_monitor,
     zia_dlp_web_rules.hc_hipaa_narrative_low_volume_monitor,
-    zia_dlp_web_rules.hc_hipaa_identity_trifecta_block,
-    zia_dlp_web_rules.hc_hipaa_sensitive_subcategory_block,
+    zia_dlp_web_rules.hc_hipaa_identity_trifecta_monitor,
+    zia_dlp_web_rules.hc_hipaa_sensitive_subcategory_monitor,
     zia_dlp_web_rules.hc_hipaa_pharmacy_claims_billing_monitor,
-    zia_dlp_web_rules.hc_hipaa_bulk_phi_major_block,
-    zia_dlp_web_rules.hc_hipaa_bulk_phi_significant_block,
+    zia_dlp_web_rules.hc_hipaa_bulk_phi_major_monitor,
+    zia_dlp_web_rules.hc_hipaa_bulk_phi_significant_monitor,
     zia_dlp_web_rules.hc_hipaa_bulk_phi_small_monitor,
     zia_endpoint_dlp_rules.hc_hipaa_critical_endpoint,
     zia_casb_dlp_rules.hc_hipaa_critical_saas,

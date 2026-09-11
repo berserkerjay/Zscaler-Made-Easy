@@ -18,10 +18,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "Bank-Payment Card Data-Bulk-Block",
+    "name": "Bank-Payment Card Data-Bulk-Monitor",
     "description": "Inline Web DLP: block bulk card-number exports (25+ distinct PANs or 5+ track records). Enforcing by design; ships disabled so you choose when.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -91,10 +90,9 @@
     "ocr_enabled": true
   },
   {
-    "name": "Bank-Customer PII-Bulk-Block",
+    "name": "Bank-Customer PII-Bulk-Monitor",
     "description": "Inline Web DLP: block bulk customer-data exports (25+ distinct identifiers or 50+ dates of birth). Enforcing by design; ships disabled.",
     "action": "ALLOW",
-    "target_action": "BLOCK",
     "state": "DISABLED",
     "rank": 7,
     "engines": [
@@ -297,7 +295,7 @@
   {
     "name": "Bank-Payment Card Data-Bulk [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Block\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -324,7 +322,7 @@
   {
     "name": "Bank-Payment Card Data-Bulk [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Block\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -342,7 +340,7 @@
   {
     "name": "Bank-Payment Card Data-Bulk [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Block\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -533,7 +531,7 @@
   {
     "name": "Bank-Customer PII-Bulk [Endpoint]",
     "channel": "endpoint",
-    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Block\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -560,7 +558,7 @@
   {
     "name": "Bank-Customer PII-Bulk [SaaS]",
     "channel": "saas",
-    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Customer PII-Bulk-Block\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",
@@ -578,7 +576,7 @@
   {
     "name": "Bank-Customer PII-Bulk [Email]",
     "channel": "email",
-    "description": "Email DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Block\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
     "action": "ALLOW",
     "state": "DISABLED",
     "severity": "RULE_SEVERITY_INFO",

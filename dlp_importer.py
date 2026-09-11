@@ -441,7 +441,10 @@ def resolve_engine_expression(expr: str, dict_name_to_id: Dict[str, Any]) -> Tup
     # Sum — `(D63.S + D64.S) > 1`, the Engine Builder's Sum operator — carry
     # no comparison of their own.
     expr = default_counts(expr, _BARE_TERM_RE)
-    unresolved = [u.strip() for u in re.findall(_UNRESOLVED_REF_RE, expr) if u.strip()]
+    # Paren-aware: a missing "Names (US)" or "Driver's License (United States)"
+    # must come back whole, or the pruning step cannot find it, the engine
+    # is blocked, and every rule behind it is skipped.
+    unresolved = [u.strip() for u in find_refs(expr) if u.strip()]
     return expr, unresolved
 
 

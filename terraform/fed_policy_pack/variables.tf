@@ -172,23 +172,23 @@ variable "saas_tenant_ids_z_private_keys_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_cui_block_marked_documents_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule CUI-Block-Marked-Documents [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_cui_monitor_marked_documents_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Marked-Documents [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_cui_block_marked_documents_email" {
-  description = "IDs of the onboarded SaaS application tenants rule CUI-Block-Marked-Documents [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_cui_monitor_marked_documents_email" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Marked-Documents [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_cui_caution_weak_markings_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule CUI-Caution-Weak-Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_cui_monitor_weak_markings_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Weak-Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_cui_caution_weak_markings_email" {
-  description = "IDs of the onboarded SaaS application tenants rule CUI-Caution-Weak-Markings [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_cui_monitor_weak_markings_email" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Weak-Markings [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
