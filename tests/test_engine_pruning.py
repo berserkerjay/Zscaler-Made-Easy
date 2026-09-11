@@ -45,3 +45,19 @@ def test_preflight_deploys_engine_without_the_missing_predefined_dictionary(tmp_
     p = items_by(rep, "policy")
     assert p["PR-Monitor"]["status"] == pd.CREATE and p["PR-Other"]["status"] == pd.BLOCKED_DEPENDENCY
     assert any("ASPP_LEAKAGE" in w and "PR-Engine" in w for w in rep["warnings"])
+
+
+def test_packs_without_a_baseline_section_are_tagged_too(tmp_path):
+    """Fed/CJIS-style packs used to deploy untagged, so a removal could
+    only find them by name. Every object now carries a pack tag."""
+    pack = write_pack(tmp_path, "plainpack", dicts=[_dict("PP-Dict")], engines=[_engine("PP-Engine", "(D:PP-Dict > 0)")],
+                      policies=[_policy("PP-Monitor", ["PP-Engine"])], meta={"name": "Plain Pack", "version": "3.1", "confidence_tweaks": []})
+    client = FakeClient(dicts=[PREDEF_SSN])
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    assert res["status"] == "applied"
+    z = client.zia
+    assert "[DLP-Check pack plainpack v3.1] Deployed by DLP-Check." in z.dlp_dictionary.added[0]["description"]
+    assert "[DLP-Check pack plainpack v3.1]" in z.dlp_engine.added[0]["description"]
+    assert "[DLP-Check pack plainpack v3.1]" in z.dlp_web_rules.added[0]["description"]
+    assert pd.BASELINE_MARK not in z.dlp_engine.added[0]["description"]

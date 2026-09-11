@@ -314,7 +314,7 @@ function _dzRenderSelect() {
           <label class="dz-switch"><input type="checkbox" ${DZ.options.use_rank_0 ? 'checked' : ''} onchange="DZ.options.use_rank_0=this.checked" aria-label="Use rank 0"><span class="track"><span class="knob"></span></span></label>
         </div>
         <div class="dz-option">
-          <div><div class="t">Remove every deployed policy pack</div><div class="d">Finds what every pack in the library put in this tenant — by its DLP-Check tag and its names, on every channel — and removes it in one pass: previewed first, double-confirmed, then verified by a fresh read of the tenant. Needs write mode.</div></div>
+          <div><div class="t">Remove every deployed policy pack</div><div class="d">Finds everything DLP-Check ever put in this tenant — any object carrying a DLP-Check tag whatever pack or version wrote it, plus the names of every pack in the library and of objects earlier pack versions shipped — on every channel, and removes it in one pass with the same per-object rules as a single pack (anything something else still uses is kept). Previewed first, double-confirmed, then verified by a fresh read. Needs write mode.</div></div>
           <button type="button" class="dz-btn danger" onclick="_dzRemove(RM_ALL)" ${(DZ.remove || {})[RM_ALL] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_ALL] === 'busy' ? 'Scanning…' : 'Remove all…'}</button>
         </div>
       </div>
@@ -798,7 +798,7 @@ async function _dzRemove(id) {
   try {
     const r = await fetch('/api/dlp-packs/removal/preflight', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: ids, ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: ids, all, ..._dzCreds() }),
     });
     plan = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
@@ -921,7 +921,7 @@ async function _dzRemovalVerifyAgain() {
   const R = DZ.removal; if (!R || DZ.busy) return;
   DZ.busy = true; announce('Re-reading the tenant…');
   try {
-    const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pack_ids: R.ids || [R.id], ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pack_ids: R.ids || [R.id], all: R.id === RM_ALL, ..._dzCreds() }) });
     const plan = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((plan.detail && (plan.detail.cause || plan.detail)) || `HTTP ${r.status}`);
     const remaining = (plan.items || []).filter(i => i.status === 'remove');
@@ -954,7 +954,7 @@ async function _dzRemovalApply() {
   try {
     const r = await fetch('/api/dlp-packs/removal/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: R.ids || [R.id], plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
+      body: JSON.stringify({ pack_ids: R.ids || [R.id], all: R.id === RM_ALL, plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);

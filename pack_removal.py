@@ -30,7 +30,34 @@ from dlp_importer import _load_json, _resolve_configs, discover_packs
 # hand-off tags every object with "[DLP-Check baseline <id>]" or
 # "[DLP-Check pack <id>]". Match either, scoped to the pack id.
 _BASELINE_MARK = pd.BASELINE_MARK            # "[DLP-Check baseline"
-_PACK_MARK = "[DLP-Check pack"
+_PACK_MARK = pd.PACK_MARK                    # "[DLP-Check pack"
+_ANY_MARKS = (_BASELINE_MARK, _PACK_MARK)    # any DLP-Check provenance, whatever the pack id
+
+# Objects earlier versions of the shipped packs created under names no
+# current pack defines (Fed 1.1 CUI objects, the retired endpoint and CUI
+# packs, the pre-v4.14 source-code pack, extension rules named after the
+# packs' old "Baseline" names). Packs without a baseline section were
+# deployed untagged before pack_description existed, so "remove
+# everything" finds these by name and flags them for the operator.
+_OLD_PACK_NAMES = ("Global Banking Baseline", "Healthcare PHI Baseline", "ZBP Enterprise Baseline",
+                   "Source Code to AI Baseline", "CUI Marking Baseline", "ZBP Endpoint DLP Baseline", "Fed Policy Pack", "CJIS Policy Pack")
+LEGACY_NAMES: Dict[str, set] = {
+    "dictionary": {"CUI Category Phrase", "CUI Contextual Phrases", "CUI Portion Marking Pattern (High confidence)",
+                   "CUI Portion Marking Pattern (Medium confidence)", "CUI Registry Marking Pattern (High confidence)",
+                   "CUI Registry Marking Pattern (Medium confidence)", "Declassify Date Pattern (High Confidence)",
+                   "Declassify Date Pattern (Medium Confidence)", "ZBP-JavaScript Code Detection", "ZBP-Python Code Detection",
+                   "ZBP-Shell Script Detection"},
+    "engine": {"AEA Medium Confidence", "CUI Engine (High Confidence)", "CUI Engine (Low Confidence)", "CUI Engine (Medium Confidence)",
+               "PCI - High", "PCI - Low", "PCI - Medium", "ZBP-JavaScript Code Detection Engine", "ZBP-Python Code Detection Engine",
+               "ZBP-Shell Script Detection Engine"},
+    "policy": {"Z-Controlled Unclassified Information-Monitor", "Z-Controlled Unclassified Information [Endpoint]",
+               "Z-Controlled Unclassified Information [SaaS]", "Z-Controlled Unclassified Information [Email]",
+               "zbp-GenAI Application Block", "zbp-GenAI Application Monitor", "zbp-PCI High USB Block", "zbp-PCI Low USB",
+               "zbp-PCI Medium USB", "zbp-Sensitive Data Private Share", "zbp-Sensitive Data to USB", "zbp-Unapproved GenAI Applications",
+               "ZBP-[DLP] Block Source Code Uploads"}
+              | {f"{n} {tag}" for n in _OLD_PACK_NAMES for tag in pc.EXTENSION_TAG.values()},
+    "app_group": {"zbp-GenAI Applications"},
+}
 _DICT_ID_RE = re.compile(r"D(\d+)\.S")
 
 UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
@@ -65,23 +92,32 @@ def _engine_dict_ids(eng_obj: Any) -> set:
     return {m.group(1) for m in _DICT_ID_RE.finditer(expr)}
 
 
-def _tenant(client, packs: Sequence[Dict[str, Any]], tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _tenant(client, packs: Sequence[Dict[str, Any]], tenant_cache: Optional[Dict[str, Any]] = None,
+            everything: bool = False) -> Dict[str, Any]:
     """Read dictionaries, engines and every DLP channel's rules the packs
-    could have touched."""
+    could have touched (every channel when removing everything)."""
     all_policies: List[Dict[str, Any]] = []
     for p in packs:
         all_policies.extend(_defs(p)[2])
     need = pc.needs(all_policies)
+    if everything:
+        need["channels"] = set(need["channels"]) | set(pc.DLP_CHANNELS)
+        need["casb"] = True
+        need["endpoint_app_groups"] = True
     snap = tenant_cache or pd.fetch_tenant(client, need)
     # fetch_tenant reads web rules and (given need) the other channels.
     return snap
 
 
-def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None,
+                 everything: bool = False) -> Dict[str, Any]:
     """Preview the removal of one or more deployed packs. Returns items
     (each remove | keep | not-found), a summary, and a plan_hash the apply
-    step must echo."""
-    snap = _tenant(client, packs, tenant_cache)
+    step must echo. With `everything`, the scope is everything DLP-Check
+    ever put in the tenant: any object carrying a DLP-Check provenance
+    tag (whatever pack id or version wrote it) plus the names of every
+    given pack and of the objects earlier pack versions shipped."""
+    snap = _tenant(client, packs, tenant_cache, everything=everything)
     warnings: List[str] = []
     if not snap.get("reachable", True):
         return {"status": "blocked", "found": False, "items": [], "summary": {},
@@ -99,10 +135,17 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         def_dicts |= {x["name"] for x in d if x.get("name")}
         def_engines |= {x["name"] for x in e if x.get("name")}
         def_policies |= {x["name"] for x in pol if x.get("name")}
+    if everything:
+        def_dicts |= LEGACY_NAMES["dictionary"]
+        def_engines |= LEGACY_NAMES["engine"]
+        def_policies |= LEGACY_NAMES["policy"]
 
     def any_match(desc: Any, name: str, def_names: set) -> Optional[str]:
+        d = str(desc or "")
+        if everything and any(mk in d for mk in _ANY_MARKS):
+            return "tag"
         for m in marks:
-            if any(mk in str(desc or "") for mk in m):
+            if any(mk in d for mk in m):
                 return "tag"
         return "name" if name in def_names else None
 
@@ -134,9 +177,12 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         for g in _load_json(_resolve_configs(p["dir"]), "endpoint_application_groups.json"):
             if g.get("name"):
                 def_groups.add(g["name"])
+    if everything:
+        def_groups |= LEGACY_NAMES["app_group"]
     for name, g in groups.items():
-        if name in def_groups:
-            group_items.append({"kind": "app_group", "channel": None, "id": g.get("id"), "name": name, "match": "name"})
+        how = any_match(g.get("description"), name, def_groups)
+        if how:
+            group_items.append({"kind": "app_group", "channel": None, "id": g.get("id"), "name": name, "match": how})
 
     # ---- engines ------------------------------------------------------------
     engine_items: List[Dict[str, Any]] = []
@@ -215,7 +261,7 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
 
     status = "ready" if to_remove else "nothing"
     return {
-        "status": status, "found": bool(items), "packs": pack_ids, "items": items,
+        "status": status, "found": bool(items), "packs": pack_ids, "everything": everything, "items": items,
         "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
         "plan_hash": plan_hash, "warnings": warnings, "blockers": [],
     }
@@ -237,7 +283,7 @@ def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
 
 
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-           log: pd.LogFn = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
+           log: pd.LogFn = None, settle_seconds: float = 45.0, everything: bool = False) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal. Re-reads the tenant,
     verifies the plan_hash still matches, then deletes each object in
     reverse dependency order, re-checking that the id still carries the
@@ -248,7 +294,7 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     _log = log or (lambda m: None)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
-    plan = plan_removal(client, packs)
+    plan = plan_removal(client, packs, everything=everything)
     if plan["status"] == "blocked":
         return {"status": "blocked", "blockers": plan["blockers"], "results": []}
     if plan_hash and plan["plan_hash"] != plan_hash:
@@ -320,7 +366,7 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     # the tenant as it is now. Anything of the pack still there is
     # reported as still present, and the removal is not called complete.
     _log("Re-reading the tenant to verify the removal…")
-    verify = plan_removal(client, packs)
+    verify = plan_removal(client, packs, everything=everything)
     remaining = [it for it in verify.get("items", []) if it["status"] == "remove"]
     remaining_keys = {(it["kind"], it.get("channel"), str(it["id"])) for it in remaining}
     for entry in results:

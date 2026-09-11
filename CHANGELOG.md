@@ -21,7 +21,8 @@ what each batch of changes did, newest first.
 
 ### Removal
 - **Verified by reading.** After the deletes and the activation, the removal polls ZIA until it reports ACTIVE (up to 45 s), then runs the same discovery the preview ran against the tenant. The wizard's new **Verify** step says "nothing of the pack remains" or lists exactly what is still there, with *Verify again* (a fresh read on demand) and *Remove leftovers* (runs the removal again on exactly those objects). A removal is only called complete when the read comes back clean.
-- **Remove every deployed pack at once**: one button in Deploy Policy Packs plans and removes what every pack in the library put in the tenant, in one pass with one verification.
+- **Remove every deployed pack at once** now means everything DLP-Check ever put in the tenant: any object carrying a DLP-Check tag (whatever pack id or version wrote it — the retired CUI Marking and Endpoint packs included), plus the names of every pack in the library and of objects earlier pack versions shipped under other names (Fed 1.1's CUI engines and dictionaries, the endpoint pack's PCI engines and rules, the pre-v4.14 source-code objects, extension rules named after the old "Baseline" pack names). Same per-object rules as a single pack: anything a customer rule or engine still uses is kept and listed.
+- Packs without a baseline section (Fed, CJIS) now tag every object they create (`[DLP-Check pack <id> v<version>]`), so a later removal finds them by tag instead of by name alone.
 - SaaS Security API rules are now actually deleted: the delete call carries the rule's `ruleType`, which the API requires; without it every SaaS row failed.
 - After the final activation the removal re-reads the tenant and reports any object it still lists as **still present** (the removal is not called complete until nothing is left), instead of trusting the delete calls.
 

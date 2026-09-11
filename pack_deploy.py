@@ -104,6 +104,7 @@ WRITE_STATUSES = {CREATE, MODIFY, RESTORE}
 # baseline creates. Lets admins (and the next journey check) see which
 # objects came from which baseline version.
 BASELINE_MARK = "[DLP-Check baseline"
+PACK_MARK = "[DLP-Check pack"          # provenance tag for packs without a baseline section
 
 LogFn = Optional[Callable[[str], None]]
 
@@ -158,6 +159,20 @@ def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Op
     base = (base or "").strip()
     if BASELINE_MARK in base:
         base = base.split(BASELINE_MARK, 1)[0].strip()
+    if limit:
+        return fit_description(base, tag, limit)
+    return f"{base} {tag}".strip()
+
+
+def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None) -> str:
+    """Provenance tag for a pack that is not a baseline, so a removal can
+    find its objects by tag instead of by name alone (idempotent)."""
+    ver = str(item.get("pack_version") or "")
+    tag = f"{PACK_MARK} {item.get('pack', '?')}{(' v' + ver) if ver else ''}] Deployed by DLP-Check."
+    base = (base or "").strip()
+    for mark in (PACK_MARK, BASELINE_MARK):
+        if mark in base:
+            base = base.split(mark, 1)[0].strip()
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
@@ -233,6 +248,7 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
             "app_groups": _load_json(configs, "endpoint_application_groups.json"),
             "tweaks": meta.get("confidence_tweaks"),
             "baseline": baseline,
+            "version": str(meta.get("version") or ""),
             "channel_note": note,
         })
     return sources
@@ -365,7 +381,7 @@ def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict
                         "kind": kind, "name": name, "definition": definition,
                         "packs": [src["id"]], "signature": sig, "status": None,
                         "reason": "", "warnings": [], "depends_on": [], "tenant": None,
-                        "baseline": src.get("baseline"), "drift": None, "adopt": False,
+                        "baseline": src.get("baseline"), "pack": src["id"], "pack_version": src.get("version") or "", "drift": None, "adopt": False,
                     }
                 elif existing["signature"] == sig:
                     existing["packs"].append(src["id"])
@@ -1544,10 +1560,12 @@ def apply(
     def described(item: Dict[str, Any], definition: Dict[str, Any], fallback: str = "") -> Dict[str, Any]:
         """Definition with the policy pack provenance tag in its description
         (clamped to the API limit for dictionaries)."""
-        if not item.get("baseline"):
-            return definition
         limit = DICT_DESCRIPTION_MAX if item["kind"] == "dictionary" else None
-        return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit))
+        if item.get("baseline"):
+            return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit))
+        if item.get("pack"):
+            return dict(definition, description=pack_description(item, definition.get("description") or fallback, limit=limit))
+        return definition
 
     _log("Phase 1: dictionaries")
     for item in merged["dictionary"].values():

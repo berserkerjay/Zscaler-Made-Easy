@@ -825,6 +825,7 @@ class PackRemovalRequest(TenantCredsRequest):
     pack_ids: List[str] = []
     plan_hash: str = ""
     confirm: bool = False
+    all: bool = False      # everything DLP-Check ever put in the tenant, not just the listed packs
 
 
 _WRITES_DISABLED_MSG = (
@@ -1020,7 +1021,7 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(pack_removal.plan_removal, client, packs)
+    out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
@@ -1048,7 +1049,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
-    result = await asyncio.to_thread(pack_removal.remove, client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append)
+    result = await asyncio.to_thread(lambda: pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append, everything=bool(req.all)))
     result["logs"] = logs
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))

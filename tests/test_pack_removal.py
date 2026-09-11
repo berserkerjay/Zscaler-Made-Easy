@@ -173,6 +173,46 @@ def test_remove_reports_objects_the_tenant_still_lists(tmp_path, monkeypatch):
     assert v["plan"]["plan_hash"]   # a plan for exactly the leftovers, ready to run again
 
 
+def test_remove_everything_covers_retired_packs_and_old_names(tmp_path, monkeypatch):
+    """"Remove all" must not stop at the packs in the library: objects
+    tagged by a pack that is no longer shipped, and objects earlier pack
+    versions created under names no current pack defines, are found too,
+    with the same keep-if-used-elsewhere rule."""
+    pack = _pack_dir(tmp_path)
+    client = _deletable(FakeClient(
+        dicts=[Obj(id=9001, name="RM-Dict", custom=True, description=TAG),
+               Obj(id=9101, name="CUI-Banner-Structural", custom=True, description="[DLP-Check baseline cui_marking_baseline v1.0] Deployed by DLP-Check"),
+               Obj(id=9102, name="CUI Category Phrase", custom=True, description="CUI Category phrases"),          # Fed 1.1, untagged
+               Obj(id=9103, name="Hand-made Dict", custom=True, description="mine")],
+        engines=[Obj(id=5001, name="RM-Engine", engine_expression="D9001.S > 0", description=TAG),
+                 Obj(id=5101, name="CUI-Detect-All", engine_expression="D9101.S > 0", description="[DLP-Check baseline cui_marking_baseline v1.0] Deployed by DLP-Check"),
+                 Obj(id=5102, name="CUI Engine (Low Confidence)", engine_expression="D9102.S > 2", description=""),
+                 Obj(id=5103, name="PCI - High", engine_expression="D1.S > 9", description=""),
+                 Obj(id=5104, name="Customer Engine", engine_expression="D9103.S > 0 OR D9102.S > 0", description="")],
+        rules=[Obj(id=7001, name="RM-Web-Monitor", order=1, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5001}], description=TAG),
+               Obj(id=7101, name="CUI-Monitor-All", order=2, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5101}], description="[DLP-Check baseline cui_marking_baseline v1.0] Deployed by DLP-Check"),
+               Obj(id=7102, name="Z-Controlled Unclassified Information-Monitor", order=3, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5102}], description=""),
+               Obj(id=7103, name="Customer Rule", order=4, action="BLOCK", state="ENABLED", dlp_engines=[{"id": 5104}], description="")]))
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    # A single pack sees only its own objects.
+    single = pr.plan_removal(client, [pack])
+    assert {i["name"] for i in single["items"]} == {"RM-Web-Monitor", "RM-Engine", "RM-Dict"}
+    # Everything: the retired CUI pack's tagged objects and Fed 1.1's untagged ones are in scope;
+    # the customer's own objects are not, and a dictionary a customer engine still uses is kept.
+    plan = pr.plan_removal(client, [pack], everything=True)
+    by = {i["name"]: i for i in plan["items"]}
+    assert plan["everything"] and "Customer Rule" not in by and "Customer Engine" not in by and "Hand-made Dict" not in by
+    assert by["CUI-Monitor-All"]["match"] == "tag" and by["CUI-Detect-All"]["status"] == "remove" and by["CUI-Banner-Structural"]["status"] == "remove"
+    assert by["Z-Controlled Unclassified Information-Monitor"]["match"] == "name" and by["CUI Engine (Low Confidence)"]["status"] == "remove"
+    assert by["PCI - High"]["status"] == "remove"
+    assert by["CUI Category Phrase"]["status"] == "keep" and "outside" in by["CUI Category Phrase"]["keep"]
+    res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True, everything=True)
+    assert res["status"] == "removed" and res["verification"]["clean"]
+    assert {r.name for r in client.zia.dlp_web_rules.items} == {"Customer Rule"}
+    assert {e.name for e in client.zia.dlp_engine.items} == {"Customer Engine"}
+    assert {d.name for d in client.zia.dlp_dictionary.items} == {"CUI Category Phrase", "Hand-made Dict"}
+
+
 def test_remove_is_refused_read_only_and_when_stale(tmp_path):
     pack = _pack_dir(tmp_path)
     client = _deletable(_tenant(with_survivors=False))
