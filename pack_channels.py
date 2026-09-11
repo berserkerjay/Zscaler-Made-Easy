@@ -480,12 +480,17 @@ SAAS_RULE_TYPES = (
 # upper-cased identifier so minor naming differences between clouds do
 # not break resolution. Packs can always pin tenants by name instead.
 SAAS_TYPE_APPS: Dict[str, Tuple[str, ...]] = {
-    "OFLCASB_DLP_FILE": ("BOX", "DROPBOX", "GDRIVE", "GOOGLE_DRIVE", "GOOGLEDRIVE", "ONEDRIVE", "ONE_DRIVE",
-                         "SHAREPOINT", "EGNYTE", "SHAREFILE", "CITRIX"),
-    "OFLCASB_DLP_EMAIL": ("GMAIL", "GOOGLE_MAIL", "OFFICE365", "OFFICE_365", "O365", "EXCHANGE", "OUTLOOK", "MICROSOFT_365"),
-    "OFLCASB_DLP_COLLAB": ("SLACK", "TEAMS", "WEBEX", "ZOOM", "GOOGLE_CHAT", "GCHAT"),
+    # Keywords matched against the onboarded tenant's application name, so
+    # a rule of this SaaS type finds a tenant it can scan. Suite names
+    # (Microsoft 365, Google Workspace) appear under every type the suite
+    # carries.
+    "OFLCASB_DLP_FILE": ("BOX", "DROPBOX", "GDRIVE", "GOOGLE_DRIVE", "GOOGLEDRIVE", "GOOGLE_WORKSPACE", "ONEDRIVE", "ONE_DRIVE",
+                         "SHAREPOINT", "MICROSOFT_365", "M365", "EGNYTE", "SHAREFILE", "CITRIX", "SMARTSHEET"),
+    "OFLCASB_DLP_EMAIL": ("GMAIL", "GOOGLE_MAIL", "GOOGLE_WORKSPACE", "OFFICE365", "OFFICE_365", "O365", "EXCHANGE", "EXCHANGE_ONLINE",
+                          "OUTLOOK", "MICROSOFT_365", "M365"),
+    "OFLCASB_DLP_COLLAB": ("SLACK", "TEAMS", "MICROSOFT_365", "M365", "WEBEX", "WEBEX_TEAMS", "ZOOM", "GOOGLE_CHAT", "GCHAT", "CONFLUENCE"),
     "OFLCASB_DLP_CRM": ("SALESFORCE", "HUBSPOT", "DYNAMICS"),
-    "OFLCASB_DLP_ITSM": ("SERVICENOW", "SERVICE_NOW", "JIRA", "ZENDESK", "FRESHDESK", "FRESHSERVICE"),
+    "OFLCASB_DLP_ITSM": ("SERVICENOW", "SERVICE_NOW", "JIRA", "ATLASSIAN", "CONFLUENCE", "ZENDESK", "FRESHDESK", "FRESHSERVICE"),
     "OFLCASB_DLP_REPO": ("GITHUB", "GITLAB", "BITBUCKET", "AZURE_DEVOPS", "DEVOPS"),
     "OFLCASB_DLP_STORAGE": ("AWS", "S3", "AZURE", "BLOB", "GCP", "GCS", "GOOGLE_CLOUD"),
     "OFLCASB_DLP_GENAI": ("CHATGPT", "OPENAI", "GEMINI", "COPILOT", "CLAUDE", "ANTHROPIC", "GENAI", "PERPLEXITY"),
