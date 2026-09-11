@@ -56,3 +56,12 @@ def test_evaluate_all_rules_has_its_own_tab_with_the_tie_breaker():
     assert TestClient(srv.app).get("/report/evalall").status_code == 200
     html = c.get("/").text
     assert "openEvalAllTab()" in html and "How Evaluate All Rules decides" in html
+
+
+def test_step_strip_buttons_take_you_to_each_step():
+    c = _page()
+    html = c.get("/").text
+    for step in ("configure", "scope", "run", "review"):
+        assert f'<button type="button" class="step-item" data-step="{step}"' in html and f"_stepGo('{step}')" in html, step
+    assert "function _stepGo(step)" in html and 'id="scopeField"' in html and "Click a step to go there" in html
+    assert '<span class="step-item"' not in html, "the strip is made of real buttons, not labels"

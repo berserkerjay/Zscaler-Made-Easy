@@ -214,6 +214,8 @@ async function _dzSetWriteMode(enable) {
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
     DZ.write = data;
     announce(data.enabled ? 'Write mode enabled for this session.' : 'Read-only mode.');
+    // The removal review is open: refresh it so Remove now unlocks in place.
+    if (DZ.removal && document.getElementById('rmConsent')) { _dzRemovalRender(); return; }
     // A plan made in read-only mode carries a read-only blocker; refresh it.
     if (DZ.report && DZ.step >= 2) { _dzRunPreflight(); return; }
   } catch (e) { alert(`Could not change write mode: ${e.message}`); }
@@ -998,8 +1000,10 @@ function _dzRemovalApprove() {
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print / Save as PDF</button>
+      ${!writeOn && (DZ.write || {}).can_toggle ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}
       <button type="button" class="dz-btn danger" ${writeOn && R.consent ? '' : 'disabled'} title="${writeOn ? '' : 'Enable write mode first'}" onclick="_dzRemovalApply()">Remove now</button>
-    </div>`;
+    </div>
+    <div class="dz-summary">${!writeOn ? ((DZ.write || {}).can_toggle ? 'The server is read-only: click Enable write mode (you will type the confirmation phrase), then Remove now unlocks.' : _dzE((DZ.write || {}).reason || 'The server is read-only and write mode cannot be enabled from here; start it with START_Zscaler_Assessment_WRITES_ENABLED.bat.')) : (R.consent ? 'Ready: Remove now deletes the objects above and verifies by a fresh read.' : 'Tick the box to enable Remove now.')}</div>`;
 }
 
 function _dzRemovalBusy() {

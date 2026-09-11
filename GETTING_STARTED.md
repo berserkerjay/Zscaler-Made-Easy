@@ -308,6 +308,31 @@ Dictionary and engine tuning proposals are made in the ZIA portal; the
 queue tracks them and says so. Every decision and every apply is in
 `audit.log`.
 
+## 4i. Always on: the digest (nothing to remember)
+
+Toolbar › *Find the gaps › Digest*. Every six hours while the app runs, for
+every tenant profile that remembers its secret, the loop:
+
+1. re-reads the guidance sources (Zscaler's own and the integration
+   partners, Proofpoint first) and turns a new article on a mapped topic
+   into a proposal that names the checks and packs it touches; a source
+   that stops answering for seven days is flagged as stale;
+2. refreshes Zscaler's SaaS tenant capability matrix and compares it with
+   the customer's onboarded tenants (not active, at the limit, not
+   onboarded at all);
+3. runs Detection Health and refreshes the proposals queue;
+4. measures the packs' journey and reports drift since the last run;
+5. writes a digest and, when there is something to decide, sends it.
+
+To receive it, put the settings in `local_settings.bat` (see
+`local_settings.bat.example`): an SMTP relay and a recipient for e-mail,
+or a Teams / Slack incoming webhook (https). To run the loop when the app
+is not open, schedule `RUN_Continuous_Evaluation.bat` in Windows Task
+Scheduler; in a container run `python continuous_eval.py --once`. The
+Digest tab shows the latest digest, the previous ones, the sources and
+the settings, and has a *Run the loop now* button. Nothing in the loop
+writes to a tenant; decisions stay in Detection Health.
+
 ## 4g. What does everything do?
 
 Toolbar › *Start › What does everything do?* (`/help`) lists every function

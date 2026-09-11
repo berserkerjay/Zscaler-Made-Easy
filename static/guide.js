@@ -256,9 +256,9 @@ function _gdRender() {
     <ol class="gd-steps">
       ${steps.map(s => `
       <li class="gd-step is-${s.state}">
-        <div class="gd-step-n"><span>${s.state === 'done' ? '✓' : s.n}</span></div>
+        <div class="gd-step-n"><span aria-hidden="true">${s.n}</span></div>
         <div class="gd-step-body">
-          <div class="gd-step-top"><h3>${_gdE(s.title)}</h3><span class="gd-chip ${s.state}">${{ done: 'Done', ready: 'Ready', todo: 'Not yet' }[s.state]}</span></div>
+          <div class="gd-step-top"><h3><span class="gd-step-label">Step ${s.n} of ${steps.length}</span> ${_gdE(s.title)}</h3><span class="gd-chip ${s.state}">${{ done: 'Done ✓', ready: 'Ready', todo: 'Not yet' }[s.state]}</span></div>
           <p class="gd-what">${s.what}</p>
           <p class="gd-need"><strong>You need:</strong> ${s.need}</p>
           <div class="gd-status">${s.status}</div>

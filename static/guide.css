@@ -74,7 +74,7 @@ body.gd-guided .gd-advanced { display: none !important; }
 .gd-help-sheet ul { padding-left: 1.1rem; }
 .gd-dim { color: var(--dim, #94a3b8); font-size: 0.8rem; }
 @media (prefers-reduced-motion: reduce) { .gd-progress .bar, .gd-switch .knob, .gd-switch .track { transition: none; } }
-@media (max-width: 760px) { .gd-step { grid-template-columns: 1fr; } .gd-step-n { display: none; } }
+@media (max-width: 760px) { .gd-step { grid-template-columns: 1fr; } }
 
 /* Data-governance journey card on the assessment results */
 .gd-journey { margin: 0 0 1rem; }
@@ -136,3 +136,7 @@ body.theme-light .gd-upd-cmd { background: rgba(15,23,42,0.05); }
 .gd-tenant #configCard { margin: 0; border: 0; border-top: 1px solid var(--border, #1e293b); border-radius: 0 0 10px 10px; box-shadow: none; }
 
 .gd-scope { margin: 0.5rem 0 0.2rem; padding: 0.5rem 0.7rem; border-left: 3px solid var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent); border-radius: 6px; }
+
+/* Every step says which one it is, in words, before its title. */
+.gd-step-label { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, #3b82f6); margin-right: 0.45rem; vertical-align: middle; }
+.gd-step.is-done .gd-step-label { color: var(--pass, #10b981); }

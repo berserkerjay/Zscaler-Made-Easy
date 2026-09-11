@@ -195,6 +195,9 @@
     min-height: 32px;
   }
   .btn { min-height: 40px; }
+  #stepBar .step-item { background: none; border: 1px solid transparent; border-radius: 8px; padding: 0.25rem 0.55rem; font: inherit; font-size: 0.8rem; cursor: pointer; }
+  #stepBar .step-item:hover { border-color: var(--border); background: var(--well); }
+  #stepBar .step-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; animation: fadeInUp 0.6s var(--ease); }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -600,6 +603,11 @@
                 title="What the DLP rules actually do, measured from Workflow Automation incidents and the analysts' verdicts: false-positive rate per rule, engine and dictionary; dead rules; monitor-only rules ready to promote; and whether incidents reach Workflow Automation cloud-to-cloud or through an ICAP Incident Receiver. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🩺</span> Detection Health
         </button>
+        <button class="btn btn-ghost" onclick="openDigestTab()"
+                aria-label="Open the Digest: what the always-on loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
+                title="Every six hours the app re-reads guidance, Detection Health, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, and writes a digest. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
+          <span aria-hidden="true">🔁</span> Digest
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Close the gaps">
         <div class="tool-group-l">Close the gaps</div>
@@ -765,16 +773,17 @@
   <main id="main-content" role="main" tabindex="-1" aria-label="Zscaler Platform Assessment — Configuration and Results">
 
   <!-- Step indicator — surfaces current progress across the 4 phases -->
-  <nav id="stepBar" aria-label="Assessment workflow steps"
-       style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0 auto 1.25rem;max-width:1100px;padding:0.6rem 0.8rem;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;">
-    <span class="step-item" data-step="configure" aria-current="step"
-          style="color:var(--accent);font-weight:700;">① Configure</span>
+  <nav id="stepBar" aria-label="Assessment workflow steps: each one is a button"
+       style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;margin:0 auto 1.25rem;max-width:1100px;padding:0.6rem 0.8rem;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;">
+    <button type="button" class="step-item" data-step="configure" aria-current="step" onclick="_stepGo('configure')"
+            title="Open the tenant details (organisation, cloud, vanity domain, API client)" style="color:var(--accent);font-weight:700;">① Configure</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <span class="step-item" data-step="scope" style="color:var(--dim);">② Select Scope</span>
+    <button type="button" class="step-item" data-step="scope" onclick="_stepGo('scope')" title="Choose what to assess (DLP, ZIA, ZPA, ZCC, GenAI, Automation, Compliance)" style="color:var(--dim);">② Select Scope</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <span class="step-item" data-step="run" style="color:var(--dim);">③ Run Assessment</span>
+    <button type="button" class="step-item" data-step="run" onclick="_stepGo('run')" title="Run the assessment (opens the results in a new tab)" style="color:var(--dim);">③ Run Assessment</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <span class="step-item" data-step="review" style="color:var(--dim);">④ Review + Export</span>
+    <button type="button" class="step-item" data-step="review" onclick="_stepGo('review')" title="Jump to the results and the exports" style="color:var(--dim);">④ Review + Export</button>
+    <span class="step-hint" style="color:var(--dim);margin-left:auto;font-size:0.72rem;">Click a step to go there</span>
   </nav>
 
   <!-- Quick Start Assessment lives in its own tab (/quickstart), opened from the toolbar. -->
@@ -839,7 +848,7 @@
         <input id="custid" placeholder="216196257331281920" inputmode="numeric" autocomplete="off">
         <div class="helper">Digits only, needed only when the ZPA scope is ticked. Copy it from the ZPA admin URL: <code>https://admin.private.zscaler.com/app/<strong>216196257331281920</strong>/dashboard</code>.</div>
       </div>
-      <div class="field full">
+      <div class="field full" id="scopeField">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
           <label>Assessment Scope <span class="required">*</span></label>
           <a href="/permissions" target="_blank" rel="noopener noreferrer"
@@ -1314,6 +1323,27 @@ _renderThemeToggle();
 // Step bar updater — call announce('<phase>') to highlight the current
 // step across the top-of-page nav. Also announces to screen readers
 // via the #liveRegion ARIA live element.
+// The step strip at the top is a set of buttons: each one takes you to
+// that step (it also lights up as the assessment moves through them).
+function _stepGo(step) {
+  if (step === 'configure') { if (typeof _gdGoConfig === 'function') _gdGoConfig(); else document.getElementById('configCard')?.scrollIntoView({ behavior: 'smooth' }); return; }
+  if (step === 'scope') {
+    if (typeof _gdGoConfig === 'function') _gdGoConfig();
+    setTimeout(() => { const f = document.getElementById('scopeField'); if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); const first = f.querySelector('input[type=checkbox]'); if (first) first.focus(); } }, 250);
+    return;
+  }
+  if (step === 'run') {
+    const btn = document.getElementById('runBtn');
+    if (btn && btn.disabled) { announce('The assessment is already running; the results tab shows its progress.'); return; }
+    if (typeof _gdRun === 'function') _gdRun(); else runAssessment();
+    return;
+  }
+  if (step === 'review') {
+    const r = document.getElementById('results');
+    if (r && getComputedStyle(r).display !== 'none') { if (typeof _gdGoResults === 'function') _gdGoResults(); else r.scrollIntoView({ behavior: 'smooth' }); }
+    else { announce('No results yet: run the assessment first (step 3).'); alert('No results yet. Run the assessment first (step ③): it opens the results in a new tab and keeps them on this page.'); _stepGo('run'); }
+  }
+}
 function setStep(phase, srMessage) {
   document.querySelectorAll('#stepBar .step-item').forEach(el => {
     const active = el.dataset.step === phase;
@@ -4486,6 +4516,10 @@ function openQuickStartTab() {
 }
 function openHelpTab() {
   const w = window.open('/help', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openDigestTab() {
+  const w = window.open('/report/digest', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openLogAnalyzerTab() {

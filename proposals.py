@@ -184,9 +184,12 @@ def _active(p: Dict[str, Any], now: Optional[datetime] = None) -> bool:
     return True
 
 
-def merge(tenant: str, fresh: List[Dict[str, Any]], *, source: str = "detection_health") -> Dict[str, Any]:
+def merge(tenant: str, fresh: List[Dict[str, Any]], *, source: str = "detection_health", resolve_missing: bool = True) -> Dict[str, Any]:
     """Merge freshly built proposals into the tenant's queue. Returns
-    {new, updated, resolved, kept, total}."""
+    {new, updated, resolved, kept, total}. With resolve_missing, an open
+    proposal from the same source that is not in `fresh` is resolved (the
+    signal went away); guidance proposals pass False, because an article
+    is raised once and stays until a person decides."""
     tk = tenant_key(tenant)
     now = _now()
     stats = {"new": 0, "updated": 0, "resolved": 0, "kept": 0}
@@ -209,7 +212,7 @@ def merge(tenant: str, fresh: List[Dict[str, Any]], *, source: str = "detection_
                 stats["new"] += 1
         # An open proposal the evaluation no longer raises is resolved: the
         # signal went away (the rule was tuned, the dictionary fixed…).
-        for pid, cur in list(store.items()):
+        for pid, cur in (list(store.items()) if resolve_missing else []):
             if pid not in seen and cur.get("status") == "open" and cur.get("source") == source:
                 cur["status"] = "resolved"; cur["decided_at"] = now; cur["note"] = "no longer raised by the evaluation"
                 stats["resolved"] += 1

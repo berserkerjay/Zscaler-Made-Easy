@@ -146,6 +146,11 @@ ALLOWED_HOSTS = {
     "www.crowdstrike.com",
     "help.okta.com",
     "docs.pingidentity.com",
+    # Integration partners watched by the continuous evaluation (Tier 2)
+    "help.proofpoint.com",
+    "docs.servicenow.com",
+    "support.atlassian.com",
+    "www.sentinelone.com",
     # SDK release metadata
     "pypi.org",
 }

@@ -81,6 +81,14 @@
     get: 'Per-rule health with the reason, and typed proposals (raise a threshold, promote to block) you can approve or dismiss.',
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
+  X.digest = {
+    group: 'Find the gaps', name: 'Digest and the always-on loop', href: '/report/digest',
+    what: 'Every six hours the app re-reads the guidance sources, Detection Health, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide.',
+    why: 'Nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence.',
+    when: 'Read it when it arrives; open the tab to run the loop now, to see which sources are stale, or to check what is notified where.',
+    get: 'The latest digest with counts, the full text, the watched sources with their state, the SaaS capability matrix, the schedule and the notification settings.',
+    next: 'Decide the new proposals in Detection Health; a stale source or a missing notification setting is fixed in local_settings.bat.',
+  };
   X.compliance = {
     group: 'Find the gaps', name: 'Regulatory & Compliance Alignment', href: '/report/compliance',
     what: 'The assessment findings mapped to the frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2, and so on), scoped to the industry on the tenant profile.',
@@ -209,7 +217,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
-      '/report/logs': 'logs', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
@@ -259,7 +267,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['quickstart', 'assessment', 'connect', 'results', 'help', 'dataflow', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
-    'packs', 'flow', 'remediate', 'terraform', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'terraform', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Read Quick Start Assessment', 'quickstart', 'Ten minutes. You will know what to ask the customer for.'],

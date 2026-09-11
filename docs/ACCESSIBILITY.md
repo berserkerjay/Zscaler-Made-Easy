@@ -20,6 +20,7 @@ Every page a user can reach in a browser:
 | Advanced settings | `/report/advanced` | library, upload preview |
 | Required API Access | `/permissions` | page |
 | Log Analyzer | `/report/logs` | before an upload, results shown |
+| Digest | `/report/digest` | latest digest shown |
 | What does everything do? | `/help` | page |
 | Evaluate All Rules reference | `/report/evalall` | page |
 | Quick Start Assessment | `/quickstart` | page |

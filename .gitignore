@@ -48,3 +48,9 @@ updater_backup/
 # Continuous evaluation: the per-tenant approval queue (local, never committed)
 proposals.json
 proposals.json.tmp
+# Continuous evaluation: digests, guidance state and the refreshed SaaS matrix (local)
+digests/
+guidance_state.json
+guidance_state.json.tmp
+saas_apps.local.json
+checks_config.json.tmp

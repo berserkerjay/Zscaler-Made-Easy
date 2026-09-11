@@ -1067,9 +1067,20 @@ async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
     dismiss (remembered 30 days), snooze (days), reopen. Recorded in audit.log."""
     import proposals
     try:
-        return proposals.decide(tenant, pid, req.decision, by=req.by[:80], note=req.note[:500], days=req.days, confirm=req.confirm)
+        out = proposals.decide(tenant, pid, req.decision, by=req.by[:80], note=req.note[:500], days=req.days, confirm=req.confirm)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # A guidance proposal (new article mapped to checks) applies by recording
+    # the article as a reference in checks_config.json: no tenant write.
+    if req.decision == "approve" and out.get("applies_via") == "guidance":
+        import guidance
+        try:
+            rec = guidance.record_approval(out, by=req.by[:80])
+            out = proposals.set_status(tenant, pid, "applied", by=req.by[:80],
+                                       note=f"reference recorded for {len(rec['checks'])} check(s) in checks_config.json; ships with the next app update") or out
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    return out
 
 
 class ProposalApplyRequest(TenantCredsRequest):
@@ -1132,6 +1143,71 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=400, detail=str(e))
     out["logs"] = logs
     return out
+
+
+# ── Continuous evaluation, phases 4 and 5: digests, guidance sources, SaaS matrix ──
+class DigestRunRequest(BaseModel):
+    notify: bool = True
+
+
+@app.get("/api/digests")
+async def digests_list():
+    """The digests the loop wrote (newest first), the schedule, the
+    notification settings (no secrets) and the state of the watched sources."""
+    import continuous_eval
+    import guidance
+    health = guidance.source_health()
+    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": continuous_eval.notification_settings(),
+            "sources": {"watched": sum(1 for h in health if h["watched"]), "stale": [h for h in health if h["stale"]]},
+            "checks_config": guidance.config_summary(), "guidance_queue": __import__("proposals").summary(guidance.APP_TENANT)}
+
+
+@app.post("/api/digests/run")
+async def digests_run(req: DigestRunRequest):
+    """Run the loop now (the same run the schedule makes)."""
+    try:
+        d = await asyncio.to_thread(_continuous_eval_once, req.notify)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"the evaluation failed: {type(e).__name__}: {str(e)[:200]}")
+    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return {"ok": True, "digest": d}
+
+
+@app.get("/api/digests/{digest_id}")
+async def digests_get(digest_id: str, format: str = "json"):
+    import continuous_eval
+    d = continuous_eval.get_digest(digest_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="digest not found")
+    if format == "markdown":
+        return PlainTextResponse(continuous_eval.to_markdown(d), media_type="text/markdown",
+                                 headers={"Content-Disposition": f'attachment; filename="digest-{digest_id}.md"'})
+    return d
+
+
+@app.get("/api/guidance/sources")
+async def guidance_sources():
+    """Every watched source with its tier, what it can affect, when it last answered and whether it is stale."""
+    import guidance
+    return {"sources": guidance.source_health(), "stale_days": guidance.STALE_DAYS, "topics": [{"id": t["id"], "label": t["label"]} for t in guidance.TOPICS]}
+
+
+@app.get("/api/saas-apps")
+async def saas_apps():
+    """The SaaS tenant capability matrix (application, type, capabilities)."""
+    import saas_matrix
+    m = saas_matrix.load()
+    return {k: m.get(k) for k in ("source", "updated_at", "refreshed_from_pages", "types", "applications", "path", "new_since_seed")}
+
+
+@app.get("/report/digest")
+async def report_digest_page():
+    """The digest tab: what the loop found, the queue, the sources, the schedule (static/report_digest.html)."""
+    page = os.path.join(STATIC_DIR, "report_digest.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/api/detection-health/schedule")
@@ -1205,11 +1281,27 @@ def _dh_refresh_once() -> None:
             _DH_REFRESH_STATE["profiles"][pid] = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": "error", "error": str(e)[:200]}
 
 
+def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
+    """One run of the continuous evaluation (guidance, Detection Health,
+    SaaS tenants, drift, digest, notifications). Keeps the per-profile
+    state the Detection Health tab shows."""
+    import continuous_eval
+    d = continuous_eval.run_once(build_client=_build_sdk_client, notify=notify)
+    for t in d.get("tenants") or []:
+        dh = t.get("detection_health") or {}
+        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else "ok",
+                                                          "incidents": dh.get("incidents"), "errors": len(t.get("errors") or []),
+                                                          "error": "; ".join(t.get("errors") or [])[:200] or None}
+    _DH_REFRESH_STATE["last_digest"] = d.get("id")
+    _DH_REFRESH_STATE["last_noteworthy"] = d.get("noteworthy")
+    return d
+
+
 async def _dh_auto_refresh_loop() -> None:
     await asyncio.sleep(30)
     while _DH_REFRESH_STATE.get("enabled", True):
         try:
-            await asyncio.to_thread(_dh_refresh_once)
+            await asyncio.to_thread(_continuous_eval_once)
             _DH_REFRESH_STATE["last_status"] = "ok"
         except Exception as e:  # noqa: BLE001
             _DH_REFRESH_STATE["last_status"] = "error"

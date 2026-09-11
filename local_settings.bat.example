@@ -20,3 +20,16 @@ REM set ZSCALER_CLIENT_SECRET=
 
 REM Start in write mode without the in-app switch.
 REM set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
+
+REM Continuous evaluation digest (every 6 hours while the app runs, or from
+REM RUN_Continuous_Evaluation.bat in Task Scheduler). E-mail needs an SMTP
+REM relay; the webhook is a Teams or Slack incoming webhook (https only).
+REM set DLP_CHECK_SMTP_HOST=smtp.example.com
+REM set DLP_CHECK_SMTP_PORT=587
+REM set DLP_CHECK_SMTP_USER=
+REM set DLP_CHECK_SMTP_PASSWORD=
+REM set DLP_CHECK_DIGEST_FROM=dlp-check@example.com
+REM set DLP_CHECK_DIGEST_TO=soc@example.com
+REM set DLP_CHECK_DIGEST_WEBHOOK=https://example.webhook.office.com/webhookb2/...
+REM Send the digest: noteworthy (default: only when there is something to decide), always, or never.
+REM set DLP_CHECK_NOTIFY=noteworthy
