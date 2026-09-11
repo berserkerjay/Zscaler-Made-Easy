@@ -35,3 +35,5 @@ activate            = true
 # saas_tenant_ids_src_typescript_code_to_ai_email = [123456]
 # saas_tenant_ids_src_vbnet_code_to_ai_saas = [123456]
 # saas_tenant_ids_src_vbnet_code_to_ai_email = [123456]
+# saas_tenant_ids_src_private_keys_to_ai_saas = [123456]
+# saas_tenant_ids_src_private_keys_to_ai_email = [123456]

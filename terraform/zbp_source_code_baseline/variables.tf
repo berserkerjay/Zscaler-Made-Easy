@@ -172,3 +172,13 @@ variable "saas_tenant_ids_src_vbnet_code_to_ai_email" {
   type        = list(number)
 }
 
+variable "saas_tenant_ids_src_private_keys_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Private Keys to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_private_keys_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Private Keys to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+

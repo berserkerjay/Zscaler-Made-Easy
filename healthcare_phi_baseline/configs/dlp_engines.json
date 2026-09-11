@@ -53,5 +53,10 @@
     "name": "HIPAA US PHI - High Confidence",
     "description": "Engine 9 (from the Fed pack's US PHI - High Confidence). Denser medical content (fifteen or more drug or disease terms) together with five or more identifiers, or any identifier within 500 bytes of its label. Fires on documents that are unmistakably a set of patient records.",
     "expression": "(((D:Medical Document > 0) OR ((D:Medical Information > 0) AND ((D:Drugs Information > 14) OR (D:Diseases Information > 14)))) AND ((D:HC-Social Security Numbers (US) - High > 4) OR (D:HC-US Passport - High Confidence > 4) OR (D:HC-Alien Registration Number - High Confidence > 4) OR ((D:HC-Date of Birth - Prox 500 > 1) AND (D:HC-Drivers License (United States) - Prox 500 > 1)) OR (D:HC-Social Security Numbers (US) - Prox 500 > 0) OR (D:HC-US Passport - Prox 500 > 0) OR (D:HC-Alien Registration Number - Prox 500 > 0)))"
+  },
+  {
+    "name": "HIPAA Financial Information",
+    "description": "Engine 10 (from the Fed pack's Financial Information engine). Payment card numbers and magnetic tracks, ABA routing numbers, tax forms (W-2, 1099, K-1, 1040) and Zscaler's financial classifiers: the card and bank data a provider or payer handles on claims, billing and payroll, in scope for PCI DSS beside HIPAA.",
+    "expression": "((D:HC-ABA Bank Routing Number - High > 4) OR (D:HC-ABA Bank Routing Number - Prox 500 > 1) OR (D:HC-Credit Cards - High > 4) OR (D:HC-Credit Cards - Prox 500 > 1) OR (D:HC-Credit Card Magnetic Tracks > 0) OR (D:ML_TAX_LEAKAGE > 0) OR (D:HC-Form K-1 > 3) OR (D:HC-Form 1099-MISC and 1099-NEC > 4) OR (D:HC-W2 or W4 or W9 Forms > 3) OR (D:HC-Form 1040 and related schedules > 3) OR (D:FINANCIAL > 0) OR (D:ML_CORPORATE_FINANCE_LEAKAGE > 0))"
   }
 ]

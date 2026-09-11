@@ -198,6 +198,24 @@
     "ocr_enabled": true
   },
   {
+    "name": "HC-Financial Information-Monitor",
+    "description": "Inline Web DLP, Engine 10: payment card, routing-number and tax-form data (Fed pack Financial Information). PCI DSS scope beside HIPAA. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "HIPAA Financial Information"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO",
+    "ocr_enabled": true
+  },
+  {
     "name": "HC-HIPAA Critical [Endpoint]",
     "channel": "endpoint",
     "description": "Endpoint DLP: the same detection as the inline rule \"HC-HIPAA Critical-Monitor\" (HIPAA Critical (Strong Signature and Clinical Document)). Monitor-only; enable after reviewing incidents.",
@@ -841,6 +859,65 @@
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "HIPAA US PHI - High Confidence"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "HC-Financial Information [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"HC-Financial Information-Monitor\" (HIPAA Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "HIPAA Financial Information"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "HC-Financial Information [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"HC-Financial Information-Monitor\" (HIPAA Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "HIPAA Financial Information"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "HC-Financial Information [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"HC-Financial Information-Monitor\" (HIPAA Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "HIPAA Financial Information"
     ],
     "channel_mirror": true,
     "tenants": "any",

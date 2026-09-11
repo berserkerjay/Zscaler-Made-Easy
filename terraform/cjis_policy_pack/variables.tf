@@ -142,3 +142,43 @@ variable "saas_tenant_ids_z_cjis_markings_medium_confidence_email" {
   type        = list(number)
 }
 
+variable "saas_tenant_ids_z_cjis_us_pii_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS US PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_us_pii_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS US PII [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_tlp_red_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS TLP Red [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_tlp_red_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS TLP Red [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_tlp_amber_strict_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS TLP Amber Strict [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_tlp_amber_strict_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS TLP Amber Strict [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_tlp_amber_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS TLP Amber [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_tlp_amber_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS TLP Amber [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+

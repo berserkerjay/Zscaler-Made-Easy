@@ -18,6 +18,7 @@ resource "zia_activation_status" "this" {
     zia_dlp_web_rules.src_swift_code_to_ai_monitor,
     zia_dlp_web_rules.src_typescript_code_to_ai_monitor,
     zia_dlp_web_rules.src_vbnet_code_to_ai_monitor,
+    zia_dlp_web_rules.src_private_keys_to_ai_monitor,
     zia_endpoint_dlp_rules.src_csharp_code_to_ai_endpoint,
     zia_casb_dlp_rules.src_csharp_code_to_ai_saas,
     zia_outbound_email_dlp.src_csharp_code_to_ai_email,
@@ -57,5 +58,8 @@ resource "zia_activation_status" "this" {
     zia_endpoint_dlp_rules.src_vbnet_code_to_ai_endpoint,
     zia_casb_dlp_rules.src_vbnet_code_to_ai_saas,
     zia_outbound_email_dlp.src_vbnet_code_to_ai_email,
+    zia_endpoint_dlp_rules.src_private_keys_to_ai_endpoint,
+    zia_casb_dlp_rules.src_private_keys_to_ai_saas,
+    zia_outbound_email_dlp.src_private_keys_to_ai_email,
   ]
 }

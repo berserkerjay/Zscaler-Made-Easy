@@ -139,7 +139,7 @@ def test_zip_of_terraform_workspace():
         z.writestr("__MACOSX/._junk.tf", "x")
     got = pl.assemble_pack([{"name": "ws.zip", "content": base64.b64encode(buf.getvalue()).decode(), "encoding": "base64"}], pack_name="From Zip")
     assert got["format"] == "terraform" and got["meta"]["name"] == "From Zip"
-    assert pl.validate_pack(got)["counts"]["engines"] == 13
+    assert pl.validate_pack(got)["counts"]["engines"] == 14   # 13 languages plus SRC-Private Keys
 
 
 def test_bad_uploads_are_explained():

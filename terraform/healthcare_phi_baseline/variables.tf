@@ -152,3 +152,13 @@ variable "saas_tenant_ids_hc_us_phi_high_confidence_email" {
   type        = list(number)
 }
 
+variable "saas_tenant_ids_hc_financial_information_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-Financial Information [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_hc_financial_information_email" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-Financial Information [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+

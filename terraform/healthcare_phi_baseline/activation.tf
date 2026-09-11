@@ -16,6 +16,7 @@ resource "zia_activation_status" "this" {
     zia_dlp_web_rules.hc_us_pii_monitor,
     zia_dlp_web_rules.hc_us_phi_medium_confidence_monitor,
     zia_dlp_web_rules.hc_us_phi_high_confidence_monitor,
+    zia_dlp_web_rules.hc_financial_information_monitor,
     zia_endpoint_dlp_rules.hc_hipaa_critical_endpoint,
     zia_casb_dlp_rules.hc_hipaa_critical_saas,
     zia_outbound_email_dlp.hc_hipaa_critical_email,
@@ -49,5 +50,8 @@ resource "zia_activation_status" "this" {
     zia_endpoint_dlp_rules.hc_us_phi_high_confidence_endpoint,
     zia_casb_dlp_rules.hc_us_phi_high_confidence_saas,
     zia_outbound_email_dlp.hc_us_phi_high_confidence_email,
+    zia_endpoint_dlp_rules.hc_financial_information_endpoint,
+    zia_casb_dlp_rules.hc_financial_information_saas,
+    zia_outbound_email_dlp.hc_financial_information_email,
   ]
 }

@@ -63,5 +63,10 @@
     "name": "SRC-VBNet",
     "description": "Visual Basic (.NET) source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
     "expression": "((D:SRC-VBNet Signal > 4) AND (D:SRC-VBNet Anchor > 0))"
+  },
+  {
+    "name": "SRC-Private Keys",
+    "description": "From the Fed pack's Private Keys engine. Plaintext private keys, JWK private keys, PGP and Bouncy Castle key exports and Zscaler's credential-leakage clone: the secrets that ride along with source code.",
+    "expression": "((D:SRC-Private Keys-Plaintext Regex > 0) OR (D:SRC-JWK Private Key > 0) OR (D:SRC-Private Key > 0) OR (D:SRC-Encrypted or ASCII Armored PGP Keys > 0) OR (D:SRC-Encrypted Bouncy Castle Key Exports > 0))"
   }
 ]

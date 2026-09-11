@@ -168,6 +168,74 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
+    "name": "Z-CJIS US PII-Monitor",
+    "description": "Inline Web DLP: US PII (SSN, TIN, driver's licence, alien registration, date of birth) leaving without a CJI marking. State breach law applies to it even when it is not CJI. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CJIS US PII"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-CJIS TLP Red-Monitor",
+    "description": "Inline Web DLP: content marked TLP:RED (recipients only). Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CJIS TLP Red"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-CJIS TLP Amber Strict-Monitor",
+    "description": "Inline Web DLP: content marked TLP:AMBER+STRICT (recipient organisation only). Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CJIS TLP Amber Strict"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Z-CJIS TLP Amber-Monitor",
+    "description": "Inline Web DLP: content marked TLP:AMBER (need to know). Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CJIS TLP Amber"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
     "name": "Z-CJIS Markings [Endpoint]",
     "channel": "endpoint",
     "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents.",
@@ -752,6 +820,242 @@
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "CJIS Markings Medium Confidence"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS US PII [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS US PII"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS US PII [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS US PII"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS US PII [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS US PII"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Red [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Red"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Red [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Red"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Red [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Red"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Amber Strict [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Amber Strict"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Amber Strict [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Amber Strict"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Amber Strict [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Amber Strict"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Amber [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Amber"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Amber [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Amber"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS TLP Amber [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS TLP Amber"
     ],
     "channel_mirror": true,
     "tenants": "any",

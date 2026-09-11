@@ -1,8 +1,12 @@
 # Dictionaries — generated from the pack; predefined Zscaler dictionaries are looked up by name.
 
+data "zia_dlp_dictionaries" "cred_leakage" {
+  name = "CRED_LEAKAGE"
+}
+
 resource "zia_dlp_dictionaries" "src_csharp_signal" {
   name                         = "SRC-CSharp Signal"
-  description                  = "C# (C-Sharp) syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "C# (C-Sharp) syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -42,7 +46,7 @@ resource "zia_dlp_dictionaries" "src_csharp_signal" {
 
 resource "zia_dlp_dictionaries" "src_csharp_anchor" {
   name                         = "SRC-CSharp Anchor"
-  description                  = "C# (C-Sharp) structural fingerprint (v4.14): C# file structure: using-directives OR namespace declaration [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "C# (C-Sharp) structural fingerprint (v4.14): C# file structure: using-directives OR namespace declaration [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -54,7 +58,7 @@ resource "zia_dlp_dictionaries" "src_csharp_anchor" {
 
 resource "zia_dlp_dictionaries" "src_cplusplus_signal" {
   name                         = "SRC-CPlusPlus Signal"
-  description                  = "C++ syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "C++ syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -94,7 +98,7 @@ resource "zia_dlp_dictionaries" "src_cplusplus_signal" {
 
 resource "zia_dlp_dictionaries" "src_cplusplus_anchor" {
   name                         = "SRC-CPlusPlus Anchor"
-  description                  = "C++ structural fingerprint (v4.14): C++ file fingerprint: #include OR using namespace std OR std::-specific types OR stream operators OR template syntax [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "C++ structural fingerprint (v4.14): C++ file fingerprint: #include OR using namespace std OR std::-specific types OR stream operators OR template syntax [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -106,7 +110,7 @@ resource "zia_dlp_dictionaries" "src_cplusplus_anchor" {
 
 resource "zia_dlp_dictionaries" "src_go_signal" {
   name                         = "SRC-Go Signal"
-  description                  = "Go syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Go syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -146,7 +150,7 @@ resource "zia_dlp_dictionaries" "src_go_signal" {
 
 resource "zia_dlp_dictionaries" "src_go_anchor" {
   name                         = "SRC-Go Anchor"
-  description                  = "Go structural fingerprint (v4.14): Go package declaration [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Go structural fingerprint (v4.14): Go package declaration [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -158,7 +162,7 @@ resource "zia_dlp_dictionaries" "src_go_anchor" {
 
 resource "zia_dlp_dictionaries" "src_html_signal" {
   name                         = "SRC-HTML Signal"
-  description                  = "HTML syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "HTML syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -198,7 +202,7 @@ resource "zia_dlp_dictionaries" "src_html_signal" {
 
 resource "zia_dlp_dictionaries" "src_html_anchor" {
   name                         = "SRC-HTML Anchor"
-  description                  = "HTML structural fingerprint (v4.14): HTML5 doctype declaration [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "HTML structural fingerprint (v4.14): HTML5 doctype declaration [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -210,7 +214,7 @@ resource "zia_dlp_dictionaries" "src_html_anchor" {
 
 resource "zia_dlp_dictionaries" "src_java_signal" {
   name                         = "SRC-Java Signal"
-  description                  = "Java syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Java syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -250,7 +254,7 @@ resource "zia_dlp_dictionaries" "src_java_signal" {
 
 resource "zia_dlp_dictionaries" "src_java_anchor" {
   name                         = "SRC-Java Anchor"
-  description                  = "Java structural fingerprint (v4.14): Java main method OR import from Java-distinctive package roots [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Java structural fingerprint (v4.14): Java main method OR import from Java-distinctive package roots [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -262,7 +266,7 @@ resource "zia_dlp_dictionaries" "src_java_anchor" {
 
 resource "zia_dlp_dictionaries" "src_javascript_signal" {
   name                         = "SRC-JavaScript Signal"
-  description                  = "JavaScript syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "JavaScript syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -302,7 +306,7 @@ resource "zia_dlp_dictionaries" "src_javascript_signal" {
 
 resource "zia_dlp_dictionaries" "src_javascript_anchor" {
   name                         = "SRC-JavaScript Anchor"
-  description                  = "JavaScript structural fingerprint (v4.14): CommonJS module syntax: module.exports OR require() [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "JavaScript structural fingerprint (v4.14): CommonJS module syntax: module.exports OR require() [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -314,7 +318,7 @@ resource "zia_dlp_dictionaries" "src_javascript_anchor" {
 
 resource "zia_dlp_dictionaries" "src_kotlin_signal" {
   name                         = "SRC-Kotlin Signal"
-  description                  = "Kotlin syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Kotlin syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -354,7 +358,7 @@ resource "zia_dlp_dictionaries" "src_kotlin_signal" {
 
 resource "zia_dlp_dictionaries" "src_kotlin_anchor" {
   name                         = "SRC-Kotlin Anchor"
-  description                  = "Kotlin structural fingerprint (v4.14): Kotlin function (`fun`) or data class declaration [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Kotlin structural fingerprint (v4.14): Kotlin function (`fun`) or data class declaration [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -366,7 +370,7 @@ resource "zia_dlp_dictionaries" "src_kotlin_anchor" {
 
 resource "zia_dlp_dictionaries" "src_python_signal" {
   name                         = "SRC-Python Signal"
-  description                  = "Python syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Python syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -406,7 +410,7 @@ resource "zia_dlp_dictionaries" "src_python_signal" {
 
 resource "zia_dlp_dictionaries" "src_python_anchor" {
   name                         = "SRC-Python Anchor"
-  description                  = "Python structural fingerprint (v4.14): Python function definition OR main guard OR from-import [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Python structural fingerprint (v4.14): Python function definition OR main guard OR from-import [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -418,7 +422,7 @@ resource "zia_dlp_dictionaries" "src_python_anchor" {
 
 resource "zia_dlp_dictionaries" "src_rust_signal" {
   name                         = "SRC-Rust Signal"
-  description                  = "Rust syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Rust syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -458,7 +462,7 @@ resource "zia_dlp_dictionaries" "src_rust_signal" {
 
 resource "zia_dlp_dictionaries" "src_rust_anchor" {
   name                         = "SRC-Rust Anchor"
-  description                  = "Rust structural fingerprint (v4.14): Rust function declaration OR impl block OR use statement [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Rust structural fingerprint (v4.14): Rust function declaration OR impl block OR use statement [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -470,7 +474,7 @@ resource "zia_dlp_dictionaries" "src_rust_anchor" {
 
 resource "zia_dlp_dictionaries" "src_sql_signal" {
   name                         = "SRC-SQL Signal"
-  description                  = "SQL syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "SQL syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -510,7 +514,7 @@ resource "zia_dlp_dictionaries" "src_sql_signal" {
 
 resource "zia_dlp_dictionaries" "src_sql_anchor" {
   name                         = "SRC-SQL Anchor"
-  description                  = "SQL structural fingerprint (v4.14): Line-anchored SQL DDL or DML at start of line [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "SQL structural fingerprint (v4.14): Line-anchored SQL DDL or DML at start of line [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -522,7 +526,7 @@ resource "zia_dlp_dictionaries" "src_sql_anchor" {
 
 resource "zia_dlp_dictionaries" "src_swift_signal" {
   name                         = "SRC-Swift Signal"
-  description                  = "Swift syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Swift syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -562,7 +566,7 @@ resource "zia_dlp_dictionaries" "src_swift_signal" {
 
 resource "zia_dlp_dictionaries" "src_swift_anchor" {
   name                         = "SRC-Swift Anchor"
-  description                  = "Swift structural fingerprint (v4.14): Swift-distinctive constructs: guard let, func with throws/->, or Apple framework import [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Swift structural fingerprint (v4.14): Swift-distinctive constructs: guard let, func with throws/->, or Apple framework import [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -574,7 +578,7 @@ resource "zia_dlp_dictionaries" "src_swift_anchor" {
 
 resource "zia_dlp_dictionaries" "src_typescript_signal" {
   name                         = "SRC-TypeScript Signal"
-  description                  = "TypeScript syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "TypeScript syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -614,7 +618,7 @@ resource "zia_dlp_dictionaries" "src_typescript_signal" {
 
 resource "zia_dlp_dictionaries" "src_typescript_anchor" {
   name                         = "SRC-TypeScript Anchor"
-  description                  = "TypeScript structural fingerprint (v4.14): TypeScript-distinctive: type alias OR import type OR TS utility type [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "TypeScript structural fingerprint (v4.14): TypeScript-distinctive: type alias OR import type OR TS utility type [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -626,7 +630,7 @@ resource "zia_dlp_dictionaries" "src_typescript_anchor" {
 
 resource "zia_dlp_dictionaries" "src_vbnet_signal" {
   name                         = "SRC-VBNet Signal"
-  description                  = "Visual Basic (.NET) syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Visual Basic (.NET) syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -666,7 +670,7 @@ resource "zia_dlp_dictionaries" "src_vbnet_signal" {
 
 resource "zia_dlp_dictionaries" "src_vbnet_anchor" {
   name                         = "SRC-VBNet Anchor"
-  description                  = "Visual Basic (.NET) structural fingerprint (v4.14): VB structural markers: Imports + capital identifier OR End Sub/Function/etc. [DLP-Check baseline zbp_source_code_baseline v4.14] Terraform-managed."
+  description                  = "Visual Basic (.NET) structural fingerprint (v4.14): VB structural markers: Imports + capital identifier OR End Sub/Function/etc. [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -674,5 +678,83 @@ resource "zia_dlp_dictionaries" "src_vbnet_anchor" {
     action  = "PATTERN_COUNT_TYPE_UNIQUE"
     pattern = "(?m)^\\s*\\b[Ii][Mm][Pp][Oo][Rr][Tt][Ss]\\b\\s+[A-Z]|\\b[Ee][Nn][Dd]\\s+(?:[Ss][Uu][Bb]|[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn]|[Cc][Ll][Aa][Ss][Ss]|[Mm][Oo][Dd][Uu][Ll][Ee]|[Nn][Aa][Mm][Ee][Ss][Pp][Aa][Cc][Ee]|[Ss][Tt][Rr][Uu][Cc][Tt][Uu][Rr][Ee])\\b"
   }
+}
+
+resource "zia_dlp_dictionaries" "src_encrypted_or_ascii_armored_pgp_keys" {
+  name                         = "SRC-Encrypted or ASCII Armored PGP Keys"
+  description                  = "From the Fed pack (Encrypted or ASCII Armored PGP Keys). [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "-{4,5}BEGIN (PGP|ENCRYPTED) PRIVATE\\b"
+  }
+}
+
+resource "zia_dlp_dictionaries" "src_encrypted_bouncy_castle_key_exports" {
+  name                         = "SRC-Encrypted Bouncy Castle Key Exports"
+  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "\\bProc-Type: 4,ENCRYPTED\\b"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "Private Key"
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "DEK-Info"
+  }
+}
+
+resource "zia_dlp_dictionaries" "src_private_keys_plaintext_regex" {
+  name                         = "SRC-Private Keys-Plaintext Regex"
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private ke... [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_ALL"
+    pattern = "[- ]{4,5}BEGIN (EC|DSA|RSA|SSH2|OPENSSH|PGP|GPG) PRIVA"
+  }
+}
+
+resource "zia_dlp_dictionaries" "src_jwk_private_key" {
+  name                         = "SRC-JWK Private Key"
+  description                  = "From the Fed pack (JWK Private Key). [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+  proximity                    = 500
+  proximity_enabled_for_custom_dictionary = true
+  patterns {
+    action  = "PATTERN_COUNT_TYPE_UNIQUE"
+    pattern = "\"kty\" ?: ?\"(EC|RSA)\""
+  }
+  phrases {
+    action = "PHRASE_COUNT_TYPE_ALL"
+    phrase = "'\"d\"'"
+  }
+}
+
+resource "zia_dlp_dictionaries" "src_private_key" {
+  name                         = "SRC-Private Key"
+  description                  = "Detect leakage of credentials and secrets [DLP-Check baseline zbp_source_code_baseline v4.15] Terraform-managed."
+  dictionary_type              = "PATTERNS_AND_PHRASES"
+  custom                       = true
+  custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
+  dict_template_id             = data.zia_dlp_dictionaries.cred_leakage.id
+  confidence_level_for_predefined_dict = "CONFIDENCE_LEVEL_MEDIUM"
+  confidence_threshold         = "CONFIDENCE_LEVEL_MEDIUM"
+  include_bin_numbers          = true
+  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)
+  hierarchical_identifiers     = ["CRED_PRIVATE_KEY"]
 }
 

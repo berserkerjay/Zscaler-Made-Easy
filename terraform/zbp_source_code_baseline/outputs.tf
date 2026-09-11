@@ -26,6 +26,11 @@ output "dictionaries" {
     src_typescript_anchor = zia_dlp_dictionaries.src_typescript_anchor
     src_vbnet_signal = zia_dlp_dictionaries.src_vbnet_signal
     src_vbnet_anchor = zia_dlp_dictionaries.src_vbnet_anchor
+    src_encrypted_or_ascii_armored_pgp_keys = zia_dlp_dictionaries.src_encrypted_or_ascii_armored_pgp_keys
+    src_encrypted_bouncy_castle_key_exports = zia_dlp_dictionaries.src_encrypted_bouncy_castle_key_exports
+    src_private_keys_plaintext_regex = zia_dlp_dictionaries.src_private_keys_plaintext_regex
+    src_jwk_private_key = zia_dlp_dictionaries.src_jwk_private_key
+    src_private_key = zia_dlp_dictionaries.src_private_key
   } : r.name => r.id }
 }
 
@@ -44,6 +49,7 @@ output "engines" {
     src_swift = zia_dlp_engines.src_swift
     src_typescript = zia_dlp_engines.src_typescript
     src_vbnet = zia_dlp_engines.src_vbnet
+    src_private_keys = zia_dlp_engines.src_private_keys
   } : r.name => r.id }
 }
 
@@ -62,6 +68,7 @@ output "rules" {
     zia_dlp_web_rules.src_swift_code_to_ai_monitor.name,
     zia_dlp_web_rules.src_typescript_code_to_ai_monitor.name,
     zia_dlp_web_rules.src_vbnet_code_to_ai_monitor.name,
+    zia_dlp_web_rules.src_private_keys_to_ai_monitor.name,
     zia_endpoint_dlp_rules.src_csharp_code_to_ai_endpoint.name,
     zia_casb_dlp_rules.src_csharp_code_to_ai_saas.name,
     zia_outbound_email_dlp.src_csharp_code_to_ai_email.name,
@@ -101,5 +108,8 @@ output "rules" {
     zia_endpoint_dlp_rules.src_vbnet_code_to_ai_endpoint.name,
     zia_casb_dlp_rules.src_vbnet_code_to_ai_saas.name,
     zia_outbound_email_dlp.src_vbnet_code_to_ai_email.name,
+    zia_endpoint_dlp_rules.src_private_keys_to_ai_endpoint.name,
+    zia_casb_dlp_rules.src_private_keys_to_ai_saas.name,
+    zia_outbound_email_dlp.src_private_keys_to_ai_email.name,
   ]
 }

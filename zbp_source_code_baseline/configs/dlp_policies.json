@@ -273,6 +273,27 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
+    "name": "SRC-Private Keys to AI-Monitor",
+    "description": "Inline Web DLP: private keys and secrets uploaded to AI/ML applications (engine SRC-Private Keys). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "SRC-Private Keys"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "cloud_app_classes": [
+      "AI_ML"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
     "name": "SRC-CSharp Code to AI [Endpoint]",
     "channel": "endpoint",
     "description": "Endpoint DLP: the same detection as the inline rule \"SRC-CSharp Code to AI-Monitor\" (SRC-CSharp). Monitor-only; enable after reviewing incidents.",
@@ -1034,6 +1055,65 @@
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "SRC-VBNet"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "SRC-Private Keys to AI [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"SRC-Private Keys to AI-Monitor\" (SRC-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Private Keys"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "SRC-Private Keys to AI [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"SRC-Private Keys to AI-Monitor\" (SRC-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Private Keys"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "SRC-Private Keys to AI [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"SRC-Private Keys to AI-Monitor\" (SRC-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "SRC-Private Keys"
     ],
     "channel_mirror": true,
     "tenants": "any",

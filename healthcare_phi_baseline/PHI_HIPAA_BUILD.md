@@ -59,6 +59,7 @@ Documented ZIA limits: 8 patterns per dictionary, 256 bytes per pattern, proximi
 | 7 | HIPAA US PII | identity data, no clinical context | From the Fed pack's US PII engine, plus passports: SSN, TIN, alien registration or passport > 4 at high confidence, or any one within 500 bytes of its label, or a date of birth with driver's licences > 4. Covers the patient, member and staff identity data a covered entity holds that state breach law reaches even without a diagnosis |
 | 8 | HIPAA US PHI — Medium Confidence | single record, second opinion | From the Fed pack: Medical Document, or Medical Information with Drugs > 9 or Diseases > 9, AND one identifier (SSN, passport, alien number, or DOB beside a driver's licence). Independent of Engine 1's custom dictionaries; the two should agree on real records |
 | 9 | HIPAA US PHI — High Confidence | patient-record sets | From the Fed pack: Medical Document, or Medical Information with Drugs > 14 or Diseases > 14, AND identifiers > 4 at high confidence (or DOB > 1 beside licences > 1), or any identifier within 500 bytes of its label |
+| 10 | HIPAA Financial Information | PCI DSS scope beside HIPAA | From the Fed pack's Financial Information engine: payment cards > 4 at high confidence or > 1 beside a label, magnetic tracks, ABA routing numbers > 4 or > 1 beside a label, W-2 / 1099 / K-1 / 1040 forms, and Zscaler's Financial and Corporate Finance classifiers. The card and bank data a provider or payer carries on claims, billing and payroll |
 
 ### Fed-derived PII dictionaries (HC- prefix)
 
@@ -79,6 +80,7 @@ Twelve dictionaries copied from the Fed pack's US PII set and renamed with an `H
 | HC-US PII-Monitor | 7 | Monitor (ALLOW), DISABLED | identity data without clinical context: state breach law review; often HR, billing or member-services traffic |
 | HC-US PHI Medium Confidence-Monitor | 8 | Monitor (ALLOW), DISABLED | second PHI opinion: compare with Engine 1's incidents during tuning; investigate where only this rule fired |
 | HC-US PHI High Confidence-Monitor | 9 | Monitor (ALLOW), DISABLED | immediate investigation; a set of patient records is leaving |
+| HC-Financial Information-Monitor | 10 | Monitor (ALLOW), DISABLED | PCI DSS handling: billing, revenue-cycle and payroll traffic; route card data incidents to the payment-security owner |
 
 Under Rule Order, enable the Bulk rules ordered Major, Significant, Small so a transaction lands in exactly one tier; under Evaluate All Rules every matching tier logs its own incident. Every rule ships DISABLED, at INFO and in monitor (ALLOW): enable, review the incidents, raise the severity per the tier. Every rule in every pack monitors; if the customer later decides to enforce a tier, that is their change in the portal, and the journey card records it as progress.
 

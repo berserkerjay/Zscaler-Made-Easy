@@ -1116,5 +1116,82 @@
       }
     ],
     "phrases": []
+  },
+  {
+    "name": "SRC-Encrypted or ASCII Armored PGP Keys",
+    "description": "From the Fed pack (Encrypted or ASCII Armored PGP Keys).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "-{4,5}BEGIN (PGP|ENCRYPTED) PRIVATE\\b"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Encrypted Bouncy Castle Key Exports",
+    "description": "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bProc-Type: 4,ENCRYPTED\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Private Key"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "DEK-Info"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Private Keys-Plaintext Regex",
+    "description": "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when stored in plaintext",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "[- ]{4,5}BEGIN (EC|DSA|RSA|SSH2|OPENSSH|PGP|GPG) PRIVA"
+      }
+    ]
+  },
+  {
+    "name": "SRC-JWK Private Key",
+    "description": "From the Fed pack (JWK Private Key).",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\"kty\" ?: ?\"(EC|RSA)\""
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'\"d\"'"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Private Key",
+    "description": "Detect leakage of credentials and secrets",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CRED_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "hierarchical_identifiers": [
+      "CRED_PRIVATE_KEY"
+    ],
+    "hierarchical_dictionary": true,
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
   }
 ]

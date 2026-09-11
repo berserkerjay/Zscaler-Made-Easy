@@ -117,9 +117,10 @@ def test_healthcare_deploys_on_a_tenant_without_the_medical_bundle():
     # they are blocked, and the engines that use them are created without those terms.
     assert "HC-Tax Identification Number (US) - High" in pruned["HIPAA US PII"] and "HC-Drivers License (United States) - Prox 500" in pruned["HIPAA US PHI - High Confidence"]
     rules = [i for i in rep["items"] if i["kind"] == "policy"]
-    assert len(rules) == 44 and all(i["status"] == pd.CREATE for i in rules), [(i["name"], i["status"]) for i in rules if i["status"] != pd.CREATE]
+    assert len(rules) == 48 and all(i["status"] == pd.CREATE for i in rules), [(i["name"], i["status"]) for i in rules if i["status"] != pd.CREATE]
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
-    assert res["summary"]["created"] == (7 + 12 - 4) + 11 + 44
+    # 7 custom + 12 PII (4 clones without a template here) + 9 financial (4 clones without a template) dictionaries, 12 engines, 12 rules x 4 channels
+    assert res["summary"]["created"] == (7 + 12 - 4 + 9 - 4) + 12 + 48
 
 
 def test_no_shipped_dictionary_sets_proximity_on_a_type_zia_rejects():
@@ -166,8 +167,9 @@ def test_every_shipped_name_uses_characters_zia_accepts_and_engine_descriptions_
     pack = {"id": "healthcare_phi_baseline", "dir": os.path.join(ROOT, "healthcare_phi_baseline")}
     rep = pd.preflight(client, [pack], writes_enabled=True)
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
-    assert res["summary"]["created"] == (7 + 12 - 4) + 11 + 44, res["summary"]
-    assert len(client.zia.dlp_engine.added) == 11
+    # 7 custom + 12 PII (4 clones without a template here) + 9 financial (4 clones without a template) dictionaries, 12 engines, 12 rules x 4 channels
+    assert res["summary"]["created"] == (7 + 12 - 4 + 9 - 4) + 12 + 48, res["summary"]
+    assert len(client.zia.dlp_engine.added) == 12
     for e in client.zia.dlp_engine.added:
         assert len(e["description"].encode("utf-8")) <= 255 and "[DLP-Check baseline healthcare_phi_baseline" in e["description"], e["name"]
     # A bad engine name is stopped in the plan, with the reason, before any write.

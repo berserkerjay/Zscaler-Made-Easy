@@ -141,28 +141,56 @@ def build_configs(pairs: Dict[str, Dict[str, Any]], *, prefix: str = "SRC-", thr
     return dicts, engines
 
 
+def _refs(expr: str) -> List[str]:
+    """Dictionary names an engine expression references (D:<name> terms)."""
+    from dlp_importer import find_refs
+    return [r.strip() for r in find_refs(expr or "") if r.strip()]
+
+
+def _is_language_engine(engine: Dict[str, Any], dicts: List[Dict[str, Any]]) -> bool:
+    """A language engine is one built from Signal / Anchor dictionaries (the
+    ones this rebuild regenerates); anything else in the pack is kept."""
+    refs = _refs(engine.get("expression") or engine.get("engine_expression") or "")
+    return bool(refs) and all(r.endswith(" Signal") or r.endswith(" Anchor") for r in refs)
+
+
 def write_pack(pack_dir: str, dicts: List[Dict[str, Any]], engines: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Replace the pack's dictionaries and engines; rules keep everything
     else and now reference every new engine. Returns what was replaced."""
     cfg = os.path.join(pack_dir, "configs")
     os.makedirs(cfg, exist_ok=True)
     before = {"dictionaries": [], "engines": []}
+    old: Dict[str, List[Dict[str, Any]]] = {"dictionaries": [], "engines": []}
     for kind in ("dictionaries", "engines"):
         path = os.path.join(cfg, f"dlp_{kind}.json")
         if os.path.exists(path):
             try:
-                before[kind] = [x["name"] for x in json.load(open(path, encoding="utf-8"))]
+                old[kind] = json.load(open(path, encoding="utf-8"))
+                before[kind] = [x["name"] for x in old[kind]]
             except Exception:  # noqa: BLE001
                 pass
+    # Engines that are not language engines (Private Keys, say) and the
+    # dictionaries only they use are kept: the rebuild replaces the language
+    # coverage, not the rest of the pack.
+    lang_names = {e["name"] for e in engines}
+    lang_dicts = {d["name"] for d in dicts}
+    kept_engines = [e for e in old["engines"] if e["name"] not in lang_names and not _is_language_engine(e, old["dictionaries"])]
+    kept_refs = set()
+    for e in kept_engines:
+        kept_refs |= set(_refs(e.get("expression") or e.get("engine_expression") or ""))
+    kept_dicts = [d for d in old["dictionaries"] if d["name"] in kept_refs and d["name"] not in lang_dicts]
+    engines = list(engines) + kept_engines
+    dicts = list(dicts) + kept_dicts
     json.dump(dicts, open(os.path.join(cfg, "dlp_dictionaries.json"), "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     json.dump(engines, open(os.path.join(cfg, "dlp_engines.json"), "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     pol_path = os.path.join(cfg, "dlp_policies.json")
     rewired = []
     if os.path.exists(pol_path):
         policies = json.load(open(pol_path, encoding="utf-8"))
-        names = [e["name"] for e in engines]
+        names = [e["name"] for e in engines if e["name"] not in {k["name"] for k in kept_engines}]
+        kept_names = {k["name"] for k in kept_engines}
         for p in policies:
-            if p.get("engines"):
+            if p.get("engines") and not (set(p["engines"]) & kept_names):
                 p["engines"] = names; rewired.append(p["name"])
         json.dump(policies, open(pol_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     return {"removed_dictionaries": [n for n in before["dictionaries"] if n not in {d["name"] for d in dicts}],

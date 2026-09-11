@@ -31,8 +31,13 @@ def test_preflight_plans_what_it_can_when_dictionaries_cannot_be_listed():
     assert rep["blockers"] == [] and rep["plan_hash"]
     assert any("Could not list the tenant's dictionaries" in w and "DLP Dictionaries" in w for w in rep["warnings"])
     dicts = [i for i in rep["items"] if i["kind"] == "dictionary"]
-    assert dicts and all(i["status"] == pd.CREATE for i in dicts)
-    assert all(any(w.startswith("unverified") for w in i.get("warnings", [])) for i in dicts)
+    customs = [i for i in dicts if (i.get("detail") or {}).get("type") != "clone"]
+    clones = [i for i in dicts if (i.get("detail") or {}).get("type") == "clone"]
+    assert customs and all(i["status"] == pd.CREATE for i in customs)
+    assert all(any(w.startswith("unverified") for w in i.get("warnings", [])) for i in customs)
+    # A clone needs its template's id, which an unreadable listing cannot give: blocked, and
+    # the engine that uses it is created without that term (the plan names it).
+    assert clones and all(i["status"] == pd.BLOCKED_DEPENDENCY for i in clones)
     engines = [i for i in rep["items"] if i["kind"] == "engine"]
     assert engines and all(i["status"] == pd.CREATE for i in engines)
     assert not any(any(w.startswith("unverified") for w in i.get("warnings", [])) for i in engines)

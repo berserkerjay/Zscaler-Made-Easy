@@ -48,5 +48,25 @@
     "name": "CJIS Any-Signal Engine",
     "description": "Any strong CJIS signal — explicit markings, structured identifiers, or RAP/NCIC/warrant content engines. Catch-all for broad monitoring.",
     "expression": "((D:CJIS Marking Pattern (High Confidence) > 0) OR (D:Law Enforcement Sensitive (LES) Markings > 0) OR (D:NCIC ORI Pattern > 0) OR (D:FBI UCN - Universal Control Number > 0) OR (D:NCIC Purpose Code Pattern > 0))"
+  },
+  {
+    "name": "CJIS US PII",
+    "description": "From the Fed pack's US PII engine. Identity data of subjects, victims, witnesses and officers outside any CJI marking: five or more SSNs, TINs or alien registration numbers at high confidence, any one within 500 bytes of its label, or a date of birth with five or more driver's licence numbers.",
+    "expression": "((D:CJIS-Social Security Numbers (US) - High > 4) OR (D:Social Security Numbers (US) - CJIS Prox 500 > 0) OR (D:CJIS-Tax Identification Number (US) - High > 4) OR (D:CJIS-Tax Identification Number (US) - Prox 500 > 0) OR (D:CJIS-Alien Registration Number - High Confidence > 4) OR (D:CJIS-Alien Registration Number - Prox 500 > 0) OR ((D:CJIS-Date of Birth - High Confidence > 1) AND (D:CJIS-Drivers License (United States) - High > 4)))"
+  },
+  {
+    "name": "CJIS TLP Red",
+    "description": "From the Fed pack. Traffic Light Protocol RED marking: information for the named recipients only, shared under FBI, fusion-centre and ISAC agreements.",
+    "expression": "((D:CJIS-TLP Red > 0))"
+  },
+  {
+    "name": "CJIS TLP Amber Strict",
+    "description": "From the Fed pack. TLP:AMBER+STRICT marking: limited to the recipient organisation.",
+    "expression": "((D:CJIS-TLP Amber Strict > 0))"
+  },
+  {
+    "name": "CJIS TLP Amber",
+    "description": "From the Fed pack. TLP:AMBER marking: limited to the recipient organisation and its clients on a need-to-know basis.",
+    "expression": "((D:CJIS-TLP Amber > 0))"
   }
 ]

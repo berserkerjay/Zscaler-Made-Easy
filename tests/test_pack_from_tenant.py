@@ -69,8 +69,14 @@ def test_rebuild_replaces_the_pack_objects_and_rewires_the_rules(tmp_path):
     engines = json.load(open(pack / "configs" / "dlp_engines.json"))
     dicts = json.load(open(pack / "configs" / "dlp_dictionaries.json"))
     policies = json.load(open(pack / "configs" / "dlp_policies.json"))
-    assert len(engines) == 3 and len(dicts) == 6
+    # The three language engines and their six dictionaries are rebuilt; the
+    # non-language engine (SRC-Private Keys) and the five dictionaries only it
+    # uses are kept, and its rules are not rewired.
+    assert len(engines) == 4 and len(dicts) == 11
+    assert [e["name"] for e in engines][-1] == "SRC-Private Keys" and "SRC-Private Keys" not in res["removed_engines"]
     assert policies[0]["engines"] == ["SRC-Go", "SRC-HTML", "SRC-SRCPython"]
+    assert next(p for p in policies if p["name"] == "SRC-Private Keys to AI-Monitor")["engines"] == ["SRC-Private Keys"]
+    assert "SRC-Private Keys to AI-Monitor" not in res["rules_rewired"]
     # The pack still plans cleanly against that tenant: its dictionaries are reused, engines and rules created.
     import pack_deploy as pd
     from test_pack_channels import add_control_services
@@ -105,8 +111,8 @@ def test_from_tenant_endpoint_previews_then_writes(monkeypatch, tmp_path):
     r = c.post("/api/dlp-packs/zbp_source_code_baseline/from-tenant", json=body)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "preview" and len(r.json()["languages"]) == 3
-    assert len(json.load(open(pack / "configs" / "dlp_engines.json"))) == 13
+    assert len(json.load(open(pack / "configs" / "dlp_engines.json"))) == 14   # 13 languages plus SRC-Private Keys, untouched by a preview
     body["confirm"] = True
     r = c.post("/api/dlp-packs/zbp_source_code_baseline/from-tenant", json=body)
     assert r.status_code == 200 and r.json()["status"] == "written", r.text
-    assert len(json.load(open(pack / "configs" / "dlp_engines.json"))) == 3
+    assert len(json.load(open(pack / "configs" / "dlp_engines.json"))) == 4   # the three rebuilt language engines plus the kept SRC-Private Keys

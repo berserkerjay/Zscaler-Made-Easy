@@ -1243,5 +1243,406 @@
         "phrase": "Pasaporte"
       }
     ]
+  },
+  {
+    "name": "HC-ABA Bank Routing Number - Prox 500",
+    "description": "Detect leakage of ABA Bank Routing Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "ABA_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  },
+  {
+    "name": "HC-Form 1040 and related schedules",
+    "description": "From the Fed pack (Form 1040 and related schedules).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1040"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0074"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " or other tax year beginning"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Was born before January 2, 1959"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "If you checked the HOH or QSS box"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "I have examined this return and accompanying schedules and statements, and to the best of my knowledge"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Do you want to allow another person to discuss this return"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 11320B"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 1 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Additional Income and Adjustments to Income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Foreign earned income exclusion"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Activity not engaged in for profit income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nontaxable amount of Medicaid "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 71479F"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 2 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Alternative minimum tax. Attach Form"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Social security and Medicare tax on unreported tip income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Additional Medicare Tax. Attach Form 8959"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " tax due on installment income from the sale of certain residential lots"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " Cat. No. 71478U"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Recapture of federal mortgage subsidy"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Compensation you received from a nonqualified deferred"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Tax on non-effectively connected income for any part of"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Section 965 net tax liability installment from Form 965-A"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 3 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Foreign tax credit. Attach Form 1116 if required"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "General business credit. Attach Form 3800"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Mortgage interest credit. Attach Form 8396"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Credit to holders of tax credit bonds. Attach Form 8912"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Attach to Form 1040, 1040-SR, or 1040-NR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Excess social security and tier 1 RRTA tax withheld"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Credit for repayment of amounts included in income from earlier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Deferred amount of net 965 tax liability"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Add lines 9 through 12 and 14. Enter here and on Form 1040, 1040-SR, or 1040-NR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1040-ES"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Disclosure, Privacy Act, and Paperwork Reduction Act Notice"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "File only if you are making a payment of estimated tax by check"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Amount of estimated tax you are paying"
+      }
+    ]
+  },
+  {
+    "name": "HC-ABA Bank Routing Number - High",
+    "description": "Detect leakage of ABA Bank Routing Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "ABA_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  },
+  {
+    "name": "HC-Credit Card Magnetic Tracks",
+    "description": "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "[%][B]\\d{12,19}[\\^][a-zA-Z\\/\\s.]{2,26}[\\^](\\d{7})([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "[;]\\d{12,19}[=]([\\dxX])([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+      }
+    ]
+  },
+  {
+    "name": "HC-Form 1099-MISC and 1099-NEC",
+    "description": "From the Fed pack (Form 1099-MISC and 1099-NEC).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PAYER’S name, street address, city or town, state or province, country, ZIP"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1099-MISC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1099-NEC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Payer made direct sales totaling $5,000 or more of"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nonqualified deferred compensation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0115"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Excess golden parachute"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Gross proceeds paid to an"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PAYER’S TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "RECIPIENT’S TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "File with Form 1096."
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0116"
+      }
+    ]
+  },
+  {
+    "name": "HC-Credit Cards - Prox 500",
+    "description": "Detect leakage of credit card information",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CREDIT_CARD",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  },
+  {
+    "name": "HC-W2 or W4 or W9 Forms",
+    "description": "From the Fed pack (W2 or W4 or W9 Forms).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "a Employee’s social security number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0008 "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Wage and Tax Statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "c Employer’s name, address, and ZIP code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "e Employee’s first name and initial"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "3 Social security wages"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-9"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Identification Number and Certification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Name of entity/individual. An entry is required"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "LLC. Enter the tax classification "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Exemptions (codes apply only to"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 10231X"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "List account number(s) here (optional)"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-4"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0074"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Single or Married filing separately"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Other income (not from jobs)."
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "If your total income will be $200,000 or less"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Deductions. If you expect to claim deductions other than the standard deduction "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 10220Q"
+      }
+    ]
+  },
+  {
+    "name": "HC-Credit Cards - High",
+    "description": "Detect leakage of credit card information",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CREDIT_CARD",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  },
+  {
+    "name": "HC-Form K-1",
+    "description": "From the Fed pack (Form K-1).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Schedule K-1 "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0123"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "A Partnership’s employer identification number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "F Name, address, city, state, and ZIP code for partner entered in"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Partner’s share of liabilities"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Partner’s Share of Current Year Income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "More than one activity for passive activity purposes"
+      }
+    ]
   }
 ]

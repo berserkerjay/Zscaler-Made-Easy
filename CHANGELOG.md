@@ -6,6 +6,13 @@ what each batch of changes did, newest first.
 
 ## 2026-09-11
 
+### The Fed pack's coverage, wherever that data must be protected too
+The Fed pack's production-proven engines now sit in every pack whose customers hold that data. Enterprise and banking already carried US PII, Financial Information and Private Keys (their ZBP- engines); this batch closes the remaining gaps, one web rule per engine mirrored onto Endpoint, SaaS and Email, every rule DISABLED and monitor-only.
+- **CJIS 1.1**: `CJIS US PII` (identity data of subjects, victims, witnesses and officers that state breach law reaches outside any CJI marking; reuses the pack's own CJIS Prox 500 clones and adds CJIS- copies of the rest) and `CJIS TLP Red`, `CJIS TLP Amber Strict`, `CJIS TLP Amber` (the Traffic Light Protocol markings law-enforcement information sharing runs under). 14 rules per channel.
+- **Source Code to AI 4.15**: `SRC-Private Keys` (plaintext, JWK, PGP and Bouncy Castle keys and Zscaler's credential-leakage clone, the secrets that travel with code), scoped to the same AI/ML applications as the language rules. Rebuilding the pack from the tenant's own dictionaries now keeps any non-language engine and the dictionaries only it uses instead of dropping them.
+- **Healthcare 3.2**: Engine 10, `HIPAA Financial Information` (payment cards and magnetic tracks, ABA routing numbers, W-2 / 1099 / K-1 / 1040 forms and Zscaler's financial classifiers), the PCI DSS scope a provider or payer carries on claims, billing and payroll. 12 rules per channel.
+- Terraform regenerated for the three packs; the pack notes and PHI_HIPAA_BUILD.md name where each engine came from.
+
 ### Removal preview: "nothing to remove" now says what it read
 - **A partial read is never "nothing".** When the removal preview could not list a whole kind of object (dictionaries, engines, a channel's rules), it says so in the preview, and when nothing matched at all it blocks with the reason ("Nothing matched, but the tenant could not be fully read: dictionaries: …") instead of reporting an empty plan.
 - **The "Nothing to remove" card shows what the preview saw**: how many dictionaries (custom, DLP-Check-tagged), engines and rules per channel were read, and what could not be listed, so an empty result can be traced to its cause in one look.

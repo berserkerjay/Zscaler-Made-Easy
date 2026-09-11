@@ -19,6 +19,15 @@ output "dictionaries" {
     hc_date_of_birth_prox_500 = zia_dlp_dictionaries.hc_date_of_birth_prox_500
     hc_us_passport_high_confidence = zia_dlp_dictionaries.hc_us_passport_high_confidence
     hc_us_passport_prox_500 = zia_dlp_dictionaries.hc_us_passport_prox_500
+    hc_aba_bank_routing_number_prox_500 = zia_dlp_dictionaries.hc_aba_bank_routing_number_prox_500
+    hc_form_1040_and_related_schedules = zia_dlp_dictionaries.hc_form_1040_and_related_schedules
+    hc_aba_bank_routing_number_high = zia_dlp_dictionaries.hc_aba_bank_routing_number_high
+    hc_credit_card_magnetic_tracks = zia_dlp_dictionaries.hc_credit_card_magnetic_tracks
+    hc_form_1099_misc_and_1099_nec = zia_dlp_dictionaries.hc_form_1099_misc_and_1099_nec
+    hc_credit_cards_prox_500 = zia_dlp_dictionaries.hc_credit_cards_prox_500
+    hc_w2_or_w4_or_w9_forms = zia_dlp_dictionaries.hc_w2_or_w4_or_w9_forms
+    hc_credit_cards_high = zia_dlp_dictionaries.hc_credit_cards_high
+    hc_form_k_1 = zia_dlp_dictionaries.hc_form_k_1
   } : r.name => r.id }
 }
 
@@ -35,6 +44,7 @@ output "engines" {
     hipaa_us_pii = zia_dlp_engines.hipaa_us_pii
     hipaa_us_phi_medium_confidence = zia_dlp_engines.hipaa_us_phi_medium_confidence
     hipaa_us_phi_high_confidence = zia_dlp_engines.hipaa_us_phi_high_confidence
+    hipaa_financial_information = zia_dlp_engines.hipaa_financial_information
   } : r.name => r.id }
 }
 
@@ -51,6 +61,7 @@ output "rules" {
     zia_dlp_web_rules.hc_us_pii_monitor.name,
     zia_dlp_web_rules.hc_us_phi_medium_confidence_monitor.name,
     zia_dlp_web_rules.hc_us_phi_high_confidence_monitor.name,
+    zia_dlp_web_rules.hc_financial_information_monitor.name,
     zia_endpoint_dlp_rules.hc_hipaa_critical_endpoint.name,
     zia_casb_dlp_rules.hc_hipaa_critical_saas.name,
     zia_outbound_email_dlp.hc_hipaa_critical_email.name,
@@ -84,5 +95,8 @@ output "rules" {
     zia_endpoint_dlp_rules.hc_us_phi_high_confidence_endpoint.name,
     zia_casb_dlp_rules.hc_us_phi_high_confidence_saas.name,
     zia_outbound_email_dlp.hc_us_phi_high_confidence_email.name,
+    zia_endpoint_dlp_rules.hc_financial_information_endpoint.name,
+    zia_casb_dlp_rules.hc_financial_information_saas.name,
+    zia_outbound_email_dlp.hc_financial_information_email.name,
   ]
 }

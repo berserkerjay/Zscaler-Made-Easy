@@ -16,6 +16,16 @@ output "dictionaries" {
     social_security_numbers_us_cjis_prox_500 = zia_dlp_dictionaries.social_security_numbers_us_cjis_prox_500
     drivers_license_us_cjis_prox_500 = zia_dlp_dictionaries.drivers_license_us_cjis_prox_500
     date_of_birth_cjis_prox_500 = zia_dlp_dictionaries.date_of_birth_cjis_prox_500
+    cjis_alien_registration_number_high_confidence = zia_dlp_dictionaries.cjis_alien_registration_number_high_confidence
+    cjis_alien_registration_number_prox_500 = zia_dlp_dictionaries.cjis_alien_registration_number_prox_500
+    cjis_date_of_birth_high_confidence = zia_dlp_dictionaries.cjis_date_of_birth_high_confidence
+    cjis_tlp_red = zia_dlp_dictionaries.cjis_tlp_red
+    cjis_tlp_amber_strict = zia_dlp_dictionaries.cjis_tlp_amber_strict
+    cjis_tlp_amber = zia_dlp_dictionaries.cjis_tlp_amber
+    cjis_social_security_numbers_us_high = zia_dlp_dictionaries.cjis_social_security_numbers_us_high
+    cjis_tax_identification_number_us_high = zia_dlp_dictionaries.cjis_tax_identification_number_us_high
+    cjis_tax_identification_number_us_prox_500 = zia_dlp_dictionaries.cjis_tax_identification_number_us_prox_500
+    cjis_drivers_license_united_states_high = zia_dlp_dictionaries.cjis_drivers_license_united_states_high
   } : r.name => r.id }
 }
 
@@ -31,6 +41,10 @@ output "engines" {
     nics_firearms_background_engine = zia_dlp_engines.nics_firearms_background_engine
     info_sharing_portal_engine = zia_dlp_engines.info_sharing_portal_engine
     cjis_any_signal_engine = zia_dlp_engines.cjis_any_signal_engine
+    cjis_us_pii = zia_dlp_engines.cjis_us_pii
+    cjis_tlp_red = zia_dlp_engines.cjis_tlp_red
+    cjis_tlp_amber_strict = zia_dlp_engines.cjis_tlp_amber_strict
+    cjis_tlp_amber = zia_dlp_engines.cjis_tlp_amber
   } : r.name => r.id }
 }
 
@@ -46,6 +60,10 @@ output "rules" {
     zia_dlp_web_rules.z_cjis_info_sharing_monitor.name,
     zia_dlp_web_rules.z_cjis_any_signal_monitor.name,
     zia_dlp_web_rules.z_cjis_markings_medium_confidence_monitor.name,
+    zia_dlp_web_rules.z_cjis_us_pii_monitor.name,
+    zia_dlp_web_rules.z_cjis_tlp_red_monitor.name,
+    zia_dlp_web_rules.z_cjis_tlp_amber_strict_monitor.name,
+    zia_dlp_web_rules.z_cjis_tlp_amber_monitor.name,
     zia_endpoint_dlp_rules.z_cjis_markings_endpoint.name,
     zia_casb_dlp_rules.z_cjis_markings_saas.name,
     zia_outbound_email_dlp.z_cjis_markings_email.name,
@@ -76,5 +94,17 @@ output "rules" {
     zia_endpoint_dlp_rules.z_cjis_markings_medium_confidence_endpoint.name,
     zia_casb_dlp_rules.z_cjis_markings_medium_confidence_saas.name,
     zia_outbound_email_dlp.z_cjis_markings_medium_confidence_email.name,
+    zia_endpoint_dlp_rules.z_cjis_us_pii_endpoint.name,
+    zia_casb_dlp_rules.z_cjis_us_pii_saas.name,
+    zia_outbound_email_dlp.z_cjis_us_pii_email.name,
+    zia_endpoint_dlp_rules.z_cjis_tlp_red_endpoint.name,
+    zia_casb_dlp_rules.z_cjis_tlp_red_saas.name,
+    zia_outbound_email_dlp.z_cjis_tlp_red_email.name,
+    zia_endpoint_dlp_rules.z_cjis_tlp_amber_strict_endpoint.name,
+    zia_casb_dlp_rules.z_cjis_tlp_amber_strict_saas.name,
+    zia_outbound_email_dlp.z_cjis_tlp_amber_strict_email.name,
+    zia_endpoint_dlp_rules.z_cjis_tlp_amber_endpoint.name,
+    zia_casb_dlp_rules.z_cjis_tlp_amber_saas.name,
+    zia_outbound_email_dlp.z_cjis_tlp_amber_email.name,
   ]
 }
