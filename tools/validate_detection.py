@@ -26,8 +26,10 @@ Writes <out>.json, <out>.md and <out>.html.
 from __future__ import annotations
 
 import argparse
+import ast
 import html
 import json
+import operator
 import os
 import random
 import re
@@ -217,9 +219,33 @@ class Engine:
         if re.search(r"[^0-9()<>= andortu\s]", expr):
             return False
         try:
-            return bool(eval(expr, {"__builtins__": {}}, {}))  # noqa: S307 — sanitised arithmetic/boolean only
+            return _safe_bool(expr)
         except Exception:  # noqa: BLE001
             return False
+
+
+_CMP_OPS = {ast.Gt: operator.gt, ast.GtE: operator.ge, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Eq: operator.eq, ast.NotEq: operator.ne}
+
+
+def _safe_bool(expr: str) -> bool:
+    """Evaluate a boolean expression made of integer comparisons joined by
+    and / or / not, by walking its syntax tree: integer constants, the six
+    comparison operators, and / or / not, parentheses. Nothing else is
+    accepted, so no name, call or attribute can ever be reached."""
+    def ev(node):
+        if isinstance(node, ast.Expression):
+            return ev(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+            return node.value
+        if isinstance(node, ast.BoolOp):
+            vals = [ev(v) for v in node.values]
+            return all(vals) if isinstance(node.op, ast.And) else any(vals)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not ev(node.operand)
+        if isinstance(node, ast.Compare) and len(node.ops) == 1 and type(node.ops[0]) in _CMP_OPS:
+            return _CMP_OPS[type(node.ops[0])](ev(node.left), ev(node.comparators[0]))
+        raise ValueError(f"unsupported expression element: {type(node).__name__}")
+    return bool(ev(ast.parse(expr, mode="eval")))
 
 
 class Pack:

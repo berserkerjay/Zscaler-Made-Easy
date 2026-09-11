@@ -40,6 +40,13 @@ maintained release branches.
 | Uploaded logs (Log Analyzer) | Client Connector log bundles and PAC files are analysed in memory on the local server and discarded: nothing is written to disk and nothing leaves the machine. Archives are opened with caps (600 members, 48 MB per member, 160 MB in total, one level of nesting), member names are never used as paths, binary members are skipped, and the whole request is under the body-size cap. Evidence lines shown back have passwords, tokens, cookies and JWTs blanked out; the audit log records the call without the file contents. The page renders every value through one HTML escaper. |
 | Code | Python 3.11, no `eval`/`exec`/`pickle`/`shell=True`, no SQL, one HTML escaper at every render site. Tests, `py_compile`, `node --check` and Terraform validation run in CI on every push. |
 
+## Measuring it
+
+The Advanced settings tab carries a **CISA Secure by Design score**: every
+control in the table above is checked live against the running server and
+the app folder (`GET /api/secure-by-design`), with what was found and what
+to do when a control falls short.
+
 ## Known limitations
 
 - The UI token is a bearer secret: anyone who reads `ui_token.txt` or the

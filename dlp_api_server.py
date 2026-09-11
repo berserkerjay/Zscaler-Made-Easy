@@ -2080,6 +2080,18 @@ async def pack_library_bundle(pack_id: str):
                     headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}.json"'})
 
 
+@app.get("/api/secure-by-design")
+async def secure_by_design_score():
+    """How this app measures against CISA's Secure by Design principles and
+    pledge goals, read live from the running server and the app folder:
+    a score, and every control with its status, evidence and next step."""
+    try:
+        import secure_by_design
+        return await asyncio.to_thread(secure_by_design.evaluate, app)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Secure by Design check failed: {e}")
+
+
 @app.get("/report/advanced")
 async def report_advanced_page():
     """Advanced settings tab (static/report_advanced.html): the policy pack

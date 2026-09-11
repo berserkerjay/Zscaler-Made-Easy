@@ -217,6 +217,38 @@
     setTimeout(poll, 2000);
   }
 
+  // ---- CISA Secure by Design score -----------------------------------------
+  const SBD_CHIP = { pass: ['ok', 'Met'], warn: ['warn', 'Partly'], fail: ['bad', 'Not met'], 'n/a': ['', 'Not scored'] };
+  function renderSbd(d) {
+    const c = d.counts || {};
+    $('advSbdBox').innerHTML = `
+      <div class="adv-sbd-score"><div class="n">${E(d.score)}<span class="pct">/100</span></div><div class="g">Grade ${E(d.grade)}</div></div>
+      <div class="adv-sbd-counts"><span class="chip ok">${E(c.pass || 0)} met</span> <span class="chip warn">${E(c.warn || 0)} partly</span> <span class="chip bad">${E(c.fail || 0)} not met</span> <span class="chip">${E(c['n/a'] || 0)} not scored</span>
+        <div class="dim" style="margin-top:0.35rem;">${E(d.note || '')}</div></div>`;
+    const tb = $('advSbd').querySelector('tbody');
+    const groups = d.principles || [];
+    tb.innerHTML = groups.map(p => {
+      const rows = (d.checks || []).filter(x => x.principle === p);
+      if (!rows.length) return '';
+      return `<tr class="adv-sbd-group"><th scope="rowgroup" colspan="4">${E(p)}</th></tr>` + rows.map(x => {
+        const [cls, label] = SBD_CHIP[x.status] || ['', x.status];
+        return `<tr>
+          <th scope="row">${E(x.control)}<div class="dim">${E(x.pledge)}</div></th>
+          <td><span class="chip ${cls}">${E(label)}</span></td>
+          <td class="adv-sbd-ev">${E(x.evidence)}</td>
+          <td class="adv-sbd-ev">${E(x.do)}</td>
+        </tr>`;
+      }).join('');
+    }).join('') || '<tr><td colspan="4" class="dim">No controls reported.</td></tr>';
+  }
+  async function loadSbd() {
+    $('advSbdBox').innerHTML = '<span class="dim">Measuring…</span>';
+    try { renderSbd(await api('/api/secure-by-design')); }
+    catch (e) { $('advSbdBox').innerHTML = `<span class="warn">Could not measure: ${E(e.message)}</span>`; }
+  }
+  $('advSbdCheck').addEventListener('click', loadSbd);
+  loadSbd();
+
   // ---- wiring ---------------------------------------------------------------
   $('advUpdCheck').addEventListener('click', checkUpdate);
   $('advUpdBtn').addEventListener('click', runUpdate);
