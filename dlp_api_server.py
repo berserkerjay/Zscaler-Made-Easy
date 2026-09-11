@@ -156,7 +156,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1003,6 +1003,134 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
+
+
+# ── Detection Health (continuous evaluation, phase 1) ──────────────────
+class DetectionHealthRequest(TenantCredsRequest):
+    days: int = 30
+    settings: Dict[str, Any] = {}     # threshold overrides, see detection_health.DEFAULTS
+
+
+@app.post("/api/detection-health")
+async def detection_health_generate(req: DetectionHealthRequest):
+    """What the tenant's DLP rules actually do: Workflow Automation
+    incidents and the analysts' verdicts become per-rule, engine,
+    dictionary, channel and application metrics (false-positive rate,
+    dead rules, promotable monitor rules, noisy dictionaries) plus how
+    incidents reach Workflow Automation (cloud-to-cloud or an ICAP
+    Incident Receiver). Read-only; carries report_id for
+    /report/health?id=... and the exports."""
+    try:
+        import detection_health
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"detection_health unavailable: {e}")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    days = max(1, min(int(req.days or 30), 180))
+    logs: list = []
+    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append))
+    report["logs"] = logs
+    rid = _remember_report("health", report, f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})")
+    return _REPORTS[rid]
+
+
+@app.get("/api/detection-health/schedule")
+async def detection_health_schedule():
+    """State of the 6-hour Detection Health refresh for tenant profiles
+    that remember their secret."""
+    return dict(_DH_REFRESH_STATE)
+
+
+@app.get("/api/detection-health/export/{report_id}")
+async def detection_health_export(report_id: str, format: str = "markdown"):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("health-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    if format == "json":
+        return JSONResponse(rep, headers={"Content-Disposition": f'attachment; filename="detection-health-{report_id}.json"'})
+    from detection_health import to_markdown
+    md = to_markdown(rep, rep.get("tenant_label", ""))
+    return Response(md, media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="detection-health-{report_id}.md"'})
+
+
+@app.get("/api/detection-health/{report_id}")
+async def detection_health_get(report_id: str):
+    rep = _REPORTS.get(report_id)
+    if not rep or not report_id.startswith("health-"):
+        raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
+    return rep
+
+
+@app.get("/report/health")
+async def report_health_page():
+    """Standalone tab for Detection Health (static/report_health.html)."""
+    page = os.path.join(STATIC_DIR, "report_health.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# Every 6 hours, for each tenant profile that remembers its secret, run the
+# report and keep a compact entry in the profile's history, so the trend is
+# there on the next visit without anyone clicking. Same cadence as the
+# best-practices refresh; nothing is written to any tenant.
+_DH_REFRESH_INTERVAL_SECONDS = 6 * 3600
+_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": True, "interval_seconds": _DH_REFRESH_INTERVAL_SECONDS, "last_run_at": None,
+                                     "next_run_at": None, "last_status": None, "profiles": {}}
+
+
+def _dh_refresh_once() -> None:
+    import detection_health
+    import tenant_profiles
+    for p in tenant_profiles.list_profiles():
+        if not p.get("has_secret"):
+            continue
+        pid = p["id"]
+        try:
+            full = tenant_profiles.get(pid, with_secret=True) or {}
+            creds = tenant_profiles.creds_from(full)
+            client = _build_sdk_client(creds)
+            rep = detection_health.generate(client, days=30)
+            s = rep.get("summary") or {}
+            tenant_profiles.add_history(pid, {"detection_health": {
+                "incidents": rep.get("incident_count"), "closed": s.get("closed"), "not_real": s.get("not_real"), "fp_rate_pct": s.get("fp_rate_pct"),
+                "noisy_rules": s.get("noisy_rules"), "dead_rules": s.get("dead_rules"), "promotable_rules": s.get("promotable_rules"),
+                "noisy_dictionaries": s.get("noisy_dictionaries"), "delivery": (rep.get("delivery") or {}).get("path"),
+                "errors": len(rep.get("errors") or [])}})
+            _DH_REFRESH_STATE["profiles"][pid] = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": "ok",
+                                                  "incidents": rep.get("incident_count"), "errors": len(rep.get("errors") or [])}
+        except Exception as e:  # noqa: BLE001
+            _DH_REFRESH_STATE["profiles"][pid] = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": "error", "error": str(e)[:200]}
+
+
+async def _dh_auto_refresh_loop() -> None:
+    await asyncio.sleep(30)
+    while _DH_REFRESH_STATE.get("enabled", True):
+        try:
+            await asyncio.to_thread(_dh_refresh_once)
+            _DH_REFRESH_STATE["last_status"] = "ok"
+        except Exception as e:  # noqa: BLE001
+            _DH_REFRESH_STATE["last_status"] = "error"
+            _DH_REFRESH_STATE["last_error"] = str(e)[:200]
+        _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _DH_REFRESH_STATE["next_run_at"] = time.time() + _DH_REFRESH_INTERVAL_SECONDS
+        try:
+            await asyncio.sleep(_DH_REFRESH_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            break
+
+
+@app.on_event("startup")
+async def _start_dh_refresh() -> None:
+    try:
+        import detection_health  # noqa: F401
+        import tenant_profiles  # noqa: F401
+        asyncio.create_task(_dh_auto_refresh_loop())
+    except Exception:
+        _DH_REFRESH_STATE["enabled"] = False
+        _DH_REFRESH_STATE["last_status"] = "disabled"
 
 
 @app.post("/api/dlp-packs/removal/preflight")

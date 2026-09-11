@@ -589,9 +589,9 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 hops.append(_hop("incident", "Logs & incidents", "pass" if forwarders else "warn",
                                  {"name": forwarders[0]["name"], "id": forwarders[0]["id"]} if forwarders else None,
                                  f"A match writes a DLP log (rule, engine, dictionaries and counts, user, URL, file) to Nanolog, visible in Web Insights and streamed by NSS / Cloud NSS to your SIEM. "
-                                 f"{len(forwarders)} of {len(covering)} rule(s) also send the transaction and the file to a Zscaler Incident Receiver or ICAP server, which is what Workflow Automation turns into an incident (triage, notifications, resolution); "
+                                 f"{len(forwarders)} of {len(covering)} rule(s) also forward the match and the file — cloud-to-cloud to the Zscaler Incident Receiver, or over ICAP to an on-premises Incident Receiver — which is what Workflow Automation turns into an incident (triage, notifications, resolution); "
                                  f"{len(notifiers)} notify an auditor through a notification template.",
-                                 None if forwarders else _weak("medium", "Incidents stay in the logs", "Enable 'Zscaler Incident Receiver' (or an ICAP server) on the rule so the match and the file reach Workflow Automation for triage, and attach an auditor notification template."),
+                                 None if forwarders else _weak("medium", "Incidents stay in the logs", "Enable 'Zscaler Incident Receiver' (cloud-to-cloud forwarding) or an ICAP server (on-premises Incident Receiver) on the rule so the match and the file reach Workflow Automation for triage, and attach an auditor notification template."),
                                  forwarders=[r["name"] for r in forwarders], notifiers=[r["name"] for r in notifiers]))
 
     # Parallel channels

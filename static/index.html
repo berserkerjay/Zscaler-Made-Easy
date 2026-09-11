@@ -609,6 +609,11 @@
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
           <span aria-hidden="true">📊</span> DLP Efficacy
         </button>
+        <button class="btn btn-ghost" onclick="openDetectionHealthTab()"
+                aria-label="Open Detection Health: what the DLP rules actually do, from Workflow Automation incidents and analyst verdicts — noisy rules and dictionaries, dead rules, monitor rules ready to promote, and how incidents reach Workflow Automation (opens in a new tab)"
+                title="What the DLP rules actually do, measured from Workflow Automation incidents and the analysts' verdicts: false-positive rate per rule, engine and dictionary; dead rules; monitor-only rules ready to promote; and whether incidents reach Workflow Automation cloud-to-cloud or through an ICAP Incident Receiver. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🩺</span> Detection Health
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Close the gaps">
         <div class="tool-group-l">Close the gaps</div>
@@ -5367,6 +5372,22 @@ function openAdvancedTab() {
   const w = window.open('/report/advanced', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
+async function openDetectionHealthTab() {
+  const w = window.open('/report/health?pending=1', '_blank');
+  try {
+    const id = await window.__detectionHealthGenerate(30);
+    w.location = `/report/health?id=${encodeURIComponent(id)}`;
+  } catch (e) {
+    w.location = `/report/health?error=${encodeURIComponent(e.message)}`;
+  }
+}
+window.__detectionHealthGenerate = async function (days) {
+  const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
+  const resp = await fetch('/api/detection-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, days: days || 30 }) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${resp.status}`);
+  return data.report_id;
+};
 async function openDataFlowTab() {
   const body = migrateValidateCreds(); if (!body) return;
   const w = window.open('/report/dataflow?pending=1', '_blank');

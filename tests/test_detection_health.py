@@ -1,0 +1,163 @@
+"""
+Detection Health (continuous evaluation, phase 1): incidents from
+Workflow Automation and the analysts' verdicts become per-rule /
+engine / dictionary metrics and findings, read-only.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+from fastapi.testclient import TestClient
+
+import detection_health as dh
+import dlp_api_server as srv
+from test_pack_channels import make_client
+from test_pack_deploy import Obj
+
+NOW = datetime(2026, 9, 11, 12, 0, tzinfo=timezone.utc)
+
+
+def _inc(iid, rule, engine, dicts, *, days_ago=1, status="CLOSED", resolution="", source="WEB_DLP", app="chatgpt.com", dept="Finance"):
+    return {"internalId": iid, "createdAt": (NOW - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "status": status, "resolution": resolution, "severity": "HIGH", "sourceType": source,
+            "matchingPolicies": {"rules": [{"name": rule}], "engines": [{"name": engine}],
+                                 "dictionaries": [{"name": d, "matchCount": 3} for d in dicts]},
+            "applicationInfo": {"name": app}, "userInfo": {"email": "a@example.com", "department": dept}, "matchCount": 3}
+
+
+class FakeIncidents:
+    def __init__(self, incidents, fail=False):
+        self.incidents = incidents
+        self.fail = fail
+        self.calls = []
+
+    def dlp_incident_search(self, query_params=None, fields=None, time_range=None, **kw):
+        self.calls.append((dict(query_params or {}), dict(time_range or {})))
+        if self.fail:
+            return None, None, {"message": "403 insufficient scope"}
+        page = int((query_params or {}).get("page", 1)); size = int((query_params or {}).get("page_size", 100))
+        chunk = self.incidents[(page - 1) * size: page * size]
+        # Some SDK builds nest the records one level down.
+        return type("R", (), {"incidents": [type("I", (), {"incidents": chunk})()]})(), None, None
+
+
+class FakeZWA:
+    def __init__(self, incidents, fail=False):
+        self.dlp_incidents = FakeIncidents(incidents, fail)
+
+
+def _client(incidents, fail=False):
+    client = make_client()
+    client.zwa = FakeZWA(incidents, fail)
+    z = client.zia
+    z.dlp_engine.items = [Obj(id=5001, name="US PII", engine_expression="D1.S > 0", description=""),
+                          Obj(id=5002, name="Card Data", engine_expression="D2.S > 0", description="")]
+    z.dlp_web_rules.items = [
+        Obj(id=7001, name="Z-US PII-Monitor", order=1, action="ALLOW", state="ENABLED", dlp_engines=[{"id": 5001}], description="[DLP-Check pack fed_policy_pack v2.0] x"),
+        Obj(id=7002, name="Cards-Block", order=2, action="BLOCK", state="ENABLED", dlp_engines=[{"id": 5002}], description=""),
+        Obj(id=7003, name="Old-Monitor", order=3, action="ALLOW", state="ENABLED", dlp_engines=[{"id": 5002}], description=""),
+        Obj(id=7004, name="Parked-Rule", order=4, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5002}], description="")]
+    return client
+
+
+def test_verdicts_channels_and_normalisation():
+    assert dh.verdict("CLOSED", "False Positive", None, dh.DEFAULTS["not_real"]) is False
+    assert dh.verdict("Resolved", "", "BUSINESS_JUSTIFIED", dh.DEFAULTS["not_real"]) is False
+    assert dh.verdict("CLOSED", "Confirmed leak", None, dh.DEFAULTS["not_real"]) is True
+    assert dh.verdict("OPEN", "", None, dh.DEFAULTS["not_real"]) is None
+    assert dh.channel_of_incident("ENDPOINT_DLP") == "endpoint" and dh.channel_of_incident("SAAS_API", "OFLCASB_DLP_FILE") == "saas"
+    assert dh.channel_of_incident("EMAIL_DLP") == "email" and dh.channel_of_incident("WEB_DLP") == "web"
+    n = dh.normalize_incident(_inc("i1", "R", "E", ["D1", "D2"], resolution="False Positive"), dh.DEFAULTS["not_real"])
+    assert n["rules"] == ["R"] and n["engines"] == ["E"] and [d["name"] for d in n["dictionaries"]] == ["D1", "D2"]
+    assert n["real"] is False and n["channel"] == "web" and n["application"] == "chatgpt.com" and n["department"] == "Finance"
+    assert "email" not in n and "a@example.com" not in str(n)      # no identities kept
+
+
+def test_metrics_and_findings():
+    incidents = []
+    # Z-US PII-Monitor: 12 closed in the last 14 days, 8 not real -> noisy (67%).
+    for i in range(12):
+        incidents.append(_inc(f"p{i}", "Z-US PII-Monitor", "US PII", ["SSN - High", "Date of Birth"], days_ago=1 + i % 10,
+                              resolution="False Positive" if i < 8 else "Confirmed"))
+    # Cards-Block: enforcing, 25 closed over 30 days, 1 not real -> healthy (block already).
+    for i in range(25):
+        incidents.append(_inc(f"c{i}", "Cards-Block", "Card Data", ["Credit Cards - High"], days_ago=1 + i,
+                              resolution="Benign" if i == 0 else "Confirmed", source="ENDPOINT_DLP", app="usb"))
+    # Old-Monitor: monitor-only, 22 closed over 30 days, 0 not real -> promotable.
+    for i in range(22):
+        incidents.append(_inc(f"o{i}", "Old-Monitor", "Card Data", ["Credit Cards - High"], days_ago=1 + i, resolution="Confirmed",
+                              source="SAAS_API", app="OneDrive"))
+    # Two still open on Old-Monitor: no verdict, no effect on the rate.
+    incidents += [_inc("o-open1", "Old-Monitor", "Card Data", ["Credit Cards - High"], status="OPEN", source="SAAS_API", app="OneDrive"),
+                  _inc("o-open2", "Old-Monitor", "Card Data", ["Credit Cards - High"], status="OPEN", source="SAAS_API", app="OneDrive")]
+    normalised = [dh.normalize_incident(i, dh.DEFAULTS["not_real"]) for i in incidents]
+    from pack_removal import inventory
+    rules = inventory(_client([]))["rules"]
+    ev = dh.evaluate(normalised, rules, now=NOW)
+    by = {r["name"]: r for r in ev["rules"]}
+    assert by["Z-US PII-Monitor"]["status"] == "noisy" and by["Z-US PII-Monitor"]["fp_rate_pct"] == 67 and by["Z-US PII-Monitor"]["tagged"]
+    assert by["Old-Monitor"]["status"] == "promotable" and by["Old-Monitor"]["open"] == 2 and by["Old-Monitor"]["promote_rate_pct"] == 0
+    assert by["Cards-Block"]["status"] == "healthy" and by["Cards-Block"]["monitor_only"] is False
+    assert by["Parked-Rule"]["status"] == "disabled" and by["Parked-Rule"]["incidents"] == 0
+    # Dictionaries: the SSN clone carries the noise; the DOB one only ever fires
+    # with it, so it is flagged too (phase 2 attributes co-fired noise by match count).
+    d = {x["name"]: x for x in ev["dictionaries"]}
+    assert d["SSN - High"]["noisy"] and d["SSN - High"]["fp_rate_pct"] == 67 and d["Date of Birth"]["noisy"] and not d["Credit Cards - High"]["noisy"]
+    assert {c["name"]: c["incidents"] for c in ev["channels"]} == {"web": 12, "endpoint": 25, "saas": 24}
+    kinds = [(f["kind"], f["name"]) for f in ev["findings"]]
+    assert ("noisy_rule", "Z-US PII-Monitor") in kinds and ("promotable_rule", "Old-Monitor") in kinds
+    assert ("noisy_dictionary", "SSN - High") in kinds and not any(k == "dead_rule" for k, _ in kinds)
+    s = ev["summary"]
+    assert s["incidents"] == 61 and s["open"] == 2 and s["noisy_rules"] == 1 and s["promotable_rules"] == 1 and s["noisy_dictionaries"] == 2
+    # Thresholds are settings: raise the noisy bar and the SSN rule is healthy.
+    ev2 = dh.evaluate(normalised, rules, {"fp_rate_pct": 80}, now=NOW)
+    assert {r["name"]: r["status"] for r in ev2["rules"]}["Z-US PII-Monitor"] == "healthy"
+
+
+def test_dead_rules_and_unknown_rules():
+    incidents = [_inc("x1", "Renamed-Rule", "US PII", ["SSN - High"], days_ago=2, resolution="Confirmed")]
+    normalised = [dh.normalize_incident(i, dh.DEFAULTS["not_real"]) for i in incidents]
+    from pack_removal import inventory
+    rules = inventory(_client([]))["rules"]
+    ev = dh.evaluate(normalised, rules, now=NOW)
+    by = {r["name"]: r for r in ev["rules"]}
+    assert by["Z-US PII-Monitor"]["status"] == "dead" and by["Cards-Block"]["status"] == "dead"
+    assert by["Renamed-Rule"]["status"] == "unknown_rule"
+    assert ev["summary"]["dead_rules"] == 3 and any(f["kind"] == "unknown_rule" for f in ev["findings"])
+
+
+def test_generate_reads_incidents_pages_and_reports_read_problems():
+    incidents = [_inc(f"i{i}", "Cards-Block", "Card Data", ["Credit Cards - High"], days_ago=1, resolution="Confirmed") for i in range(150)]
+    client = _client(incidents)
+    rep = dh.generate(client, days=30)
+    assert rep["incident_count"] == 150 and rep["read"] == {"incidents": True, "rules": True} and rep["errors"] == []
+    # Incident delivery: the fake tenant's rules forward nowhere, and the report says so.
+    d = rep["delivery"]
+    assert d["path"] == "none" and d["rules_enabled"] == 3 and set(d["rules_silent"]) == {"Z-US PII-Monitor", "Cards-Block", "Old-Monitor"}
+    calls = client.zwa.dlp_incidents.calls
+    assert [c[0]["page"] for c in calls] == [1, 2] and calls[0][1]["startTime"] < calls[0][1]["endTime"]
+    assert "_created" not in str(rep["rules"][0])
+    md = dh.to_markdown(rep, "acme")
+    assert "# Detection Health — acme" in md and "| Cards-Block |" in md
+    # No Workflow Automation scope: the report still comes back with the rules and says why incidents are missing.
+    rep2 = dh.generate(_client([], fail=True), days=7)
+    assert rep2["incident_count"] == 0 and rep2["read"]["incidents"] is False and any("insufficient scope" in e for e in rep2["errors"])
+    assert {r["name"] for r in rep2["rules"]} >= {"Z-US PII-Monitor", "Cards-Block"}
+    rep3 = dh.generate(make_client(), days=7)          # a client without the zwa service at all
+    assert any("Workflow Automation" in e for e in rep3["errors"])
+
+
+def test_detection_health_endpoints(monkeypatch):
+    incidents = [_inc(f"i{i}", "Z-US PII-Monitor", "US PII", ["SSN - High"], days_ago=1, resolution="False Positive") for i in range(12)]
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: _client(incidents))
+    c = TestClient(srv.app)
+    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "days": 14}
+    r = c.post("/api/detection-health", json=body)
+    assert r.status_code == 200, r.text
+    rep = r.json()
+    assert rep["report_id"].startswith("health-") and rep["summary"]["noisy_rules"] == 1 and rep["tenant_label"].startswith("acme")
+    assert c.get(f"/api/detection-health/{rep['report_id']}").json()["incident_count"] == 12
+    md = c.get(f"/api/detection-health/export/{rep['report_id']}?format=markdown")
+    assert md.status_code == 200 and "Detection Health" in md.text
+    assert c.get("/report/health").status_code == 200
+    assert c.get("/api/detection-health/schedule").json()["interval_seconds"] == 6 * 3600
