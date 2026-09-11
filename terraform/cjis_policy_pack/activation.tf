@@ -14,6 +14,7 @@ resource "zia_activation_status" "this" {
     zia_dlp_web_rules.z_cjis_nics_firearms_monitor,
     zia_dlp_web_rules.z_cjis_info_sharing_monitor,
     zia_dlp_web_rules.z_cjis_any_signal_monitor,
+    zia_dlp_web_rules.z_cjis_markings_medium_confidence_monitor,
     zia_endpoint_dlp_rules.z_cjis_markings_endpoint,
     zia_casb_dlp_rules.z_cjis_markings_saas,
     zia_outbound_email_dlp.z_cjis_markings_email,
@@ -41,5 +42,8 @@ resource "zia_activation_status" "this" {
     zia_endpoint_dlp_rules.z_cjis_any_signal_endpoint,
     zia_casb_dlp_rules.z_cjis_any_signal_saas,
     zia_outbound_email_dlp.z_cjis_any_signal_email,
+    zia_endpoint_dlp_rules.z_cjis_markings_medium_confidence_endpoint,
+    zia_casb_dlp_rules.z_cjis_markings_medium_confidence_saas,
+    zia_outbound_email_dlp.z_cjis_markings_medium_confidence_email,
   ]
 }

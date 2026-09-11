@@ -135,6 +135,21 @@ resource "zia_dlp_web_rules" "z_cjis_any_signal_monitor" {
   }
 }
 
+resource "zia_dlp_web_rules" "z_cjis_markings_medium_confidence_monitor" {
+  name                         = "Z-CJIS Markings Medium Confidence-Monitor"
+  description                  = "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. One rule per engine: this rule carries CJIS Markings Medium Confidence only. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 9
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  protocols                    = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
+  dlp_engines {
+    id = [zia_dlp_engines.cjis_markings_medium_confidence.id]
+  }
+}
+
 resource "zia_endpoint_dlp_rules" "z_cjis_markings_endpoint" {
   name                         = "Z-CJIS Markings [Endpoint]"
   description                  = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
@@ -600,6 +615,58 @@ resource "zia_outbound_email_dlp" "z_cjis_any_signal_email" {
   }
   email_tenants {
     id = var.saas_tenant_ids_z_cjis_any_signal_email
+  }
+}
+
+resource "zia_endpoint_dlp_rules" "z_cjis_markings_medium_confidence_endpoint" {
+  name                         = "Z-CJIS Markings Medium Confidence [Endpoint]"
+  description                  = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 9
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  device_trust_levels          = ["UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST"]
+  user_risk_score_levels       = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+  eun_enabled                  = false
+  dlp_engines {
+    id = [zia_dlp_engines.cjis_markings_medium_confidence.id]
+  }
+}
+
+resource "zia_casb_dlp_rules" "z_cjis_markings_medium_confidence_saas" {
+  name                         = "Z-CJIS Markings Medium Confidence [SaaS]"
+  description                  = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 9
+  rank                         = var.policy_rank
+  state                        = "DISABLED"
+  action                       = "OFLCASB_DLP_REPORT_INCIDENT"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  type                         = "OFLCASB_DLP_FILE"
+  collaboration_scope          = ["ANY"]
+  dlp_engines {
+    id = [zia_dlp_engines.cjis_markings_medium_confidence.id]
+  }
+  cloud_app_tenants {
+    id = var.saas_tenant_ids_z_cjis_markings_medium_confidence_saas
+  }
+}
+
+resource "zia_outbound_email_dlp" "z_cjis_markings_medium_confidence_email" {
+  name                         = "Z-CJIS Markings Medium Confidence [Email]"
+  description                  = "Email DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.0] Terraform-managed."
+  order                        = var.rule_starting_order + 9
+  state                        = "DISABLED"
+  action                       = "ALLOW"
+  severity                     = "RULE_SEVERITY_INFO"
+  without_content_inspection   = false
+  dlp_engines {
+    id = [zia_dlp_engines.cjis_markings_medium_confidence.id]
+  }
+  email_tenants {
+    id = var.saas_tenant_ids_z_cjis_markings_medium_confidence_email
   }
 }
 

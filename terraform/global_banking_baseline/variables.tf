@@ -72,13 +72,23 @@ variable "saas_tenant_ids_bank_payment_instructions_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_customer_pii_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_customer_pii_global_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII (Global) [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_customer_pii_email" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_customer_pii_global_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII (Global) [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_us_pii_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-US PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_us_pii_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-US PII [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -92,23 +102,53 @@ variable "saas_tenant_ids_bank_customer_pii_bulk_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_customer_records_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Records [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_customer_financial_records_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Financial Records [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_customer_records_email" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Records [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_customer_financial_records_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Financial Records [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_mnpi_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_kyc_and_aml_files_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-KYC and AML Files [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_mnpi_email" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_kyc_and_aml_files_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-KYC and AML Files [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_credit_and_loan_applications_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Credit and Loan Applications [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_credit_and_loan_applications_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Credit and Loan Applications [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_mnpi_and_deal_information_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI and Deal Information [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_mnpi_and_deal_information_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI and Deal Information [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_financial_information_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Financial Information [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_bank_financial_information_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Financial Information [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

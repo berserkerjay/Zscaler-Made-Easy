@@ -129,15 +129,33 @@ def main() -> int:
         pass
     json.dump(dicts, open(os.path.join(cfg, "dlp_dictionaries.json"), "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     json.dump(engines, open(os.path.join(cfg, "dlp_engines.json"), "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-    # Rules that referenced the old engines now reference every new engine.
+    # One rule per engine (the pack convention): the first existing Web rule
+    # is the template, every language gets its own rule, and the mirrors on
+    # Endpoint, SaaS and Email are rebuilt so every channel carries the same
+    # number of rules.
     pol_path = os.path.join(cfg, "dlp_policies.json")
     if os.path.exists(pol_path):
         policies = json.load(open(pol_path, encoding="utf-8"))
-        names = [e["name"] for e in engines]
-        for p in policies:
-            if p.get("engines"):
-                p["engines"] = names
-        json.dump(policies, open(pol_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        import pack_channels as pc
+        web = [p for p in policies if pc.channel_of(p) == pc.WEB]
+        template = next((p for p in web if p.get("engines")), None) or {
+            "name": f"{args.prefix}Code to AI-Block", "action": "ALLOW", "target_action": "BLOCK", "state": "DISABLED", "rank": 7,
+            "protocols": ["WEBSOCKETSSL_RULE", "WEBSOCKET_RULE", "FTP_RULE", "HTTPS_RULE", "HTTP_RULE"],
+            "cloud_app_classes": ["AI_ML"], "severity": "RULE_SEVERITY_INFO"}
+        pretty = {"CSharp": "C#", "CPlusPlus": "C++", "VBNet": "VB.NET"}
+        new_web = []
+        for e, L in zip(engines, langs):
+            q = {k: v for k, v in template.items() if k not in ("channel_mirror",)}
+            q["name"] = f"{args.prefix}{L['short']} Code to AI-Block"
+            q["engines"] = [e["name"]]
+            q["description"] = (f"Inline Web DLP: uploads containing {pretty.get(L['short'], L['lang'])} source code to AI/ML applications (engine {e['name']}). "
+                                "Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language "
+                                "has its own incident count and can be enabled, tuned or hardened on its own.")
+            new_web.append(q)
+        others = [p for p in policies if pc.channel_of(p) not in (pc.WEB, pc.ENDPOINT, pc.SAAS, pc.EMAIL)]
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fan_out_channels import fan_out
+        json.dump(fan_out(others + new_web), open(pol_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     print(f"{args.pack}: {len(langs)} languages -> {len(dicts)} dictionaries, {len(engines)} engines "
           f"(signal > {args.threshold}, HTML > {args.html_threshold}); replaced engines: {', '.join(old_engines) or 'none'}")
     for L in langs:

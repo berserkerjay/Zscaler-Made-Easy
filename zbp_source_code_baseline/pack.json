@@ -1,7 +1,7 @@
 {
   "name": "Source Code to AI Policy Pack",
   "version": "4.14",
-  "description": "Blocks uploads of source code to AI/ML applications, detecting 13 languages (C#, C++, Go, HTML, Java, JavaScript, Kotlin, Python, Rust, SQL, Swift, TypeScript, VB.NET) with the v4.14 Source Code DLP pattern library. Each language is two dictionaries joined with All (AND) in one engine: an Anchor (one structural fingerprint, threshold > 0) and a Signal (eight syntax patterns counted as unique matches, count threshold), so a file triggers only when the language's fingerprint is present AND enough language-specific evidence accumulates. That composition removes the cousin-language false positives (Java/Kotlin, C#/VB, JavaScript/TypeScript) the old three-dictionary ZBP set produced. The rule's application scope is resolved from the tenant's AI_ML cloud-application catalogue at deploy time. Immutable: objects that drift from this definition are restored. The rule's action is BLOCK, so enable it only after tuning in a pilot scope. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "description": "Detects source code in 13 languages (C#, C++, Go, HTML, Java, JavaScript, Kotlin, Python, Rust, SQL, Swift, TypeScript, VB.NET) on its way to AI/ML applications: one Signal and one Anchor dictionary per language, one engine per language, and one rule per engine on Inline Web DLP, mirrored one for one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (13 x 4 rules). Every rule ships DISABLED and monitor-only with BLOCK as its target action.",
   "source": "DLP Pattern Library v4.14 (per-pattern descriptions with regex); rules from mkoyfman/zbp-automation zbp-source-code-dlp-zia",
   "references": [
     "Zscaler Best Practices: Data Protection for Generative AI",
@@ -12,7 +12,8 @@
     "Signal thresholds: > 4 unique matches for every language, > 3 for HTML (its structure is constrained, per the library notes). Change --threshold / --html-threshold when regenerating if the specification document sets different counts.",
     "The three ZBP dictionaries and engines this pack used to ship (ZBP-Python/JavaScript/Shell Code Detection) are gone. A tenant that has them from an earlier deploy keeps them; delete them in the portal or undo that deployment, they are no longer referenced by any rule of this pack.",
     "Patterns use (?m) line anchors and non-capturing groups, which ZIA's PCRE accepts; none uses lookaround. Every pattern is within ZIA's 256-byte limit and every Signal dictionary has exactly eight patterns (the ZIA maximum).",
-    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed."
+    "Every rule ships DISABLED and monitor-only (ALLOW, or report incident on SaaS). A rule designed to block or confirm keeps that as target_action; the data-governance journey names it as the hardening step once incidents have been reviewed.",
+    "One rule per engine: each language has its own rule so it has its own incident count and can be enabled, tuned or hardened on its own; the four channels carry the same 13 rules."
   ],
   "confidence_tweaks": [],
   "baseline": {

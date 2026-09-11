@@ -45,6 +45,7 @@ output "rules" {
     zia_dlp_web_rules.z_cjis_nics_firearms_monitor.name,
     zia_dlp_web_rules.z_cjis_info_sharing_monitor.name,
     zia_dlp_web_rules.z_cjis_any_signal_monitor.name,
+    zia_dlp_web_rules.z_cjis_markings_medium_confidence_monitor.name,
     zia_endpoint_dlp_rules.z_cjis_markings_endpoint.name,
     zia_casb_dlp_rules.z_cjis_markings_saas.name,
     zia_outbound_email_dlp.z_cjis_markings_email.name,
@@ -72,5 +73,8 @@ output "rules" {
     zia_endpoint_dlp_rules.z_cjis_any_signal_endpoint.name,
     zia_casb_dlp_rules.z_cjis_any_signal_saas.name,
     zia_outbound_email_dlp.z_cjis_any_signal_email.name,
+    zia_endpoint_dlp_rules.z_cjis_markings_medium_confidence_endpoint.name,
+    zia_casb_dlp_rules.z_cjis_markings_medium_confidence_saas.name,
+    zia_outbound_email_dlp.z_cjis_markings_medium_confidence_email.name,
   ]
 }

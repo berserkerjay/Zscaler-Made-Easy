@@ -42,13 +42,133 @@ variable "activate" {
   default     = true
 }
 
-variable "saas_tenant_ids_src_dlp_block_source_code_uploads_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule SRC-[DLP] Block Source Code Uploads [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_src_csharp_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-CSharp Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_src_dlp_block_source_code_uploads_email" {
-  description = "IDs of the onboarded SaaS application tenants rule SRC-[DLP] Block Source Code Uploads [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_src_csharp_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-CSharp Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_cplusplus_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-CPlusPlus Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_cplusplus_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-CPlusPlus Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_go_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Go Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_go_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Go Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_html_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-HTML Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_html_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-HTML Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_java_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Java Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_java_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Java Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_javascript_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-JavaScript Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_javascript_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-JavaScript Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_kotlin_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Kotlin Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_kotlin_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Kotlin Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_python_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Python Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_python_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Python Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_rust_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Rust Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_rust_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Rust Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_sql_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-SQL Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_sql_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-SQL Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_swift_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Swift Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_swift_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-Swift Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_typescript_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-TypeScript Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_typescript_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-TypeScript Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_vbnet_code_to_ai_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-VBNet Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_src_vbnet_code_to_ai_email" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-VBNet Code to AI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

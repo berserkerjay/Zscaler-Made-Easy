@@ -62,13 +62,33 @@ variable "saas_tenant_ids_zbp_itar_international_traffic_in_arms_regulations_ema
   type        = list(number)
 }
 
-variable "saas_tenant_ids_zbp_traffic_light_protocol_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule ZBP-Traffic Light Protocol [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_zbp_tlp_red_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-TLP Red [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_zbp_traffic_light_protocol_email" {
-  description = "IDs of the onboarded SaaS application tenants rule ZBP-Traffic Light Protocol [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_zbp_tlp_red_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-TLP Red [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_tlp_amber_strict_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-TLP Amber Strict [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_tlp_amber_strict_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-TLP Amber Strict [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_tlp_amber_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-TLP Amber [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_tlp_amber_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-TLP Amber [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -82,13 +102,23 @@ variable "saas_tenant_ids_zbp_us_pii_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_zbp_us_phi_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_zbp_us_phi_medium_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI - Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_zbp_us_phi_email" {
-  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_zbp_us_phi_medium_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI - Medium Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_us_phi_high_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI - High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_zbp_us_phi_high_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule ZBP-US PHI - High Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

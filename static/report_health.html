@@ -48,7 +48,7 @@
       const r = await fetch(`/api/detection-health/${encodeURIComponent(id)}`, { cache: 'no-store' });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
-      report = data; rid = id;
+      report = data; rid = id; window.__dhReport = data;
       meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · read ' + new Date(data.generated_at).toLocaleTimeString() : ''}`;
       const ctl = document.getElementById('rpControls'); ctl.hidden = false;
       document.getElementById('dhLive').hidden = !(window.opener && !window.opener.closed);

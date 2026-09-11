@@ -79,7 +79,7 @@
     why: 'A rule that fires and is always dismissed costs the customer analyst time; a rule that never fires is either perfect or dead. Either way it is a tuning decision with evidence.',
     when: 'On return visits, once incidents have been flowing for a few weeks.',
     get: 'Per-rule health with the reason, and typed proposals (raise a threshold, promote to block) you can approve or dismiss.',
-    next: 'Approve the proposals the customer agrees with; they go through the same preflight as a deploy.',
+    next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
   X.compliance = {
     group: 'Find the gaps', name: 'Regulatory & Compliance Alignment', href: '/report/compliance',

@@ -35,7 +35,7 @@ URL = [{"id": 20, "name": "Block gambling", "order": 1, "state": "ENABLED", "act
 CAC = [{"id": 30, "name": "AI no upload", "state": "ENABLED", "type": "AI_ML", "applications": ["CHATGPT_AI"], "actions": ["ALLOW_AI_ML_WEB_USE", "BLOCK_AI_ML_UPLOAD"]},
        {"id": 31, "name": "File share allow all", "state": "ENABLED", "type": "FILE_SHARE", "cloudAppClasses": ["FILE_SHARE"], "actions": ["ALLOW_FILE_SHARE_UPLOAD", "ALLOW_FILE_SHARE_VIEW"]}]
 FTC = [{"id": 40, "name": "Block archives to file share", "state": "ENABLED", "filteringAction": "BLOCK", "operation": "UPLOAD", "fileTypes": ["FTCATEGORY_ZIP"], "cloudAppClasses": ["FILE_SHARE"]}]
-DLP = [{"id": 50, "name": "Bank-Customer PII-Monitor", "order": 1, "state": "ENABLED", "action": "ALLOW", "dlpEngines": [{"name": "Bank-Customer PII (Global)"}]},
+DLP = [{"id": 50, "name": "Bank-Customer PII (Global)-Monitor", "order": 1, "state": "ENABLED", "action": "ALLOW", "dlpEngines": [{"name": "Bank-Customer PII (Global)"}]},
        {"id": 51, "name": "Bank-Payment Card Data-Bulk-Block", "order": 2, "state": "ENABLED", "action": "BLOCK", "cloudApplications": ["CHATGPT_AI"], "dlpEngines": [{"name": "Bank-Payment Card Data - Bulk"}],
         "zscalerIncidentReceiver": True, "notificationTemplate": {"id": 9, "name": "DLP auditor template"}, "severity": "RULE_SEVERITY_HIGH"}]
 ROUTES = {
@@ -43,7 +43,7 @@ ROUTES = {
     "/zia/pacFiles": PAC, "/zia/sslInspectionRules": SSL, "/zia/urlFilteringRules": URL, "/zia/cloudApplicationRules": CAC,
     "/zia/fileTypeControlRules": FTC, "/zia/webDlpRules": DLP,
     "/zia/endpointDlpRules": [{"id": 60, "name": "Bank-Endpoint-Monitor", "state": "ENABLED", "action": "ALLOW"}],
-    "/zia/casbDlpRules": [], "/zia/emailDlpRules": [{"id": 70, "name": "Bank-Customer PII [Email]", "state": "DISABLED", "action": "ALLOW"}],
+    "/zia/casbDlpRules": [], "/zia/emailDlpRules": [{"id": 70, "name": "Bank-Customer PII (Global) [Email]", "state": "DISABLED", "action": "ALLOW"}],
     "/zia/urlCategories": [{"id": "FILE_HOST", "configuredName": "File Sharing", "urls": [], "dbCategorizedUrls": []},
                            {"id": "CUSTOM_01", "configuredName": "Partner portals", "customCategory": True, "urls": ["portal.partner.com"], "dbCategorizedUrls": []}],
 }
@@ -124,11 +124,11 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     # Pack overlay: the banking pack's rules are found by name in every channel.
     bank = next(p for p in t["packs"] if p["id"] == "global_banking_baseline")
     st = {r["name"]: r for r in bank["rules"]}
-    assert st["Bank-Customer PII-Monitor"]["state"] == "monitoring" and st["Bank-Customer PII-Monitor"]["on_path"]
+    assert st["Bank-Customer PII (Global)-Monitor"]["state"] == "monitoring" and st["Bank-Customer PII (Global)-Monitor"]["on_path"]
     # Each inline rule is mirrored to every channel; the tenant here has the
     # email mirror disabled and no SaaS rule, so coverage is partial.
-    assert st["Bank-Payment Card Data-Bulk-Block"]["state"] == "enforcing" and st["Bank-Customer PII [Email]"]["state"] == "disabled"
-    assert st["Bank-Customer PII [SaaS]"]["state"] == "missing" and bank["coverage"] == "partial"
+    assert st["Bank-Payment Card Data-Bulk-Block"]["state"] == "enforcing" and st["Bank-Customer PII (Global) [Email]"]["state"] == "disabled"
+    assert st["Bank-Customer PII (Global) [SaaS]"]["state"] == "missing" and bank["coverage"] == "partial"
     s = rep["summary"]
     assert s["traces"] == len(df.TRAFFIC_CLASSES) * 3 and s["bypassed"] >= len(df.TRAFFIC_CLASSES) and s["high"] > 0
 

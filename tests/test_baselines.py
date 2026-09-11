@@ -428,7 +428,7 @@ def test_shipped_baselines_are_discoverable_and_plan():
     client.zia.dlp_dictionary.items = [Obj(id=i + 1, name=n, custom=False) for i, n in enumerate(predefined)]
     rep = pd.preflight(client, [{"id": ent["id"], "dir": ent["dir"]}], writes_enabled=True)
     assert rep["status"] == "ready", rep["blockers"] + rep.get("warnings", [])
-    assert rep["baselines"][0]["missing"] == 64   # 31 dicts + 9 engines + 6 rules x 4 channels
+    assert rep["baselines"][0]["missing"] == 76   # 31 dicts + 9 engines + 9 rules x 4 channels (one rule per engine)
 
 
 def test_shipped_packs_ship_disabled_at_info():
@@ -475,9 +475,9 @@ def test_fed_pack_carries_the_cui_marking_design():
     assert cui_e["CUI-Detect-Contextual"]["expression"].startswith("(((D:CUI-Contextual-Phrases > 2) AND (D:CUI-Category-Phrases > 0)))")
     assert "CUI-Category-Phrases" not in cui_e["CUI-Detect-Block-Grade"]["expression"] + cui_e["CUI-Detect-Caution-Grade"]["expression"]
     rules = {r["name"]: r for r in json.load(open(f"{fed['dir']}/configs/dlp_policies.json", encoding="utf-8")) if not r.get("channel_mirror")}
-    assert rules["CUI-Monitor-All"]["engines"] == ["CUI-Detect-All", "CUI-Detect-Contextual"]
+    assert rules["CUI-Monitor-All"]["engines"] == ["CUI-Detect-All"] and rules["CUI-Monitor-Contextual"]["engines"] == ["CUI-Detect-Contextual"]   # one rule per engine
     assert rules["CUI-Block-Marked-Documents"]["engines"] == ["CUI-Detect-Block-Grade"]
-    assert "Z-Controlled Unclassified Information-Monitor" not in rules and len(rules) == 12
+    assert "Z-Controlled Unclassified Information-Monitor" not in rules and len(rules) == 17   # one rule per engine
     # Every dictionary an engine names is shipped by the pack or is a tenant predefined one.
     shipped = {d["name"] for d in dicts}
     import re
@@ -498,9 +498,9 @@ def test_fed_pack_cui_rules_deploy_and_measure():
     # "warnings": the V1.1 confidence tweaks raise predefined dictionaries to high confidence.
     assert rep["status"] in ("ready", "warnings"), rep["blockers"] + rep["warnings"]
     res = pd.apply(client, [{"id": fed["id"], "dir": fed["dir"]}], plan_hash=rep["plan_hash"], writes_enabled=True)
-    # 72 dicts + 17 engines + 12 rules per channel across web, endpoint, saas, email
+    # 72 dicts + 17 engines + 17 rules per channel (one rule per engine) across web, endpoint, saas, email
     # (plus the V1.1 confidence tweaks modifying two predefined dictionaries).
-    assert res["summary"]["created"] == 72 + 17 + 48   # 12 rules x 4 channels
+    assert res["summary"]["created"] == 72 + 17 + 68   # 17 rules x 4 channels
     full = next(e for e in client.zia.dlp_engine.added if e["name"] == "CUI-Detect-All")["engine_expression"]
     assert "D:" not in full and full.count(".S") == 28 and "AND NOT (D" in full
     prox = next(d for d in client.zia.dlp_dictionary.added if d["name"] == "CUI-Prox-LEGAL")

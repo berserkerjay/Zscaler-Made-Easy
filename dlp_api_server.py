@@ -1020,6 +1020,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
     report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append))
     report["logs"] = logs
     report["tenant_key"] = creds.get("vanity_domain") or "unknown"
+    report["profile_id"] = getattr(req, "profile_id", "") or ""   # lets the tab apply proposals with the profile's remembered secret
     try:
         import proposals
         report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
@@ -1069,6 +1070,68 @@ async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
         return proposals.decide(tenant, pid, req.decision, by=req.by[:80], note=req.note[:500], days=req.days, confirm=req.confirm)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class ProposalApplyRequest(TenantCredsRequest):
+    by: str = ""
+    confirm: bool = False
+
+
+def _proposal_client(req: ProposalApplyRequest):
+    creds = _tenant_creds(req)
+    if not (creds.get("client_id") and creds.get("client_secret")):
+        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open Detection Health from the assessment page (its credentials are used), or select a tenant profile that remembers its secret.")
+    return _build_sdk_client(creds)
+
+
+@app.post("/api/proposals/{tenant}/{pid}/preview")
+async def proposals_preview(tenant: str, pid: str, req: ProposalApplyRequest, direction: str = "apply"):
+    """Re-read the rules an approved proposal touches and show exactly what
+    would change (or what a rollback would restore). Read-only."""
+    import proposal_apply
+    client = await asyncio.to_thread(_proposal_client, req)
+    try:
+        return await asyncio.to_thread(proposal_apply.preview, client, tenant, pid, direction="rollback" if direction == "rollback" else "apply")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/proposals/{tenant}/{pid}/apply")
+async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
+    """Apply an approved proposal through the deploy path: write gate,
+    re-read, update, read-back, recorded way back. Nothing is activated."""
+    import proposal_apply
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    client = await asyncio.to_thread(_proposal_client, req)
+    logs: list = []
+    try:
+        out = await asyncio.to_thread(lambda: proposal_apply.apply(client, tenant, pid, writes_enabled=True, by=req.by[:80], log=logs.append))
+    except (ValueError, PermissionError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out["logs"] = logs
+    return out
+
+
+@app.post("/api/proposals/{tenant}/{pid}/rollback")
+async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
+    """Put back the value the rule had before the proposal was applied,
+    with the same re-read and read-back."""
+    import proposal_apply
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    client = await asyncio.to_thread(_proposal_client, req)
+    logs: list = []
+    try:
+        out = await asyncio.to_thread(lambda: proposal_apply.rollback(client, tenant, pid, writes_enabled=True, by=req.by[:80], log=logs.append))
+    except (ValueError, PermissionError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    out["logs"] = logs
+    return out
 
 
 @app.get("/api/detection-health/schedule")

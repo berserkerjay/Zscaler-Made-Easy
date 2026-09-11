@@ -132,3 +132,13 @@ variable "saas_tenant_ids_z_cjis_any_signal_email" {
   type        = list(number)
 }
 
+variable "saas_tenant_ids_z_cjis_markings_medium_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Markings Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_cjis_markings_medium_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-CJIS Markings Medium Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+

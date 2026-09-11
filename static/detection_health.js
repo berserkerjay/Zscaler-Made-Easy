@@ -74,7 +74,46 @@ window.renderDetectionHealth = renderDetectionHealth;
 // Typed proposals built from this report (and the 6-hour refresh):
 // a person approves, dismisses or snoozes each one. Nothing is written
 // to the tenant from here; approved proposals wait for the apply step.
-const DH_PSTATUS = { open: ['Open', 'warn'], approved: ['Approved, waiting to apply', 'ok'], snoozed: ['Snoozed', 'dim'], dismissed: ['Dismissed', 'dim'], applied: ['Applied', 'ok'], resolved: ['Resolved', 'dim'], failed: ['Apply failed', 'fail'] };
+const DH_PSTATUS = { open: ['Open', 'warn'], approved: ['Approved, ready to apply', 'ok'], snoozed: ['Snoozed', 'dim'], dismissed: ['Dismissed', 'dim'], applied: ['Applied', 'ok'], rolled_back: ['Rolled back', 'dim'], resolved: ['Resolved', 'dim'], failed: ['Apply failed', 'fail'] };
+// Credentials for applying: the assessment page that opened this tab (its
+// tenant details), else the profile the report was made from.
+function _dhCreds() {
+  try { if (window.opener && !window.opener.closed && typeof window.opener.migrateValidateCreds === 'function') { const b = window.opener.migrateValidateCreds(); if (b) return b; } } catch (e) { /* cross-window */ }
+  return { profile_id: (window.__dhReport || {}).profile_id || '' };
+}
+async function _dhPost(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+  return d;
+}
+function _dhStepsHtml(pv) {
+  return `<table class="dh-steps"><thead><tr><th scope="col">Rule</th><th scope="col">Channel</th><th scope="col">${_dhE(pv.field)} now</th><th scope="col">→</th><th scope="col">Check</th></tr></thead><tbody>${(pv.steps || []).map(s => `<tr><td>${_dhE(s.name)}</td><td>${_dhE(s.channel_label || s.channel)}</td><td>${_dhE(s.current == null ? '—' : s.current)}</td><td>${_dhE(s.to == null ? '—' : s.to)}</td><td class="${s.ok ? (s.noop ? 'dim' : 'ok') : 'fail'}">${_dhE(s.result ? (s.result + (s.verified ? ', read back and verified' : '')) : (s.ok ? (s.noop ? 'no change needed' : 'ready') : 'refused'))}${s.why ? ': ' + _dhE(s.why) : ''}</td></tr>`).join('')}</tbody></table>`;
+}
+// Preview → confirm → apply (or roll back), with the read-back shown.
+async function _dhApplyFlow(tenant, p, direction, box, host) {
+  const creds = _dhCreds();
+  box.innerHTML = '<div class="df-hint">Reading the rules in the tenant…</div>';
+  let pv;
+  try { pv = await _dhPost(`/api/proposals/${encodeURIComponent(tenant)}/${encodeURIComponent(p.id)}/preview?direction=${direction}`, creds); }
+  catch (e) { box.innerHTML = `<div class="df-hint">Could not preview: ${_dhE(e.message)}</div>`; return; }
+  const verb = direction === 'apply' ? 'Apply' : 'Roll back';
+  box.innerHTML = `<div class="dh-preview"><strong>${verb}: what would change</strong>${_dhStepsHtml(pv)}
+    <div class="df-hint">${_dhE(pv.note || '')}</div>
+    <div class="dh-pactions">${pv.ok && pv.changes ? `<label class="df-ctl"><input type="checkbox" class="dh-ok"> <span class="lbl">I have reviewed the change and want it applied to the tenant</span></label><button type="button" class="rp-btn primary" data-go="${direction}" disabled>${verb} now</button>` : `<span class="df-by">${pv.ok ? 'Nothing to change.' : 'Refused: fix the reason above, refresh Detection Health and decide again.'}</span>`}<button type="button" class="rp-btn" data-cancel="1">Close</button></div></div>`;
+  const cb = box.querySelector('.dh-ok'), go = box.querySelector('[data-go]');
+  if (cb && go) cb.addEventListener('change', () => { go.disabled = !cb.checked; });
+  box.querySelector('[data-cancel]').addEventListener('click', () => { box.innerHTML = ''; });
+  if (go) go.addEventListener('click', async () => {
+    go.disabled = true;
+    box.querySelector('.df-hint').textContent = `${verb === 'Apply' ? 'Applying' : 'Rolling back'}… each rule is updated and read back.`;
+    try {
+      const out = await _dhPost(`/api/proposals/${encodeURIComponent(tenant)}/${encodeURIComponent(p.id)}/${direction}`, { ...creds, confirm: true, by: (host.querySelector('#dhBy') || {}).value || '' });
+      box.innerHTML = `<div class="dh-preview"><strong>${out.ok ? (direction === 'apply' ? 'Applied and verified.' : 'Rolled back and verified.') : 'Some rules could not be changed.'}</strong>${_dhStepsHtml({ field: out.field, steps: out.results })}<div class="df-hint">${_dhE(out.activation || '')}</div></div>`;
+      setTimeout(() => renderProposals(tenant, host), 1500);
+    } catch (e) { box.innerHTML = `<div class="df-hint">Not applied: ${_dhE(e.message)}</div>`; }
+  });
+}
 let _dhPTenant = null, _dhPShowClosed = false;
 async function renderProposals(tenant, host) {
   if (!host) return;
@@ -117,7 +156,9 @@ async function renderProposals(tenant, host) {
         <button type="button" class="rp-btn primary" data-act="approve" data-id="${_dhE(p.id)}">Approve${dbl ? ' (stricter for users)' : ''}</button>
         <button type="button" class="rp-btn" data-act="snooze" data-id="${_dhE(p.id)}" title="Quiet for 14 days">Snooze</button>
         <button type="button" class="rp-btn" data-act="dismiss" data-id="${_dhE(p.id)}" title="Not raised again for ${data.dismiss_days} days">Dismiss</button>
-      </div>` : (p.status === 'approved' || p.status === 'snoozed' || p.status === 'dismissed' ? `<div class="dh-pactions"><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div>` : '');
+      </div>` : (p.status === 'approved' && p.applies_via === 'phase 3' ? `<div class="dh-pactions"><button type="button" class="rp-btn primary" data-flow="apply" data-id="${_dhE(p.id)}">Preview and apply to the tenant</button><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div><div class="dh-flow" data-box="${_dhE(p.id)}"></div>`
+      : (p.status === 'applied' || p.status === 'failed') && p.applies_via === 'phase 3' ? `<div class="dh-pactions"><button type="button" class="rp-btn" data-flow="rollback" data-id="${_dhE(p.id)}">Roll back</button></div><div class="dh-flow" data-box="${_dhE(p.id)}"></div>`
+      : (p.status === 'approved' || p.status === 'snoozed' || p.status === 'dismissed' ? `<div class="dh-pactions"><button type="button" class="rp-btn" data-act="reopen" data-id="${_dhE(p.id)}">Reopen</button></div>` : ''));
     return `<li class="dh-prop st-${cls}">
       <div class="dh-phead"><span class="df-chip st-${cls}">${_dhE(lab)}</span><span class="df-chip st-dim">${_dhE(p.label)}</span><strong>${_dhE(p.title)}</strong>${p.times_seen > 1 ? ` <span class="df-by">seen ${p.times_seen}×</span>` : ''}</div>
       <div class="df-hop-d"><strong>Change:</strong> ${_dhE(change(p))} <span class="df-by">(${p.applies_via === 'phase 3' ? 'applied from here once approved' : 'made in the ZIA portal; the proposal tracks it'})</span></div>
@@ -136,9 +177,13 @@ async function renderProposals(tenant, host) {
         <a class="rp-btn" href="/api/proposals/export?tenant=${encodeURIComponent(tenant)}">Markdown</a>
       </div>
     </div>
-    <div class="df-hint">Each proposal names one change, the evidence behind it, the expected effect and the way back. Approving never writes anything by itself: approved proposals are applied from the deploy path with a read-back, and a change that makes the tenant stricter for users (monitor → confirm or block) needs the confirm phrase. A dismissal is remembered for ${data.dismiss_days} days.</div>
+    <div class="df-hint">Each proposal names one change, the evidence behind it, the expected effect and the way back. Approving never writes anything by itself. An approved proposal gets a <em>Preview and apply</em> button: the rules are re-read, you see exactly what changes, you confirm, the app updates each rule and reads it back, and a <em>Roll back</em> stays available afterwards (write mode required; ZIA keeps the change pending until an admin activates). A change that makes the tenant stricter for users (monitor → confirm or block) needs the confirm phrase. A dismissal is remembered for ${data.dismiss_days} days.</div>
     <ul class="dh-plist">${(data.items || []).map(row).join('') || '<li class="df-hop-d">Nothing to decide: the evaluation raised no proposal for this tenant.</li>'}</ul>`;
   host.querySelector('#dhClosed').addEventListener('change', e => { _dhPShowClosed = e.target.checked; renderProposals(tenant, host); });
+  host.querySelectorAll('button[data-flow]').forEach(b => b.addEventListener('click', () => {
+    const p = (data.items || []).find(x => x.id === b.dataset.id); if (!p) return;
+    _dhApplyFlow(tenant, p, b.dataset.flow, host.querySelector(`.dh-flow[data-box="${CSS.escape(p.id)}"]`), host);
+  }));
   host.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', async () => {
     const id = b.dataset.id, act = b.dataset.act;
     const conf = host.querySelector(`.dh-confirm[data-for="${CSS.escape(id)}"]`);

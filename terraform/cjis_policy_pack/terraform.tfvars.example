@@ -27,3 +27,5 @@ activate            = true
 # saas_tenant_ids_z_cjis_info_sharing_email = [123456]
 # saas_tenant_ids_z_cjis_any_signal_saas = [123456]
 # saas_tenant_ids_z_cjis_any_signal_email = [123456]
+# saas_tenant_ids_z_cjis_markings_medium_confidence_saas = [123456]
+# saas_tenant_ids_z_cjis_markings_medium_confidence_email = [123456]

@@ -282,6 +282,32 @@ Nothing leaves the laptop and nothing is stored; evidence lines have
 passwords and tokens blanked out. *Download findings* gives you a Markdown
 file for the ticket.
 
+## 4h. Detection Health and the proposals queue (return visits)
+
+Toolbar › *Find the gaps › Detection Health*. Once incidents have flowed
+through Workflow Automation for a few weeks, this tab measures what the
+DLP rules actually do (false-positive rate per rule, engine and
+dictionary; dead rules; monitor rules ready to promote) and turns the
+findings into **proposals**: one change each, with the evidence, the
+expected effect and the way back.
+
+1. **Decide**: approve, snooze or dismiss each proposal. A change that
+   makes the tenant stricter for users (monitor → confirm or block) asks
+   for the confirm phrase. Nothing is written by deciding.
+2. **Preview and apply**: an approved rule proposal gets a *Preview and
+   apply to the tenant* button. The app re-reads the rules and shows the
+   exact change; if the tenant moved since the evidence was gathered, it
+   refuses and says why. Tick the review box, click *Apply now*: each
+   rule is updated and read back, and only a verified change counts.
+   Write mode is required, and ZIA keeps the change pending until an
+   admin clicks Activate.
+3. **Roll back**: an applied proposal keeps the value it replaced, so
+   *Roll back* puts it back with the same read-back.
+
+Dictionary and engine tuning proposals are made in the ZIA portal; the
+queue tracks them and says so. Every decision and every apply is in
+`audit.log`.
+
 ## 4g. What does everything do?
 
 Toolbar › *Start › What does everything do?* (`/help`) lists every function

@@ -62,13 +62,23 @@ variable "saas_tenant_ids_z_financial_information_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_for_official_use_only_markings_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-For Official Use Only Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_fouo_markings_high_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_for_official_use_only_markings_email" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-For Official Use Only Markings [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_fouo_markings_high_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings High Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_fouo_markings_medium_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_fouo_markings_medium_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings Medium Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -92,13 +102,33 @@ variable "saas_tenant_ids_z_standard_forms_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_traffic_light_protocol_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-Traffic Light Protocol [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_tlp_red_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-TLP Red [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_traffic_light_protocol_email" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-Traffic Light Protocol [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_tlp_red_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-TLP Red [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_tlp_amber_strict_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-TLP Amber Strict [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_tlp_amber_strict_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-TLP Amber Strict [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_tlp_amber_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-TLP Amber [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_tlp_amber_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-TLP Amber [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -112,13 +142,23 @@ variable "saas_tenant_ids_z_us_pii_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_us_phi_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_us_phi_medium_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_us_phi_email" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_us_phi_medium_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - Medium Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_us_phi_high_confidence_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_z_us_phi_high_confidence_email" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - High Confidence [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -159,6 +199,16 @@ variable "saas_tenant_ids_cui_monitor_all_saas" {
 
 variable "saas_tenant_ids_cui_monitor_all_email" {
   description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-All [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_cui_monitor_contextual_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Contextual [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+  type        = list(number)
+}
+
+variable "saas_tenant_ids_cui_monitor_contextual_email" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Contextual [Email] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

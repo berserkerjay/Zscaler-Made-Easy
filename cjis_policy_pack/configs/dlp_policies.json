@@ -151,6 +151,23 @@
     "severity": "RULE_SEVERITY_INFO"
   },
   {
+    "name": "Z-CJIS Markings Medium Confidence-Monitor",
+    "description": "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. One rule per engine: this rule carries CJIS Markings Medium Confidence only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 7,
+    "engines": [
+      "CJIS Markings Medium Confidence"
+    ],
+    "protocols": [
+      "HTTP_RULE",
+      "HTTPS_RULE",
+      "FTP_RULE",
+      "NATIVE_FTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
     "name": "Z-CJIS Markings [Endpoint]",
     "channel": "endpoint",
     "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents.",
@@ -676,6 +693,65 @@
     "severity": "RULE_SEVERITY_INFO",
     "engines": [
       "CJIS Any-Signal Engine"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS Markings Medium Confidence [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS Markings Medium Confidence"
+    ],
+    "channel_mirror": true,
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS Markings Medium Confidence [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS Markings Medium Confidence"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 7
+  },
+  {
+    "name": "Z-CJIS Markings Medium Confidence [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "CJIS Markings Medium Confidence"
     ],
     "channel_mirror": true,
     "tenants": "any",

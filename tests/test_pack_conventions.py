@@ -77,3 +77,20 @@ def test_validator_warns_about_enforcing_uploads():
             "policies": [{"name": "R1", "channel": "web", "action": "BLOCK", "state": "DISABLED", "engines": ["E1"]}], "app_groups": []}
     v = pl.validate_pack(pack)
     assert v["ok"] and any("carry an enforcing action" in w and "R1 (BLOCK)" in w for w in v["warnings"])
+
+
+def test_one_rule_per_engine_and_equal_counts_on_every_channel():
+    """The pack convention: every Web DLP rule carries exactly one engine,
+    every engine has a rule, and Endpoint, SaaS and Email each mirror the
+    Web rules one for one."""
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_policies.json"))):
+        pack = os.path.basename(os.path.dirname(os.path.dirname(f)))
+        rules = json.load(open(f, encoding="utf-8"))
+        engines = sorted(e["name"] for e in json.load(open(os.path.join(os.path.dirname(f), "dlp_engines.json"), encoding="utf-8")))
+        web = [r for r in rules if pc.channel_of(r) == pc.WEB]
+        assert all(len(r.get("engines") or []) == 1 for r in web), (pack, [r["name"] for r in web if len(r.get("engines") or []) != 1])
+        assert sorted(r["engines"][0] for r in web) == engines, (pack, "every engine has exactly one Web rule")
+        counts = {ch: sum(1 for r in rules if pc.channel_of(r) == ch) for ch in (pc.WEB, pc.ENDPOINT, pc.SAAS, pc.EMAIL)}
+        assert len(set(counts.values())) == 1, (pack, counts)
+        names = [r["name"] for r in rules]
+        assert len(names) == len(set(names)), (pack, "rule names are unique")

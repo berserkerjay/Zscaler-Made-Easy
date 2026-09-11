@@ -379,3 +379,11 @@ body.theme-light .df-gap-h.st-fail { color: #b91c1c; } body.theme-light .df-gap-
 .dh-phead { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
 .dh-pactions { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
 .dh-pactions input[type=text], .dh-confirm { padding: 0.35rem 0.55rem; font-size: 0.8rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+
+/* Detection Health: proposal apply / rollback preview */
+.dh-flow { margin-top: 0.4rem; }
+.dh-preview { border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 0.9rem; background: var(--well); margin-top: 0.4rem; }
+.dh-steps { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.5rem 0; }
+.dh-steps th, .dh-steps td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.dh-steps th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+.dh-steps td.ok { color: var(--pass); } .dh-steps td.fail { color: var(--fail); } .dh-steps td.dim { color: var(--dim); }
