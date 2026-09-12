@@ -15,6 +15,14 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _no_backoff_sleep(monkeypatch):
+    """The shared execution path backs off between retries of a transient
+    refusal; tests never wait for that."""
+    import pack_ops
+    monkeypatch.setattr(pack_ops, "_sleep", lambda s: None)
+
+
+@pytest.fixture(autouse=True)
 def _fresh_rate_limit_bucket():
     """The API rate limiter (20 requests/s, burst 60, per client IP) is
     process-wide and every test talks from the same "testclient" address,

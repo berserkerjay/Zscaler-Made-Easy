@@ -376,9 +376,11 @@ def test_remove_waits_for_activation_and_retries_refused_deletes(tmp_path, monke
     assert res["summary"] == {"deleted": 4}
     assert not z.dlp_engine.items and not z.dlp_dictionary.items and not z.casb_dlp_rules.items and not z.dlp_web_rules.items
     by = {r["name"]: r for r in res["results"]}
-    assert by["RM-Web-Monitor [SaaS]"]["status"] == "deleted" and by["RM-Web-Monitor [SaaS]"]["attempts"] == 1 and state["saas_tries"] == 2
+    # The rate limit is transient: the shared path retried it inside the same pass (two attempts, one pass).
+    assert by["RM-Web-Monitor [SaaS]"]["status"] == "deleted" and by["RM-Web-Monitor [SaaS]"]["attempts"] == 2 and state["saas_tries"] == 2
     assert by["RM-Engine"]["status"] == "deleted" and state["engine_tries"] >= 1
-    assert any("waiting for ZIA to report ACTIVE" in l for l in logs) and any("will retry after the tenant settles" in l for l in logs)
+    # The activation between tiers is what let the engine go; the rate limit was retried inside the same pass.
+    assert any("waiting for ZIA to report ACTIVE" in l for l in logs) and any("trying again" in l and "Rate limit" in l for l in logs)
     # A refusal that time cannot clear fails once and stays failed.
     assert not pr._retryable("not found") and pr._retryable("DLP engine is in use by a DLP rule") and pr._retryable("Rate limit exceeded")
 

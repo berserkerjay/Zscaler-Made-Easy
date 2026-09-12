@@ -2087,7 +2087,7 @@ resource "zia_dlp_dictionaries" "bank_customer_pii_context" {
 }
 
 resource "zia_dlp_dictionaries" "bank_national_id_uk_canada_australia_south_africa" {
-  name                         = "Bank-National ID (UK, Canada, Australia, South Africa)"
+  name                         = "Bank-National ID (UK Canada Australia South Africa)"
   description                  = "National identifiers of the UK (National Insurance number), Canada (SIN), Australia (TFN) and South Africa (ID number), within 300 bytes of the identifier's name. Check your tenant fo... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
@@ -2169,7 +2169,7 @@ resource "zia_dlp_dictionaries" "bank_national_id_uk_canada_australia_south_afri
 }
 
 resource "zia_dlp_dictionaries" "bank_national_id_india_singapore_hong_kong" {
-  name                         = "Bank-National ID (India, Singapore, Hong Kong)"
+  name                         = "Bank-National ID (India Singapore Hong Kong)"
   description                  = "National identifiers of India (PAN, Aadhaar), Singapore (NRIC/FIN) and Hong Kong (HKID), within 300 bytes of the identifier's name. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true

@@ -276,6 +276,30 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     checks.append(_check("language", "Written in a memory-safe language", P_LEAD, "classes", "pass",
                          f"Python {sys.version_info.major}.{sys.version_info.minor}: no buffer or use-after-free class of bug.", "Nothing to do."))
 
+    # ── The same principles, applied to what the app puts in a tenant ────
+    try:
+        import pack_deploy
+        import pack_ops
+        probe = pack_deploy.secure_by_design_findings({"objects": [
+            {"kind": "policy", "name": "probe-off", "position": "deployed", "channel": "web"},
+            {"kind": "policy", "name": "probe-changed", "position": "customized", "channel": "web", "drift": ["action"]},
+            {"kind": "policy", "name": "probe-weakened", "position": "relaxed", "channel": "web"}]})
+        principles = {f["principle"] for f in probe["findings"]}
+        ok = {pack_deploy.SBD_OWN, pack_deploy.SBD_OPEN, pack_deploy.SBD_DEFAULTS} <= principles
+        checks.append(_check("pack_findings", "Deployed policy packs are measured against the same principles", P_OWN, "defaults", "pass" if ok else "fail",
+                             ("Every journey check (Deploy Policy Packs → Where is this tenant?, and the assessment's journey) flags, per pack: objects missing or blocked "
+                              "and rules never enabled (ownership of outcomes), objects changed in the tenant without the pack recording it (transparency), "
+                              "and rules weakened against the pack (secure defaults), each with what to do." if ok else "The journey check does not cover all three principles."),
+                             "Run Where is this tenant? on each pack card after a deployment, and again on every visit."))
+        checks.append(_check("shared_path", "Every pack is deployed, verified and removed through one execution path", P_LEAD, "classes", "pass",
+                             f"pack_ops.py is the only module that writes to a tenant: names and limits are validated before any request, dependencies are created first and "
+                             f"removed last, transient refusals are retried, every write leaves a structured event, and {len(pack_ops.EXPLANATIONS)} known refusals carry a "
+                             "plain-language explanation. A test fails the build if any other module calls the SDK directly (docs/SHARED_EXECUTION_PATH.md).",
+                             "Keep new packs as data (JSON) and new object kinds inside pack_ops."))
+    except Exception as e:  # noqa: BLE001
+        checks.append(_check("pack_findings", "Deployed policy packs are measured against the same principles", P_OWN, "defaults", "fail",
+                             f"The journey check could not be loaded: {e}", "Reinstall the app files."))
+
     # ── Score ────────────────────────────────────────────────────────────
     scored = [c for c in checks if c["status"] != "n/a"]
     points = sum({"pass": 1.0, "warn": 0.5, "fail": 0.0}[c["status"]] for c in scored)

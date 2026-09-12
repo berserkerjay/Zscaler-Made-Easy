@@ -168,27 +168,36 @@ def test_undo_deletes_created_objects_in_dependency_order(store, tmp_path):
     assert again["status"] == "nothing" and again["results"] == []
 
 
-def test_undo_leaves_renamed_or_shared_objects_alone(store, tmp_path):
+def test_undo_leaves_renamed_or_shared_objects_alone(store, tmp_path, monkeypatch):
+    import pack_removal as pr
+    monkeypatch.setattr(pr, "RETRY_BASE_SECONDS", 0.0)   # the shared executor retries a "referenced" refusal after settling
+    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: "ACTIVE")
     client = _with_delete(make_client())
     pack, rec = _deploy(tmp_path, client)
     z = client.zia
-    # The customer renamed the rule and another rule now uses the engine.
+    # The customer renamed the rule: it is left alone, and so are the engine
+    # and dictionary that rule (now the customer's) still uses. The plan
+    # sees the dependency, so no delete is even attempted.
     z.dlp_web_rules.items[0].name = "Customer renamed this"
-    z.dlp_engine.delete_dlp_engine = lambda rid: (None, None, {"message": "engine is referenced by a rule"})
     out = pd.undo(client, rec, writes_enabled=True)
     by = {r["kind"]: r for r in out["results"]}
     assert by["policy"]["status"] == "skipped" and "now carries the name" in by["policy"]["reason"]
-    assert by["engine"]["status"] == "failed" and "referenced" in by["engine"]["error"]
-    assert by["dictionary"]["status"] == "deleted"
-    assert out["status"] == "partial" and not out["complete"]
-    assert len(z.dlp_web_rules.items) == 1
+    assert by["engine"]["status"] == "skipped" and "still used by a rule" in by["engine"]["reason"]
+    assert by["dictionary"]["status"] == "skipped" and "still used by an engine" in by["dictionary"]["reason"]
+    assert out["status"] == "nothing" and not out["complete"] and len(z.dlp_web_rules.items) == 1 and len(z.dlp_engine.items) == 1
     # Read-only mode never deletes.
     assert pd.undo(client, rec, writes_enabled=False)["status"] == "blocked"
-    # Already gone in the tenant: reported, not an error.
-    z.dlp_web_rules.items = []
+    # The rule is gone from the tenant: reported, not an error; the engine
+    # is now unused, and a delete ZIA keeps refusing fails on every pass and
+    # stays failed; the dictionary, planned as unused once the engine goes,
+    # is still attempted and the run is reported as partial, not complete.
     z.dlp_web_rules.items.clear()
+    z.dlp_engine.delete_dlp_engine = lambda rid: (None, None, {"message": "engine is referenced by a rule"})
     out2 = pd.undo(client, rec, writes_enabled=True)
-    assert {r["kind"]: r["status"] for r in out2["results"]}["policy"] == "gone"
+    by2 = {r["kind"]: r for r in out2["results"]}
+    assert by2["policy"]["status"] == "gone" and by2["engine"]["status"] == "failed" and "referenced" in by2["engine"]["error"]
+    assert by2["engine"]["attempts"] == 3 and by2["dictionary"]["status"] == "deleted"
+    assert out2["status"] == "partial" and not out2["complete"]
 
 
 def test_from_apply_ignores_reused_and_records_nothing_when_nothing_created():

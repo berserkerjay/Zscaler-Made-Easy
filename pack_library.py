@@ -38,8 +38,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pack_channels as pc
-from dlp_importer import (PACKS_ROOT, dictionary_limit_problems, engine_limit_problems,
-                          template_candidates)
+from dlp_importer import PACKS_ROOT, template_candidates
 
 USER_PACKS_DIRNAME = "user_packs"
 _SLUG_RE = re.compile(r"[^a-z0-9_]+")
@@ -736,10 +735,12 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
                 re.compile(pat or "")
             except re.error as e:
                 problems.append(f"dictionary '{n}': pattern does not compile ({e}): {str(pat)[:60]}")
-        for msg in dictionary_limit_problems(d):
+        # The same validator the deploy plan runs (pack_ops.validate), so an
+        # upload and a preflight never disagree about what ZIA refuses.
+        import pack_ops as ops
+        for msg in ops.validate("dictionary", d):
             problems.append(f"dictionary '{n}': {msg}")
-        from dlp_importer import dictionary_notes
-        for msg in dictionary_notes(d):
+        for msg in ops.notes("dictionary", d):
             warnings.append(f"dictionary '{n}': {msg}")
         if d.get("predefined_clone") and not (d.get("dict_template_name") or d.get("dict_template_id")):
             problems.append(f"dictionary '{n}': predefined clone without a template name")
@@ -764,7 +765,8 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         if not expr.strip():
             problems.append(f"engine '{n}': empty expression")
             continue
-        for msg in engine_limit_problems(expr):
+        import pack_ops as ops
+        for msg in ops.validate("engine", e):
             problems.append(f"engine '{n}': {msg}")
         if expr.count("(") != expr.count(")"):
             problems.append(f"engine '{n}': unbalanced parentheses in expression")
@@ -794,8 +796,8 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         if n in pol_seen:
             problems.append(f"rule '{n}' appears twice")
         pol_seen.add(n)
-        err = pc.validate(p)
-        if err:
+        import pack_ops as ops
+        for err in ops.validate("policy", p):
             problems.append(f"rule '{n}': {err}")
         ch = pc.channel_of(p)
         if ch in (pc.WEB, pc.ENDPOINT, pc.SAAS, pc.EMAIL):

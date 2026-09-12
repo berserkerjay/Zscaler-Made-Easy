@@ -782,6 +782,7 @@ class DLPPackImportRequest(TenantCredsRequest):
     use_rank_0: bool = False
     apply_tweaks: bool = True
     verify: bool = True
+    plan_hash: str = ""   # the hash of the plan the caller reviewed; without it the endpoint only returns the plan
 
 
 class DLPPackDeployRequest(TenantCredsRequest):
@@ -1867,37 +1868,47 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
 
 @app.post("/api/dlp-packs/{pack_id}/import")
 async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
-    """Single-pack import (legacy path). Prefer /api/dlp-packs/preflight
-    + /apply, which cross-reference packs and require approval."""
-    try:
-        from dlp_importer import run_full_import
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
-    if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    """Single-pack deploy for scripts, through the same shared path as Deploy
+    Policy Packs (pack_deploy.preflight + apply → pack_ops). Without a
+    `plan_hash` the endpoint only plans and returns the plan to review;
+    with the hash of that plan it deploys. Nothing is written otherwise."""
+    import pack_deploy
     pack = _resolve_pack_ids([pack_id])[0]
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
-
+    if not req.plan_hash:
+        report = await asyncio.to_thread(lambda: pack_deploy.preflight(client, [pack], use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
+                                                                       writes_enabled=writes_enabled()))
+        public = pack_deploy.public_report(report)
+        public["status"] = "plan"
+        public["message"] = ("This is the plan. Nothing was written. To deploy it, call this endpoint again with "
+                             "plan_hash set to the value below, or use Deploy Policy Packs in the app.")
+        return public
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
     logs: list = []
-    result = await asyncio.to_thread(
-        run_full_import, client, pack["dir"],
-        use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
-        verify=req.verify, log=logs.append,
-    )
+    result = await asyncio.to_thread(lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
+                                                               apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
+                                                               log=logs.append))
     result["logs"] = logs
+    if result.get("status") == "applied" and result.get("summary", {}).get("created"):
+        try:
+            import deployments
+            creds = _tenant_creds(req)
+            deployments.add(deployments.from_apply(result, tenant_label=f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})", packs=[pack["id"]],
+                                                   options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={}))
+        except Exception as e:  # noqa: BLE001 — the deployment happened; only the record failed
+            result.setdefault("warnings", []).append(f"The deployment was not recorded for undo: {e}")
     return result
 
 
 @app.post("/api/dlp-packs/{pack_id}/verify")
 async def dlp_pack_verify(pack_id: str, req: TenantCredsRequest = TenantCredsRequest()):
-    """Verify deployed tenant state matches a pack's definitions (read-only)."""
-    try:
-        from dlp_importer import verify_deployment
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
+    """Is everything this pack defines in the tenant? Read-only, answered by
+    the same planner that plans a deploy (pack_deploy.verify_pack)."""
+    import pack_deploy
     pack = _resolve_pack_ids([pack_id])[0]
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
-    return await asyncio.to_thread(verify_deployment, client.zia, pack["dir"])
+    return await asyncio.to_thread(pack_deploy.verify_pack, client, pack)
 
 
 class DLPPackUploadRequest(BaseModel):
@@ -2097,6 +2108,17 @@ async def report_advanced_page():
     """Advanced settings tab (static/report_advanced.html): the policy pack
     library and how this server is configured."""
     page = os.path.join(STATIC_DIR, "report_advanced.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/report/deploy-flow")
+async def report_deploy_flow_page():
+    """How a deployment and a removal work, step by step, for someone who
+    has never seen the code (static/deploy_flow.html)."""
+    page = os.path.join(STATIC_DIR, "deploy_flow.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="page missing")
     with open(page, "r", encoding="utf-8") as f:

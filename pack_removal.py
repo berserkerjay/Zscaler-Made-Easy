@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
 import pack_deploy as pd
+import pack_ops as ops
 from dlp_importer import _load_json, _resolve_configs, discover_packs
 
 # The in-app deploy tags baseline objects with BASELINE_MARK; the Terraform
@@ -660,42 +661,45 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
 
     zia = client.zia
     to_remove = [it for it in plan["items"] if it["status"] == "remove"]
-    names_cache: Dict[Tuple[str, Optional[str]], Tuple[Optional[Dict[str, str]], Optional[str]]] = {}
-    results: List[Dict[str, Any]] = []
+    names_cache: Dict[Tuple[str, Optional[str], str], Tuple[Optional[Dict[str, str]], Optional[str]]] = {}
+    recorder = ops.Recorder(log=None, run="remove")   # log lines are written below, with the retry note
+    results = recorder.results
     activations: List[Dict[str, Any]] = []
 
     # Delete in dependency tiers — rules and endpoint application groups
-    # first, then engines, then dictionaries — and ACTIVATE between tiers.
-    # ZIA validates a delete against the saved (activated) config, so an
-    # engine or dictionary cannot be removed while a rule that references it
-    # is only pending-deleted; activating each tier clears those references
-    # so the next tier's objects (the engines and dictionaries tied to the
-    # pack) actually delete.
-    TIERS = [("policy", "app_group"), ("engine",), ("dictionary",)]
-    TIER_LABEL = {0: "rules", 1: "engines", 2: "dictionaries"}
+    # first, then engines, then dictionaries (pack_ops.DELETE_TIERS) — and
+    # ACTIVATE between tiers. ZIA validates a delete against the saved
+    # (activated) config, so an engine or dictionary cannot be removed while
+    # a rule that references it is only pending-deleted; activating each
+    # tier clears those references so the next tier's objects actually delete.
+    TIERS = ops.DELETE_TIERS
+    TIER_LABEL = dict(enumerate(ops.TIER_LABELS))
     entries: Dict[Tuple[str, Optional[str], str], Dict[str, Any]] = {}
 
     def attempt(c: Dict[str, Any], entry: Dict[str, Any]) -> bool:
         """One delete of one object, after checking the id still carries the
         name the plan saw. Returns True when the object is gone."""
-        key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
+        kind, channel = c["kind"], c.get("channel") if c["kind"] == "policy" else None
+        key = (kind, channel)
         if key not in names_cache:
-            names_cache[key] = pd._current_names(zia, c["kind"], c.get("channel"))
+            names_cache[key] = ops.current_names(zia, kind, channel)
         current, err = names_cache[key]
         if current is None:
-            entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
+            recorder.record(kind, c["name"], "failed", op="delete", channel=c.get("channel"), entry=entry,
+                            error=f"could not list the tenant's {kind} objects: {err}")
             return False
         if str(c["id"]) not in current:
-            entry.update(status="gone", reason="already removed from the tenant")
+            recorder.record(kind, c["name"], "gone", op="delete", channel=c.get("channel"), entry=entry, reason="already removed from the tenant")
             return True
         if current[str(c["id"])] != c["name"]:
-            entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not '{c['name']}'; left alone")
+            recorder.record(kind, c["name"], "skipped", op="delete", channel=c.get("channel"), entry=entry,
+                            reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not '{c['name']}'; left alone")
             return True
-        derr = pd._delete(zia, c)
-        if derr:
-            entry.update(status="failed", error=derr)
+        out = ops.delete(zia, c, log=_log)
+        if not out.ok:
+            recorder.record(kind, c["name"], "failed", op="delete", channel=c.get("channel"), entry=entry, outcome=out)
             return False
-        entry.update(status="deleted"); entry.pop("error", None)
+        recorder.record(kind, c["name"], "deleted", op="delete", channel=c.get("channel"), entry=entry, outcome=out, id=c["id"])
         current.pop(str(c["id"]), None)
         return True
 
@@ -781,7 +785,7 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
             continue
         key = (entry["kind"], entry.get("channel") if entry["kind"] == "policy" else None)
         if key not in names_cache:
-            names_cache[key] = pd._current_names(zia, entry["kind"], entry.get("channel"))
+            names_cache[key] = ops.current_names(zia, entry["kind"], entry.get("channel"))
         current, _err = names_cache[key]
         if current is not None and current.get(str(entry["id"])) == entry["name"] \
                 and (entry["kind"], entry.get("channel"), str(entry["id"])) not in remaining_keys:
@@ -809,8 +813,9 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     complete = verification["clean"] and not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
     status = "removed" if complete and results else ("partial" if counts.get("deleted") else ("nothing" if not results else "failed"))
-    return {"status": status, "summary": counts, "results": results, "complete": complete,
+    return {"status": status, "summary": counts, "results": results, "events": recorder.events, "complete": complete,
             "kept": [it for it in plan["items"] if it["status"] == "keep"],
+            "gone": [it for it in plan["items"] if it["status"] == "not-found"],
             "verification": verification,
             "activation": final_activation, "activations": activations,
             "activation_required": bool(counts.get("deleted")) and not (final_activation and final_activation.get("activated"))}

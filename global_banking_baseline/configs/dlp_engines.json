@@ -17,27 +17,27 @@
   {
     "name": "Bank-Customer Financial Records",
     "description": "Account statements and customer records: statement vocabulary beside an account, card or personal identifier.",
-    "expression": "((D:Bank-Customer Account Statement > 4) AND (((D:ZBP-ABA Bank Routing Number - High > 0) OR (D:EUIBAN_LEAKAGE > 0) OR (D:Bank-IBAN (Global) > 0) OR (D:ZBP-Credit Cards - High > 0)) OR (D:ZBP-Date of Birth - High Confidence > 0) OR (D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0)))"
+    "expression": "((D:Bank-Customer Account Statement > 4) AND (((D:ZBP-ABA Bank Routing Number - High > 0) OR (D:EUIBAN_LEAKAGE > 0) OR (D:Bank-IBAN (Global) > 0) OR (D:ZBP-Credit Cards - High > 0)) OR (D:ZBP-Date of Birth - High Confidence > 0) OR (D:Bank-National ID (UK Canada Australia South Africa) > 0) OR (D:Bank-National ID (India Singapore Hong Kong) > 0)))"
   },
   {
     "name": "Bank-Customer PII (Global)",
     "description": "Customer personal data across jurisdictions: US SSN/ITIN (high confidence or in proximity), UK/CA/AU/ZA and IN/SG/HK national IDs, EU and Asia-Pacific passports (Zscaler predefined), US passport, US driver licence with date of birth, or PII field labels beside any identifier.",
-    "expression": "((D:ZBP-Social Security Numbers (US) - High > 4) OR (D:ZBP-Social Security Numbers (US) - Prox 500 > 0) OR (D:ZBP-Tax Identification Number (US) - High > 4) OR (D:ZBP-Tax Identification Number (US) - Prox 500 > 0) OR (D:Bank-National ID (UK, Canada, Australia, South Africa) > 1) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 1) OR (D:PPEU_LEAKAGE > 1) OR (D:ASPP_LEAKAGE > 1) OR (D:ZBP-US Passport - Prox 500 > 0) OR ((D:ZBP-Date of Birth - High Confidence > 1) AND (D:ZBP-Drivers License (United States) - High > 4)) OR ((D:Bank-Customer PII Context > 3) AND ((D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
+    "expression": "((D:ZBP-Social Security Numbers (US) - High > 4) OR (D:ZBP-Social Security Numbers (US) - Prox 500 > 0) OR (D:ZBP-Tax Identification Number (US) - High > 4) OR (D:ZBP-Tax Identification Number (US) - Prox 500 > 0) OR (D:Bank-National ID (UK Canada Australia South Africa) > 1) OR (D:Bank-National ID (India Singapore Hong Kong) > 1) OR (D:PPEU_LEAKAGE > 1) OR (D:ASPP_LEAKAGE > 1) OR (D:ZBP-US Passport - Prox 500 > 0) OR ((D:ZBP-Date of Birth - High Confidence > 1) AND (D:ZBP-Drivers License (United States) - High > 4)) OR ((D:Bank-Customer PII Context > 3) AND ((D:Bank-National ID (UK Canada Australia South Africa) > 0) OR (D:Bank-National ID (India Singapore Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
   },
   {
     "name": "Bank-Customer PII - Bulk",
     "description": "Customer-data bulk export: 25 or more distinct identifiers of one kind, or 50 or more dates of birth. Block-grade.",
-    "expression": "((D:ZBP-Social Security Numbers (US) - High > 24) OR (D:ZBP-Tax Identification Number (US) - High > 24) OR (D:Bank-National ID (UK, Canada, Australia, South Africa) > 24) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 24) OR (D:PPEU_LEAKAGE > 24) OR (D:ASPP_LEAKAGE > 24) OR (D:ZBP-Date of Birth - High Confidence > 49) OR (D:EUIBAN_LEAKAGE > 24) OR (D:Bank-IBAN (Global) > 24))"
+    "expression": "((D:ZBP-Social Security Numbers (US) - High > 24) OR (D:ZBP-Tax Identification Number (US) - High > 24) OR (D:Bank-National ID (UK Canada Australia South Africa) > 24) OR (D:Bank-National ID (India Singapore Hong Kong) > 24) OR (D:PPEU_LEAKAGE > 24) OR (D:ASPP_LEAKAGE > 24) OR (D:ZBP-Date of Birth - High Confidence > 49) OR (D:EUIBAN_LEAKAGE > 24) OR (D:Bank-IBAN (Global) > 24))"
   },
   {
     "name": "Bank-KYC and AML Files",
     "description": "Onboarding, due-diligence and AML case files: KYC/AML vocabulary beside a personal identifier or PII field labels.",
-    "expression": "((D:Bank-KYC and AML > 3) AND ((D:Bank-Customer PII Context > 1) OR ((D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
+    "expression": "((D:Bank-KYC and AML > 3) AND ((D:Bank-Customer PII Context > 1) OR ((D:Bank-National ID (UK Canada Australia South Africa) > 0) OR (D:Bank-National ID (India Singapore Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
   },
   {
     "name": "Bank-Credit and Loan Applications",
     "description": "Lending files: loan/credit application vocabulary beside a personal identifier or PII field labels.",
-    "expression": "((D:Bank-Loan and Credit Application > 4) AND ((D:Bank-Customer PII Context > 2) OR ((D:Bank-National ID (UK, Canada, Australia, South Africa) > 0) OR (D:Bank-National ID (India, Singapore, Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
+    "expression": "((D:Bank-Loan and Credit Application > 4) AND ((D:Bank-Customer PII Context > 2) OR ((D:Bank-National ID (UK Canada Australia South Africa) > 0) OR (D:Bank-National ID (India Singapore Hong Kong) > 0) OR (D:PPEU_LEAKAGE > 0) OR (D:ASPP_LEAKAGE > 0) OR (D:ZBP-US Passport - High Confidence > 0) OR (D:ZBP-Social Security Numbers (US) - High > 0) OR (D:ZBP-Tax Identification Number (US) - High > 0) OR (D:ZBP-Date of Birth - High Confidence > 0))))"
   },
   {
     "name": "Bank-MNPI and Deal Information",

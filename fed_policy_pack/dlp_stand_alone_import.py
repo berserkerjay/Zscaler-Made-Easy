@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 """
+ZIA DLP Configuration Importer (reference script, not used by the app)
+----------------------------------------------------------------------
+This is the original stand-alone importer the Fed pack was first deployed
+with. Its flow — dictionaries, then engines, then rules; one rule per
+engine; every rule created off — is the pattern the app now applies to
+EVERY pack through one shared execution path (pack_ops.py, used by
+pack_deploy.py and pack_removal.py; see docs/SHARED_EXECUTION_PATH.md).
+Deploy Policy Packs never runs this file. It is kept as the reference the
+shared path is measured against.
+
 ZIA DLP Configuration Importer
 ------------------------------
 Imports DLP dictionaries (including clones), engines, and policies from 

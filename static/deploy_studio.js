@@ -161,6 +161,7 @@ function _ensureDlpPacksModal() {
         <div>
           <h2 id="dzTitle">Deploy Policy Packs</h2>
           <p class="dz-sub" id="dzSub">Pick the packs to deploy. Everything is cross-checked against your tenant before anything is written.</p>
+          <a class="dz-link dz-howto" id="dzHowTo" href="/report/deploy-flow" target="_blank" rel="noopener" title="Opens a step-by-step walk-through of what a deployment and a removal do, in a new tab.">How a deployment works</a>
         </div>
         <button type="button" class="dz-close" onclick="closeDlpPacksModal()" aria-label="Close">✕</button>
       </div>
@@ -521,8 +522,20 @@ function _dzJourneyRowHtml(b, opts = {}) {
     <ol class="dz-stages">${ladder}</ol>
     <div class="counts">${counts || 'No objects.'}</div>
     ${(b.next_steps || []).length ? `<div class="dz-next-h">Next steps</div><ol class="dz-next">${b.next_steps.map(n => `<li>${_dzE(n)}</li>`).join('')}</ol>` : (b.state === 'governed' ? `<div class="d">Every object of this policy pack is deployed, enabled and enforcing. Keep reviewing incidents; update the pack when the customer tunes something.</div>` : '')}
+    ${_dzSbdHtml(b.secure_by_design)}
     ${objs.length ? `<details class="dz-fold"><summary>Objects not yet in place (${objs.length}${(b.objects || []).length > objs.length ? ' shown' : ''})</summary><ul class="dz-objs">${objs.map(o => `<li><span class="dz-chip kind-${_dzE(o.kind)}">${DZ_KIND[o.kind] || o.kind}</span> <span class="nm">${_dzE(o.name)}</span> <span class="st ${_dzE((DZ_POSITION[o.position] || {}).cls || '')}" title="${_dzE((DZ_POSITION[o.position] || {}).help || '')}">${_dzE((DZ_POSITION[o.position] || {}).label || o.position)}${o.drift && o.drift.length ? ` · ${_dzE(o.drift.join(', '))}` : ''}${o.action && o.position !== 'missing' && String(o.action).length <= 40 ? ` · ${_dzE(o.action)}` : ''}</span></li>`).join('')}</ul></details>` : ''}`;
 }
+// CISA Secure by Design, measured on the deployed pack: what is not in
+// place, what was changed without the pack knowing, what was weakened.
+function _dzSbdHtml(s) {
+  if (!s) return '';
+  const sev = { high: 'sev-high', medium: 'sev-warning', info: 'sev-info', none: 'sev-info' };
+  const items = (s.findings || []).map(f => `<li class="dz-sbd-f ${sev[f.severity] || 'sev-info'}"><div class="t"><span class="dz-chip kind-muted">${_dzE(f.principle)}</span> ${_dzE(f.title)}</div><div class="d">${_dzE(f.detail)}</div><div class="d"><strong>What to do:</strong> ${_dzE(f.next)}</div>${(f.objects || []).length ? `<div class="d dz-sbd-objs">${f.objects.map(o => _dzE(o.name)).join(', ')}${f.count > f.objects.length ? ` and ${f.count - f.objects.length} more` : ''}</div>` : ''}</li>`).join('');
+  return `<details class="dz-fold dz-sbd" ${s.ok ? '' : 'open'}><summary>Secure by Design: ${s.ok ? 'no deviation from the pack in this tenant' : `${(s.findings || []).length} finding(s), highest ${_dzE(s.level)}`}</summary>
+    <div class="d">CISA's principles applied to this pack as it is in the tenant: the whole design deployed (ownership of outcomes), every change recorded in the pack (transparency), nothing weakened against it (secure defaults).</div>
+    ${items ? `<ul class="dz-sbd-list">${items}</ul>` : '<div class="d">Every object is where the pack says it should be, and nothing has been changed or weakened outside the pack.</div>'}</details>`;
+}
+
 function _dzJourneyHtml(id) {
   const s = DZ.journey[id];
   if (!s || s.busy) return s && s.busy ? `<div class="dz-journey" onclick="event.stopPropagation()"><span class="dz-status busy">Measuring</span> Reading the tenant…</div>` : '';
@@ -814,7 +827,7 @@ function _dzRenderDeploy() {
       </ol></div></div></div>
     ${_dzViewToggle()}
     ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml((DZ.report || {}).items || [], results) : `
-    ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.error) })}
+    ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.explanation ? `${r.error} — What this means: ${r.explanation}` : r.error) })}
     ${_dzSection('Overwritten with the policy pack (converge mode)', results.filter(r => r.status === 'restored'), { fn: r => _dzRow(r, 'restored', `${r.id ? `ID ${r.id}` : ''}${r.drift && r.drift.length ? ` · ${r.drift.join(', ')}` : ''}`) })}
     ${_dzSection('Created & modified', results.filter(r => r.status === 'created' || r.status === 'modified'), { fn: r => _dzRow(r, r.status, r.id ? `ID ${r.id}` : '') })}
     ${_dzSection('Skipped', results.filter(r => r.status === 'skipped'), { fn: r => _dzRow(r, 'skipped', r.reason) })}
@@ -1105,7 +1118,7 @@ function _dzRemovalDone() {
     <div class="dz-rows">
       ${line('deleted', s.deleted, 'st-ok')}${line('already gone', s.gone, 'st-reuse')}${line('left alone', s.skipped, 'st-differs')}${line('failed', s.failed, 'st-fail')}${line('still present', s.still_present, 'st-fail')}
     </div>
-    ${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').length ? `<div class="dz-h" style="margin-top:0.8rem;">Not removed</div><div class="dz-rows">${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').map(x => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(x.name)}</div><div class="rs">${_dzE(x.error || x.reason || '')}</div></div></div>`).join('')}</div>` : ''}
+    ${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').length ? `<div class="dz-h" style="margin-top:0.8rem;">Not removed</div><div class="dz-rows">${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').map(x => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(x.name)}</div><div class="rs">${_dzE(x.error ? (x.explanation ? `${x.error} — What this means: ${x.explanation}` : x.error) : (x.reason || ''))}</div></div></div>`).join('')}</div>` : ''}
     ${kept.length ? `<div class="dz-h" style="margin-top:0.8rem;">Kept (still in use)<span class="count">${kept.length}</span></div><div class="dz-rows">${kept.map(i => `<div class="dz-row st-reuse"><span class="ic">↺</span><div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}</div><div class="rs">${_dzE(i.keep || '')}</div></div></div>`).join('')}</div>` : ''}
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalVerifyAgain()" ${DZ.busy ? 'disabled' : ''}>Verify again</button>
@@ -1330,7 +1343,7 @@ function _dzFlowGraph(items, results) {
   }
   for (const n of nodes.values()) {
     const r = resultBy[n.key];
-    if (r) { n.result = r.status; n.resultText = r.error || r.reason || (r.id ? `ID ${r.id}` : ''); }
+    if (r) { n.result = r.status; n.resultText = (r.error ? (r.explanation ? `${r.error} — What this means: ${r.explanation}` : r.error) : '') || r.reason || (r.id ? `ID ${r.id}` : ''); }
   }
   // Column ordering: sources alphabetical, downstream by barycenter of inputs.
   const cols = DZ_FLOW_COLS.map(() => []);

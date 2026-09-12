@@ -178,7 +178,7 @@ An array of DLP web rules. Each policy points to one or more engines by **name**
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
-| `name` | yes | — | Starts with `Z-` by convention (groups visually in ZIA UI). **SaaS rules: at most 31 characters** ("Name exceeds the max length 31 characters" from a real tenant); `tools/fan_out_channels.py` shortens a mirror's name at a word boundary to fit, and preflight refuses a longer one. Web, Endpoint and Email rules took longer names on the same tenant |
+| `name` | yes | — | Only letters, digits, spaces, underscores, hyphens, dots and parentheses (the character set ZIA accepts for engine names, held for every object; see docs/SHARED_EXECUTION_PATH.md). Starts with `Z-` by convention (groups visually in ZIA UI). **SaaS rules: at most 31 characters** ("Name exceeds the max length 31 characters" from a real tenant); `tools/fan_out_channels.py` shortens a mirror's name at a word boundary to fit, and preflight refuses a longer one. Web, Endpoint and Email rules took longer names on the same tenant |
 | `action` | no | `ALLOW` | What the rule is designed to do. **Every pack ships monitor-only**: at load time DLP-Check turns `BLOCK` / `CONFIRM` into `target_action` and creates the rule with the channel's monitor action (`ALLOW`; `OFLCASB_DLP_REPORT_INCIDENT` on SaaS). |
 | `target_action` | no | — | Only for packs you upload with `BLOCK` / `CONFIRM` rules: the app keeps the designed action here and creates the rule monitor-only. The shipped packs carry none: every rule simply monitors, and enforcing is the customer's decision in the portal. |
 | `state` | no | `DISABLED` | **Every pack ships `DISABLED`**; an `ENABLED` value is kept as `target_state` and the rule is still created disabled. |

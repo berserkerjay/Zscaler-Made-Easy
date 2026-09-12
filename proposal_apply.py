@@ -148,17 +148,12 @@ def _set_field(client, channel: str, rule: Any, field: str, value: Any) -> Tuple
     body = _body_from(rule)
     body[field] = value
     body.pop(_CAMEL.get(field, ""), None)
-    try:
-        ret = pc.update_rule(zia, channel, pc._field(rule, "id"), body)
-    except Exception as e:  # noqa: BLE001
-        return None, f"{type(e).__name__}: {e}"
-    if isinstance(ret, tuple):
-        data = ret[0]
-        err = ret[2] if len(ret) == 3 else (ret[1] if len(ret) == 2 else None)
-        if err:
-            return None, str(err)
-        return data, None
-    return ret, None
+    # The same shared path as a pack deploy: retries, normalised outcome.
+    import pack_ops as ops
+    out = ops.update(zia, "policy", pc._field(rule, "id"), body, channel=channel, name=str(pc._field(rule, "name", default="") or ""))
+    if not out.ok:
+        return None, out.as_error()
+    return out.data, None
 
 
 def _execute(client, tenant: str, pid: str, *, direction: str, writes_enabled: Optional[bool], by: str, log=None) -> Dict[str, Any]:

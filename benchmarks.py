@@ -188,7 +188,8 @@ def benchmark_report(report: Dict[str, Any]) -> Dict[str, Any]:
     j = None
     if journey and journey.get("status") not in (None, "pending", "error"):
         j = {"status": journey.get("status"), "stage": journey.get("stage"), "score": journey.get("score"),
-             "baselines": [{"name": b.get("name"), "stage": b.get("stage"), "stage_name": b.get("stage_name"), "score": b.get("score"), "state": b.get("state")}
+             "baselines": [{"name": b.get("name"), "stage": b.get("stage"), "stage_name": b.get("stage_name"), "score": b.get("score"), "state": b.get("state"),
+                            "secure_by_design": b.get("secure_by_design")}
                            for b in (journey.get("baselines") or [])]}
     elif journey and journey.get("status") == "pending":
         j = {"status": "pending"}

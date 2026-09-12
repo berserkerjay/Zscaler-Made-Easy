@@ -1,0 +1,135 @@
+# The shared execution path
+
+Every policy pack, whatever it is called or which industry it serves, gets
+into a Zscaler tenant and out of it through **one** path. This page says
+what that path is, what it promises, and what someone adding a pack or a
+new kind of object must do to stay on it.
+
+An interactive walk-through of the same path is in the app: open **Deploy
+Policy Packs** and click **How a deployment works** (also at
+`/report/deploy-flow`).
+
+## 1. Where the path lives
+
+| Step | File | What it does |
+|---|---|---|
+| Plan | `pack_deploy.py` → `preflight()` | Reads the tenant once, compares it with the selected packs, and writes a plan: what will be created, what already exists and is reused, what is blocked and why. Nothing is written. |
+| Validate | `pack_ops.py` → `validate()` | One validator for every kind of object (dictionary, engine, endpoint application group, rule on any channel). Runs inside the plan and at upload, **before any request reaches ZIA**. |
+| Write | `pack_ops.py` → `create()`, `update()`, `delete()` through `call()` | The only functions in the app that name a Zscaler SDK write method. `call()` turns every SDK answer into the same shape, retries what time clears, and never lets one object's failure stop the run. |
+| Record | `pack_ops.py` → `Recorder` | One result per object (what the screens show) and one structured event per write (what the log and support use), in the same shape for a deploy, a removal and an undo. |
+| Deploy | `pack_deploy.py` → `apply()` | Runs the approved plan: dictionaries, then engines, then endpoint application groups, then rules (parents before their sub-rules). Activates, waits for ZIA to report ACTIVE, reads the tenant back. |
+| Remove | `pack_removal.py` → `_execute()` | Runs a removal plan in tiers: rules and application groups, then engines, then dictionaries. Activates and waits between tiers, retries what time clears, reads the tenant back. Used by *Remove from tenant*, *Remove all*, *Pick rules…* and *Undo*. |
+| Verify | `pack_deploy.py` → `verify_pack()` and the read-back inside `apply()` / `_execute()` | Always the planner, run again after activation. There is no second comparison with its own rules. |
+
+The Fed policy pack was the first pack deployed in production; its
+original importer (`fed_policy_pack/dlp_stand_alone_import.py`) is kept as
+the reference this path is measured against. The app never runs it.
+
+## 2. What the path promises
+
+1. **Names and limits are checked before any write.** Every refusal a
+   real tenant has given is a rule in `validate()` and its helpers in
+   `dlp_importer.py` and `pack_channels.py`: the allowed characters in a
+   name, dictionary and engine descriptions of at most 255 characters,
+   SaaS rule names of at most 31, rule descriptions of at most 10 240,
+   at most 8 patterns of 256 bytes and 256 phrases of 3–128 bytes per
+   dictionary, no confidence score on a custom dictionary and always one
+   on a copy of a predefined dictionary, the Web DLP protocol set, one
+   transfer method per endpoint rule, admin rank 0–7. A pack that breaks
+   one is blocked in the plan with the reason, in plain words.
+2. **Dependencies come first, dependents go first.** Create order is
+   `pack_ops.CREATE_ORDER`: dictionary → engine → application group →
+   rule (parent rule before its sub-rules). Delete order is
+   `pack_ops.DELETE_TIERS`: rules and application groups → engines →
+   dictionaries, with an activation and a wait for ACTIVE between tiers,
+   because ZIA validates a delete against the activated configuration.
+3. **ZIA's limits are handled the same way for every kind.** A rate
+   limit (429), a busy tenant (502/503/504) or a timeout is retried up to
+   three times with backoff inside `call()`. A delete refused because the
+   object is "in use" is tried again after the tier is activated, up to
+   three passes. A SaaS rule whose position ZIA refuses is placed at a
+   position ZIA accepts after the tenant's rules are re-read. Anything
+   else fails once and is reported once.
+4. **Deploying twice changes nothing.** The plan reuses every object by
+   name; a second run creates nothing, fails nothing and never makes a
+   second object with the same name on any channel.
+5. **Removing takes everything the pack put in, and nothing else.** A
+   removal plan finds a pack's objects by the provenance tag the deploy
+   writes into every description and by name; it keeps anything a rule or
+   engine outside the pack still uses and says so; it reports leftovers
+   after a fresh read. An object whose id now carries a different name is
+   never deleted.
+6. **Every failure says what failed and why.** Each result carries the
+   object's kind and name, the status, ZIA's own message, its error code
+   and HTTP status when ZIA gave them, how many attempts were made and,
+   for every refusal the app knows, a plain-language explanation of what
+   it means and what to do (`pack_ops.EXPLANATIONS`). The log line reads
+   `[kind] name: status — ZIA's message. What this means: …`.
+
+## 3. What a run returns
+
+`apply()`, `remove()`, `remove_deployment()`, `remove_selected()` and
+`undo()` all return:
+
+- `status` — `applied` / `partial` / `failed` (deploy) or `removed` /
+  `partial` / `nothing` / `failed` (removal); `blocked` when write mode
+  is off, `plan_changed` or `stale` when the tenant changed since the
+  plan was approved (nothing is written then).
+- `results` — one entry per object: `kind`, `name`, `status`, and when
+  relevant `channel`, `id`, `reason`, `error`, `explanation`, `code`,
+  `http_status`, `attempts`.
+- `events` — one entry per write with the keys in `pack_ops.EVENT_KEYS`
+  (`ts`, `run`, `op`, `kind`, `channel`, `name`, `id`, `status`, `error`,
+  `explanation`, `reason`, `code`, `http_status`, `attempts`).
+- `summary` — counts by status; `channels` — counts per channel (deploy).
+- `read_check` / `verification` — what the read-back found.
+- `activation` and `activation_required`.
+
+The same entries are written to the Python logger `dlp_check.packs`.
+
+## 4. Adding a pack
+
+A pack is data, never code. Put a directory beside the others with
+`pack.json` and `configs/dlp_dictionaries.json`, `dlp_engines.json`,
+`dlp_policies.json` (see `POLICY_PACKS.md`). Then:
+
+1. Run `python tools/fan_out_channels.py` so every web rule gets its
+   Endpoint, SaaS and Email mirror in the shape the Fed pack proved.
+2. Run `python pack_terraform.py --out terraform` so the Terraform
+   hand-off matches.
+3. Run `python -m pytest tests`. `tests/test_pack_conventions.py`
+   compares the pack with the Fed pack's rule shape and every ZIA limit;
+   `tests/test_zia_contract.py` deploys it on a tenant that refuses what
+   ZIA refuses; `tests/test_shared_path.py` deploys it twice and tears it
+   down.
+
+Nothing else is needed: the pack is deployed, verified and removed by the
+same code as every other pack. A pack directory must not contain deploy
+code, and nothing in the app may call an SDK write method directly —
+`tests/test_shared_path.py::test_no_module_writes_to_the_tenant_outside_the_shared_path`
+fails the build with the file and line if it does.
+
+## 5. Adding a new kind of object
+
+If ZIA gains a new object type a pack should carry:
+
+1. Add the kind to `pack_ops.KINDS`, and its place in `CREATE_ORDER` and
+   `DELETE_TIERS`.
+2. Teach `pack_ops.validate()` its names and limits, with the tenant's
+   own words in the message.
+3. Add the create / update / delete branches in `pack_ops.create()`,
+   `update()` and `delete()`; list it in `pack_ops.current_names()` so the
+   identity check works before a delete.
+4. Plan it in `pack_deploy.py` (`_plan_*`) and read it in
+   `pack_channels.fetch_channel_state()`.
+5. Add its refusal to the strict tenant in `tests/test_zia_contract.py`
+   and a shipped example to a pack.
+
+## 6. What is deliberately outside the path
+
+- `rule_migrator.py` reorders and re-creates a tenant's **existing** Web
+  DLP rules for the Evaluate-All migration. It is a tenant tool, not a
+  pack deploy, and is gated by write mode and its own dry run.
+- `proposal_apply.py` changes one field of one existing rule when a
+  person approves a proposal from the continuous evaluation. It writes
+  through `pack_ops.update()`.

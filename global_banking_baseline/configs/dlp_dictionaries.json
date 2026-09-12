@@ -2097,7 +2097,7 @@
     ]
   },
   {
-    "name": "Bank-National ID (UK, Canada, Australia, South Africa)",
+    "name": "Bank-National ID (UK Canada Australia South Africa)",
     "description": "National identifiers of the UK (National Insurance number), Canada (SIN), Australia (TFN) and South Africa (ID number), within 300 bytes of the identifier's name. Check your tenant for Zscaler's predefined dictionaries for these countries and prefer them when licensed.",
     "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "proximity": 300,
@@ -2179,7 +2179,7 @@
     ]
   },
   {
-    "name": "Bank-National ID (India, Singapore, Hong Kong)",
+    "name": "Bank-National ID (India Singapore Hong Kong)",
     "description": "National identifiers of India (PAN, Aadhaar), Singapore (NRIC/FIN) and Hong Kong (HKID), within 300 bytes of the identifier's name.",
     "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
     "proximity": 300,

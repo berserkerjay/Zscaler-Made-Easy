@@ -14,12 +14,12 @@ DICTS = [
     {"id": 64, "name": "Card Clone", "custom": True, "predefinedClone": True, "dictTemplateName": "Credit Cards", "dictionaryType": "PATTERNS_AND_PHRASES", "confidenceThreshold": "CONFIDENCE_LEVEL_HIGH", "phrases": [], "patterns": []},
 ]
 ENGINES = [
-    {"id": 5001, "name": "Codenames + Cards", "engineExpression": "((D63.S > 0) AND (D7.S > 1))", "customDlpEngine": True, "description": "x"},
+    {"id": 5001, "name": "Codenames and Cards", "engineExpression": "((D63.S > 0) AND (D7.S > 1))", "customDlpEngine": True, "description": "x"},
     {"id": 1, "name": "PCI", "predefinedEngineName": "PCI", "engineExpression": "((D7.S > 0))", "customDlpEngine": False},
     {"id": 5002, "name": "Orphan", "engineExpression": "((D999.S > 0))", "customDlpEngine": True},
 ]
 WEB = [{"id": 7001, "order": 3, "rank": 7, "name": "Block codenames to GenAI", "description": "d", "protocols": ["HTTPS_RULE"], "action": "BLOCK", "state": "ENABLED",
-        "dlpEngines": [{"id": 5001, "name": "Codenames + Cards"}], "cloudApplications": ["CHATGPT_AI"], "urlCategories": [{"id": "AI_ML_APPS"}], "minSize": 10,
+        "dlpEngines": [{"id": 5001, "name": "Codenames and Cards"}], "cloudApplications": ["CHATGPT_AI"], "urlCategories": [{"id": "AI_ML_APPS"}], "minSize": 10,
         "ocrEnabled": True, "zscalerIncidentReceiver": True, "severity": "RULE_SEVERITY_HIGH", "locations": [{"id": 1, "name": "HQ"}], "groups": [{"id": 2}],
         "notificationTemplate": {"id": 9, "name": "Auditor"}, "labels": [{"id": 3, "name": "Compliance"}]}]
 ENDPOINT = [{"id": 8001, "name": "Codenames on USB", "action": "CONFIRM", "state": "DISABLED", "dlpEngines": [{"id": 5001}], "dataTransferMethod": "REMOVABLE_DRIVE_TRANSFER",
@@ -54,11 +54,11 @@ def test_upload_transcribes_native_json_into_a_pack_and_terraform(tmp_path):
     assert any("Project Codenames" in w and "match type changed" in w for w in pack.get("warnings") or pack.get("native", {}).get("warnings") or [])
     assert d["Card Clone"]["predefined_clone"] and d["Card Clone"]["dict_template_name"] == "Credit Cards" and d["Card Clone"]["confidence_threshold"] == "CONFIDENCE_LEVEL_HIGH"
     e = {x["name"]: x for x in pack["engines"]}
-    assert e["Codenames + Cards"]["expression"] == "((D:Project Codenames > 0) AND (D:Credit Cards > 1))"
+    assert e["Codenames and Cards"]["expression"] == "((D:Project Codenames > 0) AND (D:Credit Cards > 1))"
     assert e["Orphan"]["expression"] == "((D:UNKNOWN_DICTIONARY_999 > 0))" and "PCI" not in e
     p = {x["name"]: x for x in pack["policies"]}
     web = p["Block codenames to GenAI"]
-    assert web["channel"] == "web" and web["engines"] == ["Codenames + Cards"] and web["cloud_applications"] == ["CHATGPT_AI"] and web["url_categories"] == ["AI_ML_APPS"]
+    assert web["channel"] == "web" and web["engines"] == ["Codenames and Cards"] and web["cloud_applications"] == ["CHATGPT_AI"] and web["url_categories"] == ["AI_ML_APPS"]
     assert web["ocr_enabled"] and web["zscaler_incident_receiver"] and web["min_size"] == 10 and web["notification_template"] == "Auditor" and web["labels"] == ["Compliance"]
     assert "locations" not in web and "order" not in web
     ep = p["Codenames on USB"]
@@ -74,7 +74,7 @@ def test_upload_transcribes_native_json_into_a_pack_and_terraform(tmp_path):
     # The Orphan engine's unknown dictionary is a real problem the validator names; the rest passes.
     assert any("UNKNOWN_DICTIONARY_999" in x for x in v["problems"] + v["warnings"])
     # Terraform: the same pack renders as a workspace with every channel's rule.
-    good = dict(pack, engines=[e["Codenames + Cards"]])
+    good = dict(pack, engines=[e["Codenames and Cards"]])
     saved = pl.save_pack(good, pack_id="acme_export", root=str(tmp_path))
     files = pack_terraform.generate({"id": "acme_export", "dir": saved["dir"]})
     tf = "\n".join(files.values())

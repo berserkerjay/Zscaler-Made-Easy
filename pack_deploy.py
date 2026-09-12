@@ -57,7 +57,8 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import pack_channels as pc
-from dlp_importer import (resolve_template, engine_limit_problems, 
+import pack_ops as ops
+from dlp_importer import (resolve_template, engine_limit_problems,
     DICT_DESCRIPTION_MAX,
     ENGINE_DESCRIPTION_MAX,
     name_problems,
@@ -75,7 +76,6 @@ from dlp_importer import (resolve_template, engine_limit_problems,
     prune_engine_terms,
     load_pack_metadata,
     resolve_engine_expression,
-    verify_deployment,
     DEFAULT_CONFIDENCE_TWEAKS,
 )
 
@@ -329,6 +329,11 @@ def _plan_app_groups(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *
     for name, item in items.items():
         if item["status"] == CONFLICT:
             continue
+        problems = ops.validate("app_group", dict(item["definition"], name=name))
+        if problems:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = "Invalid application group in the pack: " + "; ".join(problems) + "."
+            continue
         if err:
             item["status"] = BLOCKED_DEPENDENCY
             item["reason"] = f"Endpoint application groups could not be listed ({err}); the Endpoint DLP feature is probably not licensed."
@@ -548,6 +553,11 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
                 )
                 item["warnings"].append("tenant version differs from pack")
             continue
+        problems = ops.validate("dictionary", d)
+        if problems:
+            item["status"] = BLOCKED_DEPENDENCY
+            item["reason"] = "Outside ZIA's documented dictionary limits: " + "; ".join(problems) + "."
+            continue
         _, build_err = build_dict_kwargs(d, predefined)
         if build_err == EMPTY_DICT_REASON:
             item["status"] = SKIP_EMPTY
@@ -574,7 +584,7 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
         if item["status"] == CONFLICT:
             continue
         expr = item["definition"].get("expression", "")
-        limit_problems = name_problems(name, "engine") + engine_limit_problems(expr)
+        limit_problems = ops.validate("engine", dict(item["definition"], name=name))
         if limit_problems:
             item["status"] = BLOCKED_DEPENDENCY
             item["reason"] = "Outside ZIA's documented engine limits: " + "; ".join(limit_problems) + "."
@@ -683,10 +693,10 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
         p = item["definition"]
         channel = pc.channel_of(p)
         item["channel"] = channel
-        bad = pc.validate(p)
-        if bad:
+        problems = ops.validate("policy", p)
+        if problems:
             item["status"] = BLOCKED_DEPENDENCY
-            item["reason"] = f"Invalid policy definition in the pack: {bad}."
+            item["reason"] = f"Invalid policy definition in the pack: {'; '.join(problems)}."
             continue
         engine_names = [e for e in p.get("engines", [])] if pc.has_engines(channel) else []
         item["depends_on"] = [("engine", e) for e in engine_names]
@@ -991,24 +1001,28 @@ def _saas_orders_now(zia, saas_type: str) -> List[int]:
     return sorted(out)
 
 
-def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], saas_next: Dict[str, int], _log, name: str):
-    """Create one SaaS rule at an order ZIA accepts. Returns (resp, new_id)."""
+def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], saas_next: Dict[str, int], _log, name: str) -> ops.Outcome:
+    """Create one SaaS rule at an order ZIA accepts, through the shared path."""
     t = str(payload.get("type") or "ANY")
     first = saas_next.get(t) or (saas_orders.get(t, 0) + 1)
     tried: List[int] = []
     errors: List[str] = []
 
-    def attempt(order: int):
+    def attempt(order: int) -> ops.Outcome:
         payload["order"] = order
         tried.append(order)
-        resp = pc.add_rule(zia, pc.SAAS, payload)
-        new_id = _extract_id(resp)
-        if new_id is None:
-            errors.append(str(_extract_error(resp) or ""))
-        return resp, new_id
+        out = ops.create(zia, "policy", payload, channel=pc.SAAS, name=name, log=_log)
+        if not out.ok:
+            errors.append(out.as_error() or "")
+        elif out.id is None:
+            errors.append("the API returned no id")
+        return out
 
-    resp, new_id = attempt(first)
-    if new_id is None and _order_refusal(errors[-1]):
+    def placed(out: ops.Outcome) -> bool:
+        return out.ok and out.id is not None
+
+    out = attempt(first)
+    if not placed(out) and _order_refusal(errors[-1]):
         current = _saas_orders_now(zia, t)
         top = max(current) if current else 0
         candidates = [top + 1, top] + list(range(top - 1, 0, -1))
@@ -1017,19 +1031,19 @@ def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], sa
                 break
             if order in tried or order < 1:
                 continue
-            resp, new_id = attempt(order)
-            if new_id is not None or not _order_refusal(errors[-1]):
+            out = attempt(order)
+            if placed(out) or not _order_refusal(errors[-1]):
                 break
-        if new_id is not None:
+        if placed(out):
             _log(f"[saas] '{name}': ZIA refused order {', '.join(str(o) for o in tried[:-1])} ({errors[0]}); "
                  f"placed at order {payload['order']} after re-reading the tenant's {len(current)} {t} rule(s)")
         else:
             _log(f"[saas] '{name}': ZIA refused every order tried ({', '.join(str(o) for o in tried)}); last answer: {errors[-1]}")
-    if new_id is not None:
+    if placed(out):
         saas_orders[t] = max(saas_orders.get(t, 0), int(payload["order"]))
         # The next rule of this type starts where this one landed, plus one.
         saas_next[t] = int(payload["order"]) + 1 if len(tried) > 1 else saas_orders[t] + 1
-    return resp, new_id
+    return out
 
 
 def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], use_rank_0: bool) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -1549,8 +1563,79 @@ def journey_rows(all_items: Sequence[Dict[str, Any]], sources: Sequence[Dict[str
             row["state"] = "not_started"
         else:
             row["state"] = "in_progress"
+        row["secure_by_design"] = secure_by_design_findings(row)
         rows.append(row)
     return rows
+
+
+# CISA Secure by Design, applied to a deployed policy pack. The app scores
+# itself against the principles in secure_by_design.py; this measures what
+# the pack looks like in the tenant, from the same journey read.
+SBD_OWN = "Take ownership of customer security outcomes"
+SBD_OPEN = "Embrace radical transparency and accountability"
+SBD_DEFAULTS = "Secure by default"
+
+
+def secure_by_design_findings(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Deviations from CISA's Secure by Design principles in one deployed
+    pack, from its journey row: what is not in place (ownership of
+    outcomes), what was changed in the tenant without the pack recording
+    it (transparency), and what was weakened against the pack (secure
+    defaults). Each finding says what it is, why it matters and what to
+    do, in plain words."""
+    objs = list(row.get("objects") or [])
+    rules = [o for o in objs if o.get("kind") == "policy"]
+    findings: List[Dict[str, Any]] = []
+
+    def add(principle: str, severity: str, title: str, detail: str, items: List[Dict[str, Any]], next_step: str) -> None:
+        findings.append({"principle": principle, "severity": severity, "title": title, "detail": detail,
+                         "objects": [{"kind": o.get("kind"), "name": o.get("name"), "channel": o.get("channel"), "position": o.get("position")} for o in items[:12]],
+                         "count": len(items), "next": next_step})
+
+    missing = [o for o in objs if o.get("position") == "missing"]
+    blocked = [o for o in objs if o.get("position") == "blocked"]
+    if missing and len(missing) + len(blocked) == len(objs):
+        add(SBD_OWN, "info", "This pack is not deployed yet",
+            "None of its dictionaries, engines or rules exist in the tenant, so none of the protection it defines is in place.",
+            missing, "Deploy the pack from Deploy Policy Packs; every object is created switched off and monitor-only.")
+    elif missing:
+        add(SBD_OWN, "high", "Part of the pack is not in the tenant",
+            f"{len(missing)} of {len(objs)} objects this pack defines are missing, so part of the protection it promises is not in place. "
+            "Ownership of the outcome means the whole design is deployed, not a fragment.",
+            missing, "Deploy the pack again: only what is missing is created, everything that exists is kept.")
+    if blocked:
+        add(SBD_OWN, "high", "Part of the pack cannot be created on this tenant",
+            f"{len(blocked)} object(s) are blocked (a template this tenant does not have, or a limit ZIA enforces). The rules behind them are created without those terms or not at all.",
+            blocked, "Open the plan in Deploy Policy Packs; each blocked object carries the reason and what to change.")
+    off = [o for o in rules if o.get("position") == "deployed"]
+    if rules and off and len(off) == len(rules) and not missing:
+        add(SBD_OWN, "medium", "Every rule is still switched off",
+            "The pack is in the tenant but no rule is enabled, so nothing is being watched yet. Rules ship switched off on purpose; the outcome only starts when they are turned on.",
+            off, "Enable the rules one at a time in monitor mode, review the incidents for a few days, then raise severity or move to an enforcing action.")
+    elif off:
+        add(SBD_OWN, "info", f"{len(off)} rule(s) still switched off",
+            "These rules exist but are not evaluated. Nothing is watched on the channels they cover until they are enabled.",
+            off, "Enable them in monitor mode once the enabled rules' incidents look right.")
+    customized = [o for o in objs if o.get("position") == "customized"]
+    if customized:
+        add(SBD_OPEN, "medium", "Changed in the tenant without the pack recording it",
+            f"{len(customized)} object(s) differ from what the pack defines" + (": " + "; ".join(f"{o.get('name')} ({', '.join(o.get('drift') or [])})" for o in customized[:4] if o.get("drift")) if any(o.get("drift") for o in customized) else "")
+            + ". The pack is the documented design; a change made only in the ZIA portal is written down nowhere, so the next person cannot tell a deliberate tuning from an accident.",
+            customized, "Fold the change into the pack (so the design says what the tenant does), or deploy in converge mode to restore the pack's version.")
+    relaxed = [o for o in objs if o.get("position") == "relaxed"]
+    if relaxed:
+        add(SBD_DEFAULTS, "high", "Weakened compared with the pack",
+            f"{len(relaxed)} rule(s) the pack ships enabled have been switched off in the tenant. Secure by default means the protection the design enables stays enabled unless someone decides otherwise and records why.",
+            relaxed, "Re-enable the rule, or record the reason it is off in the pack (target_state) so the assessment stops flagging it.")
+    enforcing_customized = [o for o in customized if o.get("kind") == "policy" and o.get("position") == "enforcing"]
+    if enforcing_customized:
+        add(SBD_DEFAULTS, "high", "An enforcing rule no longer matches the pack",
+            "A rule that blocks or confirms differs from the pack's design; a wider scope or a different engine can block traffic nobody intended to block, or miss what it was meant to catch.",
+            enforcing_customized, "Compare the rule with the pack in the plan (Deploy Policy Packs → preflight) and restore or record the change.")
+    worst = {"high": 3, "medium": 2, "info": 1}
+    level = max((worst[f["severity"]] for f in findings), default=0)
+    return {"ok": level < 2, "level": {3: "high", 2: "medium", 1: "info", 0: "none"}[level], "findings": findings,
+            "principles": [SBD_OWN, SBD_OPEN, SBD_DEFAULTS]}
 
 
 # Kept name: preflight reports and older callers use "baselines".
@@ -1649,13 +1734,18 @@ def apply(
     internal = report["_internal"]
     merged, tenant = internal["merged"], internal["tenant"]
     zia = client.zia
-    results: List[Dict[str, Any]] = []
+    # Every write goes through pack_ops (the shared execution path); the
+    # recorder keeps the per-object results the UI renders and one
+    # structured event per write.
+    recorder = ops.Recorder(log=_log, run="deploy")
+    results = recorder.results
     failed_names: Dict[str, Set[str]] = {"dictionary": set(), "engine": set()}
+    _OPS = {"created": "create", "restored": "update", "modified": "update", "reused": "reuse", "skipped": "skip", "failed": "write"}
 
-    def record(item: Dict[str, Any], status: str, **extra: Any) -> None:
-        entry = {"kind": item["kind"], "name": item["name"], "status": status, **extra}
-        results.append(entry)
-        _log(f"[{item['kind']}] {item['name']}: {status}" + (f" — {extra.get('error') or extra.get('reason')}" if extra.get('error') or extra.get('reason') else ""))
+    def record(item: Dict[str, Any], status: str, *, outcome: Optional[ops.Outcome] = None, **extra: Any) -> None:
+        channel = extra.pop("channel", None)
+        recorder.record(item["kind"], item["name"], status, op=extra.pop("op", None) or _OPS.get(status, status), channel=channel,
+                        outcome=outcome, **extra)
 
     # Name → ID maps, extended as objects are created so later phases resolve them.
     dict_ids: Dict[str, Any] = {n: _field(t, "id") for n, t in tenant["dictionaries"].items()}
@@ -1696,26 +1786,24 @@ def apply(
                 record(item, "skipped", reason=build_err)
                 failed_names["dictionary"].add(item["name"])
                 continue
+            payload = dict(name=d["name"], custom_phrase_match_type=d["custom_phrase_match_type"], dictionary_type="PATTERNS_AND_PHRASES", **kwargs)
             if item["status"] == RESTORE:
                 tid = item["tenant"]["id"]
-                resp = zia.dlp_dictionary.update_dict(tid, name=d["name"], custom_phrase_match_type=d["custom_phrase_match_type"],
-                                                      dictionary_type="PATTERNS_AND_PHRASES", **kwargs)
-                err = _extract_error(resp) if _extract_id(resp) is None else None
-                if err:
+                out = ops.update(zia, "dictionary", tid, payload, log=_log)
+                if not out.ok:
                     failed_names["dictionary"].add(item["name"])
-                    record(item, "failed", error=err)
+                    record(item, "failed", outcome=out)
                 else:
                     dict_ids[item["name"]] = tid
-                    record(item, "restored", id=tid, drift=item.get("drift"))
+                    record(item, "restored", outcome=out, id=tid, drift=item.get("drift"))
                 continue
-            resp = zia.dlp_dictionary.add_dict(d["name"], d["custom_phrase_match_type"], "PATTERNS_AND_PHRASES", **kwargs)
-            new_id = _extract_id(resp)
-            if new_id:
-                dict_ids[item["name"]] = new_id
-                record(item, "created", id=new_id)
+            out = ops.create(zia, "dictionary", payload, log=_log)
+            if out.ok and out.id is not None:
+                dict_ids[item["name"]] = out.id
+                record(item, "created", outcome=out, id=out.id)
             else:
                 failed_names["dictionary"].add(item["name"])
-                record(item, "failed", error=_extract_error(resp))
+                record(item, "failed", outcome=out, error=out.as_error() or "the API returned no id")
         except Exception as e:  # noqa: BLE001 — isolate per item
             failed_names["dictionary"].add(item["name"])
             record(item, "failed", error=str(e)[:200])
@@ -1740,27 +1828,24 @@ def apply(
                 failed_names["engine"].add(item["name"])
                 record(item, "skipped", reason="unresolved dictionaries: " + ", ".join(unresolved))
                 continue
+            payload = dict(name=e["name"], engine_expression=expr, custom_dlp_engine=True, description=e.get("description", "Imported engine"))
             if item["status"] == RESTORE:
                 eid = item["tenant"]["id"]
-                resp = zia.dlp_engine.update_dlp_engine(eid, name=e["name"], engine_expression=expr, custom_dlp_engine=True,
-                                                        description=e.get("description", "Imported engine"))
-                err = _extract_error(resp) if _extract_id(resp) is None else None
-                if err:
+                out = ops.update(zia, "engine", eid, payload, log=_log)
+                if not out.ok:
                     failed_names["engine"].add(item["name"])
-                    record(item, "failed", error=err)
+                    record(item, "failed", outcome=out)
                 else:
                     engine_ids[item["name"]] = eid
-                    record(item, "restored", id=eid, drift=item.get("drift"))
+                    record(item, "restored", outcome=out, id=eid, drift=item.get("drift"))
                 continue
-            resp = zia.dlp_engine.add_dlp_engine(name=e["name"], engine_expression=expr, custom_dlp_engine=True,
-                                                 description=e.get("description", "Imported engine"))
-            new_id = _extract_id(resp)
-            if new_id:
-                engine_ids[item["name"]] = new_id
-                record(item, "created", id=new_id)
+            out = ops.create(zia, "engine", payload, log=_log)
+            if out.ok and out.id is not None:
+                engine_ids[item["name"]] = out.id
+                record(item, "created", outcome=out, id=out.id)
             else:
                 failed_names["engine"].add(item["name"])
-                record(item, "failed", error=_extract_error(resp))
+                record(item, "failed", outcome=out, error=out.as_error() or "the API returned no id")
         except Exception as ex:  # noqa: BLE001
             failed_names["engine"].add(item["name"])
             record(item, "failed", error=str(ex)[:200])
@@ -1780,21 +1865,20 @@ def apply(
         try:
             if item["status"] == RESTORE:
                 gid = item["tenant"]["id"]
-                data, err = pc.update_app_group(zia, gid, g)
-                if err:
+                out = ops.update(zia, "app_group", gid, g, log=_log)
+                if not out.ok:
                     failed_names["app_group"].add(item["name"])
-                    record(item, "failed", error=err)
+                    record(item, "failed", outcome=out)
                 else:
-                    record(item, "restored", id=gid, drift=item.get("drift"))
+                    record(item, "restored", outcome=out, id=gid, drift=item.get("drift"))
                 continue
-            data, err = pc.add_app_group(zia, g)
-            new_id = (data or {}).get("id") if isinstance(data, dict) else None
-            if err or new_id is None:
+            out = ops.create(zia, "app_group", g, log=_log)
+            if not out.ok or out.id is None:
                 failed_names["app_group"].add(item["name"])
-                record(item, "failed", error=err or "the API returned no id")
+                record(item, "failed", outcome=out, error=out.as_error() or "the API returned no id")
             else:
-                app_group_ids[item["name"]] = new_id
-                record(item, "created", id=new_id)
+                app_group_ids[item["name"]] = out.id
+                record(item, "created", outcome=out, id=out.id)
         except Exception as ex:  # noqa: BLE001
             failed_names["app_group"].add(item["name"])
             record(item, "failed", error=str(ex)[:200])
@@ -1853,35 +1937,22 @@ def apply(
                 existing = item["tenant"]
                 # Keep the rule where the admin placed it; only its content is restored.
                 payload["order"] = existing.get("order") or payload.get("order")
-                if parent_id is not None:
-                    data, err = pc.update_sub_rule(zia, parent_id, existing["id"], payload)
+                out = ops.update(zia, "policy", existing["id"], payload, channel=channel, parent_id=parent_id, log=_log)
+                if not out.ok:
+                    record(item, "failed", outcome=out, channel=channel)
                 else:
-                    resp = pc.update_rule(zia, channel, existing["id"], payload)
-                    err = _extract_error(resp) if _extract_id(resp) is None else None
-                if err:
-                    record(item, "failed", error=err, channel=channel)
-                else:
-                    record(item, "restored", id=existing["id"], channel=channel, drift=item.get("drift"))
+                    record(item, "restored", outcome=out, id=existing["id"], channel=channel, drift=item.get("drift"))
                 continue
-            if parent_id is not None:
-                data, err = pc.add_sub_rule(zia, parent_id, payload)
-                new_id = (data or {}).get("id") if isinstance(data, dict) else None
-                if err or new_id is None:
-                    record(item, "failed", error=err or "the API returned no id", channel=channel)
-                else:
-                    policy_ids[item["name"]] = new_id
-                    record(item, "created", id=new_id, channel=channel, parent_id=parent_id)
-                continue
-            if channel == pc.SAAS:
-                resp, new_id = _add_saas_rule(zia, payload, saas_orders, saas_next, _log, item["name"])
+            if channel == pc.SAAS and parent_id is None:
+                out = _add_saas_rule(zia, payload, saas_orders, saas_next, _log, item["name"])
             else:
-                resp = pc.add_rule(zia, channel, payload)
-                new_id = _extract_id(resp)
-            if new_id:
-                policy_ids[item["name"]] = new_id
-                record(item, "created", id=new_id, channel=channel, order=payload.get("order"))
+                out = ops.create(zia, "policy", payload, channel=channel, parent_id=parent_id, log=_log)
+            if out.ok and out.id is not None:
+                policy_ids[item["name"]] = out.id
+                record(item, "created", outcome=out, id=out.id, channel=channel,
+                       order=payload.get("order") if parent_id is None else None, parent_id=parent_id)
             else:
-                record(item, "failed", error=_extract_error(resp), channel=channel)
+                record(item, "failed", outcome=out, channel=channel, error=out.as_error() or "the API returned no id")
         except Exception as ex:  # noqa: BLE001
             record(item, "failed", error=str(ex)[:200], channel=channel)
 
@@ -1892,49 +1963,17 @@ def apply(
                 continue  # no-ops were already explained in the plan; nothing to report
             t = item["tenant"]
             existing = tenant["dictionaries"][t["name"]]
-            try:
-                _, _, err = zia.dlp_dictionary.update_dict(
-                    t["id"],
-                    name=t["name"],
-                    dictionary_type=_field(existing, "dictionary_type", "dictionaryType", default="PATTERNS_AND_PHRASES"),
-                    custom_phrase_match_type=_field(existing, "custom_phrase_match_type", "customPhraseMatchType",
-                                                    default="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"),
-                    confidence_threshold=item["definition"]["target_confidence"],
-                )
-                if err:
-                    record(item, "failed", error=str(err)[:200])
-                else:
-                    record(item, "modified", id=t["id"])
-            except Exception as ex:  # noqa: BLE001
-                record(item, "failed", error=str(ex)[:200])
-
-    verification: Dict[str, Any] = {}
-    if verify:
-        _log("Phase 5: verification")
-        for src in internal["sources"]:
-            try:
-                verification[src["id"]] = verify_deployment(zia, src["dir"], log=log)
-            except Exception as ex:  # noqa: BLE001
-                verification[src["id"]] = {"phase": "verify", "all_good": False, "error": str(ex)[:200]}
-            # Rules: every policy that should now exist (created or reused) must be listed by its channel API.
-            expected: Dict[str, List[str]] = {}
-            for item in merged["policy"].values():
-                if src["id"] in item["packs"] and item["status"] in AVAILABLE_STATUSES:
-                    expected.setdefault(item.get("channel") or pc.channel_of(item["definition"]), []).append(item["name"])
-            rules_check: Dict[str, Any] = {}
-            for channel, names in expected.items():
-                types = {str(i["definition"].get("type")) for i in merged["policy"].values()
-                         if (i.get("channel") or pc.channel_of(i["definition"])) == pc.CLOUD_APP and i["definition"].get("type")}
-                present, err = pc.list_rule_names(zia, channel, types=types if channel == pc.CLOUD_APP else None)
-                if err or present is None:
-                    rules_check[channel] = {"total": len(names), "ok": 0, "missing": names, "error": err}
-                    verification[src["id"]]["all_good"] = False
-                    continue
-                missing_rules = [n for n in names if n not in present]
-                rules_check[channel] = {"total": len(names), "ok": len(names) - len(missing_rules), "missing": missing_rules}
-                if missing_rules:
-                    verification[src["id"]]["all_good"] = False
-            verification[src["id"]]["rules"] = rules_check
+            out = ops.update(zia, "dictionary", t["id"], {
+                "name": t["name"],
+                "dictionary_type": _field(existing, "dictionary_type", "dictionaryType", default="PATTERNS_AND_PHRASES"),
+                "custom_phrase_match_type": _field(existing, "custom_phrase_match_type", "customPhraseMatchType",
+                                                   default="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"),
+                "confidence_threshold": item["definition"]["target_confidence"],
+            }, log=_log)
+            if not out.ok:
+                record(item, "failed", outcome=out)
+            else:
+                record(item, "modified", outcome=out, id=t["id"])
 
     counts: Dict[str, int] = {}
     for r in results:
@@ -1969,6 +2008,7 @@ def apply(
     # now. Every object this run created, overwrote, modified or reused
     # must be found; anything the fresh read would still create is missing.
     read_check: Dict[str, Any] = {"read": False, "clean": False, "expected": 0, "present": 0, "missing": [], "activation_status": settled}
+    fresh: Dict[Tuple[str, str], Dict[str, Any]] = {}
     if wrote or counts.get("reused"):
         _log("Reading the tenant back to verify the deployment…")
         try:
@@ -1992,11 +2032,20 @@ def apply(
         except Exception as ex:  # noqa: BLE001
             read_check["error"] = str(ex)[:300]
             _log(f"Read-back failed: {read_check['error']}")
+    # Per-pack verification comes from the same read-back (one source of
+    # truth: the planner), not from a second comparison with its own rules.
+    verification: Dict[str, Any] = {}
+    if verify:
+        _log("Phase 5: verification (from the read-back)")
+        verification = _verification_from_read_back(internal["sources"], merged, results, fresh, read_check)
+        for pid, v in verification.items():
+            _log(f"[verify] {pid}: " + ("everything the deployment created or reused is in the tenant" if v.get("all_good") else (v.get("error") or "differences found")))
     return {
         "status": status,
         "summary": counts,
         "channels": channels,
         "results": results,
+        "events": recorder.events,
         "verification": verification,
         "read_check": read_check,
         "plan_hash": plan_hash,
@@ -2010,121 +2059,147 @@ def apply(
 # Undo a deployment
 # ---------------------------------------------------------------------------
 
-UNDO_ORDER = ("policy", "app_group", "engine", "dictionary")
+UNDO_ORDER = ops.DELETE_ORDER
 
-
-def _current_names(zia, kind: str, channel: Optional[str]) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
-    """id → name for the objects of a kind/channel as the tenant has them
-    now, so an undo only deletes an id that still carries the name we
-    created. Sub-rules are read through their parents."""
-    try:
-        if kind == "dictionary":
-            data, err = pc._nx(zia.dlp_dictionary.list_dicts())
-        elif kind == "engine":
-            data, err = pc._nx(zia.dlp_engine.list_dlp_engines())
-        elif kind == "app_group":
-            groups, gerr = pc.list_app_groups(zia)
-            return ({str(g.get("id")): n for n, g in (groups or {}).items()}, gerr)
-        else:
-            svc = getattr(zia, pc.CHANNELS[channel]["service"], None)
-            if svc is None:
-                return None, "service unavailable"
-            if channel == pc.SAAS:
-                lister = getattr(svc, "list_all_rules", None)
-                data, err = pc._nx(lister()) if lister else pc._nx(svc.list_rules("ANY"))
-            elif channel == pc.CLOUD_APP:
-                data = []
-                for t in pc.CLOUD_APP_TYPES:
-                    part, perr = pc._nx(svc.list_rules(t))
-                    if not perr:
-                        data.extend(part or [])
-                err = None
-            else:
-                data, err = pc._nx(svc.list_rules())
-        if err:
-            return None, str(err)[:200]
-        out: Dict[str, str] = {}
-        for r in data or []:
-            out[str(_field(r, "id"))] = str(_field(r, "name", default="") or "")
-            if channel == pc.ENDPOINT:
-                for sr in (_field(r, "sub_rules", "subRules", default=[]) or []):
-                    out[str(_field(sr, "id"))] = str(_field(sr, "name", default="") or "")
-        return out, None
-    except Exception as e:  # noqa: BLE001
-        return None, str(e)[:200]
+# Kept names: the identity check and the delete live in pack_ops now.
+_current_names = ops.current_names
 
 
 def _delete(zia, item: Dict[str, Any]) -> Optional[str]:
-    """Delete one created object. Returns an error string or None."""
-    kind, channel, oid = item["kind"], item.get("channel"), item["id"]
-    try:
-        if kind == "dictionary":
-            _, _, err = zia.dlp_dictionary.delete_dict(oid)
-        elif kind == "engine":
-            _, _, err = zia.dlp_engine.delete_dlp_engine(oid)
-        elif kind == "app_group":
-            _, err = pc.raw_request(zia, "DELETE", f"{pc.APP_GROUPS_PATH}/{oid}")
-        elif channel == pc.ENDPOINT and item.get("parent_id") is not None:
-            _, err = pc.raw_request(zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}")
-        elif channel == pc.CLOUD_APP:
-            _, _, err = zia.cloudappcontrol.delete_rule(str(item.get("type") or "").upper() or "ANY", oid)
-        elif channel == pc.SAAS:
-            # The SaaS Security API delete wants the rule's type (ruleType);
-            # without it the API refuses and the rule silently survives.
-            svc = getattr(zia, pc.CHANNELS[channel]["service"])
-            rtype = item.get("type") or item.get("saas_type") or pc.saas_rule_type(zia, oid)
-            _, _, err = svc.delete_rule(oid, rule_type=rtype) if rtype else svc.delete_rule(oid)
-        else:
-            svc = getattr(zia, pc.CHANNELS[channel]["service"])
-            _, _, err = svc.delete_rule(oid)
-        return str(err)[:200] if err else None
-    except Exception as e:  # noqa: BLE001
-        return str(e)[:200]
+    """Delete one object through the shared path. Error string or None."""
+    return ops.delete(zia, item).as_error()
 
 
-def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = None, log: LogFn = None) -> Dict[str, Any]:
-    """Delete what a recorded deployment created, in reverse dependency
-    order: sub-rules, rules, endpoint application groups, engines,
-    dictionaries. Only objects this tool created are touched, and only
-    when the tenant still lists that id under the name we gave it.
-    Reused, modified or restored objects are never deleted. Every item is
-    isolated; a failure (an engine still used by another rule, say) is
-    reported and the rest continues."""
-    _log = log or (lambda m: None)
-    if writes_enabled is False:
-        return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to undo a deployment."], "results": []}
-    zia = client.zia
-    results: List[Dict[str, Any]] = []
-    todo = [c for c in (record.get("created") or []) if not c.get("undone")]
-    rank = {k: i for i, k in enumerate(UNDO_ORDER)}
-    todo.sort(key=lambda c: (rank.get(c["kind"], 9), 0 if c.get("parent_id") is not None else 1))
-    names_cache: Dict[Tuple[str, Optional[str]], Tuple[Optional[Dict[str, str]], Optional[str]]] = {}
-    for c in todo:
-        key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
-        if key not in names_cache:
-            names_cache[key] = _current_names(zia, c["kind"], c.get("channel"))
-        current, err = names_cache[key]
-        entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel")}
-        if current is None:
-            entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
-        elif str(c["id"]) not in current:
-            entry.update(status="gone", reason="already removed from the tenant")
-        elif current[str(c["id"])] != c["name"]:
-            entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not the one this tool created; left alone")
+def _verification_from_read_back(sources: Sequence[Dict[str, Any]], merged: Dict[str, Dict[str, Dict[str, Any]]],
+                                 results: Sequence[Dict[str, Any]], fresh: Dict[Tuple[str, str], Dict[str, Any]],
+                                 read_check: Dict[str, Any]) -> Dict[str, Any]:
+    """Per-pack verification derived from the read-back preflight: every
+    dictionary, engine and rule the run created, restored or reused must
+    be found by the same planner that planned it. One source of truth."""
+    outcome = {r["name"]: r for r in results}
+    out: Dict[str, Any] = {}
+    for src in sources:
+        pid = src["id"]
+        if not read_check.get("read") or read_check.get("error"):
+            out[pid] = {"phase": "verify", "all_good": False, "error": read_check.get("error") or "the tenant could not be read back"}
+            continue
+        v: Dict[str, Any] = {"phase": "verify", "all_good": True, "dictionaries": {"total": 0, "ok": 0, "missing": [], "mismatched": {}},
+                             "engines": {"total": 0, "ok": 0, "missing": [], "mismatched": {}}, "rules": {}}
+        for kind, bucket in (("dictionary", "dictionaries"), ("engine", "engines"), ("policy", None)):
+            for item in merged.get(kind, {}).values():
+                if pid not in (item.get("packs") or []):
+                    continue
+                r = outcome.get(item["name"])
+                if not r or r.get("status") not in ("created", "restored", "modified", "reused"):
+                    continue
+                f = fresh.get((kind, item["name"]))
+                present = f is not None and f.get("status") not in (CREATE, BLOCKED_DEPENDENCY, CONFLICT, SKIP_EMPTY)
+                if kind == "policy":
+                    ch = item.get("channel") or pc.channel_of(item["definition"])
+                    slot = v["rules"].setdefault(ch, {"total": 0, "ok": 0, "missing": []})
+                    slot["total"] += 1
+                    if present:
+                        slot["ok"] += 1
+                    else:
+                        slot["missing"].append(item["name"])
+                        v["all_good"] = False
+                    continue
+                slot = v[bucket]
+                slot["total"] += 1
+                if not present:
+                    slot["missing"].append(item["name"])
+                    v["all_good"] = False
+                elif f.get("status") == REUSE_DIFFERS:
+                    slot["ok"] += 1
+                    slot["mismatched"][item["name"]] = f.get("reason") or "differs from the pack"
+                else:
+                    slot["ok"] += 1
+        out[pid] = v
+    return out
+
+
+def verify_pack(client, pack: Dict[str, Any]) -> Dict[str, Any]:
+    """Read-only: is everything one pack defines in the tenant? Answered by
+    the planner (the same read a deploy ends with), in the shape the
+    pack page shows: dictionaries and engines found / missing / differing,
+    rules found per channel."""
+    report = preflight(client, [pack], writes_enabled=False)
+    items = report.get("items") or []
+    v: Dict[str, Any] = {"phase": "verify", "all_good": True,
+                         "dictionaries": {"total": 0, "ok": 0, "missing": [], "mismatched": {}},
+                         "engines": {"total": 0, "ok": 0, "missing": [], "mismatched": {}}, "rules": {},
+                         "blocked": [], "message": ""}
+    if not (report.get("tenant") or {}).get("reachable", True):
+        v["all_good"] = False
+        v["error"] = "; ".join(report.get("blockers") or []) or "the tenant could not be read"
+        v["message"] = "The tenant could not be read, so nothing could be checked. " + v["error"]
+        return v
+    for i in items:
+        if i.get("kind") == "tweak":
+            continue
+        present = i["status"] in (REUSE, REUSE_DIFFERS, RESTORE, NOOP)   # in the tenant now; CREATE means missing
+        if i["kind"] == "policy":
+            channel = i.get("channel") or (i.get("detail") or {}).get("channel") or pc.WEB
+            slot = v["rules"].setdefault(channel, {"total": 0, "ok": 0, "missing": []})
+        elif i["kind"] in ("dictionary", "engine"):
+            slot = v["dictionaries" if i["kind"] == "dictionary" else "engines"]
         else:
-            derr = _delete(zia, c)
-            if derr:
-                entry.update(status="failed", error=derr)
-            else:
-                entry.update(status="deleted")
-                # Keep the cache honest for later items of the same kind.
-                current.pop(str(c["id"]), None)
-        results.append(entry)
-        _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else ""))
+            continue
+        if not present and i["status"] in (BLOCKED_DEPENDENCY, CONFLICT, SKIP_EMPTY):
+            # Cannot exist on this tenant (a template it lacks, a limit): said, not counted as missing.
+            v["blocked"].append({"kind": i["kind"], "name": i["name"], "reason": i.get("reason") or ""})
+            continue
+        slot["total"] += 1
+        if present:
+            slot["ok"] += 1
+            if i["status"] == REUSE_DIFFERS and "mismatched" in slot:
+                slot["mismatched"][i["name"]] = i.get("reason") or "differs from the pack"
+        else:
+            slot["missing"].append(i["name"])
+            v["all_good"] = False
+    missing = len(v["dictionaries"]["missing"]) + len(v["engines"]["missing"]) + sum(len(s["missing"]) for s in v["rules"].values())
+    v["message"] = ("Everything this pack defines is in the tenant." if v["all_good"]
+                    else f"{missing} object(s) this pack defines are not in the tenant; deploy the pack to create only what is missing.")
+    if v["blocked"]:
+        v["message"] += (f" {len(v['blocked'])} object(s) cannot be created on this tenant and were left out: "
+                         + "; ".join(f"{b['name']} ({b['reason']})" for b in v["blocked"][:3]) + ("…" if len(v["blocked"]) > 3 else ""))
+    return v
+
+
+def undo(client, record: Dict[str, Any], *, writes_enabled: Optional[bool] = None, log: LogFn = None,
+         settle_seconds: float = 45.0) -> Dict[str, Any]:
+    """Delete what a recorded deployment created, through the same executor
+    as a pack removal (pack_removal._execute): dependents before
+    dependencies in tiers, activation and a wait for ACTIVE between tiers,
+    retries for what time clears, then a read-back. Only objects the
+    deployment created are touched, and only while the tenant still lists
+    that id under the name it was given; an id that now carries another
+    name is skipped and said so, an object already gone is reported as
+    gone. Returns the undo shape (undone / partial / nothing / failed /
+    blocked) older callers and the deployment store expect."""
+    import pack_removal
+    out = pack_removal.remove_deployment(client, record, plan_hash="", writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+    results = list(out.get("results") or [])
+    for it in out.get("kept") or []:
+        results.append({"kind": it["kind"], "name": it["name"], "id": it.get("id"), "channel": it.get("channel"), "status": "skipped",
+                        "reason": f"{it.get('keep') or 'kept'}; left alone"})
+    for it in out.get("gone") or []:
+        results.append({"kind": it["kind"], "name": it["name"], "id": it.get("id"), "channel": it.get("channel"), "status": "gone",
+                        "reason": "already removed from the tenant"})
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    complete = not counts.get("failed") and not counts.get("skipped")
-    status = "undone" if complete and results else ("partial" if counts.get("deleted") else ("nothing" if not results else "failed"))
-    return {"status": status, "summary": counts, "results": results, "complete": complete,
-            "activation_required": bool(counts.get("deleted"))}
+    if out.get("status") in ("blocked", "stale"):
+        return {**out, "status": "blocked" if out.get("status") == "blocked" else "failed", "results": results, "summary": counts}
+    complete = not counts.get("failed") and not counts.get("skipped") and not counts.get("still_present")
+    deleted = counts.get("deleted", 0)
+    if complete and deleted:
+        status = "undone"
+    elif deleted:
+        status = "partial"
+    elif counts.get("failed") or counts.get("still_present"):
+        status = "failed"
+    else:
+        status = "nothing"   # nothing left to delete: every item is gone, or kept for something the customer still uses
+    return {**out, "status": status, "summary": counts, "results": results, "complete": complete,
+            "activation_required": bool(deleted) and not ((out.get("activation") or {}).get("activated"))}

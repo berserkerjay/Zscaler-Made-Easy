@@ -113,6 +113,14 @@
     get: 'The diagram, keyboard-navigable, with the counts per channel.',
     next: 'If it matches what the customer expects, approve and deploy.',
   };
+  X.deployflow = {
+    group: 'Close the gaps', name: 'How a deployment works', href: '/report/deploy-flow',
+    what: 'A step-by-step walk-through of what happens when a policy pack is deployed or removed: plan, validate, approve, write in order, activate, read back. Click a step to open it.',
+    why: 'Every pack takes the same road, and knowing the road makes a log line or a failure message obvious instead of alarming.',
+    when: 'Before the first deployment with a customer, or whenever a message in the deploy log needs context.',
+    get: 'The deploy flow and the removal flow, each step with what happens, what can stop it and what you see on screen. Nothing touches the tenant.',
+    next: 'Open Deploy Policy Packs and run a preflight; it writes nothing.',
+  };
   X.terraform = {
     group: 'Close the gaps', name: 'Terraform hand-off', href: '/report/view?tool=terraform',
     what: 'The same policy pack as a Terraform workspace for the official zscaler/zia provider. Static mode needs no credentials; gap mode reads the tenant and imports what exists so the customer\'s first plan is exactly the gap.',
@@ -216,7 +224,7 @@
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
-      '/report/flow': 'flow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
+      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
       '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
