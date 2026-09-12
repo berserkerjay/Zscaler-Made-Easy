@@ -52,8 +52,8 @@ variable "saas_tenant_ids_bank_payment_card_data_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_payment_card_data_bulk_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Card Data-Bulk [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_payment_card_2_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Card 2 [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -62,8 +62,8 @@ variable "saas_tenant_ids_bank_payment_card_data_bulk_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_payment_instructions_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Instructions [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_payment_instruction_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Payment Instruction [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -72,8 +72,8 @@ variable "saas_tenant_ids_bank_payment_instructions_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_customer_pii_global_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII (Global) [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_customer_pii_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer PII [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -102,8 +102,8 @@ variable "saas_tenant_ids_bank_customer_pii_bulk_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_customer_financial_records_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Financial Records [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_customer_financial_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Customer Financial [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -122,8 +122,8 @@ variable "saas_tenant_ids_bank_kyc_and_aml_files_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_credit_and_loan_applications_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Credit and Loan Applications [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_credit_and_loan_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Credit and Loan [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -132,8 +132,8 @@ variable "saas_tenant_ids_bank_credit_and_loan_applications_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_mnpi_and_deal_information_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI and Deal Information [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_mnpi_and_deal_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-MNPI and Deal [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -142,8 +142,8 @@ variable "saas_tenant_ids_bank_mnpi_and_deal_information_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_financial_information_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Financial Information [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_financial_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Financial [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -152,8 +152,8 @@ variable "saas_tenant_ids_bank_financial_information_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_bank_confidential_markings_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Bank-Confidential Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_bank_confidential_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Bank-Confidential [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

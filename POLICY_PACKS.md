@@ -178,13 +178,13 @@ An array of DLP web rules. Each policy points to one or more engines by **name**
 
 | Field | Required | Default | Notes |
 |---|---|---|---|
-| `name` | yes | — | Starts with `Z-` by convention (groups visually in ZIA UI) |
+| `name` | yes | — | Starts with `Z-` by convention (groups visually in ZIA UI). **SaaS rules: at most 31 characters** ("Name exceeds the max length 31 characters" from a real tenant); `tools/fan_out_channels.py` shortens a mirror's name at a word boundary to fit, and preflight refuses a longer one. Web, Endpoint and Email rules took longer names on the same tenant |
 | `action` | no | `ALLOW` | What the rule is designed to do. **Every pack ships monitor-only**: at load time DLP-Check turns `BLOCK` / `CONFIRM` into `target_action` and creates the rule with the channel's monitor action (`ALLOW`; `OFLCASB_DLP_REPORT_INCIDENT` on SaaS). |
 | `target_action` | no | — | Only for packs you upload with `BLOCK` / `CONFIRM` rules: the app keeps the designed action here and creates the rule monitor-only. The shipped packs carry none: every rule simply monitors, and enforcing is the customer's decision in the portal. |
 | `state` | no | `DISABLED` | **Every pack ships `DISABLED`**; an `ENABLED` value is kept as `target_state` and the rule is still created disabled. |
-| `rank` | no | 7 | 0 = highest priority (use Rank 0 import button for conflict resolution) |
+| `rank` | no | 7 | Admin rank 0-7. **Every shipped pack carries 0 on every rule**, as the Fed pack's production rules do (a real tenant refused a rank-7 SaaS rule's order); an uploaded pack that names none deploys at 7, and the Rank 0 switch forces 0 |
 | `engines` | yes | — | Exactly **one** engine name per rule (pack convention: one rule per engine, so each detection has its own incident count and can be enabled, tuned or hardened on its own; every engine gets a rule, and `tools/fan_out_channels.py` mirrors each Web rule onto Endpoint, SaaS and Email so every channel carries the same rules) |
-| `protocols` | no | `["ANY_RULE"]` | `HTTP_RULE`, `HTTPS_RULE`, `FTP_RULE`, `NATIVE_FTP_RULE` |
+| `protocols` | no | `["ANY_RULE"]` | `WEBSOCKETSSL_RULE`, `WEBSOCKET_RULE`, `FTP_RULE`, `HTTPS_RULE`, `HTTP_RULE` (the set every shipped pack uses and a production tenant accepts). `NATIVE_FTP_RULE` is a URL Filtering protocol; ZIA answers "Request body is invalid." for a DLP rule that names it, and preflight refuses it |
 | `severity` | no | — | `RULE_SEVERITY_INFO` / `LOW` / `MEDIUM` / `HIGH` |
 | `file_types` | no | all | e.g. `["FTCATEGORY_MS_EXCEL", "FTCATEGORY_PDF_DOCUMENT"]` |
 | `locations` / `groups` / `departments` / `users` | no | all | Restrict rule to scope |
@@ -277,7 +277,7 @@ shared ones:
 
 | Field | What to enter | Sample |
 |---|---|---|
-| `data_transfer_method` | One of `REMOVABLE_DRIVE_TRANSFER`, `NETWORK_DRIVE_TRANSFER`, `APPLICATION_FILE_ACCESS`, `PRINTING`, `CLOUD_SYNC`, `ANY` | `"REMOVABLE_DRIVE_TRANSFER"` |
+| `data_transfer_method` | **Mandatory in ZIA** ("Channel is mandatory"): one of `REMOVABLE_DRIVE_TRANSFER`, `NETWORK_DRIVE_TRANSFER`, `APPLICATION_FILE_ACCESS`, `PRINTING`. One rule watches one method; there is no `ANY`. A rule that names none is deployed as `REMOVABLE_DRIVE_TRANSFER`, which is what every pack's Endpoint mirror uses | `"REMOVABLE_DRIVE_TRANSFER"` |
 | `user_risk_score_levels` | Explicit values (the API rejects ANY) | `["LOW", "MEDIUM", "HIGH", "CRITICAL"]` |
 | `eun_enabled` | Show the end-user notification | `false` |
 | `endpoint_application_groups` | Names of groups from `configs/endpoint_application_groups.json` or already in the tenant | `["zbp-GenAI Applications"]` |

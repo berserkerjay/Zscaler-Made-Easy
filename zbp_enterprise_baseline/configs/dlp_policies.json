@@ -4,12 +4,16 @@
     "description": "",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-Financial Information"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -18,12 +22,16 @@
     "description": "",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-ITAR Phrases"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -32,12 +40,16 @@
     "description": "One rule per engine: this rule carries ZBP-TLP Red only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-TLP Red"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -46,12 +58,16 @@
     "description": "One rule per engine: this rule carries ZBP-TLP Amber Strict only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-TLP Amber Strict"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -60,12 +76,16 @@
     "description": "One rule per engine: this rule carries ZBP-TLP Amber only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-TLP Amber"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -74,12 +94,16 @@
     "description": "",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-US PII"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -88,12 +112,16 @@
     "description": "One rule per engine: this rule carries ZBP-US PHI - Medium Confidence only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-US PHI - Medium Confidence"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -102,12 +130,16 @@
     "description": "One rule per engine: this rule carries ZBP-US PHI - High Confidence only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-US PHI - High Confidence"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -116,12 +148,16 @@
     "description": "",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "ZBP-Private Keys"
     ],
     "protocols": [
-      "ANY_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -136,6 +172,7 @@
       "ZBP-Financial Information"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -150,10 +187,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "ZBP-Financial Information [SaaS]",
+    "name": "ZBP-Financial Informatio [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"ZBP-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -168,7 +205,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-Financial Information [Email]",
@@ -182,7 +219,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-ITAR International Traffic in Arms Regulations [Endpoint]",
@@ -195,6 +232,7 @@
       "ZBP-ITAR Phrases"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -209,10 +247,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "ZBP-ITAR International Traffic in Arms Regulations [SaaS]",
+    "name": "ZBP-ITAR International [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"ZBP-ITAR International Traffic in Arms Regulations-Monitor\" (ZBP-ITAR Phrases). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -227,7 +265,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-ITAR International Traffic in Arms Regulations [Email]",
@@ -241,7 +279,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Red [Endpoint]",
@@ -254,6 +292,7 @@
       "ZBP-TLP Red"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -268,7 +307,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Red [SaaS]",
@@ -286,7 +325,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Red [Email]",
@@ -300,7 +339,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Amber Strict [Endpoint]",
@@ -313,6 +352,7 @@
       "ZBP-TLP Amber Strict"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -327,7 +367,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Amber Strict [SaaS]",
@@ -345,7 +385,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Amber Strict [Email]",
@@ -359,7 +399,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Amber [Endpoint]",
@@ -372,6 +412,7 @@
       "ZBP-TLP Amber"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -386,7 +427,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Amber [SaaS]",
@@ -404,7 +445,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-TLP Amber [Email]",
@@ -418,7 +459,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PII [Endpoint]",
@@ -431,6 +472,7 @@
       "ZBP-US PII"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -445,7 +487,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PII [SaaS]",
@@ -463,7 +505,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PII [Email]",
@@ -477,7 +519,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PHI - Medium Confidence [Endpoint]",
@@ -490,6 +532,7 @@
       "ZBP-US PHI - Medium Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -504,10 +547,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "ZBP-US PHI - Medium Confidence [SaaS]",
+    "name": "ZBP-US PHI - Medium [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"ZBP-US PHI - Medium Confidence-Monitor\" (ZBP-US PHI - Medium Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -522,7 +565,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PHI - Medium Confidence [Email]",
@@ -536,7 +579,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PHI - High Confidence [Endpoint]",
@@ -549,6 +592,7 @@
       "ZBP-US PHI - High Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -563,10 +607,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "ZBP-US PHI - High Confidence [SaaS]",
+    "name": "ZBP-US PHI - High [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"ZBP-US PHI - High Confidence-Monitor\" (ZBP-US PHI - High Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -581,7 +625,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-US PHI - High Confidence [Email]",
@@ -595,7 +639,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-Private Keys [Endpoint]",
@@ -608,6 +652,7 @@
       "ZBP-Private Keys"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -622,7 +667,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-Private Keys [SaaS]",
@@ -640,7 +685,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "ZBP-Private Keys [Email]",
@@ -654,6 +699,6 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   }
 ]

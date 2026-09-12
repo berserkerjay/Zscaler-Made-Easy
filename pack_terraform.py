@@ -43,7 +43,7 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
-from dlp_importer import find_refs, DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, fit_description, load_pack_metadata
+from dlp_importer import find_refs, DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description, load_pack_metadata
 
 PROVIDER_SOURCE = "zscaler/zia"
 PROVIDER_VERSION = "~> 4.8"
@@ -338,6 +338,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         out.append(_attr("dictionary_type", hcl_str("PATTERNS_AND_PHRASES")))
         out.append(_attr("custom", "true"))
         out.append(_attr("custom_phrase_match_type", hcl_str(d.get("custom_phrase_match_type", "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"))))
+        identifiers = None
         if d.get("predefined_clone"):
             tpl = d.get("dict_template_name")
             if d.get("dict_template_id"):
@@ -346,8 +347,11 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                 out.append(_attr("dict_template_id", f"data.zia_dlp_dictionaries.{template_label(tpl)}.id"))
             if d.get("confidence_level_for_predefined_dict"):
                 out.append(_attr("confidence_level_for_predefined_dict", hcl_str(d["confidence_level_for_predefined_dict"])))
-        if d.get("confidence_threshold"):
-            out.append(_attr("confidence_threshold", hcl_str(d["confidence_threshold"])))
+            # The same defaults the in-app deploy sends: a clone must carry a
+            # confidence score, and a hierarchical clone its identifiers.
+            confidence, identifiers, _ = clone_settings(d)
+            out.append(_attr("confidence_threshold", hcl_str(confidence)))
+        # (A custom dictionary carries no confidence_threshold: ZIA refuses it.)
         prox = int(d.get("proximity") or 0)
         if prox > 0:
             out.append(_attr("proximity", str(prox)))
@@ -358,8 +362,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         if d.get("include_ssn_numbers"):
             # Accepted by the ZIA API (and the in-app deploy) but not exposed by provider 4.8.x.
             out.append("  # include_ssn_numbers = true  (not supported by the zscaler/zia provider; set in the portal)\n")
-        if d.get("hierarchical_identifiers"):
-            out.append(_attr("hierarchical_identifiers", hcl_list(d["hierarchical_identifiers"])))
+        if identifiers:
+            out.append(_attr("hierarchical_identifiers", hcl_list(identifiers)))
         for p in d.get("patterns") or []:
             out.append(f"  patterns {{\n    action  = {hcl_str(p.get('action', 'PATTERN_COUNT_TYPE_ALL'))}\n    pattern = {hcl_str(p['pattern'])}\n  }}\n")
         for p in d.get("phrases") or []:
@@ -503,9 +507,10 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                          "    }\n  }\n")
         elif channel == pc.ENDPOINT:
             r.append(_attr("device_trust_levels", hcl_list(p.get("device_trust_levels") or list(pc.ENDPOINT_TRUST_LEVELS))))
-            for opt in ("data_transfer_method", "network_type"):
-                if p.get(opt):
-                    r.append(_attr(opt, hcl_str(p[opt])))
+            # One transfer method per rule (ZIA: "Channel is mandatory").
+            r.append(_attr("data_transfer_method", hcl_str(p.get("data_transfer_method") or pc.ENDPOINT_DEFAULT_TRANSFER_METHOD)))
+            if p.get("network_type"):
+                r.append(_attr("network_type", hcl_str(p["network_type"])))
             if p.get("user_risk_score_levels"):
                 r.append(_attr("user_risk_score_levels", hcl_list(p["user_risk_score_levels"])))
             if p.get("eun_enabled") is not None:

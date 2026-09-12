@@ -1,6 +1,6 @@
 {
   "name": "Global Banking Policy Pack",
-  "version": "1.0",
+  "version": "1.1",
   "description": "DLP policy pack for global banks: payment card data (PCI), bank account and payment instructions (ABA, EU IBAN, global IBAN, SWIFT/BIC, wire vocabulary), customer PII across jurisdictions (US SSN/ITIN, UK/CA/AU/ZA and IN/SG/HK national IDs, EU and Asia-Pacific passports, dates of birth), customer records (statements, KYC/AML case files, loan applications), MNPI and deal information, confidentiality markings and private keys. Premised on Zscaler's predefined dictionaries: identification dictionaries are cloned at CONFIDENCE_LEVEL_HIGH (with 500-byte proximity variants) and the hierarchical EU IBAN / EU and APAC passport dictionaries plus the corporate-finance and financial-statement ML dictionaries are referenced directly. Reuses the ZBP Enterprise Policy pack engines (US PII, Financial Information, Private Keys) and their dictionaries under the same names, so the two packs share objects. Rules for Inline Web, Endpoint, SaaS Security and Outbound Email DLP plus containment (SSL decrypt, Cloud App Control, File Type Control, URL Filtering). Immutable: objects that drift from this definition are restored on the next deploy. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
   "references": [
     "Zscaler: Understanding Predefined DLP Dictionaries (CREDIT_CARD, ABA_LEAKAGE, SSN, USITIN_LEAKAGE, USDL_LEAKAGE, EUIBAN_LEAKAGE, PPEU_LEAKAGE, ASPP_LEAKAGE, FINANCIAL, ML_CORPORATE_FINANCE_LEAKAGE, ML_TAX_LEAKAGE)",
@@ -21,7 +21,7 @@
   "baseline": {
     "immutable": true,
     "prefix": "Bank-",
-    "version": "1.0"
+    "version": "1.1"
   },
   "audience": "Global and regional banks, card issuers, payment processors and wealth managers handling cardholder data, payment instructions and customer PII across jurisdictions.",
   "when_to_use": "The customer is a bank or payments company that needs PCI, customer-PII and payment-instruction detection out of the box, with KYC/AML, lending and MNPI coverage, across web, endpoint, SaaS and email. Start in monitor mode; enable the confidentiality-marking and card rules first."

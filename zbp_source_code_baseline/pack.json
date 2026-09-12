@@ -1,6 +1,6 @@
 {
   "name": "Source Code to AI Policy Pack",
-  "version": "4.15",
+  "version": "4.16",
   "description": "Detects source code in 13 languages (C#, C++, Go, HTML, Java, JavaScript, Kotlin, Python, Rust, SQL, Swift, TypeScript, VB.NET) on its way to AI/ML applications: one Signal and one Anchor dictionary per language, one engine per language, and one rule per engine on Inline Web DLP, mirrored one for one onto Endpoint DLP, SaaS Security API and Outbound Email DLP (13 x 4 rules). Every rule ships DISABLED and monitor-only with BLOCK as its target action.",
   "source": "DLP Pattern Library v4.14 (per-pattern descriptions with regex); rules from mkoyfman/zbp-automation zbp-source-code-dlp-zia",
   "references": [
@@ -20,7 +20,7 @@
   "baseline": {
     "immutable": true,
     "prefix": "SRC-",
-    "version": "4.15"
+    "version": "4.16"
   },
   "audience": "Engineering-heavy organisations that worry about source code being pasted or uploaded into AI tools.",
   "when_to_use": "The customer wants to stop source code in any of 13 languages reaching AI/ML applications with near-zero cousin-language false positives. The rule is BLOCK once enabled, so pilot it with a small group first."

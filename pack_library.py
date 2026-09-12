@@ -738,6 +738,9 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
                 problems.append(f"dictionary '{n}': pattern does not compile ({e}): {str(pat)[:60]}")
         for msg in dictionary_limit_problems(d):
             problems.append(f"dictionary '{n}': {msg}")
+        from dlp_importer import dictionary_notes
+        for msg in dictionary_notes(d):
+            warnings.append(f"dictionary '{n}': {msg}")
         if d.get("predefined_clone") and not (d.get("dict_template_name") or d.get("dict_template_id")):
             problems.append(f"dictionary '{n}': predefined clone without a template name")
         if not d.get("predefined_clone") and not (d.get("patterns") or d.get("phrases")):

@@ -1,6 +1,6 @@
 {
   "name": "CJIS Policy Pack",
-  "version": "1.1",
+  "version": "1.2",
   "description": "DLP controls aligned to the FBI Criminal Justice Information Services (CJIS) Security Policy. Detects Criminal Justice Information (CJI) including CHRI markings, NCIC/III references, law-enforcement-sensitive content, and criminal-justice PII (FBI UCN, ORI, SID, RAP sheet terminology). Policies are delivered in ALLOW/monitor mode; flip to BLOCK after tuning. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
   "references": [
     "FBI CJIS Security Policy v5.9.x",

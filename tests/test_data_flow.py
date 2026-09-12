@@ -128,7 +128,7 @@ def test_trace_follows_every_hop_and_names_the_weak_points():
     # Each inline rule is mirrored to every channel; the tenant here has the
     # email mirror disabled and no SaaS rule, so coverage is partial.
     assert st["Bank-Payment Card Data-Bulk-Monitor"]["state"] == "enforcing" and st["Bank-Customer PII (Global) [Email]"]["state"] == "disabled"
-    assert st["Bank-Customer PII (Global) [SaaS]"]["state"] == "missing" and bank["coverage"] == "partial"
+    assert st["Bank-Customer PII [SaaS]"]["state"] == "missing" and bank["coverage"] == "partial"
     s = rep["summary"]
     assert s["traces"] == len(df.TRAFFIC_CLASSES) * 3 and s["bypassed"] >= len(df.TRAFFIC_CLASSES) and s["high"] > 0
 

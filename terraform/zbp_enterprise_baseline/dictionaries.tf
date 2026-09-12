@@ -54,7 +54,7 @@ data "zia_dlp_dictionaries" "medical" {
 
 resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
   name                         = "ZBP-US Passport - High Confidence"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -114,7 +114,7 @@ resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
 
 resource "zia_dlp_dictionaries" "zbp_us_passport_prox_500" {
   name                         = "ZBP-US Passport - Prox 500"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -176,7 +176,7 @@ resource "zia_dlp_dictionaries" "zbp_us_passport_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_alien_registration_number_prox_500" {
   name                         = "ZBP-Alien Registration Number - Prox 500"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -218,7 +218,7 @@ resource "zia_dlp_dictionaries" "zbp_alien_registration_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_alien_registration_number_high_confidence" {
   name                         = "ZBP-Alien Registration Number - High Confidence"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -258,7 +258,7 @@ resource "zia_dlp_dictionaries" "zbp_alien_registration_number_high_confidence" 
 
 resource "zia_dlp_dictionaries" "zbp_date_of_birth_high_confidence" {
   name                         = "ZBP-Date of Birth - High Confidence"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -310,7 +310,7 @@ resource "zia_dlp_dictionaries" "zbp_date_of_birth_high_confidence" {
 
 resource "zia_dlp_dictionaries" "zbp_date_of_birth_prox_500" {
   name                         = "ZBP-Date of Birth - Prox 500"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -364,7 +364,7 @@ resource "zia_dlp_dictionaries" "zbp_date_of_birth_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_high" {
   name                         = "ZBP-Social Security Numbers (US) - High"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -379,7 +379,7 @@ resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_high" {
 
 resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_prox_500" {
   name                         = "ZBP-Social Security Numbers (US) - Prox 500"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -395,7 +395,7 @@ resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_high" {
   name                         = "ZBP-Tax Identification Number (US) - High"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -406,7 +406,7 @@ resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_high" {
 
 resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_prox_500" {
   name                         = "ZBP-Tax Identification Number (US) - Prox 500"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -418,7 +418,7 @@ resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_prox_500" {
   name                         = "ZBP-Drivers License (United States) - Prox 500"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -435,7 +435,7 @@ resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_high" {
   name                         = "ZBP-Drivers License (United States) - High"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -451,7 +451,7 @@ resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_high" {
 
 resource "zia_dlp_dictionaries" "zbp_private_keys_plaintext_regex" {
   name                         = "ZBP-Private Keys-Plaintext Regex"
-  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key... [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key... [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -463,7 +463,7 @@ resource "zia_dlp_dictionaries" "zbp_private_keys_plaintext_regex" {
 
 resource "zia_dlp_dictionaries" "zbp_jwk_private_key" {
   name                         = "ZBP-JWK Private Key"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -481,7 +481,7 @@ resource "zia_dlp_dictionaries" "zbp_jwk_private_key" {
 
 resource "zia_dlp_dictionaries" "zbp_private_key" {
   name                         = "ZBP-Private Key"
-  description                  = "Detect leakage of credentials and secrets [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of credentials and secrets [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -493,7 +493,7 @@ resource "zia_dlp_dictionaries" "zbp_private_key" {
 
 resource "zia_dlp_dictionaries" "zbp_encrypted_or_ascii_armored_pgp_keys" {
   name                         = "ZBP-Encrypted or ASCII Armored PGP Keys"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -505,7 +505,7 @@ resource "zia_dlp_dictionaries" "zbp_encrypted_or_ascii_armored_pgp_keys" {
 
 resource "zia_dlp_dictionaries" "zbp_encrypted_bouncy_castle_key_exports" {
   name                         = "ZBP-Encrypted Bouncy Castle Key Exports"
-  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -527,7 +527,7 @@ resource "zia_dlp_dictionaries" "zbp_encrypted_bouncy_castle_key_exports" {
 
 resource "zia_dlp_dictionaries" "zbp_form_k_1" {
   name                         = "ZBP-Form K-1"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -563,7 +563,7 @@ resource "zia_dlp_dictionaries" "zbp_form_k_1" {
 
 resource "zia_dlp_dictionaries" "zbp_form_1099_misc_and_1099_nec" {
   name                         = "ZBP-Form 1099-MISC and 1099-NEC"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -619,7 +619,7 @@ resource "zia_dlp_dictionaries" "zbp_form_1099_misc_and_1099_nec" {
 
 resource "zia_dlp_dictionaries" "zbp_w2_or_w4_or_w9_forms" {
   name                         = "ZBP-W2 or W4 or W9 Forms"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -711,7 +711,7 @@ resource "zia_dlp_dictionaries" "zbp_w2_or_w4_or_w9_forms" {
 
 resource "zia_dlp_dictionaries" "zbp_form_1040_and_related_schedules" {
   name                         = "ZBP-Form 1040 and related schedules"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -871,7 +871,7 @@ resource "zia_dlp_dictionaries" "zbp_form_1040_and_related_schedules" {
 
 resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_high" {
   name                         = "ZBP-ABA Bank Routing Number - High"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -882,7 +882,7 @@ resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_high" {
 
 resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_prox_500" {
   name                         = "ZBP-ABA Bank Routing Number - Prox 500"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -894,7 +894,7 @@ resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_credit_cards_high" {
   name                         = "ZBP-Credit Cards - High"
-  description                  = "Detect leakage of credit card information [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -906,7 +906,7 @@ resource "zia_dlp_dictionaries" "zbp_credit_cards_high" {
 
 resource "zia_dlp_dictionaries" "zbp_credit_cards_prox_500" {
   name                         = "ZBP-Credit Cards - Prox 500"
-  description                  = "Detect leakage of credit card information [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -919,7 +919,7 @@ resource "zia_dlp_dictionaries" "zbp_credit_cards_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_credit_card_magnetic_tracks" {
   name                         = "ZBP-Credit Card Magnetic Tracks"
-  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -935,7 +935,7 @@ resource "zia_dlp_dictionaries" "zbp_credit_card_magnetic_tracks" {
 
 resource "zia_dlp_dictionaries" "zbp_itar_phrase" {
   name                         = "ZBP-ITAR Phrase"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -971,7 +971,7 @@ resource "zia_dlp_dictionaries" "zbp_itar_phrase" {
 
 resource "zia_dlp_dictionaries" "zbp_itar_pattern" {
   name                         = "ZBP-ITAR Pattern"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -995,7 +995,7 @@ resource "zia_dlp_dictionaries" "zbp_itar_pattern" {
 
 resource "zia_dlp_dictionaries" "zbp_tlp_red" {
   name                         = "ZBP-TLP Red"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1007,7 +1007,7 @@ resource "zia_dlp_dictionaries" "zbp_tlp_red" {
 
 resource "zia_dlp_dictionaries" "zbp_tlp_amber_strict" {
   name                         = "ZBP-TLP Amber Strict"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1019,7 +1019,7 @@ resource "zia_dlp_dictionaries" "zbp_tlp_amber_strict" {
 
 resource "zia_dlp_dictionaries" "zbp_tlp_amber" {
   name                         = "ZBP-TLP Amber"
-  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline zbp_enterprise_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"

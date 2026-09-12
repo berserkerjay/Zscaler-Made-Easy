@@ -238,72 +238,72 @@
     "description": "Inline Web DLP: block uploads carrying high-precision CUI markings (banners, category tokens, legacy FOUO/LES/SBU, distribution statements) via CUI-Detect-Block-Grade. Ships DISABLED at INFO; enable after reviewing monitor incidents from CUI-Monitor-All.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CUI-Detect-Block-Grade"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "CUI-Monitor-Weak-Markings",
     "description": "Inline Web DLP: caution (user must confirm) on lower-precision CUI signals: bare CUI, standalone LDCs, malformed markings, designation blocks, via CUI-Detect-Caution-Grade. Never BLOCK on these.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CUI-Detect-Caution-Grade"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "CUI-Monitor-All",
     "description": "Inline Web DLP: monitor-only rule over the full CUI-Detect-All surface plus the content-based CUI-Detect-Contextual signal. Enable this first to size incident volume and tune before enabling the block and caution rules above it. One rule per engine: this rule carries CUI-Detect-All only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CUI-Detect-All"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "CUI-Monitor-Contextual",
     "description": "Inline Web DLP: monitor-only rule over the full CUI-Detect-All surface plus the content-based CUI-Detect-Contextual signal. Enable this first to size incident volume and tune before enabling the block and caution rules above it. One rule per engine: this rule carries CUI-Detect-Contextual only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CUI-Detect-Contextual"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "Z-Atomic Energy Act [Endpoint]",
@@ -316,6 +316,7 @@
       "AEA High Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -330,7 +331,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Atomic Energy Act [SaaS]",
@@ -348,7 +349,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Atomic Energy Act [Email]",
@@ -362,7 +363,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Financial Information [Endpoint]",
@@ -375,6 +376,7 @@
       "Financial Information"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -389,7 +391,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Financial Information [SaaS]",
@@ -407,7 +409,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Financial Information [Email]",
@@ -421,7 +423,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-FOUO Markings High Confidence [Endpoint]",
@@ -434,6 +436,7 @@
       "FOUO Markings High Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -448,10 +451,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "Z-FOUO Markings High Confidence [SaaS]",
+    "name": "Z-FOUO Markings High [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"Z-FOUO Markings High Confidence-Monitor\" (FOUO Markings High Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -466,7 +469,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-FOUO Markings High Confidence [Email]",
@@ -480,7 +483,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-FOUO Markings Medium Confidence [Endpoint]",
@@ -493,6 +496,7 @@
       "FOUO Markings Medium Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -507,10 +511,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "Z-FOUO Markings Medium Confidence [SaaS]",
+    "name": "Z-FOUO Markings Medium [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"Z-FOUO Markings Medium Confidence-Monitor\" (FOUO Markings Medium Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -525,7 +529,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-FOUO Markings Medium Confidence [Email]",
@@ -539,7 +543,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-ITAR International Traffic in Arms Regulations [Endpoint]",
@@ -552,6 +556,7 @@
       "ITAR Phrases"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -566,10 +571,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "Z-ITAR International Traffic in Arms Regulations [SaaS]",
+    "name": "Z-ITAR International [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"Z-ITAR International Traffic in Arms Regulations-Monitor\" (ITAR Phrases). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -584,7 +589,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-ITAR International Traffic in Arms Regulations [Email]",
@@ -598,7 +603,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Standard Forms [Endpoint]",
@@ -611,6 +616,7 @@
       "Standard Forms"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -625,7 +631,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Standard Forms [SaaS]",
@@ -643,7 +649,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Standard Forms [Email]",
@@ -657,7 +663,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Red [Endpoint]",
@@ -670,6 +676,7 @@
       "TLP Red"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -684,7 +691,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Red [SaaS]",
@@ -702,7 +709,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Red [Email]",
@@ -716,7 +723,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Amber Strict [Endpoint]",
@@ -729,6 +736,7 @@
       "TLP Amber Strict"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -743,7 +751,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Amber Strict [SaaS]",
@@ -761,7 +769,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Amber Strict [Email]",
@@ -775,7 +783,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Amber [Endpoint]",
@@ -788,6 +796,7 @@
       "TLP Amber"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -802,7 +811,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Amber [SaaS]",
@@ -820,7 +829,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-TLP Amber [Email]",
@@ -834,7 +843,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PII [Endpoint]",
@@ -847,6 +856,7 @@
       "US PII"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -861,7 +871,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PII [SaaS]",
@@ -879,7 +889,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PII [Email]",
@@ -893,7 +903,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PHI - Medium Confidence [Endpoint]",
@@ -906,6 +916,7 @@
       "US PHI - Medium Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -920,10 +931,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "Z-US PHI - Medium Confidence [SaaS]",
+    "name": "Z-US PHI - Medium [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"Z-US PHI - Medium Confidence-Monitor\" (US PHI - Medium Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -938,7 +949,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PHI - Medium Confidence [Email]",
@@ -952,7 +963,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PHI - High Confidence [Endpoint]",
@@ -965,6 +976,7 @@
       "US PHI - High Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -979,10 +991,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "Z-US PHI - High Confidence [SaaS]",
+    "name": "Z-US PHI - High [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"Z-US PHI - High Confidence-Monitor\" (US PHI - High Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -997,7 +1009,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-US PHI - High Confidence [Email]",
@@ -1011,7 +1023,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Private Keys [Endpoint]",
@@ -1024,6 +1036,7 @@
       "Private Keys"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1038,7 +1051,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Private Keys [SaaS]",
@@ -1056,7 +1069,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-Private Keys [Email]",
@@ -1070,7 +1083,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Marked-Documents [Endpoint]",
@@ -1083,6 +1096,7 @@
       "CUI-Detect-Block-Grade"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1097,10 +1111,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "CUI-Monitor-Marked-Documents [SaaS]",
+    "name": "CUI-Monitor-Marked [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-Marked-Documents\" (CUI-Detect-Block-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -1115,7 +1129,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Marked-Documents [Email]",
@@ -1129,7 +1143,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Weak-Markings [Endpoint]",
@@ -1142,6 +1156,7 @@
       "CUI-Detect-Caution-Grade"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1156,10 +1171,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "CUI-Monitor-Weak-Markings [SaaS]",
+    "name": "CUI-Monitor-Weak [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"CUI-Monitor-Weak-Markings\" (CUI-Detect-Caution-Grade). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -1174,7 +1189,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Weak-Markings [Email]",
@@ -1188,7 +1203,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-All [Endpoint]",
@@ -1201,6 +1216,7 @@
       "CUI-Detect-All"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1215,7 +1231,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-All [SaaS]",
@@ -1233,7 +1249,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-All [Email]",
@@ -1247,7 +1263,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Contextual [Endpoint]",
@@ -1260,6 +1276,7 @@
       "CUI-Detect-Contextual"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1274,7 +1291,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Contextual [SaaS]",
@@ -1292,7 +1309,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "CUI-Monitor-Contextual [Email]",
@@ -1306,6 +1323,6 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   }
 ]

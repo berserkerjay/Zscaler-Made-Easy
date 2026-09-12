@@ -231,6 +231,8 @@ EMPTY_DICT_REASON = "no patterns/phrases"
 # 0-10000 bytes, PCRE syntax without lookaround. Phrases fuzzy-match unless
 # quoted, which is a design choice rather than a limit.
 DICT_MAX_PATTERNS = 8
+DICT_NAME_MAX = 255             # zscaler/zia provider: dictionary name 0-255
+RULE_DESCRIPTION_MAX = 10240    # zscaler/zia provider: web and email rule description 0-10240
 DICT_PATTERN_MAX_BYTES = 256
 DICT_PROXIMITY_MAX = 10000
 DICT_MAX_PHRASES = 256
@@ -241,7 +243,84 @@ DICT_MATCH_TYPES = ("MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY", "MATCH_ALL_CUS
 # The only pattern-and-phrase match type on which ZIA accepts a proximity
 # window ("Match any Patterns and any Phrases" in the portal).
 DICT_PROXIMITY_MATCH_TYPE = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
+
+# Rules a real tenant answered with a 400 when the CJIS pack was deployed:
+#   "Confidence score value is not supported in custom dictionary" — a
+#   custom dictionary must not carry confidence_threshold (only a clone of
+#   a predefined dictionary has a confidence score);
+#   "Dlp dictionary's confidenceThreshold can't be null" — a clone must
+#   carry one, so a clone that names none is sent CLONE_DEFAULT_CONFIDENCE;
+#   "Atleast 1 hierarchical identifier should be selected for hierarchical
+#   dictionaries" — a clone of a hierarchical template (driver's licence,
+#   credentials, EU IBAN, EU passport, adult content) must name the
+#   identifiers it wants; the two the packs use default to the full set.
+CLONE_DEFAULT_CONFIDENCE = "CONFIDENCE_LEVEL_HIGH"
+HIERARCHICAL_TEMPLATE_IDENTIFIERS: Dict[str, List[str]] = {
+    "USDL_LEAKAGE": ["USDL_AL", "USDL_AK", "USDL_AZ", "USDL_AR", "USDL_CA", "USDL_CO", "USDL_CT", "USDL_DE", "USDL_DC", "USDL_FL",
+                     "USDL_GA", "USDL_HI", "USDL_ID", "USDL_IL", "USDL_IN", "USDL_IA", "USDL_KS", "USDL_KY", "USDL_LA", "USDL_ME",
+                     "USDL_MD", "USDL_MA", "USDL_MI", "USDL_MN", "USDL_MS", "USDL_MO", "USDL_MT", "USDL_NE", "USDL_NV", "USDL_NH",
+                     "USDL_NJ", "USDL_NM", "USDL_NY", "USDL_NC", "USDL_ND", "USDL_OH", "USDL_OK", "USDL_OR", "USDL_PA", "USDL_RI",
+                     "USDL_SC", "USDL_SD", "USDL_TN", "USDL_TX", "USDL_VT", "USDL_VA", "USDL_WV", "USDL_WI", "USDL_WY", "USDL_GU"],
+    "CRED_LEAKAGE": ["CRED_PRIVATE_KEY"],
+}
+# Hierarchical templates the app knows no identifier list for: a clone
+# must name its own, or ZIA refuses it.
+HIERARCHICAL_TEMPLATES = set(HIERARCHICAL_TEMPLATE_IDENTIFIERS) | {"EUIBAN_LEAKAGE", "PPEU_LEAKAGE", "ASPP_LEAKAGE"}
+
+# Web DLP rule protocols. A production tenant created every Fed pack rule
+# with WEB_RULE_PROTOCOLS and answered "Request body is invalid." for the
+# same rules carrying NATIVE_FTP_RULE (a URL Filtering / Firewall protocol,
+# not a DLP one), so packs use this set and preflight refuses any other.
+WEB_RULE_PROTOCOLS = ["WEBSOCKETSSL_RULE", "WEBSOCKET_RULE", "FTP_RULE", "HTTPS_RULE", "HTTP_RULE"]
+WEB_PROTOCOLS_ALLOWED = frozenset(WEB_RULE_PROTOCOLS) | {"ANY_RULE"}
+
+
+def web_protocol_problems(protocols: Any) -> List[str]:
+    """Plain-language reasons ZIA would refuse a Web DLP rule's protocols."""
+    vals = protocols if isinstance(protocols, (list, tuple, set)) else [protocols]
+    bad = sorted({str(p) for p in vals if str(p) not in WEB_PROTOCOLS_ALLOWED})
+    if bad:
+        return [f"protocol {', '.join(bad)} is not accepted on a Web DLP rule (ZIA answers 'Request body is invalid.'); "
+                f"use {', '.join(WEB_RULE_PROTOCOLS)} or ANY_RULE"]
+    return []
+
+
+def template_code(name: Optional[str]) -> Optional[str]:
+    """The API code of a predefined template named any of its ways."""
+    for cand in predefined_candidates(name):
+        if cand in HIERARCHICAL_TEMPLATES or cand in _CODE_DISPLAY_NAMES or cand == cand.upper():
+            return cand
+    return None
+
+
+def clone_settings(d: Dict[str, Any]) -> Tuple[Optional[str], Optional[List[str]], Optional[str]]:
+    """(confidence_threshold, hierarchical_identifiers, problem) a clone is
+    sent: the pack's values, or the defaults ZIA insists on when the pack
+    names none. `problem` is set when the template is hierarchical and
+    neither the pack nor the app can name identifiers."""
+    confidence = d.get("confidence_threshold") or d.get("confidence_level_for_predefined_dict") or CLONE_DEFAULT_CONFIDENCE
+    identifiers = list(d.get("hierarchical_identifiers") or [])
+    code = template_code(d.get("dict_template_name"))
+    problem = None
+    if not identifiers and code in HIERARCHICAL_TEMPLATES:
+        identifiers = list(HIERARCHICAL_TEMPLATE_IDENTIFIERS.get(code) or [])
+        if not identifiers:
+            problem = (f"clone of the hierarchical template {code} names no hierarchical_identifiers; ZIA refuses it "
+                       "('Atleast 1 hierarchical identifier should be selected for hierarchical dictionaries')")
+    return confidence, identifiers or None, problem
+
+
+def dictionary_notes(d: Dict[str, Any]) -> List[str]:
+    """Things the deploy silently corrects, worth telling a pack author."""
+    out: List[str] = []
+    if not d.get("predefined_clone") and d.get("confidence_threshold"):
+        out.append("a custom dictionary has no confidence score in ZIA ('Confidence score value is not supported in custom "
+                   "dictionary'); confidence_threshold is not sent")
+    if d.get("predefined_clone") and not (d.get("confidence_threshold") or d.get("confidence_level_for_predefined_dict")):
+        out.append(f"a clone needs a confidence score; deploys with {CLONE_DEFAULT_CONFIDENCE}")
+    return out
 _LOOKAROUND_RE = re.compile(r"\(\?<?[=!]")
+_HTML_TAG_RE = re.compile(r"<[A-Za-z]+")
 _COUNT_RE = re.compile(r"[<>=]=?\s*(\d+)")
 
 
@@ -259,6 +338,8 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
     """Plain-language reasons a custom dictionary would be rejected by ZIA
     (empty list when it is within the documented limits)."""
     out: List[str] = []
+    if len(str(d.get("name") or "")) > DICT_NAME_MAX:
+        out.append(f"name is {len(str(d.get('name')))} characters; ZIA allows {DICT_NAME_MAX}")
     pats = d.get("patterns") or []
     if len(pats) > DICT_MAX_PATTERNS:
         out.append(f"{len(pats)} patterns; ZIA allows at most {DICT_MAX_PATTERNS} per dictionary")
@@ -268,6 +349,14 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
             out.append(f"pattern longer than {DICT_PATTERN_MAX_BYTES} bytes: {str(pat)[:40]}…")
         if _LOOKAROUND_RE.search(str(pat)):
             out.append(f"pattern uses lookaround, which ZIA's PCRE does not support: {str(pat)[:40]}…")
+        m = _HTML_TAG_RE.search(str(pat))
+        if m:
+            # api.zsapi.net answered 406 "Request Rejected" (its edge, not the
+            # API) for a dictionary whose patterns contained <script, <html,
+            # <meta and the like; the same regex written \x3cscript goes through.
+            escaped = "\\x3c" + m.group(0)[1:]
+            out.append(f"pattern contains an HTML tag opening ({m.group(0)}), which the API edge rejects with 406 'Request Rejected'; "
+                       f"write the '<' as \\x3c ({escaped}) — the same regex")
     phrases = d.get("phrases") or []
     if len(phrases) > DICT_MAX_PHRASES:
         out.append(f"{len(phrases)} phrases; ZIA allows at most {DICT_MAX_PHRASES} per dictionary")
@@ -294,6 +383,10 @@ def dictionary_limit_problems(d: Dict[str, Any]) -> List[str]:
         # Phrases' or 'Match Near or Not Near Phrases' match types."
         out.append(f"proximity {prox} needs match type {DICT_PROXIMITY_MATCH_TYPE} (any pattern within {prox} bytes of any phrase); "
                    f"ZIA rejects proximity on {mt}")
+    if d.get("predefined_clone"):
+        _, _, clone_problem = clone_settings(d)
+        if clone_problem:
+            out.append(clone_problem)
     return out
 
 # ZIA caps a DLP dictionary description at 255 characters (the Terraform
@@ -424,22 +517,30 @@ def build_dict_kwargs(
                 return None, f"Template '{template_name or template_id}' is not a predefined dictionary in this tenant (id {template_id} came from another tenant)"
         if not template_id:
             return None, f"No template ID for '{template_name}'"
+        confidence, identifiers, clone_problem = clone_settings(d)
+        if clone_problem:
+            return None, clone_problem
         kwargs: Dict[str, Any] = {
             "description": fit_description(d.get("description", "")),
             "dict_template_id": int(template_id),
             "custom": True,
+            # A clone must carry a confidence score ("confidenceThreshold can't be null").
+            "confidence_threshold": confidence,
         }
+        if d.get("confidence_level_for_predefined_dict"):
+            kwargs["confidence_level_for_predefined_dict"] = d["confidence_level_for_predefined_dict"]
+        if identifiers:
+            kwargs["hierarchical_identifiers"] = identifiers
     else:
         if not d.get("patterns") and not d.get("phrases"):
             return None, EMPTY_DICT_REASON
         limit_problems = dictionary_limit_problems(d)
         if limit_problems:
             return None, "outside ZIA's documented dictionary limits: " + "; ".join(limit_problems)
+        # No confidence score and no identifiers on a custom dictionary: ZIA
+        # refuses both ("Confidence score value is not supported in custom dictionary").
         kwargs = {"description": fit_description(d.get("description", ""))}
 
-    for opt in ("confidence_threshold", "confidence_level_for_predefined_dict", "hierarchical_identifiers"):
-        if d.get(opt):
-            kwargs[opt] = d[opt]
     for flag in ("include_bin_numbers", "include_ssn_numbers"):
         if d.get(flag):
             kwargs[flag] = True

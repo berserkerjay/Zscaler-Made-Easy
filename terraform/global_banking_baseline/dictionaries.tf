@@ -50,7 +50,7 @@ data "zia_dlp_dictionaries" "ml_tax_leakage" {
 
 resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
   name                         = "ZBP-US Passport - High Confidence"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -110,7 +110,7 @@ resource "zia_dlp_dictionaries" "zbp_us_passport_high_confidence" {
 
 resource "zia_dlp_dictionaries" "zbp_us_passport_prox_500" {
   name                         = "ZBP-US Passport - Prox 500"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -172,7 +172,7 @@ resource "zia_dlp_dictionaries" "zbp_us_passport_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_alien_registration_number_prox_500" {
   name                         = "ZBP-Alien Registration Number - Prox 500"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -214,7 +214,7 @@ resource "zia_dlp_dictionaries" "zbp_alien_registration_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_alien_registration_number_high_confidence" {
   name                         = "ZBP-Alien Registration Number - High Confidence"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -254,7 +254,7 @@ resource "zia_dlp_dictionaries" "zbp_alien_registration_number_high_confidence" 
 
 resource "zia_dlp_dictionaries" "zbp_date_of_birth_high_confidence" {
   name                         = "ZBP-Date of Birth - High Confidence"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -306,7 +306,7 @@ resource "zia_dlp_dictionaries" "zbp_date_of_birth_high_confidence" {
 
 resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_high" {
   name                         = "ZBP-Social Security Numbers (US) - High"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -321,7 +321,7 @@ resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_high" {
 
 resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_prox_500" {
   name                         = "ZBP-Social Security Numbers (US) - Prox 500"
-  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Social Security Numbers [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -337,7 +337,7 @@ resource "zia_dlp_dictionaries" "zbp_social_security_numbers_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_high" {
   name                         = "ZBP-Tax Identification Number (US) - High"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -348,7 +348,7 @@ resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_high" {
 
 resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_prox_500" {
   name                         = "ZBP-Tax Identification Number (US) - Prox 500"
-  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect Leakage of US Tax Identification Numbers [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -360,7 +360,7 @@ resource "zia_dlp_dictionaries" "zbp_tax_identification_number_us_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_high" {
   name                         = "ZBP-Drivers License (United States) - High"
-  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of United States Driver’s Licenses [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -376,7 +376,7 @@ resource "zia_dlp_dictionaries" "zbp_drivers_license_united_states_high" {
 
 resource "zia_dlp_dictionaries" "zbp_private_keys_plaintext_regex" {
   name                         = "ZBP-Private Keys-Plaintext Regex"
-  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key... [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -388,7 +388,7 @@ resource "zia_dlp_dictionaries" "zbp_private_keys_plaintext_regex" {
 
 resource "zia_dlp_dictionaries" "zbp_jwk_private_key" {
   name                         = "ZBP-JWK Private Key"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -406,7 +406,7 @@ resource "zia_dlp_dictionaries" "zbp_jwk_private_key" {
 
 resource "zia_dlp_dictionaries" "zbp_private_key" {
   name                         = "ZBP-Private Key"
-  description                  = "Detect leakage of credentials and secrets [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of credentials and secrets [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -418,7 +418,7 @@ resource "zia_dlp_dictionaries" "zbp_private_key" {
 
 resource "zia_dlp_dictionaries" "zbp_encrypted_or_ascii_armored_pgp_keys" {
   name                         = "ZBP-Encrypted or ASCII Armored PGP Keys"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -430,7 +430,7 @@ resource "zia_dlp_dictionaries" "zbp_encrypted_or_ascii_armored_pgp_keys" {
 
 resource "zia_dlp_dictionaries" "zbp_encrypted_bouncy_castle_key_exports" {
   name                         = "ZBP-Encrypted Bouncy Castle Key Exports"
-  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -452,7 +452,7 @@ resource "zia_dlp_dictionaries" "zbp_encrypted_bouncy_castle_key_exports" {
 
 resource "zia_dlp_dictionaries" "zbp_form_k_1" {
   name                         = "ZBP-Form K-1"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -488,7 +488,7 @@ resource "zia_dlp_dictionaries" "zbp_form_k_1" {
 
 resource "zia_dlp_dictionaries" "zbp_form_1099_misc_and_1099_nec" {
   name                         = "ZBP-Form 1099-MISC and 1099-NEC"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -544,7 +544,7 @@ resource "zia_dlp_dictionaries" "zbp_form_1099_misc_and_1099_nec" {
 
 resource "zia_dlp_dictionaries" "zbp_w2_or_w4_or_w9_forms" {
   name                         = "ZBP-W2 or W4 or W9 Forms"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -636,7 +636,7 @@ resource "zia_dlp_dictionaries" "zbp_w2_or_w4_or_w9_forms" {
 
 resource "zia_dlp_dictionaries" "zbp_form_1040_and_related_schedules" {
   name                         = "ZBP-Form 1040 and related schedules"
-  description                  = "[DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "[DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -796,7 +796,7 @@ resource "zia_dlp_dictionaries" "zbp_form_1040_and_related_schedules" {
 
 resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_high" {
   name                         = "ZBP-ABA Bank Routing Number - High"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -807,7 +807,7 @@ resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_high" {
 
 resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_prox_500" {
   name                         = "ZBP-ABA Bank Routing Number - Prox 500"
-  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of ABA Bank Routing Numbers [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -819,7 +819,7 @@ resource "zia_dlp_dictionaries" "zbp_aba_bank_routing_number_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_credit_cards_high" {
   name                         = "ZBP-Credit Cards - High"
-  description                  = "Detect leakage of credit card information [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -831,7 +831,7 @@ resource "zia_dlp_dictionaries" "zbp_credit_cards_high" {
 
 resource "zia_dlp_dictionaries" "zbp_credit_cards_prox_500" {
   name                         = "ZBP-Credit Cards - Prox 500"
-  description                  = "Detect leakage of credit card information [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Detect leakage of credit card information [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -844,7 +844,7 @@ resource "zia_dlp_dictionaries" "zbp_credit_cards_prox_500" {
 
 resource "zia_dlp_dictionaries" "zbp_credit_card_magnetic_tracks" {
   name                         = "ZBP-Credit Card Magnetic Tracks"
-  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2 [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -860,7 +860,7 @@ resource "zia_dlp_dictionaries" "zbp_credit_card_magnetic_tracks" {
 
 resource "zia_dlp_dictionaries" "bank_iban_global" {
   name                         = "Bank-IBAN (Global)"
-  description                  = "International Bank Account Numbers of any country (GB, CH, AE, SA, SG, BR, ... as well as the EU) written with or without spaces, only when a bank-account phrase is within 500 bytes.... [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "International Bank Account Numbers of any country (GB, CH, AE, SA, SG, BR, ... as well as the EU) written with or without spaces, only when a bank-account phrase is within 500 bytes.... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -918,7 +918,7 @@ resource "zia_dlp_dictionaries" "bank_iban_global" {
 
 resource "zia_dlp_dictionaries" "bank_swift_bic_code" {
   name                         = "Bank-SWIFT BIC Code"
-  description                  = "SWIFT / BIC bank identifier codes (8 or 11 characters) within 300 bytes of a SWIFT, BIC or correspondent-banking phrase. The pattern alone would match any 8-letter word, so the phrase... [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "SWIFT / BIC bank identifier codes (8 or 11 characters) within 300 bytes of a SWIFT, BIC or correspondent-banking phrase. The pattern alone would match any 8-letter word, so the phrase... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -980,7 +980,7 @@ resource "zia_dlp_dictionaries" "bank_swift_bic_code" {
 
 resource "zia_dlp_dictionaries" "bank_wire_transfer_instructions" {
   name                         = "Bank-Wire Transfer Instructions"
-  description                  = "Payment-instruction vocabulary: wire, SWIFT MT messages, SEPA, Fedwire, CHIPS, beneficiary and intermediary bank fields. Counted, not matched alone: the engines pair it with an accoun... [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Payment-instruction vocabulary: wire, SWIFT MT messages, SEPA, Fedwire, CHIPS, beneficiary and intermediary bank fields. Counted, not matched alone: the engines pair it with an accoun... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1132,7 +1132,7 @@ resource "zia_dlp_dictionaries" "bank_wire_transfer_instructions" {
 
 resource "zia_dlp_dictionaries" "bank_card_security_data" {
   name                         = "Bank-Card Security Data"
-  description                  = "PCI DSS sensitive authentication data and cardholder fields: CVV/CVC, PIN, expiry, track data. Paired with a credit-card match in the engine so a lone card number in a receipt is not... [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "PCI DSS sensitive authentication data and cardholder fields: CVV/CVC, PIN, expiry, track data. Paired with a credit-card match in the engine so a lone card number in a receipt is not... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1260,7 +1260,7 @@ resource "zia_dlp_dictionaries" "bank_card_security_data" {
 
 resource "zia_dlp_dictionaries" "bank_customer_account_statement" {
   name                         = "Bank-Customer Account Statement"
-  description                  = "Account-statement and customer-record vocabulary. Paired in the engine with an account, card or personal identifier. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Account-statement and customer-record vocabulary. Paired in the engine with an account, card or personal identifier. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1408,7 +1408,7 @@ resource "zia_dlp_dictionaries" "bank_customer_account_statement" {
 
 resource "zia_dlp_dictionaries" "bank_kyc_and_aml" {
   name                         = "Bank-KYC and AML"
-  description                  = "Know-your-customer, due-diligence and anti-money-laundering vocabulary: CDD/EDD files, PEP and sanctions screening, SAR/STR filings, beneficial ownership. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Know-your-customer, due-diligence and anti-money-laundering vocabulary: CDD/EDD files, PEP and sanctions screening, SAR/STR filings, beneficial ownership. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1556,7 +1556,7 @@ resource "zia_dlp_dictionaries" "bank_kyc_and_aml" {
 
 resource "zia_dlp_dictionaries" "bank_loan_and_credit_application" {
   name                         = "Bank-Loan and Credit Application"
-  description                  = "Consumer and commercial lending vocabulary: applications, credit bureau reports and scores, income and collateral. Paired in the engine with a personal identifier. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Consumer and commercial lending vocabulary: applications, credit bureau reports and scores, income and collateral. Paired in the engine with a personal identifier. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1712,7 +1712,7 @@ resource "zia_dlp_dictionaries" "bank_loan_and_credit_application" {
 
 resource "zia_dlp_dictionaries" "bank_mnpi_and_deal_information" {
   name                         = "Bank-MNPI and Deal Information"
-  description                  = "Material non-public information and deal-team vocabulary: M&A, capital markets, research embargoes, restricted lists. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Material non-public information and deal-team vocabulary: M&A, capital markets, research embargoes, restricted lists. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1860,7 +1860,7 @@ resource "zia_dlp_dictionaries" "bank_mnpi_and_deal_information" {
 
 resource "zia_dlp_dictionaries" "bank_confidentiality_markings" {
   name                         = "Bank-Confidentiality Markings"
-  description                  = "Classification labels banks stamp on documents. Any single marking is a signal on its own. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Classification labels banks stamp on documents. Any single marking is a signal on its own. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -1952,7 +1952,7 @@ resource "zia_dlp_dictionaries" "bank_confidentiality_markings" {
 
 resource "zia_dlp_dictionaries" "bank_customer_pii_context" {
   name                         = "Bank-Customer PII Context"
-  description                  = "Personal-data field labels found on account-opening forms, KYC files and customer exports. Counted, then paired with a national ID, passport, date of birth or account number. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "Personal-data field labels found on account-opening forms, KYC files and customer exports. Counted, then paired with a national ID, passport, date of birth or account number. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"
@@ -2088,7 +2088,7 @@ resource "zia_dlp_dictionaries" "bank_customer_pii_context" {
 
 resource "zia_dlp_dictionaries" "bank_national_id_uk_canada_australia_south_africa" {
   name                         = "Bank-National ID (UK, Canada, Australia, South Africa)"
-  description                  = "National identifiers of the UK (National Insurance number), Canada (SIN), Australia (TFN) and South Africa (ID number), within 300 bytes of the identifier's name. Check your tenant fo... [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "National identifiers of the UK (National Insurance number), Canada (SIN), Australia (TFN) and South Africa (ID number), within 300 bytes of the identifier's name. Check your tenant fo... [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"
@@ -2170,7 +2170,7 @@ resource "zia_dlp_dictionaries" "bank_national_id_uk_canada_australia_south_afri
 
 resource "zia_dlp_dictionaries" "bank_national_id_india_singapore_hong_kong" {
   name                         = "Bank-National ID (India, Singapore, Hong Kong)"
-  description                  = "National identifiers of India (PAN, Aadhaar), Singapore (NRIC/FIN) and Hong Kong (HKID), within 300 bytes of the identifier's name. [DLP-Check baseline global_banking_baseline v1.0] Terraform-managed."
+  description                  = "National identifiers of India (PAN, Aadhaar), Singapore (NRIC/FIN) and Hong Kong (HKID), within 300 bytes of the identifier's name. [DLP-Check baseline global_banking_baseline v1.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true
   custom_phrase_match_type     = "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE"

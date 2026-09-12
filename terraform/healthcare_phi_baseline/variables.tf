@@ -52,8 +52,8 @@ variable "saas_tenant_ids_hc_hipaa_critical_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_hipaa_narrative_low_volume_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Narrative Low Volume [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_hipaa_narrative_low_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Narrative Low [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -62,8 +62,8 @@ variable "saas_tenant_ids_hc_hipaa_narrative_low_volume_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_hipaa_identity_trifecta_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Identity Trifecta [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_hipaa_identity_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Identity [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -72,8 +72,8 @@ variable "saas_tenant_ids_hc_hipaa_identity_trifecta_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_hipaa_sensitive_subcategory_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Sensitive Subcategory [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_hipaa_sensitive_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Sensitive [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -82,8 +82,8 @@ variable "saas_tenant_ids_hc_hipaa_sensitive_subcategory_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_hipaa_pharmacy_claims_billing_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Pharmacy Claims Billing [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_hipaa_pharmacy_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Pharmacy [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -102,8 +102,8 @@ variable "saas_tenant_ids_hc_hipaa_bulk_phi_major_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_hipaa_bulk_phi_significant_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Bulk PHI Significant [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_hipaa_bulk_phi_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-HIPAA Bulk PHI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -132,8 +132,8 @@ variable "saas_tenant_ids_hc_us_pii_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_us_phi_medium_confidence_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_us_phi_medium_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI Medium [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -142,8 +142,8 @@ variable "saas_tenant_ids_hc_us_phi_medium_confidence_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_hc_us_phi_high_confidence_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_hc_us_phi_high_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule HC-US PHI High [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "Healthcare PHI Policy Pack",
-  "version": "3.2",
+  "version": "3.3",
   "description": "PHI / HIPAA DLP build, predefined-first, six-engine architecture (from the customer's build document) plus the Fed pack's US PII and US PHI coverage. Seven custom dictionaries cover the HIPAA identifiers no predefined dictionary does (MRN, DOB, health-plan member id incl. Medicare MBI, address/ZIP) plus clinical-narrative structure, insurance/billing vocabulary and elevated-protection condition markers (SUD, mental health, HIV, genetic, reproductive); twelve more (HC- prefixed, from the Fed pack) give high-confidence and 500-byte-proximity variants of SSN, TIN and driver's licence clones and of alien registration, date of birth and US passport; everything else comes from Zscaler's predefined dictionaries (Names (US), SSN, NPI, driver's licences, TIN, Medical Information, Diseases, Drugs, Treatments, NDC, Medical Document, Medical Imaging, Insurance Document, Self-Harm & Cyberbullying, Illegal Drugs, Credit Cards). Ten engines: HIPAA Critical (three pathways), Narrative / Low Volume, Identity Trifecta, Sensitive Subcategory, Pharmacy / Claims / Billing, Bulk PHI as a Sum of identifier matches in three tiers (> 1, > 50, > 500) behind three rules, US PII (identity data with no clinical context), US PHI at medium and high confidence (a second, independent PHI opinion) and Financial Information (payment cards, routing numbers and tax forms: the PCI DSS scope beside HIPAA, with nine more HC- dictionaries from the Fed pack). Twelve inline rules, each mirrored one-for-one onto Endpoint DLP, SaaS Security API and Outbound Email DLP. Every rule ships DISABLED, monitor-only, at INFO severity. See PHI_HIPAA_BUILD.md for the regulatory decision path, the 18-identifier coverage map, tiers and tuning notes. Containment is outside this pack.",
   "references": [
     "Customer build document: PHI / HIPAA DLP Build — Predefined-First Dictionary and Engine Reference for Zscaler ZIA (6-Engine Architecture)",
@@ -22,7 +22,7 @@
   "baseline": {
     "immutable": true,
     "prefix": "",
-    "version": "3.2"
+    "version": "3.3"
   },
   "audience": "Covered entities, business associates and their vendors under HIPAA: providers, payers, pharmacies, clearing houses.",
   "when_to_use": "The customer needs PHI detection that maps to the HIPAA identifiers and to breach-reporting tiers, with elevated handling for 42 CFR Part 2, GINA and state-protected categories. Start every rule in monitor mode; enable Engine 1 first, then 2, 3 and 5, then 4 and the Bulk tiers (the build document's phases)."

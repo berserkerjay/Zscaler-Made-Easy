@@ -259,7 +259,7 @@
   },
   {
     "name": "SRC-HTML Signal",
-    "description": "HTML syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "description": "HTML syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. Tag openings are written \\x3c (the API edge rejects a body containing <script and the like with 406 'Request Rejected').",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "patterns": [
       {
@@ -268,31 +268,31 @@
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<html\\b"
+        "pattern": "\\x3chtml\\b"
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<head\\b"
+        "pattern": "\\x3chead\\b"
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<body\\b"
+        "pattern": "\\x3cbody\\b"
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<title\\b"
+        "pattern": "\\x3ctitle\\b"
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<meta\\s+[^>]*charset\\s*=\\s*['\"]?[A-Za-z0-9-]+['\"]?\\s*/?>"
+        "pattern": "\\x3cmeta\\s+[^>]*charset\\s*=\\s*['\"]?[A-Za-z0-9-]+['\"]?\\s*/?>"
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<script\\b"
+        "pattern": "\\x3cscript\\b"
       },
       {
         "action": "PATTERN_COUNT_TYPE_UNIQUE",
-        "pattern": "<link\\s+[^>]*rel\\s*=\\s*['\"](?:stylesheet|icon|preload|prefetch)['\"]"
+        "pattern": "\\x3clink\\s+[^>]*rel\\s*=\\s*['\"](?:stylesheet|icon|preload|prefetch)['\"]"
       }
     ],
     "phrases": [],

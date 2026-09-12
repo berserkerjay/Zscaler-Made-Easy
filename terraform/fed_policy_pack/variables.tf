@@ -62,8 +62,8 @@ variable "saas_tenant_ids_z_financial_information_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_fouo_markings_high_confidence_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_fouo_markings_high_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings High [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -72,8 +72,8 @@ variable "saas_tenant_ids_z_fouo_markings_high_confidence_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_fouo_markings_medium_confidence_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_fouo_markings_medium_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-FOUO Markings Medium [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -82,8 +82,8 @@ variable "saas_tenant_ids_z_fouo_markings_medium_confidence_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_itar_international_traffic_in_arms_regulations_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-ITAR International Traffic in Arms Regulations [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_itar_international_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-ITAR International [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -142,8 +142,8 @@ variable "saas_tenant_ids_z_us_pii_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_us_phi_medium_confidence_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - Medium Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_us_phi_medium_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - Medium [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -152,8 +152,8 @@ variable "saas_tenant_ids_z_us_phi_medium_confidence_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_z_us_phi_high_confidence_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - High Confidence [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_z_us_phi_high_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule Z-US PHI - High [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -172,8 +172,8 @@ variable "saas_tenant_ids_z_private_keys_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_cui_monitor_marked_documents_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Marked-Documents [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_cui_monitor_marked_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Marked [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -182,8 +182,8 @@ variable "saas_tenant_ids_cui_monitor_marked_documents_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_cui_monitor_weak_markings_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Weak-Markings [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_cui_monitor_weak_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule CUI-Monitor-Weak [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

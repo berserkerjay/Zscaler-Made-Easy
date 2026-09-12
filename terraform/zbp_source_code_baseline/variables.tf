@@ -92,8 +92,8 @@ variable "saas_tenant_ids_src_java_code_to_ai_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_src_javascript_code_to_ai_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule SRC-JavaScript Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_src_javascript_code_to_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-JavaScript Code to [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 
@@ -152,8 +152,8 @@ variable "saas_tenant_ids_src_swift_code_to_ai_email" {
   type        = list(number)
 }
 
-variable "saas_tenant_ids_src_typescript_code_to_ai_saas" {
-  description = "IDs of the onboarded SaaS application tenants rule SRC-TypeScript Code to AI [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
+variable "saas_tenant_ids_src_typescript_code_to_saas" {
+  description = "IDs of the onboarded SaaS application tenants rule SRC-TypeScript Code to [SaaS] applies to (Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."
   type        = list(number)
 }
 

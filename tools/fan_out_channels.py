@@ -5,9 +5,11 @@ it has inline (Web DLP): for each Web rule, generate a matching rule on
 each of the other three channels carrying the SAME engines. So if a pack
 has five Web rules, each channel ends up with exactly five rules, one per
 topic: the Web rules are the cue and the counts line up on every channel.
-The Endpoint mirror carries no data_transfer_method, so it covers every
-transfer method including removable media (USB); incidents name the
-engine either way.
+A ZIA Endpoint DLP rule applies to exactly one transfer method (a real
+tenant answers "Channel is mandatory" without one, and there is no
+"ANY"), so the Endpoint mirror watches removable media (USB); copy it
+with another data_transfer_method for network shares, printing or
+application file access. Incidents name the engine either way.
 
 The Web rules are the canonical set. Existing Endpoint / SaaS / Email
 rules are replaced by the fanned-out set so the counts line up exactly.
@@ -51,10 +53,17 @@ def _base_name(web_name: str) -> str:
     return stem.strip()
 
 
-def _mirror(web_rule: dict, channel: str) -> dict:
-    """A monitor-only rule on `channel` carrying the Web rule's engines."""
+def _mirror(web_rule: dict, channel: str, taken: set) -> dict:
+    """A monitor-only rule on `channel` carrying the Web rule's engines. The
+    name fits the channel's limit (31 on SaaS) and is unique in the pack."""
     engines = list(web_rule.get("engines") or [])
-    name = f"{_base_name(web_rule['name'])} [{SUFFIX[channel]}]"
+    stem = _base_name(web_rule["name"])
+    name = pc.fit_rule_name(stem, channel, f" [{SUFFIX[channel]}]")
+    n = 2
+    while name in taken:
+        name = pc.fit_rule_name(stem, channel, f" {n} [{SUFFIX[channel]}]")
+        n += 1
+    taken.add(name)
     r: dict = {
         "name": name,
         "channel": channel,
@@ -68,15 +77,15 @@ def _mirror(web_rule: dict, channel: str) -> dict:
         GEN_KEY: True,
     }
     if channel == pc.ENDPOINT:
-        # No data_transfer_method: the rule applies to every transfer method
-        # (the provider only accepts a specific method, not "ANY").
-        r.update({"device_trust_levels": list(pc.ENDPOINT_TRUST_LEVELS),
+        # One transfer method per rule (ZIA: "Channel is mandatory"; no "ANY").
+        r.update({"data_transfer_method": pc.ENDPOINT_DEFAULT_TRANSFER_METHOD,
+                  "device_trust_levels": list(pc.ENDPOINT_TRUST_LEVELS),
                   "user_risk_score_levels": list(pc.ENDPOINT_RISK_LEVELS),
-                  "without_content_inspection": False, "eun_enabled": False, "rank": 7})
+                  "without_content_inspection": False, "eun_enabled": False, "rank": 0})
     elif channel == pc.SAAS:
-        r.update({"saas_type": "OFLCASB_DLP_FILE", "tenants": "any", "collaboration_scope": ["ANY"], "rank": 7})
+        r.update({"saas_type": "OFLCASB_DLP_FILE", "tenants": "any", "collaboration_scope": ["ANY"], "rank": 0})
     elif channel == pc.EMAIL:
-        r.update({"tenants": "any", "rank": 7})
+        r.update({"tenants": "any", "rank": 0})
     return r
 
 
@@ -90,10 +99,11 @@ def fan_out(policies: list) -> list:
     if not web:
         return list(policies)   # channel-specific pack; nothing to mirror from
     kept = [p for p in policies if pc.channel_of(p) not in FAN_CHANNELS]
+    taken = {p["name"] for p in kept}
     mirrors = []
     for w in web:
         for ch in FAN_CHANNELS:
-            mirrors.append(_mirror(w, ch))
+            mirrors.append(_mirror(w, ch, taken))
     return kept + mirrors
 
 

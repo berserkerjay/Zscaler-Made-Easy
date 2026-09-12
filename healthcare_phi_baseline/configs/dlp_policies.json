@@ -4,216 +4,216 @@
     "description": "Inline Web DLP, Engine 1: strong PHI signature with an identity anchor. Single record reportable: immediate investigation. Block-grade; ships DISABLED at INFO, raise to HIGH when enabled.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Critical (Strong Signature and Clinical Document)"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Narrative Low Volume-Monitor",
     "description": "Inline Web DLP, Engine 2: short-form clinical content with a name and a second identifier. Single record reportable; monitor first because referral and prior-authorization traffic to payers is legitimate.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Narrative - Low Volume"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Identity Trifecta-Monitor",
     "description": "Inline Web DLP, Engine 3: name + DOB + SSN (or licence / TIN). Reportable under state breach law regardless of healthcare context. Block-grade.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Identity Trifecta"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Sensitive Subcategory-Monitor",
     "description": "Inline Web DLP, Engine 4: SUD, mental health, HIV, genetic and reproductive PHI beside an identifier. 42 CFR Part 2 and GINA: route to the restricted reviewer queue (attach a dedicated notification template and auditor). Block-grade.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Sensitive Subcategory"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Pharmacy Claims Billing-Monitor",
     "description": "Inline Web DLP, Engine 5: e-prescribing, pharmacy fills, claims, EOBs, prior authorizations and EDI. Monitor first: watch the false-positive rate of the merged pharmacy and claims pathways (Insurance Document and Credit Cards especially), and exclude the clearing house.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Pharmacy - Claims - Billing"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Bulk PHI Major-Monitor",
     "description": "Inline Web DLP, Engine 6 MAJOR tier (> 500 identifiers): a potential 500+ individual breach. Bypass tier-2 review: Privacy Officer, legal counsel, executive incident response and forensics; breach risk assessment within 1 hour. Block-grade.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Bulk PHI - Major"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Bulk PHI Significant-Monitor",
     "description": "Inline Web DLP, Engine 6 significant tier (> 50 identifiers): executive escalation and immediate forensic investigation; still under the 500-individual notification threshold. Block-grade.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Bulk PHI - Significant"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Bulk PHI Small-Monitor",
     "description": "Inline Web DLP, Engine 6 small tier (> 1 identifiers): any multi-record exposure. Standard tier-2 review; investigate and document for the annual HHS log.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Bulk PHI - Small"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-US PII-Monitor",
     "description": "Inline Web DLP, Engine 7: US PII (SSN, TIN, driver's licence, alien registration, passport, date of birth) from the Fed pack. Reportable under state breach law regardless of healthcare context.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA US PII"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-US PHI Medium Confidence-Monitor",
     "description": "Inline Web DLP, Engine 8: medical content plus one identifier (Fed pack US PHI - Medium Confidence). Second PHI opinion beside Engine 1.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA US PHI - Medium Confidence"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-US PHI High Confidence-Monitor",
     "description": "Inline Web DLP, Engine 9: dense medical content plus five identifiers, or an identifier beside its label (Fed pack US PHI - High Confidence). Block-grade.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA US PHI - High Confidence"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-Financial Information-Monitor",
     "description": "Inline Web DLP, Engine 10: payment card, routing-number and tax-form data (Fed pack Financial Information). PCI DSS scope beside HIPAA. Monitor-only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "HIPAA Financial Information"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
-    "severity": "RULE_SEVERITY_INFO",
-    "ocr_enabled": true
+    "severity": "RULE_SEVERITY_INFO"
   },
   {
     "name": "HC-HIPAA Critical [Endpoint]",
@@ -226,6 +226,7 @@
       "HIPAA Critical (Strong Signature and Clinical Document)"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -240,7 +241,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Critical [SaaS]",
@@ -258,7 +259,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Critical [Email]",
@@ -272,7 +273,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Narrative Low Volume [Endpoint]",
@@ -285,6 +286,7 @@
       "HIPAA Narrative - Low Volume"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -299,10 +301,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-HIPAA Narrative Low Volume [SaaS]",
+    "name": "HC-HIPAA Narrative Low [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Narrative Low Volume-Monitor\" (HIPAA Narrative - Low Volume). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -317,7 +319,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Narrative Low Volume [Email]",
@@ -331,7 +333,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Identity Trifecta [Endpoint]",
@@ -344,6 +346,7 @@
       "HIPAA Identity Trifecta"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -358,10 +361,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-HIPAA Identity Trifecta [SaaS]",
+    "name": "HC-HIPAA Identity [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Identity Trifecta-Monitor\" (HIPAA Identity Trifecta). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -376,7 +379,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Identity Trifecta [Email]",
@@ -390,7 +393,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Sensitive Subcategory [Endpoint]",
@@ -403,6 +406,7 @@
       "HIPAA Sensitive Subcategory"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -417,10 +421,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-HIPAA Sensitive Subcategory [SaaS]",
+    "name": "HC-HIPAA Sensitive [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Sensitive Subcategory-Monitor\" (HIPAA Sensitive Subcategory). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -435,7 +439,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Sensitive Subcategory [Email]",
@@ -449,7 +453,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Pharmacy Claims Billing [Endpoint]",
@@ -462,6 +466,7 @@
       "HIPAA Pharmacy - Claims - Billing"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -476,10 +481,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-HIPAA Pharmacy Claims Billing [SaaS]",
+    "name": "HC-HIPAA Pharmacy [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Pharmacy Claims Billing-Monitor\" (HIPAA Pharmacy - Claims - Billing). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -494,7 +499,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Pharmacy Claims Billing [Email]",
@@ -508,7 +513,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Major [Endpoint]",
@@ -521,6 +526,7 @@
       "HIPAA Bulk PHI - Major"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -535,7 +541,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Major [SaaS]",
@@ -553,7 +559,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Major [Email]",
@@ -567,7 +573,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Significant [Endpoint]",
@@ -580,6 +586,7 @@
       "HIPAA Bulk PHI - Significant"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -594,10 +601,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-HIPAA Bulk PHI Significant [SaaS]",
+    "name": "HC-HIPAA Bulk PHI [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-HIPAA Bulk PHI Significant-Monitor\" (HIPAA Bulk PHI - Significant). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -612,7 +619,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Significant [Email]",
@@ -626,7 +633,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Small [Endpoint]",
@@ -639,6 +646,7 @@
       "HIPAA Bulk PHI - Small"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -653,7 +661,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Small [SaaS]",
@@ -671,7 +679,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-HIPAA Bulk PHI Small [Email]",
@@ -685,7 +693,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PII [Endpoint]",
@@ -698,6 +706,7 @@
       "HIPAA US PII"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -712,7 +721,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PII [SaaS]",
@@ -730,7 +739,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PII [Email]",
@@ -744,7 +753,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PHI Medium Confidence [Endpoint]",
@@ -757,6 +766,7 @@
       "HIPAA US PHI - Medium Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -771,10 +781,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-US PHI Medium Confidence [SaaS]",
+    "name": "HC-US PHI Medium [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-US PHI Medium Confidence-Monitor\" (HIPAA US PHI - Medium Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -789,7 +799,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PHI Medium Confidence [Email]",
@@ -803,7 +813,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PHI High Confidence [Endpoint]",
@@ -816,6 +826,7 @@
       "HIPAA US PHI - High Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -830,10 +841,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "HC-US PHI High Confidence [SaaS]",
+    "name": "HC-US PHI High [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"HC-US PHI High Confidence-Monitor\" (HIPAA US PHI - High Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -848,7 +859,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-US PHI High Confidence [Email]",
@@ -862,7 +873,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-Financial Information [Endpoint]",
@@ -875,6 +886,7 @@
       "HIPAA Financial Information"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -889,7 +901,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-Financial Information [SaaS]",
@@ -907,7 +919,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "HC-Financial Information [Email]",
@@ -921,6 +933,6 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   }
 ]

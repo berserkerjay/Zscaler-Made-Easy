@@ -96,7 +96,7 @@ def test_apply_creates_extension_rules_with_the_pack_engines(tmp_path):
     assert res["status"] == "applied" and res["summary"]["created"] == 5, res["results"]
     ep = client.zia.endpoint_dlp_rules.added[0]
     assert ep["name"] == "ZBP-Endpoint DLP Monitor" and ep["state"] == "DISABLED" and ep["action"] == "ALLOW"
-    assert ep["data_transfer_method"] == "ANY" and ep["dlp_engines"] == [{"id": client.zia.dlp_engine.items[0].id}]
+    assert ep["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER" and ep["dlp_engines"] == [{"id": client.zia.dlp_engine.items[0].id}]
     em = client.zia.outbound_email_dlp_rules.added[0]
     assert em["name"] == "ZBP-Email DLP Monitor" and em["email_tenants"] == [{"id": 503}]
     assert client.zia.casb_dlp_rules.added == []

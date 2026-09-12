@@ -139,7 +139,7 @@ def main() -> int:
         import pack_channels as pc
         web = [p for p in policies if pc.channel_of(p) == pc.WEB]
         template = next((p for p in web if p.get("engines")), None) or {
-            "name": f"{args.prefix}Code to AI-Block", "action": "ALLOW", "target_action": "BLOCK", "state": "DISABLED", "rank": 7,
+            "name": f"{args.prefix}Code to AI-Block", "action": "ALLOW", "target_action": "BLOCK", "state": "DISABLED", "rank": 0,
             "protocols": ["WEBSOCKETSSL_RULE", "WEBSOCKET_RULE", "FTP_RULE", "HTTPS_RULE", "HTTP_RULE"],
             "cloud_app_classes": ["AI_ML"], "severity": "RULE_SEVERITY_INFO"}
         pretty = {"CSharp": "C#", "CPlusPlus": "C++", "VBNet": "VB.NET"}

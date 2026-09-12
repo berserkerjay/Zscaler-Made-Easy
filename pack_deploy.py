@@ -274,7 +274,7 @@ def dict_signature(d: Dict[str, Any], predefined_name_to_id: Optional[Dict[str, 
         "patterns": _items_set(d.get("patterns"), "pattern"),
         "phrases": _items_set(d.get("phrases"), "phrase"),
         "proximity": int(d.get("proximity") or 0),
-        "confidence": d.get("confidence_threshold"),
+        "confidence": None,   # a custom dictionary has no confidence score in ZIA
     }
 
 
@@ -300,7 +300,7 @@ def tenant_dict_signature(t: Any) -> Optional[Dict[str, Any]]:
         "patterns": _items_set(patterns, "pattern"),
         "phrases": _items_set(phrases, "phrase"),
         "proximity": int(_field(t, "proximity", default=0) or 0),
-        "confidence": _field(t, "confidence_threshold", "confidenceThreshold"),
+        "confidence": None,
     }
 
 
@@ -955,6 +955,81 @@ def _baseline_impacts(all_items: Sequence[Dict[str, Any]], restore: bool = False
                 "severity": "info" if not row["blocked"] else "warning",
             })
     return out
+
+
+# SaaS Security API rules are ordered per rule type and the API does not
+# shuffle the others down for a new order 1 the way Web DLP does. A real
+# tenant also refused the next free order outright ("Rule with rank 7 is
+# not allowed at order 12") once a type held enough rules, so a refused
+# order is answered by re-reading the type's rules and trying the orders
+# ZIA can still accept, from the last one down, a bounded number of times.
+MAX_SAAS_PLACEMENTS = 8
+
+
+def _order_refusal(err: Any) -> bool:
+    e = str(err or "").lower()
+    return "order" in e or "rank" in e
+
+
+def _saas_orders_now(zia, saas_type: str) -> List[int]:
+    """The orders the tenant currently holds for one SaaS rule type."""
+    svc = getattr(zia, "casb_dlp_rules", None)
+    if svc is None:
+        return []
+    try:
+        lister = getattr(svc, "list_all_rules", None)
+        data, err = pc._nx(lister()) if lister else pc._nx(svc.list_rules(saas_type))
+    except Exception:  # noqa: BLE001
+        return []
+    if err:
+        return []
+    out = []
+    for r in data or []:
+        t = str(pc._field(r, "type", default="") or "")
+        if t in ("", saas_type):
+            out.append(int(pc._field(r, "order", default=0) or 0))
+    return sorted(out)
+
+
+def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], saas_next: Dict[str, int], _log, name: str):
+    """Create one SaaS rule at an order ZIA accepts. Returns (resp, new_id)."""
+    t = str(payload.get("type") or "ANY")
+    first = saas_next.get(t) or (saas_orders.get(t, 0) + 1)
+    tried: List[int] = []
+    errors: List[str] = []
+
+    def attempt(order: int):
+        payload["order"] = order
+        tried.append(order)
+        resp = pc.add_rule(zia, pc.SAAS, payload)
+        new_id = _extract_id(resp)
+        if new_id is None:
+            errors.append(str(_extract_error(resp) or ""))
+        return resp, new_id
+
+    resp, new_id = attempt(first)
+    if new_id is None and _order_refusal(errors[-1]):
+        current = _saas_orders_now(zia, t)
+        top = max(current) if current else 0
+        candidates = [top + 1, top] + list(range(top - 1, 0, -1))
+        for order in candidates:
+            if len(tried) >= MAX_SAAS_PLACEMENTS:
+                break
+            if order in tried or order < 1:
+                continue
+            resp, new_id = attempt(order)
+            if new_id is not None or not _order_refusal(errors[-1]):
+                break
+        if new_id is not None:
+            _log(f"[saas] '{name}': ZIA refused order {', '.join(str(o) for o in tried[:-1])} ({errors[0]}); "
+                 f"placed at order {payload['order']} after re-reading the tenant's {len(current)} {t} rule(s)")
+        else:
+            _log(f"[saas] '{name}': ZIA refused every order tried ({', '.join(str(o) for o in tried)}); last answer: {errors[-1]}")
+    if new_id is not None:
+        saas_orders[t] = max(saas_orders.get(t, 0), int(payload["order"]))
+        # The next rule of this type starts where this one landed, plus one.
+        saas_next[t] = int(payload["order"]) + 1 if len(tried) > 1 else saas_orders[t] + 1
+    return resp, new_id
 
 
 def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], use_rank_0: bool) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -1731,6 +1806,7 @@ def apply(
     # every rule of a type must have its own order, so each new SaaS rule
     # takes the next free order of its type.
     saas_orders: Dict[str, int] = {}
+    saas_next: Dict[str, int] = {}   # per type, the order the next rule tries first once ZIA has refused an order
     for r in tenant["channels"]["rules"].get(pc.SAAS) or []:
         t = str(r.get("type") or "ANY")
         saas_orders[t] = max(saas_orders.get(t, 0), int(r.get("order") or 0))
@@ -1797,16 +1873,8 @@ def apply(
                     record(item, "created", id=new_id, channel=channel, parent_id=parent_id)
                 continue
             if channel == pc.SAAS:
-                t = str(payload.get("type") or "ANY")
-                saas_orders[t] = saas_orders.get(t, 0) + 1
-                payload["order"] = saas_orders[t]
-            resp = pc.add_rule(zia, channel, payload)
-            new_id = _extract_id(resp)
-            if new_id is None and channel == pc.SAAS and "order" in str(_extract_error(resp) or "").lower():
-                # The tenant had more rules of this type than the plan saw: step past them.
-                t = str(payload.get("type") or "ANY")
-                saas_orders[t] = saas_orders.get(t, 0) + 1
-                payload["order"] = saas_orders[t]
+                resp, new_id = _add_saas_rule(zia, payload, saas_orders, saas_next, _log, item["name"])
+            else:
                 resp = pc.add_rule(zia, channel, payload)
                 new_id = _extract_id(resp)
             if new_id:

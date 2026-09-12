@@ -338,7 +338,7 @@ def extension_name(channel: str, prefix: str, pack_name: str) -> str:
     if prefix:
         return prefix + tag
     stem = "".join(ch for ch in (pack_name or "Pack") if ch.isalnum() or ch in " -")[:24].strip()
-    return f"{stem} {tag}".strip()
+    return fit_rule_name(stem, channel, f" {tag}").strip()
 
 
 def extension_policy(channel: str, *, pack_name: str, prefix: str, engine_names: Sequence[str],
@@ -358,13 +358,14 @@ def extension_policy(channel: str, *, pack_name: str, prefix: str, engine_names:
         "extension": True,
     }
     if channel == WEB:
-        p["protocols"] = ["HTTP_RULE", "HTTPS_RULE", "FTP_RULE", "NATIVE_FTP_RULE"]
-        p["rank"] = 7
+        from dlp_importer import WEB_RULE_PROTOCOLS
+        p["protocols"] = list(WEB_RULE_PROTOCOLS)
+        p["rank"] = 0
     elif channel == ENDPOINT:
-        p.update({"data_transfer_method": "ANY", "device_trust_levels": list(ENDPOINT_TRUST_LEVELS),
-                  "user_risk_score_levels": list(ENDPOINT_RISK_LEVELS), "without_content_inspection": False, "eun_enabled": False, "rank": 7})
+        p.update({"data_transfer_method": ENDPOINT_DEFAULT_TRANSFER_METHOD, "device_trust_levels": list(ENDPOINT_TRUST_LEVELS),
+                  "user_risk_score_levels": list(ENDPOINT_RISK_LEVELS), "without_content_inspection": False, "eun_enabled": False, "rank": 0})
     elif channel == SAAS:
-        p.update({"saas_type": "OFLCASB_DLP_FILE", "tenants": "any", "collaboration_scope": ["ANY"], "rank": 7})
+        p.update({"saas_type": "OFLCASB_DLP_FILE", "tenants": "any", "collaboration_scope": ["ANY"], "rank": 0})
     elif channel == EMAIL:
         p.update({"tenants": "any"})
     return p
@@ -497,10 +498,35 @@ SAAS_TYPE_APPS: Dict[str, Tuple[str, ...]] = {
 }
 EMAIL_APPS = SAAS_TYPE_APPS["OFLCASB_DLP_EMAIL"]
 
+# The SaaS Security API caps a rule name at 31 characters ("Name exceeds
+# the max length 31 characters" from a real tenant); Web, Endpoint and
+# Email rules took longer names on the same tenant.
+RULE_NAME_MAX: Dict[str, int] = {SAAS: 31}
+
+
+def fit_rule_name(name: str, channel: str, suffix: str = "") -> str:
+    """`name + suffix` within the channel's name limit: the name is shortened
+    at a word boundary where one is near, never the suffix."""
+    limit = RULE_NAME_MAX.get(channel)
+    full = f"{name}{suffix}"
+    if not limit or len(full) <= limit:
+        return full
+    room = max(1, limit - len(suffix))
+    cut = name[:room]
+    sep = max(cut.rfind(" "), cut.rfind("-"))
+    if sep >= room * 0.55:   # whole words when enough of the name survives
+        cut = cut[:sep]
+    return cut.rstrip(" -_") + suffix
+
+
 ENDPOINT_TRUST_LEVELS = ("UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST")
 ENDPOINT_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
-ENDPOINT_TRANSFER_METHODS = ("REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "APPLICATION_FILE_ACCESS", "PRINTING",
-                             "CLOUD_SYNC", "ANY")
+# An Endpoint DLP rule applies to exactly one transfer method ("channel" in
+# the portal): a real tenant answered "Channel is mandatory" for a rule
+# without one, and the zscaler/zia provider accepts only these four (no
+# "ANY"). Pack mirrors watch removable media; add a rule per method for more.
+ENDPOINT_TRANSFER_METHODS = ("REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "APPLICATION_FILE_ACCESS", "PRINTING")
+ENDPOINT_DEFAULT_TRANSFER_METHOD = "REMOVABLE_DRIVE_TRANSFER"
 
 
 def channel_of(policy_def: Dict[str, Any]) -> str:
@@ -566,16 +592,29 @@ def validate(policy_def: Dict[str, Any]) -> Optional[str]:
     ch = channel_of(policy_def)
     if ch not in CHANNELS:
         return f"unknown channel '{ch}' (use one of {', '.join(CHANNELS)})"
+    from dlp_importer import RULE_DESCRIPTION_MAX
+    if len(str(policy_def.get("description") or "")) > RULE_DESCRIPTION_MAX:
+        return f"description is {len(str(policy_def.get('description')))} characters; ZIA allows {RULE_DESCRIPTION_MAX}"
+    if ch == WEB:
+        from dlp_importer import web_protocol_problems
+        problems = web_protocol_problems(policy_def.get("protocols") or ["ANY_RULE"])
+        if problems:
+            return problems[0]
     if ch == ENDPOINT:
         dtm = policy_def.get("data_transfer_method")
         if dtm and dtm not in ENDPOINT_TRANSFER_METHODS:
-            return f"unknown data_transfer_method '{dtm}' (use one of {', '.join(ENDPOINT_TRANSFER_METHODS)})"
+            return (f"unknown data_transfer_method '{dtm}' (an Endpoint DLP rule applies to one transfer method; "
+                    f"use one of {', '.join(ENDPOINT_TRANSFER_METHODS)})")
         for sr in policy_def.get("sub_rules") or []:
             if not sr.get("name"):
                 return "every sub_rule needs a name"
     elif policy_def.get("sub_rules") or policy_def.get("parent_rule") or policy_def.get("endpoint_application_groups"):
         return "sub_rules, parent_rule and endpoint_application_groups apply to the endpoint channel only"
     if ch == SAAS:
+        n = str(policy_def.get("name") or "")
+        if len(n) > RULE_NAME_MAX[SAAS]:
+            return (f"SaaS rule name '{n}' is {len(n)} characters; the SaaS Security API allows {RULE_NAME_MAX[SAAS]} "
+                    "('Name exceeds the max length 31 characters')")
         t = policy_def.get("saas_type")
         if not t:
             return "SaaS rules need 'saas_type' (e.g. OFLCASB_DLP_FILE)"
@@ -1169,7 +1208,9 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
 
     if channel == ENDPOINT:
         body["device_trust_levels"] = list(p.get("device_trust_levels") or ENDPOINT_TRUST_LEVELS)
-        for opt in ("user_risk_score_levels", "network_type", "data_transfer_method", "min_size"):
+        # ZIA: "Channel is mandatory" — every endpoint rule names one transfer method.
+        body["data_transfer_method"] = p.get("data_transfer_method") or ENDPOINT_DEFAULT_TRANSFER_METHOD
+        for opt in ("user_risk_score_levels", "network_type", "min_size"):
             if p.get(opt):
                 body[opt] = p[opt]
         if p.get("eun_enabled") is not None:

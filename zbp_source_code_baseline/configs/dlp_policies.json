@@ -4,7 +4,7 @@
     "description": "Inline Web DLP: uploads containing C# source code to AI/ML applications (engine SRC-CSharp). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-CSharp"
     ],
@@ -25,7 +25,7 @@
     "description": "Inline Web DLP: uploads containing C++ source code to AI/ML applications (engine SRC-CPlusPlus). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-CPlusPlus"
     ],
@@ -46,7 +46,7 @@
     "description": "Inline Web DLP: uploads containing Go source code to AI/ML applications (engine SRC-Go). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Go"
     ],
@@ -67,7 +67,7 @@
     "description": "Inline Web DLP: uploads containing HTML source code to AI/ML applications (engine SRC-HTML). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-HTML"
     ],
@@ -88,7 +88,7 @@
     "description": "Inline Web DLP: uploads containing Java source code to AI/ML applications (engine SRC-Java). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Java"
     ],
@@ -109,7 +109,7 @@
     "description": "Inline Web DLP: uploads containing JavaScript source code to AI/ML applications (engine SRC-JavaScript). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-JavaScript"
     ],
@@ -130,7 +130,7 @@
     "description": "Inline Web DLP: uploads containing Kotlin source code to AI/ML applications (engine SRC-Kotlin). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Kotlin"
     ],
@@ -151,7 +151,7 @@
     "description": "Inline Web DLP: uploads containing Python source code to AI/ML applications (engine SRC-Python). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Python"
     ],
@@ -172,7 +172,7 @@
     "description": "Inline Web DLP: uploads containing Rust source code to AI/ML applications (engine SRC-Rust). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Rust"
     ],
@@ -193,7 +193,7 @@
     "description": "Inline Web DLP: uploads containing SQL source code to AI/ML applications (engine SRC-SQL). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-SQL"
     ],
@@ -214,7 +214,7 @@
     "description": "Inline Web DLP: uploads containing Swift source code to AI/ML applications (engine SRC-Swift). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Swift"
     ],
@@ -235,7 +235,7 @@
     "description": "Inline Web DLP: uploads containing TypeScript source code to AI/ML applications (engine SRC-TypeScript). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-TypeScript"
     ],
@@ -256,7 +256,7 @@
     "description": "Inline Web DLP: uploads containing VB.NET source code to AI/ML applications (engine SRC-VBNet). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. One rule per engine so each language has its own incident count and can be enabled, tuned or hardened on its own.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-VBNet"
     ],
@@ -277,7 +277,7 @@
     "description": "Inline Web DLP: private keys and secrets uploaded to AI/ML applications (engine SRC-Private Keys). Application scope is resolved from the tenant's AI_ML catalogue at deploy time. Monitor-only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "SRC-Private Keys"
     ],
@@ -304,6 +304,7 @@
       "SRC-CSharp"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -318,7 +319,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-CSharp Code to AI [SaaS]",
@@ -336,7 +337,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-CSharp Code to AI [Email]",
@@ -350,7 +351,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-CPlusPlus Code to AI [Endpoint]",
@@ -363,6 +364,7 @@
       "SRC-CPlusPlus"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -377,7 +379,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-CPlusPlus Code to AI [SaaS]",
@@ -395,7 +397,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-CPlusPlus Code to AI [Email]",
@@ -409,7 +411,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Go Code to AI [Endpoint]",
@@ -422,6 +424,7 @@
       "SRC-Go"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -436,7 +439,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Go Code to AI [SaaS]",
@@ -454,7 +457,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Go Code to AI [Email]",
@@ -468,7 +471,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-HTML Code to AI [Endpoint]",
@@ -481,6 +484,7 @@
       "SRC-HTML"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -495,7 +499,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-HTML Code to AI [SaaS]",
@@ -513,7 +517,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-HTML Code to AI [Email]",
@@ -527,7 +531,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Java Code to AI [Endpoint]",
@@ -540,6 +544,7 @@
       "SRC-Java"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -554,7 +559,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Java Code to AI [SaaS]",
@@ -572,7 +577,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Java Code to AI [Email]",
@@ -586,7 +591,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-JavaScript Code to AI [Endpoint]",
@@ -599,6 +604,7 @@
       "SRC-JavaScript"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -613,10 +619,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "SRC-JavaScript Code to AI [SaaS]",
+    "name": "SRC-JavaScript Code to [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"SRC-JavaScript Code to AI-Monitor\" (SRC-JavaScript). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -631,7 +637,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-JavaScript Code to AI [Email]",
@@ -645,7 +651,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Kotlin Code to AI [Endpoint]",
@@ -658,6 +664,7 @@
       "SRC-Kotlin"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -672,7 +679,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Kotlin Code to AI [SaaS]",
@@ -690,7 +697,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Kotlin Code to AI [Email]",
@@ -704,7 +711,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Python Code to AI [Endpoint]",
@@ -717,6 +724,7 @@
       "SRC-Python"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -731,7 +739,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Python Code to AI [SaaS]",
@@ -749,7 +757,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Python Code to AI [Email]",
@@ -763,7 +771,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Rust Code to AI [Endpoint]",
@@ -776,6 +784,7 @@
       "SRC-Rust"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -790,7 +799,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Rust Code to AI [SaaS]",
@@ -808,7 +817,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Rust Code to AI [Email]",
@@ -822,7 +831,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-SQL Code to AI [Endpoint]",
@@ -835,6 +844,7 @@
       "SRC-SQL"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -849,7 +859,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-SQL Code to AI [SaaS]",
@@ -867,7 +877,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-SQL Code to AI [Email]",
@@ -881,7 +891,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Swift Code to AI [Endpoint]",
@@ -894,6 +904,7 @@
       "SRC-Swift"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -908,7 +919,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Swift Code to AI [SaaS]",
@@ -926,7 +937,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Swift Code to AI [Email]",
@@ -940,7 +951,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-TypeScript Code to AI [Endpoint]",
@@ -953,6 +964,7 @@
       "SRC-TypeScript"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -967,10 +979,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "SRC-TypeScript Code to AI [SaaS]",
+    "name": "SRC-TypeScript Code to [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"SRC-TypeScript Code to AI-Monitor\" (SRC-TypeScript). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -985,7 +997,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-TypeScript Code to AI [Email]",
@@ -999,7 +1011,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-VBNet Code to AI [Endpoint]",
@@ -1012,6 +1024,7 @@
       "SRC-VBNet"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1026,7 +1039,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-VBNet Code to AI [SaaS]",
@@ -1044,7 +1057,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-VBNet Code to AI [Email]",
@@ -1058,7 +1071,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Private Keys to AI [Endpoint]",
@@ -1071,6 +1084,7 @@
       "SRC-Private Keys"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1085,7 +1099,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Private Keys to AI [SaaS]",
@@ -1103,7 +1117,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "SRC-Private Keys to AI [Email]",
@@ -1117,6 +1131,6 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   }
 ]

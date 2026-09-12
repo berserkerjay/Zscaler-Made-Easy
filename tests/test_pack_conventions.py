@@ -145,6 +145,92 @@ def test_no_shipped_dictionary_sets_proximity_on_a_type_zia_rejects():
          "patterns": [{"pattern": r"\bMRN\d{6}\b"}], "phrases": [{"phrase": "medical record"}]}))
 
 
+FED_WEB_KEYS = {"name", "description", "action", "state", "rank", "engines", "protocols", "severity"}
+
+
+def test_every_pack_has_the_fed_packs_logic():
+    """The Fed pack is the one that has been deployed in production; every
+    other pack carries exactly its rule shape: the same protocol set, admin
+    rank 0, monitor action, INFO severity, DISABLED, one engine, no field
+    the Fed rules do not carry (the Source Code pack's cloud application
+    scope is the one addition, and it deployed on the same tenant). The
+    mirrors on Endpoint, SaaS and Email come from one generator, so they
+    are the same shape in every pack by construction, and this checks it."""
+    from dlp_importer import WEB_RULE_PROTOCOLS
+    fed = json.load(open(os.path.join(ROOT, "fed_policy_pack", "configs", "dlp_policies.json"), encoding="utf-8"))
+    fed_web = [r for r in fed if pc.channel_of(r) == pc.WEB]
+    assert all(set(r) == FED_WEB_KEYS for r in fed_web), "the Fed pack's own web rules define the shape"
+    fed_mirror_keys = {ch: {frozenset(k for k in r if k not in ("name", "description", "engines")) for r in fed if pc.channel_of(r) == ch}
+                       for ch in (pc.ENDPOINT, pc.SAAS, pc.EMAIL)}
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_policies.json"))):
+        pack = os.path.basename(os.path.dirname(os.path.dirname(f)))
+        for r in json.load(open(f, encoding="utf-8")):
+            ch = pc.channel_of(r)
+            if ch == pc.WEB:
+                extra = set(r) - FED_WEB_KEYS
+                assert extra <= {"cloud_app_classes", "cloud_applications"}, (pack, r["name"], extra)
+                assert r["protocols"] == WEB_RULE_PROTOCOLS and r["rank"] == 0 and r["action"] == "ALLOW" and r["state"] == "DISABLED" \
+                    and r["severity"] == "RULE_SEVERITY_INFO" and len(r["engines"]) == 1, (pack, r["name"])
+            else:
+                keys = frozenset(k for k in r if k not in ("name", "description", "engines"))
+                assert keys in fed_mirror_keys[ch], (pack, r["name"], sorted(keys))
+                assert r["rank"] == 0 and r["state"] == "DISABLED" and r["severity"] == "RULE_SEVERITY_INFO", (pack, r["name"])
+
+
+def test_shipped_packs_carry_what_the_cjis_deploy_taught():
+    """A real tenant refused the CJIS pack four ways: a confidence score on a
+    custom dictionary, a clone without one, a driver's-licence clone without
+    hierarchical identifiers, NATIVE_FTP_RULE on a Web DLP rule ("Request
+    body is invalid.") and an Endpoint rule without a transfer method
+    ("Channel is mandatory"). Every shipped pack now states each of these
+    the way ZIA wants, and the deploy corrects an uploaded pack that does not."""
+    from dlp_importer import (HIERARCHICAL_TEMPLATES, WEB_PROTOCOLS_ALLOWED, build_dict_kwargs, dictionary_notes, template_code,
+                              web_protocol_problems)
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_dictionaries.json"))):
+        for d in json.load(open(f, encoding="utf-8")):
+            if d.get("predefined_clone"):
+                assert d.get("confidence_threshold"), (f, d["name"], "a clone names its confidence score")
+                if template_code(d.get("dict_template_name")) in HIERARCHICAL_TEMPLATES:
+                    assert d.get("hierarchical_identifiers"), (f, d["name"], "a hierarchical clone names its identifiers")
+            else:
+                assert "confidence_threshold" not in d, (f, d["name"], "no confidence score on a custom dictionary")
+            assert dictionary_notes(d) == [], (f, d["name"])
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_policies.json"))):
+        for r in json.load(open(f, encoding="utf-8")):
+            ch = pc.channel_of(r)
+            if ch == pc.WEB:
+                assert set(r.get("protocols") or ["ANY_RULE"]) <= WEB_PROTOCOLS_ALLOWED, (f, r["name"], r.get("protocols"))
+            elif ch == pc.ENDPOINT:
+                assert r.get("data_transfer_method") in pc.ENDPOINT_TRANSFER_METHODS, (f, r["name"], r.get("data_transfer_method"))
+            elif ch == pc.SAAS:
+                assert len(r["name"]) <= 31, (f, r["name"], "the SaaS Security API caps a rule name at 31 characters")
+            assert pc.validate(r) is None, (f, r["name"], pc.validate(r))
+    # A SaaS mirror name that would pass 31 is shortened at a word boundary; the suffix stays.
+    assert pc.fit_rule_name("SRC-JavaScript Code to AI", "saas", " [SaaS]") == "SRC-JavaScript Code to [SaaS]"
+    assert pc.fit_rule_name("Z-CJIS Markings Medium Confidence", "saas", " [SaaS]") == "Z-CJIS Markings Medium [SaaS]"
+    assert pc.fit_rule_name("Z-CJIS Markings Medium Confidence", "endpoint", " [Endpoint]") == "Z-CJIS Markings Medium Confidence [Endpoint]"
+    assert len(pc.extension_name("saas", "", "Healthcare PHI Policy Pack")) <= 31
+    assert "31" in pc.validate({"name": "SRC-JavaScript Code to AI [SaaS]", "channel": "saas", "saas_type": "OFLCASB_DLP_FILE", "engines": ["e"]})
+    # api.zsapi.net's edge rejects a body with an HTML tag opening (406 "Request Rejected"); the hex-escaped form is the same regex.
+    from dlp_importer import dictionary_limit_problems
+    assert any("406" in p and "\\x3cscript" in p for p in dictionary_limit_problems({"patterns": [{"pattern": r"<script\b"}]}))
+    assert dictionary_limit_problems({"patterns": [{"pattern": r"\x3cscript\b"}, {"pattern": r"<![Dd]octype"}]}) == []
+    import re
+    assert re.search(r"\x3cscript\b", "<script>") and re.search(r"\x3cscript\b", "<script>").group(0) == "<script"
+    # The deploy path sends what ZIA accepts even when a pack author did not know.
+    kw, err = build_dict_kwargs({"name": "c", "confidence_threshold": "CONFIDENCE_LEVEL_HIGH", "phrases": [{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "alpha beta"}]}, {})
+    assert err is None and "confidence_threshold" not in kw
+    kw, err = build_dict_kwargs({"name": "dl", "predefined_clone": True, "dict_template_name": "Drivers License (United States)"}, {"USDL_LEAKAGE": 7})
+    assert err is None and kw["confidence_threshold"] == "CONFIDENCE_LEVEL_HIGH" and "USDL_CA" in kw["hierarchical_identifiers"] and len(kw["hierarchical_identifiers"]) == 50
+    kw, err = build_dict_kwargs({"name": "iban", "predefined_clone": True, "dict_template_name": "EUIBAN_LEAKAGE"}, {"EUIBAN_LEAKAGE": 8})
+    assert kw is None and "hierarchical identifier" in err
+    assert "Request body is invalid" in web_protocol_problems(["HTTP_RULE", "NATIVE_FTP_RULE"])[0] and web_protocol_problems(["ANY_RULE"]) == []
+    body = pc.build_payload("endpoint", {"name": "E", "channel": "endpoint", "engines": ["E"]}, [1], {})
+    assert body["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER"
+    assert "one transfer method" in pc.validate({"name": "x", "channel": "endpoint", "engines": ["e"], "data_transfer_method": "ANY"})
+    assert "Request body is invalid" in pc.validate({"name": "x", "channel": "web", "engines": ["e"], "protocols": ["NATIVE_FTP_RULE"]})
+
+
 def test_every_shipped_name_uses_characters_zia_accepts_and_engine_descriptions_fit(tmp_path):
     """A real tenant refused "HIPAA Narrative / Low Volume" (INVALID_NAME: only
     alphanumeric, underscore, hyphen, dot, parentheses and space) and every

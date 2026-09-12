@@ -47,7 +47,7 @@ resource "zia_activation_status" "this" {
     zia_casb_dlp_rules.z_cjis_any_signal_saas,
     zia_outbound_email_dlp.z_cjis_any_signal_email,
     zia_endpoint_dlp_rules.z_cjis_markings_medium_confidence_endpoint,
-    zia_casb_dlp_rules.z_cjis_markings_medium_confidence_saas,
+    zia_casb_dlp_rules.z_cjis_markings_medium_saas,
     zia_outbound_email_dlp.z_cjis_markings_medium_confidence_email,
     zia_endpoint_dlp_rules.z_cjis_us_pii_endpoint,
     zia_casb_dlp_rules.z_cjis_us_pii_saas,

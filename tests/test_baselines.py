@@ -408,7 +408,8 @@ def test_shipped_baselines_are_discoverable_and_plan():
         assert len(svc.added) == 12, "one rule per inline rule on every channel"
     rule = client.zia.dlp_web_rules.added[0]
     # Ships monitor-only and DISABLED; the API never sees the target, the plan does.
-    assert rule["ocr_enabled"] is True and rule["action"] == "ALLOW" and rule["state"] == "DISABLED" and "target_action" not in rule
+    # The Fed pack's production rules carry no OCR flag, and every pack has the Fed shape.
+    assert "ocr_enabled" not in rule and rule["rank"] == 0 and rule["action"] == "ALLOW" and rule["state"] == "DISABLED" and "target_action" not in rule
     crit = next(i for i in rep["items"] if i["kind"] == "policy" and i["name"] == "HC-HIPAA Critical-Monitor")
     assert crit["detail"]["action"] == "ALLOW" and crit["detail"]["target_action"] is None   # monitoring, with no block target
     # Engine 1 starts with the Medical Document (id 1) and Medical Imaging (id 2) classifiers, resolved from display names.
@@ -517,7 +518,7 @@ def test_fed_pack_cui_rules_deploy_and_measure():
     assert rules["CUI-Monitor-Marked-Documents"]["action"] == "ALLOW" and rules["CUI-Monitor-Weak-Markings"]["action"] == "ALLOW"
     targets = {i["name"]: i["detail"]["target_action"] for i in rep["items"] if i["kind"] == "policy" and i["detail"].get("channel") == "web"}
     assert targets["CUI-Monitor-Marked-Documents"] is None and targets["CUI-Monitor-Weak-Markings"] is None and targets["CUI-Monitor-All"] is None   # every rule monitors
-    assert all(r["state"] == "DISABLED" for r in rules.values()) and rules["CUI-Monitor-All"]["ocr_enabled"]
+    assert all(r["state"] == "DISABLED" and r["rank"] == 0 and "ocr_enabled" not in r for r in rules.values())
     # Re-running preflight finds everything present: nothing left to create.
     again = pd.preflight(client, [{"id": fed["id"], "dir": fed["dir"]}], writes_enabled=True)
     assert not any(i["status"] == pd.CREATE for i in again["items"])

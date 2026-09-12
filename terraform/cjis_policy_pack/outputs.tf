@@ -92,7 +92,7 @@ output "rules" {
     zia_casb_dlp_rules.z_cjis_any_signal_saas.name,
     zia_outbound_email_dlp.z_cjis_any_signal_email.name,
     zia_endpoint_dlp_rules.z_cjis_markings_medium_confidence_endpoint.name,
-    zia_casb_dlp_rules.z_cjis_markings_medium_confidence_saas.name,
+    zia_casb_dlp_rules.z_cjis_markings_medium_saas.name,
     zia_outbound_email_dlp.z_cjis_markings_medium_confidence_email.name,
     zia_endpoint_dlp_rules.z_cjis_us_pii_endpoint.name,
     zia_casb_dlp_rules.z_cjis_us_pii_saas.name,

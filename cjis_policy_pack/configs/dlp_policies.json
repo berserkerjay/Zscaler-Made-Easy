@@ -4,15 +4,16 @@
     "description": "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS Markings High Confidence"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -21,15 +22,16 @@
     "description": "Monitor structured CJIS identifiers \u2014 NCIC ORI, FBI UCN, SID, NCIC Purpose Code. Any such identifier leaving the tenant is logged for review.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS Identifier Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -38,15 +40,16 @@
     "description": "Monitor transmission of criminal-history records (RAP sheets, booking reports, incident reports) when they co-occur with subject PII.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "Criminal History - RAP Sheet Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -55,15 +58,16 @@
     "description": "Monitor NCIC / III query results (wanted persons, stolen property, missing persons) correlated with subject PII.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "NCIC - III Data Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -72,15 +76,16 @@
     "description": "Monitor wanted-person / warrant content near subject PII \u2014 flags accidental or intentional exfil of active-warrant data.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "Warrant - Wanted-Person Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -89,15 +94,16 @@
     "description": "Monitor biometric references (fingerprint, palm, AFIS/IAFIS/NGI, booking photo) that co-occur with CJIS markings or structured identifiers.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "Biometric CJI Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -106,15 +112,16 @@
     "description": "Monitor NICS / firearm background-check terminology \u2014 ATF Form 4473, NICS denials, prohibited-person content.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "NICS Firearms Background Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -123,13 +130,16 @@
     "description": "Monitor egress of content derived from LE info-sharing portals (N-DEx, LEEP, Nlets, RISS) when coupled with subject identifiers.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "Info-Sharing Portal Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE"
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -138,15 +148,16 @@
     "description": "Broad catch-all \u2014 any high-signal CJIS marking or structured identifier. Useful as a safety net while tuning the narrower policies above.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS Any-Signal Engine"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -155,15 +166,16 @@
     "description": "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. One rule per engine: this rule carries CJIS Markings Medium Confidence only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS Markings Medium Confidence"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -172,15 +184,16 @@
     "description": "Inline Web DLP: US PII (SSN, TIN, driver's licence, alien registration, date of birth) leaving without a CJI marking. State breach law applies to it even when it is not CJI. Monitor-only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS US PII"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -189,15 +202,16 @@
     "description": "Inline Web DLP: content marked TLP:RED (recipients only). Monitor-only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS TLP Red"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -206,15 +220,16 @@
     "description": "Inline Web DLP: content marked TLP:AMBER+STRICT (recipient organisation only). Monitor-only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS TLP Amber Strict"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -223,15 +238,16 @@
     "description": "Inline Web DLP: content marked TLP:AMBER (need to know). Monitor-only.",
     "action": "ALLOW",
     "state": "DISABLED",
-    "rank": 7,
+    "rank": 0,
     "engines": [
       "CJIS TLP Amber"
     ],
     "protocols": [
-      "HTTP_RULE",
-      "HTTPS_RULE",
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
       "FTP_RULE",
-      "NATIVE_FTP_RULE"
+      "HTTPS_RULE",
+      "HTTP_RULE"
     ],
     "severity": "RULE_SEVERITY_INFO"
   },
@@ -246,6 +262,7 @@
       "CJIS Markings High Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -260,7 +277,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Markings [SaaS]",
@@ -278,7 +295,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Markings [Email]",
@@ -292,7 +309,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Identifier [Endpoint]",
@@ -305,6 +322,7 @@
       "CJIS Identifier Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -319,7 +337,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Identifier [SaaS]",
@@ -337,7 +355,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Identifier [Email]",
@@ -351,7 +369,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Criminal History [Endpoint]",
@@ -364,6 +382,7 @@
       "Criminal History - RAP Sheet Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -378,7 +397,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Criminal History [SaaS]",
@@ -396,7 +415,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Criminal History [Email]",
@@ -410,7 +429,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS NCIC III Data [Endpoint]",
@@ -423,6 +442,7 @@
       "NCIC - III Data Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -437,7 +457,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS NCIC III Data [SaaS]",
@@ -455,7 +475,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS NCIC III Data [Email]",
@@ -469,7 +489,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Warrants [Endpoint]",
@@ -482,6 +502,7 @@
       "Warrant - Wanted-Person Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -496,7 +517,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Warrants [SaaS]",
@@ -514,7 +535,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Warrants [Email]",
@@ -528,7 +549,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Biometric [Endpoint]",
@@ -541,6 +562,7 @@
       "Biometric CJI Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -555,7 +577,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Biometric [SaaS]",
@@ -573,7 +595,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Biometric [Email]",
@@ -587,7 +609,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS NICS Firearms [Endpoint]",
@@ -600,6 +622,7 @@
       "NICS Firearms Background Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -614,7 +637,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS NICS Firearms [SaaS]",
@@ -632,7 +655,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS NICS Firearms [Email]",
@@ -646,7 +669,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Info-Sharing [Endpoint]",
@@ -659,6 +682,7 @@
       "Info-Sharing Portal Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -673,7 +697,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Info-Sharing [SaaS]",
@@ -691,7 +715,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Info-Sharing [Email]",
@@ -705,7 +729,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Any-Signal [Endpoint]",
@@ -718,6 +742,7 @@
       "CJIS Any-Signal Engine"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -732,7 +757,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Any-Signal [SaaS]",
@@ -750,7 +775,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Any-Signal [Email]",
@@ -764,7 +789,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Markings Medium Confidence [Endpoint]",
@@ -777,6 +802,7 @@
       "CJIS Markings Medium Confidence"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -791,10 +817,10 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
-    "name": "Z-CJIS Markings Medium Confidence [SaaS]",
+    "name": "Z-CJIS Markings Medium [SaaS]",
     "channel": "saas",
     "description": "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents.",
     "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -809,7 +835,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS Markings Medium Confidence [Email]",
@@ -823,7 +849,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS US PII [Endpoint]",
@@ -836,6 +862,7 @@
       "CJIS US PII"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -850,7 +877,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS US PII [SaaS]",
@@ -868,7 +895,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS US PII [Email]",
@@ -882,7 +909,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Red [Endpoint]",
@@ -895,6 +922,7 @@
       "CJIS TLP Red"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -909,7 +937,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Red [SaaS]",
@@ -927,7 +955,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Red [Email]",
@@ -941,7 +969,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Amber Strict [Endpoint]",
@@ -954,6 +982,7 @@
       "CJIS TLP Amber Strict"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -968,7 +997,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Amber Strict [SaaS]",
@@ -986,7 +1015,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Amber Strict [Email]",
@@ -1000,7 +1029,7 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Amber [Endpoint]",
@@ -1013,6 +1042,7 @@
       "CJIS TLP Amber"
     ],
     "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
     "device_trust_levels": [
       "UNKNOWN_DEVICETRUSTLEVEL",
       "LOW_TRUST",
@@ -1027,7 +1057,7 @@
     ],
     "without_content_inspection": false,
     "eun_enabled": false,
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Amber [SaaS]",
@@ -1045,7 +1075,7 @@
     "collaboration_scope": [
       "ANY"
     ],
-    "rank": 7
+    "rank": 0
   },
   {
     "name": "Z-CJIS TLP Amber [Email]",
@@ -1059,6 +1089,6 @@
     ],
     "channel_mirror": true,
     "tenants": "any",
-    "rank": 7
+    "rank": 0
   }
 ]
