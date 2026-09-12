@@ -224,21 +224,30 @@ def test_undo_endpoints(store, tmp_path, monkeypatch):
     assert client.zia.dlp_web_rules.items == [] and client.zia.dlp_engine.items == []
 
 
-def test_a_deselected_packed_channel_is_never_silent():
-    """A channel choice that leaves out mirrors a pack ships (a choice
-    remembered from before the mirrors existed, say) is named in the
-    plan's warnings and at the top of the deploy log, with the rule count
-    and how to put it right."""
-    from dlp_importer import discover_packs
-    fed = next(p for p in discover_packs() if p["id"] == "fed_policy_pack")
-    pack = {"id": fed["id"], "dir": fed["dir"]}
+import pytest as _pytest
+from dlp_importer import discover_packs as _discover
+
+
+@_pytest.mark.parametrize("pack_id", [p["id"] for p in _discover()])
+def test_a_deselected_packed_channel_is_never_silent(pack_id):
+    """For every shipped pack: a channel choice that leaves out mirrors the
+    pack ships (a choice remembered from before the mirrors existed, say)
+    is named in the plan's warnings and at the top of the deploy log, with
+    the rule count and how to put it right."""
+    import json, os
+    src = next(p for p in _discover() if p["id"] == pack_id)
+    pack = {"id": src["id"], "dir": src["dir"]}
+    rules = json.load(open(os.path.join(src["dir"], "configs", "dlp_policies.json"), encoding="utf-8"))
+    web = sum(1 for r in rules if pc.channel_of(r) == pc.WEB)
+    mirrors = sum(1 for r in rules if pc.channel_of(r) in (pc.ENDPOINT, pc.SAAS, pc.EMAIL))
+    assert web and mirrors == 3 * web, "every pack mirrors its web rules onto the three other channels"
     client = add_control_services(make_client(casb_tenants=TENANTS))
-    rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets={"fed_policy_pack": ["web"]})
+    rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets={pack_id: ["web"]})
     w = [x for x in rep["warnings"] if "packed but not selected" in x]
-    assert w and "Endpoint DLP" in w[0] and "Email DLP" in w[0] and "51 rule(s)" in w[0] and "Tick the channel" in w[0], rep["warnings"]
+    assert w and "Endpoint DLP" in w[0] and "Email DLP" in w[0] and f"{mirrors} rule(s)" in w[0] and "Tick the channel" in w[0], rep["warnings"]
     logs = []
-    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, channel_targets={"fed_policy_pack": ["web"]}, verify=False, log=logs.append)
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, channel_targets={pack_id: ["web"]}, verify=False, log=logs.append)
     assert res["status"] == "applied"
     head = [l for l in logs if l.startswith("[channels]")]
-    assert head and "NOT deployed" in head[0] and "Endpoint DLP" in head[0] and "51 rule(s) skipped" in head[0] and logs.index(head[0]) < logs.index("Phase 1: dictionaries")
-    assert client.zia.endpoint_dlp_rules.added == [] and client.zia.outbound_email_dlp_rules.added == [] and len(client.zia.dlp_web_rules.added) == 17
+    assert head and "NOT deployed" in head[0] and "Endpoint DLP" in head[0] and f"{mirrors} rule(s) skipped" in head[0] and logs.index(head[0]) < logs.index("Phase 1: dictionaries")
+    assert client.zia.endpoint_dlp_rules.added == [] and client.zia.outbound_email_dlp_rules.added == [] and len(client.zia.dlp_web_rules.added) == web
