@@ -955,10 +955,23 @@ function _dzRemovalSelect() {
         <div class="rs">${r.tagged ? `DLP-Check · ${_dzE(r.pack || 'pack')}` : 'not created by DLP-Check'}${(r.engines || []).length ? ` · engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : ' · no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
     </label>`;
   const groups = Object.keys(byChan).map(ch => `<div class="dz-h" style="margin-top:0.8rem;">${_dzE(_dzChan(ch))}<span class="count">${byChan[ch].length}</span></div><div class="dz-rows">${byChan[ch].map(row).join('')}</div>`).join('');
+  // Orphans: engines no rule uses and dictionaries no engine uses. Nothing
+  // reaches them through a rule, so they are offered here on their own.
+  const orph = R.inventory.orphans || {};
+  const oEng = (orph.engines || []).filter(e => !q || (e.name || '').toLowerCase().includes(q) || (e.pack || '').toLowerCase().includes(q));
+  const oDict = (orph.dictionaries || []).filter(d => !q || (d.name || '').toLowerCase().includes(q) || (d.pack || '').toLowerCase().includes(q));
+  const orow = (o, what) => { const k = `${o.kind}:${o.id}`; return `<label class="dz-row dz-pick ${R.selected.has(k) ? 'on' : ''}">
+      <input type="checkbox" ${R.selected.has(k) ? 'checked' : ''} onchange="_dzPickToggle('${_dzE(k)}', this.checked)" aria-label="Remove ${_dzE(o.name)}">
+      <div><div class="nm">${_dzE(o.name)} <span class="dz-chip">${what}</span></div>
+        <div class="rs">${o.tagged ? `DLP-Check · ${_dzE(o.pack || 'pack')}` : 'not created by DLP-Check'}${o.kind === 'engine' ? ' · no rule on any channel uses it' + ((o.dictionaries || []).length ? ` · dictionaries: ${_dzE(o.dictionaries.slice(0, 4).join(', '))}${o.dictionaries.length > 4 ? '…' : ''}` : '') : ' · no engine uses it'}</div></div>
+    </label>`; };
+  const orphanGroups = (oEng.length ? `<div class="dz-h" style="margin-top:0.8rem;">Engines with no rule<span class="count">${oEng.length}</span></div><div class="dz-rows">${oEng.map(o => orow(o, 'engine')).join('')}</div>` : '')
+    + (oDict.length ? `<div class="dz-h" style="margin-top:0.8rem;">Dictionaries no engine uses<span class="count">${oDict.length}</span></div><div class="dz-rows">${oDict.map(o => orow(o, 'dictionary')).join('')}</div>` : '');
+  const nOrph = (orph.engines || []).length + (orph.dictionaries || []).length;
   const errs = Object.entries(R.inventory.errors || {}).filter(([, v]) => v);
   body.innerHTML = `
-    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${rules.length} DLP rule(s) in the tenant</div>
-      <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${rules.length} DLP rule(s) in the tenant${nOrph ? `, plus ${_dzN(nOrph, 'orphan')} (an engine no rule uses, or a dictionary no engine uses)` : ''}</div>
+      <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Orphan engines and dictionaries are listed at the bottom so a leftover with no rule can go too. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
     <div class="dz-pick-tools">
       <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="DZ.removal.filter=this.value;_dzRemovalRender()" aria-label="Filter rules">
       <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select DLP-Check rules</button>
@@ -967,9 +980,10 @@ function _dzRemovalSelect() {
       <button type="button" class="dz-link" onclick="_dzPickSet(() => false)">Clear</button>
     </div>
     ${groups || '<div class="dz-empty">No rules match the filter.</div>'}
+    ${orphanGroups}
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
-      <button type="button" class="dz-btn primary" onclick="_dzRemovalPickPreview()" ${R.selected.size && !DZ.busy ? '' : 'disabled'}>${DZ.busy ? 'Planning…' : `Preview removal of ${R.selected.size} rule(s)`}</button>
+      <button type="button" class="dz-btn primary" onclick="_dzRemovalPickPreview()" ${R.selected.size && !DZ.busy ? '' : 'disabled'}>${DZ.busy ? 'Planning…' : `Preview removal of ${R.selected.size} item(s)`}</button>
     </div>`;
 }
 
@@ -983,12 +997,21 @@ function _dzPickSet(pred) {
     const k = `${r.channel}:${r.id}`;
     if (pred(r)) R.selected.add(k); else R.selected.delete(k);
   });
+  const orph = R.inventory.orphans || {};
+  [...(orph.engines || []), ...(orph.dictionaries || [])].forEach(o => {
+    const vis = !q || (o.name || '').toLowerCase().includes(q) || (o.pack || '').toLowerCase().includes(q);
+    if (!vis) return;
+    const k = `${o.kind}:${o.id}`;
+    if (pred({ ...o, state: 'DISABLED' })) R.selected.add(k); else R.selected.delete(k);
+  });
   _dzRemovalRender();
 }
 
 async function _dzRemovalPickPreview() {
   const R = DZ.removal; if (!R || !R.selected.size || DZ.busy) return;
-  R.rules = (R.inventory.rules || []).filter(r => R.selected.has(`${r.channel}:${r.id}`)).map(r => ({ channel: r.channel, id: r.id }));
+  const orph = R.inventory.orphans || {};
+  R.rules = (R.inventory.rules || []).filter(r => R.selected.has(`${r.channel}:${r.id}`)).map(r => ({ channel: r.channel, id: r.id }))
+    .concat([...(orph.engines || []), ...(orph.dictionaries || [])].filter(o => R.selected.has(`${o.kind}:${o.id}`)).map(o => ({ kind: o.kind, id: o.id })));
   DZ.busy = true; _dzRemovalRender();
   try {
     const r = await fetch('/api/dlp-packs/removal/preflight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pack_ids: [], rules: R.rules, ..._dzCreds() }) });

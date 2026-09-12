@@ -196,7 +196,10 @@ def test_remove_everything_covers_retired_packs_and_old_names(tmp_path, monkeypa
     monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
     # A single pack sees only its own objects.
     single = pr.plan_removal(client, [pack])
-    assert {i["name"] for i in single["items"]} == {"RM-Web-Monitor", "RM-Engine", "RM-Dict"}
+    # One pack: its own objects, plus DLP-Check's historical names (name-only matches, flagged); never another pack's tagged objects.
+    single_names = {i["name"] for i in single["items"]}
+    assert {"RM-Web-Monitor", "RM-Engine", "RM-Dict"} <= single_names and "CUI-Monitor-All" not in single_names and "Customer Rule" not in single_names
+    assert all(i["match"] == "name" for i in single["items"] if i["name"] not in {"RM-Web-Monitor", "RM-Engine", "RM-Dict"})
     # Everything: the retired CUI pack's tagged objects and Fed 1.1's untagged ones are in scope;
     # the customer's own objects are not, and a dictionary a customer engine still uses is kept.
     plan = pr.plan_removal(client, [pack], everything=True)
@@ -327,3 +330,88 @@ def test_plan_says_what_it_read_and_never_calls_a_partial_read_nothing(tmp_path)
     client.zia.dlp_dictionary.fail = True
     rep = pr.plan_removal(client, [pack])
     assert rep["status"] == "blocked" and "could not be fully read" in rep["blockers"][0] and "dictionaries" in rep["blockers"][0]
+
+
+def test_remove_waits_for_activation_and_retries_refused_deletes(tmp_path, monkeypatch):
+    """The customer's tenant: rules deleted, then every engine delete
+    refused as still in use because the rules were only pending-deleted,
+    and a SaaS delete refused with a rate limit. The removal now activates
+    and WAITS for ACTIVE between tiers and tries refused deletes again, so
+    engines and dictionaries go too."""
+    from test_pack_channels import make_client
+    d = write_pack(tmp_path, "removeme", dicts=[_dict("RM-Dict")], engines=[_engine("RM-Engine", "(D:RM-Dict > 0)")],
+                   policies=[_policy("RM-Web-Monitor", ["RM-Engine"]), SAAS_POL], meta=META)
+    pack = {"id": "removeme", "dir": d["dir"]}
+    client = make_client(saas_rules=[Obj(id=8501, name="RM-Web-Monitor [SaaS]", type="OFLCASB_DLP_FILE", state="DISABLED",
+                                         action="OFLCASB_DLP_REPORT_INCIDENT", dlp_engines=[{"id": 5001}], description=TAG)])
+    base = _tenant(with_survivors=False)
+    client.zia.dlp_dictionary.items = base.zia.dlp_dictionary.items
+    client.zia.dlp_engine.items = base.zia.dlp_engine.items
+    client.zia.dlp_web_rules.items = base.zia.dlp_web_rules.items
+    _deletable(client)
+    z = client.zia
+    state = {"activated": 0, "saas_tries": 0, "engine_tries": 0}
+    # ZIA the way it behaves: an engine is "in use" until the activation that removes its rules has run.
+    real_engine_delete = z.dlp_engine.delete_dlp_engine
+    def engine_delete(oid):
+        state["engine_tries"] += 1
+        if state["activated"] < 1:
+            return None, None, {"code": "RESOURCE_IN_USE", "message": "DLP engine is in use by a DLP rule"}
+        return real_engine_delete(oid)
+    z.dlp_engine.delete_dlp_engine = engine_delete
+    real_saas_delete = z.casb_dlp_rules.delete_rule
+    def saas_delete(oid, rule_type=None):
+        state["saas_tries"] += 1
+        if state["saas_tries"] == 1:
+            return None, None, {"status": 429, "message": "Rate limit exceeded, try again later"}
+        return real_saas_delete(oid, rule_type=rule_type)
+    z.casb_dlp_rules.delete_rule = saas_delete
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: (state.__setitem__("activated", state["activated"] + 1) or {"activated": True, "status": "ACTIVE", "error": None}))
+    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: "ACTIVE")
+    monkeypatch.setattr(pr, "RETRY_BASE_SECONDS", 0.0)
+    logs = []
+    plan = pr.plan_removal(client, [pack])
+    res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True, log=logs.append)
+    assert res["status"] == "removed" and res["complete"], [(r["name"], r["status"], r.get("error")) for r in res["results"]]
+    assert res["summary"] == {"deleted": 4}
+    assert not z.dlp_engine.items and not z.dlp_dictionary.items and not z.casb_dlp_rules.items and not z.dlp_web_rules.items
+    by = {r["name"]: r for r in res["results"]}
+    assert by["RM-Web-Monitor [SaaS]"]["status"] == "deleted" and by["RM-Web-Monitor [SaaS]"]["attempts"] == 1 and state["saas_tries"] == 2
+    assert by["RM-Engine"]["status"] == "deleted" and state["engine_tries"] >= 1
+    assert any("waiting for ZIA to report ACTIVE" in l for l in logs) and any("will retry after the tenant settles" in l for l in logs)
+    # A refusal that time cannot clear fails once and stays failed.
+    assert not pr._retryable("not found") and pr._retryable("DLP engine is in use by a DLP rule") and pr._retryable("Rate limit exceeded")
+
+
+def test_pick_mode_lists_and_removes_orphan_engines_and_dictionaries(tmp_path, monkeypatch):
+    """An engine no rule uses, or a dictionary no engine uses (a leftover
+    from an older build, or something made outside the app), cannot be
+    reached through a rule: the inventory lists such orphans on their own
+    and a picked orphan is planned and removed, with its dependencies."""
+    from test_pack_channels import make_client
+    client = make_client()
+    z = client.zia
+    z.dlp_dictionary.items = [Obj(id=1, name="Social Security Numbers (US)", custom=False),
+                              Obj(id=9101, name="PII Phrases", custom=True, description="hand made"),
+                              Obj(id=9102, name="Unused Dict", custom=True, description="hand made")]
+    z.dlp_engine.items = [Obj(id=5101, name="PII (US) - High Volume", engine_expression="((D9101.S > 5))", description="made in the portal"),
+                          Obj(id=5102, name="Used Engine", engine_expression="((D1.S > 0))", description="")]
+    z.dlp_web_rules.items = [Obj(id=7101, name="Uses Engine", order=1, rank=7, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5102}], protocols=["HTTPS_RULE"], description="")]
+    _deletable(client)
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: "ACTIVE")
+    inv = pr.inventory(client)
+    assert [o["name"] for o in inv["orphans"]["engines"]] == ["PII (US) - High Volume"] and inv["orphans"]["engines"][0]["dictionaries"] == ["PII Phrases"] and not inv["orphans"]["engines"][0]["tagged"]
+    assert [o["name"] for o in inv["orphans"]["dictionaries"]] == ["Unused Dict"]
+    sel = [{"kind": "engine", "id": 5101}, {"kind": "dictionary", "id": 9102}]
+    plan = pr.plan_removal_selected(client, sel)
+    names = {(i["kind"], i["name"]): i for i in plan["items"]}
+    assert plan["status"] == "ready" and names[("engine", "PII (US) - High Volume")]["status"] == "remove" and names[("engine", "PII (US) - High Volume")]["match"] == "selected"
+    assert names[("dictionary", "PII Phrases")]["status"] == "remove" and names[("dictionary", "PII Phrases")]["match"] == "dependency"
+    assert names[("dictionary", "Unused Dict")]["status"] == "remove" and names[("dictionary", "Unused Dict")]["match"] == "selected"
+    assert ("engine", "Used Engine") not in names and plan["remove_count"] == 3
+    res = pr.remove_selected(client, sel, plan_hash=plan["plan_hash"], writes_enabled=True)
+    assert res["status"] == "removed" and res["summary"] == {"deleted": 3}
+    assert [e.name for e in z.dlp_engine.items] == ["Used Engine"] and sorted(d.name for d in z.dlp_dictionary.items) == ["Social Security Numbers (US)"]
+    # A picked id that is gone is reported, not silently dropped.
+    assert any("no longer in the tenant" in w for w in pr.plan_removal_selected(client, [{"kind": "engine", "id": 424242}])["warnings"])

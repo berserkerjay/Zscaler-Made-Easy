@@ -174,10 +174,13 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         def_dicts |= {x["name"] for x in d if x.get("name")}
         def_engines |= {x["name"] for x in e if x.get("name")}
         def_policies |= {x["name"] for x in pol if x.get("name")}
-    if everything:
-        def_dicts |= LEGACY_NAMES["dictionary"]
-        def_engines |= LEGACY_NAMES["engine"]
-        def_policies |= LEGACY_NAMES["policy"]
+    # The app's own historical names (packs renamed their objects over
+    # time) are always in scope: an object under an old name is DLP-Check's
+    # whether one pack or everything is being removed. It is reported as a
+    # name-only match for the operator to confirm.
+    def_dicts |= LEGACY_NAMES["dictionary"]
+    def_engines |= LEGACY_NAMES["engine"]
+    def_policies |= LEGACY_NAMES["policy"]
 
     def any_match(desc: Any, name: str, def_names: set) -> Optional[str]:
         d = str(desc or "")
@@ -414,6 +417,27 @@ def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
     return pc.wait_active(zia, settle_seconds, _log)
 
 
+# Deletes ZIA refuses for a reason that time or an activation clears are
+# tried again (up to MAX_PASSES per tier) after activating and waiting for
+# ACTIVE. The words below are what ZIA and the SDK put in those answers.
+MAX_PASSES = 3
+RETRY_BASE_SECONDS = 3.0
+_RETRYABLE_WORDS = ("in use", "referenced", "associated", "being used", "used by", "in progress", "activation", "pending",
+                    "edit lock", "lock", "rate limit", "too many", "429", "409", "503", "502", "timeout", "timed out",
+                    "temporarily", "try again", "ruletype", "rule type")
+
+
+def _retryable(error: Any) -> bool:
+    e = str(error or "").lower()
+    return any(w in e for w in _RETRYABLE_WORDS)
+
+
+def _sleep(seconds: float) -> None:
+    import time as _t
+    if seconds > 0:
+        _t.sleep(seconds)
+
+
 def _all_need() -> Dict[str, Any]:
     need = pc.needs([])
     need["channels"] = set(pc.DLP_CHANNELS)
@@ -470,7 +494,31 @@ def inventory(client) -> Dict[str, Any]:
                             "proximity": pd._field(d, "proximity"),
                             "proximity_enabled": bool(pd._field(d, "proximity_enabled_for_custom_dictionary", "proximityEnabledForCustomDictionary", default=False)),
                             "phrases": len(pd._field(d, "phrases", default=[]) or []), "patterns": len(pd._field(d, "patterns", default=[]) or [])}
-    return {"status": "ready", "rules": rules, "dictionaries": dicts, "errors": (snap.get("channels") or {}).get("errors") or {}}
+    # Orphans: custom engines no rule on any channel references, and custom
+    # dictionaries no engine references. They cannot be reached through a
+    # rule, so the pick screen lists them on their own.
+    used_engines = {str(x) for r in rules for x in r["engine_ids"]}
+    orphan_engines = []
+    for name, e in engines.items():
+        eid = str(pd._field(e, "id"))
+        if eid in used_engines or pd._field(e, "predefined_engine", default=False) or pd._field(e, "custom_dlp_engine", default=True) is False:
+            continue
+        pack = _tag_pack(pd._field(e, "description"))
+        orphan_engines.append({"kind": "engine", "id": pd._field(e, "id"), "name": name, "tagged": pack is not None, "pack": pack,
+                               "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e))})
+    used_dicts: set = set()
+    for e in engines.values():
+        used_dicts |= _engine_dict_ids(e)
+    orphan_dicts = []
+    for name, d in (snap.get("dictionaries") or {}).items():
+        did = str(pd._field(d, "id"))
+        if did in used_dicts or not pd._field(d, "custom", "customDictionary", default=False):
+            continue
+        pack = _tag_pack(pd._field(d, "description"))
+        orphan_dicts.append({"kind": "dictionary", "id": pd._field(d, "id"), "name": name, "tagged": pack is not None, "pack": pack})
+    orphan_engines.sort(key=lambda x: str(x["name"]).lower()); orphan_dicts.sort(key=lambda x: str(x["name"]).lower())
+    return {"status": "ready", "rules": rules, "dictionaries": dicts, "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},
+            "errors": (snap.get("channels") or {}).get("errors") or {}}
 
 
 def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -479,7 +527,13 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
     as a pack removal: an engine a rule outside the selection still uses,
     or a dictionary a surviving engine still uses, is kept. Predefined
     objects are never touched."""
-    keys = {(str(x.get("channel") or pc.WEB), str(x.get("id"))) for x in (selected or []) if x.get("id") is not None}
+    # A selection is a rule ({channel, id}), or an engine or dictionary
+    # picked on its own ({kind: "engine" | "dictionary", id}) for the
+    # orphans no rule reaches.
+    keys = {(str(x.get("channel") or pc.WEB), str(x.get("id"))) for x in (selected or [])
+            if x.get("id") is not None and x.get("kind") not in ("engine", "dictionary")}
+    picked_engines = {str(x.get("id")) for x in (selected or []) if x.get("kind") == "engine" and x.get("id") is not None}
+    picked_dicts = {str(x.get("id")) for x in (selected or []) if x.get("kind") == "dictionary" and x.get("id") is not None}
     snap = tenant_cache or pd.fetch_tenant(client, _all_need())
     if not snap.get("reachable", True):
         return {"status": "blocked", "found": False, "items": [], "summary": {},
@@ -507,19 +561,23 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
         engine_ids_used_by_survivors |= {str(e) for e in (r.get("engine_ids") or [])}
     engine_items = []
     remove_engine_ids: set = set()
+    seen_engine_ids: set = set()
     for name, e in engines.items():
         eid = str(pd._field(e, "id"))
-        if eid not in wanted_engine_ids:
+        if eid not in wanted_engine_ids and eid not in picked_engines:
             continue
         if pd._field(e, "predefined_engine", default=False) or pd._field(e, "custom_dlp_engine", default=True) is False:
             continue   # never a predefined engine
-        item = {"kind": "engine", "channel": None, "id": pd._field(e, "id"), "name": name, "match": "dependency",
-                "dict_ids": sorted(_engine_dict_ids(e))}
+        seen_engine_ids.add(eid)
+        item = {"kind": "engine", "channel": None, "id": pd._field(e, "id"), "name": name,
+                "match": "selected" if eid in picked_engines else "dependency", "dict_ids": sorted(_engine_dict_ids(e))}
         if eid in engine_ids_used_by_survivors:
             item["keep"] = "still used by a rule you did not select"
         else:
             remove_engine_ids.add(eid)
         engine_items.append(item)
+    for eid in sorted(picked_engines - seen_engine_ids):
+        warnings.append(f"engine {eid} is no longer in the tenant (or is predefined); skipped.")
 
     dicts = snap.get("dictionaries") or {}
     wanted_dict_ids = {did for i in engine_items if "keep" not in i for did in i["dict_ids"]}
@@ -529,14 +587,19 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
             continue
         dict_ids_used_by_survivors |= _engine_dict_ids(e)
     dict_items = []
+    seen_dict_ids: set = set()
     for name, d in dicts.items():
         did = str(pd._field(d, "id"))
-        if did not in wanted_dict_ids or not pd._field(d, "custom", default=False):
+        if (did not in wanted_dict_ids and did not in picked_dicts) or not pd._field(d, "custom", default=False):
             continue
-        item = {"kind": "dictionary", "channel": None, "id": pd._field(d, "id"), "name": name, "match": "dependency"}
+        seen_dict_ids.add(did)
+        item = {"kind": "dictionary", "channel": None, "id": pd._field(d, "id"), "name": name,
+                "match": "selected" if did in picked_dicts else "dependency"}
         if did in dict_ids_used_by_survivors:
             item["keep"] = "still used by an engine that stays"
         dict_items.append(item)
+    for did in sorted(picked_dicts - seen_dict_ids):
+        warnings.append(f"dictionary {did} is no longer in the tenant (or is predefined); skipped.")
 
     items = rule_items + engine_items + dict_items
     for it in items:
@@ -556,7 +619,8 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
     to_remove = [it for it in items if it["status"] == "remove"]
     plan_hash = hashlib.sha256(json.dumps(
         [(i["kind"], i.get("channel"), str(i["id"]), i["name"]) for i in to_remove], sort_keys=True).encode()).hexdigest()[:16]
-    return {"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": [], "selection": sorted(keys),
+    return {"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": [],
+            "selection": sorted(keys) + sorted(("engine", e) for e in picked_engines) + sorted(("dictionary", d) for d in picked_dicts),
             "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
             "plan_hash": plan_hash, "warnings": warnings, "blockers": []}
 
@@ -608,39 +672,86 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
     # so the next tier's objects (the engines and dictionaries tied to the
     # pack) actually delete.
     TIERS = [("policy", "app_group"), ("engine",), ("dictionary",)]
+    TIER_LABEL = {0: "rules", 1: "engines", 2: "dictionaries"}
+    entries: Dict[Tuple[str, Optional[str], str], Dict[str, Any]] = {}
+
+    def attempt(c: Dict[str, Any], entry: Dict[str, Any]) -> bool:
+        """One delete of one object, after checking the id still carries the
+        name the plan saw. Returns True when the object is gone."""
+        key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
+        if key not in names_cache:
+            names_cache[key] = pd._current_names(zia, c["kind"], c.get("channel"))
+        current, err = names_cache[key]
+        if current is None:
+            entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
+            return False
+        if str(c["id"]) not in current:
+            entry.update(status="gone", reason="already removed from the tenant")
+            return True
+        if current[str(c["id"])] != c["name"]:
+            entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not '{c['name']}'; left alone")
+            return True
+        derr = pd._delete(zia, c)
+        if derr:
+            entry.update(status="failed", error=derr)
+            return False
+        entry.update(status="deleted"); entry.pop("error", None)
+        current.pop(str(c["id"]), None)
+        return True
+
     for ti, kinds in enumerate(TIERS):
         tier = [c for c in to_remove if c["kind"] in kinds]
         if not tier:
             continue
         deleted_here = 0
-        for c in tier:
-            key = (c["kind"], c.get("channel") if c["kind"] == "policy" else None)
-            if key not in names_cache:
-                names_cache[key] = pd._current_names(zia, c["kind"], c.get("channel"))
-            current, err = names_cache[key]
-            entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel"), "match": c.get("match")}
-            if current is None:
-                entry.update(status="failed", error=f"could not list the tenant's {c['kind']} objects: {err}")
-            elif str(c["id"]) not in current:
-                entry.update(status="gone", reason="already removed from the tenant")
-            elif current[str(c["id"])] != c["name"]:
-                entry.update(status="skipped", reason=f"id {c['id']} now carries the name '{current[str(c['id'])]}', not '{c['name']}'; left alone")
-            else:
-                derr = pd._delete(zia, c)
-                if derr:
-                    entry.update(status="failed", error=derr)
-                else:
-                    entry.update(status="deleted"); deleted_here += 1
-                    current.pop(str(c["id"]), None)
-            results.append(entry)
-            _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else ""))
-        # Activate before the next tier so its objects are no longer referenced.
-        more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
-        if deleted_here and more:
-            _log("Activating deleted rules before removing engines/dictionaries…")
+        pending = list(tier)
+        # Up to three passes over the tier: the first straight through, the
+        # later ones only for deletes ZIA refused for a reason that time or
+        # an activation can clear (still referenced, activation in progress,
+        # edit lock, rate limit), after waiting for the tenant to report
+        # ACTIVE. Anything else fails once and stays failed.
+        for pass_no in range(1, MAX_PASSES + 1):
+            retry: List[Dict[str, Any]] = []
+            for c in pending:
+                ek = (c["kind"], c.get("channel"), str(c["id"]))
+                entry = entries.get(ek)
+                if entry is None:
+                    entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel"), "match": c.get("match")}
+                    entries[ek] = entry; results.append(entry)
+                ok = attempt(c, entry)
+                if ok and entry["status"] == "deleted":
+                    deleted_here += 1
+                elif not ok and _retryable(entry.get("error")):
+                    entry["attempts"] = pass_no
+                    if c.get("channel") == pc.SAAS:
+                        # The SaaS delete is refused without the rule's type; read it fresh for the next try.
+                        fresh = pc.saas_rule_type(zia, c["id"])
+                        if fresh:
+                            c["type"] = fresh
+                    retry.append(c)
+                _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else "")
+                     + (f" (will retry after the tenant settles, pass {pass_no} of {MAX_PASSES})" if c in retry else ""))
+            if not retry or pass_no == MAX_PASSES:
+                break
+            # Give ZIA time to finish what it is doing before the next pass.
+            _log(f"{len(retry)} {TIER_LABEL[ti]} refused for now; activating and waiting for ZIA to report ACTIVE, then trying again…")
             act = pc.activate(zia)
             activations.append(act)
-            _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))
+            _settle(zia, settle_seconds, _log)
+            _sleep(RETRY_BASE_SECONDS * pass_no)
+            names_cache.clear()
+            pending = retry
+        # Activate before the next tier so its objects are no longer
+        # referenced, and WAIT for the activation to complete: an engine
+        # whose rules are only pending-deleted is still "in use" to ZIA.
+        more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
+        if deleted_here and more:
+            _log(f"Activating the deleted {TIER_LABEL[ti]} and waiting for ZIA to report ACTIVE before removing the {TIER_LABEL.get(ti + 1, 'rest')}…")
+            act = pc.activate(zia)
+            activations.append(act)
+            _log("Activation " + ("requested." if act.get("activated") else f"could not run: {act.get('error')}"))
+            status = _settle(zia, settle_seconds, _log)
+            _log(f"Activation status: {status or 'unknown'}.")
             names_cache.clear()   # re-read after activation
 
     # Final activation so every deletion is live, then wait for ZIA to

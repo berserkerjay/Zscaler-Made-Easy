@@ -4,6 +4,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-12
+
+### Removal waits for ZIA and tries again, so engines and dictionaries go too
+- **What happened on a real tenant**: the rules on Web, Endpoint and Email were deleted, some SaaS deletes were refused, and every engine and dictionary delete was refused, because ZIA still counted the engines as in use by rules that were only pending-deleted (the activation had not completed) and answered other deletes with transient errors while it was busy.
+- **Now**: after each tier (rules, then engines, then dictionaries) the removal activates and **waits for ZIA to report ACTIVE** before starting the next tier, instead of activating and carrying straight on. A delete refused for a reason that time or an activation clears (still in use or referenced, activation in progress, edit lock, rate limit, a SaaS delete missing its rule type) is tried again after the tenant settles, up to three passes per tier, with a fresh rule type for SaaS rules; anything else fails once and stays failed. The log says which deletes will be retried, when it is waiting, and the activation status it saw.
+- **Leftovers with no rule can be picked.** *Pick rules…* now also lists the orphans: engines no rule on any channel uses and custom dictionaries no engine uses, each marked DLP-Check or "not created by DLP-Check". A picked orphan is planned and removed like anything else, with the dictionaries only it uses; a picked id that is gone is reported. Removing one pack now also catches DLP-Check's own historical names (an object left under a name a pack used to use), flagged as a name-only match to confirm.
+
 ## 2026-09-11
 
 ### A channel left out of a deploy is never silent
