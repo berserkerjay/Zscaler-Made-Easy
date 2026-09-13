@@ -20,7 +20,7 @@ API and the page share one computation."""
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import compliance_mapping as cm
 from report_docx import _BP_FALLBACKS, _parse_detail_for_bp

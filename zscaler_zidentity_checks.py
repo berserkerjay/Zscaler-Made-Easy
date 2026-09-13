@@ -16,7 +16,7 @@ Modules (from zscaler-sdk-python/zscaler/zid/):
 All checks are read-only.
 """
 
-from dlp_assessment_full_auto import R, _ls, _g
+from dlp_assessment_full_auto import R, _ls
 
 
 def zid_users(cl):

@@ -35,9 +35,10 @@ import zipfile
 
 from native_zscaler import convert_parts, is_native, kind_of
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pack_channels as pc
+import pack_ops as ops
 from dlp_importer import PACKS_ROOT, template_candidates
 
 USER_PACKS_DIRNAME = "user_packs"
@@ -737,7 +738,6 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
                 problems.append(f"dictionary '{n}': pattern does not compile ({e}): {str(pat)[:60]}")
         # The same validator the deploy plan runs (pack_ops.validate), so an
         # upload and a preflight never disagree about what ZIA refuses.
-        import pack_ops as ops
         for msg in ops.validate("dictionary", d):
             problems.append(f"dictionary '{n}': {msg}")
         for msg in ops.notes("dictionary", d):
@@ -765,7 +765,6 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         if not expr.strip():
             problems.append(f"engine '{n}': empty expression")
             continue
-        import pack_ops as ops
         for msg in ops.validate("engine", e):
             problems.append(f"engine '{n}': {msg}")
         if expr.count("(") != expr.count(")"):
@@ -796,7 +795,6 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         if n in pol_seen:
             problems.append(f"rule '{n}' appears twice")
         pol_seen.add(n)
-        import pack_ops as ops
         for err in ops.validate("policy", p):
             problems.append(f"rule '{n}': {err}")
         ch = pc.channel_of(p)

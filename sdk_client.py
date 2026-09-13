@@ -24,9 +24,8 @@ Usage:
 """
 
 import os
-import time
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from zscaler import ZscalerClient
 

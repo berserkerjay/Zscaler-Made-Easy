@@ -25,7 +25,7 @@ says so; rule order is dropped too (a pack always inserts at the top).
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 _NATIVE_DICT_KEYS = {"dictionaryType", "customPhraseMatchType", "confidenceThreshold", "predefinedClone", "dictTemplateName", "nameL10nTag"}
 _NATIVE_ENGINE_KEYS = {"engineExpression", "predefinedEngineName", "customDlpEngine"}

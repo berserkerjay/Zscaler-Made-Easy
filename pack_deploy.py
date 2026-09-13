@@ -61,17 +61,13 @@ import pack_ops as ops
 from dlp_importer import (resolve_template, engine_limit_problems,
     DICT_DESCRIPTION_MAX,
     ENGINE_DESCRIPTION_MAX,
-    name_problems,
     EMPTY_DICT_REASON,
     fit_description,
-    _extract_error,
-    _extract_id,
     _load_json,
     _nx,
     _obj_to_dict,
     _resolve_configs,
     build_dict_kwargs,
-    build_policy_payload,
     engine_references,
     prune_engine_terms,
     load_pack_metadata,
@@ -192,19 +188,7 @@ def _canonical(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
 
 
-def _field(obj: Any, *keys: str, default: Any = None) -> Any:
-    """Read a field from an SDK object or dict, trying snake_case and
-    camelCase spellings. The SDK returns both depending on the call."""
-    d = obj if isinstance(obj, dict) else _obj_to_dict(obj)
-    if isinstance(d, dict):
-        for k in keys:
-            if k in d and d[k] is not None:
-                return d[k]
-    for k in keys:
-        v = getattr(obj, k, None)
-        if v is not None:
-            return v
-    return default
+_field = pc._field   # one implementation, shared with pack_channels
 
 
 def _items_set(items: Optional[Iterable[Any]], key: str) -> List[List[str]]:
@@ -1074,7 +1058,7 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
             "channel": channel,
             "title": f"{n_ch} new {pc.label(channel)} rule{'s' if n_ch != 1 else ''} will be inserted at the top of that policy",
             "detail": (f"Every existing {pc.label(channel)} rule moves down by {n_ch}. Existing rules are evaluated after the new ones. "
-                       + (f"For example: " + "; ".join(f"'{r['name']}' order {r['order']} → {r['order'] + n_ch}" for r in shifted) + "."
+                       + ("For example: " + "; ".join(f"'{r['name']}' order {r['order']} → {r['order'] + n_ch}" for r in shifted) + "."
                           if shifted else f"The tenant currently has no {pc.label(channel)} rules.")),
             "severity": "warning" if n_existing else "info",
         })

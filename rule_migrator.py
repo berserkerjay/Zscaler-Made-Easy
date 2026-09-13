@@ -329,7 +329,6 @@ def import_rules_to_zscaler(client, rules: List[Dict[str, Any]], rule_type: str 
     Set dry_run=False to actually make the changes — requires ENABLE_WRITE_ACTIONS
     env var to be set to "YES_I_UNDERSTAND".
     """
-    import os
     if not dry_run and not __import__("security").writes_enabled():
         return {
             "status": "blocked",
@@ -985,7 +984,6 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
       - dry_run=False + ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND is required
         to actually call PUT.
     """
-    import os
     probe = _probe_eval_all_field(client)
     current = probe["evaluate_all_enabled"]
     found_via = probe["found_via"]
@@ -1181,7 +1179,7 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
             continue
         if code != 200 or not isinstance(data, dict):
             attempts.append({"endpoint": endpoint, "phase": "discover",
-                             "get_status": code, "skip_reason": f"non-200 or not dict"})
+                             "get_status": code, "skip_reason": "non-200 or not dict"})
             continue
         # Record that this endpoint was reachable so the user sees it in diagnostics
         attempts.append({"endpoint": endpoint, "phase": "discover",
@@ -1263,7 +1261,6 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND.
       - Always run Step 2 (Download) first to keep a backup.
     """
-    import os
     rules = fetch_current_rules(client, "web_dlp")
     plan = [
         {"rule_id": r.get("id"), "rule_name": r.get("name", f"Rule {r.get('id')}"),
@@ -1337,7 +1334,6 @@ def post_new_rule_order(
     SAFETY: Requires ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var
     AND dry_run=False to actually write. Default is dry-run.
     """
-    import os
     plan = []
     for new_pos, r in enumerate(proposed_rules, 1):
         rid = r.get("id")

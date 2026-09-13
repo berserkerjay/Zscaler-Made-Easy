@@ -29,7 +29,7 @@ project the check supports. All read-only. No writes.
 """
 
 import re
-from dlp_assessment_full_auto import R, _ls, _g
+from dlp_assessment_full_auto import R, _ls
 
 
 # Invalid HCL identifier pattern — terraform-provider-zia requires

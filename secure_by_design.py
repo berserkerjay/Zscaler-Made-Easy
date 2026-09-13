@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -201,7 +201,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
         audit_path = os.path.join(APP_DIR, "audit.log")
         size = os.path.getsize(audit_path) if os.path.exists(audit_path) else 0
         checks.append(_check("audit", "Every write call is recorded for later investigation", P_OPEN, "evidence", "pass",
-                             f"Every non-GET API call goes to audit.log (owner-only, rotated at 20 MB) with time, path, status, caller, write-mode state and a redacted body; deployments are also recorded for undo. "
+                             "Every non-GET API call goes to audit.log (owner-only, rotated at 20 MB) with time, path, status, caller, write-mode state and a redacted body; deployments are also recorded for undo. "
                              + (f"The log holds {size:,} bytes." if size else "No writes recorded yet on this install."), "Keep audit.log with the engagement's records."))
     else:
         checks.append(_check("audit", "Every write call is recorded for later investigation", P_OPEN, "evidence", "fail", "The audit middleware is not in the running server.", "Start the app from dlp_api_server.py."))

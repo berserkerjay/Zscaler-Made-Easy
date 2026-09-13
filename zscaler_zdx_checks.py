@@ -17,7 +17,7 @@ Checks are read-only and use the same Client interface as the other
 zscaler_*_checks modules. All failures gracefully degrade to INFO.
 """
 
-from dlp_assessment_full_auto import R, _ls, _g
+from dlp_assessment_full_auto import R, _ls
 
 
 # ═══════════════════════════════════════════════════════════════════════

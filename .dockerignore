@@ -1,6 +1,12 @@
 .git
 .github
 tests
+.venv
+venv
+node_modules
+*.egg-info
+build
+dist
 __pycache__
 *.pyc
 *.zip

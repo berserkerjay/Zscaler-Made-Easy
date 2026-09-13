@@ -36,7 +36,7 @@ import re
 import statistics
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -596,7 +596,7 @@ def to_markdown(r: Dict[str, Any]) -> str:
 
 def to_html(r: Dict[str, Any]) -> str:
     E = html.escape
-    parts = [f"<title>Detection Logic Validation</title><style>body{{font-family:Segoe UI,Helvetica,Arial,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#14202b;background:#fff}}table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom:1px solid #ddd;padding:.4rem .5rem;text-align:left}}th{{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#555}}.ok{{color:#1f7a4d;font-weight:600}}.bad{{color:#b23a3a;font-weight:600}}.warn{{color:#a86b00;font-weight:600}}code{{font-size:.85em}}.k{{font-size:.8rem;color:#555}}</style>",
+    parts = ["<title>Detection Logic Validation</title><style>body{{font-family:Segoe UI,Helvetica,Arial,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#14202b;background:#fff}}table{{border-collapse:collapse;width:100%;font-size:.9rem}}th,td{{border-bottom:1px solid #ddd;padding:.4rem .5rem;text-align:left}}th{{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:#555}}.ok{{color:#1f7a4d;font-weight:600}}.bad{{color:#b23a3a;font-weight:600}}.warn{{color:#a86b00;font-weight:600}}code{{font-size:.85em}}.k{{font-size:.8rem;color:#555}}</style>",
              f"<h1>Detection logic validation</h1><p class=k>{E(r['generated_at'])} · {r['iterations']} iterations × {r['documents_per_iteration']} documents · {r['evaluations']:,} engine evaluations · {r['elapsed_seconds']} s</p>"]
     for pid, p in r["packs"].items():
         st = p["static"]

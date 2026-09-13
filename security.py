@@ -82,14 +82,27 @@ def get_bind_host() -> str:
     return os.environ.get("ZSCALER_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
 
 
+DEFAULT_PORT = 8000
+
+
 def get_port() -> int:
+    """The TCP port to listen on: ZSCALER_PORT when it is a whole number
+    from 1 to 65535, otherwise 8000 with a warning on stderr (the app
+    keeps starting rather than failing on a typo in a start script)."""
+    raw = os.environ.get("ZSCALER_PORT", str(DEFAULT_PORT)).strip()
     try:
-        return int(os.environ.get("ZSCALER_PORT", "8000"))
+        port = int(raw)
+        if not 1 <= port <= 65535:
+            raise ValueError(port)
+        return port
     except ValueError:
-        return 8000
+        import sys
+        print(f"  ZSCALER_PORT={raw!r} is not a port number between 1 and 65535; using {DEFAULT_PORT}.", file=sys.stderr)
+        return DEFAULT_PORT
 
 
 def get_max_body_bytes() -> int:
+    """Request body cap in bytes: ZSCALER_MAX_BODY_MB clamped to 1-100 MB (default 10)."""
     try:
         mb = int(os.environ.get("ZSCALER_MAX_BODY_MB", "10"))
     except ValueError:
@@ -98,6 +111,7 @@ def get_max_body_bytes() -> int:
 
 
 def is_debug() -> bool:
+    """True when ZSCALER_DEBUG is set: tracebacks and request logs are shown."""
     return os.environ.get("ZSCALER_DEBUG", "0").strip() in ("1", "true", "yes")
 
 
@@ -110,6 +124,8 @@ _write_override: "bool | None" = None
 
 
 def writes_enabled() -> bool:
+    """May this server change a tenant? The session toggle wins; otherwise
+    ENABLE_WRITE_ACTIONS must equal the confirmation phrase."""
     if _write_override is not None:
         return _write_override
     return os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
@@ -151,6 +167,7 @@ def set_write_mode(enable: bool, confirm: str = "") -> dict:
 # ── Validation helpers ───────────────────────────────────────────────────────
 
 def validate_cloud(cloud: str) -> str:
+    """The Zscaler cloud name, lower-cased; 400 when it is not one the app knows."""
     cloud = (cloud or "production").strip().lower()
     if cloud not in ALLOWED_CLOUDS:
         raise HTTPException(
@@ -161,6 +178,7 @@ def validate_cloud(cloud: str) -> str:
 
 
 def validate_vanity(vd: str) -> str:
+    """The vanity domain (a DNS name, at most 253 characters); "" when blank, 400 when malformed."""
     vd = (vd or "").strip()
     if not vd:
         return ""  # caller decides if required
@@ -170,6 +188,8 @@ def validate_vanity(vd: str) -> str:
 
 
 def validate_credential(name: str, value: str, required: bool = True) -> str:
+    """A client id or secret: present when required, at most 256 characters,
+    no control characters; 400 otherwise. The value is never echoed."""
     value = value or ""
     if required and not value.strip():
         raise HTTPException(status_code=400, detail=f"{name} is required.")
@@ -182,6 +202,7 @@ def validate_credential(name: str, value: str, required: bool = True) -> str:
 
 
 def validate_customer_id(cid: str) -> str:
+    """The ZPA customer id: alphanumeric, at most 64 characters; 400 otherwise."""
     cid = (cid or "").strip()
     if cid and (len(cid) > MAX_CUSTOMER_ID_LEN or not cid.isalnum()):
         raise HTTPException(status_code=400, detail="Invalid customer ID.")
@@ -372,6 +393,7 @@ _UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/st
 
 
 def ui_auth_enabled() -> bool:
+    """True unless ZSCALER_UI_AUTH is 0/false/no/off: every caller must present the UI token."""
     return os.environ.get("ZSCALER_UI_AUTH", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
@@ -384,6 +406,7 @@ def ui_token() -> str:
 
 
 def ui_token_ok(candidate: Optional[str]) -> bool:
+    """Constant-time comparison of a presented token with this process's token."""
     c = (candidate or "").strip()
     return bool(c) and _secrets.compare_digest(c, ui_token())
 
@@ -420,6 +443,7 @@ def _token_from_request(request: Request) -> Optional[str]:
 
 
 def ui_request_ok(request: Request) -> bool:
+    """Is this request allowed through the UI token gate (header, cookie or query)?"""
     return (not ui_auth_enabled()) or ui_token_ok(_token_from_request(request))
 
 

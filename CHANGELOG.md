@@ -4,6 +4,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-13
+
+### Refactor pass and two packaging targets from one tree
+- **Static cleanup, no behaviour change.** Every finding of a whole-tree lint run is fixed: 60 unused imports and variables removed, 24 f-strings without placeholders made plain strings, three copies of the same helper folded into one (`_nx` now lives in `dlp_importer`, `_field` in `pack_channels`, with the old names kept for callers), the legacy pack page's remaining dead code gone. The seven `import x  # noqa` lines that probe whether an optional module can load are deliberate and stay.
+- **Entry points fail in words, not tracebacks.** The web server checks its address and port before starting: a taken port, an address the machine does not own or a privileged port is reported in one sentence with what to do, exit code 2 (uvicorn used to print a bare errno and exit 3). `ZSCALER_PORT` outside 1–65535 falls back to 8000 with a warning. The command-line assessment reports a missing, unreadable, malformed or incomplete configuration file in one sentence (exit 2) instead of a traceback or, worse, silently falling into the interactive prompt; an unwritable report path is reported the same way.
+- **Documentation.** Docstrings on every public function and class of the server, the security helpers, the channel helpers and all 170 registered checks (each says its id, section and name); README rewritten to describe what the project does, how it is structured, every configuration variable, and how to install, run and test both delivery modes.
+- **Local installer for Linux and macOS** (`install.sh`, `start.sh`, `stop.sh`, `local_settings.env.example`) beside the Windows `.bat` files: a private `.venv`, the same hash-pinned `requirements.lock` the container installs, an editable install that provides the `dlp-check`, `dlp-check-assess` and `dlp-check-evaluate` commands (`pyproject.toml`). A `Makefile` gives one set of targets for both modes (`install`, `dev`, `run`, `test`, `check`, `docker`, `docker-run`, `lock`).
+- **Container unchanged in substance**, now provably built from the same source: `tests/test_packaging.py` checks that the installer and the Dockerfile install from the same pinned file and start the same entry point, that every module is listed for the package, that the dependency lists agree, that the shell scripts parse, and that secrets and state files never reach the image or the repository. `tests/test_entrypoints.py` covers the new error paths.
+
 ## 2026-09-12
 
 ### One road into the tenant and one road out, for every pack

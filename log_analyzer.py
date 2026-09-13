@@ -21,7 +21,7 @@ import re
 import tarfile
 import zipfile
 from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 MAX_MEMBERS = 600
 MAX_MEMBER_BYTES = 48 * 1024 * 1024

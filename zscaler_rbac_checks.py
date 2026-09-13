@@ -16,7 +16,7 @@ Scopes covered:
 All checks read-only. None modify the tenant.
 """
 import time
-from dlp_assessment_full_auto import R, _ls, _g
+from dlp_assessment_full_auto import R, _ls
 
 
 # ─────────────────────────────────────────────────────────────────

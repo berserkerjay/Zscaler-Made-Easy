@@ -12,10 +12,9 @@ These extend the DLP checks in dlp_assessment_full_auto.py.
 Import and append to REG to run a full platform assessment.
 """
 
-import json
 
 # Reuse the Result class and helpers from the main engine
-from dlp_assessment_full_auto import R, _ls, _g
+from dlp_assessment_full_auto import R, _ls
 
 
 # ═══════════════════════════════════════════════════════════════════════

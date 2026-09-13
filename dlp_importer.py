@@ -32,7 +32,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 
@@ -41,11 +40,15 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 
 def _nx(ret):
+    """(data, error) from whatever an SDK call returned: (data, response,
+    error), (data, error), (data,) or a bare value."""
     if not isinstance(ret, tuple):
         return ret, None
-    if len(ret) == 1:
-        return ret[0], None
-    return ret[0], ret[-1]
+    if len(ret) >= 3:
+        return ret[0], ret[2]
+    if len(ret) == 2:
+        return ret[0], ret[1]
+    return (ret[0] if ret else None), None
 
 
 def _obj_to_dict(obj):

@@ -107,7 +107,7 @@ jobs:
           python -m pip install --upgrade pip pip-tools
           pip-compile --quiet --generate-hashes --allow-unsafe --output-file=requirements.check requirements.txt
           # Only the pinned package set must match; hashes are refreshed by the same tool.
-          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale; run: pip-compile --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt"; exit 1; }
+          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale (a dependency published a new version); run: make lock  (pip-compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt) and commit the result"; exit 1; }
 
       - name: Install from the lock (hash-verified)
         run: pip install --require-hashes --no-deps -r requirements.lock

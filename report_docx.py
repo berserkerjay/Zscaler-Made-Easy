@@ -16,11 +16,10 @@ import json
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 
 try:
     from docx import Document
-    from docx.shared import Inches, Pt, Cm, RGBColor
+    from docx.shared import Pt, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from docx.oxml.ns import qn
@@ -426,7 +425,6 @@ def _generate_recommendation(check_id: str, label: str, as_is: str, best_practic
     specific pattern matches.
     """
     low = (as_is or "").lower()
-    lab = (label or "").lower()
 
     # Extract the first concrete instruction from the best-practice text
     bp_first = (best_practice or "").split(".")[0].strip() if best_practice else ""
@@ -645,13 +643,13 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     summary.add_run(f"The overall maturity score is {overall}% ({mat}). ").bold = True
 
     summary2 = doc.add_paragraph()
-    summary2.add_run(f"Configured correctly: ").bold = True
+    summary2.add_run("Configured correctly: ").bold = True
     summary2.add_run(f"{counts['PASS']} checks. ")
-    summary2.add_run(f"Action required: ").bold = True
+    summary2.add_run("Action required: ").bold = True
     summary2.add_run(f"{counts['FAIL']} checks. ")
-    summary2.add_run(f"Needs review: ").bold = True
+    summary2.add_run("Needs review: ").bold = True
     summary2.add_run(f"{counts['REVIEW']} checks. ")
-    summary2.add_run(f"Not configured/N/A: ").bold = True
+    summary2.add_run("Not configured/N/A: ").bold = True
     summary2.add_run(f"{counts['INFO']} checks.")
 
     # ── Maturity Model Explanation ────────────────────────────────
@@ -1020,7 +1018,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             for fw_key, summary in sorted(fw_summary.items()):
                 doc.add_heading(FRAMEWORK_DESCRIPTIONS.get(fw_key, fw_key), level=3)
                 p = doc.add_paragraph()
-                p.add_run(f"Status: ").bold = True
+                p.add_run("Status: ").bold = True
                 stat_text = p.add_run(f"{summary['status']} ({summary['alignment_pct']}% alignment)")
                 stat_text.bold = True
                 if summary["status"] == "Aligned":
@@ -1031,7 +1029,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                     stat_text.font.color.rgb = COLORS["FAIL"]
 
                 p2 = doc.add_paragraph()
-                p2.add_run(f"Findings: ").bold = True
+                p2.add_run("Findings: ").bold = True
                 p2.add_run(f"{summary['passing_count']} configured, {summary['failing_count']} action required, "
                            f"{summary['review_count']} need review, {summary['info_count']} N/A")
 
@@ -1040,8 +1038,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 ctrl_p = doc.add_paragraph()
                 ctrl_p.paragraph_format.left_indent = Cm(0.5)
                 ctrl_p.add_run(", ".join(summary["controls_addressed"])).font.size = Pt(9)
-    except Exception as e:
-        # Compliance mapping failure shouldn't break the report
+    except Exception:  # noqa: BLE001 - a compliance-mapping failure must not break the report
         pass
 
     # ── Footer ────────────────────────────────────────────────────

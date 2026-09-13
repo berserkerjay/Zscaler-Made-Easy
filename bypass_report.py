@@ -35,7 +35,7 @@ import csv
 import io
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 BYPASS_ACTIONS = {
@@ -808,7 +808,7 @@ def to_csv(report: Dict[str, Any]) -> str:
 
 def to_markdown(report: Dict[str, Any]) -> str:
     out = []
-    out.append(f"# Zscaler Bypass / Non-Inspected Traffic Inventory\n")
+    out.append("# Zscaler Bypass / Non-Inspected Traffic Inventory\n")
     out.append(f"_Generated: {report['generated_at']} (took {report['elapsed_seconds']}s)_\n")
     s = report["summary"]
     out.append("## Summary\n")
@@ -964,13 +964,11 @@ def to_docx(report: Dict[str, Any], output_path: str) -> str:
     Raises ImportError if python-docx isn't installed.
     """
     from docx import Document
-    from docx.shared import Pt, Inches, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import RGBColor
 
     ACCENT = RGBColor(0x23, 0x6B, 0xF5)   # Zscaler blue
     RED    = RGBColor(0xDC, 0x26, 0x26)
     AMBER  = RGBColor(0xF5, 0x9E, 0x0B)
-    GREEN  = RGBColor(0x10, 0xB9, 0x81)
     DIM    = RGBColor(0x64, 0x74, 0x8B)
 
     def _safe_style(doc, candidates):

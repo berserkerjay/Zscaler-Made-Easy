@@ -81,7 +81,7 @@ def set_medical_low_confidence(zia):
     choice = input("\nFor best results, the Medical Information dictionary should be set to low confidence.\nDo you want to do this now? (y/n): ").strip().lower()
 
     if choice == 'y':
-        print(f"[INFO] Applying Low Confidence setting to dictionary 'MEDICAL'...", flush=True)
+        print("[INFO] Applying Low Confidence setting to dictionary 'MEDICAL'...", flush=True)
         response, _, err = zia.dlp_dictionary.update_dict(
             medical_id,
             name='MEDICAL',
@@ -388,7 +388,7 @@ def import_dictionaries(zia):
                     kwargs['proximity'] = proximity
                     kwargs['proximity_length_enabled'] = True
                 else:
-                    print(f"    [DEBUG] No proximity detected (or set to 0).", flush=True)
+                    print("    [DEBUG] No proximity detected (or set to 0).", flush=True)
                 
                 if 'patterns' in d and d['patterns']:
                     kwargs['patterns'] = [(p['action'], p['pattern']) for p in d['patterns']]
@@ -410,7 +410,7 @@ def import_dictionaries(zia):
                 has_phrases = 'phrases' in d and d['phrases']
                 
                 if not has_patterns and not has_phrases:
-                    print(f"    [FAIL] Skipped: No patterns or phrases defined (may be an unexported clone)", flush=True)
+                    print("    [FAIL] Skipped: No patterns or phrases defined (may be an unexported clone)", flush=True)
                     skipped_count += 1
                     continue
                 
@@ -424,7 +424,7 @@ def import_dictionaries(zia):
                     kwargs['proximity_length_enabled'] = True
                     kwargs['proximity_enabled_for_custom_dictionary'] = True
                 else:
-                    print(f"    [DEBUG] No proximity detected (or set to 0).", flush=True)
+                    print("    [DEBUG] No proximity detected (or set to 0).", flush=True)
 
                 conf_threshold = d.get('confidence_threshold')
                 if conf_threshold:
@@ -649,7 +649,7 @@ def import_policies(client, use_rank_0=False):
                 print(f"    [WARN] Could not find engines: {missing_engines}", flush=True)
             
             if not engine_ids:
-                print(f"    [FAIL] No valid engines found, skipping policy", flush=True)
+                print("    [FAIL] No valid engines found, skipping policy", flush=True)
                 failed_count += 1
                 continue
             

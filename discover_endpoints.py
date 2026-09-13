@@ -16,7 +16,6 @@ Usage:
 """
 
 import json, sys, time, argparse
-from pathlib import Path
 from datetime import datetime
 
 try:
@@ -175,7 +174,7 @@ def main():
     base_url = BASE_URL.format(cloud=cfg["cloud"])
 
     print(f"\n{'='*60}")
-    print(f"  ZSCALER ONEAPI ENDPOINT DISCOVERY")
+    print("  ZSCALER ONEAPI ENDPOINT DISCOVERY")
     print(f"  Cloud: {cfg['cloud']}  Base: {base_url}")
     print(f"{'='*60}\n")
 
@@ -200,7 +199,6 @@ def main():
         "summary": {"working": [], "forbidden": [], "not_found": [], "errors": []},
     }
 
-    total_paths = sum(len(paths) for paths in PROBE_PATHS.values())
     probed = 0
 
     for feature, paths in PROBE_PATHS.items():
@@ -228,10 +226,10 @@ def main():
             best = results[0] if results else {}
             status = best.get("status", "?")
             if status == 403:
-                print(f"✗ 403 Forbidden (need API role permission)")
+                print("✗ 403 Forbidden (need API role permission)")
                 discovery["summary"]["forbidden"].append(feature)
             elif status == 404:
-                print(f"✗ 404 Not Found (endpoint doesn't exist)")
+                print("✗ 404 Not Found (endpoint doesn't exist)")
                 discovery["summary"]["not_found"].append(feature)
             else:
                 print(f"✗ HTTP {status}")
@@ -249,7 +247,7 @@ def main():
     f404 = discovery["summary"]["not_found"]
 
     print(f"\n{'='*60}")
-    print(f"  DISCOVERY COMPLETE")
+    print("  DISCOVERY COMPLETE")
     print(f"  Working: {len(w)}  |  Forbidden: {len(f403)}  |  Not Found: {len(f404)}")
     print(f"{'='*60}\n")
 

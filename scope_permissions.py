@@ -21,7 +21,7 @@ answer the question "what do I need to grant before running this?"
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 # Per-scope minimum permission set. Each entry maps a scope key

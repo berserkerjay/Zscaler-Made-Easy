@@ -54,3 +54,6 @@ guidance_state.json
 guidance_state.json.tmp
 saas_apps.local.json
 checks_config.json.tmp
+
+# Local launcher state (start.sh --background)
+server.pid

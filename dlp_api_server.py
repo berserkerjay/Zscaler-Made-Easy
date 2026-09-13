@@ -17,7 +17,7 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, re, tempfile, time
+import json, asyncio, os, re, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from starlette.background import BackgroundTask
@@ -47,11 +47,11 @@ from security import (
     RateLimitMiddleware,
     get_bind_host, get_port, get_max_body_bytes, is_debug,
     validate_cloud, validate_vanity, validate_credential, validate_customer_id,
-    mask_secret, scrub_dict, writes_enabled,
+    mask_secret, writes_enabled,
 )
 
 # ── Import the assessment engine ─────────────────────────────────────
-import importlib.util, sys
+import importlib.util
 
 ENGINE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dlp_assessment_full_auto.py")
 spec = importlib.util.spec_from_file_location("engine", ENGINE_PATH)
@@ -275,9 +275,9 @@ def _inject_gui_addons(html: str) -> str:
         # add-on after an update fetches the new one without Ctrl+F5.
         v = int(os.path.getmtime(path))
         if kind == "style":
-            tag, anchor, pos = f'<link rel="stylesheet" href="/static/{name}?v={v}">\n', "</head>", html.find("</head>")
+            tag, pos = f'<link rel="stylesheet" href="/static/{name}?v={v}">\n', html.find("</head>")
         else:
-            tag, anchor, pos = f'<script src="/static/{name}?v={v}"></script>\n', "</body>", html.rfind("</body>")
+            tag, pos = f'<script src="/static/{name}?v={v}"></script>\n', html.rfind("</body>")
         if pos >= 0:
             html = html[:pos] + tag + html[pos:]
     return html
@@ -286,6 +286,7 @@ def _inject_gui_addons(html: str) -> str:
 # ── Request Models ───────────────────────────────────────────────────
 
 class AssessRequest(BaseModel):
+    """Body of /api/assess: who is assessing which tenant, with its credentials."""
     org_name: str = "Unknown"
     assessor: str = "Unknown"
     cloud: str = "production"
@@ -299,6 +300,7 @@ class AssessRequest(BaseModel):
 
 
 class TenantProfileRequest(BaseModel):
+    """Body for saving a tenant profile (customer details, scopes, packs, optional remembered secret)."""
     id: str = ""
     name: str = ""
     org_name: str = ""
@@ -317,6 +319,7 @@ class TenantProfileRequest(BaseModel):
 
 
 class UpdateCheckRequest(BaseModel):
+    """Body of the Zscaler update check: which sources to refresh and how."""
     only: Optional[list[str]] = None  # subset of source keys
     reset: bool = False               # wipe cache first
     skip_tls_verify: bool = False     # corporate TLS MITM bypass (opt-in per request)
@@ -325,6 +328,7 @@ class UpdateCheckRequest(BaseModel):
 # ── Routes ────────────────────────────────────────────────────────────
 
 class UnlockRequest(BaseModel):
+    """Body of /api/unlock: the UI token typed by the operator."""
     token: str = ""
 
 
@@ -400,6 +404,7 @@ async def serve_app_css():
 # policy. See remediation.py for recipe catalog.
 
 class RemediationPlanRequest(BaseModel):
+    """Body for a remediation plan: tenant credentials plus the findings to plan for."""
     # Tenant fields (duplicated rather than inheriting MigrateRequest so
     # this class is defined ahead of MigrateRequest without a forward-ref).
     cloud: str = "production"
@@ -412,6 +417,7 @@ class RemediationPlanRequest(BaseModel):
 
 
 class RemediationExecuteRequest(BaseModel):
+    """Body for executing an approved remediation plan."""
     cloud: str = "production"
     vanity_domain: str = ""
     client_id: str = ""
@@ -471,6 +477,7 @@ async def remediation_execute(req: RemediationExecuteRequest):
 # on `class DlpEfficacyCorpusRequest(MigrateRequest)`.
 # ─────────────────────────────────────────────────────────────────
 class MigrateRequest(BaseModel):
+    """Tenant credentials for the Evaluate-All migration endpoints."""
     cloud: str = "production"
     vanity_domain: str = ""
     client_id: str = ""
@@ -616,6 +623,7 @@ async def best_practices_list(service: Optional[str] = None):
 
 
 class BPCrawlRequest(BaseModel):
+    """Body of the best-practice crawl: force a refresh, optionally skip TLS verification."""
     force: bool = False
     skip_tls_verify: bool = False
 
@@ -745,7 +753,7 @@ async def _start_bp_refresh() -> None:
 async def dlp_packs_list():
     """Discover all DLP policy packs in the project directory."""
     try:
-        from dlp_importer import discover_packs, load_pack_contents
+        from dlp_importer import discover_packs
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_importer unavailable: {e}")
     packs = discover_packs()
@@ -779,6 +787,7 @@ class TenantCredsRequest(BaseModel):
 
 
 class DLPPackImportRequest(TenantCredsRequest):
+    """Body of the single-pack import endpoint: tenant credentials, options and the reviewed plan hash."""
     use_rank_0: bool = False
     apply_tweaks: bool = True
     verify: bool = True
@@ -786,6 +795,7 @@ class DLPPackImportRequest(TenantCredsRequest):
 
 
 class DLPPackDeployRequest(TenantCredsRequest):
+    """Body of preflight / apply / journey: the packs to deploy, options and channel choices."""
     pack_ids: List[str] = []
     use_rank_0: bool = False
     apply_tweaks: bool = True
@@ -807,10 +817,12 @@ class DLPPackDeployRequest(TenantCredsRequest):
 
 
 class DeploymentUndoRequest(TenantCredsRequest):
+    """Body of a deployment undo: tenant credentials and the confirmation flag."""
     confirm: bool = False
 
 
 class PackRemovalRequest(TenantCredsRequest):
+    """Body of a pack removal: which packs (or everything), the previewed plan hash, confirmation."""
     pack_ids: List[str] = []
     plan_hash: str = ""
     confirm: bool = False
@@ -997,6 +1009,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
 
 # ── Detection Health (continuous evaluation, phase 1) ──────────────────
 class DetectionHealthRequest(TenantCredsRequest):
+    """Body of a Detection Health run: the window in days and threshold overrides."""
     days: int = 30
     settings: Dict[str, Any] = {}     # threshold overrides, see detection_health.DEFAULTS
 
@@ -1033,6 +1046,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
 
 # ── Proposals: the approval queue (continuous evaluation, phase 2) ────────
 class ProposalDecision(BaseModel):
+    """A person's decision on a continuous-evaluation proposal (approve, dismiss, snooze, reopen)."""
     decision: str            # approve | dismiss | snooze | reopen
     note: str = ""
     by: str = ""
@@ -1053,6 +1067,7 @@ async def proposals_list(tenant: str = "", include_closed: bool = False):
 
 @app.get("/api/proposals/export")
 async def proposals_export(tenant: str = "", format: str = "markdown"):
+    """Download the proposal queue of one tenant as Markdown or JSON."""
     import proposals
     items = proposals.list_queue(tenant, include_closed=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -1085,6 +1100,7 @@ async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
 
 
 class ProposalApplyRequest(TenantCredsRequest):
+    """Body for applying or rolling back a proposal: tenant credentials, who, confirmation."""
     by: str = ""
     confirm: bool = False
 
@@ -1148,6 +1164,7 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
 
 # ── Continuous evaluation, phases 4 and 5: digests, guidance sources, SaaS matrix ──
 class DigestRunRequest(BaseModel):
+    """Body for running the continuous evaluation once: whether to send notifications."""
     notify: bool = True
 
 
@@ -1176,6 +1193,7 @@ async def digests_run(req: DigestRunRequest):
 
 @app.get("/api/digests/{digest_id}")
 async def digests_get(digest_id: str, format: str = "json"):
+    """One continuous-evaluation digest, as JSON or Markdown."""
     import continuous_eval
     d = continuous_eval.get_digest(digest_id)
     if not d:
@@ -1220,6 +1238,7 @@ async def detection_health_schedule():
 
 @app.get("/api/detection-health/export/{report_id}")
 async def detection_health_export(report_id: str, format: str = "markdown"):
+    """Download a Detection Health report (Markdown, JSON or Word) while it is still in memory."""
     rep = _REPORTS.get(report_id)
     if not rep or not report_id.startswith("health-"):
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
@@ -1233,6 +1252,7 @@ async def detection_health_export(report_id: str, format: str = "markdown"):
 
 @app.get("/api/detection-health/{report_id}")
 async def detection_health_get(report_id: str):
+    """One Detection Health report, while it is still in memory."""
     rep = _REPORTS.get(report_id)
     if not rep or not report_id.startswith("health-"):
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
@@ -1505,6 +1525,7 @@ async def tenant_check(req: TenantCredsRequest):
 # ---------------------------------------------------------------------------
 
 class WriteModeRequest(BaseModel):
+    """Body of the write-mode toggle: enable or disable, with the confirmation phrase."""
     enable: bool = True
     confirm: str = ""
 
@@ -1570,6 +1591,7 @@ async def vertical_scope(profile_id: str = "", industry: str = ""):
 
 @app.get("/api/tenant-profiles/{profile_id}")
 async def tenant_profile_get(profile_id: str):
+    """One saved tenant profile (secrets never returned)."""
     import tenant_profiles
     p = tenant_profiles.get(profile_id)
     if not p:
@@ -1601,6 +1623,7 @@ async def tenant_profile_save(req: TenantProfileRequest):
 
 @app.delete("/api/tenant-profiles/{profile_id}")
 async def tenant_profile_delete(profile_id: str):
+    """Delete a saved tenant profile."""
     import tenant_profiles
     if not tenant_profiles.delete(profile_id):
         raise HTTPException(status_code=404, detail=f"No tenant profile '{profile_id}'.")
@@ -1912,6 +1935,7 @@ async def dlp_pack_verify(pack_id: str, req: TenantCredsRequest = TenantCredsReq
 
 
 class DLPPackUploadRequest(BaseModel):
+    """Older single-call pack upload: the three JSON lists in one body."""
     pack_name: str
     dictionaries: Optional[List[Dict[str, Any]]] = None
     engines: Optional[List[Dict[str, Any]]] = None
@@ -1948,12 +1972,14 @@ async def dlp_pack_upload(req: DLPPackUploadRequest):
 
 
 class PackUploadFile(BaseModel):
+    """One uploaded file: its name, content and encoding (base64 for ZIPs)."""
     name: str
     content: str
     encoding: Optional[str] = None      # "base64" for ZIPs; text otherwise
 
 
 class PackLibraryUploadRequest(BaseModel):
+    """Body of a pack-library upload: the files plus an optional name, id and description."""
     files: List[PackUploadFile]
     pack_name: str = ""
     pack_id: str = ""
@@ -2332,6 +2358,7 @@ async def favicon():
 
 @app.get("/api/health")
 async def health():
+    """Liveness plus the running git commit, so a user can see they are on the latest code."""
     # Surface the running git commit so users can verify they're on latest code.
     commit = "unknown"
     try:
@@ -2646,6 +2673,7 @@ async def compliance_report(request: Request):
 
 @app.get("/api/compliance/report/{report_id}")
 async def compliance_report_get(report_id: str):
+    """One compliance report, while it is still in memory."""
     rep = _REPORTS.get(report_id)
     if not rep or not report_id.startswith("compliance-"):
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
@@ -2654,6 +2682,7 @@ async def compliance_report_get(report_id: str):
 
 @app.get("/api/compliance/export/{report_id}")
 async def compliance_report_export(report_id: str, format: str = "markdown"):
+    """Download a compliance report as Markdown, JSON or Word."""
     rep = _REPORTS.get(report_id)
     if not rep or not report_id.startswith("compliance-"):
         raise HTTPException(status_code=404, detail="Report not found or expired.")
@@ -2727,6 +2756,7 @@ async def help_page():
 
 
 class LogAnalyzeRequest(BaseModel):
+    """Body of the log analyser: the uploaded Client Connector logs or PAC files."""
     files: List[PackUploadFile]
 
 
@@ -2804,6 +2834,7 @@ async def benchmarks_export(request: Request, format: str = "markdown"):
 # defined just above. Moving this block earlier caused a NameError
 # at import time.
 class DlpEfficacyCorpusRequest(MigrateRequest):
+    """Body of a DLP efficacy corpus test: tenant credentials and the sample text."""
     # User-supplied sample text. Module caps at 256 KB before regex.
     corpus: str = ""
     max_dicts: int = 200
@@ -2829,6 +2860,7 @@ async def dlp_efficacy(req: MigrateRequest):
 
 
 class DlpEfficacyExportRequest(MigrateRequest):
+    """Body of a DLP efficacy export: tenant credentials and the output format."""
     # csv | json | markdown | docx
     format: str = "csv"
 
@@ -2893,6 +2925,7 @@ async def migrate_status(req: MigrateRequest):
 
 
 class ManualModeRequest(MigrateRequest):
+    """Body for recording the tenant's rule-evaluation mode by hand."""
     mode: str = ""   # "rule_order" | "evaluate_all_rules"
 
 
@@ -2902,7 +2935,7 @@ async def migrate_status_manual(req: ManualModeRequest):
     when the API doesn't expose the toggle (account-level feature flag). Returns
     the same shape as /api/migrate/status so the wizard keeps working."""
     try:
-        from rule_migrator import assess_current_status, fetch_current_rules, reorder_for_eval_all
+        from rule_migrator import assess_current_status
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     m = (req.mode or "").strip().lower()
@@ -2916,7 +2949,7 @@ async def migrate_status_manual(req: ManualModeRequest):
     base["evaluate_all_enabled"] = evaluate_all
     base["current_mode"] = "Evaluate All Rules" if evaluate_all else "Rule Order"
     base["mode_source"] = "manual_declaration"
-    base["found_via"] = f"user-declared (API does not expose this flag in your tenant)"
+    base["found_via"] = "user-declared (API does not expose this flag in your tenant)"
     base["ready_to_migrate"] = not evaluate_all
     if evaluate_all:
         base["recommendation"] = "✅ You declared this tenant is in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning."
@@ -2942,6 +2975,7 @@ async def migrate_fetch(req: MigrateRequest):
 
 # ── Step 3: Optimize with Exceptions ─────────────────────────────
 class OptimizeRequest(BaseModel):
+    """Body of the Evaluate-All optimiser: the rules and the exceptions to keep."""
     rules: list[dict] = []
     exceptions: dict = {}
 
@@ -2960,6 +2994,7 @@ async def migrate_optimize(req: OptimizeRequest):
 
 # ── Step 4: Enable Evaluate All Rules ────────────────────────────
 class EnableRequest(MigrateRequest):
+    """Body for enabling Evaluate All Rules (dry run by default)."""
     dry_run: bool = True
 
 
@@ -2976,6 +3011,7 @@ async def migrate_enable(req: EnableRequest):
 
 # ── Step 4b: Delete All Existing Rules (gated) ───────────────────────
 class DeleteAllRequest(MigrateRequest):
+    """Body for deleting every Web DLP rule (dry run by default)."""
     dry_run: bool = True
 
 
@@ -2992,6 +3028,7 @@ async def migrate_delete_all(req: DeleteAllRequest):
 
 # ── Step 5: Post New Rule Order ──────────────────────────────────
 class PostRequest(MigrateRequest):
+    """Body for posting a proposed rule set (dry run by default; create, update or auto)."""
     proposed_rules: list[dict] = []
     dry_run: bool = True
     mode: str = "auto"  # "auto" | "create" | "update"
@@ -3017,6 +3054,7 @@ async def migrate_post(req: PostRequest):
 
 # ── Upload rules (from a JSON backup file) ───────────────────────────────
 class UploadRulesRequest(BaseModel):
+    """Body for uploading a rule set to analyse."""
     rules: list[dict] = []
 
 
@@ -3040,6 +3078,7 @@ async def migrate_upload(req: UploadRulesRequest):
 
 # ── Manual reorder (accept any explicit ordering) ────────────────────────────────
 class ReorderRequest(BaseModel):
+    """Body for reordering the tenant's Web DLP rules."""
     rules: list[dict] = []
     order: list = []  # list of rule IDs (or names) in desired order
 
@@ -3510,6 +3549,7 @@ async def report_bypass_page():
 
 @app.get("/api/report/bypass/{report_id}")
 async def report_bypass_get(report_id: str):
+    """One bypass inventory report, while it is still in memory."""
     rep = _REPORTS.get(report_id)
     if not rep:
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
@@ -3778,14 +3818,53 @@ async def updates_reset():
     return {"ok": bool(ok)}
 
 
-if __name__ == "__main__":
+def _port_problem(host: str, port: int) -> Optional[str]:
+    """Why the server could not listen on host:port, in plain words, or
+    None when the address is free. Checked before uvicorn starts, because
+    uvicorn reports a taken port as a bare errno and exits on its own."""
+    import errno
+    import socket
+    try:
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+    except OSError as e:
+        if e.errno in (errno.EADDRINUSE, 10048):
+            return (f"port {port} on {host} is already in use. Another copy of the app is probably running "
+                    f"(STOP_Zscaler_Assessment.bat or ./stop.sh stops it), or set ZSCALER_PORT to a free port and start again.")
+        if e.errno in (errno.EADDRNOTAVAIL, errno.EACCES, 10049, 10013):
+            return (f"{host}:{port} cannot be used: {e.strerror or e}. Check ZSCALER_BIND_HOST (an address this machine owns; "
+                    f"127.0.0.1 is the default) and ZSCALER_PORT (ports below 1024 need administrator rights).")
+        return f"{host}:{port} cannot be used: {e}"
+    return None
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Start the web server the way the launchers, the installer's
+    `dlp-check` command and the container do.
+
+    Configuration is read from the environment (ZSCALER_BIND_HOST,
+    ZSCALER_PORT, ZSCALER_UI_AUTH, ZSCALER_OPEN_BROWSER, ZSCALER_DEBUG;
+    see security.py). Returns the process exit code: 0 when the server
+    stopped normally, 2 when it could not start (the port is taken, the
+    address cannot be bound, the token file cannot be written), with the
+    reason printed in plain words instead of a traceback."""
     import uvicorn
+
     host = get_bind_host()
     port = get_port()
     print("\n  Zscaler Platform Assessment")
+    problem = _port_problem(host, port)
+    if problem:
+        print(f"\n  Could not start: {problem}\n", file=sys.stderr)
+        return 2
     open_url = f"http://{('localhost' if host == '127.0.0.1' else host)}:{port}/"
     if _security.ui_auth_enabled():
-        token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
+        try:
+            token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
+        except OSError as e:
+            print(f"  Could not write the UI token file ({e}). The token is printed below; set DLP_CHECK_UI_TOKEN_DIR to a writable folder to keep a copy.")
+            token_path = None
         open_url += f"?token={_security.ui_token()}"
         print(f"  UI token: {_security.ui_token()}")
         print(f"  (also in {token_path or 'ui_token.txt'}; the launcher opens the browser with it, anyone else gets 401)")
@@ -3795,14 +3874,29 @@ if __name__ == "__main__":
             import threading
             import webbrowser
             threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - a browser that cannot open never stops the server
             pass
     if host != "127.0.0.1":
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
         print(f"     can reach this server. Currently listening on {host}:{port}.")
         print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")
-    if not is_debug():
-        # Suppress access log spam in production mode (one line per request)
-        uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
-    else:
-        uvicorn.run(app, host=host, port=port, log_level="info")
+    try:
+        if not is_debug():
+            # Suppress access log spam in production mode (one line per request)
+            uvicorn.run(app, host=host, port=port, log_level="warning", access_log=False)
+        else:
+            uvicorn.run(app, host=host, port=port, log_level="info")
+    except OSError as e:
+        if getattr(e, "errno", None) in (48, 98, 10048) or "address already in use" in str(e).lower():
+            print(f"\n  Could not start: port {port} on {host} is already in use.\n"
+                  f"  Another copy of the app is probably running (STOP_Zscaler_Assessment or stop.sh stops it),\n"
+                  f"  or set ZSCALER_PORT to a free port and start again.", file=sys.stderr)
+        else:
+            print(f"\n  Could not start the server on {host}:{port}: {e}\n"
+                  f"  Check ZSCALER_BIND_HOST (an address this machine owns) and ZSCALER_PORT (1-65535).", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -19,13 +19,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
 import pack_deploy as pd
 import pack_ops as ops
-from dlp_importer import _load_json, _resolve_configs, discover_packs
+from dlp_importer import _load_json, _resolve_configs
 
 # The in-app deploy tags baseline objects with BASELINE_MARK; the Terraform
 # hand-off tags every object with "[DLP-Check baseline <id>]" or

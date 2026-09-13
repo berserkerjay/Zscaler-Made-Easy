@@ -25,7 +25,6 @@ Run: python tools/fan_out_channels.py            # every pack
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import os
 import sys

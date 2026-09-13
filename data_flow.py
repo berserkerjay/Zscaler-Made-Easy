@@ -33,7 +33,7 @@ import json
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from bypass_report import _fetch_url_category_lookup, _fetch_zcc_bypasses, _rules_to_list
+from bypass_report import _fetch_url_category_lookup, _rules_to_list
 from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
                       _upper, normalize_dlp_rule, normalize_ssl_rule)
 

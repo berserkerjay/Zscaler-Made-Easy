@@ -254,6 +254,8 @@ def list_app_groups(zia) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
 
 
 def add_app_group(zia, definition: Dict[str, Any]):
+    """Create an endpoint application group from a pack definition (name,
+    description, resource ids). Called through pack_ops.create."""
     body = {"name": definition["name"], "description": definition.get("description", ""),
             "resources": [str(x) for x in (definition.get("resources") or [])]}
     if definition.get("channel"):
@@ -262,22 +264,26 @@ def add_app_group(zia, definition: Dict[str, Any]):
 
 
 def update_app_group(zia, group_id: Any, definition: Dict[str, Any]):
+    """Overwrite an endpoint application group. Called through pack_ops.update."""
     body = {"id": group_id, "name": definition["name"], "description": definition.get("description", ""),
             "resources": [str(x) for x in (definition.get("resources") or [])]}
     return raw_request(zia, "PUT", f"{APP_GROUPS_PATH}/{group_id}", body)
 
 
 def add_sub_rule(zia, parent_id: Any, payload: Dict[str, Any]):
+    """Create an endpoint sub-rule under `parent_id`. Called through pack_ops.create."""
     body = dict(payload)
     body.pop("order", None) if body.get("order") is None else None
     return raw_request(zia, "POST", f"/endPointDlpRules/{parent_id}/subRule", body)
 
 
 def update_sub_rule(zia, parent_id: Any, sub_id: Any, payload: Dict[str, Any]):
+    """Overwrite an endpoint sub-rule. Called through pack_ops.update."""
     return raw_request(zia, "PUT", f"/endPointDlpRules/{parent_id}/subRule/{sub_id}", dict(payload, id=sub_id))
 
 
 def is_sub_rule(policy_def: Dict[str, Any]) -> bool:
+    """True for an endpoint rule that lives under a parent rule."""
     return bool(policy_def.get("parent_rule"))
 
 
@@ -331,6 +337,8 @@ def normalize_targets(targets: Any) -> Optional[List[str]]:
 
 
 def extension_name(channel: str, prefix: str, pack_name: str) -> str:
+    """Name of the monitor rule the channel selection adds when a pack ships
+    no rule on `channel`, within the channel's name limit."""
     tag = EXTENSION_TAG[channel]
     prefix = prefix or ""
     if prefix.endswith("_"):
@@ -416,6 +424,7 @@ def apply_channel_targets(policies: List[Dict[str, Any]], targets: Optional[Sequ
 
 
 def has_engines(channel: str) -> bool:
+    """True for the DLP channels whose rules carry DLP engines (not the containment channels)."""
     return bool(CHANNELS.get(channel, {}).get("engines", True))
 
 
@@ -530,15 +539,18 @@ ENDPOINT_DEFAULT_TRANSFER_METHOD = "REMOVABLE_DRIVE_TRANSFER"
 
 
 def channel_of(policy_def: Dict[str, Any]) -> str:
+    """The channel a pack policy targets (`channel` field, default web), lower-cased."""
     ch = str(policy_def.get("channel") or WEB).strip().lower()
     return ch if ch in CHANNELS else ch  # unknown channels are reported by validate()
 
 
 def label(channel: str) -> str:
+    """The channel's display name (for example "Endpoint DLP")."""
     return CHANNELS.get(channel, {}).get("label", channel)
 
 
 def is_enforcing(channel: str, action: Optional[str]) -> bool:
+    """True when `action` blocks, confirms, quarantines or otherwise enforces on `channel` (monitoring actions are False)."""
     spec = CHANNELS.get(channel)
     if not spec:
         return False
@@ -553,6 +565,7 @@ def is_enforcing(channel: str, action: Optional[str]) -> bool:
 
 
 def default_action(channel: str) -> str:
+    """The monitor-only action every pack rule is created with on `channel`."""
     return {SAAS: "OFLCASB_DLP_REPORT_INCIDENT", SSL: "DO_NOT_DECRYPT", CLOUD_APP: ""}.get(channel, "ALLOW")
 
 
@@ -652,22 +665,22 @@ def validate(policy_def: Dict[str, Any]) -> Optional[str]:
 # Tenant-side state
 # ---------------------------------------------------------------------------
 
-def _nx(ret):
-    """SDK calls return (data, response, error) or (data, error)."""
-    if isinstance(ret, tuple):
-        if len(ret) == 3:
-            return ret[0], ret[2]
-        if len(ret) == 2:
-            return ret[0], ret[1]
-    return ret, None
+from dlp_importer import _nx, _obj_to_dict  # noqa: E402 - one (data, error) reader for every SDK return shape
 
 
 def _field(obj: Any, *keys: str, default: Any = None) -> Any:
+    """Read a field from an SDK object or dict, trying every spelling in
+    `keys` (snake_case and camelCase: the SDK returns both depending on
+    the call). Objects with to_dict()/as_dict() are read through it first."""
+    d = obj if isinstance(obj, dict) else _obj_to_dict(obj)
+    if isinstance(d, dict):
+        for k in keys:
+            if k in d and d[k] is not None:
+                return d[k]
     for k in keys:
-        if isinstance(obj, dict) and k in obj and obj[k] is not None:
-            return obj[k]
-        if hasattr(obj, k) and getattr(obj, k) is not None:
-            return getattr(obj, k)
+        v = getattr(obj, k, None)
+        if v is not None:
+            return v
     return default
 
 
@@ -1286,6 +1299,8 @@ def _build_control_payload(channel: str, p: Dict[str, Any], resolved: Dict[str, 
 
 
 def add_rule(zia, channel: str, payload: Dict[str, Any]):
+    """Create a rule on `channel` through the SDK service for that channel
+    (SaaS rules also pass their type). Called through pack_ops.create."""
     svc = getattr(zia, CHANNELS[channel]["service"])
     if channel == CLOUD_APP:
         return svc.add_rule(payload["type"], **payload)

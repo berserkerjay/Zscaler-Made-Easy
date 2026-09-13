@@ -10,7 +10,7 @@ import argparse
 import html
 import json
 import sys
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 FINDINGS = [
     {"title": "Every pack passes static validation",
@@ -76,7 +76,7 @@ def build_docx(r: Dict[str, Any], path: str) -> None:
     packs = r["packs"]
     tested = sum(p["tested_engines"] for p in packs.values()); total = tested + sum(p["untested_engines"] for p in packs.values())
     fp = sum(p["false_positive_total"] for p in packs.values()); cross = sum(p["cross_fire_total"] for p in packs.values())
-    notes = _count_word(sum(1 for f in FINDINGS if f["severity"] == "note")); notes_word = notes.capitalize()
+    notes = _count_word(sum(1 for f in FINDINGS if f["severity"] == "note"))
     problems = sum(len(p["static"]["problems"]) for p in packs.values())
     doc.add_paragraph(
         f"Eight policy packs ({sum(p['static']['dictionaries'] for p in packs.values())} dictionaries, {total} engines, "

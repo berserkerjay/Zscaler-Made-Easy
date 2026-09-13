@@ -395,7 +395,6 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
     """Plan then (optionally) execute. Writes are gated on
     ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND env var, same as the
     migration wizard."""
-    import os
     p = plan(check_id, criteria)
     if not p.get("ok"):
         return {"status": "invalid", **p}
