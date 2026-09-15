@@ -30,8 +30,13 @@ _LOCK = threading.Lock()
 HISTORY_LIMIT = 50
 
 PROFILE_FIELDS = ("name", "org_name", "assessor", "cloud", "vanity_domain", "client_id", "customer_id",
+                  "auth_method", "username",
                   "industry", "baseline_packs", "scopes", "frameworks", "notes")
+# The remembered secrets: the OneAPI client secret, and the password and
+# API key of the classic ZIA sign-in. Each is kept in the credential store
+# (or the owner-only file) under its own key; the profile holds a marker.
 SECRET_FIELD = "client_secret"
+SECRET_FIELDS = ("client_secret", "password", "api_key")
 
 
 def store_path() -> str:
@@ -82,7 +87,10 @@ def _write(data: Dict[str, Any]) -> None:
 def masked(p: Dict[str, Any], *, with_history: bool = True) -> Dict[str, Any]:
     """Public view: never carries the secret."""
     out = {k: p.get(k) for k in ("id", "created_at", "updated_at") + PROFILE_FIELDS}
-    out["has_secret"] = bool(p.get(SECRET_FIELD))
+    out["auth_method"] = str(p.get("auth_method") or "") or ("legacy" if (p.get("username") and not p.get("client_id")) else "oneapi")
+    # "Remembered" means what the profile's sign-in needs: the client secret,
+    # or both the password and the API key of the classic sign-in.
+    out["has_secret"] = (bool(p.get("password") and p.get("api_key")) if out["auth_method"] == "legacy" else bool(p.get(SECRET_FIELD)))
     hist = list(p.get("history") or [])
     out["last_assessed"] = hist[-1] if hist else None
     if with_history:
@@ -121,35 +129,41 @@ def secret_storage() -> str:
     return "keyring" if _keyring() is not None else "file"
 
 
-def _store_secret(profile_id: str, secret: str) -> str:
+def _keyring_key(profile_id: str, field: str) -> str:
+    """The credential-store key: the profile id alone for the client secret
+    (as older versions stored it), `<id>:<field>` for the others."""
+    return profile_id if field == SECRET_FIELD else f"{profile_id}:{field}"
+
+
+def _store_secret(profile_id: str, secret: str, field: str = SECRET_FIELD) -> str:
     kr = _keyring()
     if kr is not None:
         try:
-            kr.set_password(KEYRING_SERVICE, profile_id, secret)
+            kr.set_password(KEYRING_SERVICE, _keyring_key(profile_id, field), secret)
             return KEYRING_MARK
         except Exception:  # noqa: BLE001 — no usable backend: fall back to the file
             pass
     return secret
 
 
-def _load_secret(profile_id: str) -> Optional[str]:
+def _load_secret(profile_id: str, field: str = SECRET_FIELD) -> Optional[str]:
     kr = _keyring()
     if kr is None:
         return None
     try:
-        return kr.get_password(KEYRING_SERVICE, profile_id)
+        return kr.get_password(KEYRING_SERVICE, _keyring_key(profile_id, field))
     except Exception:  # noqa: BLE001
         return None
 
 
-def _forget_secret(profile_id: str, stored: Optional[str]) -> None:
+def _forget_secret(profile_id: str, stored: Optional[str], field: str = SECRET_FIELD) -> None:
     if stored != KEYRING_MARK:
         return
     kr = _keyring()
     if kr is None:
         return
     try:
-        kr.delete_password(KEYRING_SERVICE, profile_id)
+        kr.delete_password(KEYRING_SERVICE, _keyring_key(profile_id, field))
     except Exception:  # noqa: BLE001
         pass
 
@@ -163,15 +177,18 @@ def get(profile_id: str, *, with_secret: bool = False) -> Optional[Dict[str, Any
     if not with_secret:
         return masked(p)
     out = dict(p)
-    if out.get(SECRET_FIELD) == KEYRING_MARK:
-        out[SECRET_FIELD] = _load_secret(profile_id) or ""
+    for field in SECRET_FIELDS:
+        if out.get(field) == KEYRING_MARK:
+            out[field] = _load_secret(profile_id, field) or ""
     return out
 
 
 def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: bool = False,
-           profile_id: str = "") -> Dict[str, Any]:
-    """Create or update. Blank secret keeps a previously remembered one;
-    remember_secret=False forgets it."""
+           profile_id: str = "", password: str = "", api_key: str = "") -> Dict[str, Any]:
+    """Create or update. A blank secret keeps the one previously remembered
+    for that field; remember_secret=False forgets every secret. `password`
+    and `api_key` are the classic ZIA sign-in's secrets."""
+    given = {"client_secret": client_secret, "password": password, "api_key": api_key}
     with _LOCK:
         data = _read()
         pid = profile_id or slugify(fields.get("name") or fields.get("org_name") or fields.get("vanity_domain") or "")
@@ -180,12 +197,13 @@ def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: 
             if k in fields and fields[k] is not None:
                 p[k] = fields[k]
         p.setdefault("name", p.get("org_name") or pid)
-        if remember_secret:
-            if client_secret:
-                p[SECRET_FIELD] = _store_secret(pid, client_secret)
-        else:
-            _forget_secret(pid, p.get(SECRET_FIELD))
-            p.pop(SECRET_FIELD, None)
+        for field in SECRET_FIELDS:
+            if remember_secret:
+                if given[field]:
+                    p[field] = _store_secret(pid, given[field], field)
+            else:
+                _forget_secret(pid, p.get(field), field)
+                p.pop(field, None)
         p["updated_at"] = _now()
         data["profiles"][pid] = p
         _write(data)
@@ -197,6 +215,9 @@ def delete(profile_id: str) -> bool:
         data = _read()
         if profile_id not in data["profiles"]:
             return False
+        p = data["profiles"][profile_id]
+        for field in SECRET_FIELDS:
+            _forget_secret(profile_id, p.get(field), field)
         del data["profiles"][profile_id]
         _write(data)
         return True
@@ -242,10 +263,20 @@ def snapshot(report: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def creds_from(profile: Dict[str, Any]) -> Dict[str, str]:
-    return {
+    """The credential dict (tenant_auth.CRED_KEYS) a profile read with
+    `with_secret=True` carries; the same nine keys for both sign-ins."""
+    out = {
+        "auth_method": str(profile.get("auth_method") or ""),
         "cloud": str(profile.get("cloud") or ""),
         "vanity_domain": str(profile.get("vanity_domain") or ""),
         "client_id": str(profile.get("client_id") or ""),
         "client_secret": str(profile.get(SECRET_FIELD) or ""),
         "customer_id": str(profile.get("customer_id") or ""),
+        "username": str(profile.get("username") or ""),
+        "password": str(profile.get("password") or ""),
+        "api_key": str(profile.get("api_key") or ""),
     }
+    for field in SECRET_FIELDS:
+        if out[field] == KEYRING_MARK:   # a masked read: the marker is not a secret
+            out[field] = ""
+    return out

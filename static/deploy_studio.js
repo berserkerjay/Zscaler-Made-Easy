@@ -144,7 +144,8 @@ function _dzCreds() {
     const b = migrateCredBody(); delete b.customer_id; return b;
   }
   const v = id => (document.getElementById(id) || {}).value || '';
-  return { cloud: v('cloud') || 'production', vanity_domain: v('vd'), client_id: v('cid'), client_secret: v('csec') };
+  return { cloud: v('cloud') || 'production', vanity_domain: v('vd'), client_id: v('cid'), client_secret: v('csec'),
+           auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey') };
 }
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
 const _dzN = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;

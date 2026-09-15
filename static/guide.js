@@ -7,6 +7,11 @@
 
 const GD = { conn: null, testing: false, mode: 'guided', helpOpen: false, timer: null,
              profile: '', profileHasSecret: false, profiles: [], profileDetail: null, profileBusy: false, packs: [] };
+// A top-level const is not a window property: the page's own script and
+// Deploy Studio look for window.GD (the selected profile, its remembered
+// secret), and without this line they never found it, so a remembered
+// secret was never used from the browser.
+window.GD = GD;
 const GD_LS_PROFILE = 'zassess_profile';
 const GD_LS_MODE = 'zassess_guide_mode';
 const GD_LS_CONN = 'zassess_guide_conn';
@@ -32,8 +37,14 @@ function _gdSave() {
 
 // ── Step state ────────────────────────────────────────────────────
 function _gdSteps() {
-  const creds = !!(_gdVal('vd') && _gdVal('cid') && (_gdVal('csec') || (GD.profile && GD.profileHasSecret)));
-  const sameTenant = GD.conn && GD.conn.vd === _gdVal('vd');
+  // Either sign-in (see tenant_auth.py): a ZIdentity API client, or the
+  // classic ZIA API's admin username, password and API key.
+  const legacy = (document.getElementById('authMethod') || {}).value === 'legacy';
+  const remembered = !!(GD.profile && GD.profileHasSecret);
+  const creds = legacy
+    ? !!(_gdVal('zuser') && ((_gdVal('zpass') && _gdVal('zkey')) || remembered))
+    : !!(_gdVal('vd') && _gdVal('cid') && (_gdVal('csec') || remembered));
+  const sameTenant = GD.conn && GD.conn.vd === (legacy ? _gdVal('zuser') : _gdVal('vd'));
   const connected = !!(sameTenant && GD.conn.ok);
   const runBtn = document.getElementById('runBtn');
   const running = !!(runBtn && runBtn.disabled);
@@ -45,11 +56,15 @@ function _gdSteps() {
     {
       n: 1, title: 'Connect to the tenant',
       state: sameTenant && GD.conn.ok ? 'done' : (creds ? 'ready' : 'todo'),
-      what: 'Open Tenant details below, enter the customer\'s cloud, vanity domain, API client ID and client secret, and click Authenticate. Nothing is changed in the tenant; the tool only reads.',
-      need: 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values.',
+      what: legacy
+        ? 'Open Tenant details below, pick the tenant\'s cloud, enter the admin username, password and the tenant\'s API key, and click Authenticate. Nothing is changed in the tenant; the tool only reads.'
+        : 'Open Tenant details below, enter the customer\'s cloud, vanity domain, API client ID and client secret, and click Authenticate. Nothing is changed in the tenant; the tool only reads.',
+      need: legacy
+        ? 'The classic ZIA API: a ZIA admin allowed to use the API (username and password) and the tenant\'s API key from Administration > API Key Management. Covers ZIA only. For a tenant on ZIdentity, switch the sign-in method to OneAPI.'
+        : 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values. A tenant without ZIdentity can use the classic ZIA API instead (sign-in method in Tenant details).',
       status: sameTenant && GD.conn.ok
         ? `Connected to ${_gdE(GD.conn.label)}: ${GD.conn.dictionaries} dictionaries, ${GD.conn.engines} engines, ${GD.conn.web_rules} web DLP rules.`
-        : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the four tenant fields, then click Authenticate.'),
+        : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the tenant fields, then click Authenticate.'),
       tenant: true,
       actions: [
         { label: 'Show tenant details', fn: '_gdGoConfig()', kind: creds ? 'quiet' : 'primary' },
@@ -342,11 +357,12 @@ async function _gdTest() {
   try {
     const r = await fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
+    const ident = body.auth_method === 'legacy' ? body.username : body.vanity_domain;   // what "same tenant" is compared on
     if (!r.ok) {
       const d = (data && typeof data.detail === 'object') ? data.detail : { cause: 'The connection failed.', fix: 'Re-check the tenant details and try again.', raw: String(data.detail || `HTTP ${r.status}`) };
-      GD.conn = { ok: false, vd: body.vanity_domain, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw };
+      GD.conn = { ok: false, vd: ident, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw };
     } else {
-      GD.conn = { ok: true, vd: body.vanity_domain, label: data.tenant_label, dictionaries: data.dictionaries, custom_dictionaries: data.custom_dictionaries,
+      GD.conn = { ok: true, vd: ident, label: data.tenant_label, dictionaries: data.dictionaries, custom_dictionaries: data.custom_dictionaries,
                   engines: data.engines, web_rules: data.web_rules, problems: data.problems || [], at: new Date().toISOString() };
       if (typeof announce === 'function') announce(`Connected to ${data.tenant_label}.`);
     }
@@ -519,6 +535,9 @@ function _gdProfileFill(p) {
   set('org', p.org_name || ''); set('assessor', p.assessor || ''); set('cloud', _gdCloudValue(p.cloud));
   set('vd', p.vanity_domain || ''); set('cid', p.client_id || ''); set('custid', p.customer_id || '');
   set('csec', '');
+  // The sign-in method and the classic API's username; its password and key are never sent back.
+  set('authMethod', p.auth_method === 'legacy' ? 'legacy' : 'oneapi'); set('zuser', p.username || ''); set('zpass', ''); set('zkey', '');
+  if (typeof applyAuthMethod === 'function') applyAuthMethod();
   if (Array.isArray(p.scopes) && p.scopes.length && typeof setSelectedScopes === 'function') setSelectedScopes(p.scopes);
   if (Array.isArray(p.frameworks) && p.frameworks.length) document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = p.frameworks.includes(cb.value); });
   _gdApplyScope(p);
@@ -553,7 +572,7 @@ async function _gdProfileSelect(id) {
   GD.profile = id || ''; _gdSave();
   await _gdProfilesLoad();
   const p = GD.profileDetail;
-  if (p) { _gdProfileFill(p); if (typeof setStatus === 'function') setStatus(`Profile "${p.name}" loaded${p.has_secret ? ' (secret remembered on this laptop)' : ' — paste the client secret'}.`, 'success'); }
+  if (p) { _gdProfileFill(p); if (typeof setStatus === 'function') setStatus(`Profile "${p.name}" loaded${p.has_secret ? ' (secret remembered on this laptop)' : (p.auth_method === 'legacy' ? ' — paste the admin password and the API key' : ' — paste the client secret')}.`, 'success'); }
   _gdRender();
 }
 function _gdProfileFormValues() {
@@ -564,6 +583,8 @@ function _gdProfileFormValues() {
     name: (q('gdProfName') || {}).value || sel.name || _gdVal('org') || _gdVal('vd'),
     org_name: _gdVal('org'), assessor: _gdVal('assessor'), cloud: _gdVal('cloud') || 'production',
     vanity_domain: _gdVal('vd'), client_id: _gdVal('cid'), client_secret: _gdVal('csec'),
+    auth_method: typeof currentAuthMethod === 'function' ? currentAuthMethod() : 'oneapi',
+    username: _gdVal('zuser'), password: _gdVal('zpass'), api_key: _gdVal('zkey'),
     remember_secret: !!((q('gdProfRemember') || {}).checked),
     customer_id: _gdVal('custid'),
     industry: (q('gdProfIndustry') || {}).value || sel.industry || '',

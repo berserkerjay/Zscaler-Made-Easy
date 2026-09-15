@@ -337,6 +337,7 @@
   /* Form */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
   .field { display: flex; flex-direction: column; }
+  .field[hidden] { display: none; }   /* the sign-in method hides the fields of the other one */
   .field.full { grid-column: 1 / -1; }
   .field label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text); margin-bottom: 0.5rem; font-weight: 500; letter-spacing: -0.005em; }
   .field label .required { color: var(--fail); font-size: 0.7rem; }
@@ -825,15 +826,47 @@
           <option value="zscalergov">zscalergov.net (US Government, FedRAMP)</option>
           <option value="zscalergovus">zscalergov.us (US Government, FedRAMP)</option>
         </select>
-        <div class="helper">Pick the cloud in the customer's ZIA admin URL: <code>admin.zscalerten.net</code> → zscalerten.net, <code>admin.zscalergov.net</code> → zscalergov.net. Every commercial cloud signs in at zslogin.net and uses api.zsapi.net, so <strong>Commercial</strong> works for all of them; the Government clouds sign in and call their own FedRAMP gateway.</div>
+        <div class="helper">Pick the cloud in the customer's ZIA admin URL: <code>admin.zscalerten.net</code> → zscalerten.net, <code>admin.zscalergov.net</code> → zscalergov.net. With OneAPI every commercial cloud signs in at zslogin.net and uses api.zsapi.net, so <strong>Commercial</strong> works for all of them; the Government clouds sign in and call their own FedRAMP gateway. The <strong>classic ZIA API</strong> lives at <code>zsapi.&lt;cloud&gt;.net</code>, so pick the actual cloud for it (Commercial means zscaler.net).</div>
       </div>
-      <div class="field">
+      <div class="field" id="fieldAuthMethod">
+        <label for="authMethod">Sign-in method <span class="required">*</span></label>
+        <select id="authMethod" aria-label="Sign-in method" onchange="applyAuthMethod()">
+          <option value="oneapi" selected>OneAPI — ZIdentity API client (client ID and secret)</option>
+          <option value="legacy">Classic ZIA API — admin username, password and API key</option>
+        </select>
+        <div class="helper">Most tenants use <strong>OneAPI</strong> (ZIdentity → Integration → API Clients). Pick <strong>Classic ZIA API</strong> for a tenant that has not enabled ZIdentity: it signs in with an admin's username and password plus the API key from ZIA Administration → API Key Management. The classic API covers ZIA only: no ZPA, Client Connector or ZDX checks.</div>
+      </div>
+      <div class="field" id="fieldVd">
         <label>Vanity Domain <span class="required">*</span></label>
         <input id="vd" placeholder="acme" autocomplete="off" spellcheck="false">
         <div class="helper">Only the short name before <code>.zslogin.net</code> in the customer's ZIdentity login URL. For <code>https://acme.zslogin.net</code> enter <code>acme</code>. No https://, no dots.</div>
         <div class="err-msg">Vanity domain is required</div>
       </div>
-      <div class="field">
+      <div class="field" id="fieldUser" hidden>
+        <label>Admin Username <span class="required">*</span></label>
+        <input id="zuser" placeholder="api-admin@acme.com" autocomplete="off" spellcheck="false">
+        <div class="helper">The sign-in of a ZIA admin who is allowed to use the API (usually an email address). Ask for a dedicated API admin for the engagement so it can be disabled afterwards.</div>
+        <div class="err-msg">Admin username is required</div>
+      </div>
+      <div class="field" id="fieldPass" hidden>
+        <label>Admin Password <span class="required">*</span></label>
+        <div style="position:relative;">
+          <input id="zpass" type="password" placeholder="The admin's password" autocomplete="off" spellcheck="false" style="padding-right:60px;">
+          <button type="button" id="togglePass" onclick="toggleField('zpass','togglePass')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
+        </div>
+        <div class="helper">Never stored unless you tick <em>remember</em> on a saved profile (then it goes to this laptop's credential store), never shown in a message.</div>
+        <div class="err-msg">Password is required</div>
+      </div>
+      <div class="field" id="fieldKey" hidden>
+        <label>API Key <span class="required">*</span></label>
+        <div style="position:relative;">
+          <input id="zkey" type="password" placeholder="12-character key from Administration → API Key Management" autocomplete="off" spellcheck="false" style="padding-right:60px;">
+          <button type="button" id="toggleKey" onclick="toggleField('zkey','toggleKey')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
+        </div>
+        <div class="helper">From the <strong>ZIA Admin Portal → Administration → API Key Management</strong> (12 characters). It belongs to the tenant, not to the admin: the same key serves every API admin of that tenant.</div>
+        <div class="err-msg">API key is required</div>
+      </div>
+      <div class="field" id="fieldCid">
         <label>API Client ID <span class="required">*</span></label>
         <div style="position:relative;">
           <input id="cid" type="password" placeholder="Client ID from ZIdentity, e.g. 3f9c2a1b7d8e4f0a9b6c1d2e3f4a5b6c" autocomplete="off" spellcheck="false" style="padding-right:60px;">
@@ -842,7 +875,7 @@
         <div class="helper">From <strong>ZIdentity &rarr; Integration &rarr; API Clients</strong>, the Client ID of the API client created for this engagement. Letters and digits only, no spaces. The client needs a ZIA role that can read (and, to deploy, write) DLP dictionaries, engines and policy.</div>
         <div class="err-msg">Client ID is required</div>
       </div>
-      <div class="field">
+      <div class="field" id="fieldCsec">
         <label>API Client Secret <span class="required">*</span></label>
         <div style="position:relative;">
           <input id="csec" type="password" placeholder="Client secret shown once when the API client was created" autocomplete="off" spellcheck="false" style="padding-right:60px;">
@@ -1390,13 +1423,34 @@ async function authenticateTenant() {
   } catch (e) { if (st) st.textContent = `Could not connect: ${e.message}`; }
 }
 
+// ── Sign-in method: OneAPI (ZIdentity API client) or the classic ZIA API ──
+// The same nine credential fields travel in every request (see
+// tenant_auth.py); the method decides which ones are shown and required.
+function currentAuthMethod() {
+  const el = document.getElementById('authMethod');
+  return el && el.value === 'legacy' ? 'legacy' : 'oneapi';
+}
+function applyAuthMethod() {
+  const legacy = currentAuthMethod() === 'legacy';
+  for (const id of ['fieldVd', 'fieldCid', 'fieldCsec']) { const el = document.getElementById(id); if (el) el.hidden = legacy; }
+  for (const id of ['fieldUser', 'fieldPass', 'fieldKey']) { const el = document.getElementById(id); if (el) el.hidden = !legacy; }
+  const st = document.getElementById('authStatus'); if (st) st.textContent = '';
+  if (typeof _gdRender === 'function') { try { _gdRender(); } catch (e) { /* guide not ready */ } }
+}
+document.addEventListener('DOMContentLoaded', applyAuthMethod);
+
 function migrateCredBody() {
+  const v = id => (document.getElementById(id) || {}).value || '';
   return {
-    cloud: document.getElementById('cloud').value,
-    vanity_domain: document.getElementById('vd').value,
-    client_id: document.getElementById('cid').value,
-    client_secret: document.getElementById('csec').value,
-    customer_id: document.getElementById('custid').value,
+    auth_method: currentAuthMethod(),
+    cloud: v('cloud'),
+    vanity_domain: v('vd'),
+    client_id: v('cid'),
+    client_secret: v('csec'),
+    username: v('zuser'),
+    password: v('zpass'),
+    api_key: v('zkey'),
+    customer_id: v('custid'),
     // Saved tenant profile (guide add-on): fills blanks server-side, incl. a remembered secret.
     profile_id: (window.GD && GD.profile) ? GD.profile : '',
   };
@@ -1408,9 +1462,16 @@ function profileHasSecret() { return !!(window.GD && GD.profile && GD.profileHas
 function migrateValidateCreds() {
   const b = migrateCredBody();
   const missing = [];
-  if (!b.vanity_domain || !b.vanity_domain.trim()) missing.push(['vd',  'Vanity Domain']);
-  if (!b.client_id     || !b.client_id.trim())     missing.push(['cid', 'Client ID']);
-  if (!b.client_secret || !b.client_secret.trim()) missing.push(['csec','Client Secret']);
+  const blank = s => !s || !s.trim();
+  if (b.auth_method === 'legacy') {
+    if (blank(b.username)) missing.push(['zuser', 'Admin Username']);
+    if (blank(b.password) && !profileHasSecret()) missing.push(['zpass', 'Admin Password']);
+    if (blank(b.api_key) && !profileHasSecret()) missing.push(['zkey', 'API Key']);
+  } else {
+    if (blank(b.vanity_domain)) missing.push(['vd',  'Vanity Domain']);
+    if (blank(b.client_id))     missing.push(['cid', 'Client ID']);
+    if (blank(b.client_secret) && !profileHasSecret()) missing.push(['csec','Client Secret']);
+  }
   if (missing.length) {
     popMissingCredsAlert(missing);
     return null;
@@ -2376,15 +2437,10 @@ async function runAssessment() {
   };
 
   const body = {
+    ...migrateCredBody(),
     org_name: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
-    cloud: document.getElementById('cloud').value,
-    vanity_domain: document.getElementById('vd').value,
-    client_id: document.getElementById('cid').value,
-    client_secret: document.getElementById('csec').value,
-    customer_id: document.getElementById('custid').value,
     scopes: scopes,
-    profile_id: (window.GD && GD.profile) ? GD.profile : '',
   };
 
   try {

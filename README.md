@@ -84,13 +84,15 @@ both are git-ignored), the container reads `.env`.
 | `ZSCALER_OPEN_BROWSER` | unset | `1` opens the browser when the server starts (the launchers set it). |
 | `ZSCALER_DEBUG` | unset | `1` shows tracebacks and request logs. |
 | `ZSCALER_MAX_BODY_MB` | `10` | Request body cap, 1–100 MB. |
-| `ZSCALER_CLOUD`, `ZSCALER_VANITY_DOMAIN`, `ZSCALER_CLIENT_ID`, `ZSCALER_CLIENT_SECRET` | unset | Pre-fill the tenant credentials (never required; the form or a saved profile work too). `ZSCALER_CLOUD` is the cloud in the tenant's admin URL: `zscaler`, `zscalerone`, `zscalertwo`, `zscalerthree`, `zscloud`, `zscalerten` (all commercial: zslogin.net and api.zsapi.net), `zscalerbeta`, `zscalergov` (zscalergov.net) or `zscalergovus` (zscalergov.us); the government clouds use their own FedRAMP sign-in and gateway. |
+| `ZSCALER_CLOUD`, `ZSCALER_VANITY_DOMAIN`, `ZSCALER_CLIENT_ID`, `ZSCALER_CLIENT_SECRET` | unset | Pre-fill the OneAPI tenant credentials (never required; the form or a saved profile work too). `ZSCALER_CLOUD` is the cloud in the tenant's admin URL: `zscaler`, `zscalerone`, `zscalertwo`, `zscalerthree`, `zscloud`, `zscalerten` (all commercial: zslogin.net and api.zsapi.net), `zscalerbeta`, `zscalergov` (zscalergov.net) or `zscalergovus` (zscalergov.us); the government clouds use their own FedRAMP sign-in and gateway. |
+| `ZSCALER_AUTH_METHOD`, `ZSCALER_USERNAME`, `ZSCALER_PASSWORD`, `ZSCALER_API_KEY` | unset | The classic ZIA API sign-in for a tenant without ZIdentity: `ZSCALER_AUTH_METHOD=legacy` with the admin's username and password and the tenant's API key (ZIA Administration → API Key Management). Signs in at `zsapi.<cloud>.net`, so `ZSCALER_CLOUD` must name the actual cloud (Commercial means zscaler.net). ZIA only: no ZPA, Client Connector or ZDX checks. |
 | `HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `ZSCALER_UPDATE_PROXY`, `ZSCALER_UPDATE_VERIFY_TLS` | unset | Corporate proxy and TLS inspection. |
 | `DLP_CHECK_PROFILES`, `DLP_CHECK_DEPLOYMENTS`, `DLP_CHECK_AUDIT`, `DLP_CHECK_USER_PACKS` | app folder | Where profiles, deployment records, the audit log and uploaded packs are stored (the container points them at `/data`). |
 
 Tenant credentials for the command-line assessment come from a JSON file:
 copy `tenant_config_sample.json`, fill in `client_id`, `client_secret`,
-`vanity_domain` and `cloud`, and run
+`vanity_domain` and `cloud` (or `auth_method: "legacy"` with `username`,
+`password` and `api_key`), and run
 `.venv/bin/dlp-check-assess --config tenant.json --output report.json`.
 A missing or malformed file is reported in one sentence with exit code 2.
 
@@ -123,6 +125,11 @@ deployment step by step.
    read-only role for assessments; a DLP-policy write role only if packs
    will be deployed.
 3. Client ID, client secret, vanity domain and cloud.
+
+A tenant that has not enabled ZIdentity can use the **classic ZIA API**
+instead (sign-in method in Tenant Configuration): an admin allowed to use
+the API (username and password) and the tenant's API key from
+Administration → API Key Management. It covers ZIA only.
 
 `docs/DLP_Assessment_Step_by_Step_Guide.docx` walks through creating them.
 

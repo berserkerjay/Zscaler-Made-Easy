@@ -30,9 +30,15 @@ try:
 except ImportError:
     HAS_RICH = False
 
+import tenant_auth
 import zscaler_clouds
 
 CLOUDS = list(zscaler_clouds.CLOUDS)
+
+# What the classic ZIA API sign-in answers for the services it does not
+# cover (ZPA, ZCC, ZDX, ZIdentity): a clear "not here", not a guess.
+_LEGACY_ZIA_ONLY = ({"error": "not available with the classic ZIA API sign-in (it covers ZIA only); use a ZIdentity API client for this scope",
+                     "status": 404, "legacy": True}, 404)
 
 def _base_url(cloud):
     """The OneAPI gateway for the tenant's cloud: api.zsapi.net for every
@@ -101,8 +107,10 @@ _ZID_MAP = {
     "userEntitlement":   "user_entitlement",
 }
 
-def _resolve_candidates(ep, customer_id=""):
+def _resolve_candidates(ep, customer_id="", legacy=False):
     """Every real OneAPI path a short endpoint may live at, best first."""
+    if legacy:
+        return [_resolve_ep(ep, customer_id, legacy=True)]
     if ep.startswith("/zcc/"):
         suffix = ep[5:]
         mapped = _ZCC_MAP.get(suffix, suffix)
@@ -112,14 +120,19 @@ def _resolve_candidates(ep, customer_id=""):
     return [_resolve_ep(ep, customer_id)]
 
 
-def _resolve_ep(ep, customer_id=""):
+def _resolve_ep(ep, customer_id="", legacy=False):
     """Translate a short endpoint like /zia/webDlpRules to the real OneAPI path.
 
     Prefix 'raw:' to send the path verbatim (no /zia/api/v1/ rewrite) —
     useful for probing alternative OneAPI path conventions.
+
+    With `legacy` (the classic ZIA API at zsapi.<cloud>.net) a ZIA path
+    becomes /api/v1/…; every other service has no classic path, so None.
     """
     if ep.startswith("raw:"):
         return ep[4:]  # bypass resolver
+    if legacy:
+        return "/api/v1/" + ep[5:] if ep.startswith("/zia/") else None
     if ep.startswith("/zia/"):
         return "/zia/api/v1/" + ep[5:]
     if ep.startswith("/zcc/"):
@@ -168,8 +181,16 @@ class _RateLimiter:
 
 
 class Client:
-    """OAuth2 client-credentials session against Zscaler OneAPI: one token, a
-    bounded response cache and a request pacer shared by every check."""
+    """One signed-in session against the tenant, a bounded response cache and
+    a request pacer shared by every check.
+
+    Two sign-ins (tenant_auth): OneAPI, an OAuth2 client-credentials token
+    from ZIdentity used against api.zsapi.net (the default; ZPA, ZCC and
+    ZDX are reachable); or the classic ZIA API, a JSESSIONID session opened
+    with the admin username, password and obfuscated API key against
+    zsapi.<cloud>.net (`auth_method="legacy"`; ZIA only, every other
+    service answers 404 with a plain reason). Short endpoints such as
+    /zia/webDlpRules work the same on both."""
     # Bound the response cache so a long-lived client process can't grow unbounded.
     # Each entry is a small dict; 512 is plenty for an assessment run (~250 checks max).
     _CACHE_MAX = 512
@@ -179,10 +200,17 @@ class Client:
     # (connect, read) timeouts: a black-holed tenant fails in 10 s, a slow listing gets 40 s.
     TIMEOUT = (10, 40)
 
-    def __init__(s, cid, sec, vd, cloud, customer_id=""):
+    # The classic session idles out after five minutes; sign in again before that.
+    LEGACY_SESSION_SECONDS = 240
+
+    def __init__(s, cid, sec, vd, cloud, customer_id="", *, auth_method="", username="", password="", api_key=""):
         import threading
         s.cid, s.sec, s.vd, s.cloud = cid, sec, vd, cloud
-        s.token = None; s.exp = 0; s.base = _base_url(cloud)
+        s.username, s.password, s.api_key = str(username or ""), str(password or ""), str(api_key or "")
+        s.method = tenant_auth.method_of({"auth_method": auth_method, "client_id": cid, "username": s.username, "api_key": s.api_key})
+        s.legacy = s.method == tenant_auth.LEGACY
+        s.token = None; s.exp = 0
+        s.base = zscaler_clouds.legacy_api_base(cloud) if s.legacy else _base_url(cloud)
         s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         # Use OrderedDict for O(1) LRU eviction
@@ -200,14 +228,39 @@ class Client:
             if len(s._c) > s._CACHE_MAX:
                 s._c.popitem(last=False)  # evict least-recently-used
     def auth(s):
+        """Sign in. True, or (False, reason). The reason never carries a secret."""
         with s._lock:
             try:
+                if s.legacy:
+                    return s._auth_legacy()
                 url = _token_url(s.vd, s.cloud)
                 r = s.sess.post(url, data={"grant_type":"client_credentials","client_id":s.cid,"client_secret":s.sec,"audience":"https://api.zscaler.com"}, headers={"Content-Type":"application/x-www-form-urlencoded"}, timeout=30)
                 r.raise_for_status(); d = r.json(); s.token = d["access_token"]; s.exp = time.time()+d.get("expires_in",3600)-60
                 s.sess.headers["Authorization"] = f"Bearer {s.token}"
                 return True
-            except Exception as e: return (False, str(e))
+            except Exception as e: return (False, s._safe(str(e)))
+    def _auth_legacy(s):
+        """The classic sign-in: POST the username, password and obfuscated
+        API key to /api/v1/authenticatedSession; the JSESSIONID cookie the
+        answer sets rides on every later request of this session."""
+        payload = tenant_auth.legacy_login_payload(s.username, s.password, s.api_key)
+        r = s.sess.post(f"{s.base}{tenant_auth.LEGACY_SESSION_PATH}", json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+        if r.status_code != 200:
+            body = (r.text or "")[:200]
+            raise RuntimeError(f"HTTP {r.status_code} from {s.base}{tenant_auth.LEGACY_SESSION_PATH}: {body or 'the classic API refused the sign-in'}")
+        if not s.sess.cookies.get("JSESSIONID"):
+            raise RuntimeError("the classic API accepted the sign-in but set no JSESSIONID cookie")
+        s.token = "session"; s.exp = time.time() + s.LEGACY_SESSION_SECONDS
+        return True
+    def _safe(s, text):
+        """An error message with every secret masked."""
+        return tenant_auth.mask_secrets(text, {"client_secret": s.sec, "password": s.password, "api_key": s.api_key})
+    def close(s):
+        """End a classic session (best effort); a OneAPI token just expires."""
+        if s.legacy and s.token:
+            try: s.sess.delete(f"{s.base}{tenant_auth.LEGACY_SESSION_PATH}", timeout=10)
+            except Exception: pass
+            s.token = None
     def _ensure_token(s):
         """Re-auth once when the token is stale; other threads wait for it."""
         with s._lock:
@@ -218,9 +271,11 @@ class Client:
         return None
     def get(s, ep, p=None, _retry=0):
         # Self-healing: skip ZPA calls if no customer_id provided
+        if s.legacy and _resolve_ep(ep, s.customer_id, legacy=True) is None:
+            return _LEGACY_ZIA_ONLY
         if ep.startswith("/zpa/") and not s.customer_id:
             return ({"error":"ZPA customer ID not configured","status":404}, 404)
-        candidates = _resolve_candidates(ep, s.customer_id)
+        candidates = _resolve_candidates(ep, s.customer_id, s.legacy)
         if len(candidates) > 1 and _retry == 0:
             # An endpoint that lives at different paths across API
             # generations: the first path that is not "no such route" wins,
@@ -241,7 +296,7 @@ class Client:
                 res = (dict(res[0], path=candidates[0], tried=tried), res[1])
             s._cache_set(k, res)
             return res
-        real_ep = _resolve_ep(ep, s.customer_id)
+        real_ep = _resolve_ep(ep, s.customer_id, s.legacy)
         k = f"{real_ep}|{json.dumps(p or {},sort_keys=True)}"
         with s._lock:
             if k in s._c:
@@ -296,7 +351,9 @@ class Client:
 
     def _write(s, method, ep, body=None, _retry=0):
         """Shared write path for POST / PUT / DELETE with self-healing."""
-        real_ep = _resolve_ep(ep, s.customer_id)
+        real_ep = _resolve_ep(ep, s.customer_id, s.legacy)
+        if real_ep is None:
+            return _LEGACY_ZIA_ONLY
         bad = s._ensure_token()
         if bad:
             return bad

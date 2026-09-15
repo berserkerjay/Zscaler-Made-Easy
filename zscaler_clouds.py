@@ -17,6 +17,12 @@ the SDK's `cloud` setting selects:
     beta   <vanity>.zsloginbeta.net     api.beta.zsapi.net
     gov    <vanity>.zidentitygov.net    api.zscalergov.net   (FedRAMP, zscalergov.net)
     govus  <vanity>.zidentitygov.us     api.zscalergov.us    (FedRAMP, zscalergov.us)
+
+The classic ZIA API (the legacy sign-in with admin username, password and
+API key) does care: it lives at zsapi.<cloud>.net for every cloud
+(zsapi.zscalergov.us for the .us government cloud), so a tenant on
+zscalerten.net is reached at zsapi.zscalerten.net. `legacy_api_base()`
+gives that host; "Commercial" without a cloud name means zscaler.net.
 """
 from __future__ import annotations
 
@@ -89,6 +95,23 @@ def api_base(cloud: Optional[str]) -> str:
 
 def is_government(cloud: Optional[str]) -> bool:
     return environment(cloud) in ("gov", "govus")
+
+
+def legacy_cloud_name(cloud: Optional[str]) -> str:
+    """The cloud name the classic ZIA API needs (the `zscalerten` in
+    zsapi.zscalerten.net). "production" (Commercial, cloud not named) is
+    taken as zscaler.net; pick the actual cloud for any other."""
+    name = normalize(cloud)
+    return "zscaler" if name == "production" else name
+
+
+def legacy_api_base(cloud: Optional[str]) -> str:
+    """The classic ZIA API host for a tenant on `cloud`: zsapi.<cloud>.net,
+    or zsapi.zscalergov.us for the .us government cloud."""
+    name = legacy_cloud_name(cloud)
+    if name == "zscalergovus":
+        return "https://zsapi.zscalergov.us"
+    return f"https://zsapi.{name}.net"
 
 
 def choices() -> List[Dict[str, Optional[str]]]:

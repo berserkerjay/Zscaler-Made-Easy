@@ -23,7 +23,6 @@ Usage:
     data, status = cl.get("/zia/webDlpRules")
 """
 
-import os
 import logging
 from typing import Any, Dict, Optional, Tuple
 
@@ -83,10 +82,12 @@ class SdkClient:
     """
 
     def __init__(self, client_id: str, client_secret: str,
-                 vanity_domain: str, cloud: str):
+                 vanity_domain: str, cloud: str, *,
+                 auth_method: str = "", username: str = "", password: str = "", api_key: str = ""):
         # The SDK's `cloud` is the OneAPI environment (beta / gov / govus),
         # not the ZIA cloud name: a commercial tenant on zscloud.net or
         # zscalerten.net signs in at zslogin.net and calls api.zsapi.net.
+        import tenant_auth
         import zscaler_clouds
         try:
             env = zscaler_clouds.environment(cloud)
@@ -98,20 +99,30 @@ class SdkClient:
             "vanityDomain": vanity_domain,
             "cloud": env or "production",
         }
+        # Either sign-in (tenant_auth): OneAPI, or the classic ZIA API with
+        # auth_method="legacy" (username, password, API key; ZIA only).
+        self._creds = tenant_auth.normalize({"auth_method": auth_method, "cloud": cloud, "vanity_domain": vanity_domain,
+                                             "client_id": client_id, "client_secret": client_secret,
+                                             "username": username, "password": password, "api_key": api_key})
         self._zs: Optional[ZscalerClient] = None
         self._cache: Dict[str, Tuple[Any, int]] = {}
         self._route_map: Optional[dict] = None
 
     def auth(self):
         """Authenticate with Zscaler. Returns True on success, (False, msg) on failure."""
+        import tenant_auth
         try:
-            self._zs = ZscalerClient(self._config)
-            self._zs.authenticate()
+            if self._creds["auth_method"] == tenant_auth.LEGACY:
+                self._zs = tenant_auth.build_legacy_sdk_client(self._creds)
+            else:
+                self._zs = ZscalerClient(self._config)
+                self._zs.authenticate()
             self._route_map = self._build_route_map()
             return True
         except Exception as e:
-            logger.error("Authentication failed: %s", e)
-            return (False, str(e))
+            msg = tenant_auth.mask_secrets(str(e), self._creds)
+            logger.error("Authentication failed: %s", msg)
+            return (False, msg)
 
     def _build_route_map(self) -> dict:
         """
@@ -269,14 +280,13 @@ class SdkClient:
 
 def from_env() -> SdkClient:
     """
-    Create an SdkClient from environment variables.
-    Supports:
-      ZSCALER_CLIENT_ID, ZSCALER_CLIENT_SECRET,
-      ZSCALER_VANITY_DOMAIN, ZSCALER_CLOUD
+    Create an SdkClient from environment variables (tenant_auth.ENV):
+      ZSCALER_CLIENT_ID, ZSCALER_CLIENT_SECRET, ZSCALER_VANITY_DOMAIN,
+      ZSCALER_CLOUD for OneAPI; ZSCALER_AUTH_METHOD=legacy with
+      ZSCALER_USERNAME, ZSCALER_PASSWORD, ZSCALER_API_KEY for the classic API.
     """
-    return SdkClient(
-        client_id=os.environ["ZSCALER_CLIENT_ID"],
-        client_secret=os.environ["ZSCALER_CLIENT_SECRET"],
-        vanity_domain=os.environ["ZSCALER_VANITY_DOMAIN"],
-        cloud=os.environ.get("ZSCALER_CLOUD", "production"),
-    )
+    import tenant_auth
+    c = tenant_auth.from_env()
+    return SdkClient(client_id=c["client_id"], client_secret=c["client_secret"], vanity_domain=c["vanity_domain"],
+                     cloud=c["cloud"] or "production", auth_method=c["auth_method"], username=c["username"],
+                     password=c["password"], api_key=c["api_key"])

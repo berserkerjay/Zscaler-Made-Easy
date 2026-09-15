@@ -17,6 +17,11 @@ REM set ZSCALER_CLOUD=production
 REM set ZSCALER_VANITY_DOMAIN=acme
 REM set ZSCALER_CLIENT_ID=
 REM set ZSCALER_CLIENT_SECRET=
+REM Classic ZIA API instead of a ZIdentity API client (tenants without ZIdentity; ZIA only):
+REM set ZSCALER_AUTH_METHOD=legacy
+REM set ZSCALER_USERNAME=
+REM set ZSCALER_PASSWORD=
+REM set ZSCALER_API_KEY=
 
 REM Start in write mode without the in-app switch.
 REM set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND

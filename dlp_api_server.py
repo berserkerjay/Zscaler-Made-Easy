@@ -35,6 +35,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse, Response, PlainTextResponse
+
+import tenant_auth
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -286,13 +288,19 @@ def _inject_gui_addons(html: str) -> str:
 # ── Request Models ───────────────────────────────────────────────────
 
 class AssessRequest(BaseModel):
-    """Body of /api/assess: who is assessing which tenant, with its credentials."""
+    """Body of /api/assess: who is assessing which tenant, with its credentials
+    (a ZIdentity API client, or the classic ZIA API's username, password and
+    API key with auth_method="legacy"; see tenant_auth)."""
     org_name: str = "Unknown"
     assessor: str = "Unknown"
     cloud: str = "production"
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
+    auth_method: str = ""      # "oneapi" (default) or "legacy"
+    username: str = ""         # classic ZIA API sign-in
+    password: str = ""
+    api_key: str = ""
     scope: str = "full"  # legacy single scope, kept for compatibility
     scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
     customer_id: str = ""  # Optional ZPA customer ID
@@ -300,7 +308,7 @@ class AssessRequest(BaseModel):
 
 
 class TenantProfileRequest(BaseModel):
-    """Body for saving a tenant profile (customer details, scopes, packs, optional remembered secret)."""
+    """Body for saving a tenant profile (customer details, scopes, packs, optional remembered secrets)."""
     id: str = ""
     name: str = ""
     org_name: str = ""
@@ -309,6 +317,10 @@ class TenantProfileRequest(BaseModel):
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
+    auth_method: str = ""
+    username: str = ""
+    password: str = ""
+    api_key: str = ""
     remember_secret: bool = False
     customer_id: str = ""
     industry: str = ""
@@ -483,6 +495,11 @@ class MigrateRequest(BaseModel):
     client_id: str = ""
     client_secret: str = ""
     customer_id: str = ""
+    auth_method: str = ""
+    username: str = ""
+    password: str = ""
+    api_key: str = ""
+    profile_id: str = ""
     # Inline Web DLP only — this tool's migration is scoped to the DLP
     # Web Rules inline policy. Other rule types (SSL, URL, firewall,
     # Cloud App) have different best-practice ordering rules and are
@@ -490,27 +507,29 @@ class MigrateRequest(BaseModel):
     rule_type: str = "web_dlp"
 
 
+def _raw_client(creds: Dict[str, str]):
+    """The raw-HTTP assessment client for validated credentials, either
+    sign-in (tenant_auth). Not yet signed in."""
+    return Client(creds["client_id"], creds["client_secret"], creds["vanity_domain"], creds["cloud"], creds["customer_id"],
+                  auth_method=creds["auth_method"], username=creds["username"], password=creds["password"], api_key=creds["api_key"])
+
+
 def _build_client(req: "MigrateRequest"):
     """Build an authenticated Client from a migration request.
-    Validates every input first; never echoes the secret in any error.
+    Validates every input first; never echoes a secret in any error.
     """
-    cloud = validate_cloud(req.cloud)
-    vd = validate_vanity(req.vanity_domain)
-    cid = validate_credential("client_id", req.client_id, required=True)
-    sec = validate_credential("client_secret", req.client_secret, required=True)
-    cust = validate_customer_id(req.customer_id)
-
-    client = Client(cid, sec, vd, cloud, cust)
+    creds = _validate_creds(_tenant_creds(req))
+    client = _raw_client(creds)
     auth_result = client.auth()
     if auth_result is not True:
-        # auth_result is (False, "<reason>"). Sanitize: strip any echo of the secret.
+        # auth_result is (False, "<reason>"). Sanitize: strip any echo of a secret.
         reason = ""
         if isinstance(auth_result, tuple) and len(auth_result) == 2:
             reason = str(auth_result[1])
-        reason = reason.replace(sec, mask_secret(sec)) if sec else reason
+        reason = tenant_auth.mask_secrets(reason, creds)
         raise HTTPException(
             status_code=401,
-            detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason[:200]}",
+            detail=f"Authentication failed for {tenant_auth.identity(creds)}: {reason[:200]}",
         )
     return client
 
@@ -776,11 +795,17 @@ async def dlp_pack_detail(pack_id: str):
 class TenantCredsRequest(BaseModel):
     """Tenant credentials for pack operations. All optional in the body —
     when blank the server falls back to ZSCALER_* environment variables,
-    then to tenant_config.json next to this file."""
+    then to tenant_config.json next to this file. Either sign-in
+    (tenant_auth): a ZIdentity API client, or the classic ZIA API's
+    username, password and API key with auth_method="legacy"."""
     cloud: str = ""
     vanity_domain: str = ""
     client_id: str = ""
     client_secret: str = ""
+    auth_method: str = ""
+    username: str = ""
+    password: str = ""
+    api_key: str = ""
     # Saved tenant profile: blanks above are filled from it (including a
     # remembered secret), so the operator can switch tenants without retyping.
     profile_id: str = ""
@@ -837,35 +862,38 @@ _WRITES_DISABLED_MSG = (
 )
 
 
-def _tenant_creds(req: TenantCredsRequest) -> Dict[str, str]:
-    """Resolve credentials: request body → environment → tenant_config.json."""
-    creds = {
-        "cloud": req.cloud, "vanity_domain": req.vanity_domain,
-        "client_id": req.client_id, "client_secret": req.client_secret,
-    }
+def _tenant_creds(req: Any) -> Dict[str, str]:
+    """Resolve credentials: request body → saved profile → environment →
+    tenant_config.json. Every key of tenant_auth.CRED_KEYS is present and
+    `auth_method` is resolved. A source is used only while the credentials
+    are still incomplete for their sign-in, and never mixes a typed
+    identity with a stored secret."""
+    creds = {k: str(getattr(req, k, "") or "").strip() for k in tenant_auth.CRED_KEYS}
+    if not tenant_auth.started(creds):
+        # Nothing typed for a tenant: the source that has the sign-in decides
+        # its method (the form always sends its selector, OneAPI by default).
+        creds["auth_method"] = ""
     creds = _fill_from_profile(creds, getattr(req, "profile_id", ""))
-    if not (creds["client_id"] and creds["client_secret"]):
-        creds = {
-            "cloud": creds["cloud"] or os.environ.get("ZSCALER_CLOUD", ""),
-            "vanity_domain": creds["vanity_domain"] or os.environ.get("ZSCALER_VANITY_DOMAIN", ""),
-            "client_id": os.environ.get("ZSCALER_CLIENT_ID", ""),
-            "client_secret": os.environ.get("ZSCALER_CLIENT_SECRET", ""),
-        }
-    if not (creds["client_id"] and creds["client_secret"]):
+    if not tenant_auth.complete(creds):
+        env = tenant_auth.from_env()
+        if tenant_auth.complete(env):
+            creds = tenant_auth.merge(tenant_auth.without_identity(creds), env)
+    if not tenant_auth.complete(creds):
         cfg_path = os.path.join(_APP_DIR, "tenant_config.json")
         if os.path.exists(cfg_path):
             try:
                 with open(cfg_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f) or {}
-                creds = {k: (creds[k] or str(cfg.get(k, ""))) for k in creds}
+                if tenant_auth.complete(cfg):
+                    creds = tenant_auth.merge(tenant_auth.without_identity(creds), cfg)
             except Exception:
                 pass
-    return creds
+    return tenant_auth.normalize(creds)
 
 
 def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]:
     """Fill blank credential fields from a saved tenant profile (the
-    remembered secret included). Typed values always win."""
+    remembered secrets included). Typed values always win."""
     if not profile_id:
         return creds
     try:
@@ -875,8 +903,34 @@ def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]
         prof = None
     if not prof:
         return creds
-    pc = tenant_profiles.creds_from(prof)
-    return {k: (creds.get(k) or pc.get(k, "")) for k in set(creds) | {"cloud", "vanity_domain", "client_id", "client_secret"}}
+    return tenant_auth.merge(creds, tenant_profiles.creds_from(prof))
+
+
+def _validate_creds(creds: Dict[str, str]) -> Dict[str, str]:
+    """Validate every field the sign-in uses (400 with the field's name
+    otherwise) and return the checked dict. Nothing is echoed."""
+    c = tenant_auth.normalize(creds)
+    c["cloud"] = validate_cloud(c["cloud"] or "production")
+    c["vanity_domain"] = validate_vanity(c["vanity_domain"])
+    c["customer_id"] = validate_customer_id(c["customer_id"]) if c["customer_id"] else ""
+    if c["auth_method"] == tenant_auth.LEGACY:
+        for key in ("username", "password", "api_key"):
+            c[key] = validate_credential(key, c[key], required=True)
+    else:
+        c["client_id"] = validate_credential("client_id", c["client_id"], required=True)
+        c["client_secret"] = validate_credential("client_secret", c["client_secret"], required=True)
+        if not c["vanity_domain"]:
+            raise HTTPException(status_code=400, detail="vanity_domain is required for OneAPI authentication.")
+    return c
+
+
+def zscaler_clouds_legacy_host(cloud: str) -> str:
+    """The classic ZIA API host for a cloud, for messages."""
+    import zscaler_clouds
+    try:
+        return zscaler_clouds.legacy_api_base(cloud).replace("https://", "")
+    except ValueError:
+        return "zsapi.<cloud>.net"
 
 
 def _oneapi_cloud(cloud: str) -> Optional[str]:
@@ -900,15 +954,22 @@ SDK_MAX_RETRY_SECONDS = 30     # a Retry-After longer than this is not waited fo
 
 
 def _build_sdk_client(creds: Dict[str, str]):
-    """Build an authenticated zscaler-sdk-python OneAPI client (the object
-    with `.zia.*` services the importer and planner require). Validates
-    every input and never echoes the secret in an error."""
-    cloud = validate_cloud(creds.get("cloud") or "production")
-    vd = validate_vanity(creds.get("vanity_domain", ""))
-    cid = validate_credential("client_id", creds.get("client_id", ""), required=True)
-    sec = validate_credential("client_secret", creds.get("client_secret", ""), required=True)
-    if not vd:
-        raise HTTPException(status_code=400, detail="vanity_domain is required for OneAPI authentication.")
+    """Build an authenticated zscaler-sdk-python client (the object with
+    `.zia.*` services the importer and planner require): the OneAPI client
+    for a ZIdentity API client, the SDK's legacy ZIA client for the classic
+    sign-in (tenant_auth). Validates every input and never echoes a secret
+    in an error."""
+    c = _validate_creds(creds)
+    cloud, vd, cid, sec = c["cloud"], c["vanity_domain"], c["client_id"], c["client_secret"]
+    if c["auth_method"] == tenant_auth.LEGACY:
+        try:
+            return tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT)
+        except ImportError:
+            raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
+        except Exception as e:  # noqa: BLE001 — the helper signs in as it is built
+            reason = tenant_auth.mask_secrets(str(e), c)[:200]
+            raise HTTPException(status_code=401, detail=f"Authentication failed for {tenant_auth.identity(c)} on the classic ZIA API "
+                                                        f"({zscaler_clouds_legacy_host(cloud)}): {reason}")
     try:
         from zscaler import ZscalerClient
     except ImportError:
@@ -1522,11 +1583,25 @@ async def dlp_pack_job_cancel(job_id: str):
     return {"job_id": job.id, "cancelled": pack_jobs.cancel(job_id), "status": job.status}
 
 
-def _explain_connection_error(detail: str) -> Dict[str, Any]:
-    """Turn an auth/network failure into a plain-language cause and fix."""
+def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, Any]:
+    """Turn an auth/network failure into a plain-language cause and fix,
+    worded for the sign-in in use (tenant_auth: oneapi or legacy)."""
     d = str(detail or "")
     low = d.lower()
-    if "invalid_client" in low or "401" in low or "unauthorized" in low or "authentication failed" in low and "connect" not in low:
+    legacy = method == tenant_auth.LEGACY
+    if legacy and ("401" in low or "unauthorized" in low or "authentication failed" in low or "auth_failed" in low or "invalid" in low and "credential" in low):
+        cause = "Zscaler rejected the admin username, password or API key."
+        fix = ("Check the username (the admin's sign-in email) and password against the ZIA Admin Portal, and copy the API key from "
+               "Administration > API Key Management (12 characters; it must be the key of this tenant). The admin must be allowed to "
+               "sign in through the API. If the tenant has moved to ZIdentity, use the OneAPI sign-in instead.")
+    elif legacy and ("403" in low or "forbidden" in low):
+        cause = "The admin signed in but is not allowed to read this tenant's DLP configuration."
+        fix = "In ZIA Administration > Role Management, give the admin's role read (and, to deploy packs, write) access to DLP policy, dictionaries and engines."
+    elif legacy and ("tunnel connection failed" in low or "proxyerror" in low or "max retries" in low or "name resolution" in low or "nodename" in low):
+        cause = "This machine could not reach the classic ZIA API at all (network, proxy or DNS)."
+        fix = ("The classic API lives at zsapi.<cloud>.net (zsapi.zscalerten.net for a tenant on zscalerten.net): pick the tenant's actual "
+               "cloud in the Zscaler Cloud field, allow outbound HTTPS to it, and set HTTPS_PROXY if you are behind a corporate proxy.")
+    elif "invalid_client" in low or "401" in low or "unauthorized" in low or "authentication failed" in low and "connect" not in low:
         cause = "Zscaler rejected the client ID or client secret."
         fix = ("Check the client ID for typos. The secret is shown only once when the API client is created; if you copied it later, "
                "generate a new secret in ZIdentity > Integration > API Clients and paste it fresh.")
@@ -1552,7 +1627,8 @@ def _explain_connection_error(detail: str) -> Dict[str, Any]:
                "dictionaries, engines and rules are assigned.")
     else:
         cause = "The connection failed."
-        fix = "Re-check cloud, vanity domain, client ID and client secret at the top of the page, then try again."
+        fix = ("Re-check the cloud, admin username, password and API key at the top of the page, then try again." if legacy
+               else "Re-check cloud, vanity domain, client ID and client secret at the top of the page, then try again.")
     return {"cause": cause, "fix": fix, "raw": d[:300]}
 
 
@@ -1562,16 +1638,19 @@ async def tenant_check(req: TenantCredsRequest):
     counts DLP dictionaries, engines and web DLP rules, and explains any
     failure in plain language with what to do next."""
     creds = _tenant_creds(req)
-    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    label = tenant_auth.label(creds)
+    method = creds["auth_method"]
     try:
         client = await asyncio.to_thread(_build_sdk_client, creds)
     except HTTPException as e:
-        raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, **_explain_connection_error(e.detail)})
+        raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, "auth_method": method, **_explain_connection_error(e.detail, method)})
 
     def probe() -> Dict[str, Any]:
         from pack_channels import _nx
         z = client.zia
-        out: Dict[str, Any] = {"ok": True, "tenant_label": label, "problems": []}
+        out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
+        if method == tenant_auth.LEGACY:
+            out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
         dicts, err = _nx(z.dlp_dictionary.list_dicts())
         if err:
             raise RuntimeError(str(err))
@@ -1593,7 +1672,8 @@ async def tenant_check(req: TenantCredsRequest):
     try:
         return await asyncio.to_thread(probe)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail={"tenant_label": label, **_explain_connection_error(str(e))})
+        raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
+                                                     **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
 
 
 # ---------------------------------------------------------------------------
@@ -1688,13 +1768,24 @@ async def tenant_profile_save(req: TenantProfileRequest):
     cid = validate_credential("client_id", req.client_id, required=False) if req.client_id else ""
     sec = validate_credential("client_secret", req.client_secret, required=False) if req.client_secret else ""
     cust = validate_customer_id(req.customer_id) if req.customer_id else ""
+    try:
+        method = tenant_auth.normalize_method(req.auth_method)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    user = validate_credential("username", req.username, required=False) if req.username else ""
+    password = validate_credential("password", req.password, required=False) if req.password else ""
+    api_key = validate_credential("api_key", req.api_key, required=False) if req.api_key else ""
+    if not method:
+        method = tenant_auth.method_of({"client_id": cid, "username": user, "api_key": api_key})
     fields = {
-        "name": req.name or req.org_name or vd, "org_name": req.org_name, "assessor": req.assessor,
+        "name": req.name or req.org_name or vd or user, "org_name": req.org_name, "assessor": req.assessor,
         "cloud": cloud, "vanity_domain": vd, "client_id": cid, "customer_id": cust,
+        "auth_method": method, "username": user,
         "industry": req.industry, "baseline_packs": [str(b) for b in req.baseline_packs],
         "scopes": [str(x) for x in req.scopes], "frameworks": [str(x) for x in req.frameworks], "notes": req.notes[:2000],
     }
-    return tenant_profiles.upsert(fields, client_secret=sec, remember_secret=req.remember_secret, profile_id=req.id)
+    return tenant_profiles.upsert(fields, client_secret=sec, password=password, api_key=api_key,
+                                  remember_secret=req.remember_secret, profile_id=req.id)
 
 
 @app.delete("/api/tenant-profiles/{profile_id}")
@@ -1855,10 +1946,10 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
     mode = "static"
     creds = _tenant_creds(req)
     if req.mode == "static":
-        creds = dict(creds, client_id="", client_secret="")
-    elif req.mode == "gap" and not creds.get("client_id"):
+        creds = tenant_auth.without_identity(creds)
+    elif req.mode == "gap" and not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Gap mode needs the tenant credentials; choose static mode or fill in the tenant details.")
-    if creds.get("client_id"):
+    if tenant_auth.complete(creds):
         client = await asyncio.to_thread(_build_sdk_client, creds)
         full = await asyncio.to_thread(
             pack_deploy.preflight, client, packs,
@@ -3344,7 +3435,9 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
     """Run assessment with SSE streaming."""
-    # A saved profile fills whatever the form left blank (a remembered secret included).
+    # A saved profile fills whatever the form left blank (remembered secrets
+    # included) and names the organisation; the environment and
+    # tenant_config.json follow, as for every other endpoint.
     profile = None
     if req.profile_id:
         try:
@@ -3353,19 +3446,10 @@ async def assess_stream(req: AssessRequest):
         except Exception:
             profile = None
         if profile:
-            pc = tenant_profiles.creds_from(profile)
-            req.cloud = req.cloud or pc["cloud"]
-            req.vanity_domain = req.vanity_domain or pc["vanity_domain"]
-            req.client_id = req.client_id or pc["client_id"]
-            req.client_secret = req.client_secret or pc["client_secret"]
-            req.customer_id = req.customer_id or pc["customer_id"]
             req.org_name = req.org_name if req.org_name not in ("", "Unknown") else (profile.get("org_name") or req.org_name)
     # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
-    cloud = validate_cloud(req.cloud)
-    vd = validate_vanity(req.vanity_domain)
-    cid = validate_credential("client_id", req.client_id, required=True)
-    sec = validate_credential("client_secret", req.client_secret, required=True)
-    cust = validate_customer_id(req.customer_id)
+    creds = _validate_creds(_tenant_creds(req))
+    cloud, vd = creds["cloud"], creds["vanity_domain"]
     checks = _get_checks(req.scope, req.scopes)
     # The journey (pack deficiencies) is measured against the profile's
     # packs, or the packs of its industry when none are ticked.
@@ -3376,20 +3460,22 @@ async def assess_stream(req: AssessRequest):
     async def event_generator():
         results = []
         try:
-            yield _sse("auth", {"status": "authenticating"})
+            yield _sse("auth", {"status": "authenticating", "auth_method": creds["auth_method"]})
 
-            client = Client(cid, sec, vd, cloud, cust)
+            client = _raw_client(creds)
             auth_result = await asyncio.to_thread(client.auth)
 
             if auth_result is not True:
                 reason = ""
                 if isinstance(auth_result, tuple) and len(auth_result) == 2:
                     reason = str(auth_result[1])
-                reason = (reason or "").replace(sec, mask_secret(sec)) if sec else reason
+                reason = tenant_auth.mask_secrets(reason or "", creds)
                 yield _sse("error", {"message": f"Authentication failed: {reason[:200]}"})
                 return
 
-            yield _sse("auth", {"status": "ok"})
+            yield _sse("auth", {"status": "ok", "auth_method": creds["auth_method"],
+                                "note": ("Signed in through the classic ZIA API: ZIA checks only; ZPA, Client Connector and ZDX checks "
+                                         "are reported as not available.") if creds["auth_method"] == tenant_auth.LEGACY else ""})
             yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
 
             # Checks run on a small pool of threads (the API's rate limit is
@@ -3531,7 +3617,7 @@ async def assess_stream(req: AssessRequest):
                     packs = _journey_packs(journey_pack_ids)
                     yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
                                             "current": f"Data governance journey: measuring the tenant against {len(packs)} policy packs"})
-                    sdk = await asyncio.to_thread(_build_sdk_client, {"cloud": cloud, "vanity_domain": vd, "client_id": cid, "client_secret": sec})
+                    sdk = await asyncio.to_thread(_build_sdk_client, creds)
                     notes: asyncio.Queue = asyncio.Queue()
 
                     def _note(i, n, pack_id):
@@ -3551,7 +3637,7 @@ async def assess_stream(req: AssessRequest):
                     journey = task.result()
                     journey["tenant_label"] = f"{vd} ({cloud})"
                 except Exception as ex:  # noqa: BLE001
-                    journey = {"status": "error", "error": str(ex).replace(sec, mask_secret(sec))[:200] if sec else str(ex)[:200]}
+                    journey = {"status": "error", "error": tenant_auth.mask_secrets(str(ex), creds)[:200]}
                 report["journey"] = journey
                 report["profile"] = _record_history(report)
                 yield _sse("journey", {"journey": journey, "profile": report["profile"]})

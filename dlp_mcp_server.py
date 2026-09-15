@@ -97,12 +97,18 @@ def _create_client(
     vanity_domain: Optional[str] = None,
     cloud: Optional[str] = None,
 ) -> SdkClient:
-    """Create an SdkClient from params or environment variables."""
+    """Create an SdkClient from params or environment variables. The
+    classic ZIA API sign-in comes from the environment alone
+    (ZSCALER_AUTH_METHOD=legacy, ZSCALER_USERNAME, ZSCALER_PASSWORD,
+    ZSCALER_API_KEY; see tenant_auth)."""
+    import tenant_auth
+    env = tenant_auth.from_env()
+    c = tenant_auth.merge({"client_id": client_id or "", "client_secret": client_secret or "",
+                           "vanity_domain": vanity_domain or "", "cloud": cloud or ""}, env)
     return SdkClient(
-        client_id=client_id or os.environ.get("ZSCALER_CLIENT_ID", ""),
-        client_secret=client_secret or os.environ.get("ZSCALER_CLIENT_SECRET", ""),
-        vanity_domain=vanity_domain or os.environ.get("ZSCALER_VANITY_DOMAIN", ""),
-        cloud=cloud or os.environ.get("ZSCALER_CLOUD", "production"),
+        client_id=c["client_id"], client_secret=c["client_secret"], vanity_domain=c["vanity_domain"],
+        cloud=c["cloud"] or "production", auth_method=c["auth_method"], username=c["username"],
+        password=c["password"], api_key=c["api_key"],
     )
 
 

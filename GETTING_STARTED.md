@@ -109,6 +109,20 @@ for a dedicated client for this engagement so it can be revoked afterwards.
 If the customer pasted the secret from the portal later, it is a masked
 placeholder and will not work. They must generate a new one.
 
+**No ZIdentity yet?** A tenant that has not enabled ZIdentity / OneAPI can
+use the **classic ZIA API** instead. In Tenant Configuration set *Sign-in
+method* to *Classic ZIA API* and ask the admin for:
+
+| Field | What it is |
+|---|---|
+| Cloud | The tenant's actual cloud (`admin.zscalerten.net` → zscalerten.net); the classic API lives at `zsapi.<cloud>.net` |
+| Admin username | A ZIA admin allowed to use the API (usually an email address); ask for a dedicated one |
+| Admin password | That admin's password |
+| API key | **Administration → API Key Management** (12 characters; one per tenant) |
+
+The classic API covers ZIA only: ZPA, Client Connector and ZDX checks are
+reported as not available, and policy packs deploy the same way.
+
 ## 3. Connect (Start here, step 1)
 
 1. Open **Tenant Configuration** and enter the four values plus your
