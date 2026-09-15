@@ -43,7 +43,7 @@ py-modules = [
     "app_update", "audit", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "compliance_mapping",
     "continuous_eval", "corpus_engines", "data_flow", "deployments", "detection_health", "discover_endpoints",
     "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance",
-    "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_from_tenant", "pack_library", "pack_ops",
+    "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops",
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
     "report_docx", "rule_migrator", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security",
     "ssl_flow", "tenant_profiles", "vertical", "zcc_evaluation", "zscaler_automation_checks", "zscaler_best_practices",

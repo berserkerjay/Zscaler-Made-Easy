@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -478,6 +479,38 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
 # Planning
 # ---------------------------------------------------------------------------
 
+def _norm_name(name: Any) -> str:
+    """A name as ZIA compares it for duplicates: case and spacing ignored."""
+    return " ".join(str(name or "").split()).casefold()
+
+
+def _lookup_ci(by_name: Dict[str, Any], name: str) -> Any:
+    """The tenant object whose name matches `name` ignoring case and
+    spacing, or None. Exact matches are found by the caller first."""
+    want = _norm_name(name)
+    for n, obj in by_name.items():
+        if _norm_name(n) == want:
+            return obj
+    return None
+
+
+def _predefined_display_names(tenant: Dict[str, Any]) -> Set[str]:
+    """The names ZIA shows its predefined dictionaries under (the
+    description of a predefined entry: CRED_LEAKAGE → "Private Key"),
+    normalised. ZIA refuses a custom dictionary with one of these names."""
+    cached = tenant.get("_predefined_display")
+    if cached is None:
+        cached = set()
+        for n, d in tenant["dictionaries"].items():
+            if _field(d, "custom", default=False):
+                continue
+            disp = _norm_name(_field(d, "description", default=""))
+            if disp and disp != _norm_name(n):
+                cached.add(disp)
+        tenant["_predefined_display"] = cached
+    return cached
+
+
 def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], *, restore: bool = False) -> None:
     predefined = tenant["predefined"]
     for name, item in items.items():
@@ -489,6 +522,18 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
             if not d.get("dict_template_id") and template_name and resolve_template(template_name, predefined) is None:
                 item["depends_on"].append(("predefined", template_name))
         existing = tenant["dictionaries"].get(name)
+        if existing is None:
+            # ZIA compares names without regard to case; so does the plan.
+            existing = _lookup_ci(tenant["dictionaries"], name)
+        if existing is None and _norm_name(name) in _predefined_display_names(tenant):
+            # The tenant shows a predefined dictionary under this display name
+            # (CRED_LEAKAGE is shown as "Private Key") and refuses a second
+            # dictionary with that name: said in the plan, not at write time.
+            item["status"] = CONFLICT
+            item["reason"] = ("ZIA already shows one of Zscaler's predefined dictionaries under this name and refuses a second "
+                              "dictionary with the same name ('Duplicate DLP dictionary names are not allowed'). Rename the policy "
+                              "pack dictionary, for example by adding what distinguishes it (' - Medium Confidence').")
+            continue
         if existing is not None:
             pack_sig = dict_signature(d, predefined)
             ten_sig = tenant_dict_signature(existing)
@@ -567,6 +612,11 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
     for name, item in items.items():
         if item["status"] == CONFLICT:
             continue
+        if name not in tenant["engines"]:
+            # ZIA compares engine names without regard to case; so does the plan.
+            twin = _lookup_ci(tenant["engines"], name)
+            if twin is not None:
+                tenant["engines"][name] = twin
         expr = item["definition"].get("expression", "")
         limit_problems = ops.validate("engine", dict(item["definition"], name=name))
         if limit_problems:
@@ -1690,6 +1740,7 @@ def apply(
     activate: bool = True,
     log: LogFn = None,
     settle_seconds: float = 45.0,
+    cancel: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
     """Execute a previously approved plan.
 
@@ -1698,7 +1749,23 @@ def apply(
     and nothing is written (status `plan_changed`). Items are applied in
     dependency order; each is isolated, blocked items are skipped with
     their reason, and dependents of a failed item are skipped rather
-    than created against a missing dependency."""
+    than created against a missing dependency.
+
+    The run is under pack_ops run control: a refusal no later write can
+    get past (the portal's edit lock, the hourly request limit, refused
+    credentials) or a set `cancel` event stops the remaining writes at
+    once; the result's `stopped` says why, in words, and the objects that
+    were never sent are reported as skipped, not failed. Activation and
+    the read-back still run, so what was written is live and recorded."""
+    with ops.run_scope(cancel):
+        return _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
+                      writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
+                      activate=activate, log=log, settle_seconds=settle_seconds)
+
+
+def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
+           writes_enabled: Optional[bool], restore_drift: bool, channel_targets: Optional[Dict[str, Sequence[str]]],
+           activate: bool, log: LogFn, settle_seconds: float) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
@@ -1785,6 +1852,9 @@ def apply(
             if out.ok and out.id is not None:
                 dict_ids[item["name"]] = out.id
                 record(item, "created", outcome=out, id=out.id)
+            elif (twin := _twin_after_duplicate(zia, "dictionary", item["name"], out)) is not None:
+                dict_ids[item["name"]] = twin
+                record(item, "reused", id=twin, reason=_DUPLICATE_REUSED)
             else:
                 failed_names["dictionary"].add(item["name"])
                 record(item, "failed", outcome=out, error=out.as_error() or "the API returned no id")
@@ -1799,6 +1869,11 @@ def apply(
             continue
         if item["status"] not in (CREATE, RESTORE):
             record(item, "skipped", reason=item["reason"])
+            continue
+        if ops.stop_reason():
+            # The run has stopped: say so, rather than blaming the dictionary that was never sent either.
+            failed_names["engine"].add(item["name"])
+            record(item, "skipped", reason=f"not attempted: {ops.stop_reason()}")
             continue
         deps_failed = [n for _, n in item["depends_on"] if n in failed_names["dictionary"]]
         if deps_failed:
@@ -1827,6 +1902,9 @@ def apply(
             if out.ok and out.id is not None:
                 engine_ids[item["name"]] = out.id
                 record(item, "created", outcome=out, id=out.id)
+            elif (twin := _twin_after_duplicate(zia, "engine", item["name"], out)) is not None:
+                engine_ids[item["name"]] = twin
+                record(item, "reused", id=twin, reason=_DUPLICATE_REUSED)
             else:
                 failed_names["engine"].add(item["name"])
                 record(item, "failed", outcome=out, error=out.as_error() or "the API returned no id")
@@ -1844,6 +1922,10 @@ def apply(
         if item["status"] not in (CREATE, RESTORE):
             record(item, "skipped", reason=item["reason"])
             failed_names["app_group"].add(item["name"])
+            continue
+        if ops.stop_reason():
+            failed_names["app_group"].add(item["name"])
+            record(item, "skipped", reason=f"not attempted: {ops.stop_reason()}")
             continue
         g = described(item, item["definition"])
         try:
@@ -1890,6 +1972,9 @@ def apply(
         if item["status"] not in (CREATE, RESTORE):
             record(item, "skipped", reason=item["reason"])
             continue
+        if ops.stop_reason():
+            record(item, "skipped", reason=f"not attempted: {ops.stop_reason()}", channel=item.get("channel") or pc.channel_of(item["definition"]))
+            continue
         p = described(item, item["definition"])
         deps_failed = [n for _, n in item["depends_on"] if n in failed_names["engine"]]
         if deps_failed:
@@ -1935,6 +2020,9 @@ def apply(
                 policy_ids[item["name"]] = out.id
                 record(item, "created", outcome=out, id=out.id, channel=channel,
                        order=payload.get("order") if parent_id is None else None, parent_id=parent_id)
+            elif parent_id is None and (twin := _twin_after_duplicate(zia, "policy", item["name"], out, channel)) is not None:
+                policy_ids[item["name"]] = twin
+                record(item, "reused", id=twin, channel=channel, reason=_DUPLICATE_REUSED)
             else:
                 record(item, "failed", outcome=out, channel=channel, error=out.as_error() or "the API returned no id")
         except Exception as ex:  # noqa: BLE001
@@ -2036,7 +2124,23 @@ def apply(
         "elapsed_seconds": round(time.time() - started, 2),
         "activation_required": wrote and not (activation and activation.get("activated")),
         "activation": activation,
+        # Why the run stopped writing before the end (None when it ran through).
+        "stopped": ops.stop_reason(),
     }
+
+
+_DUPLICATE_REUSED = "ZIA answered that an object with this name already exists; the plan had not seen it, so the existing one is used"
+
+
+def _twin_after_duplicate(zia, kind: str, name: str, out: ops.Outcome, channel: Optional[str] = None) -> Optional[Any]:
+    """When ZIA refuses a create as a duplicate the plan did not see (a name
+    that differs only in case, an object created since the plan), the id
+    of the existing object, so its dependents are built on it instead of
+    being skipped. None for any other refusal, or when nothing is listed
+    under that name (a predefined dictionary's display name, for one)."""
+    if out.ok or not ops.is_duplicate(out.error):
+        return None
+    return ops.find_by_name(zia, kind, name, channel)
 
 
 # ---------------------------------------------------------------------------

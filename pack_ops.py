@@ -24,16 +24,24 @@ proposals all end here. The contract (docs/SHARED_EXECUTION_PATH.md):
                                is only deleted while it still carries the
                                name the pack gave it
   activate_and_settle()        activation plus the wait for ACTIVE
+  run_scope() / stop_reason()  run control: a refusal that no later write
+                               can get past (the portal's edit lock, the
+                               hourly request limit, refused credentials)
+                               stops the run at once, in words; a cancel
+                               event from the operator does the same
 
 A test (tests/test_shared_path.py) fails the build if any other module
 calls an SDK write method directly.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
+import re
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import pack_channels as pc
 from dlp_importer import (ENGINE_DESCRIPTION_MAX, _extract_id, dictionary_limit_problems, dictionary_notes, engine_limit_problems,
@@ -60,6 +68,99 @@ MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = 1.0
 
 _sleep: Callable[[float], None] = time.sleep   # tests replace this
+
+# Outcome.code of a write that was never sent because the run had stopped.
+STOPPED = "STOPPED"
+
+
+# ---------------------------------------------------------------------------
+# Run control — stop a run that cannot get anywhere, or that was cancelled
+# ---------------------------------------------------------------------------
+#
+# Some refusals are not about one object but about the whole tenant for the
+# rest of the run: an admin session holding the ZIA edit lock refuses every
+# write, an exhausted hourly request limit refuses every request until the
+# hour turns, refused credentials refuse everything. Trying the next 75
+# objects against them takes twenty minutes (the SDK waits for the lock
+# twice per write) and looks like a hang. Inside a run_scope(), the first
+# such refusal stops the run: every later write returns at once with
+# code STOPPED and the reason, the run finishes its bookkeeping (activation,
+# read-back) and the reason is reported in words. A cancel event (the
+# operator's Stop button) works the same way.
+
+_run = threading.local()
+
+_RETRY_WAIT_RE = re.compile(r"retry wait time (\d+(?:\.\d+)?) seconds", re.I)
+
+
+def _minutes(seconds: float) -> str:
+    m = max(1, int(round(seconds / 60.0)))
+    return f"{m} minute" + ("" if m == 1 else "s")
+
+
+def fatal_reason(message: Optional[str]) -> Optional[str]:
+    """The plain-language reason a refusal stops the whole run, or None
+    when it is about this one object only."""
+    m = (message or "").lower()
+    if not m:
+        return None
+    if "edit_lock_not_available" in m or "edit lock" in m:
+        return ("Someone is signed in to the ZIA Admin Portal for this tenant and holds its edit lock (it may be you, in another "
+                "tab). ZIA refuses every change from the API while that session is open. Sign out of the portal, or wait for the "
+                "session to time out, then run this again.")
+    hit = _RETRY_WAIT_RE.search(m)
+    if hit:
+        return (f"ZIA's request limit for this hour is reached; it accepts requests again in about {_minutes(float(hit.group(1)))}. "
+                "Run this again after that: what was already written is kept and only the rest is created.")
+    if "unauthorized" in m or "token refresh attempts exhausted" in m or "401" in m.split():
+        return "The tenant no longer accepts the credentials (the sign-in expired or the client secret changed). Reconnect, then run this again."
+    if "forbidden" in m or "not authorized" in m or "insufficient" in m and "permission" in m:
+        return ("The API client is not allowed to change DLP policy in this tenant. Give it the DLP policy write permission in ZIA "
+                "administration, then run this again.")
+    return None
+
+
+@contextlib.contextmanager
+def run_scope(cancel: Optional[threading.Event] = None) -> Iterator[None]:
+    """Mark the current thread as running one deploy / removal / undo, so
+    fatal refusals and `cancel` stop the remaining writes."""
+    _run.stop = None
+    _run.cancel = cancel
+    _run.announced = False
+    try:
+        yield
+    finally:
+        _run.stop = None
+        _run.cancel = None
+        _run.announced = False
+
+
+def stop_reason() -> Optional[str]:
+    """Why the current run stopped writing, or None while it is going."""
+    return getattr(_run, "stop", None)
+
+
+def in_run() -> bool:
+    return hasattr(_run, "stop")
+
+
+CANCELLED_REASON = "You clicked Stop, so nothing more was sent to the tenant."
+
+
+def _stopped_now() -> Optional[str]:
+    """The reason no write may be sent now: cancelled, or stopped earlier."""
+    ev = getattr(_run, "cancel", None)
+    if ev is not None and ev.is_set() and not stop_reason():
+        _stop(CANCELLED_REASON, lambda m: None)
+    return stop_reason()
+
+
+def _stop(reason: str, log: Callable[[str], None]) -> None:
+    if not in_run() or stop_reason():
+        return
+    _run.stop = reason
+    log(f"STOPPED — nothing more is written. {reason}")
+    logger.warning("run stopped", extra={"reason": reason})
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +271,12 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
     returned as-is. Exceptions become a failed Outcome, never a crash."""
     _log = log or (lambda m: None)
     kwargs = dict(kw or {})
+    halted = _stopped_now()
+    if halted:
+        if halted == CANCELLED_REASON and not getattr(_run, "announced", False):
+            _run.announced = True
+            _log(f"STOPPED — nothing more is written. {halted}")
+        return Outcome(False, error=f"not attempted: {halted}", code=STOPPED)
     outcome = Outcome(False, error="not attempted")
     for attempt in range(1, max(1, max_attempts) + 1):
         try:
@@ -180,11 +287,41 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
         outcome.attempts = attempt
         if outcome.ok or not outcome.transient or attempt == max_attempts:
             break
+        if _stopped_now():
+            break
         wait = BACKOFF_SECONDS * attempt
         _log(f"[{kind or op}] {name}: ZIA answered '{outcome.error}' (attempt {attempt} of {max_attempts}); waiting {wait:.0f}s and trying again")
         logger.info("retry", extra={"op": op, "kind": kind, "name": name, "channel": channel, "attempt": attempt, "error": outcome.error})
         _sleep(wait)
+    if not outcome.ok:
+        reason = fatal_reason(outcome.error)
+        if reason:
+            _stop(reason, _log)
     return outcome
+
+
+def find_by_name(zia, kind: str, name: str, channel: Optional[str] = None) -> Optional[Any]:
+    """The id of the object of `kind` the tenant lists under `name` (case
+    and surrounding spaces ignored), or None. Used when ZIA refuses a
+    create as a duplicate the plan did not see: the existing object is
+    reused instead of failing everything that depends on it."""
+    current, _err = current_names(zia, kind, channel)
+    if not current:
+        return None
+    want = " ".join(name.split()).casefold()
+    for oid, n in current.items():
+        if " ".join(str(n).split()).casefold() == want:
+            try:
+                return int(oid)
+            except (TypeError, ValueError):
+                return oid
+    return None
+
+
+def is_duplicate(message: Optional[str]) -> bool:
+    """ZIA refused a create because the name is taken."""
+    m = (message or "").lower()
+    return "duplicate" in m or "already exists" in m
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +360,17 @@ EXPLANATIONS: Tuple[Tuple[str, str], ...] = (
      "The predefined dictionary this copy is based on does not exist in this tenant, so the copy cannot be made here. The engines that use it are created without it."),
     ("already exists",
      "An object with this name already exists in the tenant. The app reuses existing objects by name, so run the plan again and it will be picked up instead of created."),
+    ("duplicate",
+     "ZIA already has an object with this name. If it is one of Zscaler's predefined dictionaries shown under this display name "
+     "(for example CRED_LEAKAGE is shown as 'Private Key'), rename the pack's copy; otherwise run the plan again and the existing object is reused."),
+    ("edit_lock",
+     "Someone is signed in to the ZIA Admin Portal for this tenant and holds its edit lock. Sign out of the portal, or wait for the session to time out, then run this again."),
+    ("edit lock",
+     "Someone is signed in to the ZIA Admin Portal for this tenant and holds its edit lock. Sign out of the portal, or wait for the session to time out, then run this again."),
+    ("retry wait time",
+     "ZIA's request limit for this hour is reached. Wait for the hour to turn, then run this again: what was already written is kept."),
+    ("not attempted",
+     "This object was never sent to ZIA because the run had already stopped (see the STOPPED line above for why). Run this again once that is fixed."),
     ("in use",
      "ZIA still counts this object as used by a rule that is only waiting to be deleted. The app activates the change and tries again; if it stays, activate in the ZIA portal and run the removal again."),
     ("referenced",
@@ -275,6 +423,11 @@ class Recorder:
         if entry is None:
             entry = {"kind": kind, "name": name}
             self.results.append(entry)
+        if outcome is not None and outcome.code == STOPPED and status == "failed":
+            # Never sent: not a failure of this object, a consequence of the stop.
+            status = "skipped"
+            extra.setdefault("reason", outcome.error)
+            extra["error"] = None
         entry["status"] = status
         if channel:
             entry["channel"] = channel

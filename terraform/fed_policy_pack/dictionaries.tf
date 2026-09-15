@@ -763,8 +763,8 @@ resource "zia_dlp_dictionaries" "jwk_private_key" {
   }
 }
 
-resource "zia_dlp_dictionaries" "private_key" {
-  name                         = "Private Key"
+resource "zia_dlp_dictionaries" "private_key_medium_confidence" {
+  name                         = "Private Key - Medium Confidence"
   description                  = "Detect leakage of credentials and secrets [DLP-Check pack fed_policy_pack v2.1] Terraform-managed."
   dictionary_type              = "PATTERNS_AND_PHRASES"
   custom                       = true

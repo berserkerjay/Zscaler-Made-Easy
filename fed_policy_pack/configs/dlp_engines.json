@@ -21,7 +21,7 @@
   },
   {
     "name": "Private Keys",
-    "expression": "((D:Private Keys-Plaintext Regex > 0) OR (D:JWK Private Key > 0) OR (D:Private Key > 0) OR (D:Encrypted or ASCII Armored PGP Keys > 0) OR (D:Encrypted Bouncy Castle Key Exports > 0))"
+    "expression": "((D:Private Keys-Plaintext Regex > 0) OR (D:JWK Private Key > 0) OR (D:Private Key - Medium Confidence > 0) OR (D:Encrypted or ASCII Armored PGP Keys > 0) OR (D:Encrypted Bouncy Castle Key Exports > 0))"
   },
   {
     "name": "Financial Information",

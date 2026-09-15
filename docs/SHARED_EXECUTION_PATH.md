@@ -65,6 +65,31 @@ the reference this path is measured against. The app never runs it.
    for every refusal the app knows, a plain-language explanation of what
    it means and what to do (`pack_ops.EXPLANATIONS`). The log line reads
    `[kind] name: status — ZIA's message. What this means: …`.
+7. **A refusal no later write can get past stops the run at once.** Some
+   answers are about the whole tenant, not one object: an admin session
+   holding the ZIA edit lock (`EDIT_LOCK_NOT_AVAILABLE`), the hourly
+   request limit (the SDK's `RetryTooLong`), refused credentials (401),
+   a client without the DLP write permission (403). Trying the next 75
+   objects against them takes twenty minutes and looks like a hang.
+   Every run opens `pack_ops.run_scope()`; inside it the first such
+   refusal (`fatal_reason()`) stops the run: later writes return at once
+   with code `STOPPED`, are recorded as *skipped — not attempted*, the
+   log carries one `STOPPED — nothing more is written. …` line with the
+   reason in words, activation and the read-back still run so what was
+   written is live and recorded, and the result's `stopped` says why.
+   The operator's Stop (a cancel event passed to `apply()` / `remove()`)
+   works the same way. The SDK itself is built with bounded waits
+   (`dlp_api_server.SDK_REQUEST_TIMEOUT`, `SDK_MAX_RETRY_SECONDS`): a
+   request has a timeout, and a Retry-After longer than 30 s is not slept
+   through but reported.
+8. **A duplicate the plan did not see is reused, not fatal.** ZIA compares
+   names without regard to case, and a predefined dictionary's display
+   name (CRED_LEAKAGE is shown as "Private Key") is taken too. The plan
+   matches names the same way and marks a pack dictionary that carries a
+   predefined display name as a conflict with the fix in words. If ZIA
+   still refuses a create as a duplicate at write time (an object made
+   between the plan and the write), the existing object is looked up by
+   name and reused, so its dependents are built instead of skipped.
 
 ## 3. What a run returns
 
@@ -84,8 +109,22 @@ the reference this path is measured against. The app never runs it.
 - `summary` — counts by status; `channels` — counts per channel (deploy).
 - `read_check` / `verification` — what the read-back found.
 - `activation` and `activation_required`.
+- `stopped` — why the run stopped writing before the end, in words, or
+  `null` when it ran through (promise 7).
 
 The same entries are written to the Python logger `dlp_check.packs`.
+
+### Background jobs
+
+A deploy or removal is minutes of API calls, an activation, a wait for
+ACTIVE and a read-back. The GUI does not wait on one HTTP request for
+that: `POST /api/dlp-packs/apply/start` and
+`POST /api/dlp-packs/removal/apply/start` run the same function as
+`/apply` in a thread (`pack_jobs.py`) and return a job id at once;
+`GET /api/dlp-packs/jobs/{id}?since=N` returns the status, the elapsed
+time, the log lines from `N` on and, once finished, the same result the
+waiting endpoint returns; `POST /api/dlp-packs/jobs/{id}/cancel` is the
+Stop button. The waiting endpoints stay for scripts.
 
 ## 4. Adding a pack
 

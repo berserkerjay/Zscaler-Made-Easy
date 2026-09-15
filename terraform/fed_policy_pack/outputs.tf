@@ -24,7 +24,7 @@ output "dictionaries" {
     drivers_license_united_states_high = zia_dlp_dictionaries.drivers_license_united_states_high
     private_keys_plaintext_regex = zia_dlp_dictionaries.private_keys_plaintext_regex
     jwk_private_key = zia_dlp_dictionaries.jwk_private_key
-    private_key = zia_dlp_dictionaries.private_key
+    private_key_medium_confidence = zia_dlp_dictionaries.private_key_medium_confidence
     encrypted_or_ascii_armored_pgp_keys = zia_dlp_dictionaries.encrypted_or_ascii_armored_pgp_keys
     encrypted_bouncy_castle_key_exports = zia_dlp_dictionaries.encrypted_bouncy_castle_key_exports
     form_k_1 = zia_dlp_dictionaries.form_k_1

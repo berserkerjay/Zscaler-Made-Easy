@@ -207,6 +207,9 @@
   @keyframes dz-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
   .dz-log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; color: var(--dim); background: rgba(2,6,23,0.35); border: 1px solid var(--border); border-radius: 12px; padding: 0.7rem 0.9rem; max-height: 180px; overflow: auto; white-space: pre-wrap; }
   body.theme-light .dz-log { background: rgba(15,23,42,0.05); }
+  /* The live log of a running deploy or removal: taller, and the text colour, not dimmed. */
+  .dz-log-live { max-height: 280px; min-height: 120px; color: var(--text); margin-top: 0.8rem; }
+  .dz-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 1.05rem; color: var(--dim); }
   .dz-empty { text-align: center; color: var(--dim); padding: 2rem 1rem; }
   .dz-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; margin-top: 0.9rem; }
   .dz-kv div { border: 1px solid var(--border); border-radius: 12px; padding: 0.6rem 0.8rem; background: var(--card); }
@@ -368,6 +371,7 @@
 .dz-gates li .ic { font-weight: 700; width: 1.1rem; flex: none; }
 .dz-gates li.ok .ic { color: var(--pass, #10b981); } .dz-gates li.closed .ic { color: var(--fail, #ef4444); }
 .dz-gates li.closed { color: var(--text); font-weight: 600; }
+.dz-gates li.warn { color: var(--text); font-weight: 600; } .dz-gates li.warn .ic { color: var(--warn, #f59e0b); }
 .dz-gates .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 
   /* Secure by Design findings on a journey card */

@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
@@ -404,12 +405,12 @@ def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Opt
 
 
 def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-                      log: pd.LogFn = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
+                      log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Undo one recorded deployment through the guided path: the plan
     previewed by plan_removal_deployment, tiered deletes with activation,
     then the same read-back verification as a pack removal."""
     return _execute(client, lambda: plan_removal_deployment(client, record),
-                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
 def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
@@ -429,6 +430,8 @@ _RETRYABLE_WORDS = ("in use", "referenced", "associated", "being used", "used by
 
 def _retryable(error: Any) -> bool:
     e = str(error or "").lower()
+    if e.startswith("not attempted"):
+        return False   # the run has stopped; nothing clears that inside this run
     return any(w in e for w in _RETRYABLE_WORDS)
 
 
@@ -626,27 +629,37 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
 
 
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-           log: pd.LogFn = None, settle_seconds: float = 45.0, everything: bool = False) -> Dict[str, Any]:
+           log: pd.LogFn = None, settle_seconds: float = 45.0, everything: bool = False,
+           cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal. Re-reads the tenant,
     verifies the plan_hash still matches, then deletes each object in
     reverse dependency order, re-checking that the id still carries the
     name the plan saw (so a renamed/replaced object is left alone).
     Activates, waits for the activation to settle, then VERIFIES BY
     READING the tenant again: the result's `verification` says whether
-    anything of the pack is still there."""
+    anything of the pack is still there. `cancel` (the operator's Stop)
+    and a refusal no later delete can get past stop the remaining deletes;
+    the result's `stopped` says why."""
     return _execute(client, lambda: plan_removal(client, packs, everything=everything),
-                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
 def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
-                    log: pd.LogFn = None, settle_seconds: float = 45.0) -> Dict[str, Any]:
+                    log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal_selected: the chosen
     rules, then the engines and dictionaries only they used."""
     return _execute(client, lambda: plan_removal_selected(client, selected),
-                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+                    plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
-def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float) -> Dict[str, Any]:
+def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
+             cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
+    """Run one removal under pack_ops run control (see pack_deploy.apply)."""
+    with ops.run_scope(cancel):
+        return _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+
+
+def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
@@ -696,6 +709,7 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
             return True
         out = ops.delete(zia, c, log=_log)
         if not out.ok:
+            # A STOPPED outcome is recorded as skipped by the recorder, with the reason.
             recorder.record(kind, c["name"], "failed", op="delete", channel=c.get("channel"), entry=entry, outcome=out)
             return False
         recorder.record(kind, c["name"], "deleted", op="delete", channel=c.get("channel"), entry=entry, outcome=out, id=c["id"])
@@ -734,7 +748,7 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
                     retry.append(c)
                 _log(f"[{entry['kind']}] {entry['name']}: {entry['status']}" + (f" — {entry.get('error') or entry.get('reason')}" if entry.get('error') or entry.get('reason') else "")
                      + (f" (will retry after the tenant settles, pass {pass_no} of {MAX_PASSES})" if c in retry else ""))
-            if not retry or pass_no == MAX_PASSES:
+            if not retry or pass_no == MAX_PASSES or ops.stop_reason():
                 break
             # Give ZIA time to finish what it is doing before the next pass.
             _log(f"{len(retry)} {TIER_LABEL[ti]} refused for now; activating and waiting for ZIA to report ACTIVE, then trying again…")
@@ -748,6 +762,16 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
         # referenced, and WAIT for the activation to complete: an engine
         # whose rules are only pending-deleted is still "in use" to ZIA.
         more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
+        if ops.stop_reason():
+            # Say what was never tried, then finish the bookkeeping below.
+            for c in to_remove:
+                if (c["kind"], c.get("channel"), str(c["id"])) not in entries:
+                    entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel"), "match": c.get("match")}
+                    entries[(c["kind"], c.get("channel"), str(c["id"]))] = entry
+                    results.append(entry)
+                    recorder.record(c["kind"], c["name"], "skipped", op="delete", channel=c.get("channel"), entry=entry,
+                                    reason=f"not attempted: {ops.stop_reason()}")
+            break
         if deleted_here and more:
             _log(f"Activating the deleted {TIER_LABEL[ti]} and waiting for ZIA to report ACTIVE before removing the {TIER_LABEL.get(ti + 1, 'rest')}…")
             act = pc.activate(zia)
@@ -817,4 +841,6 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
             "gone": [it for it in plan["items"] if it["status"] == "not-found"],
             "verification": verification,
             "activation": final_activation, "activations": activations,
-            "activation_required": bool(counts.get("deleted")) and not (final_activation and final_activation.get("activated"))}
+            "activation_required": bool(counts.get("deleted")) and not (final_activation and final_activation.get("activated")),
+            # Why the run stopped deleting before the end (None when it ran through).
+            "stopped": ops.stop_reason()}

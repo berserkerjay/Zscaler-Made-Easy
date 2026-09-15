@@ -891,6 +891,14 @@ def _oneapi_cloud(cloud: str) -> Optional[str]:
         return None
 
 
+# How long one request to the tenant may take, and how long the SDK may
+# wait on a rate-limit answer before giving up (it then raises, and the
+# shared execution path stops the run with the reason in words).
+SDK_REQUEST_TIMEOUT = 90       # seconds per request, including the SDK's own retries
+SDK_MAX_RETRIES = 2            # the SDK's retries on 429 / 503 / the portal's edit lock
+SDK_MAX_RETRY_SECONDS = 30     # a Retry-After longer than this is not waited for
+
+
 def _build_sdk_client(creds: Dict[str, str]):
     """Build an authenticated zscaler-sdk-python OneAPI client (the object
     with `.zia.*` services the importer and planner require). Validates
@@ -905,7 +913,13 @@ def _build_sdk_client(creds: Dict[str, str]):
         from zscaler import ZscalerClient
     except ImportError:
         raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
-    config: Dict[str, Any] = {"clientId": cid, "clientSecret": sec, "vanityDomain": vd}
+    config: Dict[str, Any] = {"clientId": cid, "clientSecret": sec, "vanityDomain": vd,
+                              # Bounded waits: without these the SDK has no HTTP timeout at all
+                              # and sleeps for as long as ZIA's Retry-After says (up to an hour
+                              # on the hourly limit), which looks like a hang. Past the cap the
+                              # SDK raises and pack_ops stops the run with the reason in words.
+                              "requestTimeout": SDK_REQUEST_TIMEOUT,
+                              "rateLimit": {"maxRetries": SDK_MAX_RETRIES, "maxRetrySeconds": SDK_MAX_RETRY_SECONDS}}
     oneapi_cloud = _oneapi_cloud(cloud)
     if oneapi_cloud:
         config["cloud"] = oneapi_cloud
@@ -1411,7 +1425,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
     tenant: `verification` says whether anything of the pack(s) is still
     there. Several pack_ids remove every selected pack in one pass."""
     try:
-        import pack_removal
+        import pack_removal  # noqa: F401 — availability check; the run is in _run_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
     if not req.pack_ids and not req.rules and not req.deployment_id:
@@ -1424,23 +1438,88 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    logs: list = []
-    if rec is not None:
-        result = await asyncio.to_thread(lambda: pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append))
-        if result.get("status") not in ("blocked", "stale"):
-            import deployments
-            updated = deployments.mark_undo(rec["id"], result.get("results") or [], complete=bool((result.get("verification") or {}).get("clean")))
-            result["deployment"] = deployments.summary(updated) if updated else None
-    elif req.rules:
-        result = await asyncio.to_thread(lambda: pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append))
-    else:
-        result = await asyncio.to_thread(lambda: pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=logs.append, everything=bool(req.all)))
-    result["logs"] = logs
+    result = await asyncio.to_thread(_run_removal, client, req, rec, packs, None, None)
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
     if result.get("status") == "stale":
         raise HTTPException(status_code=409, detail="; ".join(result.get("blockers") or ["The removal plan is stale; run the preview again."]))
     return result
+
+
+def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Dict[str, Any]:
+    """The removal itself, shared by the request that waits for it and the
+    background job the browser follows. Blocked and stale plans come back
+    as results (status `blocked` / `stale` with `blockers`), not errors."""
+    import pack_removal
+    logs: list = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    if rec is not None:
+        result = pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
+        if result.get("status") not in ("blocked", "stale"):
+            import deployments
+            updated = deployments.mark_undo(rec["id"], result.get("results") or [], complete=bool((result.get("verification") or {}).get("clean")))
+            result["deployment"] = deployments.summary(updated) if updated else None
+    elif req.rules:
+        result = pack_removal.remove_selected(client, req.rules, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
+    else:
+        result = pack_removal.remove(client, packs, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel, everything=bool(req.all))
+    result["logs"] = logs
+    if result.get("status") in ("blocked", "stale"):
+        result["message"] = "; ".join(result.get("blockers") or [
+            "Removal blocked." if result["status"] == "blocked" else "The removal plan is stale; run the preview again."])
+    return result
+
+
+@app.post("/api/dlp-packs/removal/apply/start")
+async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
+    """Start the same removal as /removal/apply as a background job and
+    return its id at once. Poll GET /api/dlp-packs/jobs/{job_id} for the
+    log as it is written and the result when it finishes; POST
+    /api/dlp-packs/jobs/{job_id}/cancel stops the remaining deletes."""
+    import pack_jobs
+    if not req.pack_ids and not req.rules and not req.deployment_id:
+        raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
+    creds = _tenant_creds(req)
+    rec = _deployment_for_removal(req, creds) if req.deployment_id else None
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
+    job = pack_jobs.start("removal", lambda log, cancel: _run_removal(client, req, rec, packs, log, cancel), label=label)
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/dlp-packs/jobs/{job_id}")
+async def dlp_pack_job(job_id: str, since: int = 0):
+    """A running or finished deploy / removal job: its status, elapsed
+    seconds, the log lines from `since` on (and `next`, the index to ask
+    for next time) and, once finished, the same result the request-and-
+    wait endpoint would have returned."""
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job. Jobs are kept for an hour after they finish; start the run again.")
+    return pack_jobs.snapshot(job, since=max(0, int(since or 0)))
+
+
+@app.post("/api/dlp-packs/jobs/{job_id}/cancel")
+async def dlp_pack_job_cancel(job_id: str):
+    """Stop a running job after the write in flight. Nothing more is sent
+    to the tenant; activation and the read-back still run so what was
+    written is live and recorded."""
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job.")
+    return {"job_id": job.id, "cancelled": pack_jobs.cancel(job_id), "status": job.status}
 
 
 def _explain_connection_error(detail: str) -> Dict[str, Any]:
@@ -1810,7 +1889,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     approval the response is 409 with status 'plan_changed' and nothing
     is written. Blocked or failed items never stop the others."""
     try:
-        import pack_deploy
+        import pack_deploy  # noqa: F401 — availability check; the run is in _run_apply
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_deploy unavailable: {e}")
     if not req.confirm:
@@ -1822,17 +1901,32 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-
-    logs: list = []
-    result = await asyncio.to_thread(
-        pack_deploy.apply, client, packs,
-        plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
-        verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
-        channel_targets=req.channel_targets or None, log=logs.append,
-    )
-    result["logs"] = logs
+    result = await asyncio.to_thread(_run_apply, client, creds, req, packs, None, None)
     if result.get("status") in ("plan_changed", "blocked"):
         return JSONResponse(result, status_code=409)
+    return result
+
+
+def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, log, cancel) -> Dict[str, Any]:
+    """The deployment itself, shared by the request that waits for it and
+    the background job the browser follows: the approved plan through
+    pack_deploy.apply (the shared execution path), then the record that
+    makes it undoable. `log` receives each line as it is written; `cancel`
+    is the operator's Stop."""
+    import pack_deploy
+    logs: list = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    result = pack_deploy.apply(client, packs, plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
+                               verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
+                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel)
+    result["logs"] = logs
+    if result.get("status") in ("plan_changed", "blocked"):
+        return result
     # Remember what was created so the deployment can be undone later.
     try:
         import deployments
@@ -1847,6 +1941,28 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     except Exception as e:  # noqa: BLE001 — a bookkeeping failure must not hide a successful deploy
         result["deployment_error"] = f"the deployment was not recorded for undo: {str(e)[:200]}"
     return result
+
+
+@app.post("/api/dlp-packs/apply/start")
+async def dlp_packs_apply_start(req: DLPPackDeployRequest):
+    """Start the same deployment as /apply as a background job and return
+    its id at once, so the browser can show the log while the tenant is
+    written to (a pack is minutes of API calls, activation and read-back).
+    Poll GET /api/dlp-packs/jobs/{job_id}; POST .../cancel stops the
+    remaining writes. The checks are the same as /apply: confirm, the
+    plan_hash from /preflight, write mode."""
+    import pack_jobs
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
+    if not req.plan_hash:
+        raise HTTPException(status_code=400, detail="plan_hash is required — run /api/dlp-packs/preflight first.")
+    if not writes_enabled():
+        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    job = pack_jobs.start("deploy", lambda log, cancel: _run_apply(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
 @app.get("/api/deployments")

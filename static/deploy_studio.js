@@ -76,19 +76,20 @@ function _dzChannelChips(channels) {
 // URL, SSL) are not part of the choice.
 const DZ_DLP = ['web', 'endpoint', 'saas', 'email'];
 const DZ_DLP_LABEL = { web: 'Inline Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security', email: 'Outbound Email DLP' };
-const DZ_LS_CHANNELS = 'zassess_pack_channels';
+// The channel choice lives for this page only. It used to be remembered
+// in the browser across sessions, and a choice made weeks ago (Web only)
+// silently dropped 51 Endpoint, SaaS and Email rules from a Fed pack
+// deploy. Every time Deploy Policy Packs opens, every channel the pack
+// ships rules for is ticked; unticking is a per-deploy decision.
+const DZ_LS_CHANNELS = 'zassess_pack_channels';   // the old key, cleared so a stale choice can never come back
 function _dzLoadChannels() {
-  try { DZ.channels = JSON.parse(localStorage.getItem(DZ_LS_CHANNELS) || '{}') || {}; } catch (e) { DZ.channels = {}; }
+  DZ.channels = {};
+  try { localStorage.removeItem(DZ_LS_CHANNELS); } catch (e) { /* storage unavailable */ }
 }
-function _dzSaveChannels() {
-  try { localStorage.setItem(DZ_LS_CHANNELS, JSON.stringify(DZ.channels)); } catch (e) { /* storage unavailable */ }
-}
+function _dzSaveChannels() { /* kept in memory only (DZ.channels); see above */ }
 function _dzDefaultChannels(p) { return DZ_DLP.filter(c => (p.channels || {})[c]); }
-// A remembered choice is only trusted while the pack still ships rules on
-// the same channels it did when the choice was made. A pack that gained
-// mirrors since (a channel it had no rule for then) goes back to the
-// default, every packed channel, so an old choice can never silently drop
-// the new rules.
+// A choice made on this page is only trusted while the pack still ships
+// rules on the same channels it did when the choice was made.
 function _dzChannelsFor(id) {
   const p = DZ.packs.find(x => x.id === id);
   if (!p) return [];
@@ -702,11 +703,121 @@ function _dzGatesHtml(R, { step } = {}) {
   else if (R.status === 'blocked') gates.push({ ok: false, text: `The plan is blocked: ${(R.blockers || ['see the reason above']).join(' ')}` });
   else gates.push({ ok: true, text: `The plan can be deployed (${_dzN(creates, 'object')} to create${R.status === 'warnings' ? '; read the warnings' : ''}).` });
   if (R && R.status !== 'blocked') gates.push(creates ? { ok: true, text: 'There is something to create.' } : { ok: false, text: 'Nothing to create: every object of this pack already exists in the tenant (the journey card shows how far it is).' });
+  // A packed channel left unticked is said here, before approval, not only in the log afterwards.
+  for (const u of _dzUntickedChannels([...DZ.selected])) {
+    gates.push({ ok: false, warn: true, text: `${u.name}: ${u.labels.join(', ')} unticked — the ${_dzN(u.rules, 'rule')} this pack ships there will NOT be deployed. Go back to Select and tick the channel${u.labels.length === 1 ? '' : 's'} to deploy them.` });
+  }
   if (w.enabled) gates.push({ ok: true, text: 'Write mode is on for this server session.' });
   else gates.push({ ok: false, text: w.can_toggle ? 'Write mode is off: click Enable write mode and type the confirmation phrase.' : `Write mode is off and cannot be enabled from here${w.reason ? ': ' + w.reason : ''}. Start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.` });
   if (step === 3) gates.push(DZ.consent ? { ok: true, text: 'You have ticked the approval box.' } : { ok: false, text: 'Tick the approval box above.' });
   else gates.push({ ok: true, text: 'Next: Review & approve, tick the approval box, then Deploy to tenant.' });
-  return `<ul class="dz-gates" aria-label="What a deployment needs">${gates.map(g => `<li class="${g.ok ? 'ok' : 'closed'}"><span class="ic" aria-hidden="true">${g.ok ? '✓' : '✕'}</span><span class="sr-only">${g.ok ? 'Open: ' : 'Closed: '}</span>${_dzE(g.text)}</li>`).join('')}</ul>`;
+  return `<ul class="dz-gates" aria-label="What a deployment needs">${gates.map(g => `<li class="${g.ok ? 'ok' : (g.warn ? 'warn' : 'closed')}"><span class="ic" aria-hidden="true">${g.ok ? '✓' : (g.warn ? '!' : '✕')}</span><span class="sr-only">${g.ok ? 'Open: ' : (g.warn ? 'Warning: ' : 'Closed: ')}</span>${_dzE(g.text)}</li>`).join('')}</ul>`;
+}
+// Packed channels left unticked for the given packs: [{ name, labels, rules }].
+function _dzUntickedChannels(ids) {
+  const out = [];
+  for (const id of ids) {
+    const p = DZ.packs.find(x => x.id === id);
+    if (!p) continue;
+    const on = new Set(_dzChannelsFor(id));
+    const off = DZ_DLP.filter(c => (p.channels || {})[c] && !on.has(c));
+    if (off.length) out.push({ name: p.name || p.id, labels: off.map(c => DZ_DLP_LABEL[c]), rules: off.reduce((n, c) => n + (p.channels[c] || 0), 0) });
+  }
+  return out;
+}
+
+// ── Background jobs: a deploy or removal the browser follows live ──
+// The tenant work runs on the server as a job (POST .../start → job id);
+// the page polls GET /api/dlp-packs/jobs/{id} for new log lines and the
+// elapsed time, and gets the result when the job finishes. Stop asks the
+// server to send nothing more after the write in flight.
+async function _dzStartJob(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+  if (!data.job_id) throw new Error('The server did not start the run (no job id).');
+  return data.job_id;
+}
+async function _dzFollowJob(jobId, onUpdate) {
+  let next = 0, misses = 0;
+  const logs = [];
+  for (;;) {
+    await new Promise(res => setTimeout(res, 1500));
+    let snap;
+    try {
+      const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      snap = await r.json();
+      misses = 0;
+    } catch (e) {
+      if (++misses >= 20) throw new Error(`Lost contact with the app while the run continued (${e.message}). The run keeps going on the server; check the tenant with "Where is this tenant?" on the pack card.`);
+      continue;
+    }
+    logs.push(...(snap.logs || []));
+    next = snap.next;
+    onUpdate(Object.assign({}, snap, { logs }));
+    if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+  }
+}
+function _dzMMSS(seconds) {
+  const s = Math.max(0, Math.round(seconds || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+// The step the log is at, in words, from its last progress line.
+function _dzJobPhase(J) {
+  const lines = (J && J.logs) || [];
+  const steps = [
+    [/^STOPPED/, 'Stopped — finishing activation and the read-back'],
+    [/^Stop requested/, 'Stopping after the write in flight'],
+    [/^Phase 1/, 'Step 1 of 5 — dictionaries'], [/^Phase 2b/, 'Step 2 of 5 — endpoint application groups'], [/^Phase 2/, 'Step 2 of 5 — engines'],
+    [/^Phase 3/, 'Step 3 of 5 — rules on every channel'], [/^Phase 4/, 'Step 3 of 5 — confidence tweaks'],
+    [/^Activating/, 'Step 4 of 5 — activating in ZIA and waiting for ACTIVE (up to 45 s)'], [/^Activation still/, 'Step 4 of 5 — still waiting for ZIA to report ACTIVE'],
+    [/^Reading the tenant back|^Re-reading the tenant/, 'Step 5 of 5 — reading the tenant back to verify'], [/^Phase 5/, 'Step 5 of 5 — verifying'],
+    [/refused for now; activating/, 'Waiting for ZIA to settle, then trying the refused deletes again'],
+  ];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    for (const [re, text] of steps) if (re.test(lines[i])) return text;
+  }
+  return lines.length ? 'Working…' : 'Connecting to the tenant…';
+}
+function _dzJobUpdate(snap) {
+  DZ.job = Object.assign(DZ.job || {}, snap);
+  const log = document.getElementById('dzJobLog');
+  if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+  const ph = document.getElementById('dzJobPhase');
+  if (ph) ph.textContent = _dzJobPhase(DZ.job);
+  const el = document.getElementById('dzJobElapsed');
+  if (el) el.textContent = _dzMMSS(snap.elapsed_seconds);
+  const stop = document.getElementById('dzJobStop');
+  if (stop && snap.cancel_requested) { stop.disabled = true; stop.textContent = 'Stopping…'; }
+}
+function _dzJobTick() {
+  const J = DZ.job; if (!J || !J.startedAt) return;
+  const el = document.getElementById('dzJobElapsed');
+  if (el) el.textContent = _dzMMSS((Date.now() - J.startedAt) / 1000);
+}
+async function _dzCancelJob() {
+  const J = DZ.job; if (!J || !J.id) return;
+  const btn = document.getElementById('dzJobStop');
+  if (btn) { btn.disabled = true; btn.textContent = 'Stopping…'; }
+  try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(J.id)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+  J.cancelRequested = true;
+  announce('Stop requested. The write in flight finishes; nothing more is sent.');
+}
+// Run a job end to end: start it, follow it, return the finished snapshot.
+async function _dzRunJob(startUrl, body) {
+  const id = await _dzStartJob(startUrl, body);
+  DZ.job = { id, logs: [], startedAt: Date.now(), status: 'running' };
+  const tick = setInterval(_dzJobTick, 1000);
+  try {
+    return await _dzFollowJob(id, _dzJobUpdate);
+  } finally {
+    clearInterval(tick);
+  }
+}
+function _dzJobLiveHtml(label) {
+  const J = DZ.job || {};
+  return `<div class="dz-log dz-log-live" id="dzJobLog" role="log" aria-live="polite" aria-label="${_dzE(label)}">${_dzE((J.logs || []).join('\n')) || 'Connecting to the tenant…'}</div>`;
 }
 
 // ── Step 3: approve ───────────────────────────────────────────────
@@ -750,17 +861,14 @@ function _dzRenderApprove() {
 
 // ── Step 4: deploy ────────────────────────────────────────────────
 async function _dzApply() {
-  DZ.step = 4; DZ.busy = true; DZ.result = null; DZ.error = '';
+  DZ.step = 4; DZ.busy = true; DZ.result = null; DZ.error = ''; DZ.job = null;
   _dzRender();
   try {
-    const r = await fetch('/api/dlp-packs/apply', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (r.status === 409 && data.status) { DZ.result = data; }
-    else if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
-    else DZ.result = data;
+    const body = { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() };
+    const snap = await _dzRunJob('/api/dlp-packs/apply/start', body);
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The run ended without a result.');
+    DZ.result = snap.result;
+    if (!DZ.result.logs || !DZ.result.logs.length) DZ.result.logs = snap.logs;
     const s = DZ.result.summary || {};
     announce(`Deployment ${DZ.result.status}: ${s.created || 0} created, ${s.failed || 0} failed.`);
     try {
@@ -778,12 +886,17 @@ function _dzRenderDeploy() {
   const body = document.getElementById('dzBody');
   const foot = document.getElementById('dzFoot');
   if (DZ.busy) {
-    body.innerHTML = `<div class="dz-hero"><span class="dz-status busy">Deploying</span><div><div class="lead">Writing to ${_dzE((DZ.report || {}).tenant_label || 'tenant')}…</div><div class="sub">Dictionaries first, then engines, then rules. Each item is isolated — one failure won't stop the rest.</div></div></div><div class="dz-progress"><div class="bar"></div></div>`;
-    foot.innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button class="dz-btn primary" disabled>Deploying…</button></div>`;
+    const J = DZ.job || {};
+    body.innerHTML = `
+      <div class="dz-hero"><span class="dz-status busy">Deploying</span><div><div class="lead">Writing to ${_dzE((DZ.report || {}).tenant_label || 'tenant')}…</div><div class="sub" id="dzJobPhase">${_dzE(_dzJobPhase(J))}</div></div><div class="dz-elapsed" id="dzJobElapsed" aria-label="Elapsed">${_dzMMSS(J.startedAt ? (Date.now() - J.startedAt) / 1000 : 0)}</div></div>
+      <div class="dz-progress"><div class="bar"></div></div>
+      <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What is happening</div><div class="d">Dictionaries first, then engines, then rules on every channel — one answer from the tenant per line below. Then ZIA activates the changes, the app waits until ZIA reports ACTIVE (up to 45 seconds) and reads the tenant back to prove everything is there. A pack of 70 objects takes several minutes; each item is isolated, so one refusal never stops the rest. If the tenant refuses everything (someone holds the portal's edit lock, the hourly request limit is reached) the run stops at once and says why.</div></div></div>
+      ${_dzJobLiveHtml('Deployment log')}`;
+    foot.innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Send nothing more after the write in flight; what was written is activated and recorded">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button><button class="dz-btn primary" disabled>Deploying…</button></div>`;
     return;
   }
   if (DZ.error) {
-    body.innerHTML = `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">Deployment didn't start</div><div class="d">${_dzE(DZ.error)}</div></div></div>`;
+    body.innerHTML = `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">The deployment did not finish</div><div class="d">${_dzE(DZ.error)}</div></div></div>${(DZ.job && DZ.job.logs && DZ.job.logs.length) ? `<details class="dz-fold" open><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(DZ.job.logs.join('\n'))}</div></details>` : ''}`;
     foot.innerHTML = `<div class="dz-summary"></div><div class="dz-actions"><button class="dz-btn" onclick="DZ.step=3;_dzRender()">← Back</button><button class="dz-btn primary" onclick="_dzRunPreflight()">Re-run preflight</button></div>`;
     return;
   }
@@ -795,8 +908,9 @@ function _dzRenderDeploy() {
   }
   const s = X.summary || {};
   const results = X.results || [];
-  const lead = { applied: 'Deployed successfully', partial: 'Deployed with some failures', failed: 'Deployment failed' }[X.status] || X.status;
-  const cls = { applied: 'ready', partial: 'warnings', failed: 'blocked' }[X.status] || 'warnings';
+  const lead = X.stopped ? 'Deployment stopped early' : ({ applied: 'Deployed successfully', partial: 'Deployed with some failures', failed: 'Deployment failed' }[X.status] || X.status);
+  const cls = X.stopped ? 'blocked' : ({ applied: 'ready', partial: 'warnings', failed: 'blocked' }[X.status] || 'warnings');
+  const stoppedCard = X.stopped ? `<div class="dz-card sev-high" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Why it stopped</div><div class="d">${_dzE(X.stopped)} Everything that was already written is activated and recorded; the objects listed as skipped were never sent. Run the same deployment again when ready: only what is missing will be created.</div></div></div>` : '';
   const ver = X.verification || {};
   const verRows = Object.entries(ver).map(([id, v]) => {
     const ok = v && v.all_good;
@@ -812,7 +926,8 @@ function _dzRenderDeploy() {
       : `<div class="dz-card sev-high" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Read back: ${rc.missing.length} of ${rc.expected} object(s) not found</div><div class="d">A fresh read after activation${rc.activation_status ? ` (ZIA status ${_dzE(rc.activation_status)})` : ''} could not find these. If the status is not ACTIVE, activate in ZIA and re-run the preflight; otherwise deploy again — only what is missing will be created.</div></div></div>
          <div class="dz-rows">${rc.missing.map(m => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(DZ_KIND[m.kind] || m.kind)}: ${_dzE(m.name)}${m.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(m.channel))}</span>` : ''}</div><div class="rs">${_dzE(m.reason || '')}</div></div></div>`).join('')}</div>`));
   body.innerHTML = `
-    <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created${s.restored ? ` · ${s.restored} overwritten` : ''} · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${X.elapsed_seconds || 0}s</div></div></div>
+    <div class="dz-hero"><span class="dz-status ${cls}">${lead}</span><div><div class="lead">${_dzN(s.created || 0, 'object')} created${s.restored ? ` · ${s.restored} overwritten` : ''} · ${s.modified || 0} modified · ${s.reused || 0} reused · ${s.skipped || 0} skipped · ${s.failed || 0} failed</div><div class="sub">${_dzMMSS(X.elapsed_seconds || 0)} min</div></div></div>
+    ${stoppedCard}
     ${readCard}
     ${Object.keys(X.channels || {}).length ? `<div class="dz-card ${Object.values(X.channels).some(c => c.failed) ? 'sev-high' : 'sev-info'}" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Rules per channel</div><div class="d">${Object.entries(X.channels).map(([ch, c]) => `<div><strong>${_dzE(_dzChan(ch))}</strong>: ${c.created} created${c.restored ? `, ${c.restored} overwritten` : ''}${c.reused ? `, ${c.reused} reused` : ''}${c.skipped ? `, ${c.skipped} skipped` : ''}${c.failed ? `, <strong>${c.failed} failed</strong>${c.errors.length ? ` — ${_dzE(c.errors.join(' | '))}` : ''}` : ''}</div>`).join('')}</div></div></div>` : ''}
     ${X.activation && X.activation.activated ? `<div class="dz-card sev-info" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Activated in ZIA</div><div class="d">The changes were activated automatically, so they are live now.</div></div></div>` : ''}
@@ -1092,9 +1207,15 @@ function _dzRemovalApprove() {
 function _dzRemovalBusy() {
   const R = DZ.removal, body = document.getElementById('dzBody');
   const n = (R.plan.items || []).filter(i => i.status === 'remove').length;
-  body.innerHTML = `<div class="dz-card sev-info"><div class="bar"></div><div>
-      <div class="t"><span class="gd-spin" aria-hidden="true"></span> Removing ${n} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}</div>
-      <div class="d">Rules first, then engines, then dictionaries, activating between tiers. When the deletes are done the tenant is activated, ZIA is polled until it reports ACTIVE, and the tenant is read again to prove nothing of the pack is left. This can take a minute or two.</div></div></div>`;
+  const J = DZ.job || {};
+  body.innerHTML = `
+    <div class="dz-hero"><span class="dz-status busy">Removing</span><div><div class="lead">Removing ${n} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}…</div><div class="sub" id="dzJobPhase">${_dzE(_dzJobPhase(J))}</div></div><div class="dz-elapsed" id="dzJobElapsed" aria-label="Elapsed">${_dzMMSS(J.startedAt ? (Date.now() - J.startedAt) / 1000 : 0)}</div></div>
+    <div class="dz-progress"><div class="bar"></div></div>
+    <div class="dz-card sev-info"><div class="bar"></div><div>
+      <div class="t">What is happening</div>
+      <div class="d">Rules first, then engines, then dictionaries, activating between tiers and waiting for ZIA to report ACTIVE each time (up to 45 seconds), because ZIA refuses to delete an engine while a rule that uses it is only pending deletion. When the deletes are done the tenant is activated once more and read again to prove nothing of the pack is left. Each line below is one answer from the tenant; a few minutes is normal.</div></div></div>
+    ${_dzJobLiveHtml('Removal log')}
+    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button></div>`;
 }
 
 function _dzRemovalDone() {
@@ -1111,6 +1232,7 @@ function _dzRemovalDone() {
       : `<div class="dz-card sev-high"><div class="bar"></div><div><div class="t">Verification found ${remaining.length} object(s) still in the tenant</div><div class="d">A fresh read after activation${v.activation_status ? ` (ZIA status ${_dzE(v.activation_status)})` : ''} still lists these. Activate in ZIA if the status is not ACTIVE, then click <strong>Remove leftovers</strong> to run the removal again on exactly these objects.</div></div></div>
          <div class="dz-rows">${remaining.map(i => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div></div></div>`).join('')}</div>`);
   body.innerHTML = `
+    ${data.stopped ? `<div class="dz-card sev-high"><div class="bar"></div><div><div class="t">The removal stopped early</div><div class="d">${_dzE(data.stopped)} What was already deleted is activated; the objects listed as left alone were never sent. Run the removal again once this is fixed.</div></div></div>` : ''}
     ${verifyCard}
     <div class="dz-card ${data.status === 'removed' ? 'sev-info' : 'sev-medium'}"><div class="bar"></div><div>
       <div class="t">Removal ${_dzE(data.status || '')}</div>
@@ -1124,7 +1246,8 @@ function _dzRemovalDone() {
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalVerifyAgain()" ${DZ.busy ? 'disabled' : ''}>Verify again</button>
       ${remaining.length && v.plan ? `<button type="button" class="dz-btn danger" onclick="_dzRemovalLeftovers()">Remove leftovers</button>` : ''}
       <button type="button" class="dz-btn primary" onclick="_dzRemovalClose()">Back to packs</button>
-    </div>`;
+    </div>
+    ${(data.logs || []).length ? `<details class="dz-fold"><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(data.logs.join('\n'))}</div></details>` : ''}`;
 }
 
 // A fresh read of the tenant, on demand: the same discovery the preview
@@ -1161,21 +1284,19 @@ async function _dzRemovalApply() {
   // Second confirmation (the consent checkbox was the first): a final,
   // explicit yes naming the count and tenant before anything is deleted.
   if (!window.confirm(`Final confirmation.\n\nPermanently delete ${remove.length} object(s) that ${R.pack.name || R.id} put in ${R.plan.tenant_label || 'this tenant'}?\n\nThis cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
-  DZ.busy = true; R.step = 3; _dzRemovalRender();
-  R.step = 4;
+  DZ.busy = true; R.step = 3; DZ.job = null; _dzRemovalRender();
   try {
-    const r = await fetch('/api/dlp-packs/removal/apply', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
+    const snap = await _dzRunJob('/api/dlp-packs/removal/apply/start', { ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() });
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The run ended without a result.');
+    const data = snap.result;
+    if (data.status === 'blocked' || data.status === 'stale') throw new Error(data.message || (data.blockers || []).join('; ') || `Removal ${data.status}.`);
+    if (!data.logs || !data.logs.length) data.logs = snap.logs;
     R.result = data;
     announce(`Removal ${data.status}.`);
   } catch (e) {
-    R.result = { status: 'failed', summary: {}, results: [{ status: 'failed', name: R.pack.name || R.id, error: e.message }] };
+    R.result = { status: 'failed', summary: {}, results: [{ status: 'failed', name: R.pack.name || R.id, error: e.message }], logs: (DZ.job || {}).logs || [] };
   } finally {
-    DZ.busy = false; _dzRemovalRender();
+    R.step = 4; DZ.busy = false; _dzRemovalRender();
   }
 }
 

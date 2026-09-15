@@ -63,13 +63,24 @@ def _err(msg, code="INVALID_INPUT_ARGUMENT"):
     return None, None, {"status": 400, "code": code, "message": msg}
 
 
+def _squash(name):
+    """A name as ZIA compares it for duplicates: case and spacing ignored."""
+    return " ".join(str(name or "").split()).casefold()
+
+
 class StrictDicts(FakeDicts):
     def add_dict(self, name, match_type, dict_type, **kw):
         n = (name or "").strip()
         if not n:
             return _err("Dictionary name is required")
-        if any(str(getattr(i, "name", "")) == n for i in self.items):
-            return _err(f"A dictionary named '{n}' already exists", "DUPLICATE_ITEM")
+        # ZIA compares names without regard to case, and a predefined
+        # dictionary's display name (its description: CRED_LEAKAGE is shown as
+        # "Private Key") counts as taken too. Its answer, verbatim.
+        taken = {_squash(getattr(i, "name", "")) for i in self.items}
+        taken |= {_squash(getattr(i, "description", "")) for i in self.items if not getattr(i, "custom", True)}
+        taken.discard("")
+        if _squash(n) in taken:
+            return _err(f"Duplicate DLP dictionary names are not allowed. [{n}].")
         if len(n) > 255:
             return _err("DLP Dictionary name can not be more than 255 characters.")
         if len(kw.get("description") or "") > 255:

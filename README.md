@@ -62,9 +62,10 @@ make test                                # .venv/bin/python -m pytest -q tests
 make check                               # compile, pyflakes, pack conventions, Terraform freshness (what CI runs)
 ```
 
-The suite (340 tests) covers the checks, the policy-pack planner and
+The suite (380 tests) covers the checks, the policy-pack planner and
 executor against a fake tenant that refuses what a real ZIA tenant refuses,
-the API endpoints, the entry points' error paths and the packaging files.
+the API endpoints, the background jobs, the entry points' error paths and
+the packaging files.
 
 ## Configuration
 
@@ -103,7 +104,7 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 |---|---|
 | Web server and API | `dlp_api_server.py` (FastAPI, the `dlp-check` command), `security.py` (token gate, origin check, body cap, rate limit, write mode), `audit.py` |
 | Assessment engine | `dlp_assessment_full_auto.py` (the `Client`, the check registry, the `dlp-check-assess` command), `zscaler_*_checks.py`, `zcc_evaluation.py`, `benchmarks.py`, `compliance_mapping.py`, `plain_english.py`, `report_docx.py` |
-| Policy packs | `pack_ops.py` (the shared execution path every pack goes through: validation, ordering, retries, structured events), `pack_deploy.py` (plan, apply, journey, verify), `pack_removal.py` (remove, undo), `pack_channels.py` (per-channel payloads), `pack_library.py` (uploads), `pack_terraform.py`, `dlp_importer.py` (pack data and ZIA limits); pack data in `cjis_policy_pack/`, `fed_policy_pack/`, `global_banking_baseline/`, `healthcare_phi_baseline/`, `zbp_enterprise_baseline/`, `zbp_source_code_baseline/` |
+| Policy packs | `pack_ops.py` (the shared execution path every pack goes through: validation, ordering, retries, run control, structured events), `pack_deploy.py` (plan, apply, journey, verify), `pack_removal.py` (remove, undo), `pack_jobs.py` (deploys and removals as background jobs the GUI follows live), `pack_channels.py` (per-channel payloads), `pack_library.py` (uploads), `pack_terraform.py`, `dlp_importer.py` (pack data and ZIA limits); pack data in `cjis_policy_pack/`, `fed_policy_pack/`, `global_banking_baseline/`, `healthcare_phi_baseline/`, `zbp_enterprise_baseline/`, `zbp_source_code_baseline/` |
 | Reports and analysis | `bypass_report.py`, `ssl_flow.py`, `data_flow.py`, `detection_health.py`, `dlp_efficacy.py`, `log_analyzer.py`, `secure_by_design.py` |
 | Continuous evaluation | `continuous_eval.py` (the `dlp-check-evaluate` command), `proposals.py`, `proposal_apply.py`, `deployments.py`, `tenant_profiles.py` |
 | Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button) |
