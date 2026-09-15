@@ -393,12 +393,16 @@ def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict
 # Tenant snapshot
 # ---------------------------------------------------------------------------
 
-def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None) -> Dict[str, Any]:
     """Read everything the plan needs from the tenant: dictionaries,
     engines and web DLP rules always; other channels' rules and their
     prerequisites (SaaS tenants, notification templates, labels) only
     when `need` (see pack_channels.needs) says the packs use them.
-    Never raises: each failure is recorded and `reachable` reflects it."""
+    Never raises: each failure is recorded and `reachable` reflects it.
+    `log` gets one line per read (a full read is many API calls and can
+    take a minute; it must never look like a hang)."""
+    _log = log or (lambda m: None)
+    started = time.time()
     snap: Dict[str, Any] = {
         "reachable": True, "errors": [], "unreadable": {},
         "dictionaries": {}, "predefined": {}, "engines": {}, "rules": [],
@@ -407,11 +411,13 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     }
     zia = client.zia
     if need and (need["channels"] - {pc.WEB} or need["casb"] or need["templates"] or need["labels"] or need.get("app_classes")):
-        snap["channels"] = pc.fetch_channel_state(zia, need)
+        snap["channels"] = pc.fetch_channel_state(zia, need, log=_log)
+    _log("Reading the tenant: DLP dictionaries (custom and predefined)…")
     try:
         dicts, err = _nx(zia.dlp_dictionary.list_dicts())
         if err:
             raise RuntimeError(str(err))
+        _log(f"Reading the tenant: DLP dictionaries: {len(dicts or [])} found.")
         for d in dicts or []:
             name = str(_field(d, "name", default="") or "").strip()
             if not name:
@@ -432,11 +438,13 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
         snap["unreadable"]["dictionaries"] = str(e)[:200]
         snap["errors"].append(f"dictionaries: {str(e)[:200]}")
 
+    _log("Reading the tenant: DLP engines…")
     try:
         lister = getattr(zia.dlp_engine, "list_dlp_engines", None) or zia.dlp_engine.list_dlp_engines_lite
         engines, err = _nx(lister())
         if err:
             raise RuntimeError(str(err))
+        _log(f"Reading the tenant: DLP engines: {len(engines or [])} found.")
         for e in engines or []:
             name = str(_field(e, "name", default="") or "").strip()
             if name:
@@ -445,10 +453,12 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
         snap["unreadable"]["engines"] = str(e)[:200]
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
+    _log("Reading the tenant: Web DLP rules…")
     try:
         rules, err = _nx(zia.dlp_web_rules.list_rules())
         if err:
             raise RuntimeError(str(err))
+        _log(f"Reading the tenant: Web DLP rules: {len(rules or [])} found.")
         for r in rules or []:
             snap["rules"].append({
                 "id": _field(r, "id"),
@@ -472,6 +482,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None) -> Dict[str, Any
     # (the API rejects duplicate names, so nothing is overwritten) and every
     # such item is marked unverified, with the permission that would fix it.
     snap["reachable"] = len(snap["unreadable"]) < 3
+    _log(f"Tenant read in {time.time() - started:.0f} s" + (f"; could not read: {', '.join(snap['unreadable'])}." if snap["unreadable"] else "."))
     return snap
 
 
@@ -1256,8 +1267,10 @@ def preflight(
     restore_drift: bool = False,
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
     tenant_cache: Optional[Dict[str, Any]] = None,
+    log: LogFn = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
+    `log` receives one line per tenant read (see fetch_tenant).
 
     `tenant_cache` (a dict the caller keeps across calls) makes several
     preflights against the same tenant read it once: the first call stores
@@ -1288,10 +1301,10 @@ def preflight(
     if tenant_cache is not None:
         import copy
         if tenant_cache.get("snapshot") is None:
-            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need)
+            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need, log=log)
         tenant = copy.deepcopy(tenant_cache["snapshot"])
     else:
-        tenant = fetch_tenant(client, need)
+        tenant = fetch_tenant(client, need, log=log)
     options = {"use_rank_0": bool(use_rank_0), "apply_tweaks": bool(apply_tweaks), "restore_drift": bool(restore_drift),
                "channel_targets": {k: sorted(v) for k, v in sorted(targets_norm.items())}}
 
@@ -1768,8 +1781,9 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
            activate: bool, log: LogFn, settle_seconds: float) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
+    _log("Checking the approved plan against the tenant as it is now…")
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                       restore_drift=restore_drift, channel_targets=channel_targets)
+                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs, or start it with "
                                                   "START_Zscaler_Assessment_WRITES_ENABLED.bat, then deploy."],
@@ -2085,7 +2099,7 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
         _log("Reading the tenant back to verify the deployment…")
         try:
             again = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                              restore_drift=restore_drift, channel_targets=channel_targets)
+                              restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
             fresh = {(i["kind"], i["name"]): i for i in again.get("items", [])}
             read_check["read"] = bool(again.get("tenant", {}).get("reachable", True))
             for r in results:

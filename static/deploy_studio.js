@@ -275,6 +275,7 @@ function _dzRender() {
 // ── Step 1: select ────────────────────────────────────────────────
 function _dzRenderSelect() {
   const body = document.getElementById('dzBody');
+  if (!body) return;   // Deploy Policy Packs is not open (the hand-off page and the pack cards call this on their own)
   if (DZ.error && !DZ.packs.length) {
     body.innerHTML = `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">Something went wrong</div><div class="d">${_dzE(DZ.error)}</div></div></div>`;
   } else if (!DZ.packs.length) {
@@ -457,31 +458,32 @@ async function _dzJourney(id) {
 // provider. With credentials the server runs a preflight first and emits
 // import blocks for existing objects (gap mode), so `terraform plan` is the
 // gap between the tenant and the pack.
+// It runs as a background job the page follows (gap mode reads the whole
+// tenant first, which is a minute of API calls): the hand-off page shows
+// each read as it happens, then the zip is fetched from the finished job.
 async function _dzTerraform(ids, mode) {
   DZ.tfBusy = ids.length === 1 ? ids[0] : '*';
   if (DZ.step === 1) _dzRenderSelect();
+  TF.last = null;
   try {
     // Static mode sends no credentials at all, so the server never reads the tenant.
-    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', cloud: (_dzCreds() || {}).cloud || 'production' } : _dzCreds();
-    const r = await fetch('/api/dlp-packs/terraform', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '', ...creds }),
-    });
-    if (!r.ok) {
-      const data = await r.json().catch(() => ({}));
-      throw new Error(data.detail || `HTTP ${r.status}`);
-    }
-    const mode = r.headers.get('X-DLP-Check-Mode') || 'static';
+    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', username: '', password: '', api_key: '', cloud: (_dzCreds() || {}).cloud || 'production' } : _dzCreds();
+    const snap = await _dzRunJob('/api/dlp-packs/terraform/start', { pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '', ...creds });
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The hand-off ended without a result.');
+    if (snap.result.status === 'stopped' || !snap.download) throw new Error(snap.result.stopped || 'The hand-off was stopped before the workspace was built.');
+    const r = await fetch(snap.download, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`The workspace could not be fetched (HTTP ${r.status}).`);
+    const got = r.headers.get('X-DLP-Check-Mode') || snap.result.mode || 'static';
     const blob = await r.blob();
-    const cd = r.headers.get('Content-Disposition') || '';
-    const m = /filename="([^"]+)"/.exec(cd);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = m ? m[1] : 'dlp-check-terraform.zip';
+    a.download = snap.filename || snap.result.filename || 'dlp-check-terraform.zip';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    announce(`Terraform workspace downloaded (${mode === 'gap' ? 'gap mode: existing objects will be imported' : 'static: no tenant credentials given'}).`);
+    TF.last = Object.assign({}, snap.result, { logs: snap.logs, elapsed_seconds: snap.elapsed_seconds });
+    announce(`Terraform workspace downloaded (${got === 'gap' ? 'gap mode: existing objects will be imported' : 'static: no tenant credentials given'}).`);
   } catch (e) {
+    TF.last = { status: 'failed', error: e.message, logs: (DZ.job || {}).logs || [] };
     alert(`Terraform export failed: ${e.message}`);
   } finally {
     DZ.tfBusy = null;
@@ -778,6 +780,8 @@ function _dzJobPhase(J) {
   ];
   for (let i = lines.length - 1; i >= 0; i--) {
     for (const [re, text] of steps) if (re.test(lines[i])) return text;
+    // A tenant read or a generation step names itself.
+    if (/^(Reading the tenant|Generating |Gap mode|Static mode|Checking the approved plan|Tenant read in|Plan: |Ready: )/.test(lines[i])) return lines[i].replace(/…$/, '').trim();
   }
   return lines.length ? 'Working…' : 'Connecting to the tenant…';
 }
@@ -1688,7 +1692,7 @@ function _dzFlowKey(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.prevent
 // provider, for customers whose platform team manages Zscaler as code.
 // Opened through openToolTab('terraform', packIds) so it lives in its own
 // tab like the other tools; the dialog below is what gets mirrored.
-const TF = { packs: [], selected: new Set(), summaries: {}, busy: false, error: '' };
+const TF = { packs: [], selected: new Set(), summaries: {}, busy: false, error: '', last: null };
 function _tfEnsureModal() {
   if (document.getElementById('terraformModal')) return;
   const m = document.createElement('div');
@@ -1758,7 +1762,9 @@ async function _tfDownload() {
   const ids = [...TF.selected];
   if (!ids.length) return;
   TF.busy = true; _tfRender();
-  try { await _dzTerraform(ids, _tfMode()); } finally { TF.busy = false; _tfRender(); }
+  try { await _dzTerraform(ids, _tfMode()); }
+  catch (e) { TF.last = { status: 'failed', error: e.message, logs: (DZ.job || {}).logs || [] }; }
+  finally { TF.busy = false; _tfRender(); }
 }
 function _tfRender() {
   const host = document.getElementById('terraformBody');
@@ -1791,9 +1797,18 @@ function _tfRender() {
     ${sums || '<div class="d">Select at least one pack.</div>'}
     <div class="dz-h">4 · Download and hand over</div>
     <div class="tf-actions">
-      <button type="button" class="dz-btn primary" ${sel.length && !TF.busy ? '' : 'disabled'} onclick="_tfDownload()">${TF.busy ? 'Generating…' : `Download workspace (${mode} mode, ${_dzN(sel.length, 'pack')})`}</button>
-      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.</span>
+      <button type="button" class="dz-btn primary" ${sel.length && !TF.busy ? '' : 'disabled'} onclick="_tfDownload()">${TF.busy ? 'Working…' : `Download workspace (${mode} mode, ${_dzN(sel.length, 'pack')})`}</button>
+      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.${mode === 'gap' ? ' Gap mode reads the whole tenant first (dictionaries, engines, the rules on every channel): a minute or two, shown step by step below.' : ''}</span>
     </div>
+    ${TF.busy ? `
+    <div class="dz-hero" style="margin-top:0.6rem;"><span class="dz-status busy">Working</span><div><div class="lead">${mode === 'gap' ? 'Reading the tenant, then building the workspace…' : 'Building the workspace…'}</div><div class="sub" id="dzJobPhase">${_dzE(_dzJobPhase(DZ.job || {}))}</div></div><div class="dz-elapsed" id="dzJobElapsed" aria-label="Elapsed">${_dzMMSS((DZ.job || {}).startedAt ? (Date.now() - DZ.job.startedAt) / 1000 : 0)}</div></div>
+    <div class="dz-progress"><div class="bar"></div></div>
+    ${_dzJobLiveHtml('Hand-off log')}
+    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" title="Stop reading the tenant; nothing is downloaded">Stop</button></div>` : ''}
+    ${!TF.busy && TF.last ? (TF.last.status === 'ready'
+      ? `<div class="dz-card sev-info" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">Downloaded ${_dzE(TF.last.filename || 'the workspace')}</div><div class="d">${TF.last.mode === 'gap' ? `Gap mode against ${_dzE(TF.last.tenant_label || 'the tenant')}: ${_dzE(Object.entries(TF.last.gap || {}).map(([k, v]) => `${v} ${k}`).join(', ') || 'plan built')}. Objects the tenant already has are imported; the first terraform plan creates only the rest.` : 'Static mode: the whole pack, no tenant read.'} ${TF.last.elapsed_seconds ? `Took ${_dzMMSS(TF.last.elapsed_seconds)} min.` : ''}</div>
+          ${(TF.last.logs || []).length ? `<details class="dz-fold"><summary>Log</summary><div class="dz-log">${_dzE(TF.last.logs.join('\n'))}</div></details>` : ''}</div></div>`
+      : `<div class="dz-card sev-error" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">The hand-off did not finish</div><div class="d">${_dzE(TF.last.error || TF.last.stopped || '')}</div>${(TF.last.logs || []).length ? `<details class="dz-fold" open><summary>Log</summary><div class="dz-log">${_dzE(TF.last.logs.join('\n'))}</div></details>` : ''}</div></div>`) : ''}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What to tell the platform team</div><div class="d">
       <ol class="dz-next">
         <li>Unzip, open the pack folder, copy <code>terraform.tfvars.example</code> to <code>terraform.tfvars</code> and fill in the OneAPI client (or export <code>ZSCALER_CLIENT_ID</code>, <code>ZSCALER_CLIENT_SECRET</code>, <code>ZSCALER_VANITY_DOMAIN</code>). The client needs write access to DLP dictionaries, engines and the rule types in the pack.</li>

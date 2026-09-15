@@ -1935,42 +1935,108 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
     shows exactly what closes the gap. Without credentials (empty
     client_id) the workspace is static. Read-only — nothing is written."""
     try:
-        import pack_deploy
-        import pack_terraform
+        import pack_deploy  # noqa: F401 — availability check; the run is in _run_terraform
+        import pack_terraform  # noqa: F401
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_terraform unavailable: {e}")
     if not req.pack_ids:
         raise HTTPException(status_code=400, detail="Select at least one pack.")
     packs = _resolve_pack_ids(req.pack_ids)
-    report = None
-    mode = "static"
+    creds, client = await _terraform_client(req)
+    result = await asyncio.to_thread(_run_terraform, client, creds, req, packs, None, None)
+    name, media, data = result["artifact"]
+    return Response(content=data, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": result["mode"]})
+
+
+async def _terraform_client(req: DLPPackDeployRequest):
+    """The credentials and, for gap mode, the signed-in SDK client of a
+    Terraform hand-off request. Static mode never touches the tenant."""
     creds = _tenant_creds(req)
     if req.mode == "static":
         creds = tenant_auth.without_identity(creds)
     elif req.mode == "gap" and not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Gap mode needs the tenant credentials; choose static mode or fill in the tenant details.")
-    if tenant_auth.complete(creds):
-        client = await asyncio.to_thread(_build_sdk_client, creds)
-        full = await asyncio.to_thread(
-            pack_deploy.preflight, client, packs,
-            use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
-            channel_targets=req.channel_targets or None,
-        )
-        report = pack_deploy.public_report(full)
-        report["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    client = await asyncio.to_thread(_build_sdk_client, creds) if tenant_auth.complete(creds) else None
+    return creds, client
+
+
+def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, log, cancel) -> Dict[str, Any]:
+    """The hand-off itself, shared by the request that waits for it and the
+    background job the browser follows: in gap mode one read of the
+    tenant (logged step by step) and a plan, then one workspace per pack,
+    zipped. The zip travels as the result's `artifact`."""
+    import pack_deploy
+    import pack_terraform
+    logs: list = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    report = None
+    mode = "static"
+    gap: Dict[str, int] = {}
+    if client is not None:
         mode = "gap"
+        _log(f"Gap mode: reading {tenant_auth.label(creds)} so the workspace imports what already exists and creates only the rest.")
+        full = pack_deploy.preflight(client, packs, use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
+                                     channel_targets=req.channel_targets or None, log=_log)
+        report = pack_deploy.public_report(full)
+        report["tenant_label"] = tenant_auth.label(creds)
+        for it in report.get("items") or []:
+            if it.get("kind") == "tweak":
+                continue
+            gap[it.get("status") or "?"] = gap.get(it.get("status") or "?", 0) + 1
+        _log("Plan: " + ", ".join(f"{n} {status}" for status, n in sorted(gap.items())) + ".")
+    else:
+        _log("Static mode: no tenant read; the workspace describes the whole pack.")
     workspaces = {}
     for p in packs:
-        files = await asyncio.to_thread(
-            pack_terraform.generate, p,
-            report=pack_terraform.split_report(report, p["id"]) if report else None,
-            channel_targets=(req.channel_targets or {}).get(p["id"]),
-        )
+        if cancel is not None and cancel.is_set():
+            _log("Stopped before the workspace was built.")
+            return {"status": "stopped", "stopped": "You clicked Stop.", "mode": mode, "packs": list(workspaces), "logs": logs}
+        _log(f"Generating the Terraform workspace for {p.get('name') or p['id']}…")
+        files = pack_terraform.generate(p, report=pack_terraform.split_report(report, p["id"]) if report else None,
+                                        channel_targets=(req.channel_targets or {}).get(p["id"]))
         workspaces[p["id"]] = files
+        _log(f"  {len(files)} files" + (", imports.tf included" if "imports.tf" in files else "") + ".")
     data = pack_terraform.zip_workspaces(workspaces)
     name = f"dlp-check-terraform-{mode}-{'-'.join(req.pack_ids)[:60]}.zip"
-    return Response(content=data, media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": mode})
+    _log(f"Ready: {name} ({len(data) // 1024} KB).")
+    return {"status": "ready", "mode": mode, "filename": name, "bytes": len(data), "packs": list(workspaces), "gap": gap,
+            "tenant_label": tenant_auth.label(creds) if client is not None else "", "logs": logs,
+            "artifact": (name, "application/zip", data)}
+
+
+@app.post("/api/dlp-packs/terraform/start")
+async def dlp_packs_terraform_start(req: DLPPackDeployRequest):
+    """Start the same Terraform hand-off as /terraform as a background job
+    and return its id at once; poll GET /api/dlp-packs/jobs/{job_id} for
+    the log (in gap mode the tenant read, step by step) and, once it is
+    done, fetch the zip from the `download` path the snapshot names."""
+    import pack_jobs
+    if not req.pack_ids:
+        raise HTTPException(status_code=400, detail="Select at least one pack.")
+    packs = _resolve_pack_ids(req.pack_ids)
+    creds, client = await _terraform_client(req)
+    job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.get("/api/dlp-packs/jobs/{job_id}/download")
+async def dlp_pack_job_download(job_id: str):
+    """The file a finished job produced (a Terraform workspace zip)."""
+    import pack_jobs
+    job = pack_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job. Jobs are kept for an hour after they finish; start the hand-off again.")
+    if job.artifact is None:
+        raise HTTPException(status_code=409, detail="This job has no file to download" + (" yet; it is still running." if job.status == pack_jobs.RUNNING else "."))
+    name, media, data = job.artifact
+    return Response(content=data, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "X-DLP-Check-Mode": str((job.result or {}).get("mode") or "")})
 
 
 @app.post("/api/dlp-packs/apply")

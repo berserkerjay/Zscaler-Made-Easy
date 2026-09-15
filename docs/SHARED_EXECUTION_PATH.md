@@ -119,8 +119,12 @@ The same entries are written to the Python logger `dlp_check.packs`.
 A deploy or removal is minutes of API calls, an activation, a wait for
 ACTIVE and a read-back. The GUI does not wait on one HTTP request for
 that: `POST /api/dlp-packs/apply/start` and
-`POST /api/dlp-packs/removal/apply/start` run the same function as
-`/apply` in a thread (`pack_jobs.py`) and return a job id at once;
+`POST /api/dlp-packs/removal/apply/start` (and
+`POST /api/dlp-packs/terraform/start` for the Terraform hand-off, whose
+zip is then fetched from `GET /api/dlp-packs/jobs/{id}/download`) run the
+same function as the waiting endpoint in a thread (`pack_jobs.py`) and
+return a job id at once; every tenant read logs each step
+(`fetch_tenant`), so a minute of API calls is never silent;
 `GET /api/dlp-packs/jobs/{id}?since=N` returns the status, the elapsed
 time, the log lines from `N` on and, once finished, the same result the
 waiting endpoint returns; `POST /api/dlp-packs/jobs/{id}/cancel` is the

@@ -150,7 +150,7 @@ def test_preflight_reads_the_tenant_once_per_journey(monkeypatch):
     real = pd.fetch_tenant
     calls = []
 
-    def counting(cl, need=None):
+    def counting(cl, need=None, log=None):
         calls.append(need)
         return real(cl, need)
 

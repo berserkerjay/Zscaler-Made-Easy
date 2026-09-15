@@ -18,7 +18,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Statuses a job moves through. `running` → one of the final three.
 RUNNING, DONE, FAILED, CANCELLED = "running", "done", "failed", "cancelled"
@@ -40,6 +40,9 @@ class Job:
     logs: List[str] = field(default_factory=list)
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    # A file the job produced (a Terraform workspace zip): (filename, media type, bytes),
+    # served by the download endpoint; never part of the JSON snapshot.
+    artifact: Optional[Tuple[str, str, bytes]] = None
     cancel: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -72,6 +75,10 @@ def start(kind: str, fn: JobFn, *, label: str = "") -> Job:
             result = fn(job.log, job.cancel)
             with job.lock:
                 job.result = result if isinstance(result, dict) else {"result": result}
+                # A produced file travels beside the JSON result, never inside it.
+                artifact = job.result.pop("artifact", None)
+                if isinstance(artifact, tuple) and len(artifact) == 3:
+                    job.artifact = artifact
                 job.status = CANCELLED if (job.cancel.is_set() and (job.result or {}).get("stopped")) else DONE
         except Exception as e:  # noqa: BLE001 — the job reports, never crashes the server
             with job.lock:
@@ -114,6 +121,10 @@ def snapshot(job: Job, since: int = 0) -> Dict[str, Any]:
         if job.status != RUNNING:
             out["result"] = job.result
             out["error"] = job.error
+            if job.artifact is not None:
+                out["download"] = f"/api/dlp-packs/jobs/{job.id}/download"
+                out["filename"] = job.artifact[0]
+                out["bytes"] = len(job.artifact[2])
     return out
 
 

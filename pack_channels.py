@@ -31,7 +31,7 @@ itself; the others do not).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -757,11 +757,13 @@ def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     return out
 
 
-def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
+def fetch_channel_state(zia, need: Dict[str, Any], log: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
     """Read the rule lists for every non-web channel the packs use, plus
     the shared prerequisites (SaaS tenants, notification templates,
     labels) they reference. Never raises; errors are recorded per item so
-    one unlicensed feature only blocks the rules that need it."""
+    one unlicensed feature only blocks the rules that need it. `log` gets
+    one line per read, so a long tenant read is never silent."""
+    _log = log or (lambda m: None)
     state: Dict[str, Any] = {
         "rules": {},          # channel -> [rule summaries]
         "errors": {},         # channel -> error string
@@ -778,8 +780,10 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
         "planned_app_groups": set(),
     }
     if need.get("endpoint_app_groups"):
+        _log("Reading the tenant: endpoint application groups…")
         state["app_groups"], state["app_groups_error"] = list_app_groups(zia)
     for cls in sorted(need.get("app_classes") or ()):
+        _log(f"Reading the tenant: cloud applications of class {cls}…")
         try:
             svc = getattr(zia, "cloud_applications", None)
             if svc is None:
@@ -803,6 +807,7 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
         if svc is None:
             state["errors"][ch] = f"{CHANNELS[ch]['service']} is not available in the installed zscaler-sdk-python"
             continue
+        _log(f"Reading the tenant: {label(ch)} rules…")
         try:
             if ch == SAAS:
                 lister = getattr(svc, "list_all_rules", None)
@@ -842,8 +847,10 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
                         flat.append(srs)
                 rules = flat
             state["rules"][ch] = rules
+            _log(f"Reading the tenant: {label(ch)} rules: {len(rules)} found.")
         except Exception as e:  # noqa: BLE001 — surfaced as a dependency failure
             state["errors"][ch] = str(e)[:200]
+            _log(f"Reading the tenant: {label(ch)} rules could not be listed: {str(e)[:120]}")
 
     # Cloud App Control: the actions a rule may carry depend on the type and
     # the applications, so packs that map verbs ("UPLOAD": "BLOCK") are
@@ -869,6 +876,7 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
             state["cloud_app_action_errors"][key] = str(e)[:200]
 
     if need["casb"]:
+        _log("Reading the tenant: SaaS application tenants…")
         try:
             svc = getattr(zia, "saas_security_api", None)
             if svc is None:
@@ -893,6 +901,7 @@ def fetch_channel_state(zia, need: Dict[str, Any]) -> Dict[str, Any]:
             state["casb_error"] = str(e)[:200]
 
     if need["templates"]:
+        _log("Reading the tenant: DLP notification templates…")
         try:
             svc = getattr(zia, "dlp_templates", None)
             if svc is None:
