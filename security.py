@@ -43,12 +43,9 @@ from starlette.types import ASGIApp
 # Known good Zscaler clouds — anything else is rejected to prevent SSRF
 # (an attacker injecting a custom "cloud" value to make the server
 # fetch from an arbitrary host).
-ALLOWED_CLOUDS = {
-    "production", "zscloud", "zscaler", "zscalerone",
-    "zscalertwo", "zscalerthree", "zscalerten", "zspreview", "zscalerbeta",
-    # OneAPI / Zidentity environment names (provider docs: beta, gov, govus)
-    "beta", "gov", "govus", "zscalergov",
-}
+# Every cloud a tenant can live on, and its aliases (zscaler_clouds.py is the one table).
+import zscaler_clouds as _clouds
+ALLOWED_CLOUDS = set(_clouds.ALLOWED)
 
 # Browser-borne origins we trust for state-changing requests: this
 # server's own address only (the default port and the configured
@@ -167,14 +164,13 @@ def set_write_mode(enable: bool, confirm: str = "") -> dict:
 # ── Validation helpers ───────────────────────────────────────────────────────
 
 def validate_cloud(cloud: str) -> str:
-    """The Zscaler cloud name, lower-cased; 400 when it is not one the app knows."""
-    cloud = (cloud or "production").strip().lower()
-    if cloud not in ALLOWED_CLOUDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid cloud '{cloud}'. Allowed: {sorted(ALLOWED_CLOUDS)}",
-        )
-    return cloud
+    """The tenant's cloud as the app stores it (zscalerten, zscalergov, ...),
+    accepting every spelling zscaler_clouds knows; 400 with the accepted
+    names when it is not a Zscaler cloud."""
+    try:
+        return _clouds.normalize(cloud)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def validate_vanity(vd: str) -> str:

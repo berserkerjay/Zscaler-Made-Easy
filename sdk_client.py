@@ -84,11 +84,19 @@ class SdkClient:
 
     def __init__(self, client_id: str, client_secret: str,
                  vanity_domain: str, cloud: str):
+        # The SDK's `cloud` is the OneAPI environment (beta / gov / govus),
+        # not the ZIA cloud name: a commercial tenant on zscloud.net or
+        # zscalerten.net signs in at zslogin.net and calls api.zsapi.net.
+        import zscaler_clouds
+        try:
+            env = zscaler_clouds.environment(cloud)
+        except ValueError:
+            env = None
         self._config = {
             "clientId": client_id,
             "clientSecret": client_secret,
             "vanityDomain": vanity_domain,
-            "cloud": cloud,
+            "cloud": env or "production",
         }
         self._zs: Optional[ZscalerClient] = None
         self._cache: Dict[str, Tuple[Any, int]] = {}
@@ -270,5 +278,5 @@ def from_env() -> SdkClient:
         client_id=os.environ["ZSCALER_CLIENT_ID"],
         client_secret=os.environ["ZSCALER_CLIENT_SECRET"],
         vanity_domain=os.environ["ZSCALER_VANITY_DOMAIN"],
-        cloud=os.environ.get("ZSCALER_CLOUD", "zscloud"),
+        cloud=os.environ.get("ZSCALER_CLOUD", "production"),
     )

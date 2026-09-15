@@ -884,14 +884,11 @@ def _oneapi_cloud(cloud: str) -> Optional[str]:
     production tenants must NOT send a cloud value (the SDK builds the
     Zidentity URL from the vanity domain alone); only beta and the
     FedRAMP clouds need one."""
-    c = (cloud or "").strip().lower()
-    if c in ("beta", "zscalerbeta", "zspreview"):
-        return "beta"
-    if c in ("gov", "zscalergov"):
-        return "gov"
-    if c == "govus":
-        return "govus"
-    return None
+    import zscaler_clouds
+    try:
+        return zscaler_clouds.environment(cloud)
+    except ValueError:
+        return None
 
 
 def _build_sdk_client(creds: Dict[str, str]):

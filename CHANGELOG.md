@@ -4,6 +4,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-15
+
+### Every Zscaler cloud, including zscalerten.net and the government clouds, from one table
+- **What was wrong.** The cloud picker offered six commercial clouds and no way to choose zscalerten.net, zscalergov.net or zscalergov.us, while its help text told government customers to "use gov" with no such option. Worse, the assessment engine built the API address from the cloud name (`api.zscloud.zsapi.net`, `api.zscalerthree.zsapi.net`), which does not exist for commercial clouds, and always signed in at zslogin.net, which the FedRAMP clouds do not use; the SDK wrapper passed the cloud name straight through with the same effect. Only Deploy Policy Packs mapped beta and gov correctly.
+- **Now** `zscaler_clouds.py` is the one table: every cloud a tenant can live on (zscaler.net, zscalerone.net, zscalertwo.net, zscalerthree.net, zscloud.net, zscalerten.net, zscalerbeta.net, zscalergov.net, zscalergov.us), its admin host and its OneAPI environment. Every commercial cloud signs in at `<vanity>.zslogin.net` and calls `api.zsapi.net`; beta uses the beta hosts; zscalergov.net and zscalergov.us use their own FedRAMP identity provider and gateway (`zidentitygov.net` / `api.zscalergov.net`, `zidentitygov.us` / `api.zscalergov.us`). The GUI picker lists them by admin URL, the server validator accepts every spelling people use (`gov`, `govus`, `zscalerten.net`, `admin.zscalergov.net`, upper case) and names the accepted values otherwise, and the assessment engine, the SDK wrapper, the MCP server and the discovery tool all resolve hosts through the table. Saved profiles with the old values keep working.
+- Tests cover every cloud's login and gateway from each entry point and that the picker offers them all.
+- **CI's lock check no longer fails on other people's release days.** It compiled `requirements.txt` from scratch and compared, so any dependency publishing a new version (tzdata, pyjwt, urllib3, uvicorn in the last three days) turned every pull request red. It now compiles on top of the committed lock, which fails only when `requirements.txt` changed without a re-lock; new versions come in through `make lock`, and known vulnerabilities in the pinned set are still caught by the pip-audit step. The lock is refreshed to today's versions.
+
 ## 2026-09-13
 
 ### Refactor pass and two packaging targets from one tree

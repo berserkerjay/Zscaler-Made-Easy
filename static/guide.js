@@ -503,9 +503,20 @@ async function _gdProfilesLoad() {
   } catch (e) { GD.profiles = GD.profiles || []; }
   _gdProfilesRender();
 }
+// The cloud value a saved profile carries, as the picker spells it today
+// (older profiles stored gov / govus / beta / zspreview; see zscaler_clouds.py).
+function _gdCloudValue(cloud) {
+  const c = String(cloud || 'production').trim().toLowerCase().replace(/^admin\./, '').replace(/\.net$/, '');
+  const alias = { '': 'production', prod: 'production', commercial: 'production', beta: 'zscalerbeta', zspreview: 'zscalerbeta', preview: 'zscalerbeta',
+    gov: 'zscalergov', fedramp: 'zscalergov', govus: 'zscalergovus', 'zscalergov.us': 'zscalergovus', ten: 'zscalerten' };
+  const v = alias[c] || c;
+  const sel = document.getElementById('cloud');
+  return sel && [...sel.options].some(o => o.value === v) ? v : 'production';
+}
+
 function _gdProfileFill(p) {
   const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
-  set('org', p.org_name || ''); set('assessor', p.assessor || ''); set('cloud', p.cloud || 'production');
+  set('org', p.org_name || ''); set('assessor', p.assessor || ''); set('cloud', _gdCloudValue(p.cloud));
   set('vd', p.vanity_domain || ''); set('cid', p.client_id || ''); set('custid', p.customer_id || '');
   set('csec', '');
   if (Array.isArray(p.scopes) && p.scopes.length && typeof setSelectedScopes === 'function') setSelectedScopes(p.scopes);

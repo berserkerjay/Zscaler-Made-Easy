@@ -83,7 +83,7 @@ both are git-ignored), the container reads `.env`.
 | `ZSCALER_OPEN_BROWSER` | unset | `1` opens the browser when the server starts (the launchers set it). |
 | `ZSCALER_DEBUG` | unset | `1` shows tracebacks and request logs. |
 | `ZSCALER_MAX_BODY_MB` | `10` | Request body cap, 1–100 MB. |
-| `ZSCALER_CLOUD`, `ZSCALER_VANITY_DOMAIN`, `ZSCALER_CLIENT_ID`, `ZSCALER_CLIENT_SECRET` | unset | Pre-fill the tenant credentials (never required; the form or a saved profile work too). |
+| `ZSCALER_CLOUD`, `ZSCALER_VANITY_DOMAIN`, `ZSCALER_CLIENT_ID`, `ZSCALER_CLIENT_SECRET` | unset | Pre-fill the tenant credentials (never required; the form or a saved profile work too). `ZSCALER_CLOUD` is the cloud in the tenant's admin URL: `zscaler`, `zscalerone`, `zscalertwo`, `zscalerthree`, `zscloud`, `zscalerten` (all commercial: zslogin.net and api.zsapi.net), `zscalerbeta`, `zscalergov` (zscalergov.net) or `zscalergovus` (zscalergov.us); the government clouds use their own FedRAMP sign-in and gateway. |
 | `HTTPS_PROXY`, `REQUESTS_CA_BUNDLE`, `ZSCALER_UPDATE_PROXY`, `ZSCALER_UPDATE_VERIFY_TLS` | unset | Corporate proxy and TLS inspection. |
 | `DLP_CHECK_PROFILES`, `DLP_CHECK_DEPLOYMENTS`, `DLP_CHECK_AUDIT`, `DLP_CHECK_USER_PACKS` | app folder | Where profiles, deployment records, the audit log and uploaded packs are stored (the container points them at `/data`). |
 

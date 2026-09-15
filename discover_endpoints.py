@@ -23,11 +23,17 @@ try:
 except ImportError:
     print("pip install requests"); sys.exit(1)
 
-BASE_URL = "https://api.{cloud}.zsapi.net/v1"
+import zscaler_clouds
+
+
+def _base_url(cloud):
+    """The OneAPI gateway for the tenant's cloud (zscaler_clouds)."""
+    return zscaler_clouds.api_base(cloud) + "/v1"
+
 
 def _token_url(vd, cloud):
-    """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
-    return f"https://{vd}.zslogin.net/oauth2/v1/token"
+    """The OAuth2 token endpoint for the tenant's cloud (zscaler_clouds)."""
+    return zscaler_clouds.token_url(vd, cloud)
 
 # ── Every plausible endpoint path to probe ─────────────────────────
 # Organized by product and feature area
@@ -171,7 +177,7 @@ def main():
     with open(args.config) as f:
         cfg = json.load(f)
 
-    base_url = BASE_URL.format(cloud=cfg["cloud"])
+    base_url = _base_url(cfg.get("cloud"))
 
     print(f"\n{'='*60}")
     print("  ZSCALER ONEAPI ENDPOINT DISCOVERY")

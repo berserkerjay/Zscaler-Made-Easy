@@ -30,17 +30,20 @@ try:
 except ImportError:
     HAS_RICH = False
 
-CLOUDS = ["production","zscloud","zscaler","zscalerone","zscalertwo","zscalerthree","zspreview","zscalerbeta"]
+import zscaler_clouds
+
+CLOUDS = list(zscaler_clouds.CLOUDS)
 
 def _base_url(cloud):
-    """Build the OneAPI base URL. Production has no cloud prefix."""
-    if not cloud or cloud in ("production", ""):
-        return "https://api.zsapi.net"
-    return f"https://api.{cloud}.zsapi.net"
+    """The OneAPI gateway for the tenant's cloud: api.zsapi.net for every
+    commercial cloud (zscaler.net ... zscalerten.net), the beta gateway for
+    zscalerbeta, the FedRAMP gateways for zscalergov.net / zscalergov.us."""
+    return zscaler_clouds.api_base(cloud)
 
 def _token_url(vd, cloud):
-    """Build the OneAPI OAuth2 token URL. Auth always goes through zslogin.net."""
-    return f"https://{vd}.zslogin.net/oauth2/v1/token"
+    """The OAuth2 token endpoint for the tenant's cloud (zslogin.net for
+    commercial clouds, the government identity provider for FedRAMP)."""
+    return zscaler_clouds.token_url(vd, cloud)
 
 # OneAPI service path prefixes (confirmed via SDK source + Postman)
 # ZCC OneAPI uses function-style endpoints (not REST collections)

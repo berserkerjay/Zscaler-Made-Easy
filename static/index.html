@@ -814,15 +814,18 @@
       <div class="field">
         <label for="cloud">Zscaler Cloud <span class="required">*</span></label>
         <select id="cloud" aria-label="Zscaler cloud">
-          <option value="production" selected>Production (api.zsapi.net)</option>
-          <option value="zscloud">zscloud</option>
-          <option value="zscaler">zscaler</option>
-          <option value="zscalerone">zscalerone</option>
-          <option value="zscalertwo">zscalertwo</option>
-          <option value="zscalerthree">zscalerthree</option>
-          <option value="zscalerbeta">zscalerbeta (preview)</option>
+          <option value="production" selected>Commercial (zscaler.net and every other commercial cloud)</option>
+          <option value="zscaler">zscaler.net</option>
+          <option value="zscalerone">zscalerone.net</option>
+          <option value="zscalertwo">zscalertwo.net</option>
+          <option value="zscalerthree">zscalerthree.net</option>
+          <option value="zscloud">zscloud.net</option>
+          <option value="zscalerten">zscalerten.net</option>
+          <option value="zscalerbeta">zscalerbeta.net (beta / preview)</option>
+          <option value="zscalergov">zscalergov.net (US Government, FedRAMP)</option>
+          <option value="zscalergovus">zscalergov.us (US Government, FedRAMP)</option>
         </select>
-        <div class="helper">Leave on <strong>Production</strong> unless the customer's ZIA admin URL is on another cloud: <code>admin.zscalerthree.net</code> → zscalerthree, <code>admin.zscloud.net</code> → zscloud. Government tenants use beta/gov/govus.</div>
+        <div class="helper">Pick the cloud in the customer's ZIA admin URL: <code>admin.zscalerten.net</code> → zscalerten.net, <code>admin.zscalergov.net</code> → zscalergov.net. Every commercial cloud signs in at zslogin.net and uses api.zsapi.net, so <strong>Commercial</strong> works for all of them; the Government clouds sign in and call their own FedRAMP gateway.</div>
       </div>
       <div class="field">
         <label>Vanity Domain <span class="required">*</span></label>

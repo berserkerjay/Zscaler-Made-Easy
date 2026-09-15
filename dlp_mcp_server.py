@@ -21,7 +21,7 @@ Environment variables:
     ZSCALER_CLIENT_ID       — API client ID
     ZSCALER_CLIENT_SECRET   — Client secret
     ZSCALER_VANITY_DOMAIN   — Org vanity domain
-    ZSCALER_CLOUD           — Cloud (default: zscloud)
+    ZSCALER_CLOUD           — Cloud from the tenant admin URL (default: production; zscalergov / zscalergovus for FedRAMP)
 
 Tools exposed:
     run_assessment    — Full 150+ check assessment with scored report
@@ -102,7 +102,7 @@ def _create_client(
         client_id=client_id or os.environ.get("ZSCALER_CLIENT_ID", ""),
         client_secret=client_secret or os.environ.get("ZSCALER_CLIENT_SECRET", ""),
         vanity_domain=vanity_domain or os.environ.get("ZSCALER_VANITY_DOMAIN", ""),
-        cloud=cloud or os.environ.get("ZSCALER_CLOUD", "zscloud"),
+        cloud=cloud or os.environ.get("ZSCALER_CLOUD", "production"),
     )
 
 
