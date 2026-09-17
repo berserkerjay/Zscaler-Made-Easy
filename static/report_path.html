@@ -28,13 +28,18 @@
     </nav>
     <main class="rp-card">
       <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <details class="pa-framework" id="paFramework" open>
+        <summary>The framework: how Zscaler processes a policy, device to incident</summary>
+        <div class="df-hint">Every analysis below walks this exact order — Zscaler's own documented policy-enforcement sequence — starting from the destination's <strong>assigned Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with Endpoint DLP, SaaS Security API and Email DLP evaluated in parallel on the same data. Nothing here is specific to one destination; it is the reference every result is measured against.</div>
+        <div id="paFrameworkBody"></div>
+      </details>
       <div id="paBody">
         <div class="pa-intro" id="paHow">
           <div class="pa-intro-t">How it works</div>
           <ol class="pa-steps">
             <li><strong>Type a destination</strong> exactly as a user would: a full URL, a hostname or an IP address. Pick the network the device is on and its platform.</li>
             <li><strong>Analyze.</strong> The first run reads the tenant (Client Connector profiles, PAC files and every ZIA policy: about a minute of API calls, shown live). Later runs reuse that read and only look the destination up, so they take a few seconds.</li>
-            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every point that blocks or impacts the traffic is listed with the rule or profile by name, then the path hop by hop.</li>
+            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every point that blocks or impacts the traffic is listed with the rule or profile by name, then the path hop by hop against the framework above.</li>
           </ol>
           <div class="df-hint">Nothing is written to the tenant. The answer is the configuration's answer for any user, group and location at this moment, not a transaction log; the assumptions are listed under every result.</div>
         </div>
@@ -62,6 +67,11 @@
     document.getElementById('paNet').innerHTML = NETWORKS.map(([k, l]) => `<option value="${k}">${E(l)}</option>`).join('');
     document.getElementById('paPlat').innerHTML = PLATFORMS.map(p => `<option value="${p}">${p}</option>`).join('');
     document.getElementById('paLive').hidden = !(window.opener && !window.opener.closed);
+    // The reference framework diagram (Zscaler's own documented policy
+    // order, device to incident) is static — it needs no tenant read and
+    // is shown before any destination is analyzed, so the page always
+    // represents the framework every result is measured against.
+    renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'));
 
     // Credentials: the assessment tab that opened this page holds them;
     // otherwise a saved tenant profile, or what the server has in its
@@ -184,6 +194,13 @@
           ${i.fix ? `<div class="df-hop-d pa-fix"><strong>What to do:</strong> ${E(i.fix)}</div>` : ''}
         </li>`;
       const chans = Object.values(t.channels || {}).map(c => { const [lab, cls] = DF_STATUS[c.status] || [c.status, 'dim']; return `<div class="df-chan st-${cls}"><div class="df-hop-h"><span class="df-chip st-${cls}">${E(lab)}</span><strong>${E(c.label)}</strong></div><div class="df-hop-d">${E(c.detail)}</div></div>`; }).join('');
+      // The assigned app / forwarding profile for this destination, network
+      // and platform — the two objects the framework above starts from.
+      const zccHop = (t.hops || []).find(h => h.key === 'zcc');
+      const fwdHop = (t.hops || []).find(h => h.key === 'forwarding');
+      const appProf = (zccHop && zccHop.decided_by && zccHop.decided_by.name) || (zccHop && zccHop.profile) || '—';
+      const fwdProf = (fwdHop && fwdHop.decided_by && fwdHop.decided_by.name) || '—';
+      const fwdMode = (fwdHop && fwdHop.mode) ? ` (${E(fwdHop.mode)})` : '';
       meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
       body.innerHTML = `
         <section class="pa-verdict st-${ocls}" aria-labelledby="paHeadline">
@@ -198,6 +215,10 @@
             <span class="df-prof"><span class="k">Content inspected</span>${yesno(v.content_inspected, 'yes', 'no')}</span>
             <span class="df-prof"><span class="k">ZIA categories</span><span class="v">${E((v.categories || []).join(', ') || (lk.error ? `lookup failed: ${lk.error}` : 'none returned'))}</span></span>
             ${(v.applications || []).length ? `<span class="df-prof"><span class="k">Cloud app</span><span class="v">${E(v.applications.join(', '))}</span></span>` : ''}
+          </div>
+          <div class="df-profiles">
+            <span class="df-prof"><span class="k">Assigned Client Connector app profile</span><span class="v">${E(appProf)}</span></span>
+            <span class="df-prof"><span class="k">Assigned forwarding profile</span><span class="v">${E(fwdProf)}${E(fwdMode)}</span></span>
           </div>
         </section>
         <h2 class="df-h">What blocks this traffic</h2>

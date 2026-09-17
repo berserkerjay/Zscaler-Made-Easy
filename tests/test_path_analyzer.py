@@ -164,6 +164,25 @@ def test_the_page_is_served_wired_and_explained():
     assert re.search(r"^  X\.path = \{", explain, re.M) and "'/report/path': 'path'" in explain
 
 
+def test_the_page_shows_the_policy_framework_and_the_assigned_profiles():
+    """The page states up front, before any destination is typed, the
+    framework every analysis is measured against (Zscaler's own policy
+    order, device to incident) — and each result names the assigned
+    Client Connector app profile and forwarding profile that decided the
+    early hops, not just the object that happened to block the traffic."""
+    import os
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    html = TestClient(srv.app).get("/report/path").text
+    assert 'id="paFramework"' in html and "how Zscaler processes a policy" in html
+    assert "renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'))" in html
+    assert "assigned Client Connector app profile" in html and "forwarding profile" in html.lower()
+    assert 'Assigned Client Connector app profile' in html and 'Assigned forwarding profile' in html
+    css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
+    assert ".pa-framework" in css and ".pa-framework > summary:focus-visible" in css
+
+
 def test_stop_is_honoured_between_read_steps_and_said_in_words():
     c = _lookup_client()
     logs = []
