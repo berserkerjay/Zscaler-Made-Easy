@@ -251,12 +251,14 @@ GUI_ADDONS = [
     ("deploy_studio.css", "style"),
     ("guide.css", "style"),
     ("reports.css", "style"),
+    ("dashboard.css", "style"),
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
     ("guide.js", "script"),
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
+    ("dashboard.js", "script"),     # last: wraps showResults / renderChecks / resetForm
 ]
 
 
