@@ -508,7 +508,10 @@
   const icon = name => (ICONS.find(([re]) => re.test(name || '')) || [null, '📁'])[1];
   function pillars(sections) {
     const host = $('dbPillars'); if (!host) return;
-    host.innerHTML = Object.entries(sections || {}).map(([name, d]) => {
+    // Automation Readiness (SDK/OneAPI, Terraform, Ansible, ZPA, ZCC, IaC
+    // Hygiene) still runs and still counts toward the overall score; it
+    // just doesn't get its own tiles cluttering this grid.
+    host.innerHTML = Object.entries(sections || {}).filter(([name]) => !/^Automation — /.test(name)).map(([name, d]) => {
       const [lv, cls] = level(d.pct || 0);
       const scored = (d.total || 0) - (d.info || 0);
       return `<button type="button" class="db-pillar" data-section="${E(name)}" aria-label="${E(name)}: ${d.pct}%, ${d.pass || 0} of ${scored} configured, ${lv}. Show these findings.">

@@ -62,6 +62,16 @@ def test_the_dashboard_keeps_every_id_the_inline_script_updates():
     assert "openRemediationReview" in js and "openDataFlowTab" in js and "downloadDocx" in js and "openDlpPacksModal" in js and "openPathAnalyzerTab" in js
 
 
+def test_automation_readiness_sections_do_not_get_their_own_pillar_tiles():
+    """Automation Readiness (SDK/OneAPI, Terraform, Ansible, ZPA, ZCC, IaC
+    Hygiene) still runs and still counts toward the overall score — only
+    the Score by Section grid stops giving each of its six sub-sections
+    its own tile; every other section keeps one."""
+    js = _read("dashboard.js")
+    assert "filter(([name]) => !/^Automation — /.test(name))" in js
+    assert "function pillars(sections)" in js
+
+
 def test_the_stylesheet_reads_the_tokens_and_respects_reduced_motion_and_light_theme():
     css = _read("dashboard.css")
     assert ":root" not in css, "tokens live in index.html's first <style>"

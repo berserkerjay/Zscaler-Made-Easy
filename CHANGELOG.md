@@ -6,6 +6,11 @@ what each batch of changes did, newest first.
 
 ## 2026-09-17
 
+### Automation Readiness no longer gets its own pillar tiles
+- **What you asked for.** "Remove these automation blocks in the check" (screenshot of the Score by Section grid showing six "Automation — ..." tiles).
+- **Now** the Score by Section grid on the Dashboard no longer breaks Automation Readiness out into its own six tiles (SDK / OneAPI, Terraform, Ansible, ZPA, ZCC, IaC Hygiene). Those checks still run and still count toward the overall maturity score exactly as before — only the pillar grid stops giving each of them a separate card. Every other section is unaffected.
+- Verified: `tests/test_dashboard.py` (the filter is in place on the pillar renderer). Browser run with synthetic Automation sections confirms all six are absent from the rendered grid while an unrelated section and a genuinely empty non-Automation section both still render, with no console errors.
+
 ### Scope: Channels, Assessment Scope and Compliance Frameworks combined into one page
 - **What you asked for.** "Channels and assessment scope and compliance need to be combined into the Scope link."
 - **Now** there is one **Scope** link in the sidebar (Channels is no longer a separate nav item). It opens a single page with three sections, stacked: **Channels** (the same 11-channel Zscaler-owned/alternative/gap picker, with a compact running tally), **Assessment Scope** (which parts of the platform to check — DLP, ZIA, ZPA, ZCC, GenAI, Automation, and the rest), and **Compliance Frameworks** (which frameworks the report should map to). The Assessment Scope and Compliance Frameworks checkboxes are the exact fields the assessment already reads — moved into the page, not copied — so ticking one here is the same as ticking it anywhere else; nothing can drift out of sync. A Continue button at the bottom leads into Connect to the tenant. The page hides the rest of the dashboard while open and hides itself the moment you navigate elsewhere, same as the rest of the workflow.
