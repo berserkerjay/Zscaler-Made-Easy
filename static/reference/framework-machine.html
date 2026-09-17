@@ -1,0 +1,443 @@
+<title>The Framework Machine</title>
+<style>
+  :root {
+    --paper:#F5F8FA; --card:#FFFFFF; --ink:#182430; --muted:#5A6E80; --dim:#8CA0B0;
+    --line:#D7E0E8; --line-soft:#E8EEF3;
+    --src:#A66B0F;  --src-soft:#F7EDD8;   /* truth sources */
+    --skill:#1268B3; --skill-soft:#E4EFF8; /* skills */
+    --fab:#7C5CC4;  --fab-soft:#EFEAF9;   /* factory */
+    --out:#1E7A52;  --out-soft:#E1F1E9;   /* outputs */
+    --crit:#B6423C; --crit-soft:#F8E6E4;  /* gotchas */
+    --shadow:0 8px 24px rgba(24,48,72,.07);
+    --disp:"Avenir Next","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:#0E161E; --card:#16222D; --ink:#E6EEF4; --muted:#9FB2C2; --dim:#68798A;
+      --line:#28394A; --line-soft:#1E2C3A;
+      --src:#D9A24A;  --src-soft:#33270F;
+      --skill:#5AA3E0; --skill-soft:#14293E;
+      --fab:#A98FE8;  --fab-soft:#261F3D;
+      --out:#5BBE93;  --out-soft:#122E22;
+      --crit:#E0776F; --crit-soft:#391B18;
+      --shadow:0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#0E161E; --card:#16222D; --ink:#E6EEF4; --muted:#9FB2C2; --dim:#68798A;
+    --line:#28394A; --line-soft:#1E2C3A;
+    --src:#D9A24A;  --src-soft:#33270F;
+    --skill:#5AA3E0; --skill-soft:#14293E;
+    --fab:#A98FE8;  --fab-soft:#261F3D;
+    --out:#5BBE93;  --out-soft:#122E22;
+    --crit:#E0776F; --crit-soft:#391B18;
+    --shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--paper); color:var(--ink); font-family:var(--disp); font-size:15.5px; line-height:1.6; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 26px; }
+  code, .mono { font-family:var(--mono); font-size:.86em; }
+  code { background:var(--line-soft); border-radius:5px; padding:1px 6px; white-space:nowrap; }
+
+  header { padding:52px 0 8px; }
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:2.2px; text-transform:uppercase; color:var(--skill); margin-bottom:14px; }
+  h1 { font-size:clamp(34px,5vw,52px); font-weight:800; letter-spacing:-1px; line-height:1.05; text-wrap:balance; }
+  .lede { margin-top:14px; color:var(--muted); max-width:72ch; font-size:16.5px; }
+  .lede b { color:var(--ink); }
+
+  h2 { font-size:26px; font-weight:800; letter-spacing:-.4px; margin-bottom:6px; text-wrap:balance; }
+  .sect { padding:44px 0 6px; }
+  .sub { color:var(--muted); max-width:76ch; margin-bottom:22px; }
+
+  /* diagram */
+  .figwrap { background:var(--card); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow); padding:18px 14px 8px; overflow-x:auto; margin-top:26px; }
+  svg.map { display:block; min-width:1280px; width:100%; height:auto; }
+  .figcap { font-size:12.5px; color:var(--muted); padding:10px 8px 8px; }
+  .legend { display:flex; flex-wrap:wrap; gap:16px; padding:2px 8px 10px; font-size:12px; color:var(--muted); }
+  .legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+
+  .bx { fill:var(--card); stroke-width:1.6; rx:9; }
+  .bandlab { font-family:var(--mono); font-size:11px; letter-spacing:2px; text-transform:uppercase; }
+  .nm { font-family:var(--disp); font-weight:700; font-size:14px; fill:var(--ink); }
+  .nt { font-family:var(--mono); font-size:9.8px; fill:var(--muted); }
+  .fl { stroke-width:1.6; fill:none; }
+  .fl-lab { font-family:var(--mono); font-size:9.6px; }
+  .chip { fill:var(--line-soft); stroke:none; rx:6; }
+  .chip-t { font-family:var(--mono); font-size:9.4px; fill:var(--muted); }
+
+  /* component cards */
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:900px){ .cards { grid-template-columns:1fr 1fr; } }
+  @media (max-width:600px){ .cards { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px;
+    border-top:3px solid var(--acc,var(--skill)); box-shadow:var(--shadow); display:flex; flex-direction:column; gap:8px; }
+  .card .role { font-family:var(--mono); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--acc,var(--skill)); }
+  .card h3 { font-size:16.5px; font-weight:700; }
+  .card p { font-size:13.5px; color:var(--muted); }
+  .card p b { color:var(--ink); }
+  .card .path { font-family:var(--mono); font-size:10.5px; color:var(--dim); word-break:break-all; margin-top:auto; padding-top:6px; border-top:1px dashed var(--line); }
+  .c-src { --acc:var(--src); } .c-skill { --acc:var(--skill); } .c-fab { --acc:var(--fab); } .c-out { --acc:var(--out); }
+  .rulechip { display:inline-block; font-family:var(--mono); font-size:10.5px; color:var(--acc,var(--skill));
+    background:var(--line-soft); border-radius:6px; padding:2px 8px; }
+
+  /* trust rules */
+  .trust { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:6px 22px; }
+  .trust ul { list-style:none; }
+  .trust li { padding:13px 0; border-bottom:1px solid var(--line-soft); font-size:14.5px; display:flex; gap:14px; align-items:baseline; }
+  .trust li:last-child { border-bottom:0; }
+  .trust .arrow { font-family:var(--mono); font-size:12px; color:var(--fab); white-space:nowrap; min-width:230px; }
+  .trust .why { color:var(--muted); }
+  .trust .why b { color:var(--ink); }
+
+  /* portability levels */
+  .levels { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:860px){ .levels { grid-template-columns:1fr; } }
+  .lvl { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:20px; }
+  .lvl .tag { font-family:var(--mono); font-size:10px; letter-spacing:1.6px; text-transform:uppercase; padding:3px 10px; border-radius:999px; }
+  .lvl h3 { font-size:17px; font-weight:700; margin:10px 0 4px; }
+  .lvl .who { font-size:12.5px; color:var(--muted); margin-bottom:12px; }
+  .lvl ul { list-style:none; }
+  .lvl li { font-size:13.5px; padding:7px 0 7px 24px; position:relative; border-top:1px solid var(--line-soft); }
+  .lvl li::before { content:"▸"; position:absolute; left:6px; color:var(--dim); }
+  .lvl li b { font-weight:600; }
+  .l1 .tag { background:var(--out-soft); color:var(--out); }
+  .l2 .tag { background:var(--skill-soft); color:var(--skill); }
+  .l3 .tag { background:var(--src-soft); color:var(--src); }
+
+  /* setup steps */
+  ol.steps { list-style:none; counter-reset:s; max-width:860px; }
+  ol.steps li { counter-increment:s; position:relative; padding:14px 0 14px 58px; border-bottom:1px solid var(--line-soft); font-size:14.5px; }
+  ol.steps li:last-child { border-bottom:0; }
+  ol.steps li::before { content:counter(s); position:absolute; left:8px; top:12px; width:32px; height:32px;
+    border-radius:50%; background:var(--fab-soft); color:var(--fab); font-weight:800; font-size:15px;
+    display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
+  ol.steps li b { font-weight:700; }
+  ol.steps li .d { color:var(--muted); display:block; font-size:13px; }
+
+  /* gotchas */
+  .gotchas { background:var(--crit-soft); border:1px solid var(--crit); border-radius:14px; padding:6px 22px; }
+  .gotchas ul { list-style:none; }
+  .gotchas li { padding:12px 0; border-bottom:1px dashed var(--crit); font-size:14px; }
+  .gotchas li:last-child { border-bottom:0; }
+  .gotchas li b { color:var(--crit); font-family:var(--mono); font-size:12.5px; letter-spacing:.4px; }
+  .gotchas li span { color:var(--ink); }
+
+  footer { padding:44px 0 54px; }
+  footer p { font-size:12.5px; color:var(--dim); max-width:70ch; }
+</style>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">System of record · how the pieces fit · portability guide</div>
+    <h1>One machine, five moving parts</h1>
+    <p class="lede">Everything you've built is a single production line: <b>two sources of truth</b> (Zscaler's docs and the POV Builder database) feed <b>four Claude skills</b>, which assemble into <b>four customer-ready framework apps</b>. Nothing writes upstream — each layer only reads the one above it. This page maps the flow, names every required component, and gives the exact checklist for standing it up on another machine or for another user.</p>
+  </div>
+</header>
+
+<main>
+  <section class="sect">
+    <div class="wrap">
+      <h2>The assembly line</h2>
+      <p class="sub">Read top to bottom: truth → skills → assembly → output. Every arrow is a real script or a documented read-path — there are no informal connections.</p>
+      <div class="figwrap">
+        <svg class="map" viewBox="0 0 1420 900" role="img" aria-label="System diagram: Zscaler docs and the POV Builder app feed four skills (zscaler-data-security, architecture-visualization, pov-library, framework-builder), which assemble content packages through build.py and embed scripts into four framework HTML apps.">
+          <defs>
+            <marker id="mSrc" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--src)"/></marker>
+            <marker id="mSkill" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--skill)"/></marker>
+            <marker id="mFab" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--fab)"/></marker>
+            <marker id="mOut" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="var(--out)"/></marker>
+          </defs>
+
+          <!-- ═══ BAND 1: TRUTH ═══ -->
+          <text class="bandlab" x="24" y="42" fill="var(--src)">Tier 0 · Sources of truth</text>
+          <line x1="24" y1="52" x2="1396" y2="52" stroke="var(--line)" stroke-dasharray="3 5"/>
+
+          <rect class="bx" x="120" y="72" width="330" height="74" stroke="var(--src)"/>
+          <text class="nm" x="285" y="102" text-anchor="middle">help.zscaler.com</text>
+          <text class="nt" x="285" y="122" text-anchor="middle">product docs · validated via the JSON fetch-data API</text>
+
+          <rect class="bx" x="880" y="72" width="380" height="74" stroke="var(--src)"/>
+          <text class="nm" x="1070" y="98" text-anchor="middle">POV Builder app</text>
+          <text class="nt" x="1070" y="116" text-anchor="middle">Docker Desktop · localhost:3100 · repo: /AI Projects/POV</text>
+          <text class="nt" x="1070" y="132" text-anchor="middle">Postgres volume = the ONLY copy of the data</text>
+
+          <!-- ═══ BAND 2: SKILLS ═══ -->
+          <text class="bandlab" x="24" y="222" fill="var(--skill)">Tier 1 · Claude skills (knowledge &amp; tooling)</text>
+          <line x1="24" y1="232" x2="1396" y2="232" stroke="var(--line)" stroke-dasharray="3 5"/>
+
+          <!-- zscaler skill -->
+          <rect class="bx" x="60" y="256" width="300" height="96" stroke="var(--skill)"/>
+          <text class="nm" x="210" y="284" text-anchor="middle">zscaler-data-security</text>
+          <text class="nt" x="210" y="302" text-anchor="middle">the KNOWLEDGE: 14 refs · chains not consoles</text>
+          <rect class="chip" x="105" y="316" width="210" height="22"/>
+          <text class="chip-t" x="210" y="331" text-anchor="middle">READ-ONLY to every consumer</text>
+
+          <!-- arch viz skill -->
+          <rect class="bx" x="420" y="256" width="280" height="96" stroke="var(--skill)"/>
+          <text class="nm" x="560" y="284" text-anchor="middle">architecture-visualization</text>
+          <text class="nt" x="560" y="302" text-anchor="middle">the DIAGRAM GRAMMAR: template.html chrome,</text>
+          <text class="nt" x="560" y="318" text-anchor="middle">SVG chains, semantic colors, export scripts</text>
+
+          <!-- pov-library skill -->
+          <rect class="bx" x="880" y="256" width="380" height="96" stroke="var(--skill)"/>
+          <text class="nm" x="1070" y="284" text-anchor="middle">pov-library</text>
+          <text class="nt" x="1070" y="302" text-anchor="middle">sync.py → dated snapshot (405 UCs · 117 Data Security)</text>
+          <rect class="chip" x="945" y="316" width="250" height="22"/>
+          <text class="chip-t" x="1070" y="331" text-anchor="middle">10 customer fields out · competitors NEVER</text>
+
+          <!-- portfolio map artifact -->
+          <rect class="bx" x="240" y="412" width="340" height="66" stroke="var(--skill)" stroke-dasharray="5 4"/>
+          <text class="nm" x="410" y="438" text-anchor="middle">portfolio-map.html</text>
+          <text class="nt" x="410" y="456" text-anchor="middle">skill asset: 43 diagrams / 17 tabs, built BY arch-viz FROM knowledge</text>
+
+          <!-- ═══ BAND 3: FACTORY ═══ -->
+          <text class="bandlab" x="24" y="548" fill="var(--fab)">Tier 2 · Assembly (framework-builder skill)</text>
+          <line x1="24" y1="558" x2="1396" y2="558" stroke="var(--line)" stroke-dasharray="3 5"/>
+
+          <rect class="bx" x="60" y="580" width="1300" height="130" stroke="var(--fab)" stroke-dasharray="7 5"/>
+          <text class="nt" x="80" y="602" fill="var(--fab)">framework-builder · one frozen shell (v10), only content packages change · project log: MEMORY.md · regression: build(genai) ≡ baseline-v4</text>
+
+          <rect class="bx" x="90" y="620" width="200" height="64" stroke="var(--fab)"/>
+          <text class="nm" x="190" y="646" text-anchor="middle">intake interview</text>
+          <text class="nt" x="190" y="664" text-anchor="middle">≤2 rounds → approved BRIEF.md</text>
+          <path class="fl" d="M290,652 H340" stroke="var(--fab)" marker-end="url(#mFab)"/>
+
+          <rect class="bx" x="344" y="620" width="230" height="64" stroke="var(--fab)"/>
+          <text class="nm" x="459" y="646" text-anchor="middle">content package</text>
+          <text class="nt" x="459" y="664" text-anchor="middle">content/&lt;slug&gt;/ · data + regions + meta</text>
+          <path class="fl" d="M574,652 H624" stroke="var(--fab)" marker-end="url(#mFab)"/>
+
+          <rect class="bx" x="628" y="620" width="220" height="64" stroke="var(--fab)"/>
+          <text class="nm" x="738" y="646" text-anchor="middle">build.py + shell.html</text>
+          <text class="nt" x="738" y="664" text-anchor="middle">markers → fail-loudly assembly</text>
+          <path class="fl" d="M848,652 H898" stroke="var(--fab)" marker-end="url(#mFab)"/>
+
+          <rect class="bx" x="902" y="620" width="240" height="64" stroke="var(--fab)"/>
+          <text class="nm" x="1022" y="646" text-anchor="middle">embed scripts</text>
+          <text class="nt" x="1022" y="664" text-anchor="middle">embed-map.py · embed-copilot.py</text>
+
+          <rect class="bx" x="1180" y="620" width="150" height="64" stroke="var(--fab)"/>
+          <text class="nm" x="1255" y="646" text-anchor="middle">dist/</text>
+          <text class="nt" x="1255" y="664" text-anchor="middle">final HTML apps</text>
+          <path class="fl" d="M1142,652 H1176" stroke="var(--fab)" marker-end="url(#mFab)"/>
+
+          <!-- ═══ BAND 4: OUTPUT ═══ -->
+          <text class="bandlab" x="24" y="762" fill="var(--out)">Tier 3 · Output (self-contained, zero dependencies)</text>
+          <line x1="24" y1="772" x2="1396" y2="772" stroke="var(--line)" stroke-dasharray="3 5"/>
+
+          <rect class="bx" x="80" y="794" width="330" height="66" stroke="var(--out)"/>
+          <text class="nm" x="245" y="820" text-anchor="middle">data-security-portfolio (~1.65MB)</text>
+          <text class="nt" x="245" y="838" text-anchor="middle">flagship hub · 6 tabs · embeds map + copilot</text>
+
+          <rect class="bx" x="450" y="794" width="270" height="66" stroke="var(--out)"/>
+          <text class="nm" x="585" y="820" text-anchor="middle">genai-security</text>
+          <text class="nt" x="585" y="838" text-anchor="middle">regression baseline framework</text>
+
+          <rect class="bx" x="760" y="794" width="270" height="66" stroke="var(--out)"/>
+          <text class="nm" x="895" y="820" text-anchor="middle">endpoint-dlp</text>
+          <text class="nt" x="895" y="838" text-anchor="middle">executive briefing register</text>
+
+          <rect class="bx" x="1070" y="794" width="270" height="66" stroke="var(--out)"/>
+          <text class="nm" x="1205" y="820" text-anchor="middle">copilot-readiness</text>
+          <text class="nt" x="1205" y="838" text-anchor="middle">also nested inside the portfolio</text>
+
+          <!-- ═══ FLOWS ═══ -->
+          <!-- docs -> zscaler skill -->
+          <path class="fl" d="M240,146 C230,200 220,220 214,252" stroke="var(--src)" marker-end="url(#mSkill)"/>
+          <text class="fl-lab" x="130" y="196" fill="var(--src)">17-area sweep · verbatim research/</text>
+          <text class="fl-lab" x="130" y="210" fill="var(--src)">every slug re-validated live</text>
+
+          <!-- POV app -> pov-library -->
+          <path class="fl" d="M1070,146 V252" stroke="var(--src)" marker-end="url(#mSkill)"/>
+          <text class="fl-lab" x="1082" y="196" fill="var(--src)">sync.py (read-only pull,</text>
+          <text class="fl-lab" x="1082" y="210" fill="var(--src)">fixes happen IN the app)</text>
+
+          <!-- zscaler + archviz -> map -->
+          <path class="fl" d="M270,352 C290,380 310,395 340,412" stroke="var(--skill)" marker-end="url(#mSkill)"/>
+          <path class="fl" d="M540,352 C520,380 500,395 475,410" stroke="var(--skill)" marker-end="url(#mSkill)"/>
+          <text class="fl-lab" x="300" y="392" fill="var(--skill)">knowledge</text>
+          <text class="fl-lab" x="492" y="392" fill="var(--skill)">chrome + grammar</text>
+
+          <!-- zscaler -> factory -->
+          <path class="fl" d="M150,352 C130,440 140,540 172,616" stroke="var(--skill)" marker-end="url(#mFab)"/>
+          <text class="fl-lab" x="72" y="470" fill="var(--skill)">product facts</text>
+          <text class="fl-lab" x="72" y="484" fill="var(--skill)">(read-only; gaps → [VERIFY])</text>
+
+          <!-- map -> embed -->
+          <path class="fl" d="M520,478 C700,530 900,560 990,616" stroke="var(--skill)" marker-end="url(#mFab)"/>
+          <text class="fl-lab" x="700" y="530" fill="var(--skill)">restyled + embedded (Portfolio Architecture tab)</text>
+
+          <!-- pov snapshot -> factory -->
+          <path class="fl" d="M1070,352 C1000,450 700,540 500,616" stroke="var(--skill)" marker-end="url(#mFab)"/>
+          <text class="fl-lab" x="838" y="452" fill="var(--skill)">POV catalog rows: outcome → test case → success criteria,</text>
+          <text class="fl-lab" x="838" y="466" fill="var(--skill)">refCodes travel · competitor matrix stays home</text>
+
+          <!-- dist -> outputs -->
+          <path class="fl" d="M1255,684 C1250,720 900,740 700,776" stroke="var(--fab)" marker-end="url(#mOut)"/>
+
+          <!-- copilot -> portfolio nested -->
+          <path class="fl" d="M1070,844 C900,890 500,890 380,862" stroke="var(--out)" stroke-dasharray="4 4" marker-end="url(#mOut)"/>
+          <text class="fl-lab" x="640" y="888" fill="var(--out)">embed-copilot.py nests the finished copilot build into the portfolio hub</text>
+        </svg>
+        <div class="legend">
+          <span><i style="background:var(--src)"></i>sources of truth</span>
+          <span><i style="background:var(--skill)"></i>skills (read paths)</span>
+          <span><i style="background:var(--fab)"></i>assembly</span>
+          <span><i style="background:var(--out)"></i>shippable output</span>
+        </div>
+        <p class="figcap">Build order when everything changes: sync the library → refresh the map → rebuild copilot → run its embed → rebuild the portfolio. The genai build must stay byte-identical to <code>source/genai-framework-baseline-v4.html</code> — that regression guards the whole shell.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sect">
+    <div class="wrap">
+      <h2>The six components</h2>
+      <p class="sub">Every piece, what it owns, and its one governing rule. Locations are in the private monorepo <code>github.com/gagethecade/platformframework</code> (single source for everything but the live POV database).</p>
+      <div class="cards">
+        <div class="card c-src">
+          <span class="role">Source of truth · live app</span>
+          <h3>POV Builder app</h3>
+          <p>The governed use-case library and POV scoping tool. Runs in Docker Desktop (frontend + backend + Postgres) at <code>localhost:3100</code>. <b>The repo holds no data by design</b> — everything lives in the Postgres volume, so moving machines means restoring a database backup, not just cloning the repo.</p>
+          <span class="rulechip">DB is the source of truth</span>
+          <div class="path">github.com/gagethecade/platformframework · pov-app/</div>
+        </div>
+        <div class="card c-skill">
+          <span class="role">Skill · knowledge</span>
+          <h3>zscaler-data-security</h3>
+          <p>The operational model of the portfolio — dependency chains, negative facts, doc-index. Built from verbatim <code>research/</code> files validated against the help.zscaler.com JSON API. Carries <code>portfolio-map.html</code> as an asset. <b>Read-only to every downstream consumer</b>; gaps get <code>[VERIFY]</code> + a log entry, never an edit.</p>
+          <span class="rulechip">READ-ONLY by law</span>
+          <div class="path">github.com/gagethecade/platformframework · skills/zscaler-data-security/</div>
+        </div>
+        <div class="card c-skill">
+          <span class="role">Skill · sync consumer</span>
+          <h3>pov-library</h3>
+          <p>A dated, read-only snapshot of the POV Builder database (<code>sync.py</code> → 405 use cases, 117 Data Security) plus the consumption rules: <b>Business Outcome → Test Case → Success Criteria</b>, only the 10 customer-facing fields flow outward, refCodes travel, and library fixes happen in the app — never in the snapshot.</p>
+          <span class="rulechip">competitor matrix never leaves</span>
+          <div class="path">github.com/gagethecade/platformframework · skills/pov-library/</div>
+        </div>
+        <div class="card c-skill">
+          <span class="role">Skill · diagram grammar</span>
+          <h3>architecture-visualization</h3>
+          <p>The product-neutral map builder: one <code>template.html</code> with the complete chrome (tokens, nav, export scripts) plus the diagram grammar — end-to-end SVG chains, gate insets, runtime lifecycles, semantic colors with fixed meanings. This is what built the portfolio map, and what builds the next one identically.</p>
+          <span class="rulechip">never rebuild the chrome</span>
+          <div class="path">github.com/gagethecade/platformframework · skills/architecture-visualization/</div>
+        </div>
+        <div class="card c-fab">
+          <span class="role">Skill · factory</span>
+          <h3>framework-builder</h3>
+          <p>Fills a <b>frozen shell</b> (v10) with per-framework content packages: intake interview → approved BRIEF.md → fill from the knowledge skill + POV library → <code>build.py</code> assembly with fail-loudly markers. Embed scripts pull in the map and the copilot build. Python 3 standard library only — nothing to install.</p>
+          <span class="rulechip">shell frozen · packages change</span>
+          <div class="path">github.com/gagethecade/platformframework · skills/framework-builder/</div>
+        </div>
+        <div class="card c-out">
+          <span class="role">Workspace · output + memory</span>
+          <h3>Framework Builder workspace</h3>
+          <p>Everything around the skill: <code>dist/</code> (the four finished apps), <code>source/</code> (regression baselines — <b>build(genai) must equal baseline-v4 byte-for-byte</b>), and <code>MEMORY.md</code> — the project log whose CURRENT STATE block is the authoritative now-picture any new session reads first.</p>
+          <span class="rulechip">MEMORY.md travels with the folder</span>
+          <div class="path">github.com/gagethecade/platformframework · workspace/</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sect">
+    <div class="wrap">
+      <h2>One direction of trust</h2>
+      <p class="sub">The reason this stays maintainable: every arrow is one-way. Nothing ever writes upstream.</p>
+      <div class="trust">
+        <ul>
+          <li><span class="arrow">docs → knowledge skill</span><span class="why">Research files are <b>verbatim</b> and slug-validated; the skill interprets, the docs stay untouched.</span></li>
+          <li><span class="arrow">knowledge skill → everything</span><span class="why">Frameworks and maps <b>read</b> it; a wrong or missing fact becomes a <code>[VERIFY]</code> tag and a logged gap — never an edit.</span></li>
+          <li><span class="arrow">POV app → snapshot → frameworks</span><span class="why">The database is the truth. The snapshot is a dated copy; a bad use case is fixed <b>in the app</b>, then re-synced (proven live with UC-0302).</span></li>
+          <li><span class="arrow">arch-viz template → maps</span><span class="why">Chrome and grammar are fixed so every map looks and behaves identically; only content differs per product.</span></li>
+          <li><span class="arrow">shell → dist</span><span class="why">The shell is frozen during fills; content packages change. The byte-identical genai regression proves the shell wasn't quietly touched.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="sect">
+    <div class="wrap">
+      <h2>Running it somewhere else</h2>
+      <p class="sub">Three capability levels — pick the one the new machine or user actually needs. Each level includes everything above it. Distribution model: <b>two private GitHub repos</b> — a monorepo for the four skills + Framework Builder workspace, and the POV app repo carrying its own committed library export. Clone replaces folder-copies and zips.</p>
+      <div class="levels">
+        <div class="lvl l1">
+          <span class="tag">Level 1 · Present</span>
+          <h3>Just use the frameworks</h3>
+          <p class="who">For a colleague who presents and red-lines, but doesn't rebuild.</p>
+          <ul>
+            <li><b>The four dist/ HTML files.</b> That's it — they're fully self-contained (map and copilot are embedded inside the portfolio).</li>
+            <li>Chrome or Edge to open them. No server, no internet, no install.</li>
+          </ul>
+        </div>
+        <div class="lvl l2">
+          <span class="tag">Level 2 · Build</span>
+          <h3>Refresh &amp; build frameworks</h3>
+          <p class="who">For a machine that fills, rebuilds, and creates sibling frameworks.</p>
+          <ul>
+            <li><b>Claude Code</b> (or claude.ai with the skill zips uploaded).</li>
+            <li>The <b>four skill folders</b> — knowledge, pov-library (with its snapshot), arch-viz, framework-builder.</li>
+            <li>The <b>Framework Builder workspace</b>: content packages, source/ baselines, MEMORY.md.</li>
+            <li><b>Python 3</b> — every script is standard-library only; zero pip installs.</li>
+            <li>Internet to help.zscaler.com only when re-validating doc claims (fills from existing knowledge work offline).</li>
+          </ul>
+        </div>
+        <div class="lvl l3">
+          <span class="tag">Level 3 · Full stack</span>
+          <h3>Own the POV truth</h3>
+          <p class="who">For the machine that edits use cases and produces fresh snapshots.</p>
+          <ul>
+            <li><b>Docker Desktop</b> + the POV app repo (clone via GitHub Desktop, then <code>docker-compose up</code>).</li>
+            <li><b>The in-app library export imported</b> — the repo ships empty on purpose; the app's own library export/import is the data transfer path. Commit the export file alongside the repo so it travels with the code. (<code>pg_dump</code> in <code>backups/</code> remains the low-level fallback.)</li>
+            <li>App reachable at <code>localhost:3100</code>, then <code>sync.py</code> produces the snapshot Level 2 consumes.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sect">
+    <div class="wrap">
+      <h2>Setup order on a fresh machine</h2>
+      <p class="sub">For the full Level-3 stack, using the GitHub model: two repos — a monorepo (four skills + Framework Builder workspace) and the POV app repo with its committed library export. Order matters because each step verifies the one before it.</p>
+      <ol class="steps">
+        <li><b>Export the library from the running POV Builder</b> (on the source machine, before anything else).<span class="d">Use the app's own library export and commit the file into the POV repo. This is the data transfer — without it, a clone is an empty app.</span></li>
+        <li><b>Clone both repos</b> (GitHub Desktop is fine), preserving the expected layout.<span class="d">One monorepo: github.com/gagethecade/platformframework — skills, workspace, docs, and the POV app code under pov-app/. Path references inside are repo-relative.</span></li>
+        <li><b>Install the three prerequisites: Claude Code, Python 3, Docker Desktop.</b><span class="d">Skills load from their folders; every script is Python standard library only — zero pip installs.</span></li>
+        <li><b>Stand up the POV app and import the library.</b><span class="d"><code>docker-compose up</code> in the POV repo → open <code>localhost:3100</code> → run the in-app library import with the committed export file → confirm ~405 use cases render.</span></li>
+        <li><b>Run a fresh sync.</b><span class="d"><code>python3 sync.py</code> in pov-library → check <code>snapshot/SYNC.md</code> shows today's date and ~405 use cases.</span></li>
+        <li><b>Prove the factory with the regression.</b><span class="d"><code>python3 build.py ../content/genai</code> → output must be byte-identical to <code>source/genai-framework-baseline-v4.html</code>. If it isn't, something didn't transfer cleanly — stop and diff.</span></li>
+        <li><b>Rebuild the portfolio in embed order.</b><span class="d">Rebuild copilot → <code>embed-copilot.py</code> → <code>embed-map.py</code> → rebuild portfolio.</span></li>
+        <li><b>Smoke-test in Chrome with real clicks.</b><span class="d">0/8 channels on load → toggle one → tray shows mapped use cases → Portfolio Architecture tabs actually switch (this exact thing broke silently once) → PDF export paginates.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sect">
+    <div class="wrap">
+      <h2>Known portability traps</h2>
+      <p class="sub">Verified against the current state of the disk — fix these before handing the stack to anyone.</p>
+      <div class="gotchas">
+        <ul>
+          <li><b>TWO EDITIONS EXIST (transitional)</b> — <span>the repo copies carry repo-relative paths; the original <code>/Volumes/HDD2/…</code> folders still exist with the old absolute references. Until the originals are retired, the repo is the distribution copy — edits must flow original → repo commit (or cut over to working from the clone).</span></li>
+          <li><b>EXPORT FIDELITY (verify once)</b> — <span>the data-transfer plan rests on the in-app library export round-tripping <b>everything</b>: internal fields (competitor matrix, review flags, tags, comments), refCodes, and the outcome taxonomy — not just the 10 customer-facing fields. Verify with one export → import → diff before trusting it as the portability path.</span></li>
+          <li><b>THE SECOND VOLUME</b> — <span>the app has two Docker volumes, not one. The library export covers the Postgres data; <code>fable_uploads</code> (files attached through the UI) may not be included. If supporting material is uploaded files rather than links, archive that volume separately.</span></li>
+          <li><b>EXPORT BEFORE YOU NEED IT</b> — <span>the committed export is only as current as the last time someone ran it — the same way the old <code>backups/</code> dumps quietly fell weeks behind the live database. Re-export after meaningful library edits; the DB in the volume is always the truth, the export is the traveler.</span></li>
+          <li><b>ZIPS ARE OBSOLETE</b> — <span>the existing skill zips are stale (<code>framework-builder.zip</code> predates the latest shell; pov-library has none). Under the GitHub model, don't rebuild them — the clone <b>is</b> the distribution. Keep zips only for claude.ai skill uploads, generated fresh from the repo when needed.</span></li>
+          <li><b>MEMORY DOESN'T FOLLOW THE USER</b> — <span>project <code>MEMORY.md</code> files travel with the repo (good), but Claude's per-machine auto-memory does not. A new user's first session should start by reading the Framework Builder <code>MEMORY.md</code> CURRENT STATE block — that's the designed recovery path.</span></li>
+          <li><b>EMBED ORDER</b> — <span>rebuilding the portfolio without re-running the embed scripts ships a stale map/copilot silently. The order is: copilot build → copilot embed → map embed → portfolio build.</span></li>
+          <li><b>PRIVATE REPOS ONLY</b> — <span>the pov-library snapshot and the committed library export both contain the full internal record — competitor matrix included. GitHub works, but the repos must be private; the customer-facing/internal boundary is enforced at consumption time, not in storage.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Source of truth for this page: the skill folders and MEMORY.md files on disk as of the last verification. When they disagree with this page, they win — update the page, not the habit.</p>
+  </div>
+</footer>

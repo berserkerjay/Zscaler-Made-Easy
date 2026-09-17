@@ -49,6 +49,14 @@
     get: 'The path diagram per policy pack, visibility by cloud-app category, and a list of every bypass with the object that causes it.',
     next: 'Close the SSL and bypass gaps first; DLP rules deployed behind a blind spot do nothing.',
   };
+  X.path = {
+    group: 'Find the gaps', name: 'Path Analyzer', href: '/report/path',
+    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named.',
+    why: 'When a customer asks "what happens if a user goes to this site?" the honest answer is in a dozen policies. This page reads them all and answers in one line, naming the rule or profile that decides it.',
+    when: 'While troubleshooting a "Zscaler blocks my site" or "DLP did not catch it" ticket, before promising a control will apply, and when showing a customer where a destination is blind.',
+    get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), the objects that block or impact it with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export.',
+    next: 'Fix the named rule, profile or exemption, click Fresh read, and analyze again to prove the change.',
+  };
   X.bypass = {
     group: 'Find the gaps', name: 'Bypass & Non-Inspected Traffic', href: '/report/bypass',
     what: 'Every SSL exemption, allow rule, Client Connector bypass and PAC exception that lets traffic skip inspection, in one list with exports.',
@@ -120,6 +128,38 @@
     when: 'Before the first deployment with a customer, or whenever a message in the deploy log needs context.',
     get: 'The deploy flow and the removal flow, each step with what happens, what can stop it and what you see on screen. Nothing touches the tenant.',
     next: 'Open Deploy Policy Packs and run a preflight; it writes nothing.',
+  };
+  X.refportfolio = {
+    group: 'Reference', name: 'Data Security Portfolio Framework', href: '/reference/data-security-portfolio-framework',
+    what: 'Zscaler\'s data-security portfolio as an operating program: pick the coverage a customer needs, turn it into a customer-ready story, and turn the promised capabilities into a testable proof-of-value plan.',
+    why: 'The assessment says where a tenant is; this page says what the whole portfolio can do and in which order to bring it in.',
+    when: 'When you are shaping a proposal or a proof of value after the assessment.',
+    get: 'The framework page with its coverage selector, story builder, proof plan and the architecture behind the capabilities; it works offline inside the tool.',
+    next: 'Select the controls the findings point at, build the story, and bring the proof plan to the customer.',
+  };
+  X.refai = {
+    group: 'Reference', name: 'Public AI Security Framework', href: '/reference/ai-security-framework',
+    what: 'AI security controls as an operating model: coverage by phase, the story for the customer, and a proof plan for what was promised.',
+    why: 'AI traffic is the newest place data leaks from, and customers ask for a framework, not a feature list.',
+    when: 'When the customer asks how Zscaler secures AI use, or when the GenAI checks in the assessment come back weak.',
+    get: 'The framework page with its selectors, story builder and proof plan, in the languages it ships with.',
+    next: 'Pair it with the assessment\'s GenAI findings and the source-code and CUI packs.',
+  };
+  X.refgenai = {
+    group: 'Reference', name: 'Public GenAI Security Framework', href: '/reference/genai-security-framework',
+    what: 'The generative-AI subset of the AI security framework: the same operating model, story builder and proof plan, narrowed to generative tools.',
+    why: 'Most customer conversations start with ChatGPT and Copilot, not with the whole AI estate.',
+    when: 'When the conversation is about generative-AI tools specifically.',
+    get: 'The framework page with its coverage selector, story builder and proof plan.',
+    next: 'Use it for the first meeting; move to the full AI framework when the scope widens.',
+  };
+  X.refmachine = {
+    group: 'Reference', name: 'The Framework Machine', href: '/reference/framework-machine',
+    what: 'How the framework pages are built and kept portable: the six components, the assembly line, the one direction of trust, and the setup order on a fresh machine.',
+    why: 'An engineer who has to maintain or move the framework pages needs the shape of the machine, not the pages alone.',
+    when: 'When you set the frameworks up somewhere else or change how they are produced.',
+    get: 'A short, static page with the components, the order and the known portability traps.',
+    next: 'Follow the setup order; check the traps list before moving anything.',
   };
   X.terraform = {
     group: 'Close the gaps', name: 'Terraform hand-off', href: '/report/view?tool=terraform',
@@ -223,7 +263,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
       '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -274,7 +314,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['quickstart', 'assessment', 'connect', 'results', 'help', 'dataflow', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['quickstart', 'assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

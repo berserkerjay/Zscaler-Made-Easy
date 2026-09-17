@@ -398,3 +398,37 @@ body.theme-light .df-gap-h.st-fail { color: #b91c1c; } body.theme-light .df-gap-
 .dh-steps th, .dh-steps td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 .dh-steps th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
 .dh-steps td.ok { color: var(--pass); } .dh-steps td.fail { color: var(--fail); } .dh-steps td.dim { color: var(--dim); }
+
+/* ── Path Analyzer ─────────────────────────────────────────────────── */
+.pa-intro { padding: 0.4rem 0.2rem; }
+.pa-intro-t { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 0.5rem; }
+.pa-steps { margin: 0 0 0.8rem; padding-left: 1.3rem; display: grid; gap: 0.5rem; font-size: 0.92rem; line-height: 1.5; }
+.pa-live { padding: 0.2rem 0; }
+.pa-live-h { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.pa-live-h .sep { flex: 1; }
+.pa-live .spin { width: 18px; height: 18px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: rp-spin 0.9s linear infinite; }
+.pa-elapsed { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 0.85rem; }
+.pa-log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; padding: 0.7rem 0.9rem; border: 1px solid var(--border); border-radius: 10px; background: var(--well); color: var(--text); }
+.pa-log-live { border-left: 3px solid var(--accent); }
+.pa-verdict { padding: 1rem 1.2rem; border: 1px solid var(--border); border-left-width: 6px; border-radius: 14px; background: var(--card-solid); margin-bottom: 0.4rem; }
+.pa-verdict.st-ok { border-left-color: var(--pass); } .pa-verdict.st-warn { border-left-color: var(--warn); }
+.pa-verdict.st-fail { border-left-color: var(--fail); } .pa-verdict.st-block { border-left-color: var(--accent); }
+.pa-verdict-top { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+.pa-headline { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 0.4rem; }
+.pa-summary { color: var(--dim); font-size: 0.95rem; line-height: 1.5; margin: 0 0 0.6rem; max-width: 90ch; }
+.pa-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; }
+.pa-facts .df-prof .v.ok { color: var(--pass); } .pa-facts .df-prof .v.no { color: var(--fail); }
+.pa-impacts { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; counter-reset: pa; }
+.pa-impact { position: relative; padding: 0.6rem 0.8rem 0.6rem 2.4rem; border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px; background: var(--card-solid); font-size: 0.86rem; }
+.pa-impact::before { counter-increment: pa; content: counter(pa); position: absolute; left: 0.75rem; top: 0.6rem; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: var(--well); color: var(--dim); font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.pa-impact.sev-high { border-left-color: var(--fail); } .pa-impact.sev-medium { border-left-color: var(--warn); } .pa-impact.sev-low, .pa-impact.sev-info { border-left-color: var(--border-strong); }
+.pa-impact .sev { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 6px; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-left: auto; }
+.pa-fix { margin-top: 0.3rem; color: var(--text); }
+.pa-none { padding: 0.5rem 0.8rem; border: 1px dashed var(--border); border-radius: 10px; }
+.pa-assume { margin: 0; padding-left: 1.2rem; color: var(--dim); font-size: 0.84rem; line-height: 1.5; display: grid; gap: 0.25rem; }
+.pa-details { margin-top: 1rem; }
+.pa-details > summary { cursor: pointer; color: var(--dim); font-size: 0.82rem; }
+.pa-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.pa-details .pa-log { margin-top: 0.5rem; }
+.df-hop.sel { box-shadow: 0 0 0 2px var(--accent); }
+@media (prefers-reduced-motion: reduce) { .pa-live .spin { animation: none; } }

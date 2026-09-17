@@ -158,7 +158,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart", "/report/evalall"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart", "/report/evalall", "/report/path"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3791,6 +3791,51 @@ async def report_view_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
+# ── Reference pages ──────────────────────────────────────────────────
+# Self-contained HTML references an engineer keeps next to the tool (the
+# data-security portfolio framework, the AI security frameworks, how the
+# framework machine fits together). Served from static/reference/ under
+# their own routes so the sidebar can open them like any other page. They
+# carry their own inline scripts and styles; nothing external is loaded
+# (the app's Content-Security-Policy applies to them too).
+REFERENCE_PAGES: List[Dict[str, str]] = [
+    {"slug": "data-security-portfolio-framework", "name": "Data Security Portfolio Framework",
+     "blurb": "Zscaler's data-security portfolio as an operating program: coverage, proposal story, proof-of-value plan."},
+    {"slug": "ai-security-framework", "name": "Public AI Security Framework",
+     "blurb": "AI security controls as an operating model: coverage by phase, a customer-ready story, a testable proof plan."},
+    {"slug": "genai-security-framework", "name": "Public GenAI Security Framework",
+     "blurb": "The generative-AI subset of the AI security framework, with the same story builder and proof plan."},
+    {"slug": "framework-machine", "name": "The Framework Machine",
+     "blurb": "How the framework pages are built and kept portable: the six components, the assembly line, the setup order."},
+]
+_REFERENCE_DIR = os.path.join(STATIC_DIR, "reference")
+
+
+@app.get("/api/reference")
+async def reference_list():
+    """The reference pages the sidebar offers, with their routes."""
+    out = []
+    for p in REFERENCE_PAGES:
+        path = os.path.join(_REFERENCE_DIR, f"{p['slug']}.html")
+        out.append({**p, "href": f"/reference/{p['slug']}", "available": os.path.exists(path),
+                    "bytes": os.path.getsize(path) if os.path.exists(path) else 0})
+    return {"pages": out}
+
+
+@app.get("/reference/{slug}")
+async def reference_page(slug: str):
+    """One reference page, by its slug in REFERENCE_PAGES (never an
+    arbitrary path)."""
+    page = next((p for p in REFERENCE_PAGES if p["slug"] == slug), None)
+    if page is None:
+        raise HTTPException(status_code=404, detail="No such reference page.")
+    path = os.path.join(_REFERENCE_DIR, f"{slug}.html")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="reference page missing")
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
 @app.get("/report/flow")
 async def report_flow_page():
     """Standalone tab for the Deploy Policy Packs dependency flow (static/report_flow.html).
@@ -3933,6 +3978,85 @@ async def report_data_flow(req: DataFlowRequest):
         raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
     rid = _remember_report("dataflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
     return _REPORTS[rid]
+
+
+# ── Path Analyzer ─────────────────────────────────────────────────────
+@app.get("/report/path")
+async def report_path_page():
+    """Standalone tab for the Path Analyzer (static/report_path.html)."""
+    page = os.path.join(STATIC_DIR, "report_path.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+class PathAnalyzerRequest(MigrateRequest):
+    """Body of the Path Analyzer: what the user would type, the network the
+    device is on, the platform, and optionally the id of a tenant read to
+    reuse (a Data Flow Map or an earlier analysis)."""
+    destination: str = ""
+    network: str = "off"
+    platform: str = "windows"
+    report_id: str = ""
+
+
+def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel) -> Dict[str, Any]:
+    """The analysis itself, shared by the job the page follows and the
+    waiting endpoint. A fresh tenant read is remembered as a Data Flow
+    Map report so the next destination reuses it (`report_id`)."""
+    import path_analyzer
+    logs: list = []
+
+    def _log(line: str) -> None:
+        logs.append(line)
+        if log:
+            log(line)
+
+    out = path_analyzer.analyze(client, req.destination, req.network, req.platform, snapshot=snapshot, log=_log,
+                                cancel=(lambda: cancel.is_set()) if cancel is not None else None)
+    cache = out.pop("snapshot_for_cache", None)
+    if cache is not None:
+        rid = _remember_report("dataflow", {"summary": {}, "platform": out["platform"], "networks": path_analyzer.NETWORKS, "platforms": path_analyzer.PLATFORMS,
+                                            "destinations": [], "traces": [], "packs": [], "diagnostics": cache.get("diagnostics") or [],
+                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {}}, label)
+        out["report_id"] = rid
+    else:
+        out["report_id"] = req.report_id
+    out["tenant_label"] = label
+    out["logs"] = logs
+    return out
+
+
+async def _path_analysis_inputs(req: PathAnalyzerRequest):
+    import path_analyzer
+    try:
+        path_analyzer.parse_destination(req.destination)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_client, req)
+    return client, snapshot, tenant_auth.label(creds)
+
+
+@app.post("/api/path-analyzer/start")
+async def path_analyzer_start(req: PathAnalyzerRequest):
+    """Start the Path Analyzer as a job the page follows (the first run
+    reads the tenant, a minute of API calls; later runs reuse that read
+    through `report_id` and only look the destination up). Poll
+    GET /api/dlp-packs/jobs/{job_id}."""
+    import pack_jobs
+    client, snapshot, label = await _path_analysis_inputs(req)
+    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel), label=req.destination[:80])
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
+@app.post("/api/path-analyzer")
+async def path_analyzer_run(req: PathAnalyzerRequest):
+    """The same analysis, waited for (for scripts)."""
+    client, snapshot, label = await _path_analysis_inputs(req)
+    return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None)
 
 
 @app.get("/api/report/data-flow/{report_id}")

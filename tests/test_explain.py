@@ -22,11 +22,13 @@ def _read(name):
 # Toolbar opener -> catalogue key. A new toolbar button must be added here
 # AND to explain.js, so nothing ships unexplained.
 TOOLBAR = {
-    "openQuickStartTab()": "quickstart", "openHelpTab()": "help", "openDataFlowTab()": "dataflow",
+    "openQuickStartTab()": "quickstart", "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
     "openToolTab('terraform')": "terraform", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
     "openLogAnalyzerTab()": "logs", "openDigestTab()": "digest",
+    "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",
+    "openReferenceTab('genai-security-framework')": "refgenai", "openReferenceTab('framework-machine')": "refmachine",
 }
 
 
