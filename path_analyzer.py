@@ -240,8 +240,62 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
         w = c.get("weak_point")
         if w:
             impacts.append({"hop": k, "label": c["label"], "status": c["status"], "rule": None, "detail": c["detail"], "severity": w["severity"], "fix": w["fix"]})
-    return {"outcome": outcome, "headline": headline, "summary": summary,
-            "stops_at": stop["label"] if stop else None, "blocked_by": rule(stop) if stop else None,
-            "reaches_zscaler": t["reaches_zscaler"], "decrypted": t["decrypted"],
-            "content_inspected": bool(t["decrypted"] and outcome in ("enforce", "monitor")),
-            "impacts": impacts, "categories": list(t["destination"].get("categories") or []), "applications": list(t["destination"].get("applications") or [])}
+    categories = list(t["destination"].get("categories") or [])
+    applications = list(t["destination"].get("applications") or [])
+    v = {"outcome": outcome, "headline": headline, "summary": summary,
+         "stops_at": stop["label"] if stop else None, "blocked_by": rule(stop) if stop else None,
+         "reaches_zscaler": t["reaches_zscaler"], "decrypted": t["decrypted"],
+         "content_inspected": bool(t["decrypted"] and outcome in ("enforce", "monitor")),
+         "impacts": impacts, "categories": categories, "applications": applications}
+    v["mitigations"] = recommend_mitigations(t, v)
+    return v
+
+
+_MAIL_CATEGORIES = {"WEB_MAIL", "WEBMAIL", "PERSONAL_MAIL"}
+
+
+def recommend_mitigations(t: Dict[str, Any], v: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """What to turn on, across every DLP channel, to close the gap this
+    destination exposes — reasoned, not a checklist. Endpoint DLP is the
+    device's own control: it runs regardless of whether this transaction
+    ever reaches Zscaler, so it is weighed first whenever the network path
+    gives no visibility (bypassed or blind). SaaS Security API and Email
+    DLP are recommended only when the destination is actually shaped like
+    a sanctioned SaaS app or webmail — recommending them for an arbitrary
+    website would be noise, not a fix. Returns a ranked list; each item
+    names the channel, the one action, why, and how urgent it is."""
+    chans = t.get("channels") or {}
+    ep, sa, em = chans.get("endpoint") or {}, chans.get("saas") or {}, chans.get("email") or {}
+    out: List[Dict[str, Any]] = []
+    blind_here = not v["reaches_zscaler"] or not v["decrypted"]   # bypassed or encrypted: the network path sees nothing
+    if blind_here:
+        reason = "never reaches Zscaler" if not v["reaches_zscaler"] else "reaches Zscaler encrypted, so the content can never be inspected here"
+        if ep.get("status") in ("none", "off"):
+            why = "the app profile does not install it on this device" if ep.get("status") == "off" else "no Endpoint DLP rule is enabled"
+            out.append({"rank": 1, "channel": "endpoint", "action": "Enable Endpoint DLP for this device",
+                        "why": f"This traffic {reason}: Endpoint DLP is the only control that ever sees it, and {why}.",
+                        "severity": "high"})
+        else:
+            out.append({"rank": 1, "channel": "endpoint", "action": "Endpoint DLP already covers this device",
+                        "why": f"This traffic {reason}, but Endpoint DLP runs locally regardless of the network path and is already {ep.get('status')}.",
+                        "severity": "info"})
+    elif v["outcome"] == "none":
+        out.append({"rank": 1, "channel": "web", "action": "Deploy a Web DLP rule that covers this traffic",
+                    "why": "The content reaches Zscaler decrypted, but no enabled DLP rule inspects it, so nothing is stopped or logged.",
+                    "severity": "high"})
+    elif v["outcome"] == "monitor":
+        dlp = next((h for h in t["hops"] if h["key"] == "dlp"), None)
+        name = ((dlp or {}).get("decided_by") or {}).get("name")
+        out.append({"rank": 1, "channel": "web", "action": f"Promote '{name}' from monitor to block" if name else "Promote the monitoring rule to block",
+                    "why": "The content is inspected but only logged; once the incidents look right, blocking stops the leak instead of recording it.",
+                    "severity": "medium"})
+    if categories_mail := (set(v["categories"]) & _MAIL_CATEGORIES):
+        if em.get("status") in ("none",):
+            out.append({"rank": len(out) + 1, "channel": "email", "action": "Onboard Email DLP for this traffic",
+                        "why": f"ZIA places this destination in {', '.join(sorted(c.replace('_', ' ').title() for c in categories_mail))}, and no Email DLP rule is enabled, so outbound mail through it is never inspected.",
+                        "severity": "medium"})
+    if v["applications"] and sa.get("status") in ("none",):
+        out.append({"rank": len(out) + 1, "channel": "saas", "action": f"Onboard {v['applications'][0]} to SaaS Security API",
+                    "why": "ZIA recognises this as a sanctioned cloud application, but no SaaS Security API rule scans it at rest, so data already stored there is never checked.",
+                    "severity": "low"})
+    return out

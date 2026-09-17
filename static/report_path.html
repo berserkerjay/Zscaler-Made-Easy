@@ -181,6 +181,15 @@
 
     // ── the result ──────────────────────────────────────────────────
     function chip(status) { const [lab, cls] = STATUS[status] || [status, 'dim']; return `<span class="df-chip st-${cls}">${E(lab)}</span>`; }
+    const SEV_CLS = { high: 'fail', medium: 'warn', low: 'info', info: 'dim' };
+    const CHAN_ICO = { web: '🌐', endpoint: '💻', saas: '☁️', email: '✉️' };
+    function mitigationsHtml(list) {
+      if (!list || !list.length) return '<div class="df-hop-d pa-none">Nothing to mitigate: this path is already blocked, or already covered end to end.</div>';
+      return `<ol class="pa-mitigations">${list.map(m => `<li class="pa-mitigation sev-${E(m.severity)}">
+          <div class="df-hop-h"><span class="pa-mit-ico" aria-hidden="true">${CHAN_ICO[m.channel] || '🛡️'}</span><strong>${E(m.action)}</strong><span class="sev">${E(m.severity)}</span></div>
+          <div class="df-hop-d">${E(m.why)}</div>
+        </li>`).join('')}</ol>`;
+    }
     function yesno(b, yes, no) { return `<span class="v ${b ? 'ok' : 'no'}">${b ? yes : no}</span>`; }
     function render(res, logs) {
       const v = res.verdict, t = res.trace, d = res.destination, lk = res.lookup || {};
@@ -225,6 +234,9 @@
         ${blockers.length ? `<ol class="pa-impacts">${blockers.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">Nothing blocks it: the traffic reaches the destination.</div>'}
         <h2 class="df-h">What impacts it on the way</h2>
         ${others.length ? `<ol class="pa-impacts">${others.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">No blind spot, weak point or assumption changes the answer on this path.</div>'}
+        <h2 class="df-h">What to do about it, across every channel</h2>
+        <div class="df-hint">Reasoned across Web, Endpoint, SaaS Security API and Email DLP together: Endpoint DLP is weighed first whenever the network path itself sees nothing (bypassed or encrypted), because it is the one control that runs on the device regardless of where the traffic goes; Email and SaaS coverage are suggested only when this destination is actually shaped like webmail or a sanctioned cloud app.</div>
+        ${mitigationsHtml(v.mitigations)}
         <h2 class="df-h">The path, hop by hop</h2>
         <div class="df-flow-wrap">${_dfSvg(t)}</div>
         <div class="df-hint">Each box is a control in the order ZIA applies it; click one for the rule or profile that decided it.</div>

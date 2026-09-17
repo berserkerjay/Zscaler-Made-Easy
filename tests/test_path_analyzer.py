@@ -181,6 +181,8 @@ def test_the_page_shows_the_policy_framework_and_the_assigned_profiles():
     assert 'Assigned Client Connector app profile' in html and 'Assigned forwarding profile' in html
     css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
     assert ".pa-framework" in css and ".pa-framework > summary:focus-visible" in css
+    assert "What to do about it, across every channel" in html and "mitigationsHtml(v.mitigations)" in html
+    assert ".pa-mitigations" in css and ".pa-mitigation.sev-high" in css
 
 
 def test_stop_is_honoured_between_read_steps_and_said_in_words():
@@ -191,3 +193,38 @@ def test_stop_is_honoured_between_read_steps_and_said_in_words():
     assert logs[-1].startswith("STOPPED") and not c.lookups, "stopped before the lookup; nothing else was asked"
     # Not cancelled: the same call completes.
     assert pa.analyze(c, "casino.example", "off", "windows", cancel=lambda: False)["verdict"]["outcome"] == "blocked"
+
+
+def test_the_mitigation_recommendation_reasons_across_every_channel():
+    """recommend_mitigations weighs Endpoint DLP first whenever the web
+    path itself sees nothing (bypassed or blind, regardless of why);
+    recommends promoting a monitor-only web rule or deploying one when
+    the web path does see the content; and only brings in Email or SaaS
+    Security API when the destination is actually shaped like webmail or
+    a sanctioned cloud app, never as a blanket suggestion."""
+    c = _lookup_client()
+
+    # Bypassed: endpoint already covers the device (it's on in this fixture) — informational, not an action.
+    b = pa.analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
+    assert b["mitigations"][0] == {"rank": 1, "channel": "endpoint", "action": "Endpoint DLP already covers this device",
+                                    "why": "This traffic never reaches Zscaler, but Endpoint DLP runs locally regardless of the network path and is already monitor.", "severity": "info"}
+
+    # Blind (SSL exempted): same endpoint reasoning, plus webmail brings in Email DLP since it is off.
+    w = pa.analyze(c, "mail.example.com", "off", "windows")["verdict"]
+    assert w["mitigations"][0]["channel"] == "endpoint" and w["mitigations"][0]["severity"] == "info"
+    email = next(m for m in w["mitigations"] if m["channel"] == "email")
+    assert email["action"] == "Onboard Email DLP for this traffic" and "Web Mail" in email["why"] and email["severity"] == "medium"
+
+    # Enforced and decrypted: the web path already covers it; only the low-priority SaaS onboarding is offered.
+    e = pa.analyze(c, "chat.openai.com", "off", "windows")["verdict"]
+    assert e["mitigations"] == [{"rank": 1, "channel": "saas", "action": "Onboard CHATGPT_AI to SaaS Security API",
+                                  "why": "ZIA recognises this as a sanctioned cloud application, but no SaaS Security API rule scans it at rest, so data already stored there is never checked.", "severity": "low"}]
+
+    # Blocked outright: nothing to mitigate.
+    blocked = pa.analyze(c, "https://casino.example/play", "off", "windows")["verdict"]
+    assert blocked["mitigations"] == []
+
+    # Monitor-only web rule (macOS drops Endpoint DLP, so the web rule is the whole story): promote it.
+    m = pa.analyze(c, "updates.vendor.com", "off", "macos")["verdict"]
+    assert m["outcome"] == "monitor" and m["mitigations"] == [{"rank": 1, "channel": "web", "action": "Promote 'Bank-Customer PII (Global)-Monitor' from monitor to block",
+        "why": "The content is inspected but only logged; once the incidents look right, blocking stops the leak instead of recording it.", "severity": "medium"}]
