@@ -190,14 +190,17 @@ def test_undo_leaves_renamed_or_shared_objects_alone(store, tmp_path, monkeypatc
     # The rule is gone from the tenant: reported, not an error; the engine
     # is now unused, and a delete ZIA keeps refusing fails on every pass and
     # stays failed; the dictionary, planned as unused once the engine goes,
-    # is still attempted and the run is reported as partial, not complete.
+    # is checked again right before its turn: the engine is still there and
+    # still uses it, so it is left alone and said so. Nothing was deleted,
+    # so the run is not complete.
     z.dlp_web_rules.items.clear()
     z.dlp_engine.delete_dlp_engine = lambda rid: (None, None, {"message": "engine is referenced by a rule"})
     out2 = pd.undo(client, rec, writes_enabled=True)
     by2 = {r["kind"]: r for r in out2["results"]}
     assert by2["policy"]["status"] == "gone" and by2["engine"]["status"] == "failed" and "referenced" in by2["engine"]["error"]
-    assert by2["engine"]["attempts"] == 3 and by2["dictionary"]["status"] == "deleted"
-    assert out2["status"] == "partial" and not out2["complete"]
+    assert by2["engine"]["attempts"] == 3
+    assert by2["dictionary"]["status"] == "skipped" and by2["dictionary"]["reason"].startswith("checked again just before removal: still used by engine")
+    assert out2["status"] in ("partial", "failed") and not out2["complete"]
 
 
 def test_from_apply_ignores_reused_and_records_nothing_when_nothing_created():

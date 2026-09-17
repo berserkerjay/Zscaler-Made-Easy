@@ -165,11 +165,15 @@ def test_remove_reports_objects_the_tenant_still_lists(tmp_path, monkeypatch):
     monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
     plan = pr.plan_removal(client, [pack])
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
-    rule = next(r for r in res["results"] if r["kind"] == "policy")
-    assert rule["status"] == "still_present" and "still lists" in rule["error"]
-    assert res["complete"] is False and res["status"] == "partial" and res["summary"]["still_present"] == 1
+    by = {r["kind"]: r for r in res["results"]}
+    assert by["policy"]["status"] == "still_present" and "still lists" in by["policy"]["error"]
+    # The rule is still there, so the check right before the engine tier keeps the engine, and the dictionary follows.
+    assert by["engine"]["status"] == "skipped" and "checked again just before removal: still used by rule 'RM-Web-Monitor' (Web DLP)" in by["engine"]["reason"]
+    assert by["dictionary"]["status"] == "skipped" and "still used by engine 'RM-Engine'" in by["dictionary"]["reason"]
+    assert res["complete"] is False and res["status"] in ("partial", "failed") and res["summary"]["still_present"] == 1
+    assert len(client.zia.dlp_engine.items) == 1 and len(client.zia.dlp_dictionary.items) == 1, "nothing the rule needs was deleted"
     v = res["verification"]
-    assert v["read"] and not v["clean"] and [i["name"] for i in v["remaining"]] == ["RM-Web-Monitor"]
+    assert v["read"] and not v["clean"] and [i["name"] for i in v["remaining"]] == ["RM-Web-Monitor", "RM-Engine", "RM-Dict"], "nothing went, so everything is left over"
     assert v["plan"]["plan_hash"]   # a plan for exactly the leftovers, ready to run again
 
 
@@ -417,3 +421,64 @@ def test_pick_mode_lists_and_removes_orphan_engines_and_dictionaries(tmp_path, m
     assert [e.name for e in z.dlp_engine.items] == ["Used Engine"] and sorted(d.name for d in z.dlp_dictionary.items) == ["Social Security Numbers (US)"]
     # A picked id that is gone is reported, not silently dropped.
     assert any("no longer in the tenant" in w for w in pr.plan_removal_selected(client, [{"kind": "engine", "id": 424242}])["warnings"])
+
+
+def test_the_usage_check_runs_again_right_before_engines_and_dictionaries_go(tmp_path, monkeypatch):
+    """The plan said the engine and the dictionary go with the rule. While
+    the rules tier ran, someone made a new rule that uses the engine: the
+    check right before the engine tier sees it, keeps the engine and names
+    the rule; the dictionary tier then keeps the dictionary the surviving
+    engine uses. Nothing anyone else depends on is ever deleted."""
+    client = _deletable(_tenant(with_survivors=False))
+    z = client.zia
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    sel = [{"channel": "web", "id": 7001}]
+    plan = pr.plan_removal_selected(client, sel)
+    assert {i["name"]: i["status"] for i in plan["items"]} == {"RM-Web-Monitor": "remove", "RM-Engine": "remove", "RM-Dict": "remove"}
+    real_delete = z.dlp_web_rules.delete_rule
+
+    def delete_and_someone_adds_a_rule(oid):
+        out = real_delete(oid)
+        z.dlp_web_rules.items.append(Obj(id=7009, name="Made during the run", order=1, rank=7, action="BLOCK", state="ENABLED",
+                                         dlp_engines=[{"id": 5001}], protocols=["HTTPS_RULE"], description="hand-made"))
+        return out
+    z.dlp_web_rules.delete_rule = delete_and_someone_adds_a_rule
+    logs = []
+    res = pr.remove_selected(client, sel, plan_hash=plan["plan_hash"], writes_enabled=True, log=logs.append)
+    by = {r["kind"]: r for r in res["results"]}
+    assert by["policy"]["status"] == "deleted"
+    assert by["engine"]["status"] == "skipped" and by["engine"]["reason"] == "checked again just before removal: still used by rule 'Made during the run' (Web DLP); left alone"
+    assert by["dictionary"]["status"] == "skipped" and by["dictionary"]["reason"] == "checked again just before removal: still used by engine 'RM-Engine'; left alone"
+    assert {e.name for e in z.dlp_engine.items} == {"RM-Engine"} and {d.name for d in z.dlp_dictionary.items} == {"RM-Dict"}
+    assert any(l.startswith("Checking again which rules still use the engines") for l in logs)
+    assert any(l.startswith("Checking again which engines still use the dictionaries") for l in logs)
+    assert res["status"] in ("partial", "failed") and not res["complete"]
+    # A re-check that cannot read the tenant does not block: the plan and ZIA's own refusal remain the safeguard.
+    client2 = _deletable(_tenant(with_survivors=False))
+    plan2 = pr.plan_removal_selected(client2, sel)
+    real_list, calls = client2.zia.dlp_engine.list_dlp_engines, {"n": 0}
+
+    def flaky():   # the preview (call 1) and the executor's own plan (call 2) read fine; the re-check before the dictionaries (call 3) cannot
+        calls["n"] += 1
+        return (None, "boom") if calls["n"] == 3 else real_list()
+    client2.zia.dlp_engine.list_dlp_engines = flaky
+    logs2 = []
+    res2 = pr.remove_selected(client2, sel, plan_hash=plan2["plan_hash"], writes_enabled=True, log=logs2.append)
+    assert any("Could not check the dictionaries against the tenant again" in l for l in logs2)
+    assert {r["kind"]: r["status"] for r in res2["results"]}["dictionary"] == "deleted"
+
+
+def test_the_page_removes_only_through_the_rule_picker_and_shows_no_inline_diagram():
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    js = open(os.path.join(root, "static", "deploy_studio.js"), encoding="utf-8").read()
+    assert "Remove from tenant" not in js and "Remove all…" not in js and "_dzRemove(RM_ALL)" not in js
+    assert "Remove rules…" in js and "_dzRemovePick()" in js and "The one way to remove" in js
+    assert "Permanently remove ${rules.length} rule(s)" in js, "the final confirmation names the rules"
+    assert "checked again right before each" in js and "What was checked" in js
+    for fn in ("_dzRemovalPreview", "_dzRenderDeploy", "_dzRenderReview"):
+        m = re.search(r"function %s\(\) \{(.*?)\n\}\n" % fn, js, re.S)
+        assert m, fn
+        assert "_dzFlowHtml(" not in m.group(1) and "_dzViewToggle()" not in m.group(1), f"{fn} still draws the inline diagram"
+    assert "function _dzFlowHtml(items, results, opts)" in js, "the standalone flow page keeps its renderer"

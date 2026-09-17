@@ -4,6 +4,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-17
+
+### Removal only through the rule picker, with a usage check right before anything goes
+- **The whole-pack removal buttons are gone** from Deploy Policy Packs (*Remove from tenant* on each pack card, *Remove all…* in the options). The one way to remove is **Remove rules…**: every DLP rule in the tenant on every channel, ticked by you (the filters select a pack's rules or every DLP-Check rule in one click). The API's whole-pack plans stay for scripts; *Undo this deployment* stays for a deployment recorded by this app.
+- **The check before anything goes.** The preview reads every rule on every channel and every engine: an engine is removed only when no rule outside the selection uses it, a dictionary only when no engine that stays uses it, predefined Zscaler objects never. The approve step lists the exact rules, engines and dictionaries with why each one goes, a consent box, and a final confirmation that names the rules. Then, **right before the engine tier and again before the dictionary tier, the tenant is read again**: anything a rule or a surviving engine now uses (added since the preview, by anyone) is left alone and named in the log and the result ("checked again just before removal: still used by rule 'X' (Endpoint DLP); left alone").
+- **No inline flow diagram** on the deploy review, the deploy result or the removal preview: those screens show the lists only. The dependency diagram lives on the *How a deployment works* page.
+- Verified: tests for the live re-check (a rule added after the preview keeps its engine and dictionary), the plan's keep rules, and the page (no whole-pack buttons, no inline diagram, the rules named in the confirmation); the whole suite passes.
+
 ## 2026-09-15
 
 ### The Terraform hand-off no longer looks stuck, and every tenant read says what it is reading

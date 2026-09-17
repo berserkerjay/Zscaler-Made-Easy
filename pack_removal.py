@@ -418,6 +418,53 @@ def _settle(zia, settle_seconds: float, _log) -> Optional[str]:
     return pc.wait_active(zia, settle_seconds, _log)
 
 
+def _users_now(client, kind: str, ids: set, log=None) -> Tuple[Dict[str, str], Optional[str]]:
+    """A fresh read of who uses the candidate objects right now: for an
+    engine, every DLP rule on every channel that still references it; for
+    a dictionary, every engine that still references it. Returns
+    ({id: 'rule X (Web DLP), rule Y (Endpoint DLP)'} for the ids in use,
+    error-or-None). A read that fails leaves the plan (and ZIA's own
+    refusal of anything in use) as the safeguard."""
+    _log = log or (lambda m: None)
+    users: Dict[str, List[str]] = {}
+    try:
+        zia = client.zia
+        if kind == "engine":
+            _log("Checking again which rules still use the engines about to be removed…")
+            rules: List[Dict[str, Any]] = []
+            web, err = pd._nx(zia.dlp_web_rules.list_rules())
+            if err:
+                return {}, f"web DLP rules: {str(err)[:120]}"
+            rules += [dict(pd_rule_summary(r), channel=pc.WEB) for r in (web or [])]
+            state = pc.fetch_channel_state(zia, _all_need())
+            for ch, rs in (state.get("rules") or {}).items():
+                rules += [dict(r, channel=ch) for r in (rs or [])]
+            if state.get("errors"):
+                unread = ", ".join(f"{pc.label(ch)} ({e})" for ch, e in state["errors"].items())
+                _log(f"Some channels could not be re-read ({unread}); their rules are not part of this check.")
+            for r in rules:
+                for eid in (r.get("engine_ids") or []):
+                    if str(eid) in ids:
+                        users.setdefault(str(eid), []).append(f"rule '{r.get('name')}' ({pc.label(r['channel'])})")
+        elif kind == "dictionary":
+            _log("Checking again which engines still use the dictionaries about to be removed…")
+            engines, err = pd._nx(zia.dlp_engine.list_dlp_engines())
+            if err:
+                return {}, f"engines: {str(err)[:120]}"
+            for e in engines or []:
+                for did in _engine_dict_ids(e):
+                    if did in ids:
+                        users.setdefault(did, []).append(f"engine '{pd._field(e, 'name', default='?')}'")
+    except Exception as e:  # noqa: BLE001
+        return {}, str(e)[:120]
+    return {k: ", ".join(v[:3]) + (f" and {len(v) - 3} more" if len(v) > 3 else "") for k, v in users.items()}, None
+
+
+def pd_rule_summary(r: Any) -> Dict[str, Any]:
+    """The few fields of a web DLP rule the usage check needs."""
+    return {"id": pd._field(r, "id"), "name": str(pd._field(r, "name", default="") or "").strip(), "engine_ids": pc.engine_ids_of(r)}
+
+
 # Deletes ZIA refuses for a reason that time or an activation clears are
 # tried again (up to MAX_PASSES per tier) after activating and waiting for
 # ACTIVE. The words below are what ZIA and the SDK put in those answers.
@@ -720,6 +767,30 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
         tier = [c for c in to_remove if c["kind"] in kinds]
         if not tier:
             continue
+        # The check before anything goes: right before the engines and the
+        # dictionaries, the tenant is read again and anything a rule (or an
+        # engine that stays) now uses is left alone and named, whatever the
+        # plan said when it was previewed.
+        if kinds in (("engine",), ("dictionary",)) and not ops.stop_reason():
+            users, read_err = _users_now(client, kinds[0], {str(c["id"]) for c in tier}, log=_log)
+            if read_err:
+                _log(f"Could not check the {TIER_LABEL[ti]} against the tenant again ({read_err}); relying on the plan and on ZIA's own refusal of anything in use.")
+            kept_now = []
+            for c in tier:
+                who = users.get(str(c["id"]))
+                if not who:
+                    continue
+                entry = {"kind": c["kind"], "name": c["name"], "id": c["id"], "channel": c.get("channel"), "match": c.get("match")}
+                entries[(c["kind"], c.get("channel"), str(c["id"]))] = entry
+                results.append(entry)
+                recorder.record(c["kind"], c["name"], "skipped", op="delete", entry=entry,
+                                reason=f"checked again just before removal: still used by {who}; left alone")
+                _log(f"[{c['kind']}] {c['name']}: skipped — {entry['reason']}")
+                kept_now.append(c)
+            if kept_now:
+                tier = [c for c in tier if c not in kept_now]
+                if not tier:
+                    continue
         deleted_here = 0
         pending = list(tier)
         # Up to three passes over the tier: the first straight through, the

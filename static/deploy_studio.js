@@ -315,7 +315,6 @@ function _dzRenderSelect() {
           <button type="button" class="dz-link" onclick="event.stopPropagation(); _dzToggleDetail('${_dzE(p.id)}')">${DZ.open.has(p.id) ? 'Hide details' : 'Show details'}</button>
           ${p.baseline ? `<button type="button" class="dz-link" title="Read-only: places every object of this policy pack in the tenant (missing, deployed, monitoring, enforcing, customized) and shows the stage reached and the next steps." onclick="event.stopPropagation(); _dzJourney('${_dzE(p.id)}')">${(DZ.journey[p.id] || {}).busy ? 'Measuring…' : 'Where is this tenant?'}</button>` : ''}
           <button type="button" class="dz-link" title="Hand this pack to a platform team as a Terraform workspace (official zscaler/zia provider): what you get, how to run it, download. Opens in a new tab." onclick="event.stopPropagation(); openToolTab('terraform', '${_dzE(p.id)}')">Terraform hand-off</button>
-          <button type="button" class="dz-link danger" title="Find what this pack put in the tenant (by its DLP-Check tag and its names) and remove it, in dependency order. Previews first; objects another rule or engine still uses are kept. Needs write mode." onclick="event.stopPropagation(); _dzRemove('${_dzE(p.id)}')">${(DZ.remove || {})[p.id] === 'busy' ? 'Working…' : 'Remove from tenant'}</button>
           ${p.id === 'zbp_source_code_baseline' ? `<button type="button" class="dz-link" title="Read the tenant's own source-code dictionaries (an Anchor and a Signal per language, paired by name), preview the pairing, then rebuild this pack from them: dictionaries keep their tenant names, each language gets one engine (Signal > N AND Anchor > 0), the old pack dictionaries and engines are dropped." onclick="event.stopPropagation(); _dzFromTenant('${_dzE(p.id)}')">${(DZ.fromTenant || {}).busy ? 'Reading tenant…' : 'Rebuild from tenant dictionaries'}</button>` : ''}
         </div>
         ${p.id === 'zbp_source_code_baseline' ? _dzFromTenantHtml() : ''}
@@ -337,12 +336,8 @@ function _dzRenderSelect() {
           <label class="dz-switch"><input type="checkbox" ${DZ.options.use_rank_0 ? 'checked' : ''} onchange="DZ.options.use_rank_0=this.checked" aria-label="Use rank 0"><span class="track"><span class="knob"></span></span></label>
         </div>
         <div class="dz-option">
-          <div><div class="t">Remove every deployed policy pack</div><div class="d">Finds everything DLP-Check ever put in this tenant — any object carrying a DLP-Check tag whatever pack or version wrote it, plus the names of every pack in the library and of objects earlier pack versions shipped — on every channel, and removes it in one pass with the same per-object rules as a single pack (anything something else still uses is kept). Previewed first, double-confirmed, then verified by a fresh read. Needs write mode.</div></div>
-          <button type="button" class="dz-btn danger" onclick="_dzRemove(RM_ALL)" ${(DZ.remove || {})[RM_ALL] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_ALL] === 'busy' ? 'Scanning…' : 'Remove all…'}</button>
-        </div>
-        <div class="dz-option">
-          <div><div class="t">Pick rules to remove</div><div class="d">Lists every DLP rule in the tenant on every channel — with its state, engines and whether DLP-Check created it — so you tick the leftovers yourself. The plan removes those rules plus the engines and dictionaries only they use, keeps anything something else still uses, previews, double-confirms and verifies by a fresh read. Needs write mode.</div></div>
-          <button type="button" class="dz-btn" onclick="_dzRemovePick()" ${(DZ.remove || {})[RM_PICK] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_PICK] === 'busy' ? 'Listing…' : 'Pick rules…'}</button>
+          <div><div class="t">Remove rules from this tenant</div><div class="d">The one way to remove: lists every DLP rule in the tenant on every channel — with its state, its engines and whether DLP-Check created it — and you tick the ones to remove (filters select a pack's rules in one click). The check that follows removes only those rules, plus each engine and dictionary that nothing else uses; anything another rule or engine still uses is kept and named. You approve the exact list, confirm once more, the usage is checked again right before each engine or dictionary goes, and a fresh read verifies the result. Needs write mode.</div></div>
+          <button type="button" class="dz-btn" onclick="_dzRemovePick()" ${(DZ.remove || {})[RM_PICK] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_PICK] === 'busy' ? 'Listing…' : 'Remove rules…'}</button>
         </div>
       </div>
       ${_dzDeploymentsHtml()}`;
@@ -666,22 +661,19 @@ function _dzRenderReview() {
         <li><strong>Impact cards</strong> say what changes for the tenant as a whole: greenfield or brownfield, rules inserted at the top of the policy, enforcing actions, activation.</li>
         <li><strong>Existing objects are never overwritten.</strong> A rule the customer enabled or hardened, or a dictionary they tuned, is kept exactly as it is and shown as <em>Kept as-is</em>. Only what is missing gets created.</li>
         <li><strong>Tenant prerequisites</strong> are things the tenant must already have (a predefined dictionary, an onboarded SaaS tenant, a licensed feature). Missing ones skip only the rules that need them.</li>
-        <li><strong>Flow</strong> shows how dictionaries feed engines feed rules; hover any box to trace it. <strong>List</strong> groups the same objects by what will happen to them. Hover any status chip for what it means.</li>
+        <li><strong>The lists</strong> group the objects by what will happen to them. Hover any status chip for what it means. The dependency diagram (dictionaries feed engines feed rules) is on the <em>How a deployment works</em> page.</li>
         <li>Every rule ships <strong>DISABLED</strong>, so deploying never affects users. Enable rules in the portal after tuning.</li>
         <li><strong>Two ways to close the gap.</strong> <em>Review &amp; approve</em> creates the missing objects from here (write mode needed). <em>Hand off as Terraform</em> gives a platform team the same objects as a Terraform workspace whose first <code>terraform plan</code> is exactly this list.</li>
       </ul></details>
     ${(R.impacts || []).length ? `<div class="dz-h">Impact on this tenant</div>` : ''}
     ${(R.impacts || []).map(i => `<div class="dz-card sev-${_dzE(i.severity)}"><div class="bar"></div><div><div class="t">${_dzE(i.title)}</div><div class="d">${_dzE(i.detail)}</div></div></div>`).join('')}
     ${_dzDepsHtml(R.dependencies)}
-    ${_dzViewToggle()}
-    ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml(items, null) : `
     ${_dzSection('Converge mode — will be overwritten with the policy pack', restores)}
     ${_dzSection('Changes that will be written', creates.filter(i => i.status !== 'restore'))}
     ${_dzSection('Already exist, customized by the customer — kept as-is', differs)}
     ${_dzSection('Skipped — dependency or conflict', blocked)}
-    ${_dzSection('Already in place — nothing to do', reused, { open: false })}`}`;
-  if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
-  _dzFlowSyncTab(items, null);
+    ${_dzSection('Already in place — nothing to do', reused, { open: false })}`;
+  _dzFlowSyncTab(items, null);   // the standalone flow page, if open, follows the plan
   foot.innerHTML = `
     ${_dzGatesHtml(R, { step: 2 })}
     <div class="dz-summary">${R.status === 'blocked' ? 'Resolve the blockers above, then run preflight again.' : 'Nothing has been written yet.'}</div>
@@ -945,17 +937,14 @@ function _dzRenderDeploy() {
         <li><strong>Measure the journey</strong> on the next visit: run the assessment, or click <em>Where is this tenant?</em> on the pack card. It shows the stage reached (Foundation → Policies deployed → Visibility → Containment → Enforcement) and exactly which rules to enable or harden next.</li>
         <li>If the customer manages Zscaler with Terraform, use <strong>Export Terraform</strong> on the review step to hand them the same configuration with state.</li>
       </ol></div></div></div>
-    ${_dzViewToggle()}
-    ${(DZ.view || 'flow') === 'flow' ? _dzFlowHtml((DZ.report || {}).items || [], results) : `
     ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.explanation ? `${r.error} — What this means: ${r.explanation}` : r.error) })}
     ${_dzSection('Overwritten with the policy pack (converge mode)', results.filter(r => r.status === 'restored'), { fn: r => _dzRow(r, 'restored', `${r.id ? `ID ${r.id}` : ''}${r.drift && r.drift.length ? ` · ${r.drift.join(', ')}` : ''}`) })}
     ${_dzSection('Created & modified', results.filter(r => r.status === 'created' || r.status === 'modified'), { fn: r => _dzRow(r, r.status, r.id ? `ID ${r.id}` : '') })}
     ${_dzSection('Skipped', results.filter(r => r.status === 'skipped'), { fn: r => _dzRow(r, 'skipped', r.reason) })}
-    ${_dzSection('Reused from tenant', results.filter(r => r.status === 'reused'), { open: false, fn: r => _dzRow(r, 'reused', r.id ? `ID ${r.id}` : '') })}`}
+    ${_dzSection('Reused from tenant', results.filter(r => r.status === 'reused'), { open: false, fn: r => _dzRow(r, 'reused', r.id ? `ID ${r.id}` : '') })}
     ${verRows ? `<div class="dz-h">Post-deploy verification</div><div class="dz-rows">${verRows}</div>` : ''}
     ${(X.logs || []).length ? `<details class="dz-fold"><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(X.logs.join('\n'))}</div></details>` : ''}`;
-  if ((DZ.view || 'flow') === 'flow') _dzFlowZoom(0);
-  _dzFlowSyncTab((DZ.report || {}).items || [], results);
+  _dzFlowSyncTab((DZ.report || {}).items || [], results);   // the standalone flow page, if open, follows the result
   foot.innerHTML = `
     <div class="dz-summary">plan ${_dzE((X.plan_hash || '').slice(0, 12))}${X.deployment_id ? ' · recorded for undo' : ''}${X.deployment_error ? ` · ${_dzE(X.deployment_error)}` : ''}</div>
     <div class="dz-actions">
@@ -966,10 +955,15 @@ function _dzRenderDeploy() {
 }
 
 
-// ── Remove a deployed pack — a wizard that mirrors deploy ──────────
-// Preview (find what the pack put in the tenant, draw the flow, explain
-// what goes and what is kept) -> Approve -> Remove. The same flow diagram
-// as a deploy shows how each dictionary feeds its engines feed its rules.
+// ── Remove rules — a wizard that mirrors deploy ───────────────────
+// Select (every rule in the tenant, ticked by the operator) -> Preview (the
+// check: which rules go, which engines and dictionaries follow because
+// nothing else uses them, which are kept and why) -> Approve (the exact
+// list, a consent box, a final confirmation) -> Remove (usage checked
+// again right before each engine and dictionary) -> Verify (a fresh read).
+// The same wizard undoes a recorded deployment. Whole-pack removal is no
+// longer offered: the picker's "Select DLP-Check rules" covers it with the
+// same checks.
 const RM_KIND = { policy: 'rule', app_group: 'application group', engine: 'engine', dictionary: 'dictionary' };
 const RM_STEPS = ['Preview', 'Approve', 'Remove', 'Verify'];
 
@@ -1034,8 +1028,8 @@ function _dzRemovalRender() {
     return `<div class="dz-step ${cls}" ${n === R.step ? 'aria-current="step"' : ''}><span class="n">${n < R.step ? '✓' : i + 1}</span>${s}</div>`;
   }).join('');
   const subs = { 0: `Every DLP rule in ${_dzE((R.inventory && R.inventory.tenant_label) || 'the tenant')} on every channel. Tick the leftovers; their engines and dictionaries follow, unless something else still uses them. Nothing is deleted yet.`,
-                 1: `Removing ${R.pack.name || R.id}: what it put in ${_dzE((R.plan && R.plan.tenant_label) || 'the tenant')}, and how it flows. Nothing is deleted yet.`,
-                 2: 'Review, then approve. Deletion is in dependency order and needs write mode.',
+                 1: `The check before anything goes: which rules, which engines and dictionaries follow them, and what is kept because something else in ${_dzE((R.plan && R.plan.tenant_label) || 'the tenant')} still uses it. Nothing is deleted yet.`,
+                 2: 'Review the exact list, then approve. Deletion is in dependency order and needs write mode.',
                  3: 'Removing, activating, then waiting for ZIA to report the activation — keep this window open.',
                  4: 'Verified by a fresh read of the tenant after activation.' };
   document.getElementById('dzSub').textContent = subs[R.step];
@@ -1173,8 +1167,7 @@ function _dzRemovalPreview() {
     ${!remove.length ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Nothing to remove</div><div class="d">No objects in the tenant carry this pack’s DLP-Check tag or its names.${keep.length ? ` ${keep.length} matching object(s) are kept because something else still uses them.` : ''}</div>
       ${R.plan.read ? `<div class="d" style="margin-top:0.4rem;">What the preview read from ${_dzE(R.plan.tenant_label || 'the tenant')}: ${_dzE(_dzReadSummary(R.plan.read))}</div>` : ''}
       ${(R.plan.warnings || []).length ? `<div class="d" style="margin-top:0.4rem;">${(R.plan.warnings || []).map(w => `⚠ ${_dzE(w)}`).join('<br>')}</div>` : ''}</div></div>` : `
-    <div class="dz-flow-hint" style="margin-bottom:0.6rem;">How ${_dzE(R.pack.name || R.id)} flows through the tenant: each dictionary feeds its engines, which feed the rules on every channel. Red is removed; grey is kept because another rule or engine still uses it.</div>
-    ${_dzFlowHtml(items, null, { standalone: true })}
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What was checked</div><div class="d">Every DLP rule on every channel of ${_dzE(R.plan.tenant_label || 'the tenant')} and every engine were read. An engine goes only when no rule outside this selection uses it; a dictionary goes only when no engine that stays uses it; predefined Zscaler objects are never touched. ${_dzN(remove.filter(i => i.kind === 'policy').length, 'rule')}, ${_dzN(remove.filter(i => i.kind === 'engine').length, 'engine')} and ${_dzN(remove.filter(i => i.kind === 'dictionary').length, 'dictionary', 'dictionaries')} will be removed; ${_dzN(keep.length, 'object')} kept. The same usage check runs again right before each engine and dictionary is deleted.</div></div></div>
     <div class="dz-h" style="margin-top:1rem;">Will remove<span class="count">${remove.length}</span></div>
     <div class="dz-rows">${removeSorted.map(row).join('')}</div>
     ${keep.length ? `<div class="dz-h" style="margin-top:1rem;">Kept (still used elsewhere)<span class="count">${keep.length}</span></div><div class="dz-rows">${keep.map(row).join('')}</div>` : ''}`}
@@ -1184,22 +1177,28 @@ function _dzRemovalPreview() {
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()" ${remove.length ? '' : 'disabled'}>Print / Save as PDF</button>
       <button type="button" class="dz-btn primary" onclick="DZ.removal.step=2;_dzRemovalRender()" ${remove.length ? '' : 'disabled'}>Continue to approve</button>
     </div>`;
-  if (remove.length) _dzFlowZoom(0);
 }
 
 function _dzRemovalApprove() {
   const R = DZ.removal, body = document.getElementById('dzBody');
   const remove = (R.plan.items || []).filter(i => i.status === 'remove');
+  const keep = (R.plan.items || []).filter(i => i.status === 'keep');
   const nameOnly = remove.filter(i => i.match === 'name');
   const writeOn = !!(DZ.write && DZ.write.enabled);
+  const byKind = k => remove.filter(i => i.kind === k);
+  const list = (items, label) => items.length ? `<div class="dz-h" style="margin-top:0.8rem;">${label}<span class="count">${items.length}</span></div><div class="dz-rows">${items.map(i => `<div class="dz-row st-fail"><span class="ic" aria-hidden="true">🗑</span><div><div class="nm">${_dzE(i.name)}${i.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(i.channel))}</span>` : ''}</div>${i.kind !== 'policy' ? `<div class="rs">${i.match === 'selected' ? 'picked on its own' : 'nothing else uses it once the rules above are gone'}</div>` : ''}</div></div>`).join('')}</div>` : '';
   body.innerHTML = `
     ${_dzWriteBanner()}
     <div class="dz-card sev-high"><div class="bar"></div><div>
-      <div class="t">Remove ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}</div>
-      <div class="d">Deleted in dependency order: rules, then endpoint application groups, then engines, then dictionaries — activating between tiers so the engines and dictionaries the pack owns are no longer referenced and actually delete. Objects another rule or engine still uses are left alone. Activation runs automatically.</div>
+      <div class="t">Remove ${_dzN(byKind('policy').length, 'rule')}, ${_dzN(byKind('engine').length, 'engine')} and ${_dzN(byKind('dictionary').length, 'dictionary', 'dictionaries')} from ${_dzE(R.plan.tenant_label || 'the tenant')}</div>
+      <div class="d">Deleted in dependency order: rules, then endpoint application groups, then engines, then dictionaries — activating between tiers so ZIA no longer counts the engines and dictionaries as referenced. Right before each engine and dictionary is deleted the tenant is read again: if a rule or engine now uses it, it is left alone and said so. ${keep.length ? `${_dzN(keep.length, 'object')} already kept because something else uses ${keep.length === 1 ? 'it' : 'them'}.` : ''} Activation runs automatically.</div>
     </div></div>
+    ${list(byKind('policy'), 'Rules to remove')}
+    ${list(byKind('app_group'), 'Endpoint application groups to remove')}
+    ${list(byKind('engine'), 'Engines to remove')}
+    ${list(byKind('dictionary'), 'Dictionaries to remove')}
     ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no DLP-Check tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
-    <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I understand this permanently deletes ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>
+    <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I have read the list above and I authorize the permanent removal of these ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print / Save as PDF</button>
@@ -1287,8 +1286,11 @@ async function _dzRemovalApply() {
   const R = DZ.removal; if (!R) return;
   const remove = (R.plan.items || []).filter(i => i.status === 'remove');
   // Second confirmation (the consent checkbox was the first): a final,
-  // explicit yes naming the count and tenant before anything is deleted.
-  if (!window.confirm(`Final confirmation.\n\nPermanently delete ${remove.length} object(s) that ${R.pack.name || R.id} put in ${R.plan.tenant_label || 'this tenant'}?\n\nThis cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
+  // explicit yes naming the rules and the tenant before anything is deleted.
+  const rules = remove.filter(i => i.kind === 'policy').map(i => i.name);
+  const others = remove.length - rules.length;
+  const named = rules.slice(0, 8).map(n => `  • ${n}`).join('\n') + (rules.length > 8 ? `\n  … and ${rules.length - 8} more` : '');
+  if (!window.confirm(`Final confirmation.\n\nPermanently remove ${rules.length} rule(s) from ${R.plan.tenant_label || 'this tenant'}:\n${named || '  (none)'}\n\nplus ${others} engine(s) and dictionar${others === 1 ? 'y' : 'ies'} that nothing else uses (checked again right before each one goes).\n\nThis cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
   DZ.busy = true; R.step = 3; DZ.job = null; _dzRemovalRender();
   try {
     const snap = await _dzRunJob('/api/dlp-packs/removal/apply/start', { ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() });
