@@ -185,4 +185,17 @@ body.theme-light .db-ch-foot { background: rgba(255,255,255,0.9); }
 .db-radar-legend { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
 .db-radar-legend th { text-align: left; color: var(--dim); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
 .db-radar-legend td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); }
+
+/* ── Dashboard default content: the last recorded assessment, or a
+   plain start-here prompt, so the page never sits blank before a run ── */
+.db-lastrun h2 { margin: 0 0 0.9rem; font-size: 1.05rem; }
+.db-lastrun-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin-bottom: 0.9rem; }
+.db-lastrun-stat { display: grid; gap: 0.15rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 12px; background: var(--well); }
+.db-lastrun-stat .v { font-size: 1.4rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.db-lastrun-stat .k { font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.db-lastrun-meta { margin: 0 0 1rem; font-size: 0.85rem; color: var(--dim); }
+.db-lastrun-actions { display: flex; }
+.db-lastrun-btn { min-height: 40px; padding: 0.5rem 1.1rem; border-radius: 10px; border: 0; background: var(--btn, #2563eb); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.db-lastrun-btn:hover { background: var(--btn-hover, #1d4ed8); }
+@media (max-width: 760px) { .db-lastrun-stats { grid-template-columns: 1fr 1fr; } }
 .db-radar-legend td:last-child { font-weight: 700; text-align: right; }

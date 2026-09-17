@@ -32,8 +32,8 @@
     <nav class="db-nav" aria-label="Workflow">
       <div class="db-nav-l">Workflow</div>
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
-      <button type="button" class="db-item" data-db="channels"><span class="db-ico" aria-hidden="true">🧩</span>Channels</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
+      <button type="button" class="db-item" data-db="channels"><span class="db-ico" aria-hidden="true">🧩</span>Channels</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope</button>
       <button type="button" class="db-item" data-db="run"><span class="db-ico" aria-hidden="true">▶</span><span class="db-lbl">Run assessment</span></button>
       <button type="button" class="db-item" data-db="review"><span class="db-ico" aria-hidden="true">📋</span>Findings &amp; report</button>
@@ -293,7 +293,7 @@
       });
     });
   }
-  const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results'];
+  const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results', 'dbLastRun'];
   function showChannels() {
     if (!channelsView) { channelsView = buildChannelsView(); renderChannelsList(); }
     MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el) el.dataset.dbHiddenFor = 'channels', el.style.display = 'none'; });
@@ -312,9 +312,53 @@
     document.querySelector('.hero').hidden = false;
   }
 
+  // ── Dashboard default content: the space where results render must
+  // never sit blank before a fresh run in this tab. Show the selected
+  // tenant profile's last recorded assessment (score, maturity, when it
+  // ran) when the server has one on file; otherwise a plain prompt that
+  // starts the operator on Connect to the tenant. This is a summary of
+  // the last run, not a live re-render — the card says so.
+  const lastRun = document.createElement('div');
+  lastRun.id = 'dbLastRun'; lastRun.className = 'card db-lastrun'; lastRun.hidden = true;
+  const progressAnchor = $('progressCard');
+  if (progressAnchor) progressAnchor.insertAdjacentElement('beforebegin', lastRun);
+  else (document.getElementById('main-content') || container).appendChild(lastRun);
+  function renderLastRunOrEmpty() {
+    const r = $('results');
+    if (r && getComputedStyle(r).display !== 'none') { lastRun.hidden = true; return; }
+    const cur = aside.querySelector('.db-item[aria-current="page"]');
+    if (!cur || cur.dataset.db !== 'dashboard') { lastRun.hidden = true; return; }
+    const det = window.GD && GD.profileDetail;
+    const last = det && det.last_assessed;
+    if (last) {
+      const journey = last.journey ? ` · Journey stage ${last.journey.stage ?? 0} of 5` : '';
+      lastRun.innerHTML = `
+        <h2>Last assessment</h2>
+        <div class="db-lastrun-stats">
+          <div class="db-lastrun-stat"><span class="v">${last.score ?? '—'}%</span><span class="k">Score</span></div>
+          <div class="db-lastrun-stat"><span class="v">${E(last.maturity || '—')}</span><span class="k">Maturity</span></div>
+          <div class="db-lastrun-stat"><span class="v">${last.checks ?? '—'}</span><span class="k">Checks ran</span></div>
+          <div class="db-lastrun-stat"><span class="v">${last.critical ?? 0}</span><span class="k">Critical</span></div>
+        </div>
+        <p class="db-lastrun-meta">Ran ${E(new Date(last.at).toLocaleString())} for ${E(det.name || 'this tenant')}${journey}. Run it again for current results.</p>
+        <div class="db-lastrun-actions"><button type="button" class="db-lastrun-btn" id="dbLastRunGo">Run a fresh assessment</button></div>`;
+    } else {
+      lastRun.innerHTML = `
+        <h2>No assessment yet</h2>
+        <p>Connect to the tenant, then run the assessment to see the maturity score, completion and findings here.</p>
+        <div class="db-lastrun-actions"><button type="button" class="db-lastrun-btn" id="dbLastRunGo">Connect to the tenant &rarr;</button></div>`;
+    }
+    const go = $('dbLastRunGo');
+    if (go) go.addEventListener('click', () => { const btn = aside.querySelector(`.db-item[data-db="${last ? 'run' : 'configure'}"]`); if (btn) btn.click(); });
+    lastRun.hidden = false;
+  }
+  const origProfilesLoad = window._gdProfilesLoad;
+  if (typeof origProfilesLoad === 'function') window._gdProfilesLoad = async function () { const r = await origProfilesLoad.apply(this, arguments); renderLastRunOrEmpty(); return r; };
+
   function setCurrent(k) {
     aside.querySelectorAll('.db-item').forEach(b => { if (b.dataset.db === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     (CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();
+    renderLastRunOrEmpty();
   }
   // Follow the step strip when the inline script moves it.
   const strip = $('stepBar');
@@ -329,6 +373,7 @@
     const s = $('dbCurSaved'); if (s) s.textContent = prof ? 'Profile selected' : 'Never';
     const run = aside.querySelector('.db-item[data-db="run"]'), btn = $('runBtn');
     if (run && btn) { const busy = !!btn.disabled; run.classList.toggle('busy', busy); run.setAttribute('aria-busy', String(busy)); run.querySelector('.db-ico').textContent = busy ? '⏳' : '▶'; run.querySelector('.db-lbl').textContent = busy ? 'Running…' : 'Run assessment'; }
+    renderLastRunOrEmpty();
   }
   refreshCurrent(); setInterval(refreshCurrent, 2500);
   fetch('/api/health', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { const b = $('dbBuild'); if (b && d) b.textContent = `Build ${String(d.commit || d.version || '').slice(0, 7) || '—'}`; }).catch(() => {});

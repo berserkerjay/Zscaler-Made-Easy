@@ -148,6 +148,29 @@ def test_tenant_configuration_is_hidden_until_its_own_sidebar_link_is_used():
     assert "const origGoConfig = window._gdGoConfig;" in js and "showTenantConfig(); return origGoConfig.apply(this, arguments);" in js, "the legacy step strip's Configure/Scope buttons call _gdGoConfig directly, bypassing the sidebar handler"
 
 
+def test_connect_to_the_tenant_sits_directly_below_dashboard_in_the_sidebar():
+    js = _read("dashboard.js")
+    keys = ("dashboard", "configure", "channels", "scope", "run", "review")
+    nav = [k for k in re.findall(r'data-db="([a-z]+)"', js) if k in keys][:len(keys)]
+    assert nav == ["dashboard", "configure", "channels", "scope", "run", "review"], nav
+
+
+def test_the_dashboard_never_sits_blank_before_a_run():
+    """Before a fresh run in this tab, the space where results render
+    must show either the tenant's last recorded assessment (score,
+    maturity, when it ran) or a plain prompt to connect — never nothing.
+    It hides again once real results, Channels, or Connect/Scope are on
+    screen, so it never stacks with them."""
+    js = _read("dashboard.js")
+    css = _read("dashboard.css")
+    assert "function renderLastRunOrEmpty()" in js and "id = 'dbLastRun'" in js
+    assert "GD.profileDetail" in js and "det.last_assessed" in js
+    assert "No assessment yet" in js and "Last assessment" in js
+    assert "'progressCard', 'results', 'dbLastRun']" in js, "hidden with the rest of main while Channels is open"
+    assert "(CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();\n    renderLastRunOrEmpty();" in js, "updates the moment the nav selection changes"
+    assert ".db-lastrun-stat {" in css and ".db-lastrun-btn {" in css
+
+
 def test_the_channels_page_is_wired_a_real_new_nav_item_not_decoration():
     """Channel Selection: a new sidebar nav item that shows 11 real
     channels (icon, risk, category, description), lets the operator mark

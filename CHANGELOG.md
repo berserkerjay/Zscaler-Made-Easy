@@ -6,6 +6,13 @@ what each batch of changes did, newest first.
 
 ## 2026-09-17
 
+### Dashboard: never blank, and Connect to the tenant moved up
+- **What you asked for.** "The dashboard now shows nothing — I need to show the stats," and separately, "move Connect to the tenant directly below the dashboard on the links on the side."
+- **Why it went blank.** Hiding the tenant configuration form by default (previous entry, same day) also emptied the space it used to fill: before your first run in a browser tab, the Dashboard had nothing left to show.
+- **Now** the Dashboard always shows something there. If the selected tenant profile has a recorded assessment, a **Last assessment** card shows its score, maturity band, checks run, critical findings, when it ran, and the journey stage, with a button to run a fresh one. If there is no recorded assessment yet (a brand-new tenant, or no profile saved), a plain **No assessment yet** prompt takes you straight to Connect to the tenant instead. Either way, it hides itself the moment real results, Channels, or Connect/Scope are on screen, so it never stacks with them. This reads the same history the tenant profile already keeps (`tenant_profiles.json`) — no new data is collected or stored.
+- **Connect to the tenant** now sits directly under **Dashboard** in the sidebar, ahead of Channels and Scope, matching where people look for it first.
+- Verified: `tests/test_dashboard.py` (the sidebar order; the last-run card and empty-state wiring, hidden with the rest of main during Channels, refreshed on every nav change). Browser run against a fake tenant: blank-state prompt on first load with no history, "Last assessment" card rendering real numbers once a profile's history is simulated, and the card correctly disappearing once results are on screen.
+
 ### Tenant configuration hidden until you ask for it
 - **What you asked for.** "On the dashboard the tenant configuration should not be shown — it should only show itself when you select the link in the sidebar."
 - **Now** the "Start here" guide and the tenant details form it carries (organisation, cloud, vanity domain, API client, and the scope checklist nested inside the same card) no longer sit on the Dashboard by default. They stay hidden until you open **Connect to the tenant** or **Scope** — from the sidebar, or the legacy ①②③④ step strip above it — and hide again the moment you move to Dashboard, Channels, a running assessment, or the results. The app still opens the form itself whenever it needs you there (a missing field before Run, a rejected sign-in, Run Another Assessment), so nothing about filling it in changed — only that the Dashboard no longer leads with a sign-in form.
