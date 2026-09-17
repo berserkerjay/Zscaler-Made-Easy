@@ -15,8 +15,12 @@ dictionary, channel and application:
 
 Incidents come from the Workflow Automation API through the same OneAPI
 client the rest of the app uses (`client.zwa.dlp_incidents`). Rules come
-from the same inventory the removal wizard lists. No user identities are
-kept in the report: departments and counts only.
+from the same inventory the removal wizard lists. The report also says who
+was transacting, what triggered (rule and dictionaries) and where the data
+was going (URL, application or recipient) per incident, so a destination
+that never carries sensitive data (telemetry, public content) can be
+excluded from inspection instead of tuning a dictionary. The report lives
+in the server's memory while it runs and is never written to disk.
 
 Thresholds (the defaults the operator accepted) live in DEFAULTS and can
 be overridden per request; nothing here writes to the tenant.
@@ -39,6 +43,14 @@ DEFAULTS: Dict[str, Any] = {
     # Resolutions / closed codes that mean "not a real leak". Matched after
     # lower-casing and stripping punctuation, so "False-Positive" matches.
     "not_real": ["false positive", "business justified", "not an incident", "not a violation", "benign"],
+    # Where it was going: a destination is proposed for exclusion when it has
+    # at least this many incidents, none closed as real, and either looks
+    # like telemetry / public content or its closed incidents are not real
+    # at or above this share.
+    "dest_min_incidents": 3,
+    "dest_fp_pct": 80,
+    "telemetry_patterns": None,  # None = TELEMETRY_PATTERNS below
+    "recent_limit": 40,          # the latest transactions listed with who / trigger / where
 }
 MONITOR_ACTIONS = {"ALLOW", "OFLCASB_DLP_REPORT_INCIDENT", "OFLCASB_DLP_ALLOW", "REPORT"}
 MAX_PAGES = 50           # 50 x 100 incidents per run
@@ -90,6 +102,56 @@ def _parse_time(v: Any) -> Optional[datetime]:
         return None
 
 
+def host_of(destination: str) -> str:
+    """The hostname (or address) in a destination: a URL, a bare host, an
+    IP, or a mail address list (the first recipient's domain)."""
+    s = str(destination or "").strip()
+    if not s:
+        return ""
+    if "@" in s and "://" not in s and "/" not in s:
+        first = s.split(",")[0].strip()
+        return first.split("@", 1)[1].lower() if "@" in first else first.lower()
+    if "://" not in s:
+        s = "https://" + s
+    try:
+        from urllib.parse import urlsplit
+        return (urlsplit(s).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def path_of(destination: str) -> str:
+    s = str(destination or "").strip()
+    if "://" not in s:
+        return ""
+    try:
+        from urllib.parse import urlsplit
+        return urlsplit(s).path or ""
+    except ValueError:
+        return ""
+
+
+# Destinations that never carry the customer's sensitive data: telemetry,
+# crash and analytics collectors, update and certificate services, tag
+# managers. A host or path matching one of these is flagged so its
+# incidents can be excluded from inspection instead of tuning a dictionary.
+TELEMETRY_PATTERNS: List[str] = [
+    r"(^|\.)(telemetry|metrics|analytics|stats|beacon|collector|collect|events?|ingest|logs?|crash(es|lytics)?|diag(nostics)?|feedback|watson)\.",
+    r"(^|\.)(sentry|datadog(hq)?|newrelic|nr-data|segment|mixpanel|amplitude|hotjar|fullstory|logrocket|bugsnag|appsflyer|adjust|braze|pendo|intercom|heap)\.",
+    r"(^|\.)(doubleclick|googletagmanager|google-analytics|googlesyndication|gstatic|adservice|scorecardresearch|quantserve|demdex|omtrdc)\.",
+    r"(^|\.)(update|updates|swupdate|swdist|windowsupdate|download|dl|cdn|edge|ocsp|crl|pki|ctldl)\.",
+    r"^/(telemetry|metrics|analytics|beacon|collect|track|events?|v\d+/(track|events?|batch|collect|telemetry|log))(/|$|\?)",
+]
+
+
+def looks_like_telemetry(host: str, paths: Iterable[str] = (), patterns: Optional[Iterable[str]] = None) -> bool:
+    pats = [re.compile(p, re.I) for p in (patterns or TELEMETRY_PATTERNS)]
+    h = str(host or "").lower()
+    if h and any(p.search(h) for p in pats if not p.pattern.startswith("^/")):
+        return True
+    return any(p.search(str(x or "")) for x in paths for p in pats if p.pattern.startswith("^/"))
+
+
 def channel_of_incident(source_type: Any, sub_type: Any = None, integration: Any = None) -> str:
     s = " ".join(str(x or "") for x in (source_type, sub_type, integration)).upper()
     if "ENDPOINT" in s or "ZDP" in s or "DEVICE" in s:
@@ -128,6 +190,18 @@ def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
              for x in (_g(mp, "dictionaries", default=[]) or []) if _g(x, "name")]
     app = _g(d, *_both("applicationInfo"), default={}) or {}
     user = _g(d, *_both("userInfo"), default={}) or {}
+    net = _g(d, *_both("networkInfo"), default={}) or {}
+    content = _g(d, *_both("contentInfo"), default={}) or {}
+    mail = _g(d, *_both("emailInfo"), *_both("mailInfo"), default={}) or {}
+    # Where it was going: the URL, else the mail recipients, else the destination IP.
+    url = str(_g(app, "url", *_both("hostnameOrApplication"), default="") or "")
+    recipients = _g(mail, "to", *_both("toAddresses"), "recipients", *_both("recipientEmails"), default=None)
+    if isinstance(recipients, (list, tuple)):
+        recipients = ", ".join(str(x) for x in recipients if x)
+    destination = url or str(recipients or "") or str(_g(net, *_both("destinationIpAddress"), *_both("destinationIp"), default="") or "")
+    actions = _g(d, *_both("sourceActions"), *_both("transactionType"), "action", default=[]) or []
+    if not isinstance(actions, (list, tuple)):
+        actions = [actions]
     source_type = _g(d, *_both("sourceType"))
     sub_type = _g(d, *_both("sourceSubType"))
     integration = _g(d, *_both("integrationType"))
@@ -146,6 +220,14 @@ def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
         "source_type": str(source_type or ""),
         "application": str(_g(app, "name", *_both("hostnameOrApplication"), "url", default="") or ""),
         "department": str(_g(user, "department", default="") or ""),
+        # Who was transacting, what they did, where it was going.
+        "user": str(_g(user, "email", *_both("uniqueIdentifier"), "login", "name", default="") or ""),
+        "user_name": str(_g(user, "name", default="") or ""),
+        "destination": destination,
+        "host": host_of(destination),
+        "path": path_of(destination),
+        "actions": [str(a) for a in actions if a],
+        "file": str(_g(content, *_both("fileName"), default="") or ""),
         "rules": rules, "engines": engines, "dictionaries": dicts,
         "match_count": int(_g(d, *_both("matchCount"), default=0) or 0),
         "real": verdict(status, resolution, closed_code, not_real),
@@ -317,7 +399,62 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     applications = group(lambda i: [i["application"] or "(unknown application)"], incidents, fp_win)
     departments = group(lambda i: [i["department"] or "(unknown department)"], incidents, fp_win)
 
+    # Who is transacting, and where it was going. A destination whose
+    # incidents are never real (telemetry / public content) is marked for
+    # exclusion: that is a policy scope fix, not a dictionary fix.
+    user_key = lambda i: i.get("user") or "(unknown user)"  # noqa: E731
+    host_key = lambda i: i.get("host") or i.get("destination") or "(unknown destination)"  # noqa: E731
+    users = group(lambda i: [user_key(i)], incidents, fp_win)
+    by_user: Dict[str, List[Dict[str, Any]]] = {}
+    for i in incidents:
+        by_user.setdefault(user_key(i), []).append(i)
+    for u in users:
+        lst = by_user.get(u["name"], [])
+        u["department"] = next((i["department"] for i in lst if i.get("department")), "")
+        u["display_name"] = next((i.get("user_name") for i in lst if i.get("user_name")), "")
+        hosts_c: Dict[str, int] = {}
+        for i in lst:
+            hosts_c[host_key(i)] = hosts_c.get(host_key(i), 0) + 1
+        u["destinations"] = _top(hosts_c, 4)
+        u["last_at"] = max((i["_created"] for i in lst if i.get("_created")), default=None)
+        u["last_at"] = u["last_at"].isoformat() if u["last_at"] else None
+    destinations = group(lambda i: [host_key(i)], incidents, fp_win)
+    by_host: Dict[str, List[Dict[str, Any]]] = {}
+    for i in incidents:
+        by_host.setdefault(host_key(i), []).append(i)
+    dest_min, dest_fp = int(s["dest_min_incidents"]), int(s["dest_fp_pct"])
+    for h in destinations:
+        lst = by_host.get(h["name"], [])
+        h["users"] = len({i.get("user") for i in lst if i.get("user")})
+        h["telemetry"] = looks_like_telemetry(h["name"], [i.get("path") for i in lst], s.get("telemetry_patterns"))
+        h["applications"] = sorted({i["application"] for i in lst if i.get("application")})[:4]
+        h["actions"] = sorted({a for i in lst for a in (i.get("actions") or [])})[:6]
+        never_real = h["real"] == 0
+        by_verdict = h["closed"] >= dest_min and h["fp_rate_pct"] is not None and h["fp_rate_pct"] >= dest_fp and never_real
+        h["exclude"] = h["incidents"] >= dest_min and never_real and (h["telemetry"] or by_verdict)
+        if h["exclude"]:
+            h["why"] = (f"looks like a telemetry / public-content destination ({h['incidents']} incidents from {h['users']} user(s), none closed as real)" if h["telemetry"]
+                        else f"{h['not_real']} of {h['closed']} closed incidents were not real and none was real ({h['incidents']} incidents from {h['users']} user(s))")
+            h["fix"] = (f"Exclude {h['name']} from the DLP rules it hits ({', '.join(h['rules'][:4])}): add it to a URL category the rules exclude, "
+                        f"or to the rules' excluded domains, and clear its open incidents. Nothing sensitive is posted there, so no coverage is lost.")
+        else:
+            h["why"], h["fix"] = "", ""
+    recent = sorted([i for i in incidents if i.get("_created")], key=lambda i: i["_created"], reverse=True)[: int(s["recent_limit"])]
+    recent_rows = [{"at": i["created_at"], "who": i.get("user") or "", "department": i.get("department") or "", "channel": i["channel"],
+                    "actions": i.get("actions") or [], "trigger": ", ".join(i["rules"]) or "(no rule name)",
+                    "dictionaries": ", ".join(f"{d['name']} ×{d['count']}" if d.get("count") else d["name"] for d in i["dictionaries"]),
+                    "sent_to": i.get("destination") or i.get("application") or "", "host": i.get("host") or "", "application": i.get("application") or "",
+                    "file": i.get("file") or "", "severity": i.get("severity") or "", "status": i.get("status") or "",
+                    "verdict": "real" if i["real"] is True else ("not real" if i["real"] is False else "open")} for i in recent]
+
     findings: List[Dict[str, Any]] = []
+    for h in destinations:
+        if h["exclude"]:
+            findings.append({"kind": "noisy_destination", "severity": "medium", "name": h["name"], "channel": None,
+                             "text": f"Destination {h['name']}: {h['why']}. Fix: {h['fix']}", "why": [h["why"]], "fix": h["fix"], "rules": h["rules"],
+                             "evidence": {"incidents": h["incidents"], "users": h["users"], "not_real": h["not_real"], "real": h["real"], "closed": h["closed"],
+                                          "telemetry": h["telemetry"], "applications": h["applications"], "actions": h["actions"]},
+                             "proposal": "exclude_destination"})
     for row in rule_rows:
         if row["status"] == "noisy":
             findings.append({"kind": "noisy_rule", "severity": "medium", "name": row["name"], "channel": row["channel"],
@@ -344,7 +481,12 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     findings.sort(key=lambda f: (sev.get(f["severity"], 9), f["name"]))
 
     total = _tally(incidents)
+    # The FP/TP detection ratio over the whole window: verdicts only (open
+    # incidents have no verdict yet). fp_share_pct is FP / (FP + TP).
+    fp, tp = total["not_real"], total["real"]
     summary = {**total, "fp_rate_pct": _rate(_tally(fp_win)["closed"], _tally(fp_win)["not_real"]),
+               "fp": fp, "tp": tp, "fp_tp_ratio": _ratio(fp, tp), "fp_share_pct": (round(fp * 100 / (fp + tp)) if (fp + tp) else None),
+               "users": len(users), "destinations": len(destinations), "excludable_destinations": sum(1 for h in destinations if h["exclude"]),
                "rules": len(rule_rows), "noisy_rules": sum(1 for r in rule_rows if r["status"] == "noisy"),
                "dead_rules": sum(1 for r in rule_rows if r["status"] == "dead"),
                "promotable_rules": sum(1 for r in rule_rows if r["status"] == "promotable"),
@@ -354,7 +496,17 @@ def evaluate(incidents: List[Dict[str, Any]], rules: List[Dict[str, Any]], setti
     rule_rows.sort(key=lambda r: (order.get(r["status"], 9), -r["incidents"], r["name"]))
     return {"settings": {k: v for k, v in s.items() if k != "not_real"} | {"not_real": list(s["not_real"])},
             "summary": summary, "rules": rule_rows, "engines": engines, "dictionaries": dictionaries,
-            "channels": channels, "applications": applications[:40], "departments": departments[:40], "findings": findings}
+            "channels": channels, "applications": applications[:40], "departments": departments[:40],
+            "users": users[:60], "destinations": destinations[:80], "recent": recent_rows, "findings": findings}
+
+
+def _ratio(fp: int, tp: int) -> str:
+    """FP:TP in lowest terms ("6:1", "3:2", "0:4"); "–" when nothing closed."""
+    if fp + tp == 0:
+        return "–"
+    import math
+    g = math.gcd(fp, tp) or 1
+    return f"{fp // g}:{tp // g}"
 
 
 # ── why a dictionary is false-positive prone ───────────────────────────
@@ -531,7 +683,9 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
 
 def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
     s = rep.get("summary") or {}
-    lines = [f"# Detection Health{' — ' + label if label else ''}", "",
+    lines = [f"# FP/TP Detection Ratio{' — ' + label if label else ''}", "",
+             f"FP/TP ratio {s.get('fp_tp_ratio', '–')} ({s.get('fp', 0)} not real : {s.get('tp', 0)} real"
+             f"{', ' + str(s.get('fp_share_pct')) + '% of verdicts not real' if s.get('fp_share_pct') is not None else ''}). "
              f"{rep.get('incident_count', 0)} incident(s) in the last {rep.get('days')} days: {s.get('closed', 0)} closed, {s.get('not_real', 0)} not real "
              f"({s.get('fp_rate_pct') if s.get('fp_rate_pct') is not None else '–'}% over the {rep.get('settings', {}).get('fp_window_days')}-day window). "
              f"{s.get('rules', 0)} rules: {s.get('noisy_rules', 0)} noisy, {s.get('dead_rules', 0)} dead, {s.get('promotable_rules', 0)} promotable; "
@@ -540,6 +694,22 @@ def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
         lines.append("## Findings")
         for f in rep["findings"]:
             lines.append(f"- [{f['severity']}] {f['text']}")
+        lines.append("")
+    if rep.get("destinations"):
+        lines.append("## Where it was going")
+        lines.append("| Destination | Incidents | Users | Closed | Not real | Real | Telemetry | Exclude | Rules |")
+        lines.append("|---|---:|---:|---:|---:|---:|---|---|---|")
+        for h in rep["destinations"]:
+            lines.append(f"| {h['name']} | {h['incidents']} | {h.get('users', 0)} | {h['closed']} | {h['not_real']} | {h.get('real', 0)} | "
+                         f"{'yes' if h.get('telemetry') else ''} | {'yes' if h.get('exclude') else ''} | {', '.join((h.get('rules') or [])[:4])} |")
+        lines.append("")
+    if rep.get("users"):
+        lines.append("## Who is transacting")
+        lines.append("| User | Department | Incidents | Closed | Not real | Real | Top destinations |")
+        lines.append("|---|---|---:|---:|---:|---:|---|")
+        for u in rep["users"]:
+            lines.append(f"| {u['name']} | {u.get('department') or ''} | {u['incidents']} | {u['closed']} | {u['not_real']} | {u.get('real', 0)} | "
+                         f"{', '.join(f'{n} ({c})' for n, c in (u.get('destinations') or []))} |")
         lines.append("")
     lines.append("## Rules")
     lines.append("| Rule | Channel | State | Incidents | Closed | Not real | FP % | Status |")

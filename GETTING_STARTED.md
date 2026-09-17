@@ -296,9 +296,9 @@ Nothing leaves the laptop and nothing is stored; evidence lines have
 passwords and tokens blanked out. *Download findings* gives you a Markdown
 file for the ticket.
 
-## 4h. Detection Health and the proposals queue (return visits)
+## 4h. FP/TP Detection Ratio and the proposals queue (return visits)
 
-Toolbar › *Find the gaps › Detection Health*. Once incidents have flowed
+Toolbar › *Find the gaps › FP/TP Detection Ratio*. Once incidents have flowed
 through Workflow Automation for a few weeks, this tab measures what the
 DLP rules actually do (false-positive rate per rule, engine and
 dictionary; dead rules; monitor rules ready to promote) and turns the
@@ -334,7 +334,7 @@ every tenant profile that remembers its secret, the loop:
 2. refreshes Zscaler's SaaS tenant capability matrix and compares it with
    the customer's onboarded tenants (not active, at the limit, not
    onboarded at all);
-3. runs Detection Health and refreshes the proposals queue;
+3. runs FP/TP Detection Ratio and refreshes the proposals queue;
 4. measures the packs' journey and reports drift since the last run;
 5. writes a digest and, when there is something to decide, sends it.
 
@@ -345,7 +345,7 @@ is not open, schedule `RUN_Continuous_Evaluation.bat` in Windows Task
 Scheduler; in a container run `python continuous_eval.py --once`. The
 Digest tab shows the latest digest, the previous ones, the sources and
 the settings, and has a *Run the loop now* button. Nothing in the loop
-writes to a tenant; decisions stay in Detection Health.
+writes to a tenant; decisions stay in FP/TP Detection Ratio.
 
 ## 4g. What does everything do?
 

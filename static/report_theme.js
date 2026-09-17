@@ -20,7 +20,9 @@
   }
   function init() {
     apply(current(), false);
-    if (!document.getElementById('themeToggleBtn')) {
+    // The toggle belongs to pages styled by the app's own stylesheet; a
+    // self-contained reference page keeps its own look.
+    if (!document.getElementById('themeToggleBtn') && document.querySelector('link[href="/app.css"]')) {
       const btn = document.createElement('button');
       btn.id = 'themeToggleBtn';
       btn.type = 'button';
@@ -66,4 +68,38 @@
     return r;
   };
   window.__dlpUnlock = unlock;
+})();
+
+// ── Back to the main page ─────────────────────────────────────────────
+// Every tab the app opens can return to the assessment page: a link with
+// href="/" (the report bars have one) goes back to the tab that opened
+// this one and closes this tab; a page without such a link gets a fixed
+// "Back to the assessment" button. With no opener left, the link simply
+// loads the main page.
+(function () {
+  function goHome(e) {
+    if (e) e.preventDefault();
+    const o = window.opener;
+    if (o && !o.closed) {
+      try { o.focus(); } catch (err) { /* cross-window */ }
+      window.close();
+      setTimeout(() => { if (!window.closed) location.href = '/'; }, 300);
+      return;
+    }
+    location.href = '/';
+  }
+  function init() {
+    const links = Array.from(document.querySelectorAll('a[href="/"]'));
+    links.forEach(a => { a.addEventListener('click', goHome); if (!a.title) a.title = 'Back to the assessment page'; });
+    if (!links.length && !document.getElementById('backHomeBtn')) {
+      const b = document.createElement('a');
+      b.id = 'backHomeBtn'; b.href = '/'; b.textContent = '← Back to the assessment';
+      b.setAttribute('aria-label', 'Back to the assessment page');
+      b.style.cssText = 'position:fixed;top:0.6rem;left:0.6rem;z-index:2147483000;padding:0.5rem 0.85rem;border-radius:10px;background:#1d4ed8;color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,0.35);';
+      b.addEventListener('click', goHome);
+      document.body.appendChild(b);
+    }
+  }
+  if (document.body) init(); else document.addEventListener('DOMContentLoaded', init);
+  window.__dlpGoHome = goHome;
 })();

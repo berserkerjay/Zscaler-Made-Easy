@@ -1081,9 +1081,9 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     return out
 
 
-# ── Detection Health (continuous evaluation, phase 1) ──────────────────
+# ── FP/TP Detection Ratio (continuous evaluation, phase 1) ──────────────────
 class DetectionHealthRequest(TenantCredsRequest):
-    """Body of a Detection Health run: the window in days and threshold overrides."""
+    """Body of a FP/TP Detection Ratio run: the window in days and threshold overrides."""
     days: int = 30
     settings: Dict[str, Any] = {}     # threshold overrides, see detection_health.DEFAULTS
 
@@ -1182,7 +1182,7 @@ class ProposalApplyRequest(TenantCredsRequest):
 def _proposal_client(req: ProposalApplyRequest):
     creds = _tenant_creds(req)
     if not (creds.get("client_id") and creds.get("client_secret")):
-        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open Detection Health from the assessment page (its credentials are used), or select a tenant profile that remembers its secret.")
+        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open FP/TP Detection Ratio from the assessment page (its credentials are used), or select a tenant profile that remembers its secret.")
     return _build_sdk_client(creds)
 
 
@@ -1305,14 +1305,14 @@ async def report_digest_page():
 
 @app.get("/api/detection-health/schedule")
 async def detection_health_schedule():
-    """State of the 6-hour Detection Health refresh for tenant profiles
+    """State of the 6-hour FP/TP Detection Ratio refresh for tenant profiles
     that remember their secret."""
     return dict(_DH_REFRESH_STATE)
 
 
 @app.get("/api/detection-health/export/{report_id}")
 async def detection_health_export(report_id: str, format: str = "markdown"):
-    """Download a Detection Health report (Markdown, JSON or Word) while it is still in memory."""
+    """Download a FP/TP Detection Ratio report (Markdown, JSON or Word) while it is still in memory."""
     rep = _REPORTS.get(report_id)
     if not rep or not report_id.startswith("health-"):
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
@@ -1326,7 +1326,7 @@ async def detection_health_export(report_id: str, format: str = "markdown"):
 
 @app.get("/api/detection-health/{report_id}")
 async def detection_health_get(report_id: str):
-    """One Detection Health report, while it is still in memory."""
+    """One FP/TP Detection Ratio report, while it is still in memory."""
     rep = _REPORTS.get(report_id)
     if not rep or not report_id.startswith("health-"):
         raise HTTPException(status_code=404, detail="Report not found or expired (reports live in memory while the server runs).")
@@ -1335,7 +1335,7 @@ async def detection_health_get(report_id: str):
 
 @app.get("/report/health")
 async def report_health_page():
-    """Standalone tab for Detection Health (static/report_health.html)."""
+    """Standalone tab for FP/TP Detection Ratio (static/report_health.html)."""
     page = os.path.join(STATIC_DIR, "report_health.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
@@ -1377,9 +1377,9 @@ def _dh_refresh_once() -> None:
 
 
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
-    """One run of the continuous evaluation (guidance, Detection Health,
+    """One run of the continuous evaluation (guidance, FP/TP Detection Ratio,
     SaaS tenants, drift, digest, notifications). Keeps the per-profile
-    state the Detection Health tab shows."""
+    state the FP/TP Detection Ratio tab shows."""
     import continuous_eval
     d = continuous_eval.run_once(build_client=_build_sdk_client, notify=notify)
     for t in d.get("tenants") or []:
@@ -3835,7 +3835,13 @@ async def reference_page(slug: str):
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="reference page missing")
     with open(path, "r", encoding="utf-8") as f:
-        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+        html = f.read()
+    # Every tab can return to the assessment page: the shared theme script
+    # adds a "Back to the assessment" button to a page that has no link home.
+    tag = '<script src="/static/report_theme.js"></script>\n'
+    pos = html.rfind("</body>")
+    html = html[:pos] + tag + html[pos:] if pos >= 0 else html + tag
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/report/flow")

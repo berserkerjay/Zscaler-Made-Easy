@@ -35,11 +35,11 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Digest</span> and the always-on loop</h1>
-      <p>Every six hours the app re-reads guidance, Detection Health, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, writes a digest, and tells you when there is something to decide. Nothing is written to any tenant.</p>
+      <p>Every six hours the app re-reads guidance, FP/TP Detection Ratio, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, writes a digest, and tells you when there is something to decide. Nothing is written to any tenant.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
-      <a class="rp-btn" href="/report/health" target="_blank" rel="noopener">Detection Health</a>
+      <a class="rp-btn" href="/report/health" target="_blank" rel="noopener">FP/TP Detection Ratio</a>
       <span class="sep"></span>
       <button type="button" class="rp-btn primary" id="dgRun">Run the loop now</button>
       <a class="rp-btn" id="dgMd" href="#" aria-disabled="true">Download latest (Markdown)</a>
@@ -104,7 +104,7 @@
         const s = latest.summary || {};
         $('dgVerdict').className = `dg-verdict ${latest.noteworthy ? 'hot' : 'ok'}`;
         $('dgVerdict').innerHTML = `<strong>${latest.noteworthy ? 'Something needs a look.' : 'Nothing new.'}</strong> Run at ${E(fmt(latest.at))}.`;
-        $('dgTiles').innerHTML = tile('New proposals', s.proposals_new || 0, 'decide them in Detection Health') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
+        $('dgTiles').innerHTML = tile('New proposals', s.proposals_new || 0, 'decide them in FP/TP Detection Ratio') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
           + tile('Stale sources', s.stale_sources || 0) + tile('SaaS tenants not active', s.tenants_not_active || 0) + tile('Packs moved', s.drift_changed || 0, 'journey stage changed') + tile('Errors', s.errors || 0);
         $('dgMd').href = `/api/digests/${encodeURIComponent(latest.id)}?format=markdown`; $('dgMd').setAttribute('aria-disabled', 'false');
         try { $('dgFull').textContent = await (await fetch(`/api/digests/${encodeURIComponent(latest.id)}?format=markdown`)).text(); } catch (e) { $('dgFull').textContent = ''; }
@@ -127,7 +127,7 @@
       $('dgPrev').querySelector('tbody').innerHTML = (data.digests || []).map(d => { const s = d.summary || {}; return `<tr><td>${E(fmt(d.at))}</td><td>${d.noteworthy ? '<span class="dg-chip warn">look</span>' : '<span class="dg-chip ok">quiet</span>'}</td><td>${E(s.proposals_new || 0)}</td><td>${E(s.guidance_new || 0)}</td><td>${E(s.drift_changed || 0)}</td><td>${E((d.notified || []).filter(x => x.sent).map(x => x.channel).join(', ') || '—')}</td><td><a class="rp-btn" href="/api/digests/${encodeURIComponent(d.id)}?format=markdown">Markdown</a></td></tr>`; }).join('') || '<tr><td colspan="7" class="dg-dim">None yet.</td></tr>';
     }
     $('dgRun').addEventListener('click', async () => {
-      $('dgRun').disabled = true; status('Running the loop… Detection Health and the journey are read for every tenant profile that remembers its secret; this takes a minute per tenant.'); announce('Running the loop');
+      $('dgRun').disabled = true; status('Running the loop… FP/TP Detection Ratio and the journey are read for every tenant profile that remembers its secret; this takes a minute per tenant.'); announce('Running the loop');
       try {
         const r = await fetch('/api/digests/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notify: true }) });
         const d = await r.json().catch(() => ({}));

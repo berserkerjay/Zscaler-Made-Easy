@@ -533,7 +533,7 @@ def inventory(client) -> Dict[str, Any]:
     order = {ch: i for i, ch in enumerate(pc.DLP_CHANNELS)}
     rules.sort(key=lambda r: (order.get(r["channel"], 9), str(r["name"]).lower()))
     # The dictionary definitions, for whoever needs to explain a match
-    # (Detection Health): custom or predefined, type, confidence, proximity.
+    # (FP/TP Detection Ratio): custom or predefined, type, confidence, proximity.
     dicts = {}
     for name, d in (snap.get("dictionaries") or {}).items():
         dicts[str(name)] = {"id": pd._field(d, "id"), "custom": bool(pd._field(d, "custom", "customDictionary", default=False)),

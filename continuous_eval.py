@@ -5,7 +5,7 @@ One run of the loop, for every tenant profile that remembers its secret:
   1. guidance     new library articles are mapped to checks and packs and
                   become proposals (guidance.py); stale sources are flagged;
                   the SaaS capability matrix is refreshed from Zscaler's pages;
-  2. detection    Detection Health is generated, its findings become
+  2. detection    FP/TP Detection Ratio is generated, its findings become
                   proposals in the tenant's queue, a compact entry goes to
                   the profile history;
   3. tenants      onboarded SaaS / email tenants are read: which are not
@@ -311,7 +311,7 @@ def to_markdown(d: Dict[str, Any]) -> str:
         L.append(f"## Tenant {t.get('name')} ({t.get('tenant')})")
         dh = t.get("detection_health")
         if dh:
-            L.append(f"- Detection Health: {dh.get('incidents')} incidents, {dh.get('fp_rate_pct')}% not real, {dh.get('noisy_rules')} noisy rule(s), {dh.get('dead_rules')} dead, {dh.get('promotable_rules')} ready to promote, {dh.get('noisy_dictionaries')} noisy dictionar(ies); incidents reach Workflow Automation via {dh.get('delivery') or 'unknown'}.")
+            L.append(f"- FP/TP Detection Ratio: {dh.get('incidents')} incidents, {dh.get('fp_rate_pct')}% not real, {dh.get('noisy_rules')} noisy rule(s), {dh.get('dead_rules')} dead, {dh.get('promotable_rules')} ready to promote, {dh.get('noisy_dictionaries')} noisy dictionar(ies); incidents reach Workflow Automation via {dh.get('delivery') or 'unknown'}.")
         pr = t.get("proposals")
         if pr:
             L.append(f"- Proposals: {pr.get('new')} new, {pr.get('open')} open, {pr.get('approved')} approved waiting to apply, {pr.get('applied')} applied.")

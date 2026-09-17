@@ -70,7 +70,7 @@ def test_verdicts_channels_and_normalisation():
     n = dh.normalize_incident(_inc("i1", "R", "E", ["D1", "D2"], resolution="False Positive"), dh.DEFAULTS["not_real"])
     assert n["rules"] == ["R"] and n["engines"] == ["E"] and [d["name"] for d in n["dictionaries"]] == ["D1", "D2"]
     assert n["real"] is False and n["channel"] == "web" and n["application"] == "chatgpt.com" and n["department"] == "Finance"
-    assert "email" not in n and "a@example.com" not in str(n)      # no identities kept
+    assert n["user"] == "a@example.com" and n["host"] == "" and n["actions"] == []   # who was transacting is kept (the report never touches disk)
 
 
 def test_metrics_and_findings():
@@ -138,7 +138,7 @@ def test_generate_reads_incidents_pages_and_reports_read_problems():
     assert [c[0]["page"] for c in calls] == [1, 2] and calls[0][1]["startTime"] < calls[0][1]["endTime"]
     assert "_created" not in str(rep["rules"][0])
     md = dh.to_markdown(rep, "acme")
-    assert "# Detection Health — acme" in md and "| Cards-Block |" in md
+    assert "# FP/TP Detection Ratio — acme" in md and "FP/TP ratio 0:1" in md and "| Cards-Block |" in md
     # No Workflow Automation scope: the report still comes back with the rules and says why incidents are missing.
     rep2 = dh.generate(_client([], fail=True), days=7)
     assert rep2["incident_count"] == 0 and rep2["read"]["incidents"] is False and any("insufficient scope" in e for e in rep2["errors"])
@@ -158,7 +158,7 @@ def test_detection_health_endpoints(monkeypatch):
     assert rep["report_id"].startswith("health-") and rep["summary"]["noisy_rules"] == 1 and rep["tenant_label"].startswith("acme")
     assert c.get(f"/api/detection-health/{rep['report_id']}").json()["incident_count"] == 12
     md = c.get(f"/api/detection-health/export/{rep['report_id']}?format=markdown")
-    assert md.status_code == 200 and "Detection Health" in md.text
+    assert md.status_code == 200 and "FP/TP Detection Ratio" in md.text
     assert c.get("/report/health").status_code == 200
     assert c.get("/api/detection-health/schedule").json()["interval_seconds"] == 6 * 3600
 
@@ -197,3 +197,42 @@ def test_noisy_dictionary_is_explained_with_evidence_pattern_and_definition():
     ev2 = dh.evaluate([dh.normalize_incident(i, dh.DEFAULTS["not_real"]) for i in inc2], rules, now=NOW)
     dob = {x["name"]: x for x in ev2["dictionaries"]}["Date of Birth"]
     assert "never fired alone" in " ".join(dob["why"]) and "SSN - High" in " ".join(dob["why"]) and "any date matches" in " ".join(dob["why"])
+
+
+def test_who_what_where_and_the_telemetry_exclusion():
+    """Each incident says who was transacting, what triggered and where it
+    was going; a destination whose incidents are never real and looks like
+    telemetry is proposed for exclusion; the FP/TP ratio is reported."""
+    import proposals
+    incs = [dict(_inc(f"t{i}", "Z-US PII-Monitor", "E", ["SSN"], status="CLOSED", resolution="False Positive", app="vendor telemetry"),
+                 applicationInfo={"name": "vendor telemetry", "url": "https://telemetry.vendor.com/v1/collect"},
+                 userInfo={"email": f"u{i % 3}@example.com", "department": "Sales"}, sourceActions=["UPLOAD"]) for i in range(6)]
+    incs.append(dict(_inc("r1", "Cards-Block", "E", ["Cards"], status="CLOSED", app="drive.google.com"),
+                     applicationInfo={"url": "https://drive.google.com/upload"}, userInfo={"email": "leaker@example.com", "name": "Lee Aker"},
+                     contentInfo={"fileName": "cards.xlsx"}))
+    incs.append(dict(_inc("m1", "Mail-PII", "E", ["SSN"], status="OPEN", source="EMAIL"), applicationInfo={}, emailInfo={"to": ["x@partner.example", "y@partner.example"]}))
+    norm = [dh.normalize_incident(i, dh.DEFAULTS["not_real"]) for i in incs]
+    assert norm[0]["user"] == "u0@example.com" and norm[0]["host"] == "telemetry.vendor.com" and norm[0]["path"] == "/v1/collect" and norm[0]["actions"] == ["UPLOAD"]
+    assert norm[6]["file"] == "cards.xlsx" and norm[6]["user_name"] == "Lee Aker" and norm[6]["host"] == "drive.google.com"
+    assert norm[7]["destination"] == "x@partner.example, y@partner.example" and norm[7]["host"] == "partner.example"
+    assert dh.looks_like_telemetry("v10.events.data.microsoft.com") and dh.looks_like_telemetry("app.example", ["/v1/track"]) and not dh.looks_like_telemetry("drive.google.com", ["/upload"])
+    ev = dh.evaluate(norm, [], now=NOW)
+    dest = {d["name"]: d for d in ev["destinations"]}
+    t = dest["telemetry.vendor.com"]
+    assert t["telemetry"] and t["exclude"] and t["users"] == 3 and t["incidents"] == 6 and t["real"] == 0 and "UPLOAD" in t["actions"] and "telemetry" in t["why"]
+    assert not dest["drive.google.com"]["exclude"] and dest["drive.google.com"]["real"] == 1
+    f = next(x for x in ev["findings"] if x["kind"] == "noisy_destination")
+    assert f["name"] == "telemetry.vendor.com" and f["proposal"] == "exclude_destination" and "Z-US PII-Monitor" in f["rules"] and "Exclude telemetry.vendor.com" in f["fix"]
+    users = {u["name"]: u for u in ev["users"]}
+    assert users["leaker@example.com"]["real"] == 1 and users["leaker@example.com"]["display_name"] == "Lee Aker"
+    assert users["u0@example.com"]["destinations"][0][0] == "telemetry.vendor.com" and users["u0@example.com"]["department"] == "Sales"
+    s = ev["summary"]
+    assert s["tp"] == 1 and s["fp"] == 6 and s["fp_tp_ratio"] == "6:1" and s["fp_share_pct"] == 86 and s["excludable_destinations"] == 1 and s["users"] == 5
+    r = ev["recent"][0]
+    assert r["who"] and r["sent_to"] and r["trigger"] and r["verdict"] in ("real", "not real", "open") and len(ev["recent"]) == 8
+    props = proposals.build_proposals(ev, "acme")
+    p = next(x for x in props if x["kind"] == "exclude_destination")
+    assert p["change"]["host"] == "telemetry.vendor.com" and p["applies_via"] == "manual" and p["label"] == "Exclude destination" and p["evidence"]["telemetry"]
+    md = dh.to_markdown({**ev, "days": 30, "incident_count": 8}, "acme")
+    assert "## Where it was going" in md and "| telemetry.vendor.com | 6 | 3 |" in md and "## Who is transacting" in md and "| leaker@example.com |" in md
+    assert dh._ratio(0, 0) == "–" and dh._ratio(4, 0) == "1:0" and dh._ratio(6, 4) == "3:2"

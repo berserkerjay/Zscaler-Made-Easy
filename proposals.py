@@ -1,6 +1,6 @@
 """Continuous evaluation, phase 2: proposals and the approval queue.
 
-A Detection Health report says what the tenant's rules actually do. This
+A FP/TP Detection Ratio report says what the tenant's rules actually do. This
 module turns its findings into *proposals*: small typed records that
 name one change, the evidence behind it, the expected effect and the way
 back. A person approves, dismisses or snoozes each one in the queue;
@@ -37,6 +37,7 @@ GATES = {
     "restore_drift": "approve_double",
     "retire_rule": "approve",
     "tune_dictionary": "approve",
+    "exclude_destination": "approve",
     "enable_incident_forwarding": "approve",
     "extend_coverage": "approve",
     "reauthorise_tenant": "approve",
@@ -47,6 +48,7 @@ KIND_LABELS = {
     "promote_rule": "Promote rule", "retire_rule": "Retire rule", "tune_dictionary": "Tune dictionary",
     "enable_incident_forwarding": "Forward incidents", "extend_coverage": "Extend coverage",
     "reauthorise_tenant": "Re-authorise tenant", "update_check": "Update check", "restore_drift": "Restore drift",
+    "exclude_destination": "Exclude destination",
 }
 
 
@@ -90,13 +92,13 @@ def proposal_id(tenant: str, kind: str, target: str) -> str:
     return "p-" + hashlib.sha256(f"{tenant_key(tenant)}|{kind}|{target}".encode("utf-8")).hexdigest()[:12]
 
 
-# ── building proposals from a Detection Health report ─────────────────
+# ── building proposals from a FP/TP Detection Ratio report ─────────────────
 def _rule_by_name(rep: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {str(r.get("name")): r for r in (rep.get("rules") or [])}
 
 
 def build_proposals(rep: Dict[str, Any], tenant: str) -> List[Dict[str, Any]]:
-    """Typed proposals from a Detection Health report. Pure."""
+    """Typed proposals from a FP/TP Detection Ratio report. Pure."""
     s = rep.get("settings") or {}
     rules = _rule_by_name(rep)
     out: List[Dict[str, Any]] = []
@@ -139,6 +141,15 @@ def build_proposals(rep: Dict[str, Any], tenant: str) -> List[Dict[str, Any]]:
                 change, {"fp_rate_pct": None, "why": f.get("why"), "fix": f.get("fix"), **{k: ev.get(k) for k in ("not_real", "real", "alone", "co_fired", "median_matches_not_real", "median_matches_real", "applications", "departments") if k in ev}},
                 "Fewer not-real incidents from this dictionary; real ones (bulk matches) still fire.",
                 {"note": "Undo the dictionary or rule edit in the ZIA portal; the proposal keeps the setting it changed."}, dictionary=f.get("name"))
+        elif kind == "noisy_destination":
+            ev = f.get("evidence") or {}
+            add("exclude_destination", f"destination:{f.get('name')}",
+                f"Exclude {f['name']} from DLP inspection" + (" (telemetry / public content)" if ev.get("telemetry") else " (never a real incident)"),
+                {"apply": "manual", "kind": "exclude_destination", "host": f.get("name"), "rules": f.get("rules") or []},
+                {"incidents": ev.get("incidents"), "users": ev.get("users"), "not_real": ev.get("not_real"), "real": ev.get("real"), "closed": ev.get("closed"),
+                 "telemetry": ev.get("telemetry"), "applications": ev.get("applications"), "why": f.get("why"), "fix": f.get("fix")},
+                "Incidents from a destination that never carries sensitive data stop; the rules keep inspecting everything else, so no coverage is lost.",
+                {"note": "Remove the host from the excluded URL category or domain list in the ZIA portal."}, destination=f.get("name"))
         elif kind == "noisy_rule":
             r = rules.get(f.get("name")) or {}
             add("tune_dictionary", f"rule:{r.get('channel')}:{f.get('name')}",

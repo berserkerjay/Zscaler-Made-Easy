@@ -34,7 +34,7 @@
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope</button>
-      <button type="button" class="db-item" data-db="run"><span class="db-ico" aria-hidden="true">▶</span>Run assessment</button>
+      <button type="button" class="db-item" data-db="run"><span class="db-ico" aria-hidden="true">▶</span><span class="db-lbl">Run assessment</span></button>
       <button type="button" class="db-item" data-db="review"><span class="db-ico" aria-hidden="true">📋</span>Findings &amp; report</button>
     </nav>
     <div id="dbTools" role="navigation" aria-label="Tools"></div>
@@ -61,14 +61,83 @@
   menu.id = 'dbMenuBtn'; menu.type = 'button'; menu.setAttribute('aria-controls', 'dbSidebar'); menu.setAttribute('aria-expanded', 'false'); menu.textContent = '☰ Menu';
   menu.addEventListener('click', () => { const open = !document.body.classList.contains('db-open'); document.body.classList.toggle('db-open', open); menu.setAttribute('aria-expanded', String(open)); });
   document.body.insertBefore(menu, aside);
-  // Workflow items: the same routes as the step strip.
+  // ── Run assessment from the sidebar ─────────────────────────────
+  // Sign in first when needed, then run on this page and land on the
+  // dashboard (no pop-out tab): missing details → the Connect step opens
+  // on the first blank field and the run is queued; not yet authenticated
+  // → Authenticate runs, then the assessment; already signed in → run.
+  const say = t => { if (typeof announce === 'function') announce(t); };
+  const FIELD_LABELS = { org: 'Organization Name', assessor: 'Assessor Name', vd: 'Vanity Domain', cid: 'Client ID', csec: 'Client Secret', zuser: 'Admin Username', zpass: 'Admin Password', zkey: 'API Key' };
+  function missingFields() {
+    const v = id => (($(id) || {}).value || '').trim();
+    const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
+    const remembered = typeof profileHasSecret === 'function' && profileHasSecret();
+    const need = ['org', 'assessor'].concat(legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec']);
+    return need.filter(id => !v(id) && !(remembered && (id === 'csec' || id === 'zpass' || id === 'zkey')));
+  }
+  function signedIn() {
+    const c = window.GD && GD.conn;
+    if (!c || !c.ok) return false;
+    const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
+    const ident = (($(legacy ? 'zuser' : 'vd') || {}).value || '').trim();
+    return !c.vd || c.vd === ident;
+  }
+  function note(text, kind) {
+    let n = $('dbRunNote');
+    if (!n) { n = document.createElement('div'); n.id = 'dbRunNote'; n.className = 'db-note'; n.setAttribute('role', 'status'); const run = aside.querySelector('.db-item[data-db="run"]'); run.insertAdjacentElement('afterend', n); }
+    n.textContent = text || ''; n.hidden = !text; n.className = 'db-note' + (kind ? ' ' + kind : '');
+  }
+  let pendingRun = false;
+  function goConnect(first) {
+    if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
+    setCurrent('configure');
+    if (first) setTimeout(() => { const el = $(first); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } }, 450);
+  }
+  function startRun() {
+    pendingRun = false; note('');
+    if (typeof runAssessment !== 'function') return;
+    const btn = $('runBtn');
+    if (btn && btn.disabled) return;   // already running (the Authenticate wrapper started it)
+    runAssessment();
+    if (btn && btn.disabled) { setCurrent('run'); const prog = $('progressCard'); if (prog) prog.scrollIntoView({ behavior: 'smooth', block: 'start' }); say('Assessment started. The results open on this page when it finishes.'); }
+  }
+  async function runFromSidebar() {
+    const btn = $('runBtn');
+    if (btn && btn.disabled) { say('The assessment is already running.'); return; }
+    const missing = missingFields();
+    if (missing.length) {
+      pendingRun = true;
+      note(`Sign in first: fill in ${missing.map(id => FIELD_LABELS[id] || id).join(', ')} and click Authenticate. The assessment starts by itself right after.`, 'warn');
+      say('Sign in first. Fill in the tenant details and click Authenticate; the assessment starts right after.');
+      goConnect(missing[0]);
+      return;
+    }
+    if (!signedIn()) {
+      pendingRun = true;
+      note('Authenticating with the tenant, then running the assessment…');
+      setCurrent('configure');
+      if (typeof authenticateTenant === 'function') await authenticateTenant();
+      if (!pendingRun) return;          // the Authenticate wrapper already started the run
+      if (signedIn()) { startRun(); return; }
+      note('The tenant did not accept the sign-in. Fix the details in Connect to the tenant and click Authenticate; the assessment starts right after.', 'warn');
+      goConnect();
+      return;
+    }
+    startRun();
+  }
+  // A successful Authenticate (the guide's button or the form's) starts a queued run.
+  const origTest = window._gdTest;
+  if (typeof origTest === 'function') window._gdTest = async function () { const r = await origTest.apply(this, arguments); if (pendingRun && signedIn()) startRun(); return r; };
+  // Workflow items: the same routes as the step strip, except Run.
   aside.querySelectorAll('.db-item').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.db;
     document.body.classList.remove('db-open'); menu.setAttribute('aria-expanded', 'false');
     if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
+    if (k === 'run') { runFromSidebar(); return; }
     if (typeof _stepGo === 'function') _stepGo(k);
     setCurrent(k);
   }));
+  window.__dbRunFromSidebar = runFromSidebar;
   function setCurrent(k) { aside.querySelectorAll('.db-item').forEach(b => { if (b.dataset.db === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); }); }
   // Follow the step strip when the inline script moves it.
   const strip = $('stepBar');
@@ -81,13 +150,21 @@
     const prof = (window.GD && GD.profile) ? GD.profile : '';
     const t = $('dbCurTenant'); if (t) { t.textContent = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
     const s = $('dbCurSaved'); if (s) s.textContent = prof ? 'Profile selected' : 'Never';
+    const run = aside.querySelector('.db-item[data-db="run"]'), btn = $('runBtn');
+    if (run && btn) { const busy = !!btn.disabled; run.classList.toggle('busy', busy); run.setAttribute('aria-busy', String(busy)); run.querySelector('.db-ico').textContent = busy ? '⏳' : '▶'; run.querySelector('.db-lbl').textContent = busy ? 'Running…' : 'Run assessment'; }
   }
   refreshCurrent(); setInterval(refreshCurrent, 2500);
   fetch('/api/health', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { const b = $('dbBuild'); if (b && d) b.textContent = `Build ${String(d.commit || d.version || '').slice(0, 7) || '—'}`; }).catch(() => {});
 
   // ── 2. Dashboard hero (built once; ids the inline script sets stay) ─
+  // .db-dash / .db-rows travel with the results HTML into the mirrored
+  // results tab (report_view.html links dashboard.css), so the rings and
+  // rows are styled there too.
   const heroCard = document.querySelector('.score-hero');
+  const checksList = $('checksList');
+  if (checksList) checksList.classList.add('db-rows');
   if (heroCard) {
+    heroCard.classList.add('db-dash');
     heroCard.innerHTML = `
       <div class="db-grid">
         <div class="db-tile glow">

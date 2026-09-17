@@ -42,3 +42,20 @@ def test_every_reference_page_has_a_toolbar_button_that_opens_it():
     assert "function openReferenceTab(slug)" in index and "window.open(`/reference/${encodeURIComponent(slug)}`, '_blank')" in index
     for p in srv.REFERENCE_PAGES:
         assert f"""onclick="openReferenceTab('{p['slug']}')\"""" in index, p["slug"]
+
+
+def test_every_tab_can_return_to_the_assessment_page():
+    """A reference page is served with the shared theme script, which adds a
+    fixed "Back to the assessment" button when the page has no link home;
+    report pages' own home links focus the opener tab and close."""
+    c = TestClient(srv.app)
+    for p in srv.REFERENCE_PAGES:
+        html = c.get(f"/reference/{p['slug']}").text
+        assert '<script src="/static/report_theme.js"></script>' in html, p["slug"]
+    theme = open(os.path.join(ROOT, "static", "report_theme.js"), encoding="utf-8").read()
+    assert "backHomeBtn" in theme and "← Back to the assessment" in theme and "window.opener" in theme and "location.href = '/'" in theme
+    assert "document.querySelector('link[href=\"/app.css\"]')" in theme, "the theme toggle stays off self-contained pages"
+    for name in os.listdir(os.path.join(ROOT, "static")):
+        if name.startswith("report_") and name.endswith(".html") or name in ("help.html", "quickstart.html"):
+            html = open(os.path.join(ROOT, "static", name), encoding="utf-8").read()
+            assert 'href="/"' in html and "report_theme.js" in html, f"{name} has a way back"

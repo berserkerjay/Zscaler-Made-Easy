@@ -39,7 +39,7 @@
     why: 'This is the deliverable. Critical findings are configuration that exposes data today; the score gives the customer a number to improve.',
     when: 'Right after the assessment runs, and again on every return visit to show progress.',
     get: 'Every finding in four plain sentences: what we found, what it means for the business, what to do, and the outcome once fixed (the technical detail folds away underneath), plus Word and JSON downloads.',
-    next: 'Walk the customer through the critical findings first. Then open Traffic Flow & Gaps and Detection Health for the "show me" evidence.',
+    next: 'Walk the customer through the critical findings first. Then open Traffic Flow & Gaps and FP/TP Detection Ratio for the "show me" evidence.',
   };
   X.dataflow = {
     group: 'Find the gaps', name: 'Traffic Flow & Gaps', href: '/report/dataflow',
@@ -82,7 +82,7 @@
     next: 'Tighten the noisy dictionaries (proximity, thresholds), then test again.',
   };
   X.health = {
-    group: 'Find the gaps', name: 'Detection Health', href: '/report/health',
+    group: 'Find the gaps', name: 'FP/TP Detection Ratio', href: '/report/health',
     what: 'What the DLP rules actually do in production, measured from Workflow Automation incidents and the analysts\' verdicts: false-positive rate per rule, engine and dictionary, dead rules, monitor rules ready to promote, and the proposals queue.',
     why: 'A rule that fires and is always dismissed costs the customer analyst time; a rule that never fires is either perfect or dead. Either way it is a tuning decision with evidence.',
     when: 'On return visits, once incidents have been flowing for a few weeks.',
@@ -91,11 +91,11 @@
   };
   X.digest = {
     group: 'Find the gaps', name: 'Digest and the always-on loop', href: '/report/digest',
-    what: 'Every six hours the app re-reads the guidance sources, Detection Health, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide.',
+    what: 'Every six hours the app re-reads the guidance sources, FP/TP Detection Ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide.',
     why: 'Nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence.',
     when: 'Read it when it arrives; open the tab to run the loop now, to see which sources are stale, or to check what is notified where.',
     get: 'The latest digest with counts, the full text, the watched sources with their state, the SaaS capability matrix, the schedule and the notification settings.',
-    next: 'Decide the new proposals in Detection Health; a stale source or a missing notification setting is fixed in local_settings.bat.',
+    next: 'Decide the new proposals in FP/TP Detection Ratio; a stale source or a missing notification setting is fixed in local_settings.bat.',
   };
   X.compliance = {
     group: 'Find the gaps', name: 'Regulatory & Compliance Alignment', href: '/report/compliance',

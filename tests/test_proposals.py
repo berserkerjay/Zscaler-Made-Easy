@@ -104,6 +104,6 @@ def test_endpoints(tmp_path, monkeypatch):
     md = c.get("/api/proposals/export?tenant=acme")
     assert md.status_code == 200 and "# Proposals — acme" in md.text
     assert c.get("/api/proposals/export?tenant=acme&format=json").json()["tenant"] == "acme"
-    # The Detection Health tab renders the queue.
+    # The FP/TP Detection Ratio tab renders the queue.
     page = c.get("/report/health").text
     assert "dhProposals" in page and "renderProposals(" in page and "/api/proposals" in c.get("/static/detection_health.js").text

@@ -71,3 +71,39 @@ def test_the_stylesheet_reads_the_tokens_and_respects_reduced_motion_and_light_t
     assert "@media (max-width: 1000px)" in css and "#dbMenuBtn" in css
     for cls in (".db-ring", ".db-band", ".db-radar", ".db-pillar", ".db-insights", ".db-action", "#dbFooter", ".check-item::before"):
         assert cls in css, cls
+
+
+def test_the_mirrored_results_tab_is_styled_like_the_page():
+    """The results open in their own tab (report_view.html mirrors the
+    results HTML). The dashboard markup travels with that HTML, so its
+    styles must key off classes inside the results, not the page body,
+    and the tab must load the stylesheet; otherwise the rings are blank
+    circles and nothing lines up."""
+    css = _read("dashboard.css")
+    js = _read("dashboard.js")
+    view = _read("report_view.html")
+    assert '<link rel="stylesheet" href="/static/dashboard.css">' in view
+    assert "heroCard.classList.add('db-dash')" in js and "checksList.classList.add('db-rows')" in js
+    assert ".score-hero.db-dash {" in css and ".db-dash .score-num {" in css and ".db-rows .check-item {" in css and ".db-rows .check-item::before {" in css
+    assert "body.db-layout, body.tool-tab { --db-w" in css, "the tab gets the colour tokens the rings use"
+    for bad in ("body.db-layout .score-hero", "body.db-layout .score-num", "body.db-layout .check-item", "body.db-layout .section-header"):
+        assert bad not in css, f"{bad} would style the page only, never the mirrored tab"
+
+
+def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
+    """Clicking Run assessment in the sidebar: missing details open the
+    Connect step on the first blank field and queue the run; a tenant not
+    yet authenticated is authenticated, then assessed; a successful
+    Authenticate starts a queued run. The run happens on this page (no
+    pop-out tab), so the dashboard is where you land."""
+    js = _read("dashboard.js")
+    assert "function runFromSidebar()" in js and "if (k === 'run') { runFromSidebar(); return; }" in js
+    assert "function missingFields()" in js and "['org', 'assessor'].concat(legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec'])" in js
+    assert "remembered && (id === 'csec' || id === 'zpass' || id === 'zkey')" in js, "a profile's remembered secret counts"
+    assert "function signedIn()" in js and "GD.conn" in js
+    assert "pendingRun = true" in js and "goConnect(missing[0])" in js and "await authenticateTenant()" in js
+    assert "window._gdTest = async function" in js and "if (pendingRun && signedIn()) startRun()" in js
+    assert "runAssessment();" in js and "openToolTab('results'" not in js, "the sidebar run stays on this page"
+    assert "Sign in first" in js and "starts by itself right after" in js
+    css = _read("dashboard.css")
+    assert ".db-note" in css and ".db-note.warn" in css

@@ -2,7 +2,7 @@
    Reads the theme tokens from index.html's first <style> (never defines
    its own root tokens). Dark navy glass with a cyan / purple glow; the light
    theme (body.theme-light) keeps the same layout with its own tokens. */
-body.db-layout { --db-w: 264px; --db-cyan: #22d3ee; --db-purple: #a78bfa; --db-glow: rgba(34,211,238,0.22); }
+body.db-layout, body.tool-tab { --db-w: 264px; --db-cyan: #22d3ee; --db-purple: #a78bfa; --db-glow: rgba(34,211,238,0.22); }
 body.db-layout .container { max-width: none; margin: 0 0 0 var(--db-w); padding: 1.5rem 2rem 4.5rem; }
 body.db-layout .container > header, body.db-layout .container > main { max-width: 1240px; margin-left: auto; margin-right: auto; }
 
@@ -53,8 +53,8 @@ body.db-layout .hero-toolbar[hidden] { display: none; }
 body.db-layout #stepBar { margin-left: 0; margin-right: 0; max-width: none; }
 
 /* Dashboard: score ring, completion ring, radar, pillars, insights, actions */
-body.db-layout .score-hero { text-align: left; padding: 1.25rem; overflow: visible; }
-body.db-layout .score-hero::before { display: none; }
+.score-hero.db-dash { text-align: left; padding: 1.25rem; overflow: visible; }
+.score-hero.db-dash::before { display: none; }
 .db-grid { display: grid; grid-template-columns: 1.25fr 0.8fr 1fr; gap: 1rem; position: relative; }
 .db-tile { padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--card-solid); box-shadow: var(--shadow-sm); position: relative; overflow: hidden; }
 .db-tile.glow::after { content: ''; position: absolute; inset: auto -30% -50% auto; width: 60%; height: 100%; background: radial-gradient(circle, var(--db-glow), transparent 60%); pointer-events: none; }
@@ -65,9 +65,9 @@ body.db-layout .score-hero::before { display: none; }
 .db-ring .arc { fill: none; stroke: url(#dbRingGrad); stroke-width: 11; stroke-linecap: round; transition: stroke-dashoffset 1s var(--ease, ease); filter: drop-shadow(0 0 6px var(--accent-glow)); }
 .db-ring.small svg { width: 96px; height: 96px; } .db-ring.small .track, .db-ring.small .arc { stroke-width: 9; }
 .db-ring-txt { display: grid; gap: 0.15rem; min-width: 0; }
-body.db-layout .score-num { font-size: 2.6rem; }
-body.db-layout .score-label { font-size: 1rem; margin-top: 0; }
-body.db-layout .score-meta { font-size: 0.78rem; margin-top: 0; }
+.db-dash .score-num { font-size: 2.6rem; }
+.db-dash .score-label { font-size: 1rem; margin-top: 0; }
+.db-dash .score-meta { font-size: 0.78rem; margin-top: 0; }
 .db-band { display: flex; gap: 0.25rem; margin-top: 0.9rem; flex-wrap: wrap; }
 .db-band span { flex: 1 1 auto; text-align: center; padding: 0.3rem 0.35rem; border-radius: 8px; font-size: 0.68rem; font-weight: 600; color: var(--dim); background: rgba(148,163,184,0.1); border: 1px solid transparent; }
 .db-band span.done { color: var(--text); background: rgba(59,130,246,0.14); }
@@ -105,12 +105,12 @@ body.theme-light .db-band span.now { color: #fff; }
 @media (max-width: 1100px) { .db-grid { grid-template-columns: 1fr 1fr; } .db-grid .db-tile:first-child { grid-column: 1 / -1; } }
 @media (max-width: 760px) { .db-grid, .db-two, .db-actions { grid-template-columns: 1fr; } .db-grid .db-tile:first-child { grid-column: auto; } }
 
-/* Findings as list rows with risk chips */
-body.db-layout .check-item { padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card-solid); margin-bottom: 0.5rem; align-items: center; }
-body.db-layout .check-item::before { content: attr(data-ico); width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--well); font-size: 1rem; }
-body.db-layout .check-status { min-width: 118px; border-radius: 100px; font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; }
-body.db-layout .check-item .check-body .db-cat { display: inline-block; margin-left: 0.4rem; font-size: 0.7rem; color: var(--dim); padding: 0.05rem 0.45rem; border: 1px solid var(--border); border-radius: 100px; }
-body.db-layout .section-header { background: none; border-left: 0; padding: 0.4rem 0.2rem; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+/* Findings as list rows with risk chips (.db-rows is set on #checksList, so the mirrored results tab gets them too) */
+.db-rows .check-item { padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card-solid); margin-bottom: 0.5rem; align-items: center; }
+.db-rows .check-item::before { content: attr(data-ico); width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--well); font-size: 1rem; }
+.db-rows .check-status { min-width: 118px; border-radius: 100px; font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; }
+.db-rows .check-item .check-body .db-cat { display: inline-block; margin-left: 0.4rem; font-size: 0.7rem; color: var(--dim); padding: 0.05rem 0.45rem; border: 1px solid var(--border); border-radius: 100px; }
+.db-rows .section-header { background: none; border-left: 0; padding: 0.4rem 0.2rem; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
 
 /* Sticky progress footer under the findings */
 #dbFooter { position: fixed; left: var(--db-w); right: 0; bottom: 0; z-index: 850; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 0.6rem 1.5rem; border-top: 1px solid var(--border); background: rgba(15,23,42,0.85); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 0.84rem; color: var(--dim); }
@@ -121,3 +121,11 @@ body.theme-light #dbFooter { background: rgba(255,255,255,0.9); }
 #dbFooter .db-foot-btn:hover { background: var(--btn-hover, #1d4ed8); }
 @media (max-width: 1000px) { #dbFooter { left: 0; } }
 @media (prefers-reduced-motion: reduce) { .db-ring .arc, #dbSidebar, .db-pillar, .db-action { transition: none; } }
+.db-note { margin: 0.1rem 0.3rem 0.3rem; padding: 0.45rem 0.6rem; border-radius: 8px; font-size: 0.74rem; line-height: 1.4; color: var(--dim); background: var(--well); border: 1px solid var(--border); }
+.db-note.warn { color: var(--text); border-color: rgba(245,158,11,0.5); }
+.db-note[hidden] { display: none; }
+.db-item.busy { color: var(--text); }
+.db-band { flex-wrap: nowrap; }
+.db-band span { flex: 1 1 0; min-width: 0; padding: 0.3rem 0.2rem; font-size: 0.64rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-chip { white-space: nowrap; }
+.db-pillar-m { flex-wrap: wrap; gap: 0.3rem 0.5rem; }

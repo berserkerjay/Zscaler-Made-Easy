@@ -121,7 +121,7 @@ def preview(client, tenant: str, pid: str, *, direction: str = "apply") -> Dict[
             if now == want:
                 row.update({"ok": True, "noop": True, "why": f"{field} is already {want}"})
             elif expected is not None and now != expected:
-                row.update({"ok": False, "why": f"{field} is {now} in the tenant, not {expected} as when the proposal was raised; refresh Detection Health and decide again"})
+                row.update({"ok": False, "why": f"{field} is {now} in the tenant, not {expected} as when the proposal was raised; refresh FP/TP Detection Ratio and decide again"})
                 ok = False
             else:
                 row.update({"ok": True})
