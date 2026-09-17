@@ -322,14 +322,18 @@
   }
   window.__dbShowScope = showScopeView;
 
-  // ── Dashboard default content: the space where results render must
-  // never sit blank before a fresh run in this tab. Show the selected
-  // tenant profile's last recorded assessment (score, maturity, when it
-  // ran) when the server has one on file; otherwise a plain prompt that
-  // starts the operator on Connect to the tenant. This is a summary of
-  // the last run, not a live re-render — the card says so.
+  // ── Dashboard default content: the score tiles (ring, completion,
+  // radar, pillars, insights, actions) live outside #results so they are
+  // always on screen, even before a fresh run in this tab — never blank.
+  // This slim note sits above them: the selected tenant profile's last
+  // recorded assessment (score, maturity, when it ran), lightly filled
+  // into the ring itself, when the server has one on file; otherwise a
+  // plain prompt that starts the operator on Connect to the tenant. Kept
+  // deliberately free of the ring/band helpers defined further down (the
+  // hero section), since this runs from the very first refreshCurrent()
+  // call, before those exist.
   const lastRun = document.createElement('div');
-  lastRun.id = 'dbLastRun'; lastRun.className = 'card db-lastrun'; lastRun.hidden = true;
+  lastRun.id = 'dbLastRun'; lastRun.className = 'db-note db-lastrun-note'; lastRun.hidden = true;
   const progressAnchor = $('progressCard');
   if (progressAnchor) progressAnchor.insertAdjacentElement('beforebegin', lastRun);
   else (document.getElementById('main-content') || container).appendChild(lastRun);
@@ -341,22 +345,20 @@
     const det = window.GD && GD.profileDetail;
     const last = det && det.last_assessed;
     if (last) {
-      const journey = last.journey ? ` · Journey stage ${last.journey.stage ?? 0} of 5` : '';
-      lastRun.innerHTML = `
-        <h2>Last assessment</h2>
-        <div class="db-lastrun-stats">
-          <div class="db-lastrun-stat"><span class="v">${last.score ?? '—'}%</span><span class="k">Score</span></div>
-          <div class="db-lastrun-stat"><span class="v">${E(last.maturity || '—')}</span><span class="k">Maturity</span></div>
-          <div class="db-lastrun-stat"><span class="v">${last.checks ?? '—'}</span><span class="k">Checks ran</span></div>
-          <div class="db-lastrun-stat"><span class="v">${last.critical ?? 0}</span><span class="k">Critical</span></div>
-        </div>
-        <p class="db-lastrun-meta">Ran ${E(new Date(last.at).toLocaleString())} for ${E(det.name || 'this tenant')}${journey}. Run it again for current results.</p>
-        <div class="db-lastrun-actions"><button type="button" class="db-lastrun-btn" id="dbLastRunGo">Run a fresh assessment</button></div>`;
+      const score = Math.max(0, Math.min(100, Number(last.score) || 0));
+      const arc = $('dbRingArc'); if (arc) { const C = 2 * Math.PI * 50; arc.style.strokeDashoffset = String(C * (1 - score / 100)); }
+      const bandHost = $('dbBand');
+      if (bandHost) {
+        const idx = score >= 90 ? 4 : score >= 75 ? 3 : score >= 50 ? 2 : score >= 25 ? 1 : 0;
+        bandHost.innerHTML = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'].map((b, i) => `<span class="${i < idx ? 'done' : i === idx ? 'now' : ''}" ${i === idx ? 'aria-current="true"' : ''}>${b}</span>`).join('');
+      }
+      const sn = $('scoreNum'); if (sn) sn.textContent = `${score}%`;
+      const sl = $('scoreLabel'); if (sl) sl.textContent = last.maturity || 'Maturity Level';
+      const sm = $('scoreMeta'); if (sm) sm.textContent = `As of the last run, ${new Date(last.at).toLocaleDateString()}`;
+      const journey = last.journey ? ` · journey stage ${last.journey.stage ?? 0} of 5` : '';
+      lastRun.innerHTML = `<span>Showing the last recorded assessment for ${E(det.name || 'this tenant')}, run ${E(new Date(last.at).toLocaleString())}${journey}.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Run a fresh assessment</button>`;
     } else {
-      lastRun.innerHTML = `
-        <h2>No assessment yet</h2>
-        <p>Connect to the tenant, then run the assessment to see the maturity score, completion and findings here.</p>
-        <div class="db-lastrun-actions"><button type="button" class="db-lastrun-btn" id="dbLastRunGo">Connect to the tenant &rarr;</button></div>`;
+      lastRun.innerHTML = `<span>No assessment recorded yet for this tenant — the tiles below fill in once you run one.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Connect to the tenant &rarr;</button>`;
     }
     const go = $('dbLastRunGo');
     if (go) go.addEventListener('click', () => { const btn = aside.querySelector(`.db-item[data-db="${last ? 'run' : 'configure'}"]`); if (btn) btn.click(); });
@@ -434,6 +436,14 @@
         <div class="db-tile"><div class="db-tile-t">Next actions</div><div class="db-actions" id="dbActions"></div></div>
       </div>`;
     heroCard.querySelector('#dbRadarExpand').addEventListener('click', () => openRadarModal());
+    // Moved out of #results (not copied) so the tiles are always on
+    // screen, at their zero state or the last recorded assessment,
+    // instead of sitting behind the same display:none that hides the
+    // findings list and download bar until a fresh run finishes. The
+    // mirrored results tab (tool_tabs.js) is told about the new id so
+    // "Open in new tab" still carries the hero into that tab.
+    heroCard.id = 'dbHero';
+    lastRun.insertAdjacentElement('afterend', heroCard);
   }
   const BAND = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'];   // dlp_assessment_full_auto.maturity(): <25, <50, <75, <90, 90+
   const pctColor = p => p >= 75 ? 'var(--pass)' : p >= 50 ? 'var(--warn)' : 'var(--fail)';

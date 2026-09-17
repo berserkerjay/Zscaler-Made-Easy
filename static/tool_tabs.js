@@ -20,7 +20,10 @@ const TOOL_TABS = {
   zcc:           { title: 'ZCC Endpoint Diagnostics', open: 'diagnoseZcc',          modal: 'zccDiagModal' },
   permissions:   { title: 'Required API Access',    open: 'openPermissionsModal',   modal: 'permissionsModal' },
   terraform:     { title: 'Terraform hand-off',     open: 'openTerraformModal',     modal: 'terraformModal' },
-  results:       { title: 'Assessment Results',     open: '_openResultsPanel',      panels: ['progressCard', 'results'], keep: true },
+  // dbHero (added by dashboard.js) is the score-hero card: moved out of
+  // #results so it stays on screen before a run, so it has to be named
+  // here explicitly or the mirrored tab loses the rings and pillars.
+  results:       { title: 'Assessment Results',     open: '_openResultsPanel',      panels: ['dbHero', 'progressCard', 'results'], keep: true },
 };
 const _TT = {};   // kind -> { win, observers, timer, poll }
 

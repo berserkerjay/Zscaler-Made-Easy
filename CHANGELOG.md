@@ -6,6 +6,12 @@ what each batch of changes did, newest first.
 
 ## 2026-09-17
 
+### Score tiles are always on screen, even before a run
+- **What you asked for.** "The tiles on the dashboard should always be visible even if an assessment has not run."
+- **Now** the score tiles — Overall Maturity Score ring, Completion, Score Distribution, the section pillar cards, Key Insights and Next actions — are moved out from inside the (hidden-until-a-run) results block, so they sit on the Dashboard from the moment the page loads. Before a run in this browser tab, a slim note above them says what's showing: the tenant profile's last recorded assessment (with the ring, band and score filled in from it) when the server has one on file, or a plain "No assessment recorded yet" prompt into Connect to the tenant when it doesn't. The moment a fresh run finishes, the real results take over exactly as before and the note disappears.
+- The "Open in new tab" mirrored results view (`tool_tabs.js`) was updated in the same change so it still carries the hero tiles now that they live outside the results block — that mirror was verified separately, not just assumed.
+- Verified: `tests/test_dashboard.py` and `tests/test_reports.py` (the tiles' new home, the note's wiring, the updated mirror panel list). Browser run against a fake tenant: tiles visible at their zero state on first load with the "No assessment recorded yet" note; after a real run, the tiles show the real score and the note is gone; the mirrored "Open in new tab" view carries the ring, pillars and score correctly. No console errors.
+
 ### Automation Readiness no longer gets its own pillar tiles
 - **What you asked for.** "Remove these automation blocks in the check" (screenshot of the Score by Section grid showing six "Automation — ..." tiles).
 - **Now** the Score by Section grid on the Dashboard no longer breaks Automation Readiness out into its own six tiles (SDK / OneAPI, Terraform, Ansible, ZPA, ZCC, IaC Hygiene). Those checks still run and still count toward the overall maturity score exactly as before — only the pillar grid stops giving each of them a separate card. Every other section is unaffected.

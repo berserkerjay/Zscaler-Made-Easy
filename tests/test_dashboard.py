@@ -166,20 +166,26 @@ def test_connect_to_the_tenant_sits_directly_below_dashboard_in_the_sidebar():
     assert 'data-db="channels"' not in js, "Channels is folded into Scope, not its own nav item"
 
 
-def test_the_dashboard_never_sits_blank_before_a_run():
-    """Before a fresh run in this tab, the space where results render
-    must show either the tenant's last recorded assessment (score,
-    maturity, when it ran) or a plain prompt to connect — never nothing.
-    It hides again once real results, Scope, or Connect are on screen, so
-    it never stacks with them."""
+def test_the_score_tiles_are_always_on_screen_even_before_a_run():
+    """The score tiles (ring, completion, radar, pillars, insights,
+    actions) live outside #results, moved there rather than copied, so
+    they are on screen the moment the page loads — not only after a run
+    in this tab. A slim note above them names the tenant profile's last
+    recorded assessment (score, maturity, when it ran) when the server
+    has one on file, and fills the ring from it; otherwise a plain
+    prompt into Connect to the tenant. Real results, once shown, hide the
+    note and overwrite the tiles as before."""
     js = _read("dashboard.js")
     css = _read("dashboard.css")
+    tt = _read("tool_tabs.js")
     assert "function renderLastRunOrEmpty()" in js and "id = 'dbLastRun'" in js
     assert "GD.profileDetail" in js and "det.last_assessed" in js
-    assert "No assessment yet" in js and "Last assessment" in js
-    assert "'progressCard', 'results', 'dbLastRun']" in js, "hidden with the rest of main while Channels is open"
+    assert "No assessment recorded yet" in js and "Showing the last recorded assessment" in js
+    assert "heroCard.id = 'dbHero';" in js and "lastRun.insertAdjacentElement('afterend', heroCard);" in js, "moved out of #results, not copied"
+    assert "'progressCard', 'results', 'dbLastRun']" in js, "hidden with the rest of main while Scope is open"
     assert "(CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();\n    renderLastRunOrEmpty();" in js, "updates the moment the nav selection changes"
-    assert ".db-lastrun-stat {" in css and ".db-lastrun-btn {" in css
+    assert ".db-lastrun-note {" in css and ".db-lastrun-btn {" in css
+    assert "panels: ['dbHero', 'progressCard', 'results']" in tt, "the mirrored 'Open in new tab' results view must still carry the hero"
 
 
 def test_scope_combines_channels_assessment_scope_and_compliance_frameworks():
