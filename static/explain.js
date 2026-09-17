@@ -57,6 +57,14 @@
     get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), the objects that block or impact it with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export.',
     next: 'Fix the named rule, profile or exemption, click Fresh read, and analyze again to prove the change.',
   };
+  X.live = {
+    group: 'Find the gaps', name: 'Live DLP Feed', href: '/report/live',
+    what: 'Workflow Automation\'s DLP incidents, polled live every 15 seconds: who was transacting, what triggered (rule and dictionaries), where the data was headed, whether the matched rule enforced it or only logged it, and a running seen / enforced / monitor / FP:TP tally for the session.',
+    why: 'Vital while troubleshooting: act on the tenant and watch the incident land, with the reason attached, instead of waiting for the next scheduled report. It also states plainly what it does not cover, so nobody mistakes DLP incidents for the whole traffic log.',
+    when: 'While reproducing a customer issue live, during a proof of value, or whenever "is this rule actually catching anything right now?" needs an answer in seconds, not minutes.',
+    get: 'A live-updating table (when, who, trigger, destination, channel, enforced or monitor-only, verdict) and a running tally, with an explicit note on what this feed covers (Workflow Automation DLP incidents) and what it does not (URL Filtering, Cloud App Control and Firewall & DNS Control decisions that never trip a DLP rule — that is Web Insights / Cloud NSS, a feed to your own log store this app does not read).',
+    next: 'Start the feed before reproducing the issue, watch the incident land with its rule and dictionaries named, then open Path Analyzer for that same destination for the full policy trace.',
+  };
   X.bypass = {
     group: 'Find the gaps', name: 'Bypass & Non-Inspected Traffic', href: '/report/bypass',
     what: 'Every SSL exemption, allow rule, Client Connector bypass and PAC exception that lets traffic skip inspection, in one list with exports.',
@@ -263,7 +271,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
       '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -314,7 +322,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['quickstart', 'assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['quickstart', 'assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [

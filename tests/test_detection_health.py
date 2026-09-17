@@ -35,10 +35,16 @@ class FakeIncidents:
         self.calls.append((dict(query_params or {}), dict(time_range or {})))
         if self.fail:
             return None, None, {"message": "403 insufficient scope"}
+        pool = self.incidents
+        if time_range:
+            lo, hi = time_range.get("startTime"), time_range.get("endTime")
+            pool = [i for i in pool if not lo or not hi or lo <= i["createdAt"] <= hi]
         page = int((query_params or {}).get("page", 1)); size = int((query_params or {}).get("page_size", 100))
-        chunk = self.incidents[(page - 1) * size: page * size]
-        # Some SDK builds nest the records one level down.
-        return type("R", (), {"incidents": [type("I", (), {"incidents": chunk})()]})(), None, None
+        chunk = pool[(page - 1) * size: page * size]
+        # Some SDK builds nest the records one level down; an empty page
+        # has no wrapper at all (a real empty result has no leaf to hide).
+        wrapped = [type("I", (), {"incidents": chunk})()] if chunk else []
+        return type("R", (), {"incidents": wrapped})(), None, None
 
 
 class FakeZWA:
@@ -236,3 +242,108 @@ def test_who_what_where_and_the_telemetry_exclusion():
     md = dh.to_markdown({**ev, "days": 30, "incident_count": 8}, "acme")
     assert "## Where it was going" in md and "| telemetry.vendor.com | 6 | 3 |" in md and "## Who is transacting" in md and "| leaker@example.com |" in md
     assert dh._ratio(0, 0) == "–" and dh._ratio(4, 0) == "1:0" and dh._ratio(6, 4) == "3:2"
+
+
+def _inc_at(iid, rule, when, *, status="OPEN", resolution="", app="chatgpt.com"):
+    """Like _inc but at an exact timestamp, for live-feed polling tests."""
+    return {"internalId": iid, "createdAt": when.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "status": status, "resolution": resolution, "severity": "HIGH", "sourceType": "WEB_DLP",
+            "matchingPolicies": {"rules": [{"name": rule}], "engines": [{"name": "US PII"}], "dictionaries": [{"name": "SSN", "matchCount": 1}]},
+            "applicationInfo": {"name": app}, "userInfo": {"email": "a@example.com", "department": "Finance"}, "matchCount": 1}
+
+
+def test_poll_incidents_only_returns_what_is_new_and_moves_the_window():
+    """The live feed: the first poll (no `since`) looks back a couple of
+    minutes, not the whole history; each later poll only returns what
+    landed after the last one, and hands back the timestamp to pass in
+    next time."""
+    now = NOW
+    old = _inc_at("old", "Cards-Block", now - timedelta(hours=2))       # well before the first poll's lookback
+    a = _inc_at("a", "Cards-Block", now - timedelta(seconds=90))
+    b = _inc_at("b", "Old-Monitor", now - timedelta(seconds=30))
+    c = _client([old, a, b])
+
+    first = dh.poll_incidents(c, now=now)
+    assert [i["id"] for i in first["incidents"]] == ["a", "b"], "only the last two minutes, oldest first"
+    assert first["errors"] == []
+    next_since = dh._parse_time(first["next_since"])
+
+    later = now + timedelta(seconds=45)
+    new_one = _inc_at("d", "Cards-Block", later - timedelta(seconds=5))
+    c.zwa.dlp_incidents.incidents.append(new_one)
+    second = dh.poll_incidents(c, since=next_since, now=later)
+    assert [i["id"] for i in second["incidents"]] == ["d"], "not a, b or old again"
+
+
+def test_poll_incidents_clamps_a_stale_since_instead_of_backfilling_everything():
+    now = NOW
+    c = _client([])
+    stale = now - timedelta(hours=6)
+    dh.poll_incidents(c, since=stale, now=now)
+    # The window asked of the API is clamped to LIVE_POLL_CLAMP_SECONDS, not the full 6-hour gap.
+    call_start = c.zwa.dlp_incidents.calls[-1][1]["startTime"]
+    assert (now - dh._parse_time(call_start)).total_seconds() <= dh.LIVE_POLL_CLAMP_SECONDS + 1
+
+
+def test_incident_action_reads_the_rules_configured_action_not_a_guess():
+    rules_by_name = {"Cards-Block": "BLOCK", "Old-Monitor": "ALLOW", "Z-US PII-Monitor": "ALLOW"}
+    enforced = dh.normalize_incident(_inc_at("x", "Cards-Block", NOW), dh.DEFAULTS["not_real"])
+    monitor = dh.normalize_incident(_inc_at("y", "Old-Monitor", NOW), dh.DEFAULTS["not_real"])
+    unknown = dh.normalize_incident(_inc_at("z", "Renamed-Rule", NOW), dh.DEFAULTS["not_real"])
+    assert dh.incident_action(enforced, rules_by_name) == "enforced"
+    assert dh.incident_action(monitor, rules_by_name) == "monitor"
+    assert dh.incident_action(unknown, rules_by_name) == "unknown"
+
+
+def test_live_stats_rolls_up_across_polls():
+    rules_by_name = {"Cards-Block": "BLOCK", "Old-Monitor": "ALLOW"}
+    batch1 = [dh.normalize_incident(_inc_at("1", "Cards-Block", NOW, status="CLOSED", resolution="Confirmed leak"), dh.DEFAULTS["not_real"]),
+              dh.normalize_incident(_inc_at("2", "Old-Monitor", NOW, status="CLOSED", resolution="False Positive"), dh.DEFAULTS["not_real"])]
+    t1 = dh.live_stats(None, batch1, rules_by_name)
+    assert t1 == {"seen": 2, "enforced": 1, "monitor": 1, "unknown_action": 0, "open": 0, "real": 1, "not_real": 1, "fp_tp_ratio": "1:1"}
+    batch2 = [dh.normalize_incident(_inc_at("3", "Cards-Block", NOW, status="OPEN"), dh.DEFAULTS["not_real"])]
+    t2 = dh.live_stats(t1, batch2, rules_by_name)
+    assert t2["seen"] == 3 and t2["enforced"] == 2 and t2["open"] == 1 and t2["fp_tp_ratio"] == "1:1"
+
+
+def test_the_live_feed_endpoint_polls_and_tells_the_truth_about_coverage(monkeypatch):
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    real_now = datetime.now(timezone.utc)   # the endpoint has no test hook for "now"; it always reads the wall clock
+    c = _client([_inc_at("e1", "Cards-Block", real_now - timedelta(seconds=20))])
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
+    t = TestClient(srv.app)
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    r = t.post("/api/live-feed", json=creds)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert len(d["incidents"]) == 1 and d["incidents"][0]["id"] == "e1"
+    assert d["stats"]["seen"] == 1 and d["stats"]["enforced"] == 1
+    assert d["coverage_note"] and "does not" in d["coverage_note"].lower() and "Cloud NSS" in d["coverage_note"]
+    assert "next_since" in d and "tenant_label" in d
+    # The next poll, with the returned since, sees nothing new.
+    r2 = t.post("/api/live-feed", json=dict(creds, since=d["next_since"], stats=d["stats"]))
+    assert r2.status_code == 200 and r2.json()["incidents"] == [] and r2.json()["stats"]["seen"] == 1
+
+
+def test_the_live_feed_page_is_served_wired_and_explained():
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    t = TestClient(srv.app)
+    r = t.get("/report/live")
+    assert r.status_code == 200 and "no-cache" in r.headers["cache-control"]
+    html = r.text
+    for needle in ('<header class="hero rp-hero">', '<nav class="rp-bar" aria-label="Page actions">', 'id="lfStart"', 'id="lfStop"', 'id="lfReset"',
+                   '/api/live-feed', 'id="lfCoverage"', 'Web Insights / Cloud NSS', 'id="liveRegion" class="sr-only" role="status" aria-live="polite"',
+                   '<script src="/static/report_theme.js"></script>', '<script src="/static/explain.js"></script>',
+                   'window.opener.migrateCredBody', '/api/tenant-profiles'):
+        assert needle in html, needle
+    assert html.index("report_theme.js") < html.index("explain.js")
+    assert "<h3" not in html and "prefers-color-scheme" not in html
+    css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
+    assert ".lf-coverage" in css and ".lf-new" in css and "prefers-reduced-motion" in css.split(".lf-new")[1][:300]
+    index = open(os.path.join(root, "static", "index.html"), encoding="utf-8").read()
+    assert 'onclick="openLiveFeedTab()"' in index and "window.open('/report/live', '_blank')" in index
+    explain = open(os.path.join(root, "static", "explain.js"), encoding="utf-8").read()
+    assert re.search(r"^  X\.live = \{", explain, re.M) and "'/report/live': 'live'" in explain

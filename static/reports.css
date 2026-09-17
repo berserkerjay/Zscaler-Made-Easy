@@ -443,3 +443,11 @@ body.theme-light .df-gap-h.st-fail { color: #b91c1c; } body.theme-light .df-gap-
 .pa-mitigation.sev-low { border-left-color: var(--accent); } .pa-mitigation.sev-info { border-left-color: var(--border-strong); }
 .pa-mitigation .sev { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 6px; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-left: auto; }
 .pa-mit-ico { font-size: 1rem; }
+
+/* ── Live DLP Feed ─────────────────────────────────────────────────── */
+.lf-coverage { margin: 0 0 1rem; padding: 0.7rem 0.9rem; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 10px; background: var(--well); font-size: 0.84rem; line-height: 1.5; }
+.lf-tablewrap { max-height: 60vh; overflow-y: auto; }
+.lf-new { animation: lf-flash 2s ease-out; }
+@keyframes lf-flash { from { background: rgba(59,130,246,0.22); } to { background: transparent; } }
+.lf-err { color: var(--warn); }
+@media (prefers-reduced-motion: reduce) { .lf-new { animation: none; } }

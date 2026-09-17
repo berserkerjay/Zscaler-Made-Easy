@@ -237,6 +237,17 @@ def normalize_incident(inc: Any, not_real: Iterable[str]) -> Dict[str, Any]:
 def fetch_incidents(client, days: int = 30, log=None, *, max_pages: int = MAX_PAGES) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Every Workflow Automation incident created in the last `days`,
     normalised. Errors are returned, never raised."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=max(1, int(days)))
+    return fetch_incidents_window(client, start, end, log, max_pages=max_pages)
+
+
+def fetch_incidents_window(client, start: datetime, end: datetime, log=None, *, max_pages: int = MAX_PAGES) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Every Workflow Automation incident created between `start` and
+    `end` (both timezone-aware), normalised. The building block behind
+    both the full report (`fetch_incidents`) and the live feed
+    (`poll_incidents`), which asks for a narrow, moving window instead of
+    a fixed day count. Errors are returned, never raised."""
     _log = log or (lambda m: None)
     errors: List[str] = []
     zwa = getattr(client, "zwa", None)
@@ -244,8 +255,6 @@ def fetch_incidents(client, days: int = 30, log=None, *, max_pages: int = MAX_PA
     if api is None:
         return [], ["The Workflow Automation API is not available on this client (the SDK exposes no zwa.dlp_incidents). "
                     "Grant the API client the Workflow Automation read scope and try again."]
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=max(1, int(days)))
     time_range = {"startTime": start.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "endTime": end.strftime("%Y-%m-%dT%H:%M:%S.000Z")}
     out: List[Dict[str, Any]] = []
     seen: set = set()
@@ -276,6 +285,81 @@ def fetch_incidents(client, days: int = 30, log=None, *, max_pages: int = MAX_PA
             break
         page += 1
     return out, errors
+
+
+# ── live feed ────────────────────────────────────────────────────────
+# What DLP-Check can genuinely show live: Workflow Automation's own DLP
+# incident stream, polled on a moving window instead of read once. This
+# is not every ZIA transaction — URL Filtering, Cloud App Control and
+# Firewall & DNS Control decisions that never trip a DLP rule leave no
+# record here. That wider transaction log is Web Insights / Cloud NSS, a
+# push feed to a log store (Splunk, S3, a syslog receiver) that this
+# server does not read; nothing in the OneAPI/ZIA REST surface lets an
+# app pull it on demand. The page states this limit; it is never hidden.
+LIVE_FIRST_LOOKBACK_SECONDS = 120     # first poll: how far back to start (avoid dumping history)
+LIVE_POLL_CLAMP_SECONDS = 3600        # a client that waited an hour still only gets the last hour, not a backfill storm
+
+
+def rule_actions(client) -> Dict[str, str]:
+    """name -> configured action (upper-cased), from the same DLP rule
+    inventory the full report reads. `incident_action` and `live_stats`
+    need this because a Workflow Automation incident record carries no
+    action field of its own — only the rule it matched decides whether
+    that match was enforced or only logged."""
+    from pack_removal import inventory
+    inv = inventory(client)
+    return {str(r.get("name")): str(r.get("action") or "").upper() for r in (inv.get("rules") or [])}
+
+
+def poll_incidents(client, since: Optional[datetime] = None, now: Optional[datetime] = None, log=None) -> Dict[str, Any]:
+    """One live-feed poll: every incident created since `since` (default:
+    two minutes ago, for the first call). Returns the normalised
+    incidents (oldest first), `next_since` (pass this back next poll) and
+    any read errors. Never raises."""
+    now = now or datetime.now(timezone.utc)
+    if since is None:
+        since = now - timedelta(seconds=LIVE_FIRST_LOOKBACK_SECONDS)
+    elif since < now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS):
+        since = now - timedelta(seconds=LIVE_POLL_CLAMP_SECONDS)
+    incs, errors = fetch_incidents_window(client, since, now, log)
+    incs.sort(key=lambda i: i["_created"] or now)
+    next_since = max((i["_created"] for i in incs if i.get("_created")), default=now)
+    for i in incs:
+        i.pop("_created", None)
+    return {"incidents": incs, "next_since": (max(next_since, now) if incs else now).isoformat(), "errors": errors, "read_at": now.isoformat()}
+
+
+def incident_action(inc: Dict[str, Any], rules_by_name: Dict[str, str]) -> str:
+    """"enforced" if any rule this incident matched blocks or confirms,
+    "monitor" if every matched rule that is in the inventory only logs,
+    "unknown" when none of its rule names are in the inventory (renamed
+    or deleted since). The incident record itself carries no action
+    field — only the rule's configured action decides this, so the rule
+    inventory the report already reads is required here too."""
+    found = [rules_by_name[r] for r in (inc.get("rules") or []) if r in rules_by_name]
+    if not found:
+        return "unknown"
+    return "monitor" if all(a in MONITOR_ACTIONS for a in found) else "enforced"
+
+
+def live_stats(prev: Optional[Dict[str, Any]], batch: List[Dict[str, Any]], rules_by_name: Dict[str, str]) -> Dict[str, Any]:
+    """Roll a poll's incidents into the running session tally: seen,
+    enforced (blocked/confirmed) vs monitor-only vs unknown (by the
+    matched rule's configured action, not a guess), and the FP/TP split
+    among the ones already closed. `prev` is the tally returned by the
+    previous call, or None to start one."""
+    t = dict(prev) if prev else {"seen": 0, "enforced": 0, "monitor": 0, "unknown_action": 0, "open": 0, "real": 0, "not_real": 0}
+    for i in batch:
+        t["seen"] += 1
+        t[{"enforced": "enforced", "monitor": "monitor", "unknown": "unknown_action"}[incident_action(i, rules_by_name)]] += 1
+        if i["real"] is True:
+            t["real"] += 1
+        elif i["real"] is False:
+            t["not_real"] += 1
+        else:
+            t["open"] += 1
+    t["fp_tp_ratio"] = _ratio(t["not_real"], t["real"])
+    return t
 
 
 def _flatten(result: Any) -> List[Any]:

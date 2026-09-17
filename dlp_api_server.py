@@ -158,7 +158,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart", "/report/evalall", "/report/path"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart", "/report/evalall", "/report/path", "/report/live"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -1116,6 +1116,74 @@ async def detection_health_generate(req: DetectionHealthRequest):
         report["proposals"] = {"error": str(e)[:200]}
     rid = _remember_report("health", report, f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})")
     return _REPORTS[rid]
+
+
+# ── Live feed (continuous evaluation, live view) ───────────────────────
+# What this genuinely shows live: Workflow Automation's own DLP incident
+# stream, polled on a moving window. It is not every ZIA transaction —
+# see the coverage note the endpoint always returns.
+_LIVE_RULES_TTL_SECONDS = 90
+_live_rules_cache: Dict[str, Any] = {}   # tenant key -> (expires_at, {rule name: action})
+LIVE_FEED_COVERAGE_NOTE = (
+    "This feed shows Workflow Automation's DLP-matched incidents only — the user, the rule and dictionaries that "
+    "matched, and the destination, live as they land. It does not cover URL Filtering, Cloud App Control or "
+    "Firewall & DNS Control decisions that never trip a DLP rule; that wider transaction log is Web Insights / "
+    "Cloud NSS, a feed to your own log store (Splunk, S3, a syslog receiver) that this app does not read."
+)
+
+
+def _live_rule_actions(client, tenant_key: str) -> Dict[str, str]:
+    """rule name -> configured action, cached briefly per tenant so a
+    poll every few seconds does not re-read the whole rule inventory
+    every time; rule actions do not change that often."""
+    import time as _time
+    import detection_health
+    now = _time.time()
+    cached = _live_rules_cache.get(tenant_key)
+    if cached and cached[0] > now:
+        return cached[1]
+    m = detection_health.rule_actions(client)
+    _live_rules_cache[tenant_key] = (now + _LIVE_RULES_TTL_SECONDS, m)
+    return m
+
+
+class LiveFeedRequest(TenantCredsRequest):
+    """One poll of the live DLP incident feed. `since` is the ISO
+    timestamp `next_since` from the previous poll (blank starts a new
+    feed, looking back two minutes); `stats` is the running tally this
+    endpoint returned last time, echoed back so the server stays
+    stateless between polls."""
+    since: str = ""
+    stats: Dict[str, Any] = {}
+
+
+@app.post("/api/live-feed")
+async def live_feed_poll(req: LiveFeedRequest):
+    """Workflow Automation DLP incidents created since the last poll,
+    normalised, with a running session tally (seen, enforced vs
+    monitor-only by the matched rule's real configured action, and the
+    FP/TP split among the ones already closed) and a plain statement of
+    what this feed does and does not cover. Read-only."""
+    try:
+        import detection_health
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"detection_health unavailable: {e}")
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.label(creds)
+    since = None
+    if req.since:
+        try:
+            since = datetime.fromisoformat(req.since.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="'since' is not a valid timestamp; leave it blank to start a new feed.")
+    poll = await asyncio.to_thread(detection_health.poll_incidents, client, since)
+    rules_by_name = await asyncio.to_thread(_live_rule_actions, client, creds.get("vanity_domain") or label)
+    for i in poll["incidents"]:
+        i["enforcement"] = detection_health.incident_action(i, rules_by_name)   # "enforced" | "monitor" | "unknown", from the rule's real action
+    stats = detection_health.live_stats(req.stats or None, poll["incidents"], rules_by_name)
+    return {"incidents": poll["incidents"], "next_since": poll["next_since"], "errors": poll["errors"], "stats": stats,
+            "tenant_label": label, "read_at": poll["read_at"], "coverage_note": LIVE_FEED_COVERAGE_NOTE}
 
 
 # ── Proposals: the approval queue (continuous evaluation, phase 2) ────────
@@ -3986,6 +4054,17 @@ async def report_data_flow(req: DataFlowRequest):
         raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
     rid = _remember_report("dataflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
     return _REPORTS[rid]
+
+
+# ── Live DLP Feed ────────────────────────────────────────────────────
+@app.get("/report/live")
+async def report_live_page():
+    """Standalone tab for the Live DLP Feed (static/report_live.html)."""
+    page = os.path.join(STATIC_DIR, "report_live.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 # ── Path Analyzer ─────────────────────────────────────────────────────

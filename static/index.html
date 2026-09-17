@@ -604,6 +604,11 @@
                 title="Type a URL, a hostname or an IP address. Reads the tenant as it is right now and shows the path a user's traffic takes to that destination, hop by hop, with one verdict in plain words and every rule or profile that blocks or impacts it named. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🧭</span> Path Analyzer
         </button>
+        <button class="btn btn-ghost" onclick="openLiveFeedTab()"
+                aria-label="Open Live DLP Feed: Workflow Automation incidents polling live, who was transacting, what triggered, where it was going, enforced or monitor-only, with a running FP to TP tally (opens in a new tab)"
+                title="Polls Workflow Automation's DLP incidents live: who, the rule and dictionaries that matched, the destination, and whether the rule enforced it or only logged it, with a running seen / enforced / monitor / FP:TP tally. Covers DLP-matched traffic only, not every ZIA transaction — the page says so. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">📡</span> Live DLP Feed
+        </button>
         <button class="btn btn-ghost" onclick="openToolTab('efficacy')"
                 aria-label="Score every custom DLP dictionary and engine on detection efficacy (opens in a new tab)"
                 title="Scores every custom dictionary and engine for false-positive risk and tests sample text against them. Opens in a new tab.">
@@ -4645,6 +4650,12 @@ function openReferenceTab(slug) {
   // The framework reference pages ship inside the app (static/reference);
   // only the slugs the server lists are served.
   const w = window.open(`/reference/${encodeURIComponent(slug)}`, '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openLiveFeedTab() {
+  // The tab reads the credentials from this page through window.opener
+  // when it runs, so nothing is sent until Start live feed is clicked.
+  const w = window.open('/report/live', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {
