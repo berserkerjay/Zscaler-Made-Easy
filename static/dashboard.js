@@ -129,6 +129,20 @@
   // A successful Authenticate (the guide's button or the form's) starts a queued run.
   const origTest = window._gdTest;
   if (typeof origTest === 'function') window._gdTest = async function () { const r = await origTest.apply(this, arguments); if (pendingRun && signedIn()) startRun(); return r; };
+
+  // ── Tenant configuration: the "Start here" guide — with the tenant
+  // details form, and the scope checklist nested inside it — is a
+  // sign-in surface, not part of the dashboard. Hidden by default;
+  // revealed only by going to Connect to the tenant or Scope, from this
+  // sidebar or the legacy step strip above it, or whenever the app itself
+  // sends the operator there (a missing field, a failed sign-in, a reset).
+  const CONFIG_VIEW_KEYS = new Set(['configure', 'scope']);
+  function showTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = false; const cc = $('configCard'); if (cc) cc.hidden = false; }
+  function hideTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = true; const cc = $('configCard'); if (cc) cc.hidden = true; }
+  hideTenantConfig();
+  const origGoConfig = window._gdGoConfig;
+  if (typeof origGoConfig === 'function') window._gdGoConfig = function () { showTenantConfig(); return origGoConfig.apply(this, arguments); };
+
   // Workflow items: the same routes as the step strip, except Run.
   aside.querySelectorAll('.db-item').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.db;
@@ -298,7 +312,10 @@
     document.querySelector('.hero').hidden = false;
   }
 
-  function setCurrent(k) { aside.querySelectorAll('.db-item').forEach(b => { if (b.dataset.db === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); }); }
+  function setCurrent(k) {
+    aside.querySelectorAll('.db-item').forEach(b => { if (b.dataset.db === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+    (CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();
+  }
   // Follow the step strip when the inline script moves it.
   const strip = $('stepBar');
   if (strip && window.MutationObserver) new MutationObserver(() => { const cur = strip.querySelector('.step-item[aria-current="step"]'); if (cur) setCurrent(cur.dataset.step); }).observe(strip, { subtree: true, attributes: true, attributeFilter: ['aria-current'] });

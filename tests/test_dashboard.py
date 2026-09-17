@@ -132,6 +132,22 @@ def test_the_score_distribution_radar_never_clips_and_has_an_exploded_view():
     assert "#dbRadarBig svg .area {" in css and "#dbRadarBig svg .pt {" in css, "the exploded view must use the same theme colours as the tile, not SVG defaults"
 
 
+def test_tenant_configuration_is_hidden_until_its_own_sidebar_link_is_used():
+    """The "Start here" guide and the tenant details form it carries (with
+    the scope checklist nested inside) are a sign-in surface, not part of
+    the dashboard: they must not be on screen the moment the page loads.
+    They appear only when the operator goes to Connect to the tenant or
+    Scope — from this sidebar, the legacy step strip above it, or a route
+    the app itself takes there (a missing field, a failed sign-in, a
+    reset) — and hide again once the operator moves on."""
+    js = _read("dashboard.js")
+    assert "function showTenantConfig()" in js and "function hideTenantConfig()" in js
+    assert "hideTenantConfig();" in js, "hidden the moment the add-on runs, before any click"
+    assert "CONFIG_VIEW_KEYS = new Set(['configure', 'scope'])" in js
+    assert "(CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();" in js, "setCurrent is the one place every route (sidebar, step strip, goConnect, reset) passes through"
+    assert "const origGoConfig = window._gdGoConfig;" in js and "showTenantConfig(); return origGoConfig.apply(this, arguments);" in js, "the legacy step strip's Configure/Scope buttons call _gdGoConfig directly, bypassing the sidebar handler"
+
+
 def test_the_channels_page_is_wired_a_real_new_nav_item_not_decoration():
     """Channel Selection: a new sidebar nav item that shows 11 real
     channels (icon, risk, category, description), lets the operator mark

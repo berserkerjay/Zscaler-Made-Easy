@@ -6,6 +6,11 @@ what each batch of changes did, newest first.
 
 ## 2026-09-17
 
+### Tenant configuration hidden until you ask for it
+- **What you asked for.** "On the dashboard the tenant configuration should not be shown — it should only show itself when you select the link in the sidebar."
+- **Now** the "Start here" guide and the tenant details form it carries (organisation, cloud, vanity domain, API client, and the scope checklist nested inside the same card) no longer sit on the Dashboard by default. They stay hidden until you open **Connect to the tenant** or **Scope** — from the sidebar, or the legacy ①②③④ step strip above it — and hide again the moment you move to Dashboard, Channels, a running assessment, or the results. The app still opens the form itself whenever it needs you there (a missing field before Run, a rejected sign-in, Run Another Assessment), so nothing about filling it in changed — only that the Dashboard no longer leads with a sign-in form.
+- Verified: `tests/test_dashboard.py` (hidden on load, shown/hidden through every route in and out — the sidebar, the legacy step buttons via `_gdGoConfig`, and the app's own redirects). Browser run against a fake tenant: hidden on load, shown after Connect and after Scope, hidden again after Dashboard and after Channels → Dashboard, hidden once results are up, and still opens correctly afterward.
+
 ### Score Distribution radar: never clips, and an exploded full-size view
 - **What you asked for.** "Score distribution image needs to be able to show an exploded view or be centered."
 - **Root cause.** The radar's canvas had a fixed size (`viewBox="0 0 220 190"`); a section name long enough, or a set with enough sections, ran past the edge of that box on whichever side had the longest label, and SVG silently clips anything drawn outside its own viewBox — so the chart looked lopsided or cut off depending on how many sections an assessment scored and how long their names were.
