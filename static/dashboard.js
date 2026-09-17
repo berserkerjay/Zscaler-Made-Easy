@@ -352,7 +352,7 @@
           </div>
         </div>
         <div class="db-tile db-radar">
-          <div class="db-tile-t">Score Distribution</div>
+          <div class="db-tile-t db-tile-t-row">Score Distribution<button type="button" class="db-expand" id="dbRadarExpand" aria-label="Expand Score Distribution to full size" title="Expand to full size">⤢</button></div>
           <div id="dbRadar"></div>
         </div>
       </div>
@@ -361,22 +361,76 @@
         <div class="db-tile"><div class="db-tile-t">Key Insights</div><ul class="db-insights" id="dbInsights"></ul></div>
         <div class="db-tile"><div class="db-tile-t">Next actions</div><div class="db-actions" id="dbActions"></div></div>
       </div>`;
+    heroCard.querySelector('#dbRadarExpand').addEventListener('click', () => openRadarModal());
   }
   const BAND = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'];   // dlp_assessment_full_auto.maturity(): <25, <50, <75, <90, 90+
   const pctColor = p => p >= 75 ? 'var(--pass)' : p >= 50 ? 'var(--warn)' : 'var(--fail)';
   const level = p => p >= 90 ? ['Optimized', 'ok'] : p >= 75 ? ['Managed', 'ok'] : p >= 50 ? ['Developing', 'warn'] : p >= 25 ? ['Initial', 'fail'] : ['Ad Hoc', 'fail'];
   function ring(id, pct) { const a = $(id); if (!a) return; const C = 2 * Math.PI * 50; a.style.strokeDashoffset = String(C * (1 - Math.max(0, Math.min(100, pct || 0)) / 100)); }
+  const SECTION_SHORT = k => k.replace(/^[\d.]+\s*[—-]\s*/, '').replace(/^Ch\.\w+\s*[—-]\s*/, '');
+  // The radar's own viewBox is computed from the labels it actually has
+  // to draw — never a fixed box — so a long name (or simply enough
+  // sections) can never clip past one edge while the other side sits in
+  // empty space; the box grows symmetrically, which is what keeps the
+  // web centered no matter how many axes there are.
+  function radarSvg(sections, { R, charW, fontSize, maxChars, full }) {
+    const names = Object.keys(sections || {});
+    const n = names.length;
+    const pt = (cx, cy, i, r) => { const a = -Math.PI / 2 + (2 * Math.PI * i) / n; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
+    const shorts = names.map(k => { const s = SECTION_SHORT(k); return full ? s : s.slice(0, maxChars); });
+    const labelR = R + 14;
+    // Half-extent big enough for the longest label in the worst-case
+    // direction (a label that starts exactly at the label radius and
+    // reads straight out), plus the ring itself and a little breathing room.
+    const maxLabelPx = Math.max(0, ...shorts.map(s => s.length)) * charW;
+    const halfX = labelR + maxLabelPx + 6;
+    const halfY = labelR + fontSize + 10;
+    const cx = halfX, cy = halfY;
+    const web = [0.25, 0.5, 0.75, 1].map(f => `<polygon class="web" points="${names.map((_, i) => pt(cx, cy, i, R * f).map(v => v.toFixed(1)).join(',')).join(' ')}"/>`).join('');
+    const spokes = names.map((_, i) => { const [x, y] = pt(cx, cy, i, R); return `<line class="web" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join('');
+    const pts = names.map((k, i) => pt(cx, cy, i, R * Math.max(0, Math.min(100, sections[k].pct || 0)) / 100));
+    const labels = names.map((k, i) => {
+      const [x, y] = pt(cx, cy, i, labelR);
+      const anchor = x < cx - 4 ? 'end' : x > cx + 4 ? 'start' : 'middle';
+      return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" font-size="${fontSize}">${E(shorts[i])}${!full && SECTION_SHORT(k).length > maxChars ? '…' : ''}<title>${E(k)}: ${sections[k].pct}%</title></text>`;
+    }).join('');
+    const pctLabels = full ? pts.map((p, i) => `<text class="db-radar-pct" x="${p[0].toFixed(1)}" y="${(p[1] - 6).toFixed(1)}" text-anchor="middle">${sections[names[i]].pct}%</text>`).join('') : '';
+    return `<svg viewBox="0 0 ${(halfX * 2).toFixed(0)} ${(halfY * 2).toFixed(0)}" role="img" aria-label="Score by section: ${E(names.map(k => `${k} ${sections[k].pct}%`).join(', '))}">${web}${spokes}<polygon class="area" points="${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"/>${pts.map(p => `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${full ? 3.5 : 2.5}"/>`).join('')}${labels}${pctLabels}</svg>`;
+  }
+  let lastSections = null;
   function radar(sections) {
     const host = $('dbRadar'); if (!host) return;
+    lastSections = sections;
     const names = Object.keys(sections || {});
     if (names.length < 3) { host.innerHTML = `<div class="db-comp-s">${names.length ? 'Three or more sections are needed for the radar; the pillar cards below carry the scores.' : 'No sections scored yet.'}</div>`; return; }
-    const n = names.length, cx = 110, cy = 95, R = 68;
-    const pt = (i, r) => { const a = -Math.PI / 2 + (2 * Math.PI * i) / n; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
-    const web = [0.25, 0.5, 0.75, 1].map(f => `<polygon class="web" points="${names.map((_, i) => pt(i, R * f).map(v => v.toFixed(1)).join(',')).join(' ')}"/>`).join('');
-    const spokes = names.map((_, i) => { const [x, y] = pt(i, R); return `<line class="web" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join('');
-    const pts = names.map((k, i) => pt(i, R * Math.max(0, Math.min(100, sections[k].pct || 0)) / 100));
-    const labels = names.map((k, i) => { const [x, y] = pt(i, R + 14); const short = k.replace(/^[\d.]+\s*[—-]\s*/, '').replace(/^Ch\.\w+\s*[—-]\s*/, ''); return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${x < cx - 4 ? 'end' : x > cx + 4 ? 'start' : 'middle'}" dominant-baseline="middle">${E(short.slice(0, 18))}</text>`; }).join('');
-    host.innerHTML = `<svg viewBox="0 0 220 190" role="img" aria-label="Score by section: ${E(names.map(k => `${k} ${sections[k].pct}%`).join(', '))}">${web}${spokes}<polygon class="area" points="${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"/>${pts.map(p => `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5"/>`).join('')}${labels}</svg>`;
+    host.innerHTML = radarSvg(sections, { R: 62, charW: 4.6, fontSize: 9, maxChars: 12, full: false });
+  }
+  function openRadarModal() {
+    if (!lastSections || Object.keys(lastSections).length < 3) return;
+    let dlg = $('dbRadarModal');
+    if (!dlg) {
+      dlg = document.createElement('div');
+      dlg.id = 'dbRadarModal'; dlg.className = 'db-modal'; dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'dbRadarModalTitle');
+      dlg.innerHTML = `<div class="db-modal-card">
+        <div class="db-modal-h"><h2 id="dbRadarModalTitle">Score Distribution</h2><button type="button" class="rp-btn" id="dbRadarClose" aria-label="Close">✕ Close</button></div>
+        <div id="dbRadarBig"></div>
+        <table class="db-radar-legend"><caption class="sr-only">Score by section</caption><thead><tr><th scope="col">Section</th><th scope="col">Score</th></tr></thead><tbody id="dbRadarTbl"></tbody></table>
+      </div>`;
+      document.body.appendChild(dlg);
+      dlg.addEventListener('click', e => { if (e.target === dlg) closeRadarModal(); });
+      $('dbRadarClose').addEventListener('click', closeRadarModal);
+      document.addEventListener('keydown', e => { if (e.key === 'Escape' && dlg.classList.contains('open')) closeRadarModal(); });
+    }
+    $('dbRadarBig').innerHTML = radarSvg(lastSections, { R: 220, charW: 6.6, fontSize: 13, maxChars: 999, full: true });
+    $('dbRadarTbl').innerHTML = Object.entries(lastSections).map(([k, d]) => `<tr><td>${E(k)}</td><td style="color:${pctColor(d.pct || 0)}">${d.pct}%</td></tr>`).join('');
+    dlg.classList.add('open');
+    ($('dbRadarClose') || dlg).focus();
+    say('Score Distribution, expanded view.');
+  }
+  function closeRadarModal() {
+    const dlg = $('dbRadarModal'); if (!dlg) return;
+    dlg.classList.remove('open');
+    const btn = document.getElementById('dbRadarExpand'); if (btn) btn.focus();
   }
   const ICONS = [[/ssl|tls/i, '🔒'], [/firewall|fw/i, '🧱'], [/dlp|data|inline|web/i, '🛡️'], [/incident|workflow/i, '🚨'], [/genai|ai\b/i, '🤖'], [/zpa|access/i, '🔑'], [/zcc|client|portal/i, '💻'], [/compliance|regulat/i, '📜'], [/email|mail/i, '✉️'], [/saas|cloud/i, '☁️'], [/endpoint|device/i, '🖥️'], [/log|nss|siem/i, '🧾']];
   const icon = name => (ICONS.find(([re]) => re.test(name || '')) || [null, '📁'])[1];

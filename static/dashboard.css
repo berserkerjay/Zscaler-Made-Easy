@@ -166,3 +166,23 @@ body.theme-light .db-ch-foot { background: rgba(255,255,255,0.9); }
 #dbChContinue[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
 @media (max-width: 1000px) { .db-ch-foot { left: 0; } }
 @media (max-width: 760px) { .db-ch-row { grid-template-columns: auto auto 1fr; } .db-ch-choice, .db-ch-edit, .db-ch-expand { grid-column: 3; } }
+
+/* ── Score Distribution: expand + the full-size modal ───────────────── */
+.db-tile-t-row { display: flex; align-items: center; justify-content: space-between; }
+.db-expand { min-height: 26px; min-width: 26px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--dim); cursor: pointer; font-size: 0.85rem; line-height: 1; }
+.db-expand:hover { color: var(--text); border-color: var(--border-strong); }
+.db-radar-pct { font-size: 8px; font-weight: 700; fill: var(--accent-hover); }
+.db-modal { display: none; position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); overflow: auto; padding: 2rem 1rem; }
+.db-modal.open { display: block; }
+.db-modal-card { max-width: 760px; margin: 0 auto; background: var(--card-solid); border: 1px solid var(--border); border-radius: 16px; padding: 1.4rem 1.6rem; box-shadow: var(--shadow-lg); }
+.db-modal-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: 1rem; }
+.db-modal-h h2 { font-size: 1.2rem; margin: 0; }
+#dbRadarBig svg { width: 100%; height: auto; display: block; }
+#dbRadarBig svg .web { fill: none; stroke: rgba(148,163,184,0.2); }
+#dbRadarBig svg .area { fill: rgba(34,211,238,0.18); stroke: var(--db-cyan); stroke-width: 2; }
+#dbRadarBig svg .pt { fill: var(--db-cyan); }
+#dbRadarBig svg text:not(.db-radar-pct) { fill: var(--dim); }
+.db-radar-legend { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+.db-radar-legend th { text-align: left; color: var(--dim); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+.db-radar-legend td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); }
+.db-radar-legend td:last-child { font-weight: 700; text-align: right; }

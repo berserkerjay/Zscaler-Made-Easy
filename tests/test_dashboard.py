@@ -109,6 +109,29 @@ def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
     assert ".db-note" in css and ".db-note.warn" in css
 
 
+def test_the_score_distribution_radar_never_clips_and_has_an_exploded_view():
+    """The radar's viewBox is computed from the actual label set (never a
+    fixed box), so a long or crowded set of section names can't overflow
+    one side and get silently clipped by the SVG. An expand button on the
+    tile opens a full-size modal with untruncated labels, per-point
+    percentages and a legend table; Escape or the backdrop closes it and
+    returns focus to the button."""
+    js = _read("dashboard.js")
+    css = _read("dashboard.css")
+    assert "function radarSvg(sections" in js
+    assert "viewBox=\"0 0 ${(halfX * 2)" in js, "the box is sized from the labels, not a fixed constant"
+    for legacy in ('viewBox="0 0 220 190"', "cx = 110", "cy = 95"):
+        assert legacy not in js, f"{legacy} would be the old fixed, clipping viewBox"
+    assert "function openRadarModal()" in js and "function closeRadarModal()" in js
+    assert "id=\"dbRadarExpand\"" in js and "radarSvg(lastSections, { R: 220" in js
+    assert "dlg.classList.contains('open')" in js and "e.key === 'Escape'" in js
+    assert "e.target === dlg" in js, "clicking the backdrop closes it too"
+    assert "btn.focus()" in js, "focus returns to the expand button on close"
+    assert "dbRadarTbl" in js and "db-radar-legend" in js
+    assert ".db-modal {" in css and ".db-modal.open {" in css and ".db-expand {" in css
+    assert "#dbRadarBig svg .area {" in css and "#dbRadarBig svg .pt {" in css, "the exploded view must use the same theme colours as the tile, not SVG defaults"
+
+
 def test_the_channels_page_is_wired_a_real_new_nav_item_not_decoration():
     """Channel Selection: a new sidebar nav item that shows 11 real
     channels (icon, risk, category, description), lets the operator mark
