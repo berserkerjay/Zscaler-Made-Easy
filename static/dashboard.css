@@ -130,15 +130,23 @@ body.theme-light #dbFooter { background: rgba(255,255,255,0.9); }
 .db-chip { white-space: nowrap; }
 .db-pillar-m { flex-wrap: wrap; gap: 0.3rem 0.5rem; }
 
-/* ── Channels (Channel Selection) ────────────────────────────────── */
-#dbChannelsView { margin-bottom: 1.5rem; }
+/* ── Scope (Channels + Assessment Scope + Compliance Frameworks,
+   combined into one page reachable from the Scope sidebar link) ────── */
+#dbScopeView { margin-bottom: 1.5rem; }
 .db-ch-hero { text-align: left; padding: 0.25rem 0 1rem; margin: 0; }
 .db-ch-hero h1 { font-size: 1.7rem; display: flex; align-items: center; gap: 0.5rem; }
 .db-ch-hero p { margin-top: 0.35rem; max-width: 70ch; }
-.db-ch-stats { grid-template-columns: repeat(3, 1fr); margin-bottom: 1rem; }
-.db-ch-bar { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.9rem; flex-wrap: wrap; }
+.db-scope-section { margin-bottom: 1.2rem; }
+.db-scope-section h2 { margin-bottom: 0.6rem; }
+.db-scope-section-h { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem 1rem; margin-bottom: 0.4rem; }
+.db-scope-section-h h2 { margin-bottom: 0; display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.db-scope-tally { font-size: 0.78rem; font-weight: 400; color: var(--dim); }
+.db-scope-tally strong { color: var(--text); }
+.db-scope-p { font-size: 0.86rem; color: var(--dim); margin: 0 0 0.8rem; max-width: 70ch; }
+.db-scope-foot { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
+.db-ch-bar { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 .db-ch-bar .sep { flex: 1; }
-.db-ch-list { display: grid; gap: 0.7rem; margin-bottom: 5rem; }
+.db-ch-list { display: grid; gap: 0.7rem; }
 .db-ch-row { display: grid; grid-template-columns: auto auto 1fr auto auto auto; align-items: flex-start; gap: 0.8rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 14px; background: var(--card-solid); }
 .db-ch-row.gap { border-left: 3px solid var(--fail); }
 .db-ch-check input { width: 18px; height: 18px; margin-top: 0.2rem; }
@@ -160,11 +168,6 @@ body.theme-light #dbFooter { background: rgba(255,255,255,0.9); }
 .db-chip.risk-warn-strong { background: rgba(245,158,11,0.2); color: #f59e0b; }
 .db-chip.risk-warn { background: rgba(245,158,11,0.12); color: var(--warn); }
 .db-chip.risk-ok { background: rgba(16,185,129,0.14); color: var(--pass); }
-.db-ch-foot { position: fixed; left: var(--db-w); right: 0; bottom: 0; z-index: 850; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: 0.6rem 1.5rem; border-top: 1px solid var(--border); background: rgba(15,23,42,0.85); backdrop-filter: blur(14px); font-size: 0.84rem; color: var(--dim); }
-body.theme-light .db-ch-foot { background: rgba(255,255,255,0.9); }
-.db-ch-foot strong { color: var(--text); }
-#dbChContinue[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
-@media (max-width: 1000px) { .db-ch-foot { left: 0; } }
 @media (max-width: 760px) { .db-ch-row { grid-template-columns: auto auto 1fr; } .db-ch-choice, .db-ch-edit, .db-ch-expand { grid-column: 3; } }
 
 /* ── Score Distribution: expand + the full-size modal ───────────────── */

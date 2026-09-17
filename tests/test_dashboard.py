@@ -133,34 +133,35 @@ def test_the_score_distribution_radar_never_clips_and_has_an_exploded_view():
 
 
 def test_tenant_configuration_is_hidden_until_its_own_sidebar_link_is_used():
-    """The "Start here" guide and the tenant details form it carries (with
-    the scope checklist nested inside) are a sign-in surface, not part of
-    the dashboard: they must not be on screen the moment the page loads.
-    They appear only when the operator goes to Connect to the tenant or
-    Scope — from this sidebar, the legacy step strip above it, or a route
-    the app itself takes there (a missing field, a failed sign-in, a
-    reset) — and hide again once the operator moves on."""
+    """The "Start here" guide and the tenant details form it carries are
+    a sign-in surface, not part of the dashboard: they must not be on
+    screen the moment the page loads. They appear only when the operator
+    goes to Connect to the tenant — from this sidebar, the legacy step
+    strip above it, or a route the app itself takes there (a missing
+    field, a failed sign-in, a reset) — and hide again once the operator
+    moves on. Scope has its own combined page and no longer opens this."""
     js = _read("dashboard.js")
     assert "function showTenantConfig()" in js and "function hideTenantConfig()" in js
     assert "hideTenantConfig();" in js, "hidden the moment the add-on runs, before any click"
-    assert "CONFIG_VIEW_KEYS = new Set(['configure', 'scope'])" in js
+    assert "CONFIG_VIEW_KEYS = new Set(['configure'])" in js
     assert "(CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();" in js, "setCurrent is the one place every route (sidebar, step strip, goConnect, reset) passes through"
     assert "const origGoConfig = window._gdGoConfig;" in js and "showTenantConfig(); return origGoConfig.apply(this, arguments);" in js, "the legacy step strip's Configure/Scope buttons call _gdGoConfig directly, bypassing the sidebar handler"
 
 
 def test_connect_to_the_tenant_sits_directly_below_dashboard_in_the_sidebar():
     js = _read("dashboard.js")
-    keys = ("dashboard", "configure", "channels", "scope", "run", "review")
+    keys = ("dashboard", "configure", "scope", "run", "review")
     nav = [k for k in re.findall(r'data-db="([a-z]+)"', js) if k in keys][:len(keys)]
-    assert nav == ["dashboard", "configure", "channels", "scope", "run", "review"], nav
+    assert nav == ["dashboard", "configure", "scope", "run", "review"], nav
+    assert 'data-db="channels"' not in js, "Channels is folded into Scope, not its own nav item"
 
 
 def test_the_dashboard_never_sits_blank_before_a_run():
     """Before a fresh run in this tab, the space where results render
     must show either the tenant's last recorded assessment (score,
     maturity, when it ran) or a plain prompt to connect — never nothing.
-    It hides again once real results, Channels, or Connect/Scope are on
-    screen, so it never stacks with them."""
+    It hides again once real results, Scope, or Connect are on screen, so
+    it never stacks with them."""
     js = _read("dashboard.js")
     css = _read("dashboard.css")
     assert "function renderLastRunOrEmpty()" in js and "id = 'dbLastRun'" in js
@@ -171,21 +172,26 @@ def test_the_dashboard_never_sits_blank_before_a_run():
     assert ".db-lastrun-stat {" in css and ".db-lastrun-btn {" in css
 
 
-def test_the_channels_page_is_wired_a_real_new_nav_item_not_decoration():
-    """Channel Selection: a new sidebar nav item that shows 11 real
-    channels (icon, risk, category, description), lets the operator mark
-    each Zscaler-owned or covered by an alternative, tallies owned /
-    alternatives / coverage gaps, persists the choice in this browser,
-    and hides the rest of the main content (including the guide panel)
-    while it is open."""
+def test_scope_combines_channels_assessment_scope_and_compliance_frameworks():
+    """Scope is one combined page, reached from a single sidebar link:
+    Channels (11 real channels — icon, risk, category, description — the
+    operator marks each Zscaler-owned or covered by an alternative, with
+    a running tally, persisted in this browser), then Assessment Scope,
+    then Compliance Frameworks — the same live checkboxes the assessment
+    itself reads, moved into the page rather than copied. It hides the
+    rest of the main content (including the guide panel) while it is
+    open, and a Continue button leads into Connect to the tenant."""
     js = _read("dashboard.js")
     css = _read("dashboard.css")
-    assert 'data-db="channels"' in js and "showChannels()" in js and "hideChannels()" in js
+    assert 'data-db="scope"' in js and "function showScopeView()" in js and "function hideScopeView()" in js
+    assert "window.__dbShowScope = showScopeView" in js, "the legacy step strip's Scope button (_stepGo) calls this directly"
     for name in ("Inline Web DLP", "Endpoint DLP", "Email DLP", "SaaS Security (CASB)", "GenAI Security", "Shadow IT Discovery",
                  "Endpoint Data Scan", "SSL/TLS Inspection", "Cloud App Control", "Device Control", "Workflow Automation"):
         assert f"name: '{name}'" in js, name
     assert "CHANNELS_KEY = 'zassess_channels_v1'" in js and "localStorage.setItem(CHANNELS_KEY" in js
     assert "'stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results'" in js, "the guide panel is hidden with the rest of main, or it bleeds through"
-    assert "dbChOwned" in js and "dbChAlt" in js and "dbChGaps" in js and "dbChFootTxt" in js and "dbChContinue" in js
-    for cls in (".db-ch-row", ".db-ch-choice", ".db-pill", ".db-ch-foot", ".db-chip.risk-fail", ".db-chip.risk-ok"):
+    assert "dbChFootTxt" in js and "dbScopeContinue" in js
+    assert "$('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf)" in js
+    assert "$('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw)" in js
+    for cls in (".db-ch-row", ".db-ch-choice", ".db-pill", ".db-scope-section", ".db-scope-tally", ".db-scope-foot", ".db-chip.risk-fail", ".db-chip.risk-ok"):
         assert cls in css, cls

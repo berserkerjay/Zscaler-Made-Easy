@@ -6,6 +6,11 @@ what each batch of changes did, newest first.
 
 ## 2026-09-17
 
+### Scope: Channels, Assessment Scope and Compliance Frameworks combined into one page
+- **What you asked for.** "Channels and assessment scope and compliance need to be combined into the Scope link."
+- **Now** there is one **Scope** link in the sidebar (Channels is no longer a separate nav item). It opens a single page with three sections, stacked: **Channels** (the same 11-channel Zscaler-owned/alternative/gap picker, with a compact running tally), **Assessment Scope** (which parts of the platform to check — DLP, ZIA, ZPA, ZCC, GenAI, Automation, and the rest), and **Compliance Frameworks** (which frameworks the report should map to). The Assessment Scope and Compliance Frameworks checkboxes are the exact fields the assessment already reads — moved into the page, not copied — so ticking one here is the same as ticking it anywhere else; nothing can drift out of sync. A Continue button at the bottom leads into Connect to the tenant. The page hides the rest of the dashboard while open and hides itself the moment you navigate elsewhere, same as the rest of the workflow.
+- Verified: `tests/test_dashboard.py` (Scope's own show/hide wiring including the legacy step strip's route, the 11 channels, the moved-not-copied scope and framework fields, no more standalone Channels nav item). Browser run against a fake tenant: all three sections render with live data, toggling a channel updates the tally immediately, toggling an Assessment Scope checkbox persists across navigating away and back (confirming it's the same live element), Continue opens Connect to the tenant, no console errors.
+
 ### Dashboard: never blank, and Connect to the tenant moved up
 - **What you asked for.** "The dashboard now shows nothing — I need to show the stats," and separately, "move Connect to the tenant directly below the dashboard on the links on the side."
 - **Why it went blank.** Hiding the tenant configuration form by default (previous entry, same day) also emptied the space it used to fill: before your first run in a browser tab, the Dashboard had nothing left to show.

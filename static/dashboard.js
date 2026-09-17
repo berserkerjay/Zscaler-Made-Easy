@@ -33,7 +33,6 @@
       <div class="db-nav-l">Workflow</div>
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
-      <button type="button" class="db-item" data-db="channels"><span class="db-ico" aria-hidden="true">🧩</span>Channels</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope</button>
       <button type="button" class="db-item" data-db="run"><span class="db-ico" aria-hidden="true">▶</span><span class="db-lbl">Run assessment</span></button>
       <button type="button" class="db-item" data-db="review"><span class="db-ico" aria-hidden="true">📋</span>Findings &amp; report</button>
@@ -130,13 +129,14 @@
   const origTest = window._gdTest;
   if (typeof origTest === 'function') window._gdTest = async function () { const r = await origTest.apply(this, arguments); if (pendingRun && signedIn()) startRun(); return r; };
 
-  // ── Tenant configuration: the "Start here" guide — with the tenant
-  // details form, and the scope checklist nested inside it — is a
-  // sign-in surface, not part of the dashboard. Hidden by default;
-  // revealed only by going to Connect to the tenant or Scope, from this
-  // sidebar or the legacy step strip above it, or whenever the app itself
-  // sends the operator there (a missing field, a failed sign-in, a reset).
-  const CONFIG_VIEW_KEYS = new Set(['configure', 'scope']);
+  // ── Tenant configuration: the "Start here" guide with the tenant
+  // details form is a sign-in surface, not part of the dashboard. Hidden
+  // by default; revealed only by going to Connect to the tenant, from
+  // this sidebar or the legacy step strip above it, or whenever the app
+  // itself sends the operator there (a missing field, a failed sign-in,
+  // a reset). Scope has its own combined page (Channels, Assessment
+  // Scope, Compliance Frameworks) — see below.
+  const CONFIG_VIEW_KEYS = new Set(['configure']);
   function showTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = false; const cc = $('configCard'); if (cc) cc.hidden = false; }
   function hideTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = true; const cc = $('configCard'); if (cc) cc.hidden = true; }
   hideTenantConfig();
@@ -147,8 +147,8 @@
   aside.querySelectorAll('.db-item').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.db;
     document.body.classList.remove('db-open'); menu.setAttribute('aria-expanded', 'false');
-    if (k === 'channels') { showChannels(); setCurrent('channels'); return; }
-    hideChannels();
+    if (k === 'scope') { showScopeView(); setCurrent('scope'); return; }
+    hideScopeView();
     if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
     if (k === 'run') { runFromSidebar(); return; }
     if (typeof _stepGo === 'function') _stepGo(k);
@@ -156,11 +156,15 @@
   }));
   window.__dbRunFromSidebar = runFromSidebar;
 
-  // ── Channels: which Zscaler data-security capabilities the customer
-  // owns, versus covers with something else, versus hasn't addressed at
-  // all. A one-time input (not read from the tenant — there is no API
-  // for "what does the customer already own"), kept in this browser and
-  // exportable, that the coverage-gap conversation is built from. ──────
+  // ── Scope: one combined page for everything that decides what the
+  // assessment covers — which Zscaler data-security channels the
+  // customer already owns (versus an alternative, versus a gap), which
+  // parts of the platform to check, and which compliance frameworks the
+  // report should map to. Channel ownership is a one-time input (there
+  // is no API for "what does the customer already own"), kept in this
+  // browser; Assessment Scope and Compliance Frameworks are the same
+  // live form fields the assessment itself reads — moved here, not
+  // copied, so nothing gets out of sync. ──────────────────────────────
   const CHANNELS_KEY = 'zassess_channels_v1';
   const CHANNELS = [
     { id: 'web_dlp', name: 'Inline Web DLP', risk: 'high', category: 'DLP', icon: '🌐',
@@ -193,31 +197,33 @@
   }
   function saveChannelState(state) { try { localStorage.setItem(CHANNELS_KEY, JSON.stringify(state)); } catch (e) { /* private mode: the session still works, just doesn't persist */ } }
   let channelState = loadChannelState();     // { [id]: { choice: 'zscaler'|'alternative', note: '' } }
-  let channelsView = null, channelsExtra = [];   // custom channels added with "+ Add Channel"
+  let scopeView = null, channelsExtra = [];   // custom channels added with "+ Add Channel"
   try { channelsExtra = JSON.parse(localStorage.getItem(CHANNELS_KEY + '_extra') || '[]'); } catch (e) { channelsExtra = []; }
   function allChannels() { return CHANNELS.concat(channelsExtra); }
   function saveExtra() { try { localStorage.setItem(CHANNELS_KEY + '_extra', JSON.stringify(channelsExtra)); } catch (e) { /* ignore */ } }
 
-  function buildChannelsView() {
+  function buildScopeView() {
     const sec = document.createElement('section');
-    sec.id = 'dbChannelsView'; sec.hidden = true; sec.setAttribute('aria-label', 'Channel Selection');
+    sec.id = 'dbScopeView'; sec.hidden = true; sec.setAttribute('aria-label', 'Scope');
     sec.innerHTML = `
-      <div class="hero db-ch-hero"><h1><span aria-hidden="true">🧩</span> Channel Selection</h1>
-        <p>Select which Zscaler data security channels your organization owns. For channels you don't own, indicate if you use an alternative solution.</p></div>
-      <div class="db-grid db-ch-stats">
-        <div class="db-tile"><div class="db-tile-t">Owned channels</div><div class="score-num" id="dbChOwned" style="font-size:2.4rem;">0</div></div>
-        <div class="db-tile"><div class="db-tile-t">Alternatives</div><div class="score-num" id="dbChAlt" style="font-size:2.4rem;">0</div></div>
-        <div class="db-tile"><div class="db-tile-t">Coverage gaps</div><div class="score-num" id="dbChGaps" style="font-size:2.4rem;color:var(--fail);">0</div></div>
+      <div class="hero db-ch-hero"><h1><span aria-hidden="true">🎯</span> Scope</h1>
+        <p>What this assessment covers: the Zscaler data-security channels you already run, which parts of the platform to check, and which compliance frameworks the report should map to.</p></div>
+      <div class="card db-scope-section" id="dbScopeChannelsCard">
+        <div class="db-scope-section-h">
+          <h2>Channels <span class="db-scope-tally" id="dbChFootTxt"></span></h2>
+          <div class="db-ch-bar">
+            <label class="df-ctl"><input type="checkbox" id="dbChSelectAll"> <span class="lbl">Select all</span></label>
+            <span class="sep"></span>
+            <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
+          </div>
+        </div>
+        <p class="db-scope-p">Which Zscaler data security channels your organization owns. For channels you don't own, indicate if you use an alternative solution.</p>
+        <div id="dbChList" class="db-ch-list"></div>
       </div>
-      <div class="db-ch-bar">
-        <label class="df-ctl"><input type="checkbox" id="dbChSelectAll"> <span class="lbl">Select all</span></label>
-        <span class="sep"></span>
-        <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
-      </div>
-      <div id="dbChList" class="db-ch-list"></div>
-      <div class="db-ch-foot">
-        <span id="dbChFootTxt"></span>
-        <button type="button" class="rp-btn primary" id="dbChContinue" aria-disabled="true">Continue to Assessment →</button>
+      <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
+      <div class="card db-scope-section" id="dbScopeFwCard"><div id="dbScopeFwBody"></div></div>
+      <div class="db-scope-foot">
+        <button type="button" class="rp-btn primary" id="dbScopeContinue">Continue to Connect the tenant →</button>
       </div>`;
     const main = document.getElementById('main-content');
     main.insertBefore(sec, main.firstChild);
@@ -232,11 +238,15 @@
       channelsExtra.push({ id, name: name.trim(), risk: 'medium', category: 'Custom', icon: '🧩', what: 'Added by you; tracked the same way as the built-in channels.' });
       saveExtra(); renderChannelsList(); say(`${name.trim()} added.`);
     });
-    sec.querySelector('#dbChContinue').addEventListener('click', () => {
-      hideChannels();
+    sec.querySelector('#dbScopeContinue').addEventListener('click', () => {
+      hideScopeView();
       if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
       setCurrent('configure');
     });
+    // Assessment Scope and Compliance Frameworks are moved in, not
+    // copied: the same live checkboxes runAssessment() already reads.
+    const sf = $('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf);
+    const fw = $('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw);
     return sec;
   }
   function channelRowHtml(c) {
@@ -265,10 +275,9 @@
     const owned = items.filter(c => (channelState[c.id] || {}).choice === 'zscaler').length;
     const alt = items.filter(c => (channelState[c.id] || {}).choice === 'alternative').length;
     const gaps = items.length - owned - alt;
-    $('dbChOwned').textContent = owned; $('dbChAlt').textContent = alt; $('dbChGaps').textContent = gaps;
-    $('dbChFootTxt').innerHTML = `<strong>${owned + alt} of ${items.length}</strong> channels addressed · <strong>${gaps}</strong> coverage gap${gaps === 1 ? '' : 's'} remaining`;
+    const tally = $('dbChFootTxt');
+    if (tally) tally.innerHTML = `<strong>${owned + alt} of ${items.length}</strong> addressed (${owned} Zscaler, ${alt} alternative) · <strong>${gaps}</strong> gap${gaps === 1 ? '' : 's'}`;
     const selAll = $('dbChSelectAll'); if (selAll) selAll.checked = items.length > 0 && owned + alt === items.length;
-    const cont = $('dbChContinue'); if (cont) { const any = owned + alt > 0; cont.toggleAttribute('aria-disabled', !any); cont.disabled = !any; }
     list.querySelectorAll('.db-ch-row').forEach(row => {
       const id = row.dataset.id;
       row.querySelectorAll('input[type=radio]').forEach(r => r.addEventListener('change', () => {
@@ -294,23 +303,24 @@
     });
   }
   const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results', 'dbLastRun'];
-  function showChannels() {
-    if (!channelsView) { channelsView = buildChannelsView(); renderChannelsList(); }
-    MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el) el.dataset.dbHiddenFor = 'channels', el.style.display = 'none'; });
+  function showScopeView() {
+    if (!scopeView) { scopeView = buildScopeView(); renderChannelsList(); }
+    MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el) el.dataset.dbHiddenFor = 'scope', el.style.display = 'none'; });
     document.querySelector('.hero').hidden = true;
-    const foot = $('dbFooter'); if (foot && !foot.hidden) { foot.dataset.dbHiddenFor = 'channels'; foot.hidden = true; }
-    channelsView.hidden = false;
+    const foot = $('dbFooter'); if (foot && !foot.hidden) { foot.dataset.dbHiddenFor = 'scope'; foot.hidden = true; }
+    scopeView.hidden = false;
     renderChannelsList();
-    channelsView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    say('Channel Selection.');
+    scopeView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    say('Scope.');
   }
-  function hideChannels() {
-    if (!channelsView || channelsView.hidden) return;
-    channelsView.hidden = true;
-    MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el && el.dataset.dbHiddenFor === 'channels') { el.style.display = ''; delete el.dataset.dbHiddenFor; } });
-    const foot = $('dbFooter'); if (foot && foot.dataset.dbHiddenFor === 'channels') { foot.hidden = false; delete foot.dataset.dbHiddenFor; }
+  function hideScopeView() {
+    if (!scopeView || scopeView.hidden) return;
+    scopeView.hidden = true;
+    MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el && el.dataset.dbHiddenFor === 'scope') { el.style.display = ''; delete el.dataset.dbHiddenFor; } });
+    const foot = $('dbFooter'); if (foot && foot.dataset.dbHiddenFor === 'scope') { foot.hidden = false; delete foot.dataset.dbHiddenFor; }
     document.querySelector('.hero').hidden = false;
   }
+  window.__dbShowScope = showScopeView;
 
   // ── Dashboard default content: the space where results render must
   // never sit blank before a fresh run in this tab. Show the selected

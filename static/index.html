@@ -974,7 +974,7 @@
         <div class="helper">Pick any combination of Zscaler scopes. Automation checks validate IaC/SDK compatibility with <a href="https://github.com/zscaler" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">github.com/zscaler</a>.</div>
       </div>
 
-      <div class="field full">
+      <div class="field full" id="complianceFwField">
         <label>Compliance Frameworks <span style="color:var(--dim);font-size:0.7rem;font-weight:normal;">(optional — pick any to include in report)</span></label>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;padding:0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:normal;font-size:0.9rem;">
@@ -1398,6 +1398,7 @@ _renderThemeToggle();
 function _stepGo(step) {
   if (step === 'configure') { if (typeof _gdGoConfig === 'function') _gdGoConfig(); else document.getElementById('configCard')?.scrollIntoView({ behavior: 'smooth' }); return; }
   if (step === 'scope') {
+    if (typeof window.__dbShowScope === 'function') { window.__dbShowScope(); return; }
     if (typeof _gdGoConfig === 'function') _gdGoConfig();
     setTimeout(() => { const f = document.getElementById('scopeField'); if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); const first = f.querySelector('input[type=checkbox]'); if (first) first.focus(); } }, 250);
     return;
