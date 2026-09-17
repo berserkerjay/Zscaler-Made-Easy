@@ -347,3 +347,69 @@ def test_the_live_feed_page_is_served_wired_and_explained():
     assert 'onclick="openLiveFeedTab()"' in index and "window.open('/report/live', '_blank')" in index
     explain = open(os.path.join(root, "static", "explain.js"), encoding="utf-8").read()
     assert re.search(r"^  X\.live = \{", explain, re.M) and "'/report/live': 'live'" in explain
+
+
+class FakeDlpResources:
+    """Administration > DLP Incident Receiver / ICAP Server objects."""
+    def __init__(self, receivers=None, icap_servers=None):
+        self.receivers = receivers if receivers is not None else []
+        self.icap_servers = icap_servers if icap_servers is not None else []
+
+    def list_dlp_incident_receiver(self):
+        return self.receivers, None, None
+
+    def list_dlp_icap_servers(self):
+        return self.icap_servers, None, None
+
+
+def _rule(name, *, cloud=False, icap=None, enabled=True):
+    return Obj(id=hash(name) % 90000, name=name, order=1, action="ALLOW", state="ENABLED" if enabled else "DISABLED",
+               dlp_engines=[{"id": 5001}], description="", zscaler_incident_receiver=cloud, icap_server=({"name": icap} if icap else None))
+
+
+def test_incident_delivery_reads_the_rule_switch_and_the_receiver_objects_separately():
+    c = _client([])
+    c.zia.dlp_web_rules.items = [_rule("Cloud-Rule", cloud=True), _rule("ICAP-Rule", icap="OnPrem-1"), _rule("Silent-Rule")]
+    # No receiver objects at all yet: both switches are on but nothing is actually configured to receive them.
+    c.zia.dlp_resources = FakeDlpResources()
+    d = dh.incident_delivery(c)
+    assert d["rules_cloud"] == 1 and d["rules_icap"] == 1 and d["rules_silent"] == ["Silent-Rule"] and d["path"] == "both"
+    assert not d["cloud_receiver_configured"] and not d["icap_receiver_configured"]
+    kinds = {m["path"] for m in d["misconfigured"]}
+    assert kinds == {"cloud", "icap"}
+    cloud_m = next(m for m in d["misconfigured"] if m["path"] == "cloud")
+    assert "no Incident Receiver object exists" in cloud_m["text"] and "1 rule" in cloud_m["text"]
+
+
+def test_incident_delivery_is_not_misconfigured_once_an_active_receiver_exists():
+    c = _client([])
+    c.zia.dlp_web_rules.items = [_rule("Cloud-Rule", cloud=True)]
+    c.zia.dlp_resources = FakeDlpResources(receivers=[{"name": "Primary Receiver", "url": "https://x", "status": "ENABLED"}])
+    d = dh.incident_delivery(c)
+    assert d["cloud_receiver_configured"] and d["misconfigured"] == [] and d["path"] == "cloud"
+
+
+def test_incident_delivery_flags_a_disabled_receiver_even_though_one_exists():
+    c = _client([])
+    c.zia.dlp_web_rules.items = [_rule("Cloud-Rule", cloud=True)]
+    c.zia.dlp_resources = FakeDlpResources(receivers=[{"name": "Old Receiver", "url": "https://x", "status": "DISABLED"}])
+    d = dh.incident_delivery(c)
+    assert not d["cloud_receiver_configured"]
+    m = d["misconfigured"][0]
+    assert m["path"] == "cloud" and "every configured Incident Receiver is disabled or unhealthy" in m["text"]
+
+
+def test_the_misconfigured_finding_is_high_severity_and_independent_of_incident_history():
+    c = _client([])
+    c.zia.dlp_web_rules.items = [_rule("Cloud-Rule", cloud=True)]
+    c.zia.dlp_resources = FakeDlpResources()
+    rep = dh.generate(c, days=30)
+    f = next(x for x in rep["findings"] if x["kind"] == "incident_delivery_misconfigured")
+    assert f["severity"] == "high" and "cloud-to-cloud" in f["name"]
+
+
+def test_the_page_shows_incident_receiver_objects_and_the_misconfiguration_warning():
+    js = open("static/detection_health.js", encoding="utf-8").read()
+    assert "misconfigured" in js and "Configured but not delivering" in js
+    assert "Incident Receiver objects" in js and "no Incident Receiver object configured" in js
+    assert "Zscaler Incident Receiver (cloud-to-cloud)" in js and "on-premises Incident Receiver over ICAP" in js

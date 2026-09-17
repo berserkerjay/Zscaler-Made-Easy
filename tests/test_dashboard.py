@@ -107,3 +107,23 @@ def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
     assert "Sign in first" in js and "starts by itself right after" in js
     css = _read("dashboard.css")
     assert ".db-note" in css and ".db-note.warn" in css
+
+
+def test_the_channels_page_is_wired_a_real_new_nav_item_not_decoration():
+    """Channel Selection: a new sidebar nav item that shows 11 real
+    channels (icon, risk, category, description), lets the operator mark
+    each Zscaler-owned or covered by an alternative, tallies owned /
+    alternatives / coverage gaps, persists the choice in this browser,
+    and hides the rest of the main content (including the guide panel)
+    while it is open."""
+    js = _read("dashboard.js")
+    css = _read("dashboard.css")
+    assert 'data-db="channels"' in js and "showChannels()" in js and "hideChannels()" in js
+    for name in ("Inline Web DLP", "Endpoint DLP", "Email DLP", "SaaS Security (CASB)", "GenAI Security", "Shadow IT Discovery",
+                 "Endpoint Data Scan", "SSL/TLS Inspection", "Cloud App Control", "Device Control", "Workflow Automation"):
+        assert f"name: '{name}'" in js, name
+    assert "CHANNELS_KEY = 'zassess_channels_v1'" in js and "localStorage.setItem(CHANNELS_KEY" in js
+    assert "'stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results'" in js, "the guide panel is hidden with the rest of main, or it bleeds through"
+    assert "dbChOwned" in js and "dbChAlt" in js and "dbChGaps" in js and "dbChFootTxt" in js and "dbChContinue" in js
+    for cls in (".db-ch-row", ".db-ch-choice", ".db-pill", ".db-ch-foot", ".db-chip.risk-fail", ".db-chip.risk-ok"):
+        assert cls in css, cls

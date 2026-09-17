@@ -756,6 +756,9 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
         ev["findings"].insert(0, {"kind": "no_incident_delivery", "severity": "medium", "name": "Incident delivery", "channel": "web",
                                   "text": delivery["explain"] + " Enable 'Zscaler Incident Receiver' (cloud-to-cloud) or an ICAP server on the rules.",
                                   "proposal": "enable_incident_forwarding"})
+    for m in delivery.get("misconfigured") or []:
+        ev["findings"].insert(0, {"kind": "incident_delivery_misconfigured", "severity": "high", "name": f"Incident delivery ({'cloud-to-cloud' if m['path'] == 'cloud' else 'ICAP'})",
+                                  "channel": "web", "text": m["text"], "proposal": "enable_incident_forwarding"})
     for i in incidents:
         i.pop("_created", None)
     ev.update({"days": days, "incident_count": len(incidents), "errors": errors,
@@ -814,14 +817,28 @@ def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
 
 
 # ── incident delivery: how incidents reach Workflow Automation ──────────
+_INACTIVE_RECEIVER_STATUS = {"DISABLED", "INACTIVE", "SUSPENDED", "ERROR", "UNHEALTHY", "DOWN", "NOT_CONFIGURED"}
+
+
 def incident_delivery(client) -> Dict[str, Any]:
-    """The two ways a DLP match becomes an incident an analyst can act on:
-    cloud-to-cloud forwarding (the rule sends to the Zscaler Incident
-    Receiver in the cloud, no appliance) or an on-premises Incident
-    Receiver reached over ICAP. Reads the enabled Web DLP rules and the
-    receivers the tenant has configured, and says which path is in use —
-    or that neither is, which is why a tenant can have matches but no
-    incidents."""
+    """Every way a DLP match becomes an incident an analyst can act on —
+    Zscaler names three configuration points, all read here, never
+    assumed from one:
+      * the rule's own "Send to Incident Receiver" switch, which forks
+        into two destinations: **cloud-to-cloud** (the tenant's own
+        Zscaler Incident Receiver, no appliance) or an on-premises
+        **Incident Receiver reached over ICAP** (a named ICAP server
+        object the rule points at);
+      * the **Incident Receiver objects** the tenant has actually
+        configured (Administration > DLP Incident Receiver) — a rule can
+        have the cloud-to-cloud switch on with no receiver object ever
+        created or all of them disabled, which forwards nothing despite
+        looking configured; the same check applies to the named ICAP
+        server objects.
+    Reads the enabled Web DLP rules and both sets of receiver objects,
+    reports which path(s) are in use, and separately reports when a path
+    a rule claims to use has no working receiver behind it — the more
+    common way "path: cloud" still delivers zero incidents."""
     out: Dict[str, Any] = {"path": "none", "rules_enabled": 0, "rules_cloud": 0, "rules_icap": 0, "rules_silent": [],
                            "receivers": [], "icap_servers": [], "errors": []}
     zia = getattr(client, "zia", None)
@@ -872,4 +889,21 @@ def incident_delivery(client) -> Dict[str, Any]:
         "both": "Some rules forward cloud-to-cloud and some over ICAP to an on-premises Incident Receiver; both feed Workflow Automation.",
         "none": "No enabled Web DLP rule forwards to an Incident Receiver, cloud or on-premises: matches are logged but never become incidents, so Workflow Automation has nothing to show and this report has no verdicts to learn from.",
     }[out["path"]]
+    # Configured on the rule is not the same as delivered: check the
+    # receiver objects the switch actually depends on.
+    active_cloud_receivers = [r for r in out["receivers"] if str(r.get("status") or "").upper() not in _INACTIVE_RECEIVER_STATUS]
+    active_icap_servers = [r for r in out["icap_servers"] if str(r.get("status") or "").upper() not in _INACTIVE_RECEIVER_STATUS]
+    out["cloud_receiver_configured"] = bool(active_cloud_receivers)
+    out["icap_receiver_configured"] = bool(active_icap_servers)
+    out["misconfigured"] = []
+    if out["rules_cloud"] and not out["cloud_receiver_configured"]:
+        out["misconfigured"].append({"path": "cloud", "rules": out["rules_cloud"],
+            "text": f"{out['rules_cloud']} rule(s) have \"Send to Incident Receiver: Zscaler (cloud-to-cloud)\" turned on, but "
+                    + ("no Incident Receiver object exists in the tenant" if not out["receivers"] else "every configured Incident Receiver is disabled or unhealthy")
+                    + " (Administration > DLP Incident Receiver). These rules match but deliver nothing to Workflow Automation."})
+    if out["rules_icap"] and not out["icap_receiver_configured"]:
+        out["misconfigured"].append({"path": "icap", "rules": out["rules_icap"],
+            "text": f"{out['rules_icap']} rule(s) point at an on-premises Incident Receiver over ICAP, but "
+                    + ("no ICAP server object exists in the tenant" if not out["icap_servers"] else "every configured ICAP server is disabled or unhealthy")
+                    + ". These rules match but deliver nothing until that server is configured and reachable."})
     return out

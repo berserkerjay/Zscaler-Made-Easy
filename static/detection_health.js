@@ -14,8 +14,9 @@ const _dhSev = s => ({ medium: 'sev-medium', low: 'sev-low', info: 'sev-info' }[
 function renderDetectionHealth(rep, container) {
   const s = rep.summary || {}, st = rep.settings || {}, d = rep.delivery || {};
   const tile = (n, l, bad) => `<div class="df-stat ${bad ? 'bad' : ''}"><div class="n">${_dhE(n)}</div><div class="l">${_dhE(l)}</div></div>`;
-  const deliveryCls = { cloud: 'st-ok', icap: 'st-ok', both: 'st-ok', none: 'st-fail' }[d.path] || 'st-dim';
-  const deliveryLab = { cloud: 'Cloud-to-cloud forwarding', icap: 'On-premises Incident Receiver (ICAP)', both: 'Cloud-to-cloud and ICAP', none: 'No incident forwarding' }[d.path] || 'Unknown';
+  const misconfigured = (d.misconfigured || []).length > 0;
+  const deliveryCls = misconfigured ? 'st-fail' : ({ cloud: 'st-ok', icap: 'st-ok', both: 'st-ok', none: 'st-fail' }[d.path] || 'st-dim');
+  const deliveryLab = { cloud: 'Zscaler Incident Receiver (cloud-to-cloud)', icap: 'On-premises Incident Receiver (ICAP)', both: 'Zscaler Incident Receiver + ICAP', none: 'No incident forwarding' }[d.path] || 'Unknown';
   const findings = (rep.findings || []).map(f => `<li class="${_dhSev(f.severity)}"><span class="sev">${_dhE(f.severity)}</span> <strong>${_dhE(f.name)}</strong>${f.channel ? ` <span class="df-by">${_dhE(DH_CHAN[f.channel] || f.channel)}</span>` : ''}<div class="df-hop-d">${_dhE(f.why && f.why.length ? f.text.split(' Why: ')[0] : f.text)}</div>${f.why && f.why.length ? `<div class="df-hop-d"><strong>Why:</strong> ${_dhE(f.why.join(' '))}</div><div class="df-hop-d"><strong>Fix:</strong> ${_dhE(f.fix || '')}</div>` : ''}</li>`).join('');
   const ruleRow = r => {
     const [lab, cls] = DH_STATUS[r.status] || [r.status, 'dim'];
@@ -61,8 +62,9 @@ function renderDetectionHealth(rep, container) {
       ${tile(s.promotable_rules || 0, 'ready to promote')}
       ${tile(s.noisy_dictionaries || 0, 'noisy dictionaries', !!s.noisy_dictionaries)}
     </div>
-    <div class="df-outcome ${deliveryCls}"><span class="df-chip ${deliveryCls}">${_dhE(deliveryLab)}</span><strong>How incidents reach Workflow Automation</strong> <span class="df-by">${d.rules_enabled || 0} enabled Web DLP rule(s): ${d.rules_cloud || 0} forward cloud-to-cloud, ${d.rules_icap || 0} over ICAP${(d.rules_silent || []).length ? `, ${d.rules_silent.length} forward nowhere` : ''}${(d.receivers || []).length ? ` · receivers: ${_dhE(d.receivers.map(x => x.name).join(', '))}` : ''}${(d.icap_servers || []).length ? ` · ICAP servers: ${_dhE(d.icap_servers.map(x => x.name).join(', '))}` : ''}</span></div>
+    <div class="df-outcome ${deliveryCls}"><span class="df-chip ${deliveryCls}">${misconfigured ? 'Configured but not delivering' : _dhE(deliveryLab)}</span><strong>How incidents reach Workflow Automation</strong> <span class="df-by">${d.rules_enabled || 0} enabled Web DLP rule(s): ${d.rules_cloud || 0} set to Zscaler Incident Receiver (cloud-to-cloud), ${d.rules_icap || 0} to an on-premises Incident Receiver over ICAP${(d.rules_silent || []).length ? `, ${d.rules_silent.length} forward nowhere` : ''}${(d.receivers || []).length ? ` · Incident Receiver objects: ${_dhE(d.receivers.map(x => x.name).join(', '))}` : ' · no Incident Receiver object configured'}${(d.icap_servers || []).length ? ` · ICAP server objects: ${_dhE(d.icap_servers.map(x => x.name).join(', '))}` : ''}</span></div>
     <div class="df-hint">${_dhE(d.explain || '')}${(d.rules_silent || []).length ? ` Rules that forward nowhere: ${_dhE(d.rules_silent.slice(0, 8).join(', '))}${d.rules_silent.length > 8 ? '…' : ''}.` : ''}</div>
+    ${misconfigured ? `<ul class="df-weaks">${d.misconfigured.map(m => `<li class="sev-high"><span class="sev">high</span> <strong>Incident delivery configured but not working (${m.path === 'cloud' ? 'cloud-to-cloud' : 'ICAP'})</strong><div class="df-hop-d">${_dhE(m.text)}</div></li>`).join('')}</ul>` : ''}
     ${rep.read && (!rep.read.incidents || !rep.read.rules) ? `<div class="df-gap-h st-fail">Partial read</div><div class="df-hint">${!rep.read.incidents ? 'Workflow Automation incidents could not be read, so there are no verdicts to learn from — grant the API client the Workflow Automation read scope. ' : ''}${!rep.read.rules ? 'The DLP rules of the tenant could not be listed. ' : ''}See the read problems at the bottom.</div>` : ''}
     <h2 class="df-h">Findings, worst first</h2>
     ${findings ? `<ul class="df-weaks">${findings}</ul>` : '<div class="df-hop-d">Nothing to act on in this window.</div>'}

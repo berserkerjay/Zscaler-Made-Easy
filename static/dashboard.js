@@ -32,6 +32,7 @@
     <nav class="db-nav" aria-label="Workflow">
       <div class="db-nav-l">Workflow</div>
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
+      <button type="button" class="db-item" data-db="channels"><span class="db-ico" aria-hidden="true">🧩</span>Channels</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope</button>
       <button type="button" class="db-item" data-db="run"><span class="db-ico" aria-hidden="true">▶</span><span class="db-lbl">Run assessment</span></button>
@@ -132,12 +133,171 @@
   aside.querySelectorAll('.db-item').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.db;
     document.body.classList.remove('db-open'); menu.setAttribute('aria-expanded', 'false');
+    if (k === 'channels') { showChannels(); setCurrent('channels'); return; }
+    hideChannels();
     if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
     if (k === 'run') { runFromSidebar(); return; }
     if (typeof _stepGo === 'function') _stepGo(k);
     setCurrent(k);
   }));
   window.__dbRunFromSidebar = runFromSidebar;
+
+  // ── Channels: which Zscaler data-security capabilities the customer
+  // owns, versus covers with something else, versus hasn't addressed at
+  // all. A one-time input (not read from the tenant — there is no API
+  // for "what does the customer already own"), kept in this browser and
+  // exportable, that the coverage-gap conversation is built from. ──────
+  const CHANNELS_KEY = 'zassess_channels_v1';
+  const CHANNELS = [
+    { id: 'web_dlp', name: 'Inline Web DLP', risk: 'high', category: 'DLP', icon: '🌐',
+      what: 'Data loss prevention for web traffic including HTTP/HTTPS (ports 80/443) and FTP. Inspects uploads, downloads, and web form submissions in real-time.' },
+    { id: 'endpoint_dlp', name: 'Endpoint DLP', risk: 'high', category: 'DLP', icon: '💻',
+      what: 'Data loss prevention at the endpoint level, controlling data movement on Windows and macOS devices including USB, printing, and local file operations.' },
+    { id: 'email_dlp', name: 'Email DLP', risk: 'high', category: 'DLP', icon: '✉️',
+      what: 'Data loss prevention for email communications, scanning outbound emails and attachments for sensitive content before delivery.' },
+    { id: 'saas_casb', name: 'SaaS Security (CASB)', risk: 'high', category: 'Cloud Security', icon: '☁️',
+      what: 'Cloud Access Security Broker providing visibility and control over SaaS application usage, data sharing, and security posture.' },
+    { id: 'genai_security', name: 'GenAI Security', risk: 'high', category: 'AI Security', icon: '🤖',
+      what: 'Controls and monitors usage of generative AI applications like ChatGPT, Copilot, and other AI tools to prevent data leakage and ensure responsible use.' },
+    { id: 'shadow_it', name: 'Shadow IT Discovery', risk: 'medium', category: 'Visibility', icon: '🔍',
+      what: 'Discovers and catalogs all cloud applications in use across the organization, identifying unsanctioned apps and risky behaviors.' },
+    { id: 'endpoint_scan', name: 'Endpoint Data Scan', risk: 'medium', category: 'Data Discovery', icon: '💾',
+      what: 'Scans endpoint file systems to discover and classify sensitive data at rest on Windows and macOS devices.' },
+    { id: 'ssl_inspection', name: 'SSL/TLS Inspection', risk: 'critical', category: 'Infrastructure', icon: '🔒',
+      what: 'Decrypts and inspects HTTPS traffic to enable visibility into encrypted communications for security and compliance purposes.' },
+    { id: 'cloud_app_control', name: 'Cloud App Control', risk: 'medium', category: 'Access Control', icon: '🛡️',
+      what: 'Granular controls for cloud applications including blocking, read-only access, and tenant restrictions.' },
+    { id: 'device_control', name: 'Device Control', risk: 'medium', category: 'Endpoint Security', icon: '🔌',
+      what: 'Controls access to removable media devices including USB drives, external hard drives, and other peripheral storage.' },
+    { id: 'workflow_automation', name: 'Workflow Automation', risk: 'low', category: 'Operations', icon: '🔀',
+      what: 'Automated incident response and remediation workflows for DLP events, reducing manual effort and response time.' },
+  ];
+  const RISK_LABEL = { critical: 'Critical Risk', high: 'High Risk', medium: 'Medium Risk', low: 'Low Risk' };
+  const RISK_CLS = { critical: 'fail', high: 'warn-strong', medium: 'warn', low: 'ok' };
+  function loadChannelState() {
+    try { const raw = localStorage.getItem(CHANNELS_KEY); const d = raw ? JSON.parse(raw) : {}; return (d && typeof d === 'object') ? d : {}; } catch (e) { return {}; }
+  }
+  function saveChannelState(state) { try { localStorage.setItem(CHANNELS_KEY, JSON.stringify(state)); } catch (e) { /* private mode: the session still works, just doesn't persist */ } }
+  let channelState = loadChannelState();     // { [id]: { choice: 'zscaler'|'alternative', note: '' } }
+  let channelsView = null, channelsExtra = [];   // custom channels added with "+ Add Channel"
+  try { channelsExtra = JSON.parse(localStorage.getItem(CHANNELS_KEY + '_extra') || '[]'); } catch (e) { channelsExtra = []; }
+  function allChannels() { return CHANNELS.concat(channelsExtra); }
+  function saveExtra() { try { localStorage.setItem(CHANNELS_KEY + '_extra', JSON.stringify(channelsExtra)); } catch (e) { /* ignore */ } }
+
+  function buildChannelsView() {
+    const sec = document.createElement('section');
+    sec.id = 'dbChannelsView'; sec.hidden = true; sec.setAttribute('aria-label', 'Channel Selection');
+    sec.innerHTML = `
+      <div class="hero db-ch-hero"><h1><span aria-hidden="true">🧩</span> Channel Selection</h1>
+        <p>Select which Zscaler data security channels your organization owns. For channels you don't own, indicate if you use an alternative solution.</p></div>
+      <div class="db-grid db-ch-stats">
+        <div class="db-tile"><div class="db-tile-t">Owned channels</div><div class="score-num" id="dbChOwned" style="font-size:2.4rem;">0</div></div>
+        <div class="db-tile"><div class="db-tile-t">Alternatives</div><div class="score-num" id="dbChAlt" style="font-size:2.4rem;">0</div></div>
+        <div class="db-tile"><div class="db-tile-t">Coverage gaps</div><div class="score-num" id="dbChGaps" style="font-size:2.4rem;color:var(--fail);">0</div></div>
+      </div>
+      <div class="db-ch-bar">
+        <label class="df-ctl"><input type="checkbox" id="dbChSelectAll"> <span class="lbl">Select all</span></label>
+        <span class="sep"></span>
+        <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
+      </div>
+      <div id="dbChList" class="db-ch-list"></div>
+      <div class="db-ch-foot">
+        <span id="dbChFootTxt"></span>
+        <button type="button" class="rp-btn primary" id="dbChContinue" aria-disabled="true">Continue to Assessment →</button>
+      </div>`;
+    const main = document.getElementById('main-content');
+    main.insertBefore(sec, main.firstChild);
+    sec.querySelector('#dbChSelectAll').addEventListener('change', e => {
+      const on = e.target.checked;
+      allChannels().forEach(c => { if (on && !channelState[c.id]) channelState[c.id] = { choice: 'zscaler', note: '' }; if (!on) delete channelState[c.id]; });
+      saveChannelState(channelState); renderChannelsList();
+    });
+    sec.querySelector('#dbChAdd').addEventListener('click', () => {
+      const name = window.prompt('Name the channel or capability to track:'); if (!name || !name.trim()) return;
+      const id = 'custom_' + Date.now();
+      channelsExtra.push({ id, name: name.trim(), risk: 'medium', category: 'Custom', icon: '🧩', what: 'Added by you; tracked the same way as the built-in channels.' });
+      saveExtra(); renderChannelsList(); say(`${name.trim()} added.`);
+    });
+    sec.querySelector('#dbChContinue').addEventListener('click', () => {
+      hideChannels();
+      if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
+      setCurrent('configure');
+    });
+    return sec;
+  }
+  function channelRowHtml(c) {
+    const st = channelState[c.id] || {};
+    const addressed = st.choice === 'zscaler' || st.choice === 'alternative';
+    return `<div class="db-ch-row ${addressed ? '' : 'gap'}" data-id="${E(c.id)}">
+      <label class="db-ch-check"><input type="checkbox" ${addressed ? 'checked' : ''} aria-label="Mark ${E(c.name)} addressed"></label>
+      <span class="db-ch-ico" aria-hidden="true">${c.icon}</span>
+      <div class="db-ch-body">
+        <div class="db-ch-h"><strong>${E(c.name)}</strong><span class="db-chip risk-${RISK_CLS[c.risk] || 'dim'}">${E(RISK_LABEL[c.risk] || c.risk)}</span><span class="db-ch-cat">${E(c.category)}</span></div>
+        <p>${E(c.what)}</p>
+        ${st.choice === 'alternative' ? `<div class="db-ch-note">${st.note ? `Alternative: ${E(st.note)}` : 'Alternative solution in use'}</div>` : ''}
+      </div>
+      <div class="db-ch-choice" role="radiogroup" aria-label="${E(c.name)} coverage">
+        <label class="db-pill ${st.choice === 'zscaler' ? 'on' : ''}"><input type="radio" name="ch-${E(c.id)}" value="zscaler" ${st.choice === 'zscaler' ? 'checked' : ''}> Zscaler</label>
+        <label class="db-pill ${st.choice === 'alternative' ? 'on' : ''}"><input type="radio" name="ch-${E(c.id)}" value="alternative" ${st.choice === 'alternative' ? 'checked' : ''}> Alternative</label>
+      </div>
+      <button type="button" class="db-ch-edit" title="Note the alternative vendor, or edit a custom channel" aria-label="Edit ${E(c.name)}">✎</button>
+      <button type="button" class="db-ch-expand" aria-expanded="false" aria-label="More about ${E(c.name)}">▾</button>
+    </div>`;
+  }
+  function renderChannelsList() {
+    const list = $('dbChList'); if (!list) return;
+    const items = allChannels();
+    list.innerHTML = items.map(channelRowHtml).join('');
+    const owned = items.filter(c => (channelState[c.id] || {}).choice === 'zscaler').length;
+    const alt = items.filter(c => (channelState[c.id] || {}).choice === 'alternative').length;
+    const gaps = items.length - owned - alt;
+    $('dbChOwned').textContent = owned; $('dbChAlt').textContent = alt; $('dbChGaps').textContent = gaps;
+    $('dbChFootTxt').innerHTML = `<strong>${owned + alt} of ${items.length}</strong> channels addressed · <strong>${gaps}</strong> coverage gap${gaps === 1 ? '' : 's'} remaining`;
+    const selAll = $('dbChSelectAll'); if (selAll) selAll.checked = items.length > 0 && owned + alt === items.length;
+    const cont = $('dbChContinue'); if (cont) { const any = owned + alt > 0; cont.toggleAttribute('aria-disabled', !any); cont.disabled = !any; }
+    list.querySelectorAll('.db-ch-row').forEach(row => {
+      const id = row.dataset.id;
+      row.querySelectorAll('input[type=radio]').forEach(r => r.addEventListener('change', () => {
+        channelState[id] = Object.assign({ note: '' }, channelState[id], { choice: r.value });
+        saveChannelState(channelState); renderChannelsList(); say(`${allChannels().find(c => c.id === id).name}: ${r.value === 'zscaler' ? 'covered by Zscaler' : 'covered by an alternative'}.`);
+      }));
+      row.querySelector('.db-ch-check input').addEventListener('change', e => {
+        if (e.target.checked) { if (!channelState[id]) { channelState[id] = { choice: 'zscaler', note: '' }; } }
+        else { delete channelState[id]; }
+        saveChannelState(channelState); renderChannelsList();
+      });
+      row.querySelector('.db-ch-edit').addEventListener('click', () => {
+        const c = allChannels().find(x => x.id === id);
+        const note = window.prompt(`Note for ${c.name} (e.g. which alternative vendor is used):`, (channelState[id] || {}).note || '');
+        if (note == null) return;
+        channelState[id] = Object.assign({ choice: 'alternative' }, channelState[id], { note });
+        saveChannelState(channelState); renderChannelsList();
+      });
+      row.querySelector('.db-ch-expand').addEventListener('click', e => {
+        const open = row.classList.toggle('expanded');
+        e.target.setAttribute('aria-expanded', String(open)); e.target.textContent = open ? '▴' : '▾';
+      });
+    });
+  }
+  const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results'];
+  function showChannels() {
+    if (!channelsView) { channelsView = buildChannelsView(); renderChannelsList(); }
+    MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el) el.dataset.dbHiddenFor = 'channels', el.style.display = 'none'; });
+    document.querySelector('.hero').hidden = true;
+    const foot = $('dbFooter'); if (foot && !foot.hidden) { foot.dataset.dbHiddenFor = 'channels'; foot.hidden = true; }
+    channelsView.hidden = false;
+    renderChannelsList();
+    channelsView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    say('Channel Selection.');
+  }
+  function hideChannels() {
+    if (!channelsView || channelsView.hidden) return;
+    channelsView.hidden = true;
+    MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el && el.dataset.dbHiddenFor === 'channels') { el.style.display = ''; delete el.dataset.dbHiddenFor; } });
+    const foot = $('dbFooter'); if (foot && foot.dataset.dbHiddenFor === 'channels') { foot.hidden = false; delete foot.dataset.dbHiddenFor; }
+    document.querySelector('.hero').hidden = false;
+  }
+
   function setCurrent(k) { aside.querySelectorAll('.db-item').forEach(b => { if (b.dataset.db === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); }); }
   // Follow the step strip when the inline script moves it.
   const strip = $('stepBar');
