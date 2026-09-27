@@ -14,7 +14,7 @@ import dlp_api_server as srv
 from test_pack_channels import make_client
 from test_pack_deploy import Obj
 
-NOW = datetime(2026, 9, 11, 12, 0, tzinfo=timezone.utc)
+NOW = datetime.now(timezone.utc)   # relative to the real clock: fetch_incidents() below queries against it too
 
 
 def _inc(iid, rule, engine, dicts, *, days_ago=1, status="CLOSED", resolution="", source="WEB_DLP", app="chatgpt.com", dept="Finance"):

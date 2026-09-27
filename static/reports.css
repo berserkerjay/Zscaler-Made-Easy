@@ -322,6 +322,12 @@ body.theme-light .df-chip.st-block { color: #1d4ed8; }
 .adv-upd-line { font-size: 0.83rem; }
 .adv-upd-line.ok { color: var(--chip-ok, var(--pass)); }
 .adv-upd-line.bad { color: var(--chip-fail, var(--fail)); }
+
+/* Advanced settings: credits (a large, unmissable disclaimer) */
+.adv-credits { margin-top: 1rem; padding: 2rem 1.5rem; border: 2px solid var(--accent); border-radius: 14px; background: var(--well); text-align: center; }
+.adv-credits h2 { margin: 0 0 0.6rem; font-size: 1.3rem; }
+.adv-credits p { margin: 0; font-size: 1.15rem; line-height: 1.6; }
+.adv-credits strong { font-size: 1.3rem; color: var(--accent); }
 .adv-upd-line.soft { color: var(--chip-warn, var(--warn)); }
 
 .adv-page .chip.carved { background: rgba(148,163,184,0.14); color: var(--dim); }

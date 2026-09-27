@@ -4,6 +4,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-27
+
+### A beginner's install guide, and credits in Advanced settings
+- **What you asked for.** "I need explicit instruction in how to install this on a Mac windows Linux or as a mounted container so that as very minor engineer I can install this with ease with very little help," and "in the advanced settings I want you to put a large disclaimer at the bottom that this product was created through the collaboration of Jason Smith, Nick Tucker and Eunice Aguilar."
+- **`INSTALL.md` (new).** A click-by-click walkthrough for someone who has never installed a developer tool before, covering Windows, Mac, Linux and running it as a container (Docker) — what to download, what to click, exact commands to copy and paste, where the one-time sign-in code is, and a troubleshooting table for the errors a first-timer is most likely to hit (Python not on PATH, permission denied on a script, a busy port, a TLS-inspecting corporate network). It builds on the existing installers (`INSTALL_Zscaler_Assessment.bat`, `install.sh`/`start.sh`/`stop.sh`, `docker compose`) rather than duplicating them, and is linked from the top of `README.md`.
+- **Advanced settings now credits its creators.** A large, bordered box at the very bottom of the page: "This product was created through the collaboration of Jason Smith, Nick Tucker and Eunice Aguilar."
+- Verified: `tests/test_pack_library.py` (the credits section and its names are present, the CSS rule exists). Browser run against a fake tenant confirms the box renders prominently at the foot of the page.
+- **Also fixed, not part of this change:** CI turned up `tests/test_detection_health.py::test_detection_health_endpoints` failing on its own, unrelated to anything above — its `NOW` anchor was a hardcoded past date (`2026-09-11`) compared against production code that reads the real clock, so it silently broke as real time passed it. `NOW` is now the real current time, so the fixture and the code under test always agree regardless of when the suite runs.
+
 ## 2026-09-17
 
 ### Score tiles are always on screen, even before a run

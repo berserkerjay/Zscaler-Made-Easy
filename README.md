@@ -11,6 +11,10 @@ and measures where the tenant is on the data-governance journey on every
 visit. Every rule a pack creates arrives switched off and monitor-only, so
 deploying never affects the customer's users.
 
+New to this? **[INSTALL.md](INSTALL.md)** is a click-by-click walkthrough
+for Windows, Mac, Linux or a container, written for someone who has never
+installed a developer tool before.
+
 Two ways to run it, built from this one source tree:
 
 | Mode | For | How |

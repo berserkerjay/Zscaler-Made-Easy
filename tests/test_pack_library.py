@@ -271,3 +271,13 @@ def test_advanced_page_is_served_and_wired_into_the_gui(lib_client):
     assert r.status_code == 200 and 'id="advFiles"' in r.text and "/static/advanced.js" in r.text
     index = open(os.path.join(ROOT, "static", "index.html"), encoding="utf-8").read()
     assert "openAdvancedTab()" in index and "/report/advanced" in index
+
+
+def test_advanced_page_credits_its_creators(lib_client):
+    """A large, unmissable disclaimer at the bottom of Advanced settings
+    naming who built the product."""
+    html = lib_client.get("/report/advanced").text
+    assert 'id="credits"' in html and 'class="adv-credits"' in html
+    assert "Jason&nbsp;Smith" in html and "Nick&nbsp;Tucker" in html and "Eunice&nbsp;Aguilar" in html
+    css = open(os.path.join(ROOT, "static", "reports.css"), encoding="utf-8").read()
+    assert ".adv-credits {" in css
