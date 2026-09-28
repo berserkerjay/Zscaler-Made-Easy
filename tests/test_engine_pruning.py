@@ -57,7 +57,7 @@ def test_packs_without_a_baseline_section_are_tagged_too(tmp_path):
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
     assert res["status"] == "applied"
     z = client.zia
-    assert "[DLP-Check pack plainpack v3.1] Deployed by DLP-Check." in z.dlp_dictionary.added[0]["description"]
+    assert "[DLP-Check pack plainpack v3.1]" in z.dlp_dictionary.added[0]["description"]
     assert "[DLP-Check pack plainpack v3.1]" in z.dlp_engine.added[0]["description"]
     assert "[DLP-Check pack plainpack v3.1]" in z.dlp_web_rules.added[0]["description"]
     assert pd.BASELINE_MARK not in z.dlp_engine.added[0]["description"]

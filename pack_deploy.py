@@ -154,7 +154,7 @@ def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Op
     """Description with the provenance tag appended (idempotent). `limit`
     clamps the total length (dictionaries: 255) without losing the tag."""
     b = item.get("baseline") or {}
-    tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Deployed by DLP-Check; measured on every journey check, never overwritten."
+    tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Measured on every journey check, never overwritten."
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
     base = (base or "").strip()
@@ -169,7 +169,7 @@ def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Option
     """Provenance tag for a pack that is not a baseline, so a removal can
     find its objects by tag instead of by name alone (idempotent)."""
     ver = str(item.get("pack_version") or "")
-    tag = f"{PACK_MARK} {item.get('pack', '?')}{(' v' + ver) if ver else ''}] Deployed by DLP-Check."
+    tag = f"{PACK_MARK} {item.get('pack', '?')}{(' v' + ver) if ver else ''}]"
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
     base = (base or "").strip()
