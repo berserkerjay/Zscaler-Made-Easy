@@ -314,10 +314,14 @@ def expand_sub_rules(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # The operator can decide per pack which of the four DLP channels receive
 # the pack's engines. A channel the pack already has rules for is deployed
-# as packed; a channel the pack has no rules for gets one monitor-only
-# extension rule carrying every engine of the pack; a channel that is
-# deselected is skipped. Containment rules (Cloud App Control, File Type,
-# URL, SSL) carry no engines and are not part of the choice.
+# as packed; a channel the pack has no rules for gets monitor-only
+# extension rules carrying the pack's engines, one rule per engine on
+# every channel — the same methodology as every shipped pack (Endpoint DLP
+# on the removable-media channel; ZIA allows at most ENDPOINT_MAX_ENGINES
+# engines on an Endpoint DLP rule: "Exceeded maximum number of DLP
+# engines: 4"); a channel that is deselected is skipped. Containment
+# rules (Cloud App Control, File Type, URL, SSL) carry no engines and are
+# not part of the choice.
 
 DLP_CHANNELS = (WEB, ENDPOINT, SAAS, EMAIL)
 EXTENSION_TAG = {WEB: "Web DLP Monitor", ENDPOINT: "Endpoint DLP Monitor", SAAS: "SaaS DLP Monitor", EMAIL: "Email DLP Monitor"}
@@ -350,19 +354,31 @@ def extension_name(channel: str, prefix: str, pack_name: str) -> str:
 
 
 def extension_policy(channel: str, *, pack_name: str, prefix: str, engine_names: Sequence[str],
-                     pack_id: str = "") -> Dict[str, Any]:
+                     pack_id: str = "", engine: Optional[str] = None, name: Optional[str] = None) -> Dict[str, Any]:
     """A monitor-only rule that puts the pack's engines into a channel the
     pack has no rules for. Disabled, INFO severity, monitor action, so it
-    only ever adds visibility until the operator enables it."""
+    only ever adds visibility until the operator enables it. With `engine`
+    the rule carries that one engine (the shape every shipped pack uses on
+    every channel; see extension_policies), named `name`."""
+    if engine is not None:
+        name = name or f"{extension_name(channel, prefix, pack_name)} - {engine}"
+        where = "on removable media" if channel == ENDPOINT else "on this channel"
+        desc = (f"{label(channel)}: monitor the {pack_name} engine '{engine}' {where}. Added by the channel selection "
+                f"in Deploy Policy Packs (the pack ships no {label(channel)} rule); one engine per rule. Monitor-only; enable when incidents look right.")
+        engines = [engine]
+    else:
+        name = name or extension_name(channel, prefix, pack_name)
+        desc = (f"{label(channel)}: monitor the {pack_name} engines on this channel. Added by the channel selection "
+                f"in Deploy Policy Packs (the pack ships no {label(channel)} rule). Monitor-only; enable when incidents look right.")
+        engines = list(engine_names)
     p: Dict[str, Any] = {
-        "name": extension_name(channel, prefix, pack_name),
+        "name": name,
         "channel": channel,
-        "description": (f"{label(channel)}: monitor the {pack_name} engines on this channel. Added by the channel selection "
-                        f"in Deploy Policy Packs (the pack ships no {label(channel)} rule). Monitor-only; enable when incidents look right."),
+        "description": desc,
         "action": default_action(channel),
         "state": "DISABLED",
         "severity": "RULE_SEVERITY_INFO",
-        "engines": list(engine_names),
+        "engines": engines,
         "extension": True,
     }
     if channel == WEB:
@@ -377,6 +393,40 @@ def extension_policy(channel: str, *, pack_name: str, prefix: str, engine_names:
     elif channel == EMAIL:
         p.update({"tenants": "any"})
     return p
+
+
+# The channel word every shipped pack's mirror rules end with ("Fed-US PII
+# [Endpoint]"); the extension rules follow the same convention.
+EXTENSION_SUFFIX = {WEB: "Web", ENDPOINT: "Endpoint", SAAS: "SaaS", EMAIL: "Email"}
+
+
+def extension_policies(channel: str, *, pack_name: str, prefix: str, engine_names: Sequence[str],
+                       pack_id: str = "") -> List[Dict[str, Any]]:
+    """The extension rules for `channel`: one disabled, monitor-only rule
+    per engine, on every channel — the same methodology as every shipped
+    pack (one rule per engine, equal counts on Web, Endpoint, SaaS and
+    Email; Endpoint on the removable-media channel). ZIA refuses more than
+    ENDPOINT_MAX_ENGINES engines on one Endpoint DLP rule, and one engine
+    per rule keeps every rule's incidents attributable. Names are
+    `<prefix><engine> [<Channel>]`, fitted to the channel's name limit
+    (31 on SaaS) and made unique within the pack."""
+    seen: List[str] = []
+    for e in engine_names:
+        if e and e not in seen:
+            seen.append(e)
+    taken: set = set()
+    out: List[Dict[str, Any]] = []
+    for e in seen:
+        stem = f"{prefix or ''}{e}"
+        name = fit_rule_name(stem, channel, f" [{EXTENSION_SUFFIX[channel]}]")
+        n = 2
+        while name in taken:
+            name = fit_rule_name(stem, channel, f" {n} [{EXTENSION_SUFFIX[channel]}]")
+            n += 1
+        taken.add(name)
+        out.append(extension_policy(channel, pack_name=pack_name, prefix=prefix, engine_names=engine_names, pack_id=pack_id,
+                                    engine=e, name=name))
+    return out
 
 
 def apply_channel_targets(policies: List[Dict[str, Any]], targets: Optional[Sequence[str]], *, pack_name: str,
@@ -417,9 +467,9 @@ def apply_channel_targets(policies: List[Dict[str, Any]], targets: Optional[Sequ
         if not engine_names:
             note["warnings"].append(f"{label(ch)} was selected but the pack has no engines to put on that channel; nothing added.")
             continue
-        p = extension_policy(ch, pack_name=pack_name, prefix=prefix, engine_names=engine_names, pack_id=pack_id)
-        kept.append(p)
-        note["extended"].append({"name": p["name"], "channel": ch})
+        for p in extension_policies(ch, pack_name=pack_name, prefix=prefix, engine_names=engine_names, pack_id=pack_id):
+            kept.append(p)
+            note["extended"].append({"name": p["name"], "channel": ch})
     return kept, note
 
 
@@ -536,6 +586,10 @@ ENDPOINT_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
 # "ANY"). Pack mirrors watch removable media; add a rule per method for more.
 ENDPOINT_TRANSFER_METHODS = ("REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "APPLICATION_FILE_ACCESS", "PRINTING")
 ENDPOINT_DEFAULT_TRANSFER_METHOD = "REMOVABLE_DRIVE_TRANSFER"
+# ZIA refuses an Endpoint DLP rule with more engines than this
+# ("Exceeded maximum number of DLP engines: 4"). Pack rules and the
+# channel-selection extension rules carry one engine each.
+ENDPOINT_MAX_ENGINES = 4
 
 
 def channel_of(policy_def: Dict[str, Any]) -> str:
@@ -618,6 +672,10 @@ def validate(policy_def: Dict[str, Any]) -> Optional[str]:
         if dtm and dtm not in ENDPOINT_TRANSFER_METHODS:
             return (f"unknown data_transfer_method '{dtm}' (an Endpoint DLP rule applies to one transfer method; "
                     f"use one of {', '.join(ENDPOINT_TRANSFER_METHODS)})")
+        n_eng = len(policy_def.get("engines") or [])
+        if n_eng > ENDPOINT_MAX_ENGINES:
+            return (f"carries {n_eng} engines; ZIA allows at most {ENDPOINT_MAX_ENGINES} on an Endpoint DLP rule "
+                    f"('Exceeded maximum number of DLP engines: {ENDPOINT_MAX_ENGINES}') — split it one engine per rule")
         for sr in policy_def.get("sub_rules") or []:
             if not sr.get("name"):
                 return "every sub_rule needs a name"

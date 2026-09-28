@@ -55,6 +55,20 @@ def test_extension_names_follow_the_prefix_style():
     assert pc.extension_name("endpoint", "ZBP-", "x") == "ZBP-Endpoint DLP Monitor"
     assert pc.extension_name("saas", "R_PHI_", "x") == "R_PHI_SAAS_DLP_MONITOR"
     assert pc.extension_name("email", "", "Healthcare PHI Baseline") == "Healthcare PHI Baseline Email DLP Monitor"
+    # Every channel: one disabled rule per engine, named like the shipped packs' mirrors ("<prefix><engine> [<Channel>]").
+    engines = ["US PII", "Private Keys", "US PII"]
+    for ch, word in (("web", "Web"), ("endpoint", "Endpoint"), ("saas", "SaaS"), ("email", "Email")):
+        rules = pc.extension_policies(ch, pack_name="x", prefix="ZBP-", engine_names=engines)
+        assert [p["name"] for p in rules] == [f"ZBP-US PII [{word}]", f"ZBP-Private Keys [{word}]"], ch
+        assert [p["engines"] for p in rules] == [["US PII"], ["Private Keys"]]
+        assert all(p["state"] == "DISABLED" and p["action"] == pc.default_action(ch) and p["extension"] and p["channel"] == ch for p in rules)
+    eps = pc.extension_policies("endpoint", pack_name="x", prefix="ZBP-", engine_names=engines)
+    assert all(p["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER" for p in eps)
+    # SaaS names fit the 31-character limit and stay unique in the pack.
+    long_names = ["CUI Engine (Medium Confidence)", "CUI Engine (High Confidence)", "Alpha Beta Gamma Delta Epsilon One", "Alpha Beta Gamma Delta Epsilon Two"]
+    saas = [p["name"] for p in pc.extension_policies("saas", pack_name="Old Fed Policy Pack", prefix="", engine_names=long_names)]
+    assert len(saas) == 4 and len(set(saas)) == 4 and all(len(n) <= 31 and n.endswith("[SaaS]") for n in saas), saas
+    assert saas[0].startswith("CUI Engine (Medium") and saas[1].startswith("CUI Engine (High")
     assert pc.normalize_targets(["Web", "endpoint", "ssl", "nope", "web"]) == ["web", "endpoint"]
     assert pc.normalize_targets(None) is None and pc.normalize_targets([]) == []
 
@@ -65,12 +79,13 @@ def test_targets_extend_missing_channels_and_skip_deselected_ones(tmp_path):
     rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets={"alpha": ALL})
     assert rep["status"] in ("ready", "warnings"), rep["blockers"]
     pol = items_by(rep, "policy")
-    assert set(pol) == {"Z-Alpha-Monitor", "ZBP-Endpoint DLP Monitor", "ZBP-SaaS DLP Monitor", "ZBP-Email DLP Monitor"}
-    for n in ("ZBP-Endpoint DLP Monitor", "ZBP-SaaS DLP Monitor", "ZBP-Email DLP Monitor"):
+    EP, SA, EM = "ZBP-Alpha Engine [Endpoint]", "ZBP-Alpha Engine [SaaS]", "ZBP-Alpha Engine [Email]"
+    assert set(pol) == {"Z-Alpha-Monitor", EP, SA, EM}
+    for n in (EP, SA, EM):
         assert pol[n]["status"] == pd.CREATE and pol[n]["extension"] and pol[n]["detail"]["engines"] == ["Alpha Engine"]
-    assert pol["ZBP-Endpoint DLP Monitor"]["detail"]["channel"] == "endpoint" and pol["ZBP-Endpoint DLP Monitor"]["detail"]["action"] == "ALLOW"
-    assert pol["ZBP-SaaS DLP Monitor"]["detail"]["saas_type"] == "OFLCASB_DLP_FILE" and pol["ZBP-SaaS DLP Monitor"]["detail"]["tenants"] == ["Acme Box", "Acme Google Workspace"]
-    assert pol["ZBP-Email DLP Monitor"]["detail"]["tenants"] == ["Acme M365 Mail"]
+    assert pol[EP]["detail"]["channel"] == "endpoint" and pol[EP]["detail"]["action"] == "ALLOW"
+    assert pol[SA]["detail"]["saas_type"] == "OFLCASB_DLP_FILE" and pol[SA]["detail"]["tenants"] == ["Acme Box", "Acme Google Workspace"]
+    assert pol[EM]["detail"]["tenants"] == ["Acme M365 Mail"]
     assert not pol["Z-Alpha-Monitor"]["extension"]
     note = rep["packs"][0]["channels"]
     assert note["targets"] == ALL and [e["channel"] for e in note["extended"]] == ["endpoint", "saas", "email"] and note["skipped_rules"] == []
@@ -79,7 +94,7 @@ def test_targets_extend_missing_channels_and_skip_deselected_ones(tmp_path):
     # Endpoint only: the packed web rule is skipped, the endpoint extension is the only rule.
     rep2 = pd.preflight(client, [pack], writes_enabled=True, channel_targets={"alpha": ["endpoint"]})
     pol2 = items_by(rep2, "policy")
-    assert set(pol2) == {"ZBP-Endpoint DLP Monitor"}
+    assert set(pol2) == {"ZBP-Alpha Engine [Endpoint]"}
     assert rep2["packs"][0]["channels"]["skipped_rules"] == ["Z-Alpha-Monitor"] and rep2["packs"][0]["channels"]["skipped_channels"] == ["web"]
     assert rep2["plan_hash"] != rep["plan_hash"] and rep2["options"]["channel_targets"] == {"alpha": ["endpoint"]}
     # No choice at all: the pack as packed.
@@ -95,10 +110,10 @@ def test_apply_creates_extension_rules_with_the_pack_engines(tmp_path):
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, channel_targets=targets, verify=False)
     assert res["status"] == "applied" and res["summary"]["created"] == 5, res["results"]
     ep = client.zia.endpoint_dlp_rules.added[0]
-    assert ep["name"] == "ZBP-Endpoint DLP Monitor" and ep["state"] == "DISABLED" and ep["action"] == "ALLOW"
+    assert ep["name"] == "ZBP-Alpha Engine [Endpoint]" and ep["state"] == "DISABLED" and ep["action"] == "ALLOW"
     assert ep["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER" and ep["dlp_engines"] == [{"id": client.zia.dlp_engine.items[0].id}]
     em = client.zia.outbound_email_dlp_rules.added[0]
-    assert em["name"] == "ZBP-Email DLP Monitor" and em["email_tenants"] == [{"id": 503}]
+    assert em["name"] == "ZBP-Alpha Engine [Email]" and em["email_tenants"] == [{"id": 503}]
     assert client.zia.casb_dlp_rules.added == []
     # The plan hash binds the channel choice: applying an approved plan with a different choice is refused.
     fresh = make_client(casb_tenants=TENANTS)
@@ -118,14 +133,65 @@ def test_pack_without_engines_cannot_extend(tmp_path):
     assert any("no engines" in w for w in rep["warnings"])
 
 
+def test_extension_rules_are_one_disabled_rule_per_engine_on_every_channel(tmp_path):
+    """A real tenant refused the old Fed pack's endpoint extension rule —
+    one rule carrying all 17 engines — with 'Exceeded maximum number of
+    DLP engines: 4'. Every channel the selection extends now gets one rule
+    per engine, DISABLED and monitor-only, Endpoint on the removable-media
+    channel: the same methodology as every shipped pack."""
+    names = [f"Engine {i}" for i in range(1, 7)]
+    pack = write_pack(
+        tmp_path, "six",
+        dicts=[_dict("Six Dict")],
+        engines=[_engine(n, "(D:Six Dict)") for n in names],
+        policies=[_policy("Six-Web-Monitor", names[:1])],
+        meta={"name": "Six Engines", "confidence_tweaks": [], "baseline": {"prefix": "SIX-", "version": "1"}},
+    )
+    client = make_client(casb_tenants=TENANTS)
+    targets = {"six": ["web", "endpoint", "saas", "email"]}
+    rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets=targets)
+    assert rep["status"] in ("ready", "warnings"), rep["blockers"]
+    pol = items_by(rep, "policy")
+    for ch, word in (("endpoint", "Endpoint"), ("saas", "SaaS"), ("email", "Email")):
+        mine = {n: it for n, it in pol.items() if it["detail"]["channel"] == ch}
+        assert sorted(mine) == [f"SIX-{n} [{word}]" for n in names], ch
+        assert all(it["detail"]["engines"] == [n[4:].split(" [")[0]] and it["extension"] for n, it in mine.items()), ch
+        assert rep["summary"]["channels"][ch] == {"create": 6}, ch
+    assert [e["channel"] for e in rep["packs"][0]["channels"]["extended"]] == ["endpoint"] * 6 + ["saas"] * 6 + ["email"] * 6
+
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, channel_targets=targets, verify=False)
+    assert res["status"] == "applied", res["results"]
+    for svc, action in ((client.zia.endpoint_dlp_rules, "ALLOW"), (client.zia.casb_dlp_rules, "OFLCASB_DLP_REPORT_INCIDENT"),
+                        (client.zia.outbound_email_dlp_rules, "ALLOW")):
+        assert len(svc.added) == 6
+        for r in svc.added:
+            assert r["state"] == "DISABLED" and r["action"] == action and len(r["dlp_engines"]) == 1, r
+    assert all(r["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER" for r in client.zia.endpoint_dlp_rules.added)
+
+
+def test_a_packed_endpoint_rule_with_too_many_engines_is_refused_before_the_tenant_sees_it(tmp_path):
+    names = [f"Engine {i}" for i in range(1, 6)]
+    fat = dict(_policy("Fat-Endpoint", names), channel="endpoint", data_transfer_method="REMOVABLE_DRIVE_TRANSFER")
+    ok = dict(_policy("Thin-Endpoint", names[:4]), channel="endpoint", data_transfer_method="REMOVABLE_DRIVE_TRANSFER")
+    assert pc.validate(ok) is None
+    err = pc.validate(fat)
+    assert err and "5 engines" in err and "at most 4" in err and "one engine per rule" in err
+    pack = write_pack(tmp_path, "fat", dicts=[_dict("Fat Dict")], engines=[_engine(n, "(D:Fat Dict)") for n in names],
+                      policies=[fat], meta={"name": "Fat Pack", "confidence_tweaks": []})
+    rep = pd.preflight(make_client(), [pack], writes_enabled=True)
+    # An invalid rule is set aside with a plain reason, like every other invalid pack object; nothing reaches the tenant.
+    assert items_by(rep, "policy")["Fat-Endpoint"]["status"] == pd.BLOCKED_DEPENDENCY
+    assert any("Fat-Endpoint" in w and "at most 4" in w and "one engine per rule" in w for w in rep["warnings"]), rep["warnings"]
+
+
 def test_terraform_honours_channel_targets(tmp_path):
     import pack_terraform as tf
     pack = _pack(tmp_path)
     src = tf.load_pack(pack, ["endpoint", "email"])
-    assert [p["name"] for p in src["policies"]] == ["ZBP-Endpoint DLP Monitor", "ZBP-Email DLP Monitor"]
+    assert [p["name"] for p in src["policies"]] == ["ZBP-Alpha Engine [Endpoint]", "ZBP-Alpha Engine [Email]"]
     files = tf.generate(pack, channel_targets=["web", "endpoint"])
     rules = files["rules.tf"]
-    assert 'resource "zia_endpoint_dlp_rules"' in rules and "ZBP-Endpoint DLP Monitor" in rules and "Z-Alpha-Monitor" in rules
+    assert 'resource "zia_endpoint_dlp_rules"' in rules and "ZBP-Alpha Engine [Endpoint]" in rules and "Z-Alpha-Monitor" in rules
     assert "zia_outbound_email_dlp" not in rules
 
 

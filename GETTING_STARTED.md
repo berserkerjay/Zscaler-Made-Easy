@@ -419,13 +419,17 @@ Every pack card has a **Deploy the engines into** row with four boxes:
 Inline Web DLP, Endpoint DLP, SaaS Security, Outbound Email DLP. Boxes
 are ticked for the channels the pack ships rules for.
 
-- **Tick a channel the pack has no rule for** and the deploy adds one
-  monitor-only rule on that channel carrying every engine of the pack
-  (for example *ZBP-Endpoint DLP Monitor*). It arrives disabled at INFO
-  severity, so it only adds visibility until you enable it. It needs the
-  same prerequisites as any rule on that channel (Endpoint DLP licensed,
-  a SaaS or email tenant onboarded); preflight says so if they are
-  missing.
+- **Tick a channel the pack has no rule for** and the deploy adds
+  monitor-only rules on that channel carrying the pack's engines — one
+  rule per engine, named *<prefix><engine> [Endpoint]*, *[SaaS]*,
+  *[Email]* or *[Web]* (for example *ZBP-US PII [Endpoint]*), the same
+  shape every shipped pack uses on every channel. Endpoint rules watch
+  the removable-media channel; ZIA allows at most four engines on one
+  Endpoint DLP rule, and one engine per rule keeps each rule's incidents
+  attributable. Every one arrives disabled at INFO severity, so it only
+  adds visibility until you enable it. They need the same prerequisites
+  as any rule on that channel (Endpoint DLP licensed, a SaaS or email
+  tenant onboarded); preflight says so if they are missing.
 - **Untick a channel the pack has rules for** and those rules are
   skipped. Containment rules (Cloud App Control, File Type, URL, SSL) are
   not part of the choice and deploy as packed.
