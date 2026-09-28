@@ -490,7 +490,11 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
     # (the API rejects duplicate names, so nothing is overwritten) and every
     # such item is marked unverified, with the permission that would fix it.
     snap["reachable"] = len(snap["unreadable"]) < 3
-    _log(f"Tenant read in {time.time() - started:.0f} s" + (f"; could not read: {', '.join(snap['unreadable'])}." if snap["unreadable"] else "."))
+    # Each refused read with ZIA's status in front ("HTTP 403: Resource
+    # Access Blocked"), so a 403 is never mistaken for a 429 or a timeout.
+    _log(f"Tenant read in {time.time() - started:.0f} s"
+         + ("; could not read: " + ", ".join(f"{k} ({ops.describe_error(e)})" for k, e in snap["unreadable"].items()) + "."
+            if snap["unreadable"] else "."))
     return snap
 
 
@@ -1374,7 +1378,7 @@ def preflight(
     if tenant["reachable"] and unreadable:
         _perm = {"dictionaries": "DLP Dictionaries", "engines": "DLP Engines", "web DLP rules": "Web DLP Rules"}
         for kind, err in unreadable.items():
-            warnings.append(f"Could not list the tenant's {kind} ({err}). Those objects are planned as new and will be attempted; "
+            warnings.append(f"Could not list the tenant's {kind} ({ops.describe_error(err)}). Those objects are planned as new and will be attempted; "
                             f"the API rejects a duplicate name, so nothing existing is overwritten. For a verified plan grant the "
                             f"API client '{_perm.get(kind, kind)}' read access.")
     for i in all_items:
@@ -1429,7 +1433,7 @@ def preflight(
         "baselines": baseline_status_rows(all_items, sources),
         "tenant_mode": tenant_mode(all_items, sources, tenant) if tenant["reachable"] else None,
         "options": options,
-        "tenant": {"reachable": tenant["reachable"], "errors": tenant["errors"],
+        "tenant": {"reachable": tenant["reachable"], "errors": tenant["errors"], "unreadable": dict(tenant.get("unreadable") or {}),
                    "dictionaries": len(tenant["dictionaries"]), "engines": len(tenant["engines"]),
                    "rules": len(tenant["rules"]), "rule_cap": WEB_DLP_RULE_API_CAP,
                    "channel_rules": {ch: len(rs) for ch, rs in tenant["channels"]["rules"].items()},
@@ -2116,7 +2120,16 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             again = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
                               restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
             fresh = {(i["kind"], i["name"]): i for i in again.get("items", [])}
-            read_check["read"] = bool(again.get("tenant", {}).get("reachable", True))
+            tenant_now = again.get("tenant") or {}
+            read_check["read"] = bool(tenant_now.get("reachable", True))
+            # A list the tenant refused to give (a 403, a 429, a timeout) makes
+            # its objects unverifiable, not missing: say which, with the status.
+            unread = dict(tenant_now.get("unreadable") or {})
+            for ch, err in (tenant_now.get("channel_errors") or {}).items():
+                if err:
+                    unread[f"{ch} rules"] = err
+            list_of = {"dictionary": "dictionaries", "engine": "engines", "policy": "web DLP rules"}
+            read_check["unreadable"] = {k: ops.describe_error(e) for k, e in unread.items()}
             for r in results:
                 if r.get("status") not in ("created", "restored", "modified", "reused") or r.get("kind") == "tweak":
                     continue
@@ -2125,11 +2138,24 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 if f is not None and f.get("status") not in (CREATE, BLOCKED_DEPENDENCY, CONFLICT, SKIP_EMPTY):
                     read_check["present"] += 1
                 else:
-                    read_check["missing"].append({"kind": r["kind"], "name": r["name"], "channel": r.get("channel"),
-                                                  "reason": (f or {}).get("reason") or "not listed by the tenant"})
+                    ch = r.get("channel")
+                    key = f"{ch} rules" if (r["kind"] == "policy" and ch and ch != pc.WEB) else list_of.get(r["kind"])
+                    if key in unread:
+                        reason = f"could not be verified: the tenant refused to list its {key} ({ops.describe_error(unread[key])})"
+                    else:
+                        reason = (f or {}).get("reason") or "not listed by the tenant"
+                    read_check["missing"].append({"kind": r["kind"], "name": r["name"], "channel": ch, "reason": reason,
+                                                  "unverified": key in unread})
             read_check["clean"] = read_check["read"] and not read_check["missing"]
-            _log("Read-back: " + (f"all {read_check['present']} object(s) present." if read_check["clean"]
-                                  else f"{len(read_check['missing'])} object(s) not found."))
+            unverified = [m for m in read_check["missing"] if m.get("unverified")]
+            not_found = len(read_check["missing"]) - len(unverified)
+            parts = []
+            if not_found:
+                parts.append(f"{not_found} object(s) not found")
+            if unverified:
+                parts.append(f"{len(unverified)} object(s) could not be verified — the tenant refused to be read: "
+                             + "; ".join(f"{k} ({v})" for k, v in read_check["unreadable"].items()))
+            _log("Read-back: " + (f"all {read_check['present']} object(s) present." if read_check["clean"] else "; ".join(parts) + "."))
         except Exception as ex:  # noqa: BLE001
             read_check["error"] = str(ex)[:300]
             _log(f"Read-back failed: {read_check['error']}")
