@@ -96,6 +96,13 @@ def test_missing_baseline_objects_are_created_with_provenance(baseline_pack):
     assert "v2.1" in z.dlp_dictionary.added[0]["description"]
     assert pd.BASELINE_MARK in z.dlp_engine.added[0]["description"]
     assert pd.BASELINE_MARK in z.dlp_web_rules.added[0]["description"]
+    # Every deployed rule ships DISABLED; the description says so too, so an
+    # admin reading the tenant sees why without opening the app. Dictionaries
+    # and engines have no disabled state, so they don't get the note.
+    assert z.dlp_web_rules.added[0]["state"] == "DISABLED"
+    assert "Deployed DISABLED" in z.dlp_web_rules.added[0]["description"]
+    assert "Deployed DISABLED" not in z.dlp_dictionary.added[0]["description"]
+    assert "Deployed DISABLED" not in z.dlp_engine.added[0]["description"]
 
 
 def test_in_sync_baseline_has_nothing_to_deploy(baseline_pack):
@@ -295,6 +302,25 @@ def test_baseline_description_is_idempotent():
     twice = pd.baseline_description(item, once)
     assert once == twice
     assert once.startswith("Detects things. [DLP-Check baseline p v1.0]")
+
+
+def test_deployed_rules_say_disabled_in_their_description_dictionaries_and_engines_do_not():
+    """Every rule DLP-Check deploys ships DISABLED; the description names
+    that so an admin reading the tenant sees why without opening the app.
+    Dictionaries and engines have no disabled state, so they don't get it."""
+    rule = {"kind": "policy", "baseline": {"pack": "p", "version": "1.0"}}
+    dictionary = {"kind": "dictionary", "baseline": {"pack": "p", "version": "1.0"}}
+    assert "Deployed DISABLED; enable once reviewed." in pd.baseline_description(rule, "Detects things.")
+    assert "Deployed DISABLED" not in pd.baseline_description(dictionary, "US SSNs.")
+
+    rule2 = {"kind": "policy", "pack": "plainpack", "pack_version": "3.1"}
+    engine = {"kind": "engine", "pack": "plainpack", "pack_version": "3.1"}
+    assert "Deployed DISABLED; enable once reviewed." in pd.pack_description(rule2, "")
+    assert "Deployed DISABLED" not in pd.pack_description(engine, "")
+    # Idempotent for the pack-tag path too: re-tagging doesn't duplicate the note.
+    once = pd.pack_description(rule2, "")
+    twice = pd.pack_description(rule2, once)
+    assert once == twice and once.count("Deployed DISABLED") == 1
 
 
 # ---------------------------------------------------------------------------

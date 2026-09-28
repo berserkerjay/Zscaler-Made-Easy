@@ -155,6 +155,8 @@ def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Op
     clamps the total length (dictionaries: 255) without losing the tag."""
     b = item.get("baseline") or {}
     tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Deployed by DLP-Check; measured on every journey check, never overwritten."
+    if item.get("kind") == "policy":
+        tag += " Deployed DISABLED; enable once reviewed."
     base = (base or "").strip()
     if BASELINE_MARK in base:
         base = base.split(BASELINE_MARK, 1)[0].strip()
@@ -168,6 +170,8 @@ def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Option
     find its objects by tag instead of by name alone (idempotent)."""
     ver = str(item.get("pack_version") or "")
     tag = f"{PACK_MARK} {item.get('pack', '?')}{(' v' + ver) if ver else ''}] Deployed by DLP-Check."
+    if item.get("kind") == "policy":
+        tag += " Deployed DISABLED; enable once reviewed."
     base = (base or "").strip()
     for mark in (PACK_MARK, BASELINE_MARK):
         if mark in base:
@@ -1178,8 +1182,9 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
         else:
             impacts.append({
                 "type": "monitor_only",
-                "title": "All new rules are monitor-only",
-                "detail": "Every new rule uses a non-enforcing action, so users will not be blocked. Incidents are logged for review.",
+                "title": "All new rules are DISABLED and monitor-only",
+                "detail": "Every new rule is created DISABLED with a non-enforcing action, so nothing changes for users until you enable it "
+                          "in the ZIA Admin Portal. Each rule's own description says the same, so this is clear from the tenant alone.",
                 "severity": "ok",
             })
     impacts.append({

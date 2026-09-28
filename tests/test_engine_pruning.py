@@ -61,6 +61,11 @@ def test_packs_without_a_baseline_section_are_tagged_too(tmp_path):
     assert "[DLP-Check pack plainpack v3.1]" in z.dlp_engine.added[0]["description"]
     assert "[DLP-Check pack plainpack v3.1]" in z.dlp_web_rules.added[0]["description"]
     assert pd.BASELINE_MARK not in z.dlp_engine.added[0]["description"]
+    # The rule ships DISABLED, and the description says so (dictionaries/engines don't).
+    assert z.dlp_web_rules.added[0]["state"] == "DISABLED"
+    assert "Deployed DISABLED" in z.dlp_web_rules.added[0]["description"]
+    assert "Deployed DISABLED" not in z.dlp_dictionary.added[0]["description"]
+    assert "Deployed DISABLED" not in z.dlp_engine.added[0]["description"]
 
 
 def test_sum_operator_is_resolved_pruned_and_referenced():
