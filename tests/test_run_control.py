@@ -215,10 +215,10 @@ def test_a_pack_dictionary_named_like_a_predefined_display_name_is_a_conflict_in
     shutil.copytree(src["dir"], tmp_path / "fed", ignore=shutil.ignore_patterns("*.pyc", "__pycache__"))
     dicts_path = tmp_path / "fed" / "configs" / "dlp_dictionaries.json"
     dicts = json.loads(dicts_path.read_text(encoding="utf-8"))
-    clone = next(d for d in dicts if d["name"] == "Private Key - Medium Confidence")
+    clone = next(d for d in dicts if d["name"] == "Fed Pack Private Key")
     clone["name"] = "Private Key"                     # the name the real tenant refused (CRED_LEAKAGE is shown as "Private Key")
     engines_path = tmp_path / "fed" / "configs" / "dlp_engines.json"
-    engines_path.write_text(engines_path.read_text(encoding="utf-8").replace("D:Private Key - Medium Confidence", "D:Private Key"), encoding="utf-8")
+    engines_path.write_text(engines_path.read_text(encoding="utf-8").replace("D:Fed Pack Private Key", "D:Private Key"), encoding="utf-8")
     dicts_path.write_text(json.dumps(dicts), encoding="utf-8")
     client = strict_tenant()
     rep = pd.preflight(client, [{"id": "fed", "dir": str(tmp_path / "fed")}], writes_enabled=True)
@@ -231,7 +231,7 @@ def test_a_pack_dictionary_named_like_a_predefined_display_name_is_a_conflict_in
 
 def test_the_shipped_fed_pack_no_longer_uses_the_taken_name():
     names = [d["name"] for d in json.load(open(os.path.join(_pack("fed_policy_pack")["dir"], "configs", "dlp_dictionaries.json"), encoding="utf-8"))]
-    assert "Private Key" not in names and "Private Key - Medium Confidence" in names
+    assert "Private Key" not in names and "Fed Pack Private Key" in names
 
 
 def test_names_are_matched_the_way_zia_compares_them():
