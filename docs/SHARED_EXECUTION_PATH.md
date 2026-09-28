@@ -84,12 +84,17 @@ the reference this path is measured against. The app never runs it.
    through but reported.
 8. **A duplicate the plan did not see is reused, not fatal.** ZIA compares
    names without regard to case, and a predefined dictionary's display
-   name (CRED_LEAKAGE is shown as "Private Key") is taken too. The plan
-   matches names the same way and marks a pack dictionary that carries a
-   predefined display name as a conflict with the fix in words. If ZIA
-   still refuses a create as a duplicate at write time (an object made
-   between the plan and the write), the existing object is looked up by
-   name and reused, so its dependents are built instead of skipped.
+   name (CRED_LEAKAGE is shown as "Private Key") is taken too. A pack
+   dictionary that carries one of the display names DLP-Check knows
+   (`dlp_importer.PREDEFINED_DISPLAY_NAMES`) is renamed `Z-<name>` when
+   the pack is loaded, its engine references rewritten, and the plan and
+   the deploy log say so (`heal_predefined_names`, applied by every
+   loader the way `ship_monitor` is; the pack file is never modified).
+   One the list does not know is still marked as a conflict in the plan,
+   with the fix in words. If ZIA still refuses a create as a duplicate at
+   write time (an object made between the plan and the write), the
+   existing object is looked up by name and reused, so its dependents are
+   built instead of skipped.
 
 ## 3. What a run returns
 

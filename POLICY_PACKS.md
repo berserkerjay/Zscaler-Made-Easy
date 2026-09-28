@@ -74,7 +74,7 @@ A JSON array. Each entry is either a **custom** dictionary (with patterns/phrase
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | Must be unique in tenant |
+| `name` | yes | Must be unique in tenant. A name the Admin Portal shows one of Zscaler's predefined dictionaries under (`Private Key`, `IBAN`, `Credit Cards`, `Medical Information`, …) is refused by ZIA as a duplicate; DLP-Check renames such a dictionary `Z-<name>` when the pack is loaded, rewrites the `D:` references in the engines, and says so in the plan and the deploy log — the file is left as written |
 | `custom_phrase_match_type` | yes | `MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY` (any phrase or pattern), `MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY` (all of them), or `MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE` (a pattern counts when a phrase is near it; the only type ZIA accepts a `proximity` window on) |
 | `patterns` or `phrases` | at least one | Empty dicts are skipped |
 | `description` | no | Shown in ZIA admin UI |

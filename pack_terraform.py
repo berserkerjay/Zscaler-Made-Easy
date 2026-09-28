@@ -43,7 +43,8 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
-from dlp_importer import find_refs, DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description, load_pack_metadata
+from dlp_importer import (find_refs, DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description,
+                          heal_predefined_names, load_pack_metadata)
 
 PROVIDER_SOURCE = "zscaler/zia"
 PROVIDER_VERSION = "~> 4.8"
@@ -277,7 +278,10 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     pack's rules per channel exactly as Deploy Policy Packs does."""
     configs = _resolve_configs(pack["dir"])
     meta = load_pack_metadata(pack["dir"])
-    engines = _load_json(configs, "dlp_engines.json")
+    # The same load-time conventions as Deploy Policy Packs: rules ship
+    # monitor-only, and a dictionary named like a predefined display name
+    # is renamed (engine references included) so the workspace applies.
+    dictionaries, engines, renamed = heal_predefined_names(_load_json(configs, "dlp_dictionaries.json"), _load_json(configs, "dlp_engines.json"))
     policies = pc.ship_monitor(pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")))
     b = meta.get("baseline") or {}
     policies, note = pc.apply_channel_targets(policies, channel_targets, pack_name=meta.get("name", pack["id"]),
@@ -286,11 +290,12 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     return {
         "id": pack["id"],
         "meta": meta,
-        "dictionaries": _load_json(configs, "dlp_dictionaries.json"),
+        "dictionaries": dictionaries,
         "engines": engines,
         "policies": policies,
         "app_groups": _load_json(configs, "endpoint_application_groups.json"),
         "channel_note": note,
+        "renamed": renamed,
     }
 
 

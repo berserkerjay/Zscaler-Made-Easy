@@ -8,7 +8,9 @@ tenant that refuses everything.
   words, and the result says `stopped`. The operator's Stop does the same.
 - A create refused as a duplicate the plan did not see reuses the existing
   object instead of failing everything behind it; a pack dictionary named
-  like a predefined dictionary's display name is a conflict in the plan.
+  like a predefined dictionary's display name is renamed Z-<name> when the
+  pack loads and deploys; one the loader does not know is a conflict in
+  the plan.
 - Background jobs (pack_jobs, the /start and /jobs endpoints): the browser
   follows the log while the tenant is written to and gets the result at
   the end; the SDK client is built with bounded waits.
@@ -210,7 +212,13 @@ def test_a_duplicate_refusal_reuses_the_existing_object_so_its_dependents_are_bu
     assert engines_using, "the engine that references the dictionary was built on the existing id"
 
 
-def test_a_pack_dictionary_named_like_a_predefined_display_name_is_a_conflict_in_the_plan(tmp_path):
+def test_a_pack_dictionary_named_like_a_predefined_display_name_is_renamed_and_deploys(tmp_path):
+    """old_fed_policy_pack, verbatim: its clone of CRED_LEAKAGE is named
+    "Private Key", the name the tenant shows the predefined dictionary
+    under. Loading the pack renames it Z-Private Key (engine reference
+    included), the plan and the log say so, and the deploy creates it
+    under the new name instead of failing it and skipping the engine and
+    every rule behind it. The pack on disk is untouched."""
     src = _pack("fed_policy_pack")
     shutil.copytree(src["dir"], tmp_path / "fed", ignore=shutil.ignore_patterns("*.pyc", "__pycache__"))
     dicts_path = tmp_path / "fed" / "configs" / "dlp_dictionaries.json"
@@ -221,12 +229,20 @@ def test_a_pack_dictionary_named_like_a_predefined_display_name_is_a_conflict_in
     engines_path.write_text(engines_path.read_text(encoding="utf-8").replace("D:Z-Private keys", "D:Private Key"), encoding="utf-8")
     dicts_path.write_text(json.dumps(dicts), encoding="utf-8")
     client = strict_tenant()
-    rep = pd.preflight(client, [{"id": "fed", "dir": str(tmp_path / "fed")}], writes_enabled=True)
-    item = next(i for i in rep["items"] if i["kind"] == "dictionary" and i["name"] == "Private Key")
-    assert item["status"] == "conflict" and "predefined dictionaries under this name" in item["reason"] and "Rename" in item["reason"]
-    res = pd.apply(client, [{"id": "fed", "dir": str(tmp_path / "fed")}], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
-    assert "Private Key" not in [d["name"] for d in client.zia.dlp_dictionary.added], "never sent: ZIA would refuse it"
-    assert next(r for r in res["results"] if r["name"] == "Private Key")["status"] == "skipped"
+    pack = {"id": "old_fed", "dir": str(tmp_path / "fed")}
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    names = {i["name"]: i["status"] for i in rep["items"] if i["kind"] == "dictionary"}
+    assert names.get("Z-Private Key") == "create" and "Private Key" not in names
+    assert [list(r) for r in next(p for p in rep["packs"] if p["id"] == "old_fed")["renamed"]] == [["Private Key", "Z-Private Key"]]
+    assert any("'Private Key' will be deployed as 'Z-Private Key'" in w for w in rep["warnings"])
+    logs = []
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
+    added = [d["name"] for d in client.zia.dlp_dictionary.added]
+    assert "Z-Private Key" in added and "Private Key" not in added, "never sent under the taken name"
+    assert next(r for r in res["results"] if r["kind"] == "dictionary" and r["name"] == "Z-Private Key")["status"] == "created"
+    assert next(r for r in res["results"] if r["kind"] == "engine" and r["name"] == "Private Keys")["status"] == "created"
+    assert any("'Private Key' deployed as 'Z-Private Key'" in m for m in logs)
+    assert next(d for d in json.loads(dicts_path.read_text(encoding="utf-8")) if d["name"] == "Private Key"), "the file is left as written"
 
 
 def test_the_shipped_fed_pack_no_longer_uses_the_taken_name():
@@ -376,3 +392,26 @@ def test_the_deploy_studio_follows_jobs_and_forgets_channel_choices_between_visi
     assert "localStorage.setItem(DZ_LS_CHANNELS" not in js and "localStorage.removeItem(DZ_LS_CHANNELS)" in js, "no channel choice survives a page reload"
     css = open(os.path.join(root, "static", "deploy_studio.css"), encoding="utf-8").read()
     assert ".dz-log-live" in css and ".dz-gates li.warn" in css
+
+
+def test_a_display_name_the_loader_does_not_know_is_still_a_conflict_in_the_plan(tmp_path):
+    """The tenant-driven check stays as the backstop: a pack dictionary
+    named like a predefined display name only this tenant shows is a
+    conflict in the plan, with the fix in words, and is never sent."""
+    from test_pack_deploy import _dict, _engine, _policy, write_pack
+    client = strict_tenant()
+    client.zia.dlp_dictionary.items.append(Obj(id=9901, name="WIDGET_LEAKAGE", description="Widget Serial Numbers", custom=False))
+    # A second, clean object so the plan is not "nothing to deploy" and the deploy actually runs.
+    pack = write_pack(tmp_path, "widgets", dicts=[_dict("Widget Serial Numbers"), _dict("WG-Part Numbers")],
+                      engines=[_engine("Widgets", "(D:Widget Serial Numbers > 0)"), _engine("WG-Parts", "(D:WG-Part Numbers > 0)")],
+                      policies=[_policy("Z-Widgets-Monitor", ["Widgets"]), _policy("Z-WG-Parts-Monitor", ["WG-Parts"])],
+                      meta={"name": "Widgets", "version": "1", "confidence_tweaks": []})
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    item = next(i for i in rep["items"] if i["kind"] == "dictionary" and i["name"] == "Widget Serial Numbers")
+    assert item["status"] == "conflict" and "predefined dictionaries under this name" in item["reason"] and "Rename" in item["reason"]
+    assert not any("will be deployed as" in w for w in rep["warnings"]), "not renamed: the loader does not know this name"
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
+    added = [d["name"] for d in client.zia.dlp_dictionary.added]
+    assert "Widget Serial Numbers" not in added and "WG-Part Numbers" in added, "never sent: ZIA would refuse it; the rest deploys"
+    assert next(r for r in res["results"] if r["name"] == "Widget Serial Numbers")["status"] == "skipped"
+    assert next(r for r in res["results"] if r["kind"] == "engine" and r["name"] == "Widgets")["status"] == "skipped"

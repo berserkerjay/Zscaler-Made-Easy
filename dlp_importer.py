@@ -759,6 +759,65 @@ def engine_references(expr: str, candidate_names: Iterable[str]) -> List[str]:
     return found
 
 
+def norm_name(name: Any) -> str:
+    """A name as ZIA compares it for duplicates: case and spacing ignored."""
+    return " ".join(str(name or "").split()).casefold()
+
+
+# The names the Admin Portal shows Zscaler's predefined dictionaries under.
+# ZIA refuses a custom dictionary with one of these names ("Duplicate DLP
+# dictionary names are not allowed. [Private Key]."), so a pack dictionary
+# that carries one is renamed when the pack is loaded (heal_predefined_names)
+# instead of failing at write time and taking its engine and rules with it.
+# Every display name in PREDEFINED_TEMPLATE_ALIASES counts; the rest are the
+# names real tenants export (tests/test_zia_contract.py keeps its strict
+# tenant in step with this set).
+_PORTAL_DISPLAY_NAMES = [
+    "Private Key", "IBAN", "Adult Content", "Passport (EU)", "Corporate Finance", "Tax",
+    "Treatments Information", "Medical Imaging", "Insurance Document", "NDC Number (Package)",
+    "NDC Number (Product)", "Names (US)", "National Provider Identifier",
+    "Enhanced Driver's License (United States)", "Self-Harm & Cyberbullying", "Illegal Drugs",
+]
+PREDEFINED_DISPLAY_NAMES = frozenset(
+    norm_name(n) for n in list(_display.values()) + [d for ds in _CODE_DISPLAY_NAMES.values() for d in ds] + _PORTAL_DISPLAY_NAMES
+)
+PREDEFINED_NAME_PREFIX = "Z-"
+
+
+def heal_predefined_names(dictionaries: List[Dict[str, Any]], engines: List[Dict[str, Any]], *,
+                          prefix: str = PREDEFINED_NAME_PREFIX) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Tuple[str, str]]]:
+    """Rename every pack dictionary named like one of ZIA's predefined
+    display names to `prefix + name` and rewrite each `D:<name>` engine
+    reference to match, so the pack deploys instead of being refused as
+    a duplicate. Returns (dictionaries, engines, renamed) — renamed is a
+    list of (old, new) — without modifying the inputs. A renamed name is
+    no longer a predefined display name, so a second pass changes nothing;
+    a pack that already uses the target name is left alone for the plan
+    to report."""
+    taken = {norm_name(d.get("name")) for d in dictionaries}
+    renamed: List[Tuple[str, str]] = []
+    out_dicts: List[Dict[str, Any]] = []
+    for d in dictionaries:
+        name = str(d.get("name") or "")
+        new = f"{prefix}{name}"
+        if norm_name(name) in PREDEFINED_DISPLAY_NAMES and norm_name(new) not in taken:
+            taken.add(norm_name(new))
+            out_dicts.append(dict(d, name=new))
+            renamed.append((name, new))
+        else:
+            out_dicts.append(d)
+    if not renamed:
+        return dictionaries, engines, []
+    out_engines: List[Dict[str, Any]] = []
+    for e in engines:
+        expr = str(e.get("expression") or "")
+        for old, new in renamed:
+            # The same boundary as engine_references: a name that merely starts the same way is not touched.
+            expr = re.sub(r"D:" + re.escape(old) + r"(?=\s*(?:\bAND\b|\bOR\b|\)|>|\+|$))", lambda m, n=new: "D:" + n, expr)
+        out_engines.append(dict(e, expression=expr) if expr != str(e.get("expression") or "") else e)
+    return out_dicts, out_engines, renamed
+
+
 def build_policy_payload(
     policy_def: Dict[str, Any], engine_ids: List[Any], *, use_rank_0: bool = False
 ) -> Dict[str, Any]:
