@@ -190,18 +190,56 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
         checks.append(_check("constructs", "No eval, exec, pickle, os.system or shell=True in the app's Python", P_OWN, "classes", "fail",
                              "Found at: " + ", ".join(hits[:8]) + ("…" if len(hits) > 8 else ""), "Replace each with a safe equivalent (json, subprocess with an argument list, ast.literal_eval)."))
 
+    vc_md = _read(os.path.join(APP_DIR, "docs", "VULNERABILITY_CLASSES.md"))
+    vc_low = vc_md.lower()
+    classes_needs = {
+        "memory-safe language eliminates a whole class of bugs": "memory-safe" in vc_low or "memory safe" in vc_low,
+        "no SQL anywhere, so no SQL-injection class": "sql" in vc_low,
+        "escaping at every render site, with the inline-CSP limitation named": "escap" in vc_low and "csp" in vc_low,
+        "hash-pinned dependencies, pip-audit and a Trivy image scan": "pip-audit" in vc_low and "trivy" in vc_low and "hash" in vc_low,
+    }
+    missing_vc = [k for k, ok in classes_needs.items() if not ok]
+    if not vc_md:
+        checks.append(_check("classes_doc", "Which vulnerability classes are designed out, and which remain, is written down", P_OWN, "classes", "fail",
+                             "docs/VULNERABILITY_CLASSES.md does not exist.", "Write docs/VULNERABILITY_CLASSES.md, one section per class of vulnerability."))
+    elif missing_vc:
+        checks.append(_check("classes_doc", "Which vulnerability classes are designed out, and which remain, is written down", P_OWN, "classes", "fail",
+                             "docs/VULNERABILITY_CLASSES.md is missing: " + "; ".join(missing_vc) + ".", "Cover the missing points in docs/VULNERABILITY_CLASSES.md."))
+    else:
+        checks.append(_check("classes_doc", "Which vulnerability classes are designed out, and which remain, is written down", P_OWN, "classes", "pass",
+                             "docs/VULNERABILITY_CLASSES.md explains, class by class: Python is memory-safe (no buffer/use-after-free class); no SQL is used anywhere (no injection class); "
+                             "every render site escapes its output, with the inline-script/style CSP limitation named rather than hidden; and the supply chain is hash-pinned, "
+                             "pip-audit'd and Trivy-scanned in CI.", "Nothing to do."))
+
     # ── Radical transparency and accountability ──────────────────────────
     sec_md = _read(os.path.join(APP_DIR, "SECURITY.md"))
-    if "Reporting a vulnerability" in sec_md or "Report a vulnerability" in sec_md:
+    sec_low = sec_md.lower()
+    disclosure_needs = {
+        "a private reporting channel (a GitHub security advisory or direct contact)": "report a vulnerability" in sec_low or "reporting a vulnerability" in sec_low,
+        "an explicit authorization to test this product, in good faith": "authorizes good-faith" in sec_low,
+        "a safe-harbor commitment for testers who stay in scope": "safe harbor" in sec_low,
+        "a stated coordinated-disclosure window": "90 days" in sec_low and "7 days" in sec_low,
+    }
+    missing_disc = [k for k, ok in disclosure_needs.items() if not ok]
+    if not missing_disc:
         checks.append(_check("disclosure", "A vulnerability disclosure policy is published", P_OPEN, "disclosure", "pass",
-                             "SECURITY.md says how to report privately (GitHub security advisory or the owner), the acknowledgement time (3 business days) and the fix window (30 days).", "Nothing to do."))
+                             "SECURITY.md authorizes good-faith testing of this product (not a customer tenant), commits to safe harbor for testers who stay in scope, "
+                             "names a private reporting channel with a 3-business-day acknowledgement and a 30-day fix window for credential/tenant/unapproved-write issues, "
+                             "and states the coordinated-disclosure window (90 days, or 7 days after the fix reaches main, whichever is first).", "Nothing to do."))
     else:
-        checks.append(_check("disclosure", "A vulnerability disclosure policy is published", P_OPEN, "disclosure", "fail", "SECURITY.md has no reporting section.", "Add how to report privately and the response times."))
-    if "advisor" in sec_md.lower():
+        checks.append(_check("disclosure", "A vulnerability disclosure policy is published", P_OPEN, "disclosure", "fail",
+                             "SECURITY.md is missing: " + "; ".join(missing_disc) + ".", "Add these to SECURITY.md's vulnerability disclosure policy."))
+    cves_needs = {
+        "fixed vulnerabilities published as GitHub Security Advisories": "github security advisor" in sec_low,
+        "a CWE classification on every High/Critical advisory": "cwe" in sec_low,
+    }
+    missing_cves = [k for k, ok in cves_needs.items() if not ok]
+    if not missing_cves:
         checks.append(_check("cves", "Fixed vulnerabilities are published as advisories", P_OPEN, "cves", "pass",
-                             "SECURITY.md commits to GitHub security advisories for anything that exposes credentials, tenant data or an unapproved write.", "Nothing to do."))
+                             "SECURITY.md commits to GitHub Security Advisories for anything that exposes credentials, tenant data or an unapproved write, with a CWE id on every High/Critical advisory.", "Nothing to do."))
     else:
-        checks.append(_check("cves", "Fixed vulnerabilities are published as advisories", P_OPEN, "cves", "warn", "SECURITY.md does not say where fixed issues are published.", "Commit to GitHub security advisories in SECURITY.md."))
+        checks.append(_check("cves", "Fixed vulnerabilities are published as advisories", P_OPEN, "cves", "fail",
+                             "SECURITY.md is missing: " + "; ".join(missing_cves) + ".", "Commit to GitHub Security Advisories with CWE ids for High/Critical issues in SECURITY.md."))
     if "Known limitations" in sec_md:
         checks.append(_check("limits", "Known limitations are written down, not hidden", P_OPEN, "disclosure", "pass",
                              "SECURITY.md lists what the tool does not protect against (bearer token on the machine, exposure beyond loopback, unsigned updates, inline scripts under CSP).", "Nothing to do."))

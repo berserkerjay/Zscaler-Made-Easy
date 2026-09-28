@@ -11,9 +11,14 @@ What an update does
    so the pull is not refused. Any other hand-edited tracked file is
    stashed before the pull and re-applied after it.
 3. Fetch, switch to main, pull fast-forward only.
-4. Install requirements (optional step; a pip problem never stops the
+4. When origin is github.com, cross-check the commit just pulled against
+   GitHub's REST API for main — a channel separate from the git pull
+   itself. A mismatch rolls the pull back and refuses the update rather
+   than running an unverified tree; see verify_against_github_api(). This
+   does not verify commit/tag signatures (see SECURITY.md).
+5. Install requirements (optional step; a pip problem never stops the
    update).
-5. Restart the server through the same start script the shortcuts use.
+6. Restart the server through the same start script the shortcuts use.
 
 Safety
 ------
@@ -169,6 +174,49 @@ def _auth_hint(msg: str) -> str:
     return ""
 
 
+_GITHUB_REMOTE_RE = re.compile(r"^(?:https://github\.com/|git@github\.com:)([^/]+)/([^/]+?)(?:\.git)?/?$")
+
+
+def _github_owner_repo(app_dir: str) -> Optional[Tuple[str, str]]:
+    """(owner, repo) when origin is a github.com remote, else None — a
+    fork or a mirror is never assumed to be the upstream repository."""
+    cp = _git(app_dir, "remote", "get-url", "origin", timeout=15)
+    if cp.returncode != 0:
+        return None
+    m = _GITHUB_REMOTE_RE.match(_out(cp))
+    return (m.group(1), m.group(2)) if m else None
+
+
+def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout: int = 10) -> Dict[str, Any]:
+    """Cross-check the commit just pulled over git against what GitHub's
+    REST API reports for the same branch: a channel separate from the
+    git smart-HTTP pull used to fetch it, so the two would only disagree
+    if one of them was tampered with in transit, or a mirror served a
+    different tree than GitHub itself has. This does not verify commit
+    or tag signatures (main carries no signed tags); see SECURITY.md.
+
+    Best-effort and skipped, not failed, when origin is not github.com
+    or the API cannot be reached (offline, blocked outbound, a private
+    repository) — {"checked": False, "reason": ...}. Otherwise
+    {"checked": True, "match": bool, "api_sha": str, "local_sha": str}."""
+    owner_repo = _github_owner_repo(app_dir)
+    if not owner_repo:
+        return {"checked": False, "reason": "origin is not a github.com remote"}
+    owner, repo = owner_repo
+    try:
+        import requests
+        r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/commits/{branch}",
+                         headers={"Accept": "application/vnd.github+json"}, timeout=timeout)
+        r.raise_for_status()
+        api_sha = (r.json() or {}).get("sha") or ""
+    except Exception as e:  # noqa: BLE001
+        return {"checked": False, "reason": f"could not reach the GitHub API: {type(e).__name__}: {str(e)[:200]}"}
+    if not api_sha:
+        return {"checked": False, "reason": "the GitHub API response had no commit sha"}
+    return {"checked": True, "match": api_sha.startswith(local_sha) or local_sha.startswith(api_sha),
+            "api_sha": api_sha, "local_sha": local_sha, "owner": owner, "repo": repo}
+
+
 def is_checkout(app_dir: str) -> bool:
     """True when git manages this folder: a normal clone (.git directory),
     a worktree (.git file), or a folder inside a larger checkout. Asking
@@ -314,6 +362,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
         step("Check this folder", False, st["reason"])
         return result
     step("Check this folder", True, f"git checkout on branch {st.get('branch')}, build {st.get('local_commit')}")
+    before_full = _out(_git(app_dir, "rev-parse", "HEAD")) or None
 
     # A lock left behind by an interrupted git makes every write fail with
     # "could not write index"; clear it before touching anything.
@@ -401,6 +450,29 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     result["after"] = after
     result["updated"] = bool(after and after != result["before"])
     step("Pull latest code", True, f"build {result['before']} → {after}" if result["updated"] else f"already on build {after}")
+
+    if result["updated"]:
+        after_full = _out(_git(app_dir, "rev-parse", "HEAD")) or after
+        verify = verify_against_github_api(app_dir, "main", after_full)
+        if verify.get("checked") and not verify.get("match"):
+            reset_ok = False
+            if before_full:
+                reset_ok = _git(app_dir, "reset", "--hard", before_full).returncode == 0
+            step("Verify against GitHub", False,
+                 f"The commit just pulled ({after_full[:7]}) does not match what GitHub's REST API reports for "
+                 f"{verify.get('owner')}/{verify.get('repo')}@main ({verify['api_sha'][:7]}) — this could mean the "
+                 "git transport was tampered with in transit. " +
+                 (f"Rolled back to {result['before']}." if reset_ok else "Could not roll back automatically; run  git status  in the app folder."))
+            result["error"] = ("Update verification failed: the commit pulled over git does not match GitHub's REST API for the "
+                               "same branch. " + ("Rolled back; nothing changed." if reset_ok else "Rollback failed; see the step detail.") +
+                               " Try again, and check your network path to GitHub (a transparent proxy or DNS hijack can serve a different tree).")
+            result["after"] = result["before"] if reset_ok else after
+            result["updated"] = False
+            _restore(app_dir, stashed, step, result)
+            return result
+        elif verify.get("checked"):
+            step("Verify against GitHub", True,
+                 f"Matches GitHub's REST API for {verify.get('owner')}/{verify.get('repo')}@main ({verify['api_sha'][:7]}).")
 
     _restore(app_dir, stashed, step, result)
 
