@@ -63,8 +63,17 @@ and terminates TLS; do not publish port 8000 on a public interface.
 ```bash
 make dev                                 # once: installs pytest and pyflakes into .venv
 make test                                # .venv/bin/python -m pytest -q tests
-make check                               # compile, pyflakes, pack conventions, Terraform freshness (what CI runs)
+make check                               # compile, pyflakes, pack conventions, Terraform freshness, offline upstream check (what CI runs)
+make upstream                            # the daily upstream check by hand: SDK, Terraform provider, API reference vs what the app sends
 ```
+
+The upstream check (`upstream_check.py`) runs every day in GitHub Actions
+(`.github/workflows/upstream_check.yml`). It compares what the app sends
+with the installed `zscaler-sdk-python`, PyPI's latest release and 2.x
+prerelease (whose ZIA service definition is machine-readable), the
+`zscaler/zia` Terraform provider's latest version, schema and docs, and
+Zscaler's API reference. Drift opens or updates one issue labelled
+`upstream-drift` with the report; a clean day closes it.
 
 The suite (380 tests) covers the checks, the policy-pack planner and
 executor against a fake tenant that refuses what a real ZIA tenant refuses,
@@ -115,7 +124,7 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 | Policy packs | `pack_ops.py` (the shared execution path every pack goes through: validation, ordering, retries, run control, structured events), `pack_deploy.py` (plan, apply, journey, verify), `pack_removal.py` (remove, undo), `pack_jobs.py` (deploys and removals as background jobs the GUI follows live), `pack_channels.py` (per-channel payloads), `pack_library.py` (uploads), `pack_terraform.py`, `dlp_importer.py` (pack data and ZIA limits); pack data in `cjis_policy_pack/`, `fed_policy_pack/`, `global_banking_baseline/`, `healthcare_phi_baseline/`, `zbp_enterprise_baseline/`, `zbp_source_code_baseline/` |
 | Reports and analysis | `bypass_report.py`, `ssl_flow.py`, `data_flow.py`, `detection_health.py`, `dlp_efficacy.py`, `log_analyzer.py`, `secure_by_design.py` |
 | Continuous evaluation | `continuous_eval.py` (the `dlp-check-evaluate` command), `proposals.py`, `proposal_apply.py`, `deployments.py`, `tenant_profiles.py` |
-| Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button) |
+| Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button), `upstream_check.py` (the SDK, the Terraform provider and Zscaler's API reference cross-checked against what the app sends; offline in `make check`, online daily in `.github/workflows/upstream_check.yml`) |
 
 Documentation: `GETTING_STARTED.md` (first engagement, step by step),
 `POLICY_PACKS.md` (pack format), `docs/SHARED_EXECUTION_PATH.md` (how

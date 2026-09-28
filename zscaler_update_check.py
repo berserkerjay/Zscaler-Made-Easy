@@ -128,6 +128,7 @@ ALLOWED_HOSTS = {
     # Zscaler-official (Tier 1)
     "help.zscaler.com",
     "developer.zscaler.com",
+    "automate.zscaler.com",   # the API reference (upstream_check probes it)
     "www.zscaler.com",
     "trust.zscaler.com",
     "community.zscaler.com",

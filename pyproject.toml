@@ -47,7 +47,7 @@ py-modules = [
     "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth",
     "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
     "report_docx", "rule_migrator", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security",
-    "sso", "ssl_flow", "tenant_profiles", "vertical", "zcc_evaluation", "zscaler_automation_checks", "zscaler_best_practices",
+    "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vertical", "zcc_evaluation", "zscaler_automation_checks", "zscaler_best_practices",
     "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check",
     "zscaler_zdx_checks", "zscaler_zidentity_checks",
 ]
