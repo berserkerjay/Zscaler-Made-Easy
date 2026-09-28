@@ -4,6 +4,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 `GET /api/health`. Updates are fast-forwards of `main`; this file lists
 what each batch of changes did, newest first.
 
+## 2026-09-28
+
+### A dev → qa → main branch structure
+- **What you asked for.** "Structure the repo to make initial changes to the dev branch then promote to qa then to main."
+- **Now** there are three long-lived branches, promoted in one direction only: `dev` (where new work lands and is merged by pull request), `qa` (`DLP-CHECK-QA` on GitHub — a fast-forward of `dev`'s tip once it's ready for end-to-end testing), and `main` (a fast-forward of `qa` once QA signs off, what customers run). `dev` was created fresh from `main`'s current tip; `qa` was already there and brought level with `main` first (all 12 changes it was missing, from the Path Analyzer through the install guide). See the new "Branching and releases" section in `README.md`.
+- All three branches are identical right now (`main` = `qa` = `dev`), so this is a pure structural change: nothing about the app itself moved.
+
 ## 2026-09-27
 
 ### A beginner's install guide, and credits in Advanced settings

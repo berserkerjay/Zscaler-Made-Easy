@@ -122,6 +122,31 @@ disclosure), `CHANGELOG.md`. Inside the app, every page has a *What is this
 and why it matters* panel and *How a deployment works* walks through a
 deployment step by step.
 
+## Branching and releases
+
+Three long-lived branches, promoted in one direction only:
+
+```
+feature branch → dev → qa → main
+```
+
+- **`dev`** is where new work lands first: a feature branch is opened off
+  `dev`, developed there, and merged back into `dev` by pull request once
+  its own tests are green.
+- **`qa`** (`DLP-CHECK-QA` on GitHub) is `dev`'s work once it's ready to be
+  verified end to end. Promoting is a fast-forward of `qa` to `dev`'s tip —
+  never a new commit, never a rebase — so what gets tested is exactly what
+  was merged, byte for byte.
+- **`main`** is what customers run. Promoting is the same fast-forward,
+  from `qa` to `main`, once QA has signed off.
+
+Every promotion is a plain fast-forward (`git push origin <source>:<target>`
+or an equivalent PR with no merge commit), not a rebase or a squash, so the
+three branches never diverge from each other's history — only ever how far
+ahead one is of the next. `git rev-list --left-right --count qa...main`
+(or `dev...qa`) being anything other than `0 <n>` means something landed
+out of order and needs attention before promoting further.
+
 ## Zscaler prerequisites
 
 1. OneAPI and ZIdentity enabled on the tenant.
