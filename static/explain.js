@@ -251,7 +251,7 @@
   };
   X.updateapp = {
     group: 'Reference', name: 'Update app', href: '',
-    what: 'Fetches the latest version of this app from GitHub, installs the pinned dependencies and restarts the server.',
+    what: 'Fetches the latest version of this app from GitHub, installs the pinned dependencies and restarts the server. The Branch dropdown next to the button picks what it pulls: Stable (main) is what customers run; QA and Development carry a fix before it is promoted, so it can be tried early. With no change made there, an update stays on the branch the install is already on.',
     why: 'Fixes and new checks ship weekly; running an old build means findings the customer already fixed elsewhere.',
     when: 'When the Start here panel says an update is available.',
     get: 'The app restarts on the same address; the browser reconnects.',

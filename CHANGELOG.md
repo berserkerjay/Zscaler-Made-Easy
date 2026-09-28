@@ -1,10 +1,18 @@
 # Changelog
 
 The app shows its build (git commit) in the guide's *Build* badge and at
-`GET /api/health`. Updates are fast-forwards of `main`; this file lists
-what each batch of changes did, newest first.
+`GET /api/health`. Updates are fast-forwards of the branch the install is
+on — `main` unless it was switched from the Update app card; this file
+lists what each batch of changes did, newest first.
 
 ## 2026-09-28
+
+### Update app can follow `dev` or `qa`, not only `main`
+- **What you asked for.** "I want the app to have options to update to specific branches and make that selectable for now" — so a fix can be tried from an install before it is promoted through `dev → qa → main`.
+- **Now** the **Update app** button on the Start here card has a **Branch** dropdown — *Stable (main)*, *QA (DLP-CHECK-QA)*, *Development (dev)*, the installed one marked — that re-checks GitHub for the chosen branch as you pick it and is posted with the update. `UPDATE_Zscaler_Assessment.bat dev` and `python app_update.py --branch dev` do the same from a prompt; `--status` reports which branch updates come from.
+- **What it does underneath** (`app_update.py`): the names are a strict allowlist (`BRANCHES`) validated before anything reaches git — the API answers 400 to anything else, the CLI refuses it. An update switches to a local branch, creates a tracking branch for one only GitHub has, and refuses one GitHub does not have before anything moves; the pull is still fast-forward only, hand edits are still set aside and re-applied, and the GitHub REST cross-check now compares against the same branch. With no branch named, an update stays on the branch the install is on — it never silently moves an install back to `main`. `/api/health` reports the branch and GitHub's tip of *that* branch, so "update available" is honest on `dev` too, and the Advanced settings page's Update button follows the same rule.
+- `SECURITY.md` (*Supported versions*), `README.md` (*Branching and releases*) and `INSTALL.md` say so, including that `qa`/`dev` carry work that has not been through QA.
+- Verified: `tests/test_app_update.py` — switching to a `dev` branch one commit ahead, staying on it when no branch is named, switching back; the allowlist refused by `valid_branch`, `update`, the CLI and both endpoints; `/api/health` and `/api/app/update/status` reporting the branch and the choices; the card's markup and the posted body. Full suite green. Also run live from a checkout against the real repository: `/api/health` and `/api/app/update/status` answered for all three branches, an unknown branch got 400, and in a headless browser the dropdown rendered the three choices, picking *Development* re-checked `dev` and the Update button posted `{"branch":"dev"}` (the update itself intercepted, nothing moved). The *Update app* entry in the in-app help (*Every function*) describes the dropdown.
 
 ### A pack dictionary named like a predefined dictionary heals itself when the pack loads
 - **What you asked for.** "So can you make the fix for me" — auto-heal in the app, chosen over hand-editing `old_fed_policy_pack`, after its deploy still failed on `Duplicate DLP dictionary names are not allowed. [Private Key].` and the `Private Keys` engine and every rule behind it were skipped.

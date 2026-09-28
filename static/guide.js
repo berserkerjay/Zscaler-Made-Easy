@@ -163,16 +163,27 @@ function _gdWhereHtml() {
   // The Update button is always there on a git checkout: the update
   // itself reports what GitHub says, even when the quick check failed.
   const btn = (label, primary) => ` <button type="button" class="gd-btn ${primary ? 'primary' : 'quiet'} gd-btn-sm" id="gdUpdateBtn" onclick="_gdUpdateApp()">${label}</button>`;
+  // Which branch Update app pulls. Stable (main) is what customers run;
+  // QA and Development exist to try a fix before it is promoted. The list
+  // comes from the server (an allowlist); the pick is kept across re-renders.
+  const branches = Array.isArray(a.branches) && a.branches.length ? a.branches : [{ name: 'main', label: 'Stable (main)', current: true }];
+  const chosen = GD.updBranch || (branches.find(b => b.current) || branches[0]).name;
+  const sel = a.is_git_checkout === false ? '' : ` <label class="gd-upd-branch">Branch <select id="gdUpdBranch" onchange="GD.updBranch = this.value; _gdUpdateCheck()" title="Stable (main) is what customers run. QA and Development carry work that has not been through QA yet; use them to try a fix before it is promoted.">${branches.map(b => `<option value="${_gdE(b.name)}"${b.name === chosen ? ' selected' : ''}>${_gdE(b.label)}${b.current ? ' — installed' : ''}</option>`).join('')}</select></label>`;
+  const where = a.branch ? `${_gdE(a.branch)} on GitHub` : 'GitHub';
   if (a.is_git_checkout === false) {
     s += ' · <strong>not a git checkout</strong>: it cannot be updated in place.' + btn('How to update', true);
   } else if (a.latest_commit && a.git_commit && a.git_commit !== 'unknown' && a.latest_commit !== a.git_commit) {
-    s += ` · <strong>update available</strong> (GitHub is on ${_gdE(a.latest_commit)})` + btn('Update app now', true);
+    s += ` · <strong>update available</strong> (${where} is on ${_gdE(a.latest_commit)})` + btn('Update app now', true);
   } else if (a.latest_commit) {
     s += ' · up to date' + btn('Update app', false) + ' <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
   } else {
     s += ` · <strong>could not check GitHub</strong>${a.latest_commit_error ? ` (${_gdE(a.latest_commit_error)})` : ''}` + btn('Update app', true) + ' <button type="button" class="gd-link" onclick="_gdUpdateCheck()">Check again</button>';
   }
-  return s + _gdTlsNote(a.tls);
+  return s + sel + _gdTlsNote(a.tls);
+}
+function _gdUpdBranch() {
+  const sel = document.getElementById('gdUpdBranch');
+  return (sel && sel.value) || GD.updBranch || '';
 }
 function _gdUpdateBox(html, show = true) {
   const box = document.getElementById('gdUpdate');
@@ -182,13 +193,20 @@ function _gdUpdateBox(html, show = true) {
 async function _gdUpdateCheck() {
   _gdUpdateBox('<span class="gd-upd-line">Checking GitHub…</span>');
   try {
-    const st = await (await fetch('/api/app/update/status?refresh=1', { cache: 'no-store' })).json();
-    GD.about = Object.assign({}, GD.about, { git_commit: st.local_commit || GD.about.git_commit, latest_commit: st.remote_commit, latest_commit_error: st.remote_error || null, is_git_checkout: st.is_git_checkout });
+    const branch = _gdUpdBranch();
+    const r = await fetch('/api/app/update/status?refresh=1' + (branch ? '&branch=' + encodeURIComponent(branch) : ''), { cache: 'no-store' });
+    const st = await r.json();
+    if (!r.ok) throw new Error(st.detail || `HTTP ${r.status}`);
+    GD.updBranch = st.target_branch || branch || GD.updBranch;
+    GD.about = Object.assign({}, GD.about, { git_commit: st.local_commit || GD.about.git_commit, latest_commit: st.remote_commit, latest_commit_error: st.remote_error || null,
+                                             is_git_checkout: st.is_git_checkout, branch: st.branch || GD.about.branch, branches: st.branches || GD.about.branches });
     _gdRender();
+    const target = st.target_branch || 'main';
+    const here = `this install is on ${_gdE(st.local_commit)}${st.branch ? ` (${_gdE(st.branch)})` : ''}`;
     const note = st.reason && st.can_update ? `<div class="gd-upd-line soft">${_gdE(st.reason)}</div>` : '';
     if (st.reason && !st.can_update) _gdUpdateBox(`<span class="gd-upd-line warn">${_gdE(st.reason)}</span>`);
-    else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">GitHub is on build ${_gdE(st.remote_commit)}; this install is on ${_gdE(st.local_commit)}.</span>${note}`);
-    else _gdUpdateBox(`<span class="gd-upd-line ok">Up to date (build ${_gdE(st.local_commit || '?')}).</span>`);
+    else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">${_gdE(target)} on GitHub is on build ${_gdE(st.remote_commit)}; ${here}.${st.branch && st.branch !== target ? ` Update app switches this install to ${_gdE(target)}.` : ''}</span>${note}`);
+    else _gdUpdateBox(`<span class="gd-upd-line ok">Up to date with ${_gdE(target)} (build ${_gdE(st.local_commit || '?')}).</span>`);
   } catch (e) { _gdUpdateBox(`<span class="gd-upd-line warn">Could not check: ${_gdE(e.message)}</span>`); }
 }
 function _gdUpdateHelp() {
@@ -202,10 +220,11 @@ async function _gdUpdateApp() {
   const btn = document.getElementById('gdUpdateBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   const lines = [];
   const show = (extra = '') => _gdUpdateBox(`<div class="gd-upd-steps">${lines.map(l => `<div class="gd-upd-line ${l.ok === false ? (l.soft ? 'soft' : 'warn') : l.ok ? 'ok' : ''}">${l.ok === false ? (l.soft ? '⚠' : '✗') : l.ok ? '✓' : '…'} ${_gdE(l.name)}${l.detail ? ` <span class="dim">— ${_gdE(l.detail)}</span>` : ''}</div>`).join('')}${extra}</div>`);
-  lines.push({ name: 'Pulling the latest code from GitHub', ok: null }); show();
+  const branch = _gdUpdBranch() || null;
+  lines.push({ name: branch ? `Pulling the latest ${branch} from GitHub` : 'Pulling the latest code from GitHub', ok: null }); show();
   let res;
   try {
-    const r = await fetch('/api/app/update', { method: 'POST' });
+    const r = await fetch('/api/app/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch }) });
     res = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(res.detail || `HTTP ${r.status}`);
   } catch (e) {

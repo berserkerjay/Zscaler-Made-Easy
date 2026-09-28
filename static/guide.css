@@ -112,6 +112,10 @@ body.gd-guided .gd-advanced { display: none !important; }
 
 /* ── Update the app from here ── */
 .gd-btn-sm { min-height: 28px; padding: 0.25rem 0.7rem; font-size: 0.78rem; margin-left: 0.4rem; vertical-align: middle; }
+/* Which branch Update app pulls: Stable (main), QA or Development. */
+.gd-upd-branch { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem; font-size: 0.78rem; color: var(--dim); vertical-align: middle; }
+.gd-upd-branch select { min-height: 28px; padding: 0.15rem 0.4rem; font: inherit; font-size: 0.78rem; color: var(--text); background: var(--well, #0f172a); border: 1px solid var(--border); border-radius: 6px; }
+.gd-upd-branch select:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 1px; }
 .gd-link { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 0.82rem; cursor: pointer; padding: 0; text-decoration: underline; }
 .gd-update { margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: rgba(148,163,184,0.05); font-size: 0.82rem; }
 .gd-update[hidden] { display: none; }

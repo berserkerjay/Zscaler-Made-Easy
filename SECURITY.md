@@ -77,9 +77,18 @@ versions, and, for anything **High** or **Critical**, a **CWE**
 
 ## Supported versions
 
-Only the `main` branch is supported. The in-app **Update app** button (or
-`UPDATE_Zscaler_Assessment.bat`) fast-forwards to it. There are no
-maintained release branches.
+`main` is the supported branch: what customers run, and what the in-app
+**Update app** button (or `UPDATE_Zscaler_Assessment.bat`) fast-forwards
+to by default. The button's **Branch** choice (or
+`UPDATE_Zscaler_Assessment.bat dev`, `python app_update.py --branch dev`)
+can also move an install to `DLP-CHECK-QA` (QA) or `dev` (development) —
+the two branches a fix passes through before it reaches `main` (README,
+*Branching and releases*) — so a fix can be tried before it is promoted.
+Those two carry work that has not been through QA, and a report produced
+on them should say so. The choice is a strict allowlist of those three
+names, validated before anything reaches git; with no branch named, an
+update stays on the branch the install is on. There are no maintained
+release branches.
 
 ## What the tool does to be safe by default
 

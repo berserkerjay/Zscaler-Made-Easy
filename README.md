@@ -149,6 +149,13 @@ ahead one is of the next. `git rev-list --left-right --count qa...main`
 (or `dev...qa`) being anything other than `0 <n>` means something landed
 out of order and needs attention before promoting further.
 
+An install can be pointed at any of the three from the **Update app** card
+(the **Branch** dropdown), `UPDATE_Zscaler_Assessment.bat <branch>`, or
+`python app_update.py --branch <branch>`, so a fix can be tried on `dev`
+or `qa` before it is promoted. The names are a strict allowlist
+(`app_update.BRANCHES`); with no branch given, an update stays on the
+branch the install is on. `main` is the default and what customers run.
+
 ## Zscaler prerequisites
 
 1. OneAPI and ZIdentity enabled on the tenant.
