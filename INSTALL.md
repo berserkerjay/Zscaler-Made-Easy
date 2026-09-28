@@ -269,7 +269,8 @@ done.
 |---|---|---|
 | Open the app | Double-click the **Zscaler Assessment** desktop shortcut | `./start.sh` in the app folder |
 | Close it | Double-click `STOP_Zscaler_Assessment.bat`, or just don't reopen it | `Ctrl + C` in its terminal window, or `./stop.sh` |
-| Get the latest version | Click **Update app now** inside the app (Start here card), or double-click `UPDATE_Zscaler_Assessment.bat` | Click **Update app now** inside the app, or `git pull && ./install.sh` |
+| Get the latest version | Click **Update app now** inside the app (Start here card), or double-click `UPDATE_Zscaler_Assessment.bat` | Click **Update app now** inside the app, or `python3 app_update.py` then `./start.sh` |
+| Try a fix before it is released | Pick **QA** or **Development** in the **Branch** dropdown next to the Update button, then update; pick **Stable (main)** to go back. Or `UPDATE_Zscaler_Assessment.bat dev` | Same dropdown, or `python3 app_update.py --branch dev` (`--branch main` to go back) |
 | Remove it completely | Double-click `UNINSTALL_Zscaler_Assessment.bat`, then delete the folder | Delete the app's folder |
 
 (Container: to update, get the latest code and run `docker compose up

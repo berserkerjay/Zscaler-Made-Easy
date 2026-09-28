@@ -313,13 +313,24 @@ def test_endpoints(repos, monkeypatch):
     app = str(repos["app"])
     monkeypatch.setattr(srv, "_APP_DIR", app)
     v2 = _push_v2(repos["work"])
-    monkeypatch.setattr(srv, "_latest_remote_commit", lambda: v2)
+    monkeypatch.setattr(srv, "_latest_remote_commit", lambda branch="main": v2)
     c = TestClient(srv.app)
     st = c.get("/api/app/update/status?refresh=1").json()
     assert st["update_available"] is True and st["can_update"] and st["remote_commit"] == v2 and st["restart_command"]
-    monkeypatch.setattr(au, "update", lambda app_dir, install_deps=True, python=None: {"ok": True, "updated": True, "before": "a", "after": v2, "steps": [], "error": None, "restart_required": True, "app_dir": app_dir})
+    # The branch an update applies to, and the ones it may switch to, are reported; only those are accepted.
+    assert st["target_branch"] == "main" and [b["name"] for b in st["branches"]] == list(au.BRANCHES) and st["branches"][0]["current"] is True
+    assert c.get("/api/app/update/status?branch=dev").json()["target_branch"] == "dev"
+    bad = c.get("/api/app/update/status?branch=release%2Fevil")
+    assert bad.status_code == 400 and "choose one of" in bad.json()["detail"]
+    h = c.get("/api/health").json()
+    assert h["branch"] == "main" and [b["name"] for b in h["branches"]] == list(au.BRANCHES) and h["latest_commit"] == v2
+    seen = {}
+    monkeypatch.setattr(au, "update", lambda app_dir, install_deps=True, python=None, branch=None: seen.update({"branch": branch}) or {"ok": True, "updated": True, "before": "a", "after": v2, "steps": [], "error": None, "restart_required": True, "app_dir": app_dir, "branch": branch})
     r = c.post("/api/app/update")
-    assert r.status_code == 200 and r.json()["updated"] and r.json()["app_dir"] == app
+    assert r.status_code == 200 and r.json()["updated"] and r.json()["app_dir"] == app and seen["branch"] == "main", "no body: the branch the install is on"
+    r = c.post("/api/app/update", json={"branch": "dev"})
+    assert r.status_code == 200 and seen["branch"] == "dev"
+    assert c.post("/api/app/update", json={"branch": "feature/x"}).status_code == 400
     scheduled = {}
     monkeypatch.setattr(au, "schedule_restart", lambda app_dir, delay=0.8, dry_run=False: scheduled.update({"dir": app_dir}) or {"scheduled": True, "command": ["x"]})
     r = c.post("/api/app/restart")
@@ -329,6 +340,7 @@ def test_endpoints(repos, monkeypatch):
     assert c.post("/api/app/update").status_code == 403 and c.post("/api/app/restart").status_code == 403
     html = c.get("/static/guide.js").text
     assert "_gdUpdateApp" in html and "/api/app/update" in html and "Update app now" in html
+    assert "gdUpdBranch" in html and "JSON.stringify({ branch })" in html, "the card offers the branch and posts the choice"
     # The button is offered even when the GitHub check failed, and the reason is shown.
     assert "could not check GitHub" in html and "latest_commit_error" in html and "btn('Update app', true)" in html
 
@@ -338,13 +350,13 @@ def test_health_reports_why_the_github_check_failed(repos, monkeypatch):
     app = str(repos["app"])
     _git(app, "remote", "set-url", "origin", str(repos["origin"] / "does-not-exist"))
     monkeypatch.setattr(srv, "_APP_DIR", app)
-    srv._LATEST.update({"at": 0.0, "sha": None, "error": None})
+    srv._LATEST.clear()
     c = TestClient(srv.app)
     h = c.get("/api/health").json()
     assert h["latest_commit"] is None and h["latest_commit_error"]
     st = c.get("/api/app/update/status?refresh=1").json()
     assert st["remote_commit"] is None and st["remote_error"] and st["can_update"]
-    srv._LATEST.update({"at": 0.0, "sha": None, "error": None})
+    srv._LATEST.clear()
 
 
 def test_worktree_and_nested_folders_count_as_checkouts(repos, tmp_path):
@@ -380,3 +392,45 @@ def test_git_gets_the_corporate_ca_bundle_and_ssl_failures_are_explained(tmp_pat
     hint = au._auth_hint("fatal: SSL certificate problem: self-signed certificate in certificate chain")
     assert "REQUESTS_CA_BUNDLE" in hint and "local_settings.bat" in hint
     assert "could not be reached" in au._auth_hint("fatal: unable to access: Could not resolve host: github.com")
+
+
+def test_update_can_switch_to_another_allowed_branch_and_then_stays_on_it(repos):
+    """A dev branch on GitHub, one commit ahead of main: an update asked
+    for dev switches to it (tracking origin), pulls it, and verifies it
+    against that branch; an update with no branch named then stays on
+    dev instead of silently moving the install back to main; asking for
+    main switches back."""
+    app, work = str(repos["app"]), repos["work"]
+    _git(work, "checkout", "-q", "-b", "dev")
+    (work / "dlp_api_server.py").write_text("print('dev')\n")
+    _git(work, "commit", "-q", "-am", "dev work"); _git(work, "push", "-q", "origin", "dev")
+    dev_sha = _git(work, "rev-parse", "--short", "HEAD")
+    assert au.current_branch(app) == "main" and au.resolve_branch(app) == "main"
+    st = au.status(app, remote_sha=dev_sha, branch="dev")
+    assert st["target_branch"] == "dev" and st["update_available"] is True
+    assert [b["name"] for b in st["branches"]] == list(au.BRANCHES) and [b["current"] for b in st["branches"]] == [True, False, False]
+    res = au.update(app, install_deps=False, branch="dev")
+    assert res["ok"] and res["updated"] and res["after"] == dev_sha and res["branch"] == "dev", res
+    assert [s["name"] for s in res["steps"]] == ["Check this folder", "Fetch from GitHub", "Switch to dev", "Pull latest code"]
+    assert (repos["app"] / "dlp_api_server.py").read_text() == "print('dev')\n" and au.current_branch(app) == "dev"
+    assert au.resolve_branch(app) == "dev", "no branch asked for: the one the install is on"
+    res2 = au.update(app, install_deps=False)
+    assert res2["ok"] and not res2["updated"] and res2["branch"] == "dev" and au.current_branch(app) == "dev"
+    res3 = au.update(app, install_deps=False, branch="main")
+    assert res3["ok"] and res3["branch"] == "main" and au.current_branch(app) == "main"
+    assert "Switch to main" in [s["name"] for s in res3["steps"]] and (repos["app"] / "dlp_api_server.py").read_text() == "print('v1')\n"
+
+
+def test_only_the_allowed_branches_are_accepted_and_a_missing_one_is_refused_before_anything_moves(repos):
+    app = str(repos["app"])
+    with pytest.raises(ValueError, match="choose one of"):
+        au.valid_branch("release/evil; rm -rf")
+    res = au.update(app, install_deps=False, branch="feature/x")
+    assert not res["ok"] and "Unknown branch" in res["error"] and res["steps"][0]["name"] == "Check the branch"
+    with pytest.raises(SystemExit):
+        au.main(["--dir", app, "--no-deps", "--branch", "feature/x"])   # argparse refuses anything outside the allowlist
+    # An allowed branch this origin does not have: refused, the install untouched.
+    res = au.update(app, install_deps=False, branch="DLP-CHECK-QA")
+    assert not res["ok"] and "no branch named DLP-CHECK-QA" in res["error"], res
+    assert au.current_branch(app) == "main" and (repos["app"] / "dlp_api_server.py").read_text() == "print('v1')\n"
+    assert au.main(["--dir", app, "--status", "--branch", "main"]) == 0

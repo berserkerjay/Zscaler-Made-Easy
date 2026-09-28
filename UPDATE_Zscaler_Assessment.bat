@@ -7,7 +7,7 @@ if not defined DLPCHECK_UPDATE_COPY (
     set "DLPCHECK_APP_DIR=%~dp0"
     set "DLPCHECK_UPDATE_COPY=1"
     copy /y "%~f0" "%TEMP%\dlpcheck_update.bat" >nul
-    call "%TEMP%\dlpcheck_update.bat"
+    call "%TEMP%\dlpcheck_update.bat" %*
     exit /b
 )
 setlocal
@@ -63,7 +63,11 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-"%PYTHON_EXE%" "%INSTALL_DIR%\app_update.py" --dir "%INSTALL_DIR%"
+REM Optional first argument: the branch to update to - main, DLP-CHECK-QA or dev
+REM (default: the branch this install is on). Example: UPDATE_Zscaler_Assessment.bat dev
+set "BRANCH_ARG="
+if not "%~1"=="" set "BRANCH_ARG=--branch %~1"
+"%PYTHON_EXE%" "%INSTALL_DIR%\app_update.py" --dir "%INSTALL_DIR%" %BRANCH_ARG%
 if errorlevel 1 (
     echo.
     echo       The update did not complete. Read the lines above for the reason.

@@ -2762,6 +2762,7 @@ async def health():
         ).decode().strip()
     except Exception:
         pass
+    hb = _health_branch()
     return {
         "status": "ok",
         "dlp_checks": len(REG),
@@ -2780,12 +2781,44 @@ async def health():
         "app_dir": _APP_DIR,
         "is_git_checkout": _is_git_checkout(),
         "tls": _tls_status(),
-        "latest_commit": _latest_remote_commit(),
-        "latest_commit_error": _LATEST.get("error"),
+        # The branch this install is on (main unless it was switched from the
+        # Update app card) and what it can be switched to; latest_commit is
+        # GitHub's tip of that same branch, so "update available" is honest.
+        "branch": hb,
+        "branches": _branch_choices(),
+        "latest_commit": _latest_remote_commit(hb),
+        "latest_commit_error": _latest_error(hb),
     }
 
 
-_LATEST: Dict[str, Any] = {"at": 0.0, "sha": None, "error": None}
+# GitHub's tip per branch: {branch: {"at", "sha", "error"}}, cached 10 minutes.
+_LATEST: Dict[str, Dict[str, Any]] = {}
+
+
+def _latest_entry(branch: str) -> Dict[str, Any]:
+    return _LATEST.setdefault(branch, {"at": 0.0, "sha": None, "error": None})
+
+
+def _latest_error(branch: str) -> Optional[str]:
+    return (_LATEST.get(branch) or {}).get("error")
+
+
+def _health_branch() -> str:
+    """The branch an update applies to by default: the checked-out one
+    when it is an allowed branch, else main."""
+    try:
+        import app_update
+        return app_update.resolve_branch(_APP_DIR, None)
+    except Exception:  # noqa: BLE001
+        return "main"
+
+
+def _branch_choices() -> List[Dict[str, Any]]:
+    try:
+        import app_update
+        return app_update.branch_choices(_APP_DIR)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _is_git_checkout() -> bool:
@@ -2798,18 +2831,26 @@ def _is_git_checkout() -> bool:
         return os.path.exists(os.path.join(_APP_DIR, ".git"))
 
 
-def _latest_remote_commit() -> Optional[str]:
-    """Short sha of origin/main on GitHub (best effort, cached 10 minutes),
-    so the GUI can say whether this install is behind. When the check
-    fails the reason is kept in _LATEST["error"] for the GUI."""
+def _latest_remote_commit(branch: str = "main") -> Optional[str]:
+    """Short sha of origin/<branch> on GitHub (best effort, cached 10
+    minutes per branch), so the GUI can say whether this install is
+    behind. When the check fails the reason is kept for the GUI. The
+    branch is one of app_update.BRANCHES; anything else is an error, not
+    a git argument."""
     import subprocess, time as _t
-    if _t.time() - _LATEST["at"] < 600:
-        return _LATEST["sha"]
-    _LATEST["at"] = _t.time()
+    import app_update
+    try:
+        branch = app_update.valid_branch(branch)
+    except ValueError as e:
+        _LATEST[str(branch)] = {"at": _t.time(), "sha": None, "error": str(e)}
+        return None
+    entry = _latest_entry(branch)
+    if _t.time() - entry["at"] < 600:
+        return entry["sha"]
+    entry["at"] = _t.time()
     sha, err = None, None
     try:
-        import app_update
-        cp = subprocess.run(["git", "ls-remote", "origin", "-h", "refs/heads/main"], cwd=_APP_DIR,
+        cp = subprocess.run(["git", "ls-remote", "origin", "-h", f"refs/heads/{branch}"], cwd=_APP_DIR,
                             capture_output=True, text=True, timeout=8, env=app_update.git_env())
         if cp.returncode == 0 and cp.stdout.strip():
             sha = cp.stdout.split()[0][:7]
@@ -2824,15 +2865,17 @@ def _latest_remote_commit() -> Optional[str]:
         err = "GitHub did not answer within 8 seconds (network, proxy or TLS inspection)"
     except Exception as e:  # noqa: BLE001
         err = str(e)[:200]
-    _LATEST["sha"] = sha
-    _LATEST["error"] = err
+    entry["sha"] = sha
+    entry["error"] = err
     return sha
 
 
 # ── Update the app from the web UI ─────────────────────────────────────────────
 # Same as UPDATE_Zscaler_Assessment.bat, without a command prompt: pull
-# main fast-forward, install requirements, restart the server. Localhost
-# only (like write mode); every request also passes the origin check.
+# the chosen branch fast-forward (main, or the one the install is on),
+# install requirements, restart the server. Localhost only (like write
+# mode); every request also passes the origin check. The branch is one
+# of app_update.BRANCHES — validated here, before it goes near git.
 
 def _update_allowed() -> None:
     from security import get_bind_host
@@ -2840,28 +2883,45 @@ def _update_allowed() -> None:
         raise HTTPException(status_code=403, detail="Updating from the web UI is only allowed when the server is bound to localhost.")
 
 
-@app.get("/api/app/update/status")
-async def app_update_status(refresh: bool = False):
-    """Current build, whether GitHub is ahead, and whether a pull would be
-    refused (hand-edited files, not a checkout, no git)."""
+def _update_branch(requested: Optional[str]) -> str:
     import app_update
+    try:
+        return app_update.resolve_branch(_APP_DIR, requested)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/app/update/status")
+async def app_update_status(refresh: bool = False, branch: Optional[str] = None):
+    """Current build, whether GitHub's `branch` (the one the install is
+    on by default) is ahead, the branches an update may switch to, and
+    whether a pull would be refused (hand-edited files, not a checkout,
+    no git)."""
+    import app_update
+    target = _update_branch(branch)
     if refresh:
-        _LATEST["at"] = 0.0
-    remote = await asyncio.to_thread(_latest_remote_commit)
-    st = await asyncio.to_thread(app_update.status, _APP_DIR, remote)
-    st["remote_error"] = _LATEST.get("error")
+        _LATEST.pop(target, None)
+    remote = await asyncio.to_thread(_latest_remote_commit, target)
+    st = await asyncio.to_thread(app_update.status, _APP_DIR, remote, target)
+    st["remote_error"] = _latest_error(target)
     st["restart_command"] = app_update.restart_command(_APP_DIR)
     return st
 
 
+class AppUpdateRequest(BaseModel):
+    branch: Optional[str] = None   # one of app_update.BRANCHES; default: the branch the install is on
+
+
 @app.post("/api/app/update")
-async def app_update_run():
-    """Fetch, pull --ff-only origin main, install requirements. Reports
-    every step; nothing is deleted or overwritten."""
+async def app_update_run(req: Optional[AppUpdateRequest] = None):
+    """Fetch, switch to the chosen branch if asked, pull --ff-only,
+    install requirements. Reports every step; nothing is deleted or
+    overwritten."""
     _update_allowed()
     import app_update
-    result = await asyncio.to_thread(app_update.update, _APP_DIR)
-    _LATEST["at"] = 0.0
+    target = _update_branch(req.branch if req else None)
+    result = await asyncio.to_thread(app_update.update, _APP_DIR, branch=target)
+    _LATEST.pop(target, None)
     return result
 
 

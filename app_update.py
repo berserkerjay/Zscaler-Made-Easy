@@ -243,11 +243,61 @@ def dirty_files(app_dir: str) -> List[str]:
     return [line[3:].strip() for line in (cp.stdout or "").splitlines() if len(line) > 3 and line.strip()]
 
 
-def status(app_dir: str, remote_sha: Optional[str] = None) -> Dict[str, Any]:
+# The branches an update may switch to, and nothing else: a branch name
+# reaches git on the command line, so this is an allowlist, not free text.
+# main is what customers run; the other two exist so a fix can be tried
+# before it is promoted (README: Branching and releases).
+BRANCHES: Tuple[str, ...] = ("main", "DLP-CHECK-QA", "dev")
+BRANCH_LABELS: Dict[str, str] = {"main": "Stable (main)", "DLP-CHECK-QA": "QA (DLP-CHECK-QA)", "dev": "Development (dev)"}
+DEFAULT_BRANCH = "main"
+
+
+def valid_branch(name: Any) -> str:
+    """The branch as one of BRANCHES, or ValueError naming the allowed ones."""
+    b = str(name or "").strip()
+    if b not in BRANCHES:
+        raise ValueError(f"Unknown branch {b!r}: choose one of {', '.join(BRANCHES)}.")
+    return b
+
+
+def current_branch(app_dir: str) -> Optional[str]:
+    """The checked-out branch, or None (detached HEAD, not a checkout, no git)."""
+    if not shutil.which("git"):
+        return None
+    try:
+        cp = _git(app_dir, "rev-parse", "--abbrev-ref", "HEAD", timeout=15)
+    except Exception:  # noqa: BLE001
+        return None
+    name = _out(cp) if cp.returncode == 0 else ""
+    return name if name and name != "HEAD" else None
+
+
+def resolve_branch(app_dir: str, requested: Any = None) -> str:
+    """The branch an update or a check applies to: the one asked for
+    (validated), else the checked-out branch when it is one of BRANCHES
+    — an update never silently moves an install off the branch it was
+    put on — else main."""
+    if requested:
+        return valid_branch(requested)
+    cur = current_branch(app_dir)
+    return cur if cur in BRANCHES else DEFAULT_BRANCH
+
+
+def branch_choices(app_dir: str) -> List[Dict[str, Any]]:
+    """What the GUI offers: every allowed branch, its label, and whether
+    it is the one checked out."""
+    cur = current_branch(app_dir)
+    return [{"name": b, "label": BRANCH_LABELS[b], "current": b == cur} for b in BRANCHES]
+
+
+def status(app_dir: str, remote_sha: Optional[str] = None, branch: Optional[str] = None) -> Dict[str, Any]:
     """Where this install stands: current build, branch, whether GitHub
-    is ahead, and whether it can be updated in place."""
+    is ahead on `branch` (the checked-out one by default), and whether
+    it can be updated in place."""
+    target = resolve_branch(app_dir, branch)
     out: Dict[str, Any] = {"app_dir": app_dir, "git_available": bool(shutil.which("git")),
                            "is_git_checkout": is_checkout(app_dir), "branch": None, "local_commit": None,
+                           "target_branch": target, "branches": branch_choices(app_dir),
                            "remote_commit": remote_sha, "update_available": None, "dirty_files": [],
                            "can_update": False, "reason": ""}
     if not out["git_available"]:
@@ -343,13 +393,22 @@ def migrate_settings(app_dir: str, dirty: List[str]) -> Tuple[List[str], List[st
 
 # ── Update ────────────────────────────────────────────────────────────
 
-def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None) -> Dict[str, Any]:
-    """Preserve edits, fetch, switch to main, pull fast-forward only,
+def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None, branch: Optional[str] = None) -> Dict[str, Any]:
+    """Preserve edits, fetch, switch to `branch` (one of BRANCHES; the
+    checked-out one by default, else main), pull fast-forward only,
     install requirements. Never raises; every step is reported in
     `steps` and a failure sets `error`. `updated` is True when HEAD moved."""
     steps: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {"ok": False, "updated": False, "before": None, "after": None, "steps": steps, "error": None,
-                              "deps_ok": None, "restart_required": False, "preserved": [], "migrated": [], "recovered": None}
+                              "deps_ok": None, "restart_required": False, "preserved": [], "migrated": [], "recovered": None,
+                              "branch": None}
+    try:
+        target = resolve_branch(app_dir, branch)
+    except ValueError as e:
+        result["error"] = str(e)
+        steps.append({"name": "Check the branch", "ok": False, "detail": str(e), "soft": False})
+        return result
+    result["branch"] = target
 
     def step(name: str, ok: bool, detail: str = "", soft: bool = False) -> None:
         # soft: a failure here does not stop the update (dependencies, re-applying edits).
@@ -430,16 +489,23 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
         return result
     step("Fetch from GitHub", True, "origin fetched")
 
-    if st.get("branch") != "main":
-        cp = _git(app_dir, "checkout", "main")
+    if st.get("branch") != target:
+        # A local branch is switched to; one only origin has is created to
+        # track it; one GitHub does not have is refused before anything moves.
+        if _git(app_dir, "show-ref", "--verify", "--quiet", f"refs/heads/{target}").returncode == 0:
+            cp = _git(app_dir, "checkout", target)
+        elif _git(app_dir, "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{target}").returncode == 0:
+            cp = _git(app_dir, "checkout", "-b", target, "--track", f"origin/{target}")
+        else:
+            cp = subprocess.CompletedProcess(["git"], 1, "", f"fatal: GitHub has no branch named {target}")
         if cp.returncode != 0:
-            result["error"] = "Could not switch to main: " + _err(cp)
-            step("Switch to main", False, result["error"])
+            result["error"] = f"Could not switch to {target}: " + _err(cp)
+            step(f"Switch to {target}", False, result["error"])
             _restore(app_dir, stashed, step, result)
             return result
-        step("Switch to main", True, f"was on {st.get('branch')}")
+        step(f"Switch to {target}", True, f"was on {st.get('branch')}")
 
-    cp = _git(app_dir, "pull", "--ff-only", "origin", "main", timeout=GIT_TIMEOUT)
+    cp = _git(app_dir, "pull", "--ff-only", "origin", target, timeout=GIT_TIMEOUT)
     if cp.returncode != 0:
         msg = _err(cp, "git pull failed")
         result["error"] = "Pull refused: " + msg + _auth_hint(msg) + _index_hint(msg)
@@ -453,14 +519,14 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
 
     if result["updated"]:
         after_full = _out(_git(app_dir, "rev-parse", "HEAD")) or after
-        verify = verify_against_github_api(app_dir, "main", after_full)
+        verify = verify_against_github_api(app_dir, target, after_full)
         if verify.get("checked") and not verify.get("match"):
             reset_ok = False
             if before_full:
                 reset_ok = _git(app_dir, "reset", "--hard", before_full).returncode == 0
             step("Verify against GitHub", False,
                  f"The commit just pulled ({after_full[:7]}) does not match what GitHub's REST API reports for "
-                 f"{verify.get('owner')}/{verify.get('repo')}@main ({verify['api_sha'][:7]}) — this could mean the "
+                 f"{verify.get('owner')}/{verify.get('repo')}@{target} ({verify['api_sha'][:7]}) — this could mean the "
                  "git transport was tampered with in transit. " +
                  (f"Rolled back to {result['before']}." if reset_ok else "Could not roll back automatically; run  git status  in the app folder."))
             result["error"] = ("Update verification failed: the commit pulled over git does not match GitHub's REST API for the "
@@ -472,7 +538,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
             return result
         elif verify.get("checked"):
             step("Verify against GitHub", True,
-                 f"Matches GitHub's REST API for {verify.get('owner')}/{verify.get('repo')}@main ({verify['api_sha'][:7]}).")
+                 f"Matches GitHub's REST API for {verify.get('owner')}/{verify.get('repo')}@{target} ({verify['api_sha'][:7]}).")
 
     _restore(app_dir, stashed, step, result)
 
@@ -594,14 +660,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--dir", default=os.path.dirname(os.path.abspath(__file__)), help="app folder (default: this file's folder)")
     ap.add_argument("--no-deps", action="store_true", help="skip pip install -r requirements.txt")
     ap.add_argument("--status", action="store_true", help="only report where this install stands")
+    ap.add_argument("--branch", choices=BRANCHES, default=None,
+                    help="branch to update to (default: the one checked out, else main)")
     args = ap.parse_args(argv)
     if args.status:
-        st = status(args.dir)
-        print(f"folder: {st['app_dir']}\nbranch: {st['branch']}  build: {st['local_commit']}\ncan update: {st['can_update']}")
+        st = status(args.dir, branch=args.branch)
+        print(f"folder: {st['app_dir']}\nbranch: {st['branch']}  build: {st['local_commit']}\nupdates from: {st['target_branch']}\ncan update: {st['can_update']}")
         if st["reason"]:
             print(st["reason"])
         return 0 if st["can_update"] else 1
-    res = update(args.dir, install_deps=not args.no_deps)
+    res = update(args.dir, install_deps=not args.no_deps, branch=args.branch)
     for s in res["steps"]:
         mark = "OK " if s["ok"] else ("!! " if s.get("soft") else "ERR")
         print(f"  [{mark}] {s['name']}" + (f" - {s['detail']}" if s.get("detail") else ""))
