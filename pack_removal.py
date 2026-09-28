@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pack_channels as pc
 import pack_deploy as pd
 import pack_ops as ops
-from dlp_importer import _load_json, _resolve_configs
+from dlp_importer import _load_json, _resolve_configs, heal_predefined_names
 
 # The in-app deploy tags baseline objects with BASELINE_MARK; the Terraform
 # hand-off tags every object with "[DLP-Check baseline <id>]" or
@@ -70,8 +70,8 @@ def _pack_marks(pack_id: str) -> Tuple[str, str]:
 
 def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     configs = _resolve_configs(pack["dir"])
-    dicts = _load_json(configs, "dlp_dictionaries.json")
-    engines = _load_json(configs, "dlp_engines.json")
+    # The deploy renamed a dictionary named like a predefined display name; the removal must look for that name.
+    dicts, engines, _ = heal_predefined_names(_load_json(configs, "dlp_dictionaries.json"), _load_json(configs, "dlp_engines.json"))
     policies = pc.expand_sub_rules(_load_json(configs, "dlp_policies.json"))
     return dicts, engines, policies
 

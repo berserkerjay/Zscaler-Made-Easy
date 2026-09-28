@@ -59,7 +59,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set,
 
 import pack_channels as pc
 import pack_ops as ops
-from dlp_importer import (resolve_template, engine_limit_problems,
+from dlp_importer import (resolve_template, engine_limit_problems, heal_predefined_names, norm_name,
     DICT_DESCRIPTION_MAX,
     ENGINE_DESCRIPTION_MAX,
     EMPTY_DICT_REASON,
@@ -222,7 +222,10 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
     for p in packs:
         configs = _resolve_configs(p["dir"])
         meta = load_pack_metadata(p["dir"])
-        engines = _load_json(configs, "dlp_engines.json")
+        # Like ship_monitor for rules: a dictionary named like one of ZIA's
+        # predefined display names is renamed here, once, so the plan, the
+        # deploy, a removal, the journey and Terraform all see the same name.
+        dictionaries, engines, renamed = heal_predefined_names(_load_json(configs, "dlp_dictionaries.json"), _load_json(configs, "dlp_engines.json"))
         policies = pc.ship_monitor(pc.expand_sub_rules(_load_json(configs, "dlp_policies.json")))
         targets = (channel_targets or {}).get(p["id"])
         baseline = baseline_meta(meta, p["id"])
@@ -233,7 +236,7 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
             "id": p["id"],
             "name": meta.get("name", p["id"]),
             "dir": p["dir"],
-            "dictionaries": _load_json(configs, "dlp_dictionaries.json"),
+            "dictionaries": dictionaries,
             "engines": engines,
             "policies": policies,
             "app_groups": _load_json(configs, "endpoint_application_groups.json"),
@@ -241,6 +244,7 @@ def load_sources(packs: Sequence[Dict[str, Any]], channel_targets: Optional[Dict
             "baseline": baseline,
             "version": str(meta.get("version") or ""),
             "channel_note": note,
+            "renamed": renamed,
         })
     return sources
 
@@ -496,7 +500,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
 
 def _norm_name(name: Any) -> str:
     """A name as ZIA compares it for duplicates: case and spacing ignored."""
-    return " ".join(str(name or "").split()).casefold()
+    return norm_name(name)
 
 
 def _lookup_ci(by_name: Dict[str, Any], name: str) -> Any:
@@ -1402,6 +1406,9 @@ def preflight(
             labels = ", ".join(pc.label(ch) for ch in note["skipped_channels"])
             warnings.append(f"{src['name']}: {labels} rules are packed but not selected ({len(note.get('skipped_rules') or [])} rule(s)); "
                             f"they will NOT be deployed. Tick the channel in the pack card to deploy them.")
+        for old, new in src.get("renamed") or []:
+            warnings.append(f"{src['name']}: dictionary '{old}' will be deployed as '{new}' — ZIA shows one of its predefined "
+                            f"dictionaries under the original name and refuses a second dictionary with it. The pack file is unchanged.")
     if read_only_note:
         warnings.append(read_only_note)
 
@@ -1418,7 +1425,7 @@ def preflight(
         "status": status,
         "packs": [{"id": s["id"], "name": s["name"], "dictionaries": len(s["dictionaries"]),
                    "engines": len(s["engines"]), "policies": len(s["policies"]), "app_groups": len(s.get("app_groups") or []),
-                   "baseline": s.get("baseline"), "channels": s.get("channel_note")} for s in sources],
+                   "baseline": s.get("baseline"), "channels": s.get("channel_note"), "renamed": s.get("renamed") or []} for s in sources],
         "baselines": baseline_status_rows(all_items, sources),
         "tenant_mode": tenant_mode(all_items, sources, tenant) if tenant["reachable"] else None,
         "options": options,
@@ -1841,6 +1848,9 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             labels = ", ".join(pc.label(ch) for ch in note["skipped_channels"])
             _log(f"[channels] {src.get('name') or src.get('id')}: {labels} NOT deployed: unticked in the pack card "
                  f"({len(note.get('skipped_rules') or [])} rule(s) skipped). Tick the channel and deploy again to add them.")
+        for old, new in src.get("renamed") or []:
+            _log(f"[dictionary] {src.get('name') or src.get('id')}: '{old}' deployed as '{new}': ZIA shows one of its predefined "
+                 f"dictionaries under the original name and would refuse it as a duplicate.")
     _log("Phase 1: dictionaries")
     for item in merged["dictionary"].values():
         if item["status"] in (REUSE, REUSE_DIFFERS):

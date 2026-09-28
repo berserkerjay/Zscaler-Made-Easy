@@ -36,7 +36,7 @@ import pytest
 
 import pack_deploy as pd
 import pack_removal as pr
-from dlp_importer import discover_packs, find_refs, template_candidates
+from dlp_importer import PREDEFINED_DISPLAY_NAMES, discover_packs, find_refs, norm_name, template_candidates
 from test_channel_targets_undo import _with_delete
 from test_pack_channels import TENANTS, add_control_services, make_client, tenant as casb_tenant
 from test_pack_deploy import FakeDicts, FakeEngines, Obj
@@ -343,3 +343,16 @@ def test_every_predefined_name_the_packs_use_is_in_the_strict_tenant():
             for r in find_refs(e["expression"]):
                 r = r.strip()
                 assert not r or r in names or r in known, (f, e["name"], r)
+
+
+def test_the_strict_tenant_display_names_are_known_to_the_loader_and_no_shipped_pack_needs_the_rename():
+    """Every name the strict tenant shows a predefined dictionary under is
+    one heal_predefined_names renames a pack dictionary away from (the
+    two lists must move together), and no shipped pack carries such a
+    name: the rename exists for uploads, and a built-in pack that relied
+    on it would deploy under a name its JSON does not show."""
+    for code, disp in PREDEFINED:
+        assert norm_name(disp or code) in PREDEFINED_DISPLAY_NAMES, (code, disp)
+    for f in sorted(glob.glob(os.path.join(ROOT, "*", "configs", "dlp_dictionaries.json"))):
+        for d in json.load(open(f, encoding="utf-8")):
+            assert norm_name(d["name"]) not in PREDEFINED_DISPLAY_NAMES, (f, d["name"])

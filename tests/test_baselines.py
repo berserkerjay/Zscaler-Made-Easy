@@ -290,10 +290,16 @@ def test_plain_pack_keeps_never_overwrite_behaviour(plain_pack):
     assert not any(i["type"].startswith("baseline") for i in rep["impacts"])
 
 
-def test_baseline_cannot_manage_a_predefined_dictionary(tmp_path):
+def test_a_baseline_dictionary_named_like_a_predefined_one_is_renamed_never_managed(tmp_path):
+    """A baseline can never manage a predefined dictionary. A pack
+    dictionary carrying a predefined name is renamed Z-<name> when the
+    pack loads and planned as its own custom dictionary, with the plan
+    saying so; the predefined one is left exactly as it is."""
     pack = write_pack(tmp_path, "clash", dicts=[_dict("Social Security Numbers (US)")], meta=BASELINE_META)
     rep = pd.preflight(FakeClient(dicts=[PREDEF_SSN]), [pack], writes_enabled=True)
-    assert items_by(rep, "dictionary")["Social Security Numbers (US)"]["status"] == pd.CONFLICT
+    by = items_by(rep, "dictionary")
+    assert "Social Security Numbers (US)" not in by and by["Z-Social Security Numbers (US)"]["status"] == "create"
+    assert any("'Social Security Numbers (US)' will be deployed as 'Z-Social Security Numbers (US)'" in w for w in rep["warnings"])
 
 
 def test_baseline_description_is_idempotent():

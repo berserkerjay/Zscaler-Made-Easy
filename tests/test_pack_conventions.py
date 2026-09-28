@@ -265,3 +265,49 @@ def test_every_shipped_name_uses_characters_zia_accepts_and_engine_descriptions_
     bad = pd.preflight(make_client(casb_tenants=TENANTS), [bad_pack], writes_enabled=True)
     eng = next(i for i in bad["items"] if i["kind"] == "engine")
     assert eng["status"] == pd.BLOCKED_DEPENDENCY and "ZIA allows" in eng["reason"] and "'/'" in eng["reason"]
+
+
+def test_a_dictionary_named_like_a_predefined_display_name_is_renamed_at_load():
+    """ZIA shows CRED_LEAKAGE as "Private Key" and refuses a second
+    dictionary with that name. The loader renames such a dictionary
+    Z-<name> and rewrites the engine references by whole name, leaves
+    everything else alone, never touches the inputs, and is idempotent."""
+    from dlp_importer import PREDEFINED_DISPLAY_NAMES, heal_predefined_names, norm_name
+    dicts = [{"name": "Private Key", "phrases": [{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "BEGIN RSA PRIVATE KEY"}]},
+             {"name": "Private Keys-Plaintext Regex", "patterns": [{"action": "PATTERN_COUNT_TYPE_ALL", "pattern": "x"}]},
+             {"name": "Credit Cards - High", "predefined_clone": True, "dict_template_name": "Credit Cards"}]
+    engines = [{"name": "Private Keys", "expression": "((D:Private Keys-Plaintext Regex > 0) OR (D:Private Key > 0))"},
+               {"name": "Cards", "expression": "(D:Credit Cards - High > 0)"}]
+    out_d, out_e, renamed = heal_predefined_names(dicts, engines)
+    assert renamed == [("Private Key", "Z-Private Key")]
+    assert [d["name"] for d in out_d] == ["Z-Private Key", "Private Keys-Plaintext Regex", "Credit Cards - High"]
+    assert out_e[0]["expression"] == "((D:Private Keys-Plaintext Regex > 0) OR (D:Z-Private Key > 0))", "a longer name that starts the same way is untouched"
+    assert out_e[1] is engines[1], "an engine that references no renamed dictionary is passed through"
+    assert dicts[0]["name"] == "Private Key" and engines[0]["expression"].endswith("(D:Private Key > 0))"), "the inputs are untouched"
+    assert heal_predefined_names(out_d, out_e)[2] == [], "idempotent"
+    assert heal_predefined_names([{"name": "private   KEY"}], [])[2] == [("private   KEY", "Z-private   KEY")], "compared as ZIA compares"
+    assert norm_name("Private Key") in PREDEFINED_DISPLAY_NAMES and norm_name("Z-Private Key") not in PREDEFINED_DISPLAY_NAMES
+    both = [{"name": "Private Key"}, {"name": "Z-Private Key"}]
+    assert heal_predefined_names(both, [])[2] == [], "a pack that already uses the target name is left for the plan to report"
+    assert heal_predefined_names([], [])[2] == []
+
+
+def test_every_loader_applies_the_same_rename(tmp_path):
+    """The plan/deploy loader, the removal planner and the Terraform
+    generator must agree on the deployed name, or a removal would look for
+    a dictionary that was never created and the workspace would fail to
+    apply for the same reason the deploy used to."""
+    import pack_removal as pr
+    from test_pack_deploy import _dict, _engine, _policy, write_pack
+    pack = write_pack(tmp_path, "oldfed", dicts=[_dict("Private Key")], engines=[_engine("Private Keys", "(D:Private Key > 0)")],
+                      policies=[_policy("Z-Private Keys-Monitor", ["Private Keys"])], meta={"name": "Old Fed", "version": "1.0", "confidence_tweaks": []})
+    src = pd.load_sources([pack])[0]
+    assert [d["name"] for d in src["dictionaries"]] == ["Z-Private Key"] and src["renamed"] == [("Private Key", "Z-Private Key")]
+    assert src["engines"][0]["expression"] == "(D:Z-Private Key > 0)"
+    tf = pack_terraform.load_pack(pack)
+    assert [d["name"] for d in tf["dictionaries"]] == ["Z-Private Key"] and tf["engines"][0]["expression"] == "(D:Z-Private Key > 0)"
+    dicts, engines, _ = pr._defs(pack)
+    assert [d["name"] for d in dicts] == ["Z-Private Key"] and engines[0]["expression"] == "(D:Z-Private Key > 0)"
+    files = pack_terraform.generate(pack)
+    assert '"Z-Private Key"' in files["dictionaries.tf"] and '"Private Key"' not in files["dictionaries.tf"]
+    assert json.load(open(os.path.join(pack["dir"], "configs", "dlp_dictionaries.json")))[0]["name"] == "Private Key", "the file is left as written"
