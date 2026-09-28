@@ -30,6 +30,10 @@ Optional hardening (env-toggled):
                                                the UI token cookie is
                                                issued, instead of the
                                                static-token shortcuts
+  ZSCALER_ALLOW_NONLOCAL_BIND                — must equal "YES_I_UNDERSTAND"
+                                               to start bound beyond
+                                               loopback without SSO fully
+                                               configured (require_safe_bind)
 """
 from __future__ import annotations
 
@@ -148,6 +152,42 @@ def write_mode_status() -> dict:
                    f"The server is bound to {get_bind_host()}, so write mode can only be enabled by starting it with "
                    f"ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} (START_Zscaler_Assessment_WRITES_ENABLED.bat)."),
     }
+
+
+NONLOCAL_BIND_CONFIRM_PHRASE = "YES_I_UNDERSTAND"
+
+
+def require_safe_bind() -> None:
+    """Fail closed at startup: a server bound beyond loopback needs its
+    own authentication in front of it — the UI token is a bearer secret,
+    not multi-factor authentication (see SECURITY.md). Refuses to start
+    unless SSO is fully configured (sso.py), or the UI token gate is at
+    least on and the operator explicitly accepts the risk with
+    ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND because they already
+    have their own authenticating reverse proxy in front of it. Called
+    once at server startup; a variable changed afterwards takes effect
+    on the next restart, the same as ENABLE_WRITE_ACTIONS."""
+    host = get_bind_host()
+    if host in _LOCAL_HOSTS:
+        return
+    if (os.environ.get("ZSCALER_ALLOW_NONLOCAL_BIND", "").strip() == NONLOCAL_BIND_CONFIRM_PHRASE):
+        return
+    if not ui_auth_enabled():
+        raise RuntimeError(
+            f"Refusing to start bound to {host}: ZSCALER_UI_AUTH=0 turns off the UI token gate entirely, so "
+            "anyone who can reach this host could use the API with no credential at all. Remove ZSCALER_UI_AUTH=0, "
+            "or set ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND if you understand the risk and already have your "
+            "own authenticating reverse proxy (with TLS) in front of this server."
+        )
+    import sso as _sso
+    if not (_sso.sso_enabled() and not _sso.config_errors()):
+        raise RuntimeError(
+            f"Refusing to start bound to {host}: no identity-provider sign-in is configured (ZSCALER_SSO_ENABLED), "
+            "so the UI token is the only guard, and it is a bearer secret, not multi-factor authentication. Set "
+            "ZSCALER_SSO_ENABLED and every ZSCALER_SSO_* variable so sign-in is required first, or set "
+            "ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND if you understand the risk and already have your own "
+            "authenticating reverse proxy (with TLS) in front of this server."
+        )
 
 
 def set_write_mode(enable: bool, confirm: str = "") -> dict:

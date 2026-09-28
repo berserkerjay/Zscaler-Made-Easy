@@ -247,6 +247,14 @@ without you. Where to find it:
 Paste it into the page when asked; your browser remembers it for 12
 hours, so you won't be asked again for a while.
 
+That code is a shared secret for this machine, not multi-factor
+authentication — treat it like a password, and don't publish it or leave
+it somewhere anyone else can read it. If you ever need this server
+reachable from more than just your own machine, it refuses to start
+that way unless you have also set up sign-in through an identity
+provider (`SECURITY.md`) — a token by itself is not considered enough
+once the app is reachable beyond your machine.
+
 Once you're in, the page has fields for the customer's Zscaler tenant
 details (cloud, vanity domain, a Client ID and Client Secret). You get
 those from the customer's Zscaler admin — that part is covered in
