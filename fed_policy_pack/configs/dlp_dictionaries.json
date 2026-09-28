@@ -803,7 +803,7 @@
     ]
   },
   {
-    "name": "Fed Pack Private Key",
+    "name": "Z-Private keys",
     "description": "Detect leakage of credentials and secrets",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "predefined_clone": true,
