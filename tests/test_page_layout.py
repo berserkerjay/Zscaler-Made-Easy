@@ -34,7 +34,17 @@ def test_tenant_details_live_inside_the_connect_step():
     assert ".gd-tenant" in c.get("/static/guide.css").text
 
 
-def test_evaluate_all_rules_flow_and_simulator_are_in_the_wizard():
+def test_authenticate_ends_with_a_success_or_fail_popup():
+    """Both Authenticate buttons (the guide's and the form's) end in
+    _gdTest, which pops an alert with the verdict: SUCCESS with what the
+    app can see, or FAIL with why and the fix. Only a click reaches it."""
+    c = _page()
+    guide = c.get("/static/guide.js").text
+    assert "function _gdAuthPopup(conn)" in guide and "_gdAuthPopup(GD.conn)" in guide
+    assert "SUCCESS — authenticated to" in guide and "FAIL — you fat-fingered it" in guide and "window.alert(msg)" in guide
+    assert guide.count("_gdTest(") == 2, "only the guide's button (and the form's, via index.html) call _gdTest"
+    html = c.get("/").text
+    assert "await _gdTest(); return;" in html   # the form's Authenticate funnels into the same function
     c = _page()
     html = c.get("/").text
     assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules(migrateRules)" in html
