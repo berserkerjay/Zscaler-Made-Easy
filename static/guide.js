@@ -389,7 +389,22 @@ async function _gdTest() {
     GD.conn = { ok: false, vd: body.vanity_domain, cause: 'The tool\'s own server did not answer.', fix: 'Make sure the server window is still open, then try again.', raw: e.message };
   } finally {
     GD.testing = false; _gdSave(); _gdRender();
+    _gdAuthPopup(GD.conn);
   }
+}
+// The verdict as a popup the moment Authenticate finishes, so it cannot
+// be missed: SUCCESS with what the app can now see, or FAIL with why and
+// what to fix. Only the Authenticate buttons reach here, never a page load.
+function _gdAuthPopup(conn) {
+  if (!conn) return;
+  const n = v => (v === undefined || v === null ? '?' : v);
+  const msg = conn.ok
+    ? `SUCCESS — authenticated to ${conn.label || conn.vd || 'the tenant'}.\n\n` +
+      `The app can see ${n(conn.dictionaries)} dictionaries, ${n(conn.engines)} engines and ${n(conn.web_rules)} web DLP rules.\n` +
+      'Nothing was changed; the app only read the tenant.'
+    : `FAIL — you fat-fingered it (or the tenant said no).\n\n${conn.cause || 'The connection failed.'}\n${conn.fix || 'Re-check the tenant details and try again.'}` +
+      (conn.raw ? `\n\nDetail: ${String(conn.raw).slice(0, 300)}` : '');
+  try { window.alert(msg); } catch (e) { /* no window (tests) */ }
 }
 function _gdSetMode(mode) {
   GD.mode = mode; _gdSave(); _gdApplyMode(); _gdRender();
