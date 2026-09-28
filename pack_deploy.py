@@ -1033,9 +1033,28 @@ def _baseline_impacts(all_items: Sequence[Dict[str, Any]], restore: bool = False
 MAX_SAAS_PLACEMENTS = 8
 
 
+def _rank_refusal(err: Any) -> bool:
+    """ZIA refused the rule's rank against the API client's admin rank
+    (403 RBA_LIMITED 'Rule rank is higher than the admin rank.'): not an
+    ordering problem, and no order will get past it."""
+    return "admin rank" in str(err or "").lower()
+
+
 def _order_refusal(err: Any) -> bool:
     e = str(err or "").lower()
-    return "order" in e or "rank" in e
+    return ("order" in e or "rank" in e) and not _rank_refusal(err)
+
+
+def _other_rank(payload: Dict[str, Any]) -> int:
+    """The rank to try when ZIA refuses the one sent: 7 for 0, 0 for
+    anything else. Rules ship at rank 0 so they always deploy; a tenant
+    whose API client cannot use rank 0 gets them at rank 7 rather than
+    not at all, and the log says so."""
+    try:
+        cur = int(payload.get("rank", 7) or 0)
+    except (TypeError, ValueError):
+        cur = 7
+    return 7 if cur == 0 else 0
 
 
 def _saas_orders_now(zia, saas_type: str) -> List[int]:
@@ -1079,6 +1098,16 @@ def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], sa
         return out.ok and out.id is not None
 
     out = attempt(first)
+    rank_was = None
+    if not placed(out) and _rank_refusal(errors[-1]):
+        # A real tenant refused rank 0 with 'Rule rank is higher than the
+        # admin rank' and every order tried after it: the rank, not the
+        # order, was the problem. Try the other rank once, same order; an
+        # order refusal after that goes through the order retry below.
+        rank_was, payload["rank"] = payload.get("rank"), _other_rank(payload)
+        _log(f"[saas] '{name}': ZIA refused rank {rank_was} ({errors[0]}); trying rank {payload['rank']} — "
+             f"the API client's admin rank does not allow rank {rank_was} on SaaS rules")
+        out = attempt(first)
     if not placed(out) and _order_refusal(errors[-1]):
         current = _saas_orders_now(zia, t)
         top = max(current) if current else 0
@@ -1096,6 +1125,9 @@ def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], sa
                  f"placed at order {payload['order']} after re-reading the tenant's {len(current)} {t} rule(s)")
         else:
             _log(f"[saas] '{name}': ZIA refused every order tried ({', '.join(str(o) for o in tried)}); last answer: {errors[-1]}")
+    if placed(out) and rank_was is not None:
+        payload["rank_note"] = f"rank {rank_was} refused by ZIA (admin rank); created at rank {payload['rank']}"
+        _log(f"[saas] '{name}': created at rank {payload['rank']} instead of {rank_was}")
     if placed(out):
         saas_orders[t] = max(saas_orders.get(t, 0), int(payload["order"]))
         # The next rule of this type starts where this one landed, plus one.
@@ -2049,10 +2081,17 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 out = _add_saas_rule(zia, payload, saas_orders, saas_next, _log, item["name"])
             else:
                 out = ops.create(zia, "policy", payload, channel=channel, parent_id=parent_id, log=_log)
+                if not out.ok and parent_id is None and _rank_refusal(out.error):
+                    was, payload["rank"] = payload.get("rank"), _other_rank(payload)
+                    _log(f"[policy] {item['name']}: ZIA refused rank {was} ({out.error}); trying rank {payload['rank']}")
+                    out = ops.create(zia, "policy", payload, channel=channel, parent_id=parent_id, log=_log)
+                    if out.ok and out.id is not None:
+                        payload["rank_note"] = f"rank {was} refused by ZIA (admin rank); created at rank {payload['rank']}"
+            rank_note = payload.pop("rank_note", None)
             if out.ok and out.id is not None:
                 policy_ids[item["name"]] = out.id
                 record(item, "created", outcome=out, id=out.id, channel=channel,
-                       order=payload.get("order") if parent_id is None else None, parent_id=parent_id)
+                       order=payload.get("order") if parent_id is None else None, parent_id=parent_id, rank_note=rank_note)
             elif parent_id is None and (twin := _twin_after_duplicate(zia, "policy", item["name"], out, channel)) is not None:
                 policy_ids[item["name"]] = twin
                 record(item, "reused", id=twin, channel=channel, reason=_DUPLICATE_REUSED)
