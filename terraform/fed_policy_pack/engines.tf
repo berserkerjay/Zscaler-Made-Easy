@@ -39,7 +39,7 @@ resource "zia_dlp_engines" "private_keys" {
   name                         = "Private Keys"
   description                  = "[DLP-Check pack fed_policy_pack v2.1] Terraform-managed."
   custom_dlp_engine            = true
-  engine_expression            = "((D${zia_dlp_dictionaries.private_keys_plaintext_regex.id}.S > 0) OR (D${zia_dlp_dictionaries.jwk_private_key.id}.S > 0) OR (D${zia_dlp_dictionaries.fed_pack_private_key.id}.S > 0) OR (D${zia_dlp_dictionaries.encrypted_or_ascii_armored_pgp_keys.id}.S > 0) OR (D${zia_dlp_dictionaries.encrypted_bouncy_castle_key_exports.id}.S > 0))"
+  engine_expression            = "((D${zia_dlp_dictionaries.private_keys_plaintext_regex.id}.S > 0) OR (D${zia_dlp_dictionaries.jwk_private_key.id}.S > 0) OR (D${zia_dlp_dictionaries.z_private_keys.id}.S > 0) OR (D${zia_dlp_dictionaries.encrypted_or_ascii_armored_pgp_keys.id}.S > 0) OR (D${zia_dlp_dictionaries.encrypted_bouncy_castle_key_exports.id}.S > 0))"
 }
 
 resource "zia_dlp_engines" "financial_information" {
