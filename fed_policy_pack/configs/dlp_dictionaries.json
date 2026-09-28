@@ -803,7 +803,7 @@
     ]
   },
   {
-    "name": "Private Key - Medium Confidence",
+    "name": "Fed Pack Private Key",
     "description": "Detect leakage of credentials and secrets",
     "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
     "predefined_clone": true,
