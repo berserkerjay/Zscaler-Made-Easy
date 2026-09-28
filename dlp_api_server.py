@@ -158,6 +158,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 import sso as _sso
 _sso.require_configured()
 
+# A server bound beyond loopback needs its own front-door authentication;
+# the UI token alone is a bearer secret, not MFA. Fail closed here too.
+_security.require_safe_bind()
+
 
 @app.middleware("http")
 async def _no_stale_static(request, call_next):

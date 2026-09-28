@@ -59,6 +59,77 @@ def test_status_and_fast_forward_update(repos):
     assert res2["ok"] and not res2["updated"] and not res2["restart_required"] and "already on build" in res2["steps"][-1]["detail"]
 
 
+def test_verify_against_github_api_matches_mismatches_and_skips(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _git(tmp_path, "init", "-q", "-b", "main", str(repo))
+    _git(repo, "remote", "add", "origin", "https://github.com/berserkerjay/DLP-Check.git")
+    local_sha = "a" * 40
+
+    class _Resp:
+        def __init__(self, sha, code=200):
+            self._sha, self.status_code = sha, code
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self):
+            return {"sha": self._sha}
+
+    import requests
+    monkeypatch.setattr(requests, "get", lambda url, headers=None, timeout=None: _Resp(local_sha))
+    v = au.verify_against_github_api(str(repo), "main", local_sha)
+    assert v == {"checked": True, "match": True, "api_sha": local_sha, "local_sha": local_sha, "owner": "berserkerjay", "repo": "DLP-Check"}
+
+    monkeypatch.setattr(requests, "get", lambda url, headers=None, timeout=None: _Resp("b" * 40))
+    v = au.verify_against_github_api(str(repo), "main", local_sha)
+    assert v["checked"] and not v["match"] and v["api_sha"] == "b" * 40
+
+    # Not a github.com remote: skipped, not failed.
+    _git(repo, "remote", "set-url", "origin", "/local/path")
+    assert au.verify_against_github_api(str(repo), "main", local_sha) == {"checked": False, "reason": "origin is not a github.com remote"}
+
+    # The API being unreachable is also skipped, not failed.
+    _git(repo, "remote", "set-url", "origin", "https://github.com/berserkerjay/DLP-Check.git")
+
+    def boom(url, headers=None, timeout=None):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(requests, "get", boom)
+    v = au.verify_against_github_api(str(repo), "main", local_sha)
+    assert not v["checked"] and "network down" in v["reason"]
+
+
+def test_update_verifies_against_github_api_when_it_agrees(repos, monkeypatch):
+    app = str(repos["app"])
+    v2 = _push_v2(repos["work"])
+    monkeypatch.setattr(au, "verify_against_github_api",
+                        lambda app_dir, branch, local_sha: {"checked": True, "match": True, "api_sha": local_sha,
+                                                             "local_sha": local_sha, "owner": "berserkerjay", "repo": "DLP-Check"})
+    res = au.update(app, install_deps=False)
+    assert res["ok"] and res["updated"] and res["after"] == v2
+    names = [s["name"] for s in res["steps"]]
+    assert names == ["Check this folder", "Fetch from GitHub", "Pull latest code", "Verify against GitHub"]
+    assert res["steps"][-1]["ok"] and "berserkerjay/DLP-Check" in res["steps"][-1]["detail"]
+
+
+def test_update_rolls_back_when_the_github_api_disagrees(repos, monkeypatch):
+    app = str(repos["app"])
+    v1 = _git(app, "rev-parse", "HEAD")
+    _push_v2(repos["work"])
+    monkeypatch.setattr(au, "verify_against_github_api",
+                        lambda app_dir, branch, local_sha: {"checked": True, "match": False, "api_sha": "f" * 40,
+                                                             "local_sha": local_sha, "owner": "berserkerjay", "repo": "DLP-Check"})
+    res = au.update(app, install_deps=False)
+    assert not res["ok"] and not res["updated"]
+    assert "Update verification failed" in res["error"] and "does not match GitHub's REST API" in res["error"]
+    names = [s["name"] for s in res["steps"]]
+    assert names == ["Check this folder", "Fetch from GitHub", "Pull latest code", "Verify against GitHub"]
+    assert not res["steps"][-1]["ok"] and "Rolled back" in res["steps"][-1]["detail"]
+    # The rollback actually happened: HEAD and the file content are back to v1.
+    assert _git(app, "rev-parse", "HEAD") == v1
+    assert (repos["app"] / "dlp_api_server.py").read_text() == "print('v1')\n"
+
+
 def test_update_switches_back_to_main_and_installs_deps(repos, monkeypatch):
     app = str(repos["app"])
     _git(app, "checkout", "-q", "-b", "scratch")

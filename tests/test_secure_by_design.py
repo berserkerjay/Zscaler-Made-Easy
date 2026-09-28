@@ -29,10 +29,39 @@ def test_score_is_measured_from_live_evidence(monkeypatch):
     assert by["ui_token"]["status"] == "pass" and by["writes"]["status"] == "pass" and by["loopback"]["status"] == "pass" and by["debug"]["status"] == "pass"
     assert by["middleware"]["status"] == "pass" and "20 requests/second" in by["middleware"]["evidence"]
     assert by["constructs"]["status"] == "pass" and by["disclosure"]["status"] == "pass" and by["limits"]["status"] == "pass"
+    assert by["classes_doc"]["status"] == "pass" and "memory-safe" in by["classes_doc"]["evidence"].lower()
+    assert by["cves"]["status"] == "pass" and "CWE" in by["cves"]["evidence"]
     assert by["pins"]["status"] == "pass" and "hashes" in by["pins"]["evidence"] and by["scans"]["status"] == "pass"
     assert by["container"]["status"] == "pass" and by["secrets"]["status"] == "pass" and by["audit"]["status"] == "pass"
     assert by["mfa"]["status"] == "n/a" and d["counts"]["n/a"] == 1
     assert d["score"] >= 90 and d["grade"] == "A"
+
+
+def test_disclosure_and_cves_fail_without_every_promise(monkeypatch):
+    real_read = sbd._read
+
+    def fake_read(path, limit=2_000_000):
+        if path.endswith("SECURITY.md"):
+            return "# Security policy\n## Reporting a vulnerability\nReport a vulnerability privately.\n## Known limitations\nnone.\n"
+        return real_read(path, limit)
+    monkeypatch.setattr(sbd, "_read", fake_read)
+    d = sbd.evaluate(srv.app)
+    by = {c["id"]: c for c in d["checks"]}
+    assert by["disclosure"]["status"] == "fail" and "authorization" in by["disclosure"]["evidence"]
+    assert by["cves"]["status"] == "fail" and "CWE" in by["cves"]["evidence"]
+
+
+def test_classes_doc_fails_when_a_class_is_not_covered(monkeypatch):
+    real_read = sbd._read
+
+    def fake_read(path, limit=2_000_000):
+        if path.endswith("VULNERABILITY_CLASSES.md"):
+            return "# Nothing useful here.\n"
+        return real_read(path, limit)
+    monkeypatch.setattr(sbd, "_read", fake_read)
+    d = sbd.evaluate(srv.app)
+    by = {c["id"]: c for c in d["checks"]}
+    assert by["classes_doc"]["status"] == "fail" and "is missing" in by["classes_doc"]["evidence"]
 
 
 def test_a_weakened_server_loses_points(monkeypatch):

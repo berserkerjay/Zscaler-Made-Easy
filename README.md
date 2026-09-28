@@ -173,4 +173,6 @@ non-root and read-only, reports treated as confidential.
 
 ## License
 
-Internal tooling. Not for redistribution.
+Internal tooling. Not for redistribution. This repository is public so
+its code can be reviewed and vulnerabilities disclosed responsibly (see
+`SECURITY.md`) — that does not change the license terms in `LICENSE`.
