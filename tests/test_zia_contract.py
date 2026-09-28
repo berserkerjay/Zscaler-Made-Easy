@@ -177,6 +177,8 @@ def _strict_rules(svc, channel, engines, casb=None):
         elif channel == "endpoint":
             if act not in ENDPOINT_ACTIONS:
                 return _err(f"Invalid action {act}")
+            if len(refs) > 4:
+                return _err("Exceeded maximum number of DLP engines: 4")
             if not kw.get("data_transfer_method"):
                 return _err("Channel is mandatory")
             if kw["data_transfer_method"] not in TRANSFER_METHODS:
@@ -272,6 +274,8 @@ def test_the_contract_refuses_what_zia_refuses():
     assert z.endpoint_dlp_rules.add_rule(name="E1", state="DISABLED", action="ALLOW", dlp_engines=[{"id": e.id}], severity="RULE_SEVERITY_INFO", rank=7, order=1, data_transfer_method="ANY")[2]["message"] == "Request body is invalid."
     ep, _, err = z.endpoint_dlp_rules.add_rule(name="E1", state="DISABLED", action="ALLOW", dlp_engines=[{"id": e.id}], severity="RULE_SEVERITY_INFO", rank=7, order=1, data_transfer_method="REMOVABLE_DRIVE_TRANSFER")
     assert ep and not err
+    # Endpoint DLP allows at most four engines on one rule (the old Fed pack's 17-engine extension rule was refused this way).
+    assert z.endpoint_dlp_rules.add_rule(name="E5", state="DISABLED", action="ALLOW", dlp_engines=[{"id": e.id}] * 5, severity="RULE_SEVERITY_INFO", rank=7, order=1, data_transfer_method="REMOVABLE_DRIVE_TRANSFER")[2]["message"] == "Exceeded maximum number of DLP engines: 4"
     assert "ruleType" in z.casb_dlp_rules.add_rule(name="S1", state="DISABLED", action="OFLCASB_DLP_REPORT_INCIDENT", dlp_engines=[{"id": e.id}], order=1, cloud_app_tenants=[{"id": 501}])[2]["message"]
     saas = dict(state="DISABLED", action="OFLCASB_DLP_REPORT_INCIDENT", dlp_engines=[{"id": e.id}], type="OFLCASB_DLP_FILE", cloud_app_tenants=[{"id": 501}], rank=7)
     assert z.casb_dlp_rules.add_rule(name="SRC-JavaScript Code to AI [SaaS]", order=1, **saas)[2]["message"] == "Name exceeds the max length 31 characters"

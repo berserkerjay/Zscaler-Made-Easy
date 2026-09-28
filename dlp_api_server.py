@@ -883,8 +883,10 @@ class DLPPackDeployRequest(TenantCredsRequest):
     restore_drift: bool = False
     # Per pack: which DLP channels to deploy into (web, endpoint, saas,
     # email). A pack not listed is deployed exactly as packed. A chosen
-    # channel the pack has no rule for gets a monitor-only extension rule
-    # carrying the pack's engines; a deselected channel is skipped.
+    # channel the pack has no rule for gets monitor-only extension rules
+    # carrying the pack's engines, one disabled rule per engine on every
+    # channel (Endpoint DLP on removable media); a deselected channel is
+    # skipped.
     channel_targets: Dict[str, List[str]] = {}
     # Terraform hand-off only: "static" never reads the tenant (credentials
     # are ignored); "gap" needs them; "" decides by whether they are present.

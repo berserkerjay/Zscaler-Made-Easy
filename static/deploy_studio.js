@@ -70,10 +70,12 @@ function _dzChannelChips(channels) {
 
 // ── Channel targets ───────────────────────────────────────────────
 // Which DLP channels a pack is deployed into. Default: the channels the
-// pack ships rules for. A ticked channel the pack has no rule for gets a
-// monitor-only extension rule carrying the pack's engines; an unticked
-// channel is skipped. Containment rules (Cloud App Control, File Type,
-// URL, SSL) are not part of the choice.
+// pack ships rules for. A ticked channel the pack has no rule for gets
+// monitor-only extension rules carrying the pack's engines, one disabled
+// rule per engine (Endpoint DLP on removable media; ZIA allows at most
+// four engines per endpoint rule) — the same shape as every shipped pack;
+// an unticked channel is skipped. Containment rules (Cloud App Control,
+// File Type, URL, SSL) are not part of the choice.
 const DZ_DLP = ['web', 'endpoint', 'saas', 'email'];
 const DZ_DLP_LABEL = { web: 'Inline Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security', email: 'Outbound Email DLP' };
 // The channel choice lives for this page only. It used to be remembered
