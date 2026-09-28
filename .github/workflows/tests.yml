@@ -146,7 +146,10 @@ jobs:
 
       - name: Image runs as non-root and answers /api/ping
         run: |
-          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_AUTH=0 dlp-check:ci)
+          # Published on the host's loopback only (see -p below); the container's
+          # own internal bind is 0.0.0.0 (baked in by the Dockerfile), so this
+          # mirrors docker-compose.yml's documented, safe use of the override.
+          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_AUTH=0 -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND dlp-check:ci)
           sleep 8
           docker exec "$id" id -u | grep -qv '^0$'
           curl -fsS http://127.0.0.1:8000/api/ping
