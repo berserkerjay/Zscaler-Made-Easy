@@ -7,7 +7,7 @@
 #   make docker-run start the container (loopback publish, read-only, non-root)
 PY ?= .venv/bin/python
 
-.PHONY: install dev run stop test check docker docker-run lock
+.PHONY: install dev run stop test check docker docker-run lock upstream
 
 install:
 	./install.sh
@@ -30,6 +30,14 @@ check:
 	$(PY) -m pyflakes $$(git ls-files '*.py' | grep -v '^tests/') || true
 	$(PY) tools/fan_out_channels.py --check
 	$(PY) pack_terraform.py --out terraform && git diff --exit-code -- terraform
+	$(PY) upstream_check.py --offline --quiet
+
+# The daily upstream check (also .github/workflows/upstream_check.yml): the
+# installed SDK against PyPI's latest release and the 2.x prerelease's ZIA
+# service definition, the Terraform provider pin and schema against the
+# registry and the generator's output, Zscaler's API reference.
+upstream:
+	$(PY) upstream_check.py --md upstream_report.md
 
 docker:
 	docker build -t dlp-check .

@@ -1,0 +1,77 @@
+name: Upstream contract check
+
+# Daily: is what this app sends still what the Zscaler SDK, the Terraform
+# provider and Zscaler's API reference expect? (upstream_check.py). Drift
+# fails the job and opens — or updates — one issue labelled upstream-drift;
+# a clean day closes it. The report is always attached as an artifact.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"   # daily, 06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Install the pinned dependencies (the SDK this app runs on)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes --no-deps -r requirements.lock
+
+      - name: Cross-check the SDK, the provider and the API reference against what the app sends
+        id: check
+        run: |
+          set +e
+          python upstream_check.py --json upstream_report.json --md upstream_report.md
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+          cat upstream_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upstream-report
+          path: |
+            upstream_report.json
+            upstream_report.md
+
+      - name: Open, update or close the drift issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const drift = '${{ steps.check.outputs.rc }}' !== '0';
+            const body = fs.readFileSync('upstream_report.md', 'utf8')
+              + `\n\n_Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}_`;
+            const label = 'upstream-drift';
+            const title = 'Upstream drift: SDK / Terraform provider / API reference no longer match what the app sends';
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: 'open', labels: label, per_page: 5 });
+            if (drift) {
+              if (open.length) {
+                await github.rest.issues.update({ ...context.repo, issue_number: open[0].number, body });
+                core.notice(`Updated issue #${open[0].number}`);
+              } else {
+                try { await github.rest.issues.createLabel({ ...context.repo, name: label, color: 'd73a4a', description: 'upstream_check.py found drift' }); } catch (e) { /* exists */ }
+                const { data: issue } = await github.rest.issues.create({ ...context.repo, title, body, labels: [label] });
+                core.notice(`Opened issue #${issue.number}`);
+              }
+              core.setFailed('Upstream drift found — see the report above.');
+            } else if (open.length) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: open[0].number, body: 'Clean run today; closing.\n\n' + body });
+              await github.rest.issues.update({ ...context.repo, issue_number: open[0].number, state: 'closed' });
+              core.notice(`Closed issue #${open[0].number}`);
+            }

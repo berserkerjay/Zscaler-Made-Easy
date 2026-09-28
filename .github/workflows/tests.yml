@@ -79,6 +79,9 @@ jobs:
       - name: Every pack mirrors its inline rules onto endpoint, saas and email
         run: python tools/fan_out_channels.py --check
 
+      - name: Every payload field the app sends is known to the installed SDK (offline upstream check)
+        run: python upstream_check.py --offline
+
       - name: Committed Terraform workspaces are up to date
         run: |
           python pack_terraform.py --out terraform
