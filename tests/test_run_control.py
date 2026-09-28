@@ -542,3 +542,43 @@ def test_a_read_back_the_tenant_refuses_entirely_says_unverified_for_everything_
     assert "4 object(s) could not be verified" in line and "not found" not in line
     for kind in ("dictionaries", "engines", "web DLP rules", "endpoint rules"):
         assert f"{kind} (HTTP 403: Resource Access Blocked)" in line, line
+
+
+# ── A rule refused on rank is created at the other rank, so it always deploys ──
+
+def test_a_saas_rule_refused_on_admin_rank_is_created_at_the_other_rank_not_cycled_through_orders():
+    """The real run: 'FOUO Markings High [SaaS]' at rank 0 came back 403
+    RBA_LIMITED 'Rule rank is higher than the admin rank.' and the app
+    tried orders 3, 2, 1 against the same answer. Rank, not order, was the
+    problem: the rule is now retried once at the other rank (7 for 0) at
+    the same order, the log says so, and the order retry is left alone."""
+    assert pd._rank_refusal("Rule rank is higher than the admin rank.") and not pd._order_refusal("Rule rank is higher than the admin rank.")
+    assert pd._order_refusal("Rule with rank 7 is not allowed at order 12") and not pd._rank_refusal("Rule with rank 7 is not allowed at order 12")
+    assert pd._other_rank({"rank": 0}) == 7 and pd._other_rank({"rank": 7}) == 0 and pd._other_rank({}) == 0
+
+    pack = _pack("zbp_enterprise_baseline")
+    # 1. A tenant whose API client can use rank 0: every SaaS rule lands at rank 0, nothing retried.
+    client = strict_tenant()
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    logs = []
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
+    saas = [r for r in client.zia.casb_dlp_rules.added if str(r.get("name", "")).endswith("[SaaS]")]
+    assert res["status"] == "applied" and len(saas) == 9 and all(r["rank"] == 0 for r in saas), res["summary"]
+    assert not any("refused rank" in l for l in logs)
+    # 2. The real tenant: rank 0 refused on SaaS rules. Same order, rank 7, created; said in the log and the result.
+    client = strict_tenant(saas_admin_rank=7)
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    logs = []
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
+    saas = [r for r in client.zia.casb_dlp_rules.added if str(r.get("name", "")).endswith("[SaaS]")]
+    assert res["status"] == "applied", res["summary"]
+    assert len(saas) == 9 and all(r["rank"] == 7 for r in saas), [(r["name"], r["rank"]) for r in saas]
+    assert res["summary"].get("failed", 0) == 0
+    retried = [l for l in logs if "refused rank 0" in l and "trying rank 7" in l]
+    assert len(retried) == 9, logs
+    assert len([l for l in logs if "created at rank 7 instead of 0" in l]) == 9, logs
+    assert not any("refused every order tried" in l for l in logs)
+    created_saas = [r for r in res["results"] if r.get("channel") == "saas" and r["status"] == "created"]
+    assert len(created_saas) == 9 and all("created at rank 7" in r["rank_note"] for r in created_saas)
+    # Web and endpoint rules were never refused: no rank note on them.
+    assert all("rank_note" not in r for r in res["results"] if r.get("channel") in ("web", "endpoint"))

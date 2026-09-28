@@ -144,8 +144,12 @@ class StrictEngines(FakeEngines):
         return super().add_dlp_engine(**kw)   # name charset and description length live in the base fake
 
 
-def _strict_rules(svc, channel, engines, casb=None):
-    """Wrap a channel service's add_rule with the ZIA contract for rules."""
+def _strict_rules(svc, channel, engines, casb=None, admin_rank=None):
+    """Wrap a channel service's add_rule with the ZIA contract for rules.
+    `admin_rank` models a real tenant's answer on SaaS rules: the API
+    client's admin rank was such that a rank-0 rule came back 403
+    RBA_LIMITED 'Rule rank is higher than the admin rank.' — modelled as
+    'a rank below admin_rank is refused'."""
     real_add = svc.add_rule
 
     def add_rule(*args, **kw):
@@ -186,6 +190,9 @@ def _strict_rules(svc, channel, engines, casb=None):
         elif channel == "saas":
             if len(n) > 31:
                 return _err("Name exceeds the max length 31 characters")
+            if admin_rank is not None and int(kw.get("rank", 7) or 0) < admin_rank:
+                return None, None, {"status": 403, "code": "RBA_LIMITED", "message": "Rule rank is higher than the admin rank.",
+                                    "url": "https://api.zsapi.net/zia/api/v1/casbDlpRules"}
             if not str(act or "").startswith("OFLCASB_DLP_"):
                 return _err(f"Invalid action {act}")
             if not kw.get("type"):
@@ -229,7 +236,7 @@ TENANT_SAAS_RULE = Obj(id=8400, name="Customer SaaS rule", order=1, rank=0, type
                        action="OFLCASB_DLP_REPORT_INCIDENT", dlp_engines=[], description="made in the portal")
 
 
-def strict_tenant():
+def strict_tenant(saas_admin_rank=None):
     client = add_control_services(make_client(casb_tenants=TENANTS + [casb_tenant("Acme Exchange", "EXCHANGE", 505)],
                                               saas_rules=[Obj(**TENANT_SAAS_RULE.as_dict())]))
     z = client.zia
@@ -237,7 +244,7 @@ def strict_tenant():
     z.dlp_engine = StrictEngines([], dicts=z.dlp_dictionary)
     _strict_rules(z.dlp_web_rules, "web", z.dlp_engine)
     _strict_rules(z.endpoint_dlp_rules, "endpoint", z.dlp_engine)
-    _strict_rules(z.casb_dlp_rules, "saas", z.dlp_engine)
+    _strict_rules(z.casb_dlp_rules, "saas", z.dlp_engine, admin_rank=saas_admin_rank)
     _strict_rules(z.outbound_email_dlp_rules, "email", z.dlp_engine)
     return _with_delete(client)   # after the swap, so the strict services get their delete methods
 
