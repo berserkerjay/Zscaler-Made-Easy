@@ -415,3 +415,130 @@ def test_a_display_name_the_loader_does_not_know_is_still_a_conflict_in_the_plan
     assert "Widget Serial Numbers" not in added and "WG-Part Numbers" in added, "never sent: ZIA would refuse it; the rest deploys"
     assert next(r for r in res["results"] if r["name"] == "Widget Serial Numbers")["status"] == "skipped"
     assert next(r for r in res["results"] if r["kind"] == "engine" and r["name"] == "Widgets")["status"] == "skipped"
+
+
+# ── A refusal says whether it is a 403 or a 429, in words ─────────────────
+
+def test_refusals_say_whether_they_are_a_403_or_a_429_in_words():
+    """A real run answered 'Resource Access Blocked' (403) after 'Rule rank
+    is higher than the admin rank' (403) and the log gave only raw JSON;
+    a 403 and a 429 look alike there and call for opposite fixes. The SDK's
+    error — a JSON body as text, a dict's repr, or a dict — yields the
+    status, and every failed line says what the number means."""
+    blob = '{\n  "status": 403,\n  "code": null,\n  "message": "Resource Access Blocked",\n  "url": "https://api.zsapi.net/zia/api/v1/casbDlpRules"\n}'
+    assert ops._error_parts(blob) == ("Resource Access Blocked", None, 403)
+    assert ops._error_parts("{'status': 429, 'code': None, 'message': 'Too Many Requests'}") == ("Too Many Requests", None, 429)
+    assert ops._error_parts({"status": 403, "code": "RBA_LIMITED", "message": "Rule rank is higher than the admin rank."}) == \
+        ("Rule rank is higher than the admin rank.", "RBA_LIMITED", 403)
+    assert ops._error_parts("RetryTooLong: Retry wait time 3421 seconds exceeds configured maxRetrySeconds 30.")[2] is None
+    assert ops._error_parts("HTTP 429 from ZIA")[2] == 429
+    assert ops.describe_error(blob) == "HTTP 403: Resource Access Blocked"
+    assert ops.describe_error("plain words") == "plain words"
+
+    blocked = ops.http_label(403, "Resource Access Blocked")
+    assert blocked.startswith("HTTP 403 — ZIA blocked") and "not a rate limit" in blocked
+    assert ops.http_label(403, "Rule rank is higher than the admin rank.").startswith("HTTP 403 — the rule's rank")
+    assert ops.http_label(403, "Forbidden").startswith("HTTP 403 — ZIA refused access")
+    limited = ops.http_label(429, "Too Many Requests")
+    assert limited.startswith("HTTP 429") and "rate limit" in limited and "not a permission" in limited
+    assert ops.http_label(None, "x") is None and ops.http_label(503, "busy").startswith("HTTP 503")
+
+    lines = []
+    rec = ops.Recorder(run="deploy", log=lines.append)
+    out = ops.normalize((None, None, blob))
+    assert out.http_status == 403 and not out.transient and out.error == "Resource Access Blocked"
+    rec.record("policy", "US PII [SaaS]", "failed", op="create", channel="saas", outcome=out)
+    assert lines[-1].startswith("[policy] US PII [SaaS]: failed — Resource Access Blocked What this means: HTTP 403 — ZIA blocked"), lines[-1]
+    assert "Role Management" in lines[-1] and rec.events[-1]["http_status"] == 403
+    out429 = ops.normalize((None, None, {"status": 429, "message": "Too Many Requests"}))
+    assert out429.transient and out429.http_status == 429
+    rec.record("policy", "R", "failed", op="create", outcome=out429)
+    assert "What this means: HTTP 429" in lines[-1] and "rate limit" in lines[-1]
+    rank = ops.normalize((None, None, {"status": 403, "code": "RBA_LIMITED", "message": "Rule rank is higher than the admin rank."}))
+    rec.record("policy", "S", "failed", op="create", channel="saas", outcome=rank)
+    assert "HTTP 403 — the rule's rank is above the API client's admin rank" in lines[-1] and "Use rank 0" in lines[-1]
+
+
+def test_a_tenant_list_refused_with_403_is_named_in_the_read_and_the_read_back_says_unverified_not_missing(tmp_path, monkeypatch):
+    from test_pack_deploy import _dict, _engine, _policy, write_pack
+    pack = write_pack(tmp_path, "rb", dicts=[_dict("RB Dict")], engines=[_engine("RB Engine", "(D:RB Dict)")],
+                      policies=[_policy("RB-Monitor", ["RB Engine"])], meta={"name": "RB", "confidence_tweaks": []})
+    client = make_client()
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    blocked = {"status": 403, "code": None, "message": "Resource Access Blocked", "url": "https://api.zsapi.net/zia/api/v1/dlpDictionaries"}
+    real_preflight = pd.preflight
+    calls = []
+
+    def reads_refused_after_the_writes(*a, **kw):
+        # apply() re-plans once before writing (plan-hash check) and once
+        # after (the read-back); ZIA blocks the client between the two.
+        calls.append(1)
+        if len(calls) >= 2:
+            client.zia.dlp_dictionary.list_dicts = lambda *x, **y: (None, None, blocked)
+        return real_preflight(*a, **kw)
+    monkeypatch.setattr(pd, "preflight", reads_refused_after_the_writes)
+    logs = []
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=True, log=logs.append)
+    assert res["status"] == "applied", res["results"]
+    assert any("could not read: dictionaries (HTTP 403: Resource Access Blocked)" in l for l in logs), logs
+    rb = res["read_check"]
+    assert rb["unreadable"] == {"dictionaries": "HTTP 403: Resource Access Blocked"}
+    unverified = [m for m in rb["missing"] if m["unverified"]]
+    assert [m["name"] for m in unverified] == ["RB Dict"] and "could not be verified" in unverified[0]["reason"] and "HTTP 403" in unverified[0]["reason"]
+    assert all(m["kind"] == "dictionary" for m in unverified) and not [m for m in rb["missing"] if not m["unverified"]]
+    line = next(l for l in logs if l.startswith("Read-back: "))
+    assert "could not be verified" in line and "not found" not in line and "dictionaries (HTTP 403: Resource Access Blocked)" in line, line
+
+
+def test_authenticate_names_a_429_and_a_403_by_number():
+    import dlp_api_server as srv
+    limited = srv._explain_connection_error('{"status": 429, "message": "Too Many Requests"}')
+    assert limited["cause"].startswith("HTTP 429") and "rate-limiting" in limited["cause"] and "Wait a minute" in limited["fix"]
+    blocked = srv._explain_connection_error('{"status": 403, "code": null, "message": "Resource Access Blocked"}')
+    assert blocked["cause"].startswith("HTTP 403") and "Not a rate limit" in blocked["cause"] and "Role Management" in blocked["fix"]
+    forbidden = srv._explain_connection_error("403 Forbidden")
+    assert forbidden["cause"].startswith("HTTP 403") and "not a rate limit" in forbidden["cause"]
+    assert srv._explain_connection_error("403 Forbidden", "legacy")["cause"].startswith("HTTP 403")
+    assert srv._explain_connection_error("invalid_client")["cause"].startswith("Zscaler rejected")
+
+
+def test_a_read_back_the_tenant_refuses_entirely_says_unverified_for_everything_with_the_status(tmp_path, monkeypatch):
+    """The real run: after the refused SaaS burst ZIA answered 403 on every
+    list — dictionaries, engines, web rules, endpoint rules — and the
+    read-back said '93 object(s) not found'. They existed; nothing could
+    be read. Now every one is 'could not be verified', with the 403 named."""
+    from test_pack_deploy import _dict, _engine, _policy, write_pack
+    pack = write_pack(tmp_path, "rb2", dicts=[_dict("RB2 Dict")], engines=[_engine("RB2 Engine", "(D:RB2 Dict)")],
+                      policies=[_policy("RB2-Monitor", ["RB2 Engine"])], meta={"name": "RB2", "confidence_tweaks": [], "baseline": {"prefix": "RB2-", "version": "1"}})
+    client = make_client(casb_tenants=TENANTS)
+    targets = {"rb2": ["web", "endpoint"]}
+    rep = pd.preflight(client, [pack], writes_enabled=True, channel_targets=targets)
+    blocked = {"status": 403, "code": None, "message": "Resource Access Blocked"}
+    refuse = lambda *x, **y: (None, None, blocked)
+    real_preflight = pd.preflight
+    calls = []
+
+    def everything_refused_after_the_writes(*a, **kw):
+        calls.append(1)
+        if len(calls) >= 2:
+            z = client.zia
+            z.dlp_dictionary.list_dicts = refuse
+            z.dlp_engine.list_dlp_engines = refuse
+            z.dlp_engine.list_dlp_engines_lite = refuse
+            z.dlp_web_rules.list_rules = refuse
+            z.endpoint_dlp_rules.list_rules = refuse
+        return real_preflight(*a, **kw)
+    monkeypatch.setattr(pd, "preflight", everything_refused_after_the_writes)
+    logs = []
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, channel_targets=targets, verify=True, log=logs.append)
+    assert res["status"] == "applied" and res["summary"]["created"] == 4, res["summary"]
+    rb = res["read_check"]
+    assert rb["read"] is False and rb["present"] == 0 and len(rb["missing"]) == 4
+    assert all(m["unverified"] and "could not be verified" in m["reason"] and "HTTP 403" in m["reason"] for m in rb["missing"]), rb["missing"]
+    assert {m["kind"] for m in rb["missing"]} == {"dictionary", "engine", "policy"}
+    ep = next(m for m in rb["missing"] if m["channel"] == "endpoint")
+    assert "endpoint rules" in ep["reason"]
+    line = next(l for l in logs if l.startswith("Read-back: "))
+    assert "4 object(s) could not be verified" in line and "not found" not in line
+    for kind in ("dictionaries", "engines", "web DLP rules", "endpoint rules"):
+        assert f"{kind} (HTTP 403: Resource Access Blocked)" in line, line

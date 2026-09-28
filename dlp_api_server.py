@@ -1712,13 +1712,26 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
     d = str(detail or "")
     low = d.lower()
     legacy = method == tenant_auth.LEGACY
-    if legacy and ("401" in low or "unauthorized" in low or "authentication failed" in low or "auth_failed" in low or "invalid" in low and "credential" in low):
+    import re as _re
+    # A 403 and a 429 look alike in a log and call for opposite fixes, so
+    # each is named by its number first. "Resource Access Blocked" is a 403
+    # ZIA gives when the client is blocked, not a rate limit.
+    if _re.search(r"\b429\b", low) or "too many requests" in low or "rate limit" in low:
+        cause = "HTTP 429 — ZIA is rate-limiting this API client (too many requests in the window). The credentials and permissions are not the problem."
+        fix = ("Wait a minute and click Authenticate again. If it keeps happening, another tool or a running assessment is using this "
+               "API client's request budget: let it finish, or give this app its own API client.")
+    elif "resource access blocked" in low:
+        cause = ("HTTP 403 — ZIA blocked the API client's access (Resource Access Blocked). Not a rate limit: either the client's admin "
+                 "role lost access to DLP dictionaries, engines or rules, or ZIA blocked the client after a burst of refused requests.")
+        fix = ("Wait a few minutes and click Authenticate again. If it still fails, check the client's role in ZIA Administration > "
+               "Role Management: DLP Dictionaries & Engines and DLP Policy must be readable (and writable, to deploy packs).")
+    elif legacy and ("401" in low or "unauthorized" in low or "authentication failed" in low or "auth_failed" in low or "invalid" in low and "credential" in low):
         cause = "Zscaler rejected the admin username, password or API key."
         fix = ("Check the username (the admin's sign-in email) and password against the ZIA Admin Portal, and copy the API key from "
                "Administration > API Key Management (12 characters; it must be the key of this tenant). The admin must be allowed to "
                "sign in through the API. If the tenant has moved to ZIdentity, use the OneAPI sign-in instead.")
     elif legacy and ("403" in low or "forbidden" in low):
-        cause = "The admin signed in but is not allowed to read this tenant's DLP configuration."
+        cause = "HTTP 403 — the admin signed in but is not allowed to read this tenant's DLP configuration (a permission, not a rate limit)."
         fix = "In ZIA Administration > Role Management, give the admin's role read (and, to deploy packs, write) access to DLP policy, dictionaries and engines."
     elif legacy and ("tunnel connection failed" in low or "proxyerror" in low or "max retries" in low or "name resolution" in low or "nodename" in low):
         cause = "This machine could not reach the classic ZIA API at all (network, proxy or DNS)."
@@ -1745,7 +1758,7 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
         cause = "The vanity domain is not valid."
         fix = "Enter only the short name that appears before .zslogin.net in your admin login URL, for example acme."
     elif "403" in low or "forbidden" in low or "scope" in low:
-        cause = "The credentials are valid but the API client is not allowed to read this tenant."
+        cause = "HTTP 403 — the credentials are valid but the API client is not allowed to read this tenant (a permission, not a rate limit)."
         fix = ("In ZIdentity, open the API client and make sure a ZIA API resource and a role with read access to DLP "
                "dictionaries, engines and rules are assigned.")
     else:

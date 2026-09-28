@@ -36,6 +36,7 @@ calls an SDK write method directly.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import re
 import threading
@@ -221,6 +222,16 @@ class Outcome:
         return None if self.ok else (self.error or "Unknown error")
 
 
+# The SDK often hands back its error as text — a JSON body ('{"status":
+# 403, "code": null, "message": "Resource Access Blocked", ...}') or the
+# repr of a dict — rather than a dict. These pull the status, code and
+# message out of either, so the app can say what the number means.
+_ERR_STATUS_RE = re.compile(r"""["']status(?:_code)?["']\s*:\s*["']?([1-5]\d{2})\b""")
+_ERR_CODE_RE = re.compile(r"""["']code["']\s*:\s*["']([A-Za-z0-9_]+)["']""")
+_ERR_MESSAGE_RE = re.compile(r"""["']message["']\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""")
+_ERR_HTTP_WORDS_RE = re.compile(r"\b(?:http|status(?:\s+code)?)\W{0,3}([1-5]\d{2})\b", re.I)
+
+
 def _error_parts(err: Any) -> Tuple[str, Optional[str], Optional[int]]:
     """(message, code, http_status) from whatever the SDK handed back."""
     if isinstance(err, dict):
@@ -231,7 +242,56 @@ def _error_parts(err: Any) -> Tuple[str, Optional[str], Optional[int]]:
         except (TypeError, ValueError):
             status = None
         return str(msg)[:300], (str(err["code"]) if err.get("code") else None), status
-    return str(err)[:300], None, None
+    text = str(err)
+    hit = _ERR_STATUS_RE.search(text) or _ERR_HTTP_WORDS_RE.search(text)
+    status = int(hit.group(1)) if hit else None
+    c = _ERR_CODE_RE.search(text)
+    code = c.group(1) if c and c.group(1).lower() not in ("null", "none") else None
+    msg = text
+    m = _ERR_MESSAGE_RE.search(text)
+    if m:
+        raw = m.group(1) if m.group(1) is not None else m.group(2)
+        try:
+            msg = json.loads('"' + raw.replace("\\'", "'") + '"') if m.group(1) is not None else raw.replace("\\'", "'")
+        except ValueError:
+            msg = raw
+    return str(msg)[:300], code, status
+
+
+def http_label(status: Optional[int], message: Optional[str] = None, code: Optional[str] = None) -> Optional[str]:
+    """What an HTTP status from ZIA means, in words — above all whether it
+    is a 403 (refused: permission, rank or a blocked client) or a 429 (rate
+    limit: wait), which look alike in a log and call for opposite fixes."""
+    if not status:
+        return None
+    m = (message or "").lower()
+    if status == 403:
+        if "resource access blocked" in m:
+            return ("HTTP 403 — ZIA blocked the API client's access to this resource (not a rate limit): the client's admin role "
+                    "lost access, or ZIA blocked the client after a burst of refused requests")
+        if "admin rank" in m:
+            return "HTTP 403 — the rule's rank is above the API client's admin rank (Role Management); not a permission or rate-limit problem"
+        return "HTTP 403 — ZIA refused access: the API client's role does not allow this (not a rate limit)"
+    if status == 429:
+        return "HTTP 429 — ZIA's rate limit: too many requests in the window (not a permission problem); the app waits and retries"
+    if status == 401:
+        return "HTTP 401 — the sign-in was rejected (expired, or the credentials changed)"
+    if status == 400:
+        return "HTTP 400 — ZIA rejected the request body"
+    if status == 404:
+        return "HTTP 404 — the object is not in the tenant"
+    if status == 409:
+        return "HTTP 409 — a conflict: the portal's edit lock, or an object already in that state"
+    if 500 <= status < 600:
+        return f"HTTP {status} — ZIA's side failed or was busy; the app retries"
+    return f"HTTP {status}"
+
+
+def describe_error(err: Any) -> str:
+    """'HTTP 403: Resource Access Blocked' — the status in front of the
+    message whenever ZIA gave one, else the message alone."""
+    msg, _code, status = _error_parts(err)
+    return f"HTTP {status}: {msg}" if status else msg
 
 
 def is_transient(message: Optional[str], http_status: Optional[int] = None) -> bool:
@@ -340,6 +400,14 @@ EXPLANATIONS: Tuple[Tuple[str, str], ...] = (
      "This copy of a predefined dictionary needs the list of identifiers it should match (for a driver's licence dictionary, the US states). Add hierarchical_identifiers to it in the pack."),
     ("channel is mandatory",
      "An Endpoint DLP rule must name one data transfer method: removable media, network share, printing or application file access. Add data_transfer_method to the rule in the pack."),
+    ("resource access blocked",
+     "ZIA is refusing this API client access to the resource (a 403, not a rate limit). Either the client's admin role no longer has access to DLP dictionaries, engines or rules, or ZIA blocked the client after a burst of refused requests. Wait a few minutes, click Authenticate, and run again; if it still fails, check the role in ZIA Administration > Role Management."),
+    ("rule rank is higher than the admin rank",
+     "The rule asks for a rank above the API client's admin rank, so ZIA refuses it (a 403 from role-based administration, not a permission or rate-limit problem). Deploy without 'Use rank 0' so rules get rank 7, or raise the admin's rank in Role Management."),
+    ("too many requests",
+     "ZIA's rate limit (a 429): too many requests in the window. The app waits and retries; if the whole run stops, run it again after the wait it names."),
+    ("rate limit",
+     "ZIA's rate limit (a 429): too many requests in the window. The app waits and retries; if the whole run stops, run it again after the wait it names."),
     ("name exceeds the max length 31",
      "SaaS rule names must be 31 characters or fewer. Shorten this rule's name in the pack."),
     ("not allowed at order",
@@ -451,9 +519,13 @@ class Recorder:
             entry.pop("error", None)
             entry.pop("explanation", None)
         else:
+            # The HTTP status in words first (a 403 and a 429 look alike in a
+            # log and call for opposite fixes), then what ZIA's message means.
+            label = http_label(entry.get("http_status"), entry.get("error"), entry.get("code"))
             why = explain(entry.get("error"))
-            if why:
-                entry["explanation"] = why
+            text = ". ".join(x for x in (label, why) if x)
+            if text:
+                entry["explanation"] = text
         event = {"ts": time.time(), "run": self.run, "op": op, "kind": kind, "channel": channel, "name": name, "id": entry.get("id"),
                  "status": status, "error": entry.get("error"), "explanation": entry.get("explanation"), "reason": entry.get("reason"),
                  "code": entry.get("code"), "http_status": entry.get("http_status"), "attempts": entry.get("attempts", 1)}
