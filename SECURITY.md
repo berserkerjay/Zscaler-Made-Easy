@@ -28,6 +28,7 @@ maintained release branches.
 | Area | Behaviour |
 |---|---|
 | Access to the UI and API | A random token per server process (`ZSCALER_UI_TOKEN` to fix it). The launcher opens the browser with it and the server turns it into an HttpOnly, SameSite=Strict cookie; any other caller needs `X-DLP-Check-Token` or a Bearer header, or gets 401. The token is printed on the console and written to `ui_token.txt` (owner-only, git-ignored). `ZSCALER_UI_AUTH=0` disables it. |
+| SSO (optional, off by default) | `ZSCALER_SSO_ENABLED=1` (`sso.py`) requires an OpenID Connect sign-in (Authorization Code + PKCE, ID token signature/issuer/audience/nonce verified against the identity provider's published keys) before the same UI token cookie above is issued; the static-token shortcuts (`?token=...`, paste-in unlock) are refused once it's on. Enabled but missing a required `ZSCALER_SSO_*` variable refuses to start rather than falling back silently. Meant for the container/server deployment, not the single-operator desktop launcher. |
 | Audit trail | Every non-GET API call is appended to `audit.log` (owner-only, git-ignored, rotated at 20 MB) with time, path, status, caller, write-mode state and a redacted body; deployments are additionally recorded in `deployments.json` for undo. |
 | Dependencies and updates | `requirements.lock` pins every wheel by hash; the installer, the updater and the container install with `--require-hashes`. CI checks the lock against `requirements.txt`, runs `pip-audit`, publishes a CycloneDX SBOM, builds the image and scans it; Dependabot watches pip, Actions and the base image. |
 | Container | `Dockerfile` + `docker-compose.yml`: non-root user, read-only filesystem, no capabilities, no privilege escalation, data on a volume, published on the host loopback only. |
@@ -52,7 +53,8 @@ to do when a control falls short.
 - The UI token is a bearer secret: anyone who reads `ui_token.txt` or the
   console can use the API from that machine. Exposing the server beyond
   loopback (`ZSCALER_BIND_HOST`) still needs a reverse proxy that
-  authenticates users and terminates TLS.
+  authenticates users and terminates TLS, or `ZSCALER_SSO_ENABLED` set to
+  require an identity-provider sign-in first (see the table above).
 - A remembered profile secret goes to the operating system's credential
   store only when the optional `keyring` package is installed
   (`pip install keyring`); otherwise it stays in the owner-only profile

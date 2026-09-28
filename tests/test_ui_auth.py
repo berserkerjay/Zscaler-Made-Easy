@@ -25,7 +25,7 @@ def test_api_needs_the_token_but_the_page_and_assets_do_not(monkeypatch):
     assert c.get("/").status_code == 200 and c.get("/app.css").status_code == 200
     assert c.get("/static/report_theme.js").status_code == 200 and c.get("/report/flow").status_code == 200
     assert c.get("/api/ping").json() == {"ok": True}
-    assert c.get("/api/auth/status").json() == {"required": True, "unlocked": False, "token_file": "ui_token.txt"}
+    assert c.get("/api/auth/status").json() == {"required": True, "unlocked": False, "token_file": "ui_token.txt", "sso": False}
     assert c.get("/api/health", headers={"X-DLP-Check-Token": "test-token-abc123"}).status_code == 200
     assert c.get("/api/health", headers={"Authorization": "Bearer test-token-abc123"}).status_code == 200
     assert c.get("/api/health", headers={"X-DLP-Check-Token": "wrong"}).status_code == 401

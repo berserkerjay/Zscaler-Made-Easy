@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse, Response, PlainTextResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, HTMLResponse, Response, PlainTextResponse, RedirectResponse
 
 import tenant_auth
 from fastapi.staticfiles import StaticFiles
@@ -150,6 +150,13 @@ app.add_middleware(_audit.AuditMiddleware, writes_enabled=writes_enabled)   # in
 app.add_middleware(_security.UIAuthMiddleware)   # inside the headers layer: a 401 still carries the security headers
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+# SSO (sso.py) is off by default; ZSCALER_SSO_ENABLED turns it on. Fail
+# closed at import time rather than starting half-configured — that
+# would silently leave the static-token shortcuts as the only way in
+# while claiming SSO is required.
+import sso as _sso
+_sso.require_configured()
 
 
 @app.middleware("http")
@@ -354,20 +361,60 @@ async def ping():
 
 @app.get("/api/auth/status")
 async def auth_status(request: Request):
-    """Whether this server asks for a UI token and whether this browser has it."""
+    """Whether this server asks for a UI token, whether this browser has
+    it, and whether that token can only be obtained via SSO."""
     return {"required": _security.ui_auth_enabled(), "unlocked": _security.ui_request_ok(request),
-            "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None}
+            "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None,
+            "sso": _sso.sso_enabled()}
 
 
 @app.post("/api/auth/unlock")
 async def auth_unlock(req: UnlockRequest, request: Request):
-    """Exchange the UI token for the cookie the page uses from then on."""
+    """Exchange the UI token for the cookie the page uses from then on.
+    Refused when SSO is enabled: the cookie is only minted by a
+    completed identity-provider login, never by a pasted token."""
     if not _security.ui_auth_enabled():
         return {"ok": True, "required": False}
+    if _sso.sso_enabled():
+        raise HTTPException(status_code=403, detail="This server requires SSO sign-in. Use the Sign in button, not a pasted token.")
     if not _security.ui_token_ok(req.token):
         raise HTTPException(status_code=401, detail="That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.")
     resp = JSONResponse({"ok": True, "required": True})
     _security.set_ui_cookie(resp, request)
+    return resp
+
+
+@app.get("/api/auth/sso/login")
+async def sso_login():
+    """Start an OpenID Connect sign-in: redirect to the identity provider."""
+    if not _sso.sso_enabled():
+        raise HTTPException(status_code=404, detail="SSO is not enabled on this server.")
+    try:
+        url = _sso.start_login()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not start SSO sign-in: {e}")
+    return RedirectResponse(url, status_code=302)
+
+
+@app.get("/api/auth/sso/callback")
+async def sso_callback(request: Request, code: str = "", state: str = "", error: str = "", error_description: str = ""):
+    """Where the identity provider sends the browser back. On success,
+    mints the same UI token cookie every other request is already gated
+    on — nothing else about the gate changes. `error`/`error_description`
+    and any exception text are attacker-influenceable (query params, or
+    echoed from the token response) and are HTML-escaped before display."""
+    import html as _html
+    if not _sso.sso_enabled():
+        raise HTTPException(status_code=404, detail="SSO is not enabled on this server.")
+    if error:
+        return HTMLResponse(f"<p>Sign-in was not completed: {_html.escape(error_description or error)}</p>", status_code=401)
+    try:
+        claims = _sso.complete_login(state, code)
+    except Exception as e:
+        return HTMLResponse(f"<p>Sign-in failed: could not verify the identity provider's response ({_html.escape(str(e))}).</p>", status_code=401)
+    resp = RedirectResponse("/", status_code=303)
+    _security.set_ui_cookie(resp, request)
+    _audit.record("sso_login", email=claims.get("email"), subject=claims.get("sub"))
     return resp
 
 

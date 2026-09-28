@@ -91,9 +91,20 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
                              "The UI token gate is off (ZSCALER_UI_AUTH=0): any process on this machine can call the API.",
                              "Remove ZSCALER_UI_AUTH=0 from the start script or environment and restart the app."))
 
-    checks.append(_check("mfa", "Multi-factor authentication for the operator", P_OWN, "mfa", "n/a",
-                         "A single-operator tool on the consultant's own laptop: access is the operating-system login plus the per-process UI token. There is no user directory to attach a second factor to.",
-                         "Expose the server beyond loopback only behind a reverse proxy that authenticates users with MFA and terminates TLS."))
+    import sso as _sso
+    if _sso.sso_enabled() and not _sso.config_errors():
+        issuer = os.environ.get("ZSCALER_SSO_ISSUER", "").strip()
+        checks.append(_check("mfa", "Multi-factor authentication for the operator", P_OWN, "mfa", "pass",
+                             f"Sign-in is required through the configured OpenID Connect identity provider ({issuer}). Enforcing a second factor there is the identity provider's own policy, not this app's.",
+                             "Confirm the identity provider requires MFA for this application's client."))
+    elif _sso.sso_enabled():
+        checks.append(_check("mfa", "Multi-factor authentication for the operator", P_OWN, "mfa", "fail",
+                             "ZSCALER_SSO_ENABLED is set but SSO is not fully configured (the server would refuse to start).",
+                             "Set every ZSCALER_SSO_* variable so the identity-provider sign-in actually takes effect."))
+    else:
+        checks.append(_check("mfa", "Multi-factor authentication for the operator", P_OWN, "mfa", "n/a",
+                             "A single-operator tool on the consultant's own laptop: access is the operating-system login plus the per-process UI token. There is no user directory to attach a second factor to.",
+                             "Either expose the server beyond loopback only behind a reverse proxy that authenticates users with MFA and terminates TLS, or set ZSCALER_SSO_ENABLED and the ZSCALER_SSO_* variables to require sign-in through an identity provider."))
 
     w = security.write_mode_status()
     if not w.get("enabled"):

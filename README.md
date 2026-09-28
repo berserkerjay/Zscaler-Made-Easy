@@ -84,6 +84,8 @@ both are git-ignored), the container reads `.env`.
 | `ZSCALER_UI_AUTH` | `1` | Every caller must present the per-process UI token; `0` turns the gate off (local development only). |
 | `ZSCALER_UI_TOKEN` | random | Fix the UI token instead of minting one per start. |
 | `DLP_CHECK_UI_TOKEN_DIR` | app folder | Where `ui_token.txt` is written (`/data` in the container). |
+| `ZSCALER_SSO_ENABLED` | unset | `1` requires an OpenID Connect sign-in (Okta, Entra ID, Google Workspace, Auth0, Keycloak, ...) before the UI token cookie is issued, instead of the static-token shortcuts. Off by default — see `sso.py` and `SECURITY.md`. |
+| `ZSCALER_SSO_ISSUER`, `ZSCALER_SSO_CLIENT_ID`, `ZSCALER_SSO_CLIENT_SECRET`, `ZSCALER_SSO_REDIRECT_URL` | unset | Required once `ZSCALER_SSO_ENABLED=1` (the server refuses to start otherwise); `ZSCALER_SSO_SCOPES` is optional (`openid email profile`). |
 | `ENABLE_WRITE_ACTIONS` | unset | `YES_I_UNDERSTAND` lets the server change a tenant; otherwise the switch in Deploy Policy Packs enables it per session on a localhost bind. |
 | `ZSCALER_OPEN_BROWSER` | unset | `1` opens the browser when the server starts (the launchers set it). |
 | `ZSCALER_DEBUG` | unset | `1` shows tracebacks and request logs. |
@@ -108,7 +110,7 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 
 | Area | Files |
 |---|---|
-| Web server and API | `dlp_api_server.py` (FastAPI, the `dlp-check` command), `security.py` (token gate, origin check, body cap, rate limit, write mode), `audit.py` |
+| Web server and API | `dlp_api_server.py` (FastAPI, the `dlp-check` command), `security.py` (token gate, origin check, body cap, rate limit, write mode), `sso.py` (optional OpenID Connect sign-in, off by default), `audit.py` |
 | Assessment engine | `dlp_assessment_full_auto.py` (the `Client`, the check registry, the `dlp-check-assess` command), `zscaler_*_checks.py`, `zcc_evaluation.py`, `benchmarks.py`, `compliance_mapping.py`, `plain_english.py`, `report_docx.py` |
 | Policy packs | `pack_ops.py` (the shared execution path every pack goes through: validation, ordering, retries, run control, structured events), `pack_deploy.py` (plan, apply, journey, verify), `pack_removal.py` (remove, undo), `pack_jobs.py` (deploys and removals as background jobs the GUI follows live), `pack_channels.py` (per-channel payloads), `pack_library.py` (uploads), `pack_terraform.py`, `dlp_importer.py` (pack data and ZIA limits); pack data in `cjis_policy_pack/`, `fed_policy_pack/`, `global_banking_baseline/`, `healthcare_phi_baseline/`, `zbp_enterprise_baseline/`, `zbp_source_code_baseline/` |
 | Reports and analysis | `bypass_report.py`, `ssl_flow.py`, `data_flow.py`, `detection_health.py`, `dlp_efficacy.py`, `log_analyzer.py`, `secure_by_design.py` |

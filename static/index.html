@@ -2825,6 +2825,11 @@ async function openComplianceTab(fwKey) {
   window.__dlpAuthWrapped = true;
   const realFetch = window.fetch.bind(window);
   let asking = null;
+  function goToSsoLogin(url) {
+    // A full navigation, not a fetch: this is an OpenID Connect redirect
+    // to the identity provider, not an API call.
+    window.location.href = url || '/api/auth/sso/login';
+  }
   async function unlock(message) {
     if (asking) return asking;
     asking = (async () => {
@@ -2841,6 +2846,7 @@ async function openComplianceTab(fwKey) {
     if (r.status === 401) {
       let body = null;
       try { body = await r.clone().json(); } catch (e) { /* not json */ }
+      if (body && body.sso_required) { goToSsoLogin(body.sso_login_url); return r; }
       if (body && body.token_required) {
         const ok = await unlock(body.detail);
         if (ok) r = await realFetch(input, init);
@@ -2853,7 +2859,7 @@ async function openComplianceTab(fwKey) {
     try {
       const r = await realFetch('/api/auth/status');
       const s = await r.json();
-      if (s.required && !s.unlocked) await unlock('This server asks for its UI token before it shows anything.');
+      if (s.required && !s.unlocked) { if (s.sso) goToSsoLogin(); else await unlock('This server asks for its UI token before it shows anything.'); }
     } catch (e) { /* server not reachable yet; the first API call will ask */ }
   });
 })();

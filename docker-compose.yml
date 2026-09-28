@@ -2,7 +2,11 @@
 # Publishes on the host's loopback only; the container is read-only, runs
 # as a non-root user, drops every capability and cannot gain privileges.
 # Credentials: either type them in the GUI, or put ZSCALER_* in a local
-# .env file next to this compose file (git-ignored).
+# .env file next to this compose file (git-ignored). To require sign-in
+# through an identity provider before the app is reachable at all (this
+# is the deployment SSO is meant for — see SECURITY.md), also put
+# ZSCALER_SSO_ENABLED=1 and the ZSCALER_SSO_ISSUER / _CLIENT_ID /
+# _CLIENT_SECRET / _REDIRECT_URL variables in that .env file.
 services:
   dlp-check:
     build: .

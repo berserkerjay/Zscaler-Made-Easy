@@ -25,6 +25,11 @@ Optional hardening (env-toggled):
   ZSCALER_DEBUG        (default 0)          — 1 to surface tracebacks
   ENABLE_WRITE_ACTIONS                       — must equal "YES_I_UNDERSTAND"
                                                for any rule write/delete
+  ZSCALER_SSO_ENABLED  (default 0)          — require an OpenID Connect
+                                               login (see sso.py) before
+                                               the UI token cookie is
+                                               issued, instead of the
+                                               static-token shortcuts
 """
 from __future__ import annotations
 
@@ -385,7 +390,8 @@ _ui_token: "str | None" = None
 # its assets, the standalone report pages (they then call the API with the
 # cookie) and the unlock/status/ping calls.
 _UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
-_UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico"}
+_UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico",
+                          "/api/auth/sso/login", "/api/auth/sso/callback"}
 
 
 def ui_auth_enabled() -> bool:
@@ -453,13 +459,17 @@ def set_ui_cookie(response, request: Request) -> None:
 class UIAuthMiddleware(BaseHTTPMiddleware):
     """Require the UI token on every request except the ones a browser
     needs to obtain it. `/?token=...` (what the launcher opens) sets the
-    cookie and redirects to `/` so the token never stays in the URL."""
+    cookie and redirects to `/` so the token never stays in the URL —
+    unless SSO is enabled (sso.py), in which case that static-token
+    shortcut is turned off: the cookie is only ever minted by a
+    completed identity-provider login (/api/auth/sso/callback)."""
 
     async def dispatch(self, request: Request, call_next):
         if not ui_auth_enabled():
             return await call_next(request)
+        import sso as _sso
         path = request.url.path
-        if path == "/" and request.query_params.get("token"):
+        if path == "/" and request.query_params.get("token") and not _sso.sso_enabled():
             from fastapi.responses import RedirectResponse
             if ui_token_ok(request.query_params.get("token")):
                 resp = RedirectResponse("/", status_code=303)
@@ -471,5 +481,8 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if ui_request_ok(request):
             return await call_next(request)
+        if _sso.sso_enabled():
+            return JSONResponse({"detail": "Sign in required.", "token_required": True, "sso_required": True,
+                                 "sso_login_url": "/api/auth/sso/login"}, status_code=401)
         return JSONResponse({"detail": "UI token required. Open the app from the launcher, or paste the token from ui_token.txt (next to the app) into the unlock box.",
                              "token_required": True}, status_code=401)
