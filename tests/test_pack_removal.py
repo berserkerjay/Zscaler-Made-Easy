@@ -10,7 +10,7 @@ import pytest
 import pack_removal as pr
 from test_pack_deploy import FakeClient, Obj, _dict, _engine, _policy, write_pack
 
-TAG = "[DLP-Check baseline removeme v1] Deployed by DLP-Check; measured on every journey check, never overwritten."
+TAG = "[DLP-Check baseline removeme v1] Measured on every journey check, never overwritten."
 META = {"name": "Remove Me", "baseline": {"pack": "removeme", "version": "1", "prefix": "RM-"}, "confidence_tweaks": []}
 
 
@@ -185,16 +185,16 @@ def test_remove_everything_covers_retired_packs_and_old_names(tmp_path, monkeypa
     pack = _pack_dir(tmp_path)
     client = _deletable(FakeClient(
         dicts=[Obj(id=9001, name="RM-Dict", custom=True, description=TAG),
-               Obj(id=9101, name="CUI-Banner-Structural", custom=True, description="[DLP-Check baseline cui_marking_baseline v1.0] Deployed by DLP-Check"),
+               Obj(id=9101, name="CUI-Banner-Structural", custom=True, description="[DLP-Check baseline cui_marking_baseline v1.0]"),
                Obj(id=9102, name="CUI Category Phrase", custom=True, description="CUI Category phrases"),          # Fed 1.1, untagged
                Obj(id=9103, name="Hand-made Dict", custom=True, description="mine")],
         engines=[Obj(id=5001, name="RM-Engine", engine_expression="D9001.S > 0", description=TAG),
-                 Obj(id=5101, name="CUI-Detect-All", engine_expression="D9101.S > 0", description="[DLP-Check baseline cui_marking_baseline v1.0] Deployed by DLP-Check"),
+                 Obj(id=5101, name="CUI-Detect-All", engine_expression="D9101.S > 0", description="[DLP-Check baseline cui_marking_baseline v1.0]"),
                  Obj(id=5102, name="CUI Engine (Low Confidence)", engine_expression="D9102.S > 2", description=""),
                  Obj(id=5103, name="PCI - High", engine_expression="D1.S > 9", description=""),
                  Obj(id=5104, name="Customer Engine", engine_expression="D9103.S > 0 OR D9102.S > 0", description="")],
         rules=[Obj(id=7001, name="RM-Web-Monitor", order=1, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5001}], description=TAG),
-               Obj(id=7101, name="CUI-Monitor-All", order=2, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5101}], description="[DLP-Check baseline cui_marking_baseline v1.0] Deployed by DLP-Check"),
+               Obj(id=7101, name="CUI-Monitor-All", order=2, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5101}], description="[DLP-Check baseline cui_marking_baseline v1.0]"),
                Obj(id=7102, name="Z-Controlled Unclassified Information-Monitor", order=3, action="ALLOW", state="DISABLED", dlp_engines=[{"id": 5102}], description=""),
                Obj(id=7103, name="Customer Rule", order=4, action="BLOCK", state="ENABLED", dlp_engines=[{"id": 5104}], description="")]))
     monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
