@@ -582,3 +582,69 @@ def test_a_saas_rule_refused_on_admin_rank_is_created_at_the_other_rank_not_cycl
     assert len(created_saas) == 9 and all("created at rank 7" in r["rank_note"] for r in created_saas)
     # Web and endpoint rules were never refused: no rank note on them.
     assert all("rank_note" not in r for r in res["results"] if r.get("channel") in ("web", "endpoint"))
+
+
+# ── A 403 on a write: activate, wait 15 s, try again, up to five times ──────
+
+def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries(monkeypatch):
+    """"If we receive 403 errors on a deploy or delete perform an automatic
+    activate and wait 15 seconds and try again 5 times until it succeeds":
+    call() does exactly that for a create, update or delete that ZIA
+    refuses with a 403 (blocked access, forbidden), then records the
+    outcome as before. A rank refusal, a read, or a call without the
+    client is left alone."""
+    acts, sleeps, logs = [], [], []
+    monkeypatch.setattr(ops, "_sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(ops, "_activate", lambda zia: (acts.append(zia) or {"activated": True, "status": "ACTIVE", "error": None}))
+    calls = {"n": 0}
+
+    def clears_on_the_fourth():
+        calls["n"] += 1
+        return (None, None, {"status": 403, "code": None, "message": "Resource Access Blocked"}) if calls["n"] <= 3 else ({"id": 9}, None, None)
+    with ops.run_scope():
+        out = ops.call(clears_on_the_fourth, op="create", kind="policy", name="R", log=logs.append, zia="ZIA")
+        assert ops.stop_reason() is None
+    assert out.ok and out.id == 9 and out.attempts == 4 and calls["n"] == 4
+    assert acts == ["ZIA"] * 3 and sleeps == [ops.FORBIDDEN_WAIT_SECONDS] * 3 == [15.0] * 3
+    assert any("(HTTP 403); activating, waiting 15s and trying again (1 of 5)" in l for l in logs) and any("succeeded after the 403 (attempt 4)" in l for l in logs)
+    # Never clears: five more tries, then failed, and a forbidden client still stops the run as before.
+    acts.clear(); sleeps.clear(); logs.clear()
+    always = lambda: (None, None, {"status": 403, "code": None, "message": "Forbidden"})
+    with ops.run_scope():
+        out = ops.call(always, op="delete", kind="engine", name="E", log=logs.append, zia="ZIA")
+        assert not out.ok and out.attempts == 6 and out.http_status == 403 and len(acts) == 5 and sleeps == [15.0] * 5
+        assert ops.stop_reason() and "DLP policy write permission" in ops.stop_reason()
+    assert ops.FORBIDDEN_ATTEMPTS == 5
+    # An activation that cannot run is said, and the wait and the try still happen.
+    acts.clear(); sleeps.clear(); logs.clear(); calls["n"] = 0
+    monkeypatch.setattr(ops, "_activate", lambda zia: {"activated": False, "status": None, "error": "no activation permission"})
+    with ops.run_scope():
+        out = ops.call(clears_on_the_fourth, op="update", kind="dictionary", name="D", log=logs.append, zia="ZIA")
+    assert out.ok and any("activation could not run (no activation permission); waiting anyway" in l for l in logs) and sleeps == [15.0] * 3
+    # A rank refusal is not retried; a read is not; a call without the client is not.
+    monkeypatch.setattr(ops, "_activate", lambda zia: (acts.append(zia) or {"activated": True, "status": "ACTIVE", "error": None}))
+    acts.clear(); sleeps.clear()
+    rank = lambda: (None, None, {"status": 403, "code": "RBA_LIMITED", "message": "Rule rank is higher than the admin rank."})
+    with ops.run_scope():
+        out = ops.call(rank, op="create", kind="policy", name="S", zia="ZIA")
+        assert not out.ok and out.attempts == 1 and acts == [] and sleeps == []
+    with ops.run_scope():
+        assert ops.call(always, op="read", kind="engine", name="E", zia="ZIA").attempts == 1 and acts == []
+    with ops.run_scope():
+        assert ops.call(always, op="create", kind="engine", name="E").attempts == 1 and acts == []
+    # Stop wins: no further try once the operator stopped the run.
+    import threading
+    cancel = threading.Event()
+    acts.clear(); sleeps.clear()
+    def block_then_cancel():
+        cancel.set()
+        return (None, None, {"status": 403, "code": None, "message": "Resource Access Blocked"})
+    with ops.run_scope(cancel):
+        out = ops.call(block_then_cancel, op="create", kind="policy", name="R", zia="ZIA")
+    assert not out.ok and out.attempts == 1 and acts == []
+    # Every write entry point hands the client to call().
+    import inspect
+    for fn in (ops.create, ops.update, ops.delete):
+        src = inspect.getsource(fn)
+        body = src.split("\n", 1)[1]   # the def line aside
+        assert body.count("call(") >= 4 and body.count("call(") == body.count("zia=zia"), fn.__name__

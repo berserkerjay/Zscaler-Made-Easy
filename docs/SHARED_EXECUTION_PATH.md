@@ -51,9 +51,14 @@ the reference this path is measured against. The app never runs it.
    nothing it did not write.
 3. **ZIA's limits are handled the same way for every kind.** A rate
    limit (429), a busy tenant (502/503/504) or a timeout is retried up to
-   three times with backoff inside `call()`. A delete refused because the
-   object is "in use" is tried again after the tier is activated, up to
-   three passes. A SaaS rule whose position ZIA refuses is placed at a
+   three times with backoff inside `call()`. A 403 on a create, update or
+   delete ("Resource Access Blocked", "Forbidden": ZIA blocking the client
+   after a burst, or a pending change being applied) is answered inside
+   `call()` by an activation, a 15-second wait and another try, up to
+   five times, before the write is recorded as failed (a 403 about the
+   rule's rank is not retried; activating changes nothing about it). A
+   delete refused because the object is "in use" is tried again after the
+   tier is activated, up to three passes. A SaaS rule whose position ZIA refuses is placed at a
    position ZIA accepts after the tenant's rules are re-read. Anything
    else fails once and is reported once.
 4. **Deploying twice changes nothing.** The plan reuses every object by

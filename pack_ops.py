@@ -67,6 +67,15 @@ TRANSIENT_WORDS = ("rate limit", "too many requests", "429", "502", "503", "504"
                    "temporarily", "try again", "service unavailable", "gateway")
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = 1.0
+# A 403 on a write (ZIA answering "Resource Access Blocked" or "Forbidden"
+# after a burst, or while a pending change is being applied) is answered
+# by an activation, a 15-second wait and another try, up to five times,
+# before the write is recorded as failed. A 403 about the rule's rank
+# (RBA_LIMITED) is not retried: activating changes nothing about it.
+FORBIDDEN_ATTEMPTS = 5
+FORBIDDEN_WAIT_SECONDS = 15.0
+_FORBIDDEN_WORDS = ("forbidden", "resource access blocked", "not authorized", "access denied")
+_activate: Callable[[Any], Dict[str, Any]] = pc.activate   # tests replace this
 
 _sleep: Callable[[float], None] = time.sleep   # tests replace this
 
@@ -324,10 +333,23 @@ def normalize(ret: Any) -> Outcome:
     return Outcome(True, id=oid, data=ret)
 
 
+def is_forbidden(outcome: "Outcome") -> bool:
+    """A 403 that an activation and a wait may clear (blocked access after
+    a burst, a pending change being applied); a rank refusal is not one."""
+    m = (outcome.error or "").lower()
+    if "admin rank" in m or (outcome.code or "").upper() == "RBA_LIMITED":
+        return False
+    return outcome.http_status == 403 or any(w in m for w in _FORBIDDEN_WORDS)
+
+
 def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", name: str = "", channel: Optional[str] = None,
-         max_attempts: int = MAX_ATTEMPTS, log: Optional[Callable[[str], None]] = None, kw: Optional[Dict[str, Any]] = None) -> Outcome:
+         max_attempts: int = MAX_ATTEMPTS, log: Optional[Callable[[str], None]] = None, kw: Optional[Dict[str, Any]] = None,
+         zia: Any = None) -> Outcome:
     """Run one API write: `fn(*args, **kw)`. A transient refusal is retried
-    up to `max_attempts` times with linear backoff; every other answer is
+    up to `max_attempts` times with linear backoff. A 403 on a write is
+    answered by an activation, a FORBIDDEN_WAIT_SECONDS wait and another
+    try, up to FORBIDDEN_ATTEMPTS times, when `zia` is given (the
+    create / update / delete entry points pass it). Every other answer is
     returned as-is. Exceptions become a failed Outcome, never a crash."""
     _log = log or (lambda m: None)
     kwargs = dict(kw or {})
@@ -337,14 +359,20 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             _run.announced = True
             _log(f"STOPPED — nothing more is written. {halted}")
         return Outcome(False, error=f"not attempted: {halted}", code=STOPPED)
-    outcome = Outcome(False, error="not attempted")
-    for attempt in range(1, max(1, max_attempts) + 1):
+
+    def once() -> Outcome:
         try:
-            outcome = normalize(fn(*args, **kwargs))
+            return normalize(fn(*args, **kwargs))
         except Exception as e:  # noqa: BLE001 — one object never stops the run
             msg = f"{type(e).__name__}: {e}"[:300]
-            outcome = Outcome(False, error=msg, transient=is_transient(msg))
-        outcome.attempts = attempt
+            return Outcome(False, error=msg, transient=is_transient(msg))
+
+    outcome = Outcome(False, error="not attempted")
+    attempts = 0
+    for attempt in range(1, max(1, max_attempts) + 1):
+        outcome = once()
+        attempts += 1
+        outcome.attempts = attempts
         if outcome.ok or not outcome.transient or attempt == max_attempts:
             break
         if _stopped_now():
@@ -353,6 +381,24 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
         _log(f"[{kind or op}] {name}: ZIA answered '{outcome.error}' (attempt {attempt} of {max_attempts}); waiting {wait:.0f}s and trying again")
         logger.info("retry", extra={"op": op, "kind": kind, "name": name, "channel": channel, "attempt": attempt, "error": outcome.error})
         _sleep(wait)
+    # A 403 on a write: activate, wait, try again — up to FORBIDDEN_ATTEMPTS times.
+    if not outcome.ok and zia is not None and op != "read" and is_forbidden(outcome):
+        for retry in range(1, FORBIDDEN_ATTEMPTS + 1):
+            if _stopped_now():
+                break
+            _log(f"[{kind or op}] {name}: ZIA answered '{outcome.error}' (HTTP 403); activating, waiting {FORBIDDEN_WAIT_SECONDS:.0f}s and trying again ({retry} of {FORBIDDEN_ATTEMPTS})")
+            logger.info("forbidden-retry", extra={"op": op, "kind": kind, "name": name, "channel": channel, "retry": retry, "error": outcome.error})
+            act = _activate(zia)
+            if not act.get("activated"):
+                _log(f"[{kind or op}] {name}: activation could not run ({act.get('error')}); waiting anyway")
+            _sleep(FORBIDDEN_WAIT_SECONDS)
+            outcome = once()
+            attempts += 1
+            outcome.attempts = attempts
+            if outcome.ok or not is_forbidden(outcome):
+                break
+        if outcome.ok:
+            _log(f"[{kind or op}] {name}: succeeded after the 403 (attempt {attempts})")
     if not outcome.ok:
         reason = fatal_reason(outcome.error)
         if reason:
@@ -555,15 +601,15 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
     if kind == "dictionary":
         p = dict(payload)
         return call(zia.dlp_dictionary.add_dict, p.pop("name"), p.pop("custom_phrase_match_type"), p.pop("dictionary_type", "PATTERNS_AND_PHRASES"),
-                    op="create", kind=kind, name=name, log=log, kw=p)
+                    op="create", kind=kind, name=name, log=log, zia=zia, kw=p)
     if kind == "engine":
-        return call(zia.dlp_engine.add_dlp_engine, op="create", kind=kind, name=name, log=log, kw=payload)
+        return call(zia.dlp_engine.add_dlp_engine, op="create", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
-        return call(pc.add_app_group, zia, payload, op="create", kind=kind, name=name, log=log)
+        return call(pc.add_app_group, zia, payload, op="create", kind=kind, name=name, log=log, zia=zia)
     if kind == "policy":
         if parent_id is not None:
-            return call(pc.add_sub_rule, zia, parent_id, payload, op="create", kind=kind, name=name, channel=channel, log=log)
-        return call(pc.add_rule, zia, channel, payload, op="create", kind=kind, name=name, channel=channel, log=log)
+            return call(pc.add_sub_rule, zia, parent_id, payload, op="create", kind=kind, name=name, channel=channel, log=log, zia=zia)
+        return call(pc.add_rule, zia, channel, payload, op="create", kind=kind, name=name, channel=channel, log=log, zia=zia)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -572,15 +618,15 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
     """Overwrite one existing object of `kind` with its API payload."""
     name = name or str(payload.get("name") or "")
     if kind == "dictionary":
-        return call(zia.dlp_dictionary.update_dict, oid, op="update", kind=kind, name=name, log=log, kw=payload)
+        return call(zia.dlp_dictionary.update_dict, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "engine":
-        return call(zia.dlp_engine.update_dlp_engine, oid, op="update", kind=kind, name=name, log=log, kw=payload)
+        return call(zia.dlp_engine.update_dlp_engine, oid, op="update", kind=kind, name=name, log=log, kw=payload, zia=zia)
     if kind == "app_group":
-        return call(pc.update_app_group, zia, oid, payload, op="update", kind=kind, name=name, log=log)
+        return call(pc.update_app_group, zia, oid, payload, op="update", kind=kind, name=name, log=log, zia=zia)
     if kind == "policy":
         if parent_id is not None:
-            return call(pc.update_sub_rule, zia, parent_id, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log)
-        return call(pc.update_rule, zia, channel, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log)
+            return call(pc.update_sub_rule, zia, parent_id, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
+        return call(pc.update_rule, zia, channel, oid, payload, op="update", kind=kind, name=name, channel=channel, log=log, zia=zia)
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
@@ -589,17 +635,17 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
     kind, channel, oid = item["kind"], item.get("channel"), item["id"]
     name = str(item.get("name") or "")
     if kind == "dictionary":
-        return call(zia.dlp_dictionary.delete_dict, oid, op="delete", kind=kind, name=name, log=log)
+        return call(zia.dlp_dictionary.delete_dict, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "engine":
-        return call(zia.dlp_engine.delete_dlp_engine, oid, op="delete", kind=kind, name=name, log=log)
+        return call(zia.dlp_engine.delete_dlp_engine, oid, op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind == "app_group":
-        return call(pc.raw_request, zia, "DELETE", f"{pc.APP_GROUPS_PATH}/{oid}", op="delete", kind=kind, name=name, log=log)
+        return call(pc.raw_request, zia, "DELETE", f"{pc.APP_GROUPS_PATH}/{oid}", op="delete", kind=kind, name=name, log=log, zia=zia)
     if kind != "policy":
         return Outcome(False, error=f"unknown object kind '{kind}'")
     if channel == pc.ENDPOINT and item.get("parent_id") is not None:
-        return call(pc.raw_request, zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}", op="delete", kind=kind, name=name, channel=channel, log=log)
+        return call(pc.raw_request, zia, "DELETE", f"/endPointDlpRules/{item['parent_id']}/subRule/{oid}", op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     if channel == pc.CLOUD_APP:
-        return call(zia.cloudappcontrol.delete_rule, str(item.get("type") or "").upper() or "ANY", oid, op="delete", kind=kind, name=name, channel=channel, log=log)
+        return call(zia.cloudappcontrol.delete_rule, str(item.get("type") or "").upper() or "ANY", oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
     svc = getattr(zia, pc.CHANNELS[channel]["service"], None)
     if svc is None:
         return Outcome(False, error=f"{pc.CHANNELS[channel]['service']} is not available in the installed zscaler-sdk-python")
@@ -608,8 +654,8 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         # without it the API refuses and the rule silently survives.
         rtype = item.get("type") or item.get("saas_type") or pc.saas_rule_type(zia, oid)
         if rtype:
-            return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, kw={"rule_type": rtype})
-    return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log)
+            return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia, kw={"rule_type": rtype})
+    return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
 
 
 # ---------------------------------------------------------------------------
