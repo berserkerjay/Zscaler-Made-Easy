@@ -46,7 +46,8 @@ def test_index_loads_report_addons():
     assert tabs.status_code == 200
     # The assessment results open in their own tab: progress card first, then the report, both kept on the page.
     assert "results:" in tabs.text and "panels: ['dbHero', 'progressCard', 'results']" in tabs.text and "_openResultsPanel" in tabs.text
-    assert "openToolTab('results', 'run')" in c.get("/static/guide.js").text
+    # Running is one behaviour everywhere (on the page); the mirrored tab is the explicit "Open in new tab".
+    assert "openToolTab('results', 'run')" not in c.get("/static/guide.js").text
     assert "openToolTab('results', 'view')" in html and "Open in new tab" in html
     assert c.get("/static/bypass_report.js").status_code == 200 and c.get("/static/reports.css").status_code == 200
 

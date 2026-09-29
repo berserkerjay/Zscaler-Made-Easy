@@ -76,7 +76,7 @@ function _gdSteps() {
       state: assessed ? 'done' : (connected ? 'ready' : 'todo'),
       what: 'Runs 300+ automated checks against the tenant and produces a maturity score with a list of findings. Takes about 90 seconds. Read-only.',
       need: 'A successful Authenticate in step 1, your organisation and assessor names, and a scope. For a DLP engagement keep the default scopes ticked.',
-      status: running ? 'Running… the progress card below shows each check as it completes.' : (assessed ? 'Assessment complete. Results are below.' : (connected ? 'Choose a scope in Tenant Configuration, then click Run assessment here.' : 'Authenticate in step 1 first.')),
+      status: running ? 'Running… the progress card below shows each check as it completes.' : (assessed ? 'Assessment complete. Results are below.' : (connected ? 'Check the scope under Scope in the sidebar if you want to narrow it, then click Run assessment. The results appear on this page.' : 'Authenticate in step 1 first.')),
       actions: [{ label: running ? 'Running…' : 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !connected || running }],
     },
     {
@@ -116,8 +116,8 @@ function _gdSteps() {
       state: deployed ? 'ready' : 'todo',
       what: 'On the next visit, run the assessment again with the same tenant profile. The Data governance journey card places the tenant on the five-stage ladder (Foundation, Policies deployed, Visibility, Containment, Enforcement), names the exact rules to enable or harden next, and compares with the previous visit. Nothing the customer changed is reverted; an enabled rule or a hardened action is progress.',
       need: 'The tenant profile you saved in step 1, so the history lines up.',
-      status: GD.profile ? 'Profile selected: the next assessment is recorded against it.' : 'Save a tenant profile in Tenant Configuration so history is kept.',
-      actions: [{ label: 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !creds }, { label: 'Where is this tenant?', fn: 'openDlpPacksModal()', kind: 'quiet' }],
+      status: GD.profile ? 'Profile selected: the next assessment is recorded against it.' : 'Save a tenant profile in Tenant details (step 1) so history is kept.',
+      actions: [{ label: 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !creds }, { label: 'Journey card (Deploy Policy Packs)', fn: 'openDlpPacksModal()', kind: 'quiet' }],
     },
   ];
 }
@@ -369,10 +369,12 @@ function _gdGoResults() {
 }
 function _gdRun() {
   const btn = document.getElementById('runBtn');
-  if (btn && btn.disabled) { alert('An assessment is already running.'); return; }
-  // The results open in their own tab (progress first, then the report),
-  // with a link back here; they stay on this page as well.
-  if (typeof openToolTab === 'function') openToolTab('results', 'run');
+  if (btn && btn.disabled) { if (typeof announce === 'function') announce('The assessment is already running; the progress card shows each check as it completes.'); return; }
+  // One behaviour for every "Run assessment" button: the run happens on
+  // this page (sign-in first when needed, via the sidebar's runner) and
+  // the results land below. "Open in new tab" on the results is the
+  // explicit way to mirror them into their own tab.
+  if (typeof window.__dbRunFromSidebar === 'function') window.__dbRunFromSidebar();
   else if (typeof runAssessment === 'function') runAssessment(); else if (btn) btn.click();
   _gdRender();
 }

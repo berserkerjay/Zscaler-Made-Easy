@@ -638,9 +638,9 @@
           <span aria-hidden="true">🧱</span> Terraform hand-off
         </button>
         <button class="btn btn-ghost" onclick="_gdGoMigration()"
-                aria-label="Move the tenant to Evaluate All Rules with the Inline DLP Rule Migration wizard"
-                title="Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely.">
-          <span aria-hidden="true">🔀</span> Evaluate All Rules
+                aria-label="Open the Inline DLP Rule Migration wizard: move the tenant to Evaluate All Rules"
+                title="The migration wizard: reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely. Opens on this page.">
+          <span aria-hidden="true">🔀</span> Rule Migration wizard
         </button>
       </div>
       <div class="tool-group" role="group" aria-label="Reference">
@@ -648,7 +648,7 @@
         <button class="btn btn-ghost" onclick="openEvalAllTab()"
                 aria-label="Open Evaluate All Rules: the decision flow with the tie-breaker and a simulator (opens in a new tab)"
                 title="How ZIA decides with Evaluate All Rules: every rule evaluated, the most restrictive action wins, a tie on the action is broken by rule order. With a simulator. Opens in a new tab.">
-          <span aria-hidden="true">🔀</span> How Evaluate All Rules decides
+          <span aria-hidden="true">📖</span> How Evaluate All Rules decides
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('bestpractices')"
                 aria-label="Open curated Zscaler Best Practices reference library (opens in a new tab)"
@@ -662,13 +662,13 @@
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('updates')"
                 aria-label="Check for Zscaler SDK and documentation updates (opens in a new tab)"
-                title="Checks PyPI and help.zscaler.com for SDK and documentation changes since last time. Opens in a new tab.">
-          <span aria-hidden="true">🔄</span> Zscaler Updates
+                title="Checks PyPI and help.zscaler.com for SDK and documentation changes since last time. This is about Zscaler's SDK and docs, not this app's own update (see the Update app card in Connect to the tenant). Opens in a new tab.">
+          <span aria-hidden="true">🔄</span> Zscaler SDK &amp; docs updates
         </button>
         <button class="btn btn-ghost" onclick="openReferenceTab('data-security-portfolio-framework')"
                 aria-label="Open the Data Security Portfolio Framework: Zscaler's data-security portfolio as an operating program with coverage selector, story builder and proof-of-value plan (opens in a new tab)"
                 title="Zscaler's data-security portfolio as an operating program: pick the coverage a customer needs, build the customer-ready story, and turn it into a testable proof-of-value plan. Works offline inside the tool. Opens in a new tab.">
-          <span aria-hidden="true">🧱</span> Data Security Framework
+          <span aria-hidden="true">🗂️</span> Data Security Framework
         </button>
         <button class="btn btn-ghost" onclick="openReferenceTab('ai-security-framework')"
                 aria-label="Open the Public AI Security Framework: AI security controls as an operating model with coverage by phase, story and proof plan (opens in a new tab)"
@@ -683,7 +683,7 @@
         <button class="btn btn-ghost" onclick="openReferenceTab('framework-machine')"
                 aria-label="Open The Framework Machine: how the framework pages are built and kept portable (opens in a new tab)"
                 title="How the framework pages are built and kept portable: the six components, the assembly line and the setup order. Opens in a new tab.">
-          <span aria-hidden="true">⚙️</span> The Framework Machine
+          <span aria-hidden="true">🏗️</span> The Framework Machine
         </button>
       </div>
       <div class="tool-group" role="group" aria-label="Troubleshoot">
@@ -816,7 +816,7 @@
     <span style="color:var(--dim);" aria-hidden="true">→</span>
     <button type="button" class="step-item" data-step="scope" onclick="_stepGo('scope')" title="Choose what to assess (DLP, ZIA, ZPA, ZCC, GenAI, Automation, Compliance)" style="color:var(--dim);">② Select Scope</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <button type="button" class="step-item" data-step="run" onclick="_stepGo('run')" title="Run the assessment (opens the results in a new tab)" style="color:var(--dim);">③ Run Assessment</button>
+    <button type="button" class="step-item" data-step="run" onclick="_stepGo('run')" title="Run the assessment on this page" style="color:var(--dim);">③ Run Assessment</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
     <button type="button" class="step-item" data-step="review" onclick="_stepGo('review')" title="Jump to the results and the exports" style="color:var(--dim);">④ Review + Export</button>
     <span class="step-hint" style="color:var(--dim);margin-left:auto;font-size:0.72rem;">Click a step to go there</span>
@@ -1225,7 +1225,7 @@
               style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:white;border:0;">
         🔧 Review &amp; Remediate
       </button>
-      <button class="btn btn-ghost" onclick="resetForm()">Run Another Assessment</button>
+      <button class="btn btn-ghost" onclick="resetForm()" title="Clears these results and goes back to Connect to the tenant; nothing runs until you click Run assessment">New assessment (clears results)</button>
       <button class="btn btn-ghost" onclick="openToolTab('results', 'view')" title="Show these results in their own tab, with a link back to this page">↗ Open in new tab</button>
     </div>
 
@@ -1464,14 +1464,19 @@ function _stepGo(step) {
   }
   if (step === 'run') {
     const btn = document.getElementById('runBtn');
-    if (btn && btn.disabled) { announce('The assessment is already running; the results tab shows its progress.'); return; }
+    if (btn && btn.disabled) { announce('The assessment is already running; the progress card shows each check as it completes.'); return; }
     if (typeof _gdRun === 'function') _gdRun(); else runAssessment();
     return;
   }
   if (step === 'review') {
     const r = document.getElementById('results');
-    if (r && getComputedStyle(r).display !== 'none') { if (typeof _gdGoResults === 'function') _gdGoResults(); else r.scrollIntoView({ behavior: 'smooth' }); }
-    else { announce('No results yet: run the assessment first (step 3).'); alert('No results yet. Run the assessment first (step ③): it opens the results in a new tab and keeps them on this page.'); _stepGo('run'); }
+    if (r && getComputedStyle(r).display !== 'none') { if (typeof _gdGoResults === 'function') _gdGoResults(); else r.scrollIntoView({ behavior: 'smooth' }); return; }
+    // No results in this tab: say so where the operator is looking and put
+    // the focus on Run assessment — nothing starts by itself.
+    const msg = 'No results in this tab yet. Click Run assessment; the results appear on this page.';
+    announce(msg);
+    if (typeof window.__dbNote === 'function') { window.__dbNote(msg, 'warn'); const run = document.querySelector('.db-item[data-db="run"]'); if (run) run.focus(); }
+    else setStatus(msg, 'error');
   }
 }
 function setStep(phase, srMessage) {
@@ -2636,7 +2641,7 @@ function handleEvent(evt) {
     if (evt.journey && evt.journey.status === 'pending') document.getElementById('progressCard').classList.add('active');
   } else if (evt.journey !== undefined && evt.score === undefined) {
     // The journey lands after the results.
-    if (reportData) { reportData.journey = evt.journey; if (evt.profile) reportData.profile = evt.profile; }
+    if (reportData) { reportData.journey = evt.journey; if (evt.profile) reportData.profile = evt.profile; rememberResults(reportData); }
     if (window.GD) GD.lastReport = reportData;
     document.getElementById('progressCard').classList.remove('active');
     if (typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(evt.journey); } catch (e) { console.warn('journey card', e); } }
@@ -2670,7 +2675,9 @@ function showResults(data) {
   el.style.color = score === null ? 'var(--dim, #94a3b8)' : score >= 75 ? 'var(--pass)' : score >= 50 ? 'var(--warn)' : 'var(--fail)';
   document.getElementById('scoreLabel').textContent = data.maturity || maturityLabel(score);
   const when = (data.metadata && data.metadata.timestamp) ? new Date(data.metadata.timestamp) : new Date();
-  document.getElementById('scoreMeta').textContent = `${sum.state === 'partial' ? 'Partial assessment' : 'Assessed'} ${when.toLocaleString()} · ${(data.metadata && data.metadata.org) || 'this tenant'}`;
+  const restored = !!data.__restored;
+  document.getElementById('scoreMeta').textContent = `${restored ? 'Restored from this tab · ' : ''}${sum.state === 'partial' ? 'Partial assessment' : 'Assessed'} ${when.toLocaleString()} · ${(data.metadata && data.metadata.org) || 'this tenant'}`;
+  if (!restored) rememberResults(data);
 
   const checks = data.checks || [];
   document.getElementById('passCount').textContent = sum.configured;
@@ -2698,8 +2705,35 @@ function showResults(data) {
   loadBenchmarks(data);
   loadCompliance(data);
   expandResultSections();
-  window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+  if (!restored) window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
 }
+
+// ── The results survive a reload of this tab ─────────────────────────
+// A same-tab navigation (a report tab's "Back" when the opener is gone,
+// a refresh) used to lose the whole result. The last result is kept in
+// sessionStorage — this tab only, gone when the tab closes, never shared
+// across tabs — and shown again labelled "Restored from this tab" with
+// its own run time. A new run or "New assessment" replaces or clears it.
+const RESULTS_KEY = 'zassess_last_results';
+function rememberResults(data) {
+  try { sessionStorage.setItem(RESULTS_KEY, JSON.stringify(data)); } catch (e) { /* too large or private mode: the page still works, the result is just not kept */ }
+}
+function forgetResults() { try { sessionStorage.removeItem(RESULTS_KEY); } catch (e) {} }
+function restoreResults() {
+  if (reportData) return false;
+  let data = null;
+  try { const raw = sessionStorage.getItem(RESULTS_KEY); data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+  if (!data || !Array.isArray(data.checks) || !data.checks.length) return false;
+  data.__restored = true;
+  reportData = data;
+  if (window.GD) GD.lastReport = data;
+  showResults(data);
+  if (data.journey && typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(data.journey); } catch (e) {} }
+  const when = (data.metadata && data.metadata.timestamp) ? new Date(data.metadata.timestamp).toLocaleString() : 'earlier';
+  setStatus(`Showing the result from this tab's last run (${when}). Run the assessment again for a fresh read.`, '');
+  return true;
+}
+document.addEventListener('DOMContentLoaded', () => { try { restoreResults(); } catch (e) { console.warn('restore', e); } });
 
 // ── Partial scan card: what the API client could not run ────────────
 function renderPermissions(data) {
@@ -4018,6 +4052,7 @@ async function downloadDocx() {
 function resetForm() {
   document.getElementById('results').style.display = 'none';
   reportData = null;
+  forgetResults();
   setStatus('', '');
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
