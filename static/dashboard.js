@@ -34,7 +34,6 @@
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope assessment</button>
-      <button type="button" class="db-item" data-db="review"><span class="db-ico" aria-hidden="true">📋</span>Findings &amp; report</button>
     </nav>
     <div id="dbTools" role="navigation" aria-label="Tools"></div>
     <div class="db-current" id="dbCurrent" aria-label="Current implementation">
@@ -431,6 +430,7 @@
   if (typeof origProfilesLoad === 'function') window._gdProfilesLoad = async function () { const r = await origProfilesLoad.apply(this, arguments); renderLastRunOrEmpty(); return r; };
 
   function setCurrent(k) {
+    if (k === 'review') k = 'dashboard';   // the step strip's review step lands on the Dashboard: findings and exports live there
     aside.querySelectorAll('.db-item').forEach(b => { if (b.dataset.db === k) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     (CONFIG_VIEW_KEYS.has(k) ? showTenantConfig : hideTenantConfig)();
     renderLastRunOrEmpty();
@@ -722,9 +722,10 @@
       : `${sum.total} checks assessed${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`;
     radar(data.sections); pillars(data.sections); insights(data); actions(data); footer(data); decorateChecks();
     const s = $('dbCurScore'); if (s) s.textContent = measured ? `${score}% · ${data.maturity || level(score)[0]}` : 'Not assessed';
-    // The results are on screen: Findings & report is the current item
-    // (set here, not left to the step-strip observer's timing).
-    setCurrent('review');
+    // The results are on screen: the Dashboard (score tiles, findings and
+    // the exports are one page) is the current item, set here rather than
+    // left to the step-strip observer's timing.
+    setCurrent('dashboard');
   }
   // While a run is in flight the tiles say so — the Completion tile follows
   // the same progress events as the progress card (index.html handleEvent),

@@ -98,6 +98,6 @@ def test_step_strip_buttons_take_you_to_each_step():
     for step in ("configure", "scope", "review"):
         assert f'<button type="button" class="step-item" data-step="{step}"' in html and f"_stepGo('{step}')" in html, step
     assert 'data-step="run"' not in html, "Run assessment lives on the Scope assessment page, not as its own step"
-    assert "① Connect" in html and "② Scope assessment" in html and "③ Review + export" in html
+    assert "① Connect" in html and "② Scope assessment" in html and "③ Dashboard: findings + export" in html
     assert "function _stepGo(step)" in html and 'id="scopeField"' in html and "Click a step to go there" in html
     assert '<span class="step-item"' not in html, "the strip is made of real buttons, not labels"
