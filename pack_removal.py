@@ -471,14 +471,21 @@ def pd_rule_summary(r: Any) -> Dict[str, Any]:
 MAX_PASSES = 3
 RETRY_BASE_SECONDS = 3.0
 _RETRYABLE_WORDS = ("in use", "referenced", "associated", "being used", "used by", "in progress", "activation", "pending",
-                    "edit lock", "lock", "rate limit", "too many", "429", "409", "503", "502", "timeout", "timed out",
+                    "edit lock", "edit_lock", "locked", "rate limit", "too many", "429", "409", "503", "502", "timeout", "timed out",
                     "temporarily", "try again", "ruletype", "rule type")
 
 
-def _retryable(error: Any) -> bool:
+def _retryable(error: Any, http_status: Any = None) -> bool:
+    """A delete refusal that a later pass (after an activation and a wait)
+    may clear. A 403 is not one: `ops.call` has already answered it with
+    five activations and waits, and a 403 still there after that is about
+    the client, not the object (`Resource Access Blocked` must not read as
+    a lock because of the letters 'lock' in 'blocked')."""
     e = str(error or "").lower()
     if e.startswith("not attempted"):
         return False   # the run has stopped; nothing clears that inside this run
+    if http_status == 403 or "resource access blocked" in e or "forbidden" in e:
+        return False
     return any(w in e for w in _RETRYABLE_WORDS)
 
 
@@ -814,7 +821,7 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
                 ok = attempt(c, entry)
                 if ok and entry["status"] == "deleted":
                     deleted_here += 1
-                elif not ok and _retryable(entry.get("error")):
+                elif not ok and _retryable(entry.get("error"), entry.get("http_status")):
                     entry["attempts"] = pass_no
                     if c.get("channel") == pc.SAAS:
                         # The SaaS delete is refused without the rule's type; read it fresh for the next try.

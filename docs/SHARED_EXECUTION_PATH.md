@@ -51,14 +51,21 @@ the reference this path is measured against. The app never runs it.
    nothing it did not write.
 3. **ZIA's limits are handled the same way for every kind.** A rate
    limit (429), a busy tenant (502/503/504) or a timeout is retried up to
-   three times with backoff inside `call()`. A 403 on a create, update or
-   delete ("Resource Access Blocked", "Forbidden": ZIA blocking the client
-   after a burst, or a pending change being applied) is answered inside
-   `call()` by an activation, a 15-second wait and another try, up to
-   five times, before the write is recorded as failed (a 403 about the
-   rule's rank is not retried; activating changes nothing about it). A
-   delete refused because the object is "in use" is tried again after the
-   tier is activated, up to three passes. A SaaS rule whose position ZIA refuses is placed at a
+   three times with backoff inside `call()`. Inside a run, a 403 on a
+   create, update or delete ("Resource Access Blocked", "Forbidden": ZIA
+   blocking the client after a burst, or a pending change being applied)
+   is answered inside `call()` by an activation of the tenant's pending
+   configuration, a 15-second wait and another try (with the same
+   transient retries), up to five times; each activation is logged. A
+   403 about the rule's rank is not retried (activating changes nothing
+   about it), a 401 is not (the credentials are refused), and a 403 that
+   is still there after the five activations stops the run (rule 7): it
+   is about the client, not the object. Outside a run — a proposal's
+   single field change — nothing is activated. The Delete all rules
+   step of the migration wizard follows the same 403 rule through the
+   raw client. A delete refused because the object is "in use" is tried
+   again after the tier is activated, up to three passes (a 403 is never
+   one of those). A SaaS rule whose position ZIA refuses is placed at a
    position ZIA accepts after the tenant's rules are re-read. Anything
    else fails once and is reported once.
 4. **Deploying twice changes nothing.** The plan reuses every object by
@@ -80,8 +87,9 @@ the reference this path is measured against. The app never runs it.
    answers are about the whole tenant, not one object: an admin session
    holding the ZIA edit lock (`EDIT_LOCK_NOT_AVAILABLE`), the hourly
    request limit (the SDK's `RetryTooLong`), refused credentials (401),
-   a client without the DLP write permission (403). Trying the next 75
-   objects against them takes twenty minutes and looks like a hang.
+   a client without the DLP write permission (403), a 403 still there
+   after the five activations of rule 3. Trying the next 75 objects
+   against them takes twenty minutes and looks like a hang.
    Every run opens `pack_ops.run_scope()`; inside it the first such
    refusal (`fatal_reason()`) stops the run: later writes return at once
    with code `STOPPED`, are recorded as *skipped — not attempted*, the

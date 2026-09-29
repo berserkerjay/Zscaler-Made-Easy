@@ -1983,6 +1983,8 @@ async function step3bDeleteAll(dryRun) {
       el.innerHTML = `
         <div style="color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">✓ ${r.status}: deleted ${r.deleted_count}, failed ${r.failed_count}</div>
         ${r.activation ? `<div style="color:${r.activation.requested ? 'var(--pass)' : 'var(--warn)'};font-size:0.82rem;">${r.activation.requested ? (r.activation.status === 'ACTIVE' ? 'Activated in ZIA: the deletions are live.' : `Activation requested; ZIA reported ${escapeHtml(String(r.activation.status || 'no status'))} when the wait ended. Check the portal before relying on it.`) : `Activation did not run (${escapeHtml(String(r.activation.error || 'HTTP ' + r.activation.http_status))}); activate in the ZIA portal so the deletions take effect.`}</div>` : ''}
+        ${(r.activations_after_403 || []).length ? `<div style="color:var(--warn);font-size:0.82rem;">ZIA answered 403 on a delete: activated, waited 15 seconds and tried again ${r.activations_after_403.length} time(s).</div>` : ''}
+        ${r.stopped ? `<div style="color:var(--fail);font-size:0.82rem;">Stopped — ${escapeHtml(String(r.stopped))}</div>` : ''}
         ${r.failed_count ? `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>` : ''}`;
     }
   } catch(e) {
