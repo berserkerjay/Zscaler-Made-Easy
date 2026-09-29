@@ -73,7 +73,7 @@ def test_the_install_guide_uses_the_apps_own_words():
     assert "--console" in INSTALL, "the way to see why a silent start failed"
     assert "./stop.sh` is only for a server started with `./start.sh --background`" in FLAT
     assert "Not Now" in INSTALL and "quit Terminal" in INSTALL, "the Mac developer-tools dialog and the reopen after installing Python"
-    assert "docker-compose-v2" in INSTALL, "the package Ubuntu actually ships"
+    assert "download.docker.com/linux/ubuntu" in INSTALL and "docker-compose-plugin" in INSTALL, "Docker's own repository: Ubuntu's docker.io is too old"
     assert "console window" not in INSTALL, "no console window ever opens on Windows"
 
 
@@ -231,3 +231,29 @@ def test_the_overview_states_its_exceptions_and_uses_the_apps_names():
     assert "an admin must click Activate" not in _read("static", "explain.js")
     assert "Activate in the ZIA portal, then enable rules" not in _read("static", "guide.js")
     assert "An admin must click **Activate**" not in STARTED
+
+
+def test_the_container_option_says_how_to_install_docker_step_by_step():
+    """"Install instructions: you forgot the steps to install Docker": the
+    container option walks a first-timer through installing Docker on
+    Windows, Mac and Linux, with a check after each, before Step 2."""
+    step1 = INSTALL[INSTALL.index("**Step 1 — Install Docker.**"):INSTALL.index("**Step 2 — Get the code**, the same way as above")]
+    flat = re.sub(r"\s+", " ", re.sub(r"\n>\s?", "\n", step1))   # quoted blocks read as plain text
+    # Windows: WSL 2, the installer's own screens, first start, the docker-users group.
+    for phrase in ("wsl --install --no-distribution", "Docker Desktop for Windows - x86_64", "Use WSL 2 instead of Hyper-V (recommended)",
+                   "Close and restart", "Engine running", "net localgroup docker-users", "Run as administrator"):
+        assert phrase in flat, phrase
+    # Mac: which chip, the matching download, the drag to Applications, first start.
+    for phrase in ("About This Mac", "Docker Desktop for Mac with Apple silicon", "Applications", "Use recommended settings"):
+        assert phrase in flat, phrase
+    # Linux: Docker's repository, the packages, the service, the group, the re-login.
+    for phrase in ("download.docker.com/linux/ubuntu", "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
+                   "sudo systemctl enable --now docker", "sudo usermod -aG docker $USER", "log out and back in", "docs.docker.com/engine/install/"):
+        assert phrase in flat, phrase
+    # A check that must pass before going on, the Compose version the compose file needs, the licence, TLS inspection.
+    assert flat.count("docker run --rm hello-world") >= 2 and "Hello from Docker!" in flat and "2.24 or newer" in flat
+    assert "fewer than 250 employees" in flat and "CERTIFICATE_VERIFY_FAILED" in flat and "Settings → Resources → Proxies" in flat
+    assert "services.dlp-check.env_file.0 must be a string" in INSTALL and "Cannot connect to the Docker daemon" in INSTALL, "troubleshooting rows"
+    # The compose file really needs 2.24: its env_file uses the long syntax.
+    compose = _read("docker-compose.yml")
+    assert "required: false" in compose
