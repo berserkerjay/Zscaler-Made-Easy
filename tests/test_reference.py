@@ -9,6 +9,7 @@ import re
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
+import security
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -59,3 +60,24 @@ def test_every_tab_can_return_to_the_assessment_page():
         if name.startswith("report_") and name.endswith(".html") or name == "help.html":
             html = open(os.path.join(ROOT, "static", name), encoding="utf-8").read()
             assert 'href="/"' in html and "report_theme.js" in html, f"{name} has a way back"
+
+
+def test_the_data_security_architect_site_is_an_external_reference_link():
+    """The uploaded "Data Security Architect.app" was a Chrome app-mode
+    launcher for a Google Sites page under the zscaler.com workspace, not
+    content: the sidebar carries it as an external link that opens in a
+    new tab with noopener, says it needs the zscaler.com sign-in, and is
+    explained like every other Reference item."""
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    html = c.get("/").text
+    url = "https://sites.google.com/zscaler.com/datasecurityarchitecture/data-security-architect"
+    assert f"const DATA_SECURITY_ARCHITECT_URL = '{url}'" in html
+    assert "window.open(DATA_SECURITY_ARCHITECT_URL, '_blank', 'noopener')" in html
+    assert 'onclick="openDataSecurityArchitectTab()"' in html and "needs a zscaler.com Google sign-in" in html
+    xp = c.get("/static/explain.js").text
+    assert "X.dsarchitect = {" in xp and f"href: '{url}'" in xp and "group: 'Reference', name: 'Data Security Architect'" in xp
+    # The flow pages are the gap analysis and the traffic flows; each links to the reference architecture it is measured against.
+    for page in ("/report/dataflow", "/report/path", "/report/sslflow", "/report/bypass"):
+        t = c.get(page).text
+        assert f'href="{url}" target="_blank" rel="noopener"' in t and "Reference architecture" in t, page

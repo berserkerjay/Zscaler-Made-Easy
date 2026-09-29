@@ -29,6 +29,7 @@ TOOLBAR = {
     "openLogAnalyzerTab()": "logs", "openDigestTab()": "digest", "openLiveFeedTab()": "live",
     "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",
     "openReferenceTab('genai-security-framework')": "refgenai", "openReferenceTab('framework-machine')": "refmachine",
+    "openDataSecurityArchitectTab()": "dsarchitect",
 }
 
 

@@ -687,6 +687,11 @@
                 title="How the framework pages are built and kept portable: the six components, the assembly line and the setup order. Opens in a new tab.">
           <span aria-hidden="true">🏗️</span> The framework machine
         </button>
+        <button class="btn btn-ghost" onclick="openDataSecurityArchitectTab()"
+                aria-label="Open Data Security Architect: Zscaler's internal data-security architecture site on Google Sites; needs a zscaler.com Google sign-in (opens in a new tab)"
+                title="Zscaler's internal Data Security Architect site (Google Sites). It lives outside this tool and needs a zscaler.com Google sign-in. Opens in a new tab.">
+          <span aria-hidden="true">🌐</span> Data Security Architect
+        </button>
       </div>
       <div class="tool-group" role="group" aria-label="Troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
@@ -4829,6 +4834,13 @@ window.__detectionHealthGenerate = async function (days) {
   if (!resp.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${resp.status}`);
   return data.report_id;
 };
+// Zscaler's internal Data Security Architect site (Google Sites, a
+// zscaler.com Google sign-in): the one external reference in the sidebar.
+const DATA_SECURITY_ARCHITECT_URL = 'https://sites.google.com/zscaler.com/datasecurityarchitecture/data-security-architect';
+function openDataSecurityArchitectTab() {
+  const w = window.open(DATA_SECURITY_ARCHITECT_URL, '_blank', 'noopener');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
 function openReferenceTab(slug) {
   // The framework reference pages ship inside the app (static/reference);
   // only the slugs the server lists are served.
