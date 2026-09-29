@@ -68,13 +68,13 @@
     if (!supported()) {
       // No dialog element or no body yet: the classic prompt, guarded so an
       // unsupported prompt() becomes "cancelled", never an exception.
-      try { return window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also printed on the server console). Paste it here:'); }
+      try { return window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also in server.log, or the terminal window that runs the app). Paste it here:'); }
       catch (e) { return null; }
     }
     return open(`
       <h2 id="dlpDlgTitle"><span class="dlp-dlg-tone" aria-hidden="true"></span>Unlock this app</h2>
       <p>${esc(message || 'This server asks for its UI token before it shows anything.')}</p>
-      <p>The token is in <strong>ui_token.txt</strong> next to the app, and printed on the server console when it starts. It is this machine's own sign-in, not your Zscaler credentials.</p>
+      <p>The token is in <strong>ui_token.txt</strong> next to the app, and in server.log (or the terminal window that runs the app) when it starts. It is this machine's own sign-in, not your Zscaler credentials.</p>
       <form method="dialog" id="dlpUnlockForm">
         <label for="dlpUnlockToken">UI token</label>
         <input id="dlpUnlockToken" type="password" autocomplete="off" spellcheck="false" aria-describedby="dlpUnlockErr">

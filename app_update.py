@@ -308,11 +308,13 @@ def status(app_dir: str, remote_sha: Optional[str] = None, branch: Optional[str]
                            "remote_commit": remote_sha, "update_available": None, "dirty_files": [],
                            "can_update": False, "reason": ""}
     if not out["git_available"]:
-        out["reason"] = "git is not installed or not on PATH. Install Git from https://git-scm.com/download/win and restart the app."
+        out["reason"] = ("git is not installed or not on PATH. Install Git (Windows: https://git-scm.com/download/win; Mac: run  xcode-select --install  "
+                         "in Terminal; Linux: your package manager) and restart the app.")
         return out
     if not out["is_git_checkout"]:
-        out["reason"] = ("This folder is not a git checkout, so it cannot be updated in place. "
-                         "Clone the repository and run INSTALL_Zscaler_Assessment.bat from the clone.")
+        out["reason"] = ("This folder is not a git checkout (a ZIP download), so it cannot be updated in place. To update: stop the app, download a "
+                         "fresh ZIP, replace the folder (keep local_settings.bat or local_settings.env) and run the installer again; or clone the "
+                         "repository with git once and install from the clone, after which Update app works. INSTALL.md says how.")
         return out
     try:
         out["branch"] = _out(_git(app_dir, "rev-parse", "--abbrev-ref", "HEAD")) or None
@@ -612,7 +614,11 @@ def restart_command(app_dir: str) -> List[str]:
         return ["cmd", "/c", f'ping -n 4 127.0.0.1 >nul && "{bat}"']
     server = os.path.join(app_dir, "dlp_api_server.py")
     log = os.path.join(app_dir, "server.log")
-    return ["sh", "-c", f'sleep 3; cd "{app_dir}" && nohup "{sys.executable}" "{server}" >> "{log}" 2>&1 &']
+    pid = os.path.join(app_dir, "server.pid")
+    # The same interpreter that runs this server (the .venv one when it was
+    # started by start.sh), detached, with its pid recorded the way
+    # `./start.sh --background` records it, so ./stop.sh can stop it.
+    return ["sh", "-c", f'sleep 3; cd "{app_dir}" && nohup "{sys.executable}" "{server}" >> "{log}" 2>&1 & echo $! > "{pid}"']
 
 
 def manual_restart_hint(app_dir: str) -> str:
@@ -620,7 +626,7 @@ def manual_restart_hint(app_dir: str) -> str:
     if sys.platform == "win32":
         return ("Close the app with STOP_Zscaler_Assessment.bat and open it again from the desktop shortcut "
                 f"(or run START_Zscaler_Assessment.bat in {app_dir}). launcher.log next to the app records why a silent start failed.")
-    return f"Start it again: cd \"{app_dir}\" && python dlp_api_server.py"
+    return f"Start it again: cd \"{app_dir}\" && ./start.sh   (./stop.sh first if it says the port is in use)"
 
 
 def schedule_restart(app_dir: str, delay: float = 0.8, dry_run: bool = False) -> Dict[str, Any]:
@@ -676,7 +682,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         if st["reason"]:
             print(st["reason"])
         return 0 if st["can_update"] else 1
-    res = update(args.dir, install_deps=not args.no_deps, branch=args.branch)
+    # From a terminal on Mac or Linux, install the new dependencies into the
+    # app's own environment (the one start.sh runs), not the system Python,
+    # which Debian, Ubuntu and Homebrew refuse to install into.
+    venv_py = os.path.join(args.dir, ".venv", "bin", "python")
+    res = update(args.dir, install_deps=not args.no_deps, branch=args.branch,
+                 python=venv_py if sys.platform != "win32" and os.path.isfile(venv_py) else None)
     for s in res["steps"]:
         mark = "OK " if s["ok"] else ("!! " if s.get("soft") else "ERR")
         print(f"  [{mark}] {s['name']}" + (f" - {s['detail']}" if s.get("detail") else ""))

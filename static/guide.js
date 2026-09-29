@@ -213,8 +213,20 @@ async function _gdUpdateCheck() {
   } catch (e) { _gdUpdateBox(`<span class="gd-upd-line warn">Could not check: ${_gdE(e.message)}</span>`); }
 }
 function _gdUpdateHelp() {
-  const cmd = 'cd /d "%USERPROFILE%" && (if exist "DLP-Check\\\\.git" (cd /d "%USERPROFILE%\\\\DLP-Check" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\DLP-Check")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat';
-  _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git, so it cannot pull updates. Run this once in a Command Prompt; it clones the repository under your user folder, installs it and repoints the shortcuts. Copy <code>local_settings.bat</code> from the old folder afterwards.</div>
+  // A ZIP copy has no .git folder. The way out depends on where the app
+  // runs: a Windows path (C:\...) gets the Command Prompt one-liner that
+  // clones and repoints the shortcuts; a Mac or Linux path gets the
+  // Terminal lines. Either way the plain alternative (fresh ZIP, same
+  // folder, installer again) is stated first, because it needs no git.
+  const dir = (GD.about && GD.about.app_dir) || '';
+  const win = /^[A-Za-z]:[\\/]|^\\\\/.test(dir);
+  const settings = win ? 'local_settings.bat' : 'local_settings.env';
+  const cmd = win
+    ? 'cd /d "%USERPROFILE%" && (if exist "DLP-Check\\\\.git" (cd /d "%USERPROFILE%\\\\DLP-Check" && git fetch origin && git checkout main && git pull --ff-only origin main) else (git clone https://github.com/berserkerjay/DLP-Check.git && cd /d "%USERPROFILE%\\\\DLP-Check")) && call INSTALL_Zscaler_Assessment.bat && call UPDATE_Zscaler_Assessment.bat'
+    : 'cd ~ && git clone https://github.com/berserkerjay/DLP-Check.git && cd DLP-Check && ./install.sh && ./start.sh';
+  const where = win ? 'a Command Prompt' : 'Terminal';
+  const does = win ? 'it clones the repository under your user folder, installs it and repoints the shortcuts' : 'it clones the repository into your home folder, installs it and starts it';
+  _gdUpdateBox(`<div class="gd-upd-line">This copy was not installed with git (a ZIP download), so it cannot pull updates. The simple way: stop the app, download a fresh ZIP from GitHub, replace this folder keeping <code>${settings}</code>, and run the installer again. Or, once, run this in ${where}; ${does}, and Update app works from then on. Copy <code>${settings}</code> from the old folder afterwards.</div>
     <pre class="gd-upd-cmd" id="gdUpdCmd">${_gdE(cmd)}</pre>
     <button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('gdUpdCmd').textContent).then(() => announce('Command copied'))">Copy command</button>`);
 }
