@@ -150,7 +150,7 @@ def _build_report(results: list, org_name: str = "", assessor: str = "", cloud: 
         "critical": [r for r in results if r["status"] == "FAIL"],
         "review": [r for r in results if r["status"] == "REVIEW"],
         "summary": (
-            f"Score: {overall}% ({maturity(overall)}). "
+            f"Score: {'n/a' if overall is None else str(overall) + '%'} ({maturity(overall)}). "
             f"{sum(1 for r in results if r['status']=='PASS')} passed, "
             f"{sum(1 for r in results if r['status']=='FAIL')} failed, "
             f"{sum(1 for r in results if r['status']=='REVIEW')} need review."

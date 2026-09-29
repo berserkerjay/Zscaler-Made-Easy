@@ -263,6 +263,7 @@ GUI_ADDONS = [
     ("guide.css", "style"),
     ("reports.css", "style"),
     ("dashboard.css", "style"),
+    ("ui_auth.js", "script"),       # first: the in-app unlock and notice dialogs the fetch wrapper and the guide use
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
     ("guide.js", "script"),
@@ -3823,7 +3824,7 @@ async def assess_stream(req: AssessRequest):
             try:
                 secs, overall = compute(results)
             except Exception:  # noqa: BLE001
-                secs, overall = {}, 0
+                secs, overall = {}, None   # nothing measurable: "Not assessed", never an invented number
 
             report = {
                 "metadata": {
@@ -3868,6 +3869,13 @@ async def assess_stream(req: AssessRequest):
                 report["permissions"] = _perm.assessment_permission_summary(results, req.scopes or [req.scope])
             except Exception:  # noqa: BLE001
                 report["permissions"] = None
+            # Execution vs coverage, one vocabulary for every surface: how many
+            # checks ran, how many the client was not permitted to run, what the
+            # score divides over (permissions.assessment_summary; docs/SCORING.md).
+            try:
+                report["summary"] = _perm.assessment_summary(results)
+            except Exception:  # noqa: BLE001
+                report["summary"] = None
             if not want_journey:
                 report["profile"] = _record_history(report)
             report["scope"] = _scope   # the profile's industry: frameworks and packs the suggestions are limited to

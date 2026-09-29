@@ -581,6 +581,14 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
 
     secs, overall = compute_fn(results)
     mat = maturity_fn(overall)
+    # The same coverage vocabulary the GUI shows (permissions.assessment_summary):
+    # execution (assessed / not permitted) apart from the score's denominator.
+    try:
+        from permissions import assessment_summary
+        cov = assessment_summary(results)
+    except Exception:  # noqa: BLE001
+        cov = None
+    overall_text = "Not assessed" if overall is None else f"{overall}%"
 
     # Use the Zscaler template if available
     if template_path is None:
@@ -616,7 +624,8 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         ("Cloud", cfg.get("cloud", "Unknown")),
         ("Date", datetime.now().strftime("%B %d, %Y")),
         ("Total Checks", str(len(results))),
-        ("Overall Score", f"{overall}%"),
+        ("Assessed", (f"{cov['assessed']} of {cov['total']}" + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")) if cov else str(len(results))),
+        ("Overall Score", overall_text + (f" — {cov['configured']} configured of {cov['scored']} scoreable" if cov and cov["scored"] else "")),
         ("Maturity Level", mat),
     ]
     for label, value in meta_data:
@@ -640,7 +649,14 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     summary = doc.add_paragraph()
     summary.add_run(f"The Zscaler platform assessment for {cfg.get('org_name', 'the organization')} "
                     f"evaluated {len(results)} configuration checks across all deployed Zscaler services. ")
-    summary.add_run(f"The overall maturity score is {overall}% ({mat}). ").bold = True
+    summary.add_run(f"The overall maturity score is {overall_text} ({mat}). ").bold = True
+    if cov:
+        summary.add_run(f"Score = {cov['score_formula']}: {cov['configured']} ÷ {cov['scored']}. "
+                        f"{cov['excluded']} checks are outside the score ({cov['not_permitted']} not permitted, "
+                        f"{cov['errors']} could not be checked, {cov['informational']} informational). ")
+        if cov["not_permitted"]:
+            summary.add_run(f"The assessment is partial: {cov['assessed']} of {cov['total']} checks ran; "
+                            f"{cov['not_permitted']} could not because the API client's role does not include their feature. ")
 
     summary2 = doc.add_paragraph()
     summary2.add_run("Configured correctly: ").bold = True
@@ -650,7 +666,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     summary2.add_run("Needs review: ").bold = True
     summary2.add_run(f"{counts['REVIEW']} checks. ")
     summary2.add_run("Not configured/N/A: ").bold = True
-    summary2.add_run(f"{counts['INFO']} checks.")
+    summary2.add_run(f"{counts['INFO']} checks" + (f" (of which {cov['not_permitted']} not permitted, {cov['errors']} could not be checked)." if cov else "."))
 
     # ── Maturity Model Explanation ────────────────────────────────
     doc.add_heading("Maturity Model & Scoring Methodology", level=2)
@@ -707,9 +723,11 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     doc.add_paragraph()
     you_are = doc.add_paragraph()
     you_are.add_run("Your organization is currently rated: ").italic = True
-    your_run = you_are.add_run(f"{mat} ({overall}%)")
+    your_run = you_are.add_run(f"{mat} ({overall_text})")
     your_run.bold = True
-    if overall >= 75:
+    if overall is None:
+        your_run.font.color.rgb = COLORS.get("INFO", COLORS["REVIEW"])
+    elif overall >= 75:
         your_run.font.color.rgb = COLORS["PASS"]
     elif overall >= 50:
         your_run.font.color.rgb = COLORS["REVIEW"]
@@ -796,11 +814,13 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     for sec_name, data in secs.items():
         row = score_table.add_row()
         row.cells[0].text = sec_name
-        pct = data["pct"]
-        row.cells[1].text = f"{pct}%"
+        pct = data.get("pct")
+        row.cells[1].text = "Not measured" if pct is None else f"{pct}%"
         # Color the score
         run = row.cells[1].paragraphs[0].runs[0]
-        if pct >= 75:
+        if pct is None:
+            run.font.color.rgb = COLORS.get("INFO", COLORS["REVIEW"])
+        elif pct >= 75:
             run.font.color.rgb = COLORS["PASS"]
         elif pct >= 50:
             run.font.color.rgb = COLORS["REVIEW"]
@@ -911,7 +931,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
             if current_sec in secs:
                 sd = secs[current_sec]
                 sp = doc.add_paragraph()
-                sp.add_run(f"Score: {sd['pct']}% — ")
+                sp.add_run(f"Score: {'not measured (no scoreable check)' if sd.get('pct') is None else str(sd['pct']) + '%'} — ")
                 sp.add_run(f"{sd['pass']} configured, {sd['fail']} action required, "
                           f"{sd['warn']} review, {sd.get('info',0)} N/A")
                 sp.paragraph_format.space_after = Pt(12)

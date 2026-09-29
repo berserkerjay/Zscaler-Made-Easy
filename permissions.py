@@ -127,6 +127,80 @@ def assessment_permission_summary(results: Iterable[Dict[str, Any]], scopes: Opt
                     "Every check the API client was allowed to run did run."}
 
 
+# ── One vocabulary for what a check result means ──────────────────────
+# The engine records four statuses (PASS, FAIL, REVIEW, INFO; ERROR is an
+# INFO the check itself raised). The GUI, the exports and the score need
+# one more distinction inside INFO/ERROR: a check the API client was not
+# allowed to run is "not permitted" — coverage the tenant owner can
+# restore by granting a permission — while a feature that is simply not
+# licensed or not in use is "informational". Both are outside the score.
+CLASSES = ("configured", "action_required", "needs_review", "not_permitted", "error", "informational")
+CLASS_LABELS = {"configured": "Configured", "action_required": "Action required", "needs_review": "Needs review",
+                "not_permitted": "Not permitted", "error": "Could not be checked", "informational": "Not configured"}
+SCORE_FORMULA = "configured ÷ (configured + action required + needs review)"
+
+
+def classify(result: Dict[str, Any]) -> str:
+    """The class of one check result (CLASSES)."""
+    st = str(result.get("status") or "").upper()
+    if st == "PASS":
+        return "configured"
+    if st == "FAIL":
+        return "action_required"
+    if st == "REVIEW":
+        return "needs_review"
+    if st in ("INFO", "ERROR") and is_denied(result.get("detail")):
+        return "not_permitted"
+    if st == "ERROR":
+        return "error"
+    return "informational"
+
+
+def assessment_summary(results: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execution completion and measurable coverage as separate numbers,
+    from the same results the score is built on, so every surface (the
+    tiles, the summary card, the Word and JSON exports) says the same
+    thing. `assessed` is what the API client was allowed to run;
+    `scored` is what the score divides over; `score` is None — "Not
+    assessed" — when nothing was scoreable, never 100."""
+    from dlp_assessment_full_auto import maturity
+    rows = list(results)
+    counts = {c: 0 for c in CLASSES}
+    not_permitted_ids: List[Any] = []
+    for r in rows:
+        c = classify(r)
+        counts[c] += 1
+        if c == "not_permitted":
+            not_permitted_ids.append(r.get("id"))
+    total = len(rows)
+    scored = counts["configured"] + counts["action_required"] + counts["needs_review"]
+    score = round(counts["configured"] / scored * 100) if scored else None
+    excluded = counts["not_permitted"] + counts["error"] + counts["informational"]
+    if total == 0:
+        state = "unassessed"
+    elif counts["not_permitted"] or counts["error"]:
+        state = "partial"
+    else:
+        state = "complete"
+    return {
+        "total": total,
+        "assessed": total - counts["not_permitted"],
+        "not_permitted": counts["not_permitted"],
+        "not_permitted_ids": not_permitted_ids,
+        "errors": counts["error"],
+        "informational": counts["informational"],
+        "configured": counts["configured"],
+        "action_required": counts["action_required"],
+        "needs_review": counts["needs_review"],
+        "scored": scored,
+        "excluded": excluded,
+        "score": score,
+        "maturity": maturity(score),
+        "state": state,
+        "score_formula": SCORE_FORMULA,
+    }
+
+
 def write_permissions_needed(kinds: Iterable[str]) -> List[Dict[str, str]]:
     """What a configuration change of these kinds needs."""
     out = []
