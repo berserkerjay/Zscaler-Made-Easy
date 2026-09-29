@@ -24,6 +24,7 @@ Every page a user can reach in a browser:
 | What does everything do? | `/help` | page |
 | Evaluate All Rules reference | `/report/evalall` | page |
 | Migrate from another DLP | `/report/vendor` | page |
+| Data Security Architect | `/reference/data-security-architect` | page |
 
 Each state is audited twice, in the dark theme and in the light theme.
 

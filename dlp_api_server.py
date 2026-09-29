@@ -4104,6 +4104,8 @@ REFERENCE_PAGES: List[Dict[str, str]] = [
      "blurb": "The generative-AI subset of the AI security framework, with the same story builder and proof plan."},
     {"slug": "framework-machine", "name": "The Framework Machine",
      "blurb": "How the framework pages are built and kept portable: the six components, the assembly line, the setup order."},
+    {"slug": "data-security-architect", "name": "Data Security Architect",
+     "blurb": "Zscaler's data-security reference architecture: every DLP channel's flow, dictionaries and engines, evidence to Workflow Automation, setup sequences, symptom walkbacks."},
 ]
 _REFERENCE_DIR = os.path.join(STATIC_DIR, "reference")
 

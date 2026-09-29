@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def test_every_reference_page_is_served_listed_and_explained():
     c = TestClient(srv.app)
     listed = c.get("/api/reference").json()["pages"]
-    assert [p["slug"] for p in listed] == [p["slug"] for p in srv.REFERENCE_PAGES] and len(listed) == 4
+    assert [p["slug"] for p in listed] == [p["slug"] for p in srv.REFERENCE_PAGES] and len(listed) == 5
     explain = open(os.path.join(ROOT, "static", "explain.js"), encoding="utf-8").read()
     for p in listed:
         assert p["available"] and p["bytes"] > 1000, p
@@ -62,22 +62,34 @@ def test_every_tab_can_return_to_the_assessment_page():
             assert 'href="/"' in html and "report_theme.js" in html, f"{name} has a way back"
 
 
-def test_the_data_security_architect_site_is_an_external_reference_link():
-    """The uploaded "Data Security Architect.app" was a Chrome app-mode
-    launcher for a Google Sites page under the zscaler.com workspace, not
-    content: the sidebar carries it as an external link that opens in a
-    new tab with noopener, says it needs the zscaler.com sign-in, and is
-    explained like every other Reference item."""
+def test_the_data_security_architect_page_carries_its_diagrams_and_tables_offline():
+    """The Architect app's diagrams (WebP under static/reference/dsa) and
+    the tables from its screenshots live in an in-app reference page; the
+    flow pages link to its inline-web module as the architecture they are
+    measured against; the live source site is linked from the page, never
+    loaded."""
     c = TestClient(srv.app)
     c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    page = c.get("/reference/data-security-architect").text
+    assert "<title>Data Security Architect</title>" in page
+    figs = re.findall(r'<img src="(/static/reference/dsa/[a-z0-9-]+\.webp)"', page)
+    assert len(figs) == 33 and len(set(figs)) == 33, "every diagram once"
+    for f in figs:
+        assert os.path.exists(os.path.join(ROOT, f.lstrip("/"))), f
+        assert c.get(f).status_code == 200, f
+    for sec in ("chain", "dictionaries", "engines", "inline", "endpoint", "email", "saas", "edmidm", "aisec", "workflow", "setup", "walkbacks"):
+        assert f'<section id="{sec}"' in page, sec
+    for needle in ("POSIX-ERE syntax", "Match Any Patterns and Any Phrases", "no Exclude at root", "exempt_dlpidentifier",
+                   "Silently pre-empts DLP", "X-Zscaler-Block: 1", "Scan Initialized", "Escalate is allowed", "Reopen", "Saved ≠ active.",
+                   "Workflow Automation shows no incidents", "Inline web rule never fires"):
+        assert needle in page, needle
+    assert 'id="lb"' in page and "showModal()" in page and 'class="zoom"' in page, "each diagram opens full size"
+    assert 'href="https://sites.google.com/zscaler.com/datasecurityarchitecture/data-security-architect" target="_blank" rel="noopener"' in page
+    assert "Data Security Architect" in [p["name"] for p in srv.REFERENCE_PAGES]
     html = c.get("/").text
-    url = "https://sites.google.com/zscaler.com/datasecurityarchitecture/data-security-architect"
-    assert f"const DATA_SECURITY_ARCHITECT_URL = '{url}'" in html
-    assert "window.open(DATA_SECURITY_ARCHITECT_URL, '_blank', 'noopener')" in html
-    assert 'onclick="openDataSecurityArchitectTab()"' in html and "needs a zscaler.com Google sign-in" in html
+    assert "openReferenceTab('data-security-architect')" in html and "DATA_SECURITY_ARCHITECT_URL" not in html
     xp = c.get("/static/explain.js").text
-    assert "X.dsarchitect = {" in xp and f"href: '{url}'" in xp and "group: 'Reference', name: 'Data Security Architect'" in xp
-    # The flow pages are the gap analysis and the traffic flows; each links to the reference architecture it is measured against.
-    for page in ("/report/dataflow", "/report/path", "/report/sslflow", "/report/bypass"):
-        t = c.get(page).text
-        assert f'href="{url}" target="_blank" rel="noopener"' in t and "Reference architecture" in t, page
+    assert "X.dsarchitect = {" in xp and "href: '/reference/data-security-architect'" in xp
+    for flow in ("/report/dataflow", "/report/path", "/report/sslflow", "/report/bypass"):
+        t = c.get(flow).text
+        assert 'href="/reference/data-security-architect#inline"' in t and "Reference architecture" in t, flow
