@@ -1249,6 +1249,28 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
 # STEP 4b — Delete All Existing Rules (optional, gated)
 # ════════════════════════════════════════════════════════════════════
 
+ACTIVATION_WAIT_SECONDS = 45.0
+
+
+def _wait_active_raw(client, seconds: float) -> Optional[str]:
+    """Poll GET /zia/status through the raw client until ZIA reports
+    ACTIVE, for at most `seconds`; the last status seen (None when the
+    status could not be read)."""
+    import time as _t
+    deadline = _t.monotonic() + max(0.0, float(seconds or 0))
+    status = None
+    while True:
+        try:
+            data, code = client.get("/zia/status")
+        except Exception:
+            return status
+        if code not in (200, 204) or not isinstance(data, dict):
+            return status
+        status = str(data.get("status") or "").upper() or None
+        if status in (None, "ACTIVE") or _t.monotonic() >= deadline:
+            return status
+        _t.sleep(3)
+
 def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     """
     Delete every Inline Web DLP rule in the tenant. Used when the
@@ -1313,6 +1335,9 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         try:
             _resp, acode = client.post("/zia/status/activate", {}) if hasattr(client, "post") else (None, 0)
             activation = {"requested": acode in (200, 201, 204), "http_status": acode}
+            if activation["requested"]:
+                # An activation is not instantaneous: wait for ZIA to report ACTIVE, the way a pack removal does.
+                activation["status"] = _wait_active_raw(client, ACTIVATION_WAIT_SECONDS)
         except Exception as e:
             activation = {"requested": False, "error": str(e)[:200]}
 

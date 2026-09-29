@@ -563,6 +563,8 @@ def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
             self.calls = []
 
         def get(self, ep):
+            if ep == "/zia/status":
+                self.calls.append(("GET", ep)); return ({"status": "ACTIVE"}, 200)
             return ([{"id": 1, "name": "A", "action": "BLOCK", "state": "ENABLED"}, {"id": 2, "name": "B"}], 200)
 
         def delete(self, ep, body=None):
@@ -576,13 +578,18 @@ def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
     monkeypatch.setattr(security, "_write_override", True)
     out = rm.delete_all_rules(c, dry_run=False)
     assert out["status"] == "completed" and out["deleted_count"] == 2
-    assert c.calls == [("DELETE", "/zia/webDlpRules/1"), ("DELETE", "/zia/webDlpRules/2"), ("POST", "/zia/status/activate")]
-    assert out["activation"] == {"requested": True, "http_status": 200}
+    assert c.calls == [("DELETE", "/zia/webDlpRules/1"), ("DELETE", "/zia/webDlpRules/2"), ("POST", "/zia/status/activate"), ("GET", "/zia/status")]
+    assert out["activation"] == {"requested": True, "http_status": 200, "status": "ACTIVE"}, "the wizard waits for ACTIVE like a pack removal"
     c2 = Client()
     c2.delete = lambda ep, body=None: (c2.calls.append(("DELETE", ep)) or (None, 400))
     out2 = rm.delete_all_rules(c2, dry_run=False)
     # Every delete refused: the rules were still attempted, so the activation still runs (the same rule as a pack removal).
-    assert out2["status"] == "partial" and out2["deleted_count"] == 0 and out2["activation"] == {"requested": True, "http_status": 200} and c2.calls[-1] == ("POST", "/zia/status/activate")
+    assert out2["status"] == "partial" and out2["deleted_count"] == 0 and out2["activation"] == {"requested": True, "http_status": 200, "status": "ACTIVE"} and c2.calls[-2] == ("POST", "/zia/status/activate")
+    # The wait is bounded and reports what ZIA last said.
+    monkeypatch.setattr(rm, "ACTIVATION_WAIT_SECONDS", 0.0)
+    c6 = Client()
+    c6.get = lambda ep: ({"status": "PENDING"}, 200) if ep == "/zia/status" else ([{"id": 1, "name": "A"}], 200)
+    assert rm.delete_all_rules(c6, dry_run=False)["activation"]["status"] == "PENDING"
     c5 = Client()
     c5.get = lambda ep: ([], 200)
     assert rm.delete_all_rules(c5, dry_run=False)["activation"] is None and c5.calls == [], "nothing attempted, nothing activated"
