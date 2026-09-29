@@ -18,10 +18,10 @@ def test_each_result_class_has_its_own_tile_filter_and_pill():
     html = _page()
     assert 'id="notPermStat" hidden' in html and 'id="errorStat" hidden' in html
     assert "document.getElementById('infoCount').textContent = sum.informational;" in html
-    for f in ("NOTPERM", "ERROR"):
+    for f in ("NOTPERM", "NOTSCOPE", "ERROR"):
         assert f'data-filter="{f}"' in html, f
-    assert ".status-NOTPERM {" in html and ".status-ERROR {" in html
-    assert "const classOf = c => notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR'" in html
+    assert ".status-NOTPERM {" in html and ".status-NOTSCOPE {" in html and ".status-ERROR {" in html
+    assert "const classOf = c => c.out_of_scope ? 'NOTSCOPE' : notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR'" in html
     assert "b.textContent = `${b.dataset.label} (${n})`" in html   # the filters carry their counts
     assert "sit outside it. A 🔧 button means a one-click recipe exists" in html
 

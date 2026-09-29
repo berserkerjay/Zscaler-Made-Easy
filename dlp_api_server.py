@@ -320,6 +320,10 @@ class AssessRequest(BaseModel):
     scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
     customer_id: str = ""  # Optional ZPA customer ID
     profile_id: str = ""   # Saved tenant profile: fills blanks, records history
+    # The Scope page's channel ownership: {id: {choice: zscaler|alternative|gap, note, name}}.
+    # A channel covered by an alternative solution has its checks reported as
+    # not in scope instead of read from the tenant (channel_scope).
+    channels: Dict[str, Any] = {}
 
 
 class TenantProfileRequest(BaseModel):
@@ -342,6 +346,7 @@ class TenantProfileRequest(BaseModel):
     baseline_packs: list[str] = []
     scopes: list[str] = []
     frameworks: list[str] = []
+    channels: Dict[str, Any] = {}   # the Scope page's channel ownership (channel_scope.normalize)
     notes: str = ""
 
 
@@ -1907,6 +1912,7 @@ async def tenant_profile_save(req: TenantProfileRequest):
         "auth_method": method, "username": user,
         "industry": req.industry, "baseline_packs": [str(b) for b in req.baseline_packs],
         "scopes": [str(x) for x in req.scopes], "frameworks": [str(x) for x in req.frameworks], "notes": req.notes[:2000],
+        "channels": __import__("channel_scope").normalize(req.channels),
     }
     return tenant_profiles.upsert(fields, client_secret=sec, password=password, api_key=api_key,
                                   remember_secret=req.remember_secret, profile_id=req.id)
@@ -3741,6 +3747,12 @@ async def assess_stream(req: AssessRequest):
     creds = _validate_creds(_tenant_creds(req))
     cloud, vd = creds["cloud"], creds["vanity_domain"]
     checks = _get_checks(req.scope, req.scopes)
+    # The Scope page's channel ownership: a channel covered by an alternative
+    # solution has its checks reported as not in scope instead of read
+    # (channel_scope); the rest run. The findings keep their section order.
+    import channel_scope as _chs
+    checks, skipped_checks, check_order = _chs.partition(checks, req.channels)
+    total_all = len(checks) + len(skipped_checks)
     # The journey (pack deficiencies) is measured against the profile's
     # packs, or the packs of its industry when none are ticked.
     import vertical as _vertical
@@ -3766,7 +3778,10 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "ok", "auth_method": creds["auth_method"],
                                 "note": ("Signed in through the classic ZIA API: ZIA checks only; ZPA, Client Connector and ZDX checks "
                                          "are reported as not available.") if creds["auth_method"] == tenant_auth.LEGACY else ""})
-            yield _sse("progress", {"total": len(checks), "completed": 0, "pct": 0})
+            for skipped in skipped_checks:
+                yield _sse("check", skipped)
+            yield _sse("progress", {"total": total_all, "completed": len(skipped_checks),
+                                    "pct": round(len(skipped_checks) / max(total_all, 1) * 100)})
 
             # Checks run on a small pool of threads (the API's rate limit is
             # shared by the Client's pacer), each result is streamed the moment
@@ -3827,8 +3842,8 @@ async def assess_stream(req: AssessRequest):
                         yield _sse("check", result)
                     if fresh:
                         yield _sse("progress", {
-                            "total": len(checks), "completed": len(done),
-                            "pct": round(len(done) / len(checks) * 100),
+                            "total": total_all, "completed": len(done) + len(skipped_checks),
+                            "pct": round((len(done) + len(skipped_checks)) / max(total_all, 1) * 100),
                             "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
                             "running": len([i for i in started if i not in done]),
                             "elapsed": round(now - run_started),
@@ -3840,7 +3855,7 @@ async def assess_stream(req: AssessRequest):
                     # Client disconnected; just keep collecting results
                     pass
             pool.shutdown(wait=False, cancel_futures=True)
-            results = [done[i] for i in range(len(checks))]
+            results = _chs.merge(check_order, [done[i] for i in range(len(checks))], skipped_checks)
 
             # Results first: the report goes out as soon as the checks are
             # in. The data-governance journey (one read-only preflight per
@@ -3861,7 +3876,7 @@ async def assess_stream(req: AssessRequest):
                     "org": req.org_name,
                     "assessor": req.assessor,
                     "cloud": req.cloud,
-                    "total_checks": len(checks),
+                    "total_checks": total_all,
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
                     "elapsed_seconds": round(time.time() - run_started, 1),
                     "api_requests": getattr(client, "requests_made", None),
@@ -3874,6 +3889,8 @@ async def assess_stream(req: AssessRequest):
                 "review": [r for r in results if r["status"] == "REVIEW"],
                 "journey": {"status": "pending"} if want_journey else None,
                 "profile": None,
+                # The Scope page's declaration and what it did (channel_scope.coverage).
+                "channel_coverage": _chs.coverage(req.channels, skipped_checks),
             }
 
             def _record_history(rep):
@@ -3912,7 +3929,7 @@ async def assess_stream(req: AssessRequest):
                 journey = None
                 try:
                     packs = _journey_packs(journey_pack_ids)
-                    yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                    yield _sse("progress", {"total": total_all, "completed": total_all, "pct": 100,
                                             "current": f"Data governance journey: measuring the tenant against {len(packs)} policy packs"})
                     sdk = await asyncio.to_thread(_build_sdk_client, creds)
                     notes: asyncio.Queue = asyncio.Queue()
@@ -3927,7 +3944,7 @@ async def assess_stream(req: AssessRequest):
                             raise TimeoutError(f"the journey measurement did not finish within {JOURNEY_TIMEOUT} seconds")
                         try:
                             i, n, pack_id = await asyncio.wait_for(notes.get(), timeout=5.0)
-                            yield _sse("progress", {"total": len(checks), "completed": len(checks), "pct": 100,
+                            yield _sse("progress", {"total": total_all, "completed": total_all, "pct": 100,
                                                     "current": f"Data governance journey: {pack_id} ({i + 1} of {n})", "journey": True})
                         except asyncio.TimeoutError:
                             yield ": keepalive\n\n"
@@ -3965,7 +3982,10 @@ async def generate_docx(request: Request):
         raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {e}")
 
     results = data.get("checks", [])
-    cfg = data.get("metadata", {})
+    cfg = dict(data.get("metadata") or {})
+    # The Scope page's channel declaration rides along for the Channel Coverage section.
+    if isinstance(data.get("channel_coverage"), dict):
+        cfg["channel_coverage"] = data["channel_coverage"]
 
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")

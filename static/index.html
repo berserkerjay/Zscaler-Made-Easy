@@ -501,6 +501,7 @@
   .status-REVIEW { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
   .status-INFO { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
   .status-NOTPERM { background: transparent; color: var(--info); border: 1px dashed var(--border-strong); }
+  .status-NOTSCOPE { background: transparent; color: var(--info); border: 1px solid var(--border-strong); }
   .status-ERROR { background: transparent; color: var(--info); border: 1px dotted var(--border-strong); }
   .check-body { flex: 1; min-width: 0; }
   .check-id { font-size: var(--fs-footnote); color: var(--dim); font-family: var(--mono); }
@@ -1244,6 +1245,7 @@
         <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Needs review</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">Not configured</div></div>
         <div class="stat" id="notPermStat" hidden><div class="stat-num" style="color:var(--info)" id="notPermCount">0</div><div class="stat-label">Not permitted</div></div>
+        <div class="stat" id="notScopeStat" hidden title="Checks of a channel the Scope page marks as covered by an alternative solution: not read, outside the score"><div class="stat-num" style="color:var(--info)" id="notScopeCount">0</div><div class="stat-label">Not in scope</div></div>
         <div class="stat" id="errorStat" hidden><div class="stat-num" style="color:var(--info)" id="errorCount">0</div><div class="stat-label">Could not be checked</div></div>
       </div>
       <p class="stat-note" id="coverageNote" aria-live="polite"></p>
@@ -1277,7 +1279,7 @@
 
     <div class="card">
       <h2>Detailed findings</h2>
-      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong> and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
+      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong>, <strong>Not in scope</strong> (a channel the Scope page marks as covered elsewhere) and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
       <div class="checks-filter" role="group" aria-label="Filter findings by status">
         <button class="filter-btn active" data-filter="all" data-label="All" onclick="filterChecks('all',this)">All</button>
         <button class="filter-btn" data-filter="FAIL" data-label="Action required" onclick="filterChecks('FAIL',this)">Action required</button>
@@ -1285,6 +1287,7 @@
         <button class="filter-btn" data-filter="PASS" data-label="Configured" onclick="filterChecks('PASS',this)">Configured</button>
         <button class="filter-btn" data-filter="INFO" data-label="Not configured" onclick="filterChecks('INFO',this)">Not configured</button>
         <button class="filter-btn" data-filter="NOTPERM" data-label="Not permitted" onclick="filterChecks('NOTPERM',this)" hidden>Not permitted</button>
+        <button class="filter-btn" data-filter="NOTSCOPE" data-label="Not in scope" onclick="filterChecks('NOTSCOPE',this)" hidden>Not in scope</button>
         <button class="filter-btn" data-filter="ERROR" data-label="Could not be checked" onclick="filterChecks('ERROR',this)" hidden>Could not be checked</button>
       </div>
       <div id="checksList"></div>
@@ -1326,6 +1329,7 @@ document.addEventListener('DOMContentLoaded', loadHealthBadge);
 // never 0% or 100%.
 const NOT_PERMITTED_RE = /lack permission|Access denied|does not include this feature|HTTP 40[13]\b|status.: ?40[13]|Forbidden|Unauthorized/i;
 function classifyCheck(c) {
+  if (c && c.out_of_scope) return 'not_in_scope';   // its channel is covered elsewhere (the Scope page); never read
   const st = String(c.status || '').toUpperCase();
   if (st === 'PASS') return 'configured';
   if (st === 'FAIL') return 'action_required';
@@ -1342,15 +1346,16 @@ function scoreText(p) { return (p === null || p === undefined || !Number.isFinit
 function assessmentSummary(data) {
   if (data && data.summary && typeof data.summary.total === 'number') return data.summary;
   const checks = (data && data.checks) || [];
-  const s = { total: checks.length, configured: 0, action_required: 0, needs_review: 0, not_permitted: 0, errors: 0, informational: 0, not_permitted_ids: [] };
+  const s = { total: checks.length, configured: 0, action_required: 0, needs_review: 0, not_permitted: 0, not_in_scope: 0, errors: 0, informational: 0, not_permitted_ids: [], not_in_scope_ids: [] };
   for (const c of checks) {
     const k = classifyCheck(c);
     if (k === 'error') s.errors++; else s[k]++;
     if (k === 'not_permitted') s.not_permitted_ids.push(c.id);
+    if (k === 'not_in_scope') s.not_in_scope_ids.push(c.id);
   }
-  s.assessed = s.total - s.not_permitted;
+  s.assessed = s.total - s.not_permitted - s.not_in_scope;
   s.scored = s.configured + s.action_required + s.needs_review;
-  s.excluded = s.not_permitted + s.errors + s.informational;
+  s.excluded = s.not_permitted + s.not_in_scope + s.errors + s.informational;
   s.score = s.scored ? Math.round(s.configured / s.scored * 100) : null;
   s.maturity = maturityLabel(s.score);
   s.state = s.total === 0 ? 'unassessed' : (s.not_permitted || s.errors) ? 'partial' : 'complete';
@@ -1359,8 +1364,9 @@ function assessmentSummary(data) {
 }
 function coverageSentence(s, meta) {
   const parts = [];
-  parts.push(s.state === 'partial' ? `Partial: ${s.assessed} of ${s.total} checks ran` : `${s.total} checks ran`);
+  parts.push(s.state === 'partial' ? `Partial: ${s.assessed} of ${s.total} checks ran` : (s.not_in_scope ? `${s.assessed} of ${s.total} checks ran` : `${s.total} checks ran`));
   if (s.not_permitted) parts.push(`${s.not_permitted} not permitted for this API client`);
+  if (s.not_in_scope) parts.push(`${s.not_in_scope} not in scope (channels covered outside Zscaler, per the Scope page)`);
   if (s.errors) parts.push(`${s.errors} could not be checked`);
   parts.push(s.scored ? `score = ${s.configured} configured ÷ ${s.scored} scoreable (${s.excluded} excluded)` : 'nothing was scoreable, so there is no score');
   if (meta && meta.partial) parts.push('the run stopped early: the numbers cover only the checks that finished');
@@ -2543,6 +2549,9 @@ async function runAssessment() {
     org_name: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
     scopes: scopes,
+    // The Scope page's channel ownership (dashboard.js): a channel covered by
+    // an alternative solution has its checks reported as not in scope.
+    channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {},
   };
 
   try {
@@ -2693,6 +2702,7 @@ function showResults(data) {
   // refused or failed read is never folded into it.
   document.getElementById('infoCount').textContent = sum.informational;
   document.getElementById('notPermCount').textContent = sum.not_permitted; document.getElementById('notPermStat').hidden = !sum.not_permitted;
+  document.getElementById('notScopeCount').textContent = sum.not_in_scope || 0; document.getElementById('notScopeStat').hidden = !sum.not_in_scope;
   document.getElementById('errorCount').textContent = sum.errors; document.getElementById('errorStat').hidden = !sum.errors;
   const cov = document.getElementById('coverageNote');
   if (cov) cov.textContent = coverageSentence(sum, data.metadata);
@@ -2703,7 +2713,7 @@ function showResults(data) {
     const pct = d.pct;
     const scored = (d.scored !== undefined) ? d.scored : (d.total || 0) - (d.info || 0);
     if (pct === null || pct === undefined || !scored) {
-      grid.innerHTML += `<div class="section-row"><span class="section-name">${escapeHtml(sec)}</span><span class="section-score section-score-na" title="No scoreable check in this section: every result is informational, not permitted or could not be checked">Not measured</span></div>`;
+      grid.innerHTML += `<div class="section-row"><span class="section-name">${escapeHtml(sec)}</span><span class="section-score section-score-na" title="No scoreable check in this section: every result is informational, not permitted, not in scope or could not be checked">Not measured</span></div>`;
       continue;
     }
     const color = pct >= 75 ? 'var(--pass)' : pct >= 50 ? 'var(--warn)' : 'var(--fail)';
@@ -3022,9 +3032,9 @@ function renderChecks(checks, filter) {
   // The row's class is its own (permissions.classify): configured,
   // action_required, needs_review, not_permitted, error, informational.
   const notPermitted = new Set(((typeof reportData !== 'undefined' && reportData && reportData.summary && reportData.summary.not_permitted_ids) || []).filter(Boolean));
-  const classOf = c => notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
-  const PILL = {PASS:'Configured', FAIL:'Action required', REVIEW:'Needs review', INFO:'Not configured', NOTPERM:'Not permitted', ERROR:'Could not be checked'};
-  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
+  const classOf = c => c.out_of_scope ? 'NOTSCOPE' : notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
+  const PILL = {PASS:'Configured', FAIL:'Action required', REVIEW:'Needs review', INFO:'Not configured', NOTPERM:'Not permitted', NOTSCOPE:'Not in scope', ERROR:'Could not be checked'};
+  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', NOTSCOPE: 'Its channel is covered by an alternative solution, as declared on the Scope page. Not read, outside the score.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
   for (const c of checks) {
     const st = classOf(c);
     if (filter !== 'all' && st !== filter) continue;
@@ -3059,7 +3069,7 @@ function renderChecks(checks, filter) {
   document.querySelectorAll('.checks-filter .filter-btn[data-filter]').forEach(b => {
     const k = b.dataset.filter; const n = k === 'all' ? checks.length : (counts[k] || 0);
     b.textContent = `${b.dataset.label} (${n})`;
-    if (k === 'NOTPERM' || k === 'ERROR') b.hidden = n === 0;
+    if (k === 'NOTPERM' || k === 'NOTSCOPE' || k === 'ERROR') b.hidden = n === 0;
   });
 }
 

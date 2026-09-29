@@ -626,6 +626,8 @@ function _gdProfileFill(p) {
   if (typeof applyAuthMethod === 'function') applyAuthMethod();
   if (Array.isArray(p.scopes) && p.scopes.length && typeof setSelectedScopes === 'function') setSelectedScopes(p.scopes);
   if (Array.isArray(p.frameworks) && p.frameworks.length) document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = p.frameworks.includes(cb.value); });
+  // The profile's channel ownership (Scope page) replaces this browser's copy.
+  if (p.channels && typeof p.channels === 'object' && Object.keys(p.channels).length && typeof window.__dbChannelsSet === 'function') window.__dbChannelsSet(p.channels);
   _gdApplyScope(p);
 }
 // The profile's industry decides what the assessment suggests: the
@@ -677,6 +679,7 @@ function _gdProfileFormValues() {
     baseline_packs: Array.from(document.querySelectorAll('.gd-prof-pack:checked')).map(x => x.value),
     scopes: typeof getSelectedScopes === 'function' ? getSelectedScopes() : [],
     frameworks: typeof getSelectedFrameworks === 'function' ? getSelectedFrameworks() : [],
+    channels: typeof window.__dbChannelScope === 'function' ? window.__dbChannelScope() : {},
     notes: (q('gdProfNotes') || {}).value || '',
   };
 }
