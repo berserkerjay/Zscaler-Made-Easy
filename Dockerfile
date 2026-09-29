@@ -48,6 +48,10 @@ ENV ZSCALER_BIND_HOST=0.0.0.0 \
     DLP_CHECK_DEPLOYMENTS=/data/deployments.json \
     DLP_CHECK_AUDIT=/data/audit.log \
     DLP_CHECK_UI_TOKEN_DIR=/data \
+    DLP_CHECK_DIGESTS=/data/digests \
+    DLPCHECK_PROPOSALS_FILE=/data/proposals.json \
+    DLP_CHECK_GUIDANCE_STATE=/data/guidance_state.json \
+    DLP_CHECK_SAAS_MATRIX=/data/saas_apps.local.json \
     DLP_CHECK_IN_CONTAINER=1
 
 USER dlpcheck

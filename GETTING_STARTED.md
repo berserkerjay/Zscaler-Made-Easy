@@ -20,9 +20,14 @@ next.
 
 ## 1. Install (once per laptop)
 
-1. Install Python 3.11+ from python.org and tick **Add Python to PATH**.
+**[INSTALL.md](INSTALL.md)** is the click-by-click walkthrough for Windows,
+Mac, Linux and a container, written for someone who has never installed a
+developer tool before; follow it and come back here at section 2. The
+short version, for a Windows laptop with Git already installed:
+
+1. Install Python 3.11+ from python.org and tick **Add python.exe to PATH**.
 2. Install Git from git-scm.com.
-3. In PowerShell:
+3. In a Command Prompt or PowerShell:
    ```
    git clone https://github.com/berserkerjay/DLP-Check.git
    cd DLP-Check
@@ -36,6 +41,10 @@ next.
    `START_Zscaler_Assessment.bat --console` when you want to watch the
    server output in a window.
 
+On a Mac or Linux it is `./install.sh` then `./start.sh` in the app folder
+(`Ctrl + C` stops it); INSTALL.md has the details, including the Python
+install and what a successful start looks like.
+
 To update later: the Start here card says **update available** when
 GitHub is ahead; click **Update app now**. The app pulls the latest code,
 installs any new dependencies, restarts itself and reloads the page. It
@@ -44,8 +53,10 @@ that older instructions had you put into the start script are moved into
 `local_settings.bat`, and any other edit is set aside and re-applied after
 the pull. `UPDATE_Zscaler_Assessment.bat` does the same from a command
 prompt. The repository is private, so git on the laptop must be signed in
-to GitHub once (`git fetch` in the app folder prompts for it). A copy that was not installed with git cannot update in
-place; the card shows the one command that moves it to a git clone.
+to GitHub once (`git fetch` in the app folder prompts for it). A copy that
+was installed from a ZIP (not with git) cannot update in place: stop it,
+download a fresh ZIP, replace the folder keeping `local_settings.bat` or
+`local_settings.env`, and run the installer again; the card says the same.
 
 ## 1a. The UI token (why the browser sometimes asks for a code)
 
@@ -59,18 +70,6 @@ without it gets *401*. Set `ZSCALER_UI_TOKEN=...` in `local_settings.bat`
 to keep one token across restarts, or `ZSCALER_UI_AUTH=0` to turn it off
 (not recommended). Every write call is recorded in `audit.log` next to
 the app.
-
-## 1c. Run it in a container instead
-
-`docker compose up --build` in the app folder builds an image with
-hash-pinned dependencies and runs it as a non-root user on a read-only
-filesystem, published on `127.0.0.1:8000` only. Profiles, deployments,
-the audit log and the UI token live on the `dlpcheck-data` volume
-(`docker compose exec dlp-check cat /data/ui_token.txt` prints the token;
-`docker compose logs` shows it too). Put `ZSCALER_*` credentials in a
-`.env` file next to `docker-compose.yml` if you do not want to type them.
-The in-app **Update app** button does not apply inside a container:
-rebuild the image instead.
 
 ## 1b. Settings that survive updates (proxy, TLS inspection)
 
@@ -86,9 +85,29 @@ the start scripts (an update or a fresh clone replaces them). Instead:
 3. Stop and start the server (`STOP_Zscaler_Assessment.bat`, then the
    desktop shortcut). Start here shows the CA bundle in use.
 
+On a **Mac or Linux** the same settings live in `local_settings.env` in
+the app folder (`./install.sh` creates it from `local_settings.env.example`).
+Open it in a text editor, remove the `#` in front of `REQUESTS_CA_BUNDLE=`
+and put the path of the organisation's root certificate (`.pem`) after it,
+likewise `HTTPS_PROXY=` for a proxy, save, then `Ctrl + C` and `./start.sh`
+again. INSTALL.md's "Work laptop" box shows how to export the certificate
+on Windows and on a Mac.
+
 Authenticate tells you when this is the problem: "intercepted by TLS
 inspection" means the CA bundle is missing or wrong; "rejected the client
 ID or client secret" means the credentials themselves.
+
+## 1c. Run it in a container instead
+
+`docker compose up --build` in the app folder builds an image with
+hash-pinned dependencies and runs it as a non-root user on a read-only
+filesystem, published on `127.0.0.1:8000` only. Profiles, deployments,
+the audit log and the UI token live on the `dlpcheck-data` volume
+(`docker compose exec dlp-check cat /data/ui_token.txt` prints the token;
+`docker compose logs` shows it too). Put `ZSCALER_*` credentials in a
+`.env` file next to `docker-compose.yml` if you do not want to type them.
+The in-app **Update app** button does not apply inside a container:
+rebuild the image instead.
 
 ## 2. Get credentials from the customer
 
@@ -129,7 +148,8 @@ reported as not available, and policy packs deploy the same way.
    organisation and assessor name.
 2. Click **Authenticate** at the bottom of Tenant Configuration (or in the
    **Start here** panel, step 1). You should see
-   "Connected: N dictionaries, N engines, N web DLP rules".
+   "Connected to <tenant>: N dictionaries, N engines, N web DLP rules."
+   in the Start here panel.
 3. If it fails, the panel says why and what to do. The two common causes:
    - *Zscaler rejected the client ID or client secret* → regenerate the secret.
    - *Connection intercepted by TLS inspection* → your laptop is behind
@@ -514,7 +534,9 @@ the outset, for scripted use.)
 
 ## 7. After deploying
 
-1. An admin must click **Activate** in the ZIA Admin Portal.
+1. The deploy activated the change when it finished and read the tenant
+   back (the log says so). If the activation was refused, an admin clicks
+   **Activate** in the ZIA Admin Portal.
 2. Enable rules one at a time in **Policy → Data Loss Prevention**,
    monitor-only ones first, and raise severity once incidents look right.
 3. On the next visit, run the assessment again (or click **Where is this
@@ -560,7 +582,10 @@ tool:
   a tenant where nothing at all can be listed blocks the plan.
 - **What a configuration change needs** is on the **Required API Access**
   page (`/permissions`): the *Full* permission per object kind the pack
-  writes. Activation is never done by the tool.
+  writes. A deploy or a removal activates the pending configuration when
+  it ends (a removal after every tier: rules, engines, dictionaries) and
+  reads the tenant back; a proposal applied from FP/TP Detection Ratio is
+  left pending for an admin to activate in the portal.
 
 ## Glossary
 
