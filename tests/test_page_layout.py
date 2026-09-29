@@ -60,7 +60,7 @@ def test_authenticate_ends_with_an_inline_success_or_an_in_app_failure_dialog():
     assert "window.__dlpUnlockDialog" in html and "r.dlpTokenRequired = true" in html and "askFailed = String(e && e.message || e); return null;" in html
     assert "r.dlpDialogUnavailable = askFailed" in html and "r.dlpDialogUnavailable\n        ? _gdConnFailure('dialog'" in guide   # a browser that cannot ask is named as such
     ua = c.get("/static/ui_auth.js")
-    assert ua.status_code == 200 and "window.dlpDialog = { unlock, notice }" in ua.text and "showModal()" in ua.text
+    assert ua.status_code == 200 and "window.dlpDialog = { unlock, notice, phrase, ask }" in ua.text and "showModal()" in ua.text
     assert 'type="password"' in ua.text and "aria-labelledby" in ua.text and "addEventListener('cancel'" in ua.text
     theme = c.get("/static/report_theme.js").text
     assert "window.__dlpUnlockDialog" in theme and "askFailed = String(e && e.message || e); return null;" in theme and "r.dlpDialogUnavailable = askFailed" in theme
