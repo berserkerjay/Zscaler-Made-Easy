@@ -4566,7 +4566,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     if problem:
         print(f"\n  Could not start: {problem}\n", file=sys.stderr)
         return 2
-    open_url = f"http://{('localhost' if host == '127.0.0.1' else host)}:{port}/"
+    # Inside the container the server listens on 0.0.0.0 and docker-compose
+    # publishes it on the host's 127.0.0.1 only, so the address a person
+    # opens is localhost, not 0.0.0.0 (which is not an address to browse to).
+    in_container = os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
+    open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{port}/"
     if _security.ui_auth_enabled():
         try:
             token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
@@ -4584,7 +4588,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()
         except Exception:  # noqa: BLE001 - a browser that cannot open never stops the server
             pass
-    if host != "127.0.0.1":
+    if in_container and host == "0.0.0.0":
+        print(f"  (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:{port} of this machine only)\n")
+    elif host != "127.0.0.1":
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
         print(f"     can reach this server. Currently listening on {host}:{port}.")
         print("     Set ZSCALER_BIND_HOST=127.0.0.1 (default) to restrict to localhost.\n")

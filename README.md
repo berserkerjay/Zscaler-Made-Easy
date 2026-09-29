@@ -11,9 +11,12 @@ and measures where the tenant is on the data-governance journey on every
 visit. Every rule a pack creates arrives switched off and monitor-only, so
 deploying never affects the customer's users.
 
-New to this? **[INSTALL.md](INSTALL.md)** is a click-by-click walkthrough
-for Windows, Mac, Linux or a container, written for someone who has never
-installed a developer tool before.
+New to this? **[docs/OVERVIEW.md](docs/OVERVIEW.md)** is a five-minute tour
+of what the app can do and what it never does. **[INSTALL.md](INSTALL.md)**
+is a click-by-click install walkthrough for Windows, Mac, Linux or a
+container, written for someone who has never installed a developer tool
+before; **[GETTING_STARTED.md](GETTING_STARTED.md)** then walks through a
+first engagement.
 
 Two ways to run it, built from this one source tree:
 
@@ -28,8 +31,11 @@ run the same entry point (`dlp_api_server.py`). A test
 
 ## Quick start (local)
 
-Windows: install Python 3.11+ (tick *Add Python to PATH*), double-click
-`INSTALL_Zscaler_Assessment.bat`, then the desktop shortcut it creates.
+Windows: install Python 3.11+ (tick *Add python.exe to PATH*), get the code
+(`git clone`, or the ZIP from the Code button), double-click
+`INSTALL_Zscaler_Assessment.bat`, then the desktop shortcut it creates. The
+server runs in the background (output in `server.log`);
+`STOP_Zscaler_Assessment.bat` stops it.
 
 Linux / macOS:
 
@@ -126,7 +132,9 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 | Continuous evaluation | `continuous_eval.py` (the `dlp-check-evaluate` command), `proposals.py`, `proposal_apply.py`, `deployments.py`, `tenant_profiles.py` |
 | Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button), `upstream_check.py` (the SDK, the Terraform provider and Zscaler's API reference cross-checked against what the app sends; offline in `make check`, online daily in `.github/workflows/upstream_check.yml`) |
 
-Documentation: `GETTING_STARTED.md` (first engagement, step by step),
+Documentation: `docs/OVERVIEW.md` (what the app does, in five minutes),
+`INSTALL.md` (installing, click by click), `GETTING_STARTED.md` (first
+engagement, step by step),
 `POLICY_PACKS.md` (pack format), `docs/SHARED_EXECUTION_PATH.md` (how
 every pack is deployed, verified and removed), `SECURITY.md` (posture and
 disclosure), `CHANGELOG.md`. Inside the app, every page has a *What is this
@@ -178,7 +186,8 @@ instead (sign-in method in Tenant Configuration): an admin allowed to use
 the API (username and password) and the tenant's API key from
 Administration → API Key Management. It covers ZIA only.
 
-`docs/DLP_Assessment_Step_by_Step_Guide.docx` walks through creating them.
+`DLP_Assessment_Step_by_Step_Guide.docx` (repository root) walks through
+creating them; `GETTING_STARTED.md` section 2 lists what to ask for.
 
 ## Security
 
@@ -189,6 +198,8 @@ non-root and read-only, reports treated as confidential.
 
 ## License
 
-Internal tooling. Not for redistribution. This repository is public so
-its code can be reviewed and vulnerabilities disclosed responsibly (see
-`SECURITY.md`) — that does not change the license terms in `LICENSE`.
+Internal tooling. Not for redistribution. The repository is private today
+(access is granted per GitHub account; `INSTALL.md` says whom to ask).
+Whether or not it is ever made readable to others so its code can be
+reviewed and vulnerabilities disclosed responsibly (see `SECURITY.md`),
+the license terms in `LICENSE` apply unchanged.
