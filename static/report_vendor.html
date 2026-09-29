@@ -50,6 +50,14 @@
   .vm-basis { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); white-space: nowrap; }
   .vm-basis.computed { color: var(--pass); border-color: var(--pass); } .vm-basis.attested { color: var(--accent); border-color: var(--accent); } .vm-basis.fixed { color: var(--warn); border-color: var(--warn); }
   .vm-steps { margin: 0.2rem 0 0 1.2rem; font-size: 0.9rem; line-height: 1.55; }
+  details.vm-xref { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); margin: 0.6rem 0 0.2rem; }
+  details.vm-xref > summary { cursor: pointer; padding: 0.55rem 0.9rem; font-weight: 600; }
+  details.vm-xref > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-lg); }
+  details.vm-xref > div { padding: 0 0.9rem 0.8rem; }
+  .vm-xref h4 { font-size: 0.85rem; margin: 0.8rem 0 0.3rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .vm-xref ul { margin: 0.2rem 0 0 1.1rem; font-size: 0.88rem; line-height: 1.5; }
+  .vm-carried { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); white-space: nowrap; }
+  .vm-carried.generated { color: var(--pass); border-color: var(--pass); } .vm-carried.reviewed, .vm-carried.attested { color: var(--accent); border-color: var(--accent); } .vm-carried.manual { color: var(--warn); border-color: var(--warn); } .vm-carried.dropped { color: var(--fail); border-color: var(--fail); }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 </style>
 </head>
@@ -57,7 +65,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Migrate</span> from another DLP</h1>
-      <p>Turn another vendor's DLP policy export into disabled ZIA dictionaries, engines and web rules, through decisions a person reviewed. Nothing is inferred from the vendor's file beyond each policy's id and name; nothing is written to the tenant; every generated rule is DISABLED until change control enables it.</p>
+      <p>Turn a Symantec, Forcepoint, Netskope or Skyhigh DLP policy export into disabled ZIA dictionaries, engines and web rules, through decisions a person reviewed. Each adapter reads its vendor's own export file types and shows the API cross-reference from the vendor's objects and fields to ZIA's. Nothing is inferred from the vendor's file beyond each policy's id, name, status and the detection facets its field names expose; nothing is written to the tenant; every generated rule is DISABLED until change control enables it.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
@@ -74,13 +82,17 @@
         <h2 id="vmVendorH">1. Which DLP is the customer leaving?</h2>
         <div class="vm-vendors" id="vmVendor" role="group" aria-label="Source vendor"></div>
         <p class="vm-dim" id="vmVendorNote"></p>
+        <details class="vm-xref" id="vmXref">
+          <summary>Export file types and the API cross-reference for this vendor</summary>
+          <div id="vmXrefBody"></div>
+        </details>
       </section>
 
       <section class="vm-sec" aria-labelledby="vmExportH">
         <h2 id="vmExportH">2. Upload the policy export</h2>
         <div class="vm-drop" id="vmDrop">
           <label for="vmExport">Policy export file</label>
-          <input type="file" id="vmExport" accept=".xml,.json,.zip" aria-describedby="vmHow vmLimit">
+          <input type="file" id="vmExport" accept=".xml,.json,.zip,.csv" aria-describedby="vmHow vmLimit">
           <p id="vmHow"></p>
           <p id="vmLimit">Loading the upload limit…</p>
         </div>
@@ -96,7 +108,8 @@
         <h2 id="vmInvH">3. What the export contains</h2>
         <div class="vm-facts" id="vmFacts"></div>
         <h3>Source policies</h3>
-        <div style="overflow-x:auto;"><table class="vm-t" id="vmPolicies"><thead><tr><th scope="col">Id</th><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Elements in the export</th></tr></thead><tbody></tbody></table></div>
+        <div style="overflow-x:auto;"><table class="vm-t" id="vmPolicies"><thead><tr><th scope="col">Id</th><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Facets recognised</th><th scope="col">Rules and references</th><th scope="col">Elements in the export</th></tr></thead><tbody></tbody></table></div>
+        <p class="vm-dim" id="vmInvExtras"></p>
         <h3>Review the decisions</h3>
         <ol class="vm-steps">
           <li>Click <strong>Download decisions template</strong>: it carries this export's SHA-256 and lists every policy with nothing approved.</li>
@@ -130,6 +143,7 @@
         <div id="vmDispositions"></div>
         <h3 id="vmEffH">Efficacy mapping: how much of the source detection the translation carries</h3>
         <div id="vmEfficacy"></div>
+        <details class="vm-xref"><summary>API cross-reference used for this vendor (also in migration-report.json)</summary><div id="vmReportXref"></div></details>
         <h3>What happens next</h3>
         <p class="vm-dim">Every generated web rule is <strong>DISABLED</strong> and applies to Any user and location. Hand <code>main.tf.json</code> to the platform team (or open the Terraform hand-off for the tenant's existing objects), run <code>terraform init / validate / plan</code>, apply in a test tenant, compare source and target incidents in monitor mode, then enable the rules one by one and order them with the tenant's existing policy. This page never contacts a tenant.</p>
       </section>
@@ -170,6 +184,22 @@
       $('vmVendorNote').textContent = v.coverage ? `Coverage of the ${v.name} adapter: ${v.coverage}` : '';
       $('vmHow').textContent = v.how || '';
       $('vmExport').setAttribute('accept', (v.accepts || ['.xml']).join(','));
+      $('vmXref').querySelector('summary').textContent = `Export file types and the API cross-reference: ${v.name || 'this vendor'} → ZIA`;
+      $('vmXrefBody').innerHTML = renderCrossref(v);
+    }
+    // The cross-reference: which file types the vendor exports, the source
+    // API the fields come from, and every source object / field → ZIA
+    // object / field with the ZIA API call, the Terraform resource and how
+    // it is carried (generated / reviewed / attested / manual / dropped).
+    function renderCrossref(v, compact) {
+      if (!v || !v.crossref && !v.rows) return '';
+      const rows = v.rows || v.crossref || [];
+      const api = v.source_api || {};
+      const files = (v.files || []).length ? `<h4>Export file types accepted</h4><ul>${v.files.map(f => `<li><code>${E(f.ext)}</code> ${E(f.what)}</li>`).join('')}</ul>` : '';
+      const src = api.name ? `<h4>Source API</h4><ul><li><strong>${E(api.name)}</strong> · base <code>${E(api.base)}</code></li><li>Sign-in: ${E(api.auth)}</li>${(api.calls || []).map(c => `<li>${E(c)}</li>`).join('')}</ul>` : '';
+      const legend = compact ? '' : `<p class="vm-dim">How each row is carried: <span class="vm-carried generated">generated</span> the compile emits it from the decisions file · <span class="vm-carried reviewed">reviewed</span> a person writes it in the decisions file · <span class="vm-carried attested">attested</span> built by hand in ZIA and attested in the decisions · <span class="vm-carried manual">manual</span> set on the rule after apply, scored 0 by the efficacy mapping · <span class="vm-carried dropped">dropped</span> no ZIA equivalent. ZIA API v1 paths are relative to <code>https://zsapi.&lt;cloud&gt;.net/api/v1</code> (OneAPI: <code>https://api.zsapi.net/zia/api/v1</code>); this page never calls either side.</p>`;
+      const table = `<h4>Object and field cross-reference</h4><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source object</th><th scope="col">Source field</th><th scope="col">Facet</th><th scope="col">ZIA object</th><th scope="col">ZIA field</th><th scope="col">ZIA API</th><th scope="col">Terraform</th><th scope="col">How it is carried</th></tr></thead><tbody>${rows.map(r => `<tr><td><strong>${E(r.source_object)}</strong></td><td class="vm-code">${E(r.source_field)}</td><td class="vm-dim">${E(String(r.facet || '').replace(/_/g, ' '))}</td><td>${E(r.zia_object)}</td><td class="vm-code">${E(r.zia_field)}</td><td class="vm-code vm-dim">${E(r.zia_api)}</td><td class="vm-code">${E(r.terraform)}</td><td><span class="vm-carried ${E(r.carried)}">${E(r.carried)}</span>${r.note ? `<div class="vm-dim">${E(r.note)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+      return files + src + legend + table;
     }
     fetch('/api/vendor-migrate/vendors').then(r => r.json()).then(d => {
       vendors = d.vendors || [];
@@ -219,7 +249,18 @@
       const s = d.snapshot;
       $('vmFacts').innerHTML = [['Vendor', d.vendor_name], ['Export file', s.source_file], ['Policies', String(s.policies.length)], ['Export SHA-256', s.sha256]]
         .map(([k, v]) => `<div class="vm-fact"><div class="k">${E(k)}</div><div class="v ${k === 'Export SHA-256' ? 'vm-code' : ''}">${E(v)}</div></div>`).join('');
-      $('vmPolicies').querySelector('tbody').innerHTML = s.policies.map(p => `<tr><td class="vm-code">${E(p.id)}</td><td>${E(p.name)}</td><td>${E(p.active_status || '')}</td><td class="vm-dim">${E((p.child_tags || []).join(', '))}</td></tr>`).join('');
+      $('vmPolicies').querySelector('tbody').innerHTML = s.policies.map(p => {
+        const facets = Object.keys(p.facets || {}).map(k => k.replace(/_/g, ' ')).join(', ');
+        const refs = [].concat(p.rules && p.rules.length ? [`rules: ${p.rules.join(', ')}`] : [], p.rule_groups && p.rule_groups.length ? [`rule groups: ${p.rule_groups.join(', ')}`] : [],
+          Object.entries(p.references || {}).map(([k, v]) => `${k}: ${v.join(', ')}`), p.source_member ? [`file: ${p.source_member}`] : []).join(' · ');
+        return `<tr><td class="vm-code">${E(p.id)}</td><td>${E(p.name)}</td><td>${E(p.active_status || '')}</td><td class="vm-dim">${E(facets || 'none recognised')}</td><td class="vm-dim">${E(refs)}</td><td class="vm-dim">${E((p.child_tags || []).join(', '))}</td></tr>`;
+      }).join('');
+      const extras = [];
+      if (s.dictionaries && s.dictionaries.length) extras.push(`Dictionaries read: ${s.dictionaries.map(x => `${x.name} (${x.entries} entries)`).join(', ')}.`);
+      if (s.profiles && s.profiles.length) extras.push(`DLP profiles read: ${s.profiles.join(', ')}.`);
+      const unresolved = s.policies.flatMap(p => (p.references && p.references.unresolved) || []);
+      if (unresolved.length) extras.push(`Named but not in the upload (add the profile / rule JSON or dictionary CSV to the zip): ${Array.from(new Set(unresolved)).join(', ')}.`);
+      $('vmInvExtras').textContent = extras.join(' ');
     }
     $('vmTemplate').addEventListener('click', () => { if (inventory) download(`decisions.${inventory.vendor}.template.json`, inventory.decisions_template); });
 
@@ -268,6 +309,7 @@
       $('vmConverted').innerHTML = (rep.converted || []).length ? `<h3>Converted</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Target</th><th scope="col">State</th></tr></thead><tbody>${rep.converted.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td class="vm-code">${E(x.target)}</td><td><span class="vm-chip">${E(x.state)}</span></td></tr>`).join('')}</tbody></table></div>` : '';
       $('vmDispositions').innerHTML = (rep.dispositions || []).length ? `<h3>Retired or out of scope</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Disposition</th><th scope="col">Reason</th></tr></thead><tbody>${rep.dispositions.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(x.disposition)}</td><td>${E(x.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
       renderEfficacy(rep.efficacy);
+      $('vmReportXref').innerHTML = renderCrossref(rep.crossref, true);
     }
     // The efficacy mapping: one number per policy and overall, each with
     // the arithmetic that produced it. "Not computable" is shown as such,

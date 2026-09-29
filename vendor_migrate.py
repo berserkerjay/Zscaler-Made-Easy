@@ -1,15 +1,23 @@
 """Migrate from another DLP: a fail-closed converter from a vendor's policy
 export to disabled ZIA DLP objects, one adapter per source vendor.
 
-Symantec DLP (Broadcom) is the first adapter; Forcepoint, Netskope and
-Skyhigh are registered as planned so the page lists them and the same
-contract applies when their export samples arrive.
+Four adapters: Symantec DLP (Broadcom, the Enforce XML export), Forcepoint
+DLP (the Security Manager's policy export zip or REST JSON), Netskope
+(the Real-time Protection policy export, JSON or CSV, with dictionary
+CSVs) and Skyhigh Security (the Policy Templates zip or SSE policy JSON).
+Each adapter reads its vendor's file types into the same inventory shape,
+and each carries an API cross-reference: which source object and field
+lands on which ZIA object and field, through which ZIA API call and
+Terraform resource, and how (generated, reviewed, attested, by hand, or
+not at all), so a migration can be planned end to end from the page.
 
 The contract, unchanged from the stand-alone tool this grew from:
 
-* **Inventory** reads the export (read-only, DTD/entities refused) and
-  lists every policy with its id and name, bound to the export's SHA-256.
-  Nothing is inferred from the vendor's XML beyond id, name and status.
+* **Inventory** reads the export (read-only, DTD/entities refused, zips
+  opened in memory) and lists every policy with its id and name, bound to
+  the export's SHA-256, plus the detection facets recognised from the
+  export's element or key names. The vendor's semantics are not
+  interpreted beyond that.
 * **Decisions** are a reviewed JSON mapping: every source policy needs an
   approved translation (a web rule with named engines) or an approved
   retirement / exclusion with a reason; dictionaries and engines are
@@ -42,24 +50,173 @@ MATCH_TYPES = ("MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY", "MATCH_ANY_CUSTOM_P
 MAX_EXPORT_BYTES = 32 * 1024 * 1024
 WEB_RULE_LIMIT = 127
 
+# ── ZIA targets: the objects every adapter lands on ────────────────────
+# ZIA API v1 (https://zsapi.<cloud>.net/api/v1, or OneAPI
+# https://api.zsapi.net/zia/api/v1) and the zscaler/zia Terraform provider.
+ZIA_TARGETS: Dict[str, Dict[str, str]] = {
+    "dictionary": {"object": "dlpDictionaries", "api": "GET /dlpDictionaries · POST /dlpDictionaries · PUT /dlpDictionaries/{id} · POST /dlpDictionaries/validateDlpPattern",
+                   "terraform": "zia_dlp_dictionaries"},
+    "predefined": {"object": "dlpDictionaries (predefined, custom=false)", "api": "GET /dlpDictionaries/lite · GET /dlpDictionaries/{id}/predefinedIdentifiers",
+                   "terraform": "data zia_dlp_dictionaries (by name) · data zia_dlp_dictionary_predefined_identifiers"},
+    "edm": {"object": "dlpDictionaries (dictionaryType EXACT_DATA_MATCH) + EDM schema", "api": "GET /dlpExactDataMatchSchemas · GET /dlpExactDataMatchSchemas/lite (schemas are built by the Index Tool VM, not by the API)",
+            "terraform": "data zia_dlp_edm_schema · zia_dlp_dictionaries (exact_data_match_details)"},
+    "idm": {"object": "dlpDictionaries (dictionaryType INDEXED_DATA_MATCH) + IDM profile", "api": "GET /idmprofile · GET /idmprofile/lite (profiles are built by the Index Tool VM)",
+            "terraform": "data zia_dlp_idm_profile · zia_dlp_dictionaries (idm_profile_match_accuracy)"},
+    "engine": {"object": "dlpEngines", "api": "GET /dlpEngines · POST /dlpEngines · PUT /dlpEngines/{id} · GET /dlpEngines/lite", "terraform": "zia_dlp_engines"},
+    "rule": {"object": "webDlpRules", "api": "GET /webDlpRules · POST /webDlpRules · PUT /webDlpRules/{id} · GET /webDlpRules/lite", "terraform": "zia_dlp_web_rules"},
+    "template": {"object": "dlpNotificationTemplates", "api": "GET /dlpNotificationTemplates · POST /dlpNotificationTemplates", "terraform": "zia_dlp_notification_templates"},
+    "identity": {"object": "webDlpRules.users / groups / departments / locations / locationGroups", "api": "GET /users · GET /groups · GET /departments · GET /locations (ids for the rule's criteria)",
+                 "terraform": "zia_dlp_web_rules.users / groups / departments / locations (id blocks)"},
+    "apps": {"object": "webDlpRules.cloudApplications / urlCategories", "api": "GET /cloudApplications/lite · GET /urlCategories/lite", "terraform": "zia_dlp_web_rules.cloud_applications / url_categories"},
+    "receiver": {"object": "webDlpRules.icapServer / zscalerIncidentReceiver / auditor", "api": "GET /icapServers · GET /incidentReceiverServers · GET /auditors", "terraform": "data zia_dlp_icap_servers · data zia_dlp_incident_receiver_servers"},
+    "activate": {"object": "configuration activation", "api": "POST /status/activate (never called by this tool)", "terraform": "zia_activation_status"},
+}
+
+
+def _row(facet: str, source_object: str, source_field: str, target: str, zia_field: str, carried: str, note: str = "") -> Dict[str, str]:
+    t = ZIA_TARGETS[target]
+    return {"facet": facet, "source_object": source_object, "source_field": source_field, "zia_object": t["object"], "zia_field": zia_field,
+            "zia_api": t["api"], "terraform": t["terraform"], "carried": carried, "note": note}
+
+
+# How a row is carried: generated (the compile emits it from the
+# decisions), reviewed (a person writes it in the decisions file),
+# attested (built by hand in ZIA and attested in the decisions), manual
+# (set on the rule after apply; the efficacy mapping scores it 0),
+# dropped (no ZIA equivalent).
+CARRIED = ("generated", "reviewed", "attested", "manual", "dropped")
+
 # ── Vendors ────────────────────────────────────────────────────────────
-# One entry per source product. `status` is "available" when an adapter
-# exists, "planned" when the page should list it but refuse uploads until
-# a real export sample has been mapped.
+# One entry per source product: the file types its export produces
+# (`files`, what the page accepts), how to get them, the source API the
+# fields come from, and the cross-reference from its objects and fields to
+# ZIA's. Source field names follow each vendor's published export and API
+# guide at the time the adapter was written; the inventory lists every key
+# it does not recognise so a newer export is mapped rather than misread.
 VENDORS: Dict[str, Dict[str, Any]] = {
     "symantec": {
         "name": "Symantec DLP (Broadcom)", "prefix": "sym",
         "export": "Enforce policy export (XML, Policy Export/Import format)",
         "accepts": [".xml"], "status": "available",
+        "files": [{"ext": ".xml", "what": "Enforce Policy Export/Import XML: one file, every selected policy with its detection rules, response rules, policy groups and exceptions"}],
         "how": "In the Enforce console export the policies (Manage > Policies > Policy List > Export); or fetch the XML from your tenant's documented export URL with the command-line fetcher.",
         "coverage": "Custom phrase/pattern dictionaries, explicitly reviewed engine expressions and ZIA inline web DLP rules. Detection, response, exception, scope, EDM, IDM, endpoint, email and SaaS semantics are not inferred from the XML; each needs a reviewed decision.",
+        "source_api": {"name": "Symantec DLP Enforce REST API", "base": "https://<Enforce server>/ProtectManager/webservices/v2 (Incident Reporting and Update API)",
+                       "auth": "Enforce user with the Incident Reporting role; HTTPS basic or SAML session",
+                       "calls": ["Policy Export/Import: Manage > Policies > Policy List > Export (XML); there is no policy read API, the XML is the source",
+                                 "Incident Reporting API: GET /incidents (query and details) for the before/after incident comparison in monitor mode"]},
+        "crossref": [
+            _row("content_patterns", "Policy > detection rule > Content Matches Keyword / Regular Expression", "keyword, regex (with minMatches)", "dictionary", "phrases[].phrase, patterns[].pattern (dictionaryType PATTERNS_AND_PHRASES, customPhraseMatchType)", "generated",
+                 "spelled out in the decisions' dictionaries; 256 phrases and 8 patterns per dictionary, patterns validated by the API"),
+            _row("data_identifiers", "Content Matches Data Identifier (predefined)", "dataIdentifier name", "predefined", "a predefined dictionary chosen by name", "attested", "Zscaler ships ~120 predefined dictionaries; pick the one that matches and attest it"),
+            _row("edm", "Exact Data Matching profile", "EDM profile, columns, match count", "edm", "EDM schema + dictionary", "attested", "the Index Tool VM indexes the source data set; the schema is chosen in the dictionary"),
+            _row("idm", "Indexed Document Matching profile", "IDM profile, similarity %", "idm", "IDM profile + dictionary (match accuracy)", "attested", ""),
+            _row("ml", "Vector Machine Learning profile", "VML profile", "predefined", "ML predefined dictionary where one exists", "attested", ""),
+            _row("match_thresholds", "Detection rule minMatches / count", "minMatches, match count", "engine", "engineExpression ((D<dict>.S > n)); AND/OR between conditions", "reviewed", "strict 'more than n': a Symantec minMatches of 3 is .S > 2"),
+            _row("channel", "Policy > protocol / endpoint destination", "protocol (HTTP, HTTPS, FTP, SMTP, endpoint)", "rule", "protocols [HTTP_RULE, HTTPS_RULE, FTP_RULE]", "generated", "web protocols only; SMTP, endpoint and cloud-app channels need the Email, Endpoint or SaaS adapter"),
+            _row("identity_scope", "Policy group, sender / recipient / user conditions", "policyGroup, sender, recipient, user, group", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any; set the criteria on the rule after apply"),
+            _row("file_conditions", "Attachment / file type, size, name conditions", "attachmentFileType, fileSize, fileName", "rule", "fileTypes, minSize", "manual", ""),
+            _row("exceptions", "Detection rule exceptions", "exception conditions", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules; DLP Advanced Settings", "dropped", ""),
+            _row("response_action", "Response rules", "action (Block, Notify, Quarantine, Encrypt)", "rule", "action BLOCK / CONFIRM / ALLOW / ICAP_RESPONSE; auditor; notificationTemplate", "generated", "the approved action only; notify, quarantine and encrypt responses are not carried"),
+            _row("severity", "Policy severity", "severity", "rule", "severity RULE_SEVERITY_LOW / MEDIUM / HIGH / INFO", "manual", ""),
+        ],
     },
-    "forcepoint": {"name": "Forcepoint DLP", "prefix": "fp", "export": "Policy export", "accepts": [], "status": "planned",
-                   "how": "Adapter not built yet: it needs a real export sample and a mapping decision.", "coverage": ""},
-    "netskope": {"name": "Netskope DLP", "prefix": "nsk", "export": "Policy export", "accepts": [], "status": "planned",
-                 "how": "Adapter not built yet: it needs a real export sample and a mapping decision.", "coverage": ""},
-    "skyhigh": {"name": "Skyhigh Security DLP", "prefix": "sky", "export": "Policy export", "accepts": [], "status": "planned",
-                "how": "Adapter not built yet: it needs a real export sample and a mapping decision.", "coverage": ""},
+    "forcepoint": {
+        "name": "Forcepoint DLP", "prefix": "fp",
+        "export": "Security Manager policy export (zip of one JSON per policy) or REST policy JSON",
+        "accepts": [".zip", ".json"], "status": "available",
+        "files": [{"ext": ".zip", "what": "Policy export: one <policy name>.json per policy plus policy_names_metadata.txt; classifiers and resources as further JSON files when included at export; refused if password-protected"},
+                  {"ext": ".json", "what": "One policy, a list of policies, or a REST API response (GET /dlp/rest/v1/policy/…) in the same field names"}],
+        "how": "Export from the Forcepoint Security Manager (Main > Policy Management > DLP Policies > Export): a zip of one <policy name>.json per policy plus policy_names_metadata.txt. Leave the password off and include classifiers and resources, so keyword, regex and dictionary items travel with the policies. A policy JSON fetched from the REST API (GET /dlp/rest/v1/policy/…) is accepted too.",
+        "coverage": "Policies, rules and their classifiers (key phrase, regex and dictionary classifiers with their items when the export includes classifier definitions; predefined and script classifiers as identifiers; file and database fingerprinting as IDM and EDM; machine-learning classifiers), thresholds (threshold_type / threshold_value_from / UNIQUE), destination channels, sources, exceptions, action plans and severity, read from the JSON field names. Web rules only; email, endpoint and cloud-app channels need their own adapter.",
+        "source_api": {"name": "Forcepoint DLP REST API (Security Manager)", "base": "https://<Forcepoint Security Manager>:9443/dlp/rest/v1",
+                       "auth": "POST /auth/refresh-token (username and password headers) → refresh token; POST /auth/access-token (refresh-token header) → access token sent as Authorization: Bearer",
+                       "calls": ["GET /policy/… : policy list and one policy's rules, classifiers, thresholds, sources, destinations (the same JSON the export zip carries)",
+                                 "POST /policy/… : create or update a policy (used on the Forcepoint side only; this tool never writes to it)",
+                                 "Rule severity and action, and rule exception calls under /policy/rule/…",
+                                 "POST /incidents : incident query for the before/after comparison in monitor mode",
+                                 "This tool's `fetch` command can GET one policy JSON with the Bearer access token (no redirects, size-capped, written 0600)"]},
+        "crossref": [
+            _row("content_patterns", "Rule classifier (key phrase, regex, dictionary; predefined false)", "rules[].classifiers[].classifier_name → classifier definition phrases / patterns / terms", "dictionary", "phrases[].phrase, patterns[].pattern (PATTERNS_AND_PHRASES)", "generated",
+                 "items are read when the export includes the classifier definitions; 256 phrases and 8 patterns per ZIA dictionary, regex validated by the API"),
+            _row("data_identifiers", "Rule classifier predefined true / script classifier", "classifier_name, predefined", "predefined", "a predefined dictionary chosen by name", "attested", "Forcepoint's predefined classifiers map to Zscaler's predefined dictionaries one by one; attest each"),
+            _row("edm", "Database fingerprinting classifier", "fingerprint (database / structured)", "edm", "EDM schema + dictionary", "attested", "re-index the source table with the Index Tool VM"),
+            _row("idm", "File fingerprinting classifier", "fingerprint (file / unstructured)", "idm", "IDM profile + dictionary", "attested", ""),
+            _row("ml", "Machine learning classifier", "classifier_type machine_learning", "predefined", "ML predefined dictionary where one exists", "attested", ""),
+            _row("match_thresholds", "Classifier threshold and rule part count", "threshold_type CHECK_GREATER_THAN, threshold_value_from, threshold_calculate_type UNIQUE, parts_count_type", "engine", "engineExpression ((D<dict>.S > n)) or .U > n for unique matches; condition_relation_type AND / OR between classifiers", "reviewed", ""),
+            _row("channel", "Rule destinations", "rules[].destinations (HTTP, HTTPS, FTP, Email, Endpoint removable media, printing, LAN, cloud apps)", "rule", "protocols [HTTP_RULE, HTTPS_RULE, FTP_RULE]", "generated", "web destinations only; Email, Endpoint and cloud-app destinations need the Email, Endpoint or SaaS adapter"),
+            _row("identity_scope", "Rule sources", "rules[].sources (users, groups, endpoints, networks)", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any"),
+            _row("file_conditions", "File properties classifier, destination file size", "file_properties (type, size, name)", "rule", "fileTypes, minSize", "manual", ""),
+            _row("exceptions", "Rule exceptions", "exceptions (sources, destinations, classifiers exempted)", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
+            _row("response_action", "Rule action plan", "action_plan (Block All, Permit, Quarantine, Encrypt, Confirm) or action", "rule", "action BLOCK / CONFIRM / ALLOW / ICAP_RESPONSE; auditor; notificationTemplate", "generated", "the approved action only; quarantine and encrypt are not carried"),
+            _row("severity", "Rule severity", "rules[].severity (LOW, MEDIUM, HIGH, CRITICAL)", "rule", "severity RULE_SEVERITY_LOW / MEDIUM / HIGH", "manual", ""),
+            _row("policy", "Policy on / off, level, data type", "enabled, policy_level.level, policy_level.data_type", "rule", "state (always DISABLED here); level and data type have no ZIA field", "dropped", "enable and order the rule after apply, under change control"),
+        ],
+    },
+    "netskope": {
+        "name": "Netskope DLP", "prefix": "nsk",
+        "export": "Real-time Protection policy export (JSON or CSV) plus dictionary CSVs, in one zip",
+        "accepts": [".zip", ".json", ".csv"], "status": "available",
+        "files": [{"ext": ".json", "what": "Real-time Protection policies export (Policies > Real-time Protection > Export), or DLP profile / rule / entity JSON where the tenant's REST API v2 exposes it"},
+                  {"ext": ".csv", "what": "The same policy export as CSV (policy name, status, source, destination, activities, profile, action), or one custom dictionary per file (one keyword or regex per line, regex dictionaries hold at most 25 entries)"},
+                  {"ext": ".zip", "what": "The policy export together with every dictionary CSV and any profile / rule JSON, so entities, thresholds and dictionary items are read with the policies"}],
+        "how": "Export from the tenant: Policies > Real-time Protection > Export (JSON or CSV). Put it in a zip together with each custom dictionary's CSV (Policies > Profiles > DLP > Dictionaries) and, where your tenant's REST API v2 exposes them, the DLP profile and rule JSON, so entities, thresholds and dictionary items are read with the policies.",
+        "coverage": "Real-time Protection policies (name, status, source, destination apps and categories, activities, DLP profile, action, severity), DLP profiles (rules, file filters), DLP rules (predefined entities as identifiers, custom dictionary and regex entities with their items from the dictionary CSVs, count and percentage thresholds, severity), fingerprint and ML classifiers, read from the JSON keys and CSV columns. Web rules only; API-enabled (SaaS) and endpoint policies need their own adapter.",
+        "source_api": {"name": "Netskope REST API v2", "base": "https://<tenant>.goskope.com/api/v2",
+                       "auth": "Netskope-Api-Token header (a REST API v2 token from Settings > Tools > REST API v2, scoped to the endpoints used)",
+                       "calls": ["Real-time Protection policies: no create or read endpoint; export them from the UI (Policies > Real-time Protection > Export, JSON or CSV)",
+                                 "DLP profiles, rules, entities and dictionaries: Policies > Profiles > DLP in the UI; dictionaries export as CSV; a policy endpoint appears in the tenant's Swagger (Settings > Tools > REST API v2 > Swagger) when enabled for the tenant",
+                                 "GET /events/dataexport/events/incident and /events/dataexport/events/alert (type dlp): incidents for the before/after comparison in monitor mode",
+                                 "GET /policy/urllist, /policy/domainfronting, /policy/npa/…: the other policy families, not DLP"]},
+        "crossref": [
+            _row("policy", "Real-time Protection policy", "name, status, profile (DLP profile)", "rule", "name, state (always DISABLED here), dlpEngines[] (1-4 engines from the profile's rules)", "generated", "the profile → rules → entities chain becomes dictionaries and engines in the decisions file"),
+            _row("content_patterns", "Custom dictionary (keyword or regex) referenced by a DLP rule entity", "dictionary CSV entries; entity name", "dictionary", "phrases[].phrase, patterns[].pattern (PATTERNS_AND_PHRASES)", "generated", "keyword dictionaries → phrases (256 per dictionary); regex dictionaries → patterns (8 per dictionary, validated by the API)"),
+            _row("data_identifiers", "DLP rule entity (predefined identifier, 3000+)", "rules[].entities[].name", "predefined", "a predefined dictionary chosen by name", "attested", "Netskope's identifiers map to Zscaler's ~120 predefined dictionaries many to one; attest what is covered"),
+            _row("edm", "Fingerprint / exact match classifier (structured)", "fingerprint, exact match", "edm", "EDM schema + dictionary", "attested", ""),
+            _row("idm", "Document fingerprint classifier (unstructured)", "fingerprint (document)", "idm", "IDM profile + dictionary", "attested", ""),
+            _row("ml", "ML classifier (résumés, source code, tax forms, …)", "ml classifier name", "predefined", "ML predefined dictionary where one exists", "attested", ""),
+            _row("match_thresholds", "DLP rule count / percentage thresholds and AND / OR", "count, threshold, percentage, operator", "engine", "engineExpression ((D<dict>.S > n)); AND / OR", "reviewed", "percentage thresholds have no ZIA equivalent: choose a count"),
+            _row("channel", "Activities and destination", "activities (Upload, Post, Share, Download, …), destination apps / categories", "apps", "protocols [HTTP_RULE, HTTPS_RULE]; cloudApplications; urlCategories", "generated", "upload, post and share are inline web; downloads are not inspected by ZIA web DLP unless dlpDownloadScanEnabled; API-enabled (SaaS) policies need the SaaS adapter"),
+            _row("identity_scope", "Source", "source: users, user groups, OUs, locations", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any"),
+            _row("file_conditions", "DLP profile file filters", "file_filters: file types, size", "rule", "fileTypes, minSize", "manual", ""),
+            _row("exceptions", "Policy exclusions", "exclude users / apps / activities", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
+            _row("response_action", "Policy action", "action (Allow, Block, User Alert / coach, Quarantine, Legal hold, Encrypt)", "rule", "action ALLOW / BLOCK / CONFIRM (User Alert ≈ CONFIRM); auditor; notificationTemplate", "generated", "the approved action only; quarantine, legal hold and encrypt are not carried"),
+            _row("severity", "DLP rule severity", "severity (Low, Medium, High, Critical)", "rule", "severity RULE_SEVERITY_LOW / MEDIUM / HIGH", "manual", ""),
+            _row("notification", "User alert template", "user notification / template", "template", "notificationTemplate (dlpNotificationTemplates)", "manual", ""),
+        ],
+    },
+    "skyhigh": {
+        "name": "Skyhigh Security DLP", "prefix": "sky",
+        "export": "Policy Templates export (zip) or SSE Policy API JSON, plus dictionary exports",
+        "accepts": [".zip", ".json", ".xml"], "status": "available",
+        "files": [{"ext": ".zip", "what": "Policy Templates export (Policy > DLP Policies > Policy Templates > Export): rule groups (at most 50) and rules with their classifications, conditions and response actions, at most 64 KB; dictionaries are not in it, add each dictionary's export to the same zip"},
+                  {"ext": ".json", "what": "One policy or a list from the SSE Policy API (policy types 0 = API DLP, 1 = Proxy DLP)"},
+                  {"ext": ".xml", "what": "A policy template member in XML, read by the same element names"}],
+        "how": "Export from Skyhigh: Policy > DLP Policies > Policy Templates > Export (a zip of at most 50 rule groups and 64 KB; dictionaries are not synced into it, so add each dictionary's export to the same zip). A policy JSON from the SSE Policy API is accepted too.",
+        "coverage": "Policy templates: rule groups, rules and their classifications (keywords with proximity, dictionaries with scores, advanced patterns / regex, pre-canned classifications as identifiers, IDM and EDM, ML), thresholds, the policy type (API DLP or Proxy DLP), applies-to users and groups, file conditions, exceptions, response actions and severity, read from the JSON keys or XML element names. Web (Proxy DLP) rules only; API DLP policies need the SaaS adapter.",
+        "source_api": {"name": "Skyhigh SSE Policy API and Policy Templates", "base": "https://<Skyhigh SSE console for your region>/… (the SSE API reference gives the path for your tenant's region)",
+                       "auth": "API token from the SSE console (Settings > API), sent as a bearer token",
+                       "calls": ["Policy Templates: Policy > DLP Policies > Policy Templates > Import / Export (zip, at most 50 rule groups and 64 KB; dictionaries are exported separately)",
+                                 "Policy API: list and get DLP policies (policy types 0 = API DLP, 1 = Proxy DLP); create and update are Skyhigh-side only",
+                                 "Incidents API: DLP incidents for the before/after comparison in monitor mode"]},
+        "crossref": [
+            _row("policy", "Policy template / rule group", "policy name, rule_groups[].name, policy_type (0 API DLP, 1 Proxy DLP)", "rule", "name, state (always DISABLED here)", "generated", "one ZIA web rule per Proxy DLP rule group or rule, as the decisions say; API DLP policies need the SaaS adapter"),
+            _row("content_patterns", "Keyword classification (200-character proximity)", "classifications[] type keyword: keywords, proximity", "dictionary", "phrases[].phrase; proximity on the dictionary", "generated", ""),
+            _row("content_patterns", "Dictionary classification (scored entries −99..999)", "dictionary entries with scores", "dictionary", "phrases[].phrase", "generated", "ZIA counts occurrences, it has no per-term score: the engine threshold replaces the dictionary's score threshold"),
+            _row("content_patterns", "Advanced pattern (regex) classification", "classifications[] type advanced_pattern / regex: pattern", "dictionary", "patterns[].pattern (8 per dictionary, validated by the API)", "generated", ""),
+            _row("data_identifiers", "Pre-canned classification (82 built in, 2000 max)", "classifications[] predefined / built-in", "predefined", "a predefined dictionary chosen by name", "attested", ""),
+            _row("idm", "Indexed Document Match classification", "IDM", "idm", "IDM profile + dictionary", "attested", ""),
+            _row("edm", "Structured / exact data classification", "EDM", "edm", "EDM schema + dictionary", "attested", ""),
+            _row("ml", "ML classification", "ml", "predefined", "ML predefined dictionary where one exists", "attested", ""),
+            _row("match_thresholds", "Rule conditions: counts, minimum score, proximity", "count, threshold, minimum score", "engine", "engineExpression ((D<dict>.S > n)); AND / OR", "reviewed", ""),
+            _row("channel", "Policy type and services", "policy_type (1 Proxy DLP = web; 0 API DLP = SaaS), services / cloud services", "apps", "protocols [HTTP_RULE, HTTPS_RULE]; cloudApplications", "generated", ""),
+            _row("identity_scope", "Applies to", "users, groups", "identity", "users, groups, departments", "manual", "the generated rule applies to Any"),
+            _row("file_conditions", "File conditions", "content type, file size, file name", "rule", "fileTypes, minSize", "manual", ""),
+            _row("exceptions", "Exceptions / exclusions", "exceptions", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
+            _row("response_action", "Response actions by rule-group severity", "response (Block, Coach / notify, Quarantine, Delete, Encrypt)", "rule", "action BLOCK / CONFIRM / ALLOW; auditor; notificationTemplate", "generated", "the approved action only; quarantine, delete and encrypt are not carried"),
+            _row("severity", "Rule group severity", "severity", "rule", "severity RULE_SEVERITY_LOW / MEDIUM / HIGH", "manual", ""),
+        ],
+    },
 }
 
 
@@ -74,6 +231,18 @@ def vendor(vendor_id: str) -> Dict[str, Any]:
     if v["status"] != "available":
         raise ValueError(f"{v['name']}: adapter not built yet. It needs a real export sample and a mapping decision before anything is converted.")
     return dict(v, id=str(vendor_id).strip().lower())
+
+
+def crossref(vendor_id: str) -> Dict[str, Any]:
+    """The vendor's API cross-reference: source object and field → ZIA
+    object, field, API call and Terraform resource, with how each is
+    carried; the same table the page shows and the report carries."""
+    v = VENDORS[str(vendor_id).strip().lower()]
+    return {"vendor": str(vendor_id).strip().lower(), "vendor_name": v["name"], "files": v["files"], "source_api": v["source_api"],
+            "rows": v["crossref"], "carried": {"generated": "the compile emits it from the decisions file", "reviewed": "a person writes it in the decisions file",
+                                                "attested": "built by hand in ZIA and attested in the decisions file", "manual": "set on the rule after apply; scored 0 by the efficacy mapping",
+                                                "dropped": "no ZIA equivalent"},
+            "zia_targets": ZIA_TARGETS}
 
 
 # ── Upload helpers ─────────────────────────────────────────────────────
@@ -228,6 +397,691 @@ def inventory_xml(path) -> Dict[str, Any]:
     return inventory_bytes(p.read_bytes(), p.name)
 
 
+# ── Shared readers for the JSON, CSV and zip exports ───────────────────
+ZIP_MEMBER_LIMIT = 512
+_TEXT_MEMBERS = (".json", ".xml", ".csv", ".txt")
+
+
+def _is_zip(data: bytes) -> bool:
+    return data[:4] in (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+
+
+def _unzip(data: bytes, source_name: str) -> List[Tuple[str, bytes]]:
+    """The text members of an uploaded zip, read in memory: (member name,
+    bytes). Password-protected archives, more than ZIP_MEMBER_LIMIT members
+    and archives that expand beyond MAX_EXPORT_BYTES are refused. Nothing is
+    written to disk."""
+    import io
+    import zipfile
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise ValueError(f"{source_name}: not a zip archive ({e})")
+    members: List[Tuple[str, bytes]] = []
+    total = 0
+    with zf:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        if len(infos) > ZIP_MEMBER_LIMIT:
+            raise ValueError(f"{source_name}: more than {ZIP_MEMBER_LIMIT} files in the archive")
+        for info in infos:
+            if info.flag_bits & 0x1:
+                raise ValueError(f"{source_name}: the archive is password-protected; export it again without a password")
+            total += info.file_size
+            if total > MAX_EXPORT_BYTES:
+                raise ValueError(f"{source_name}: the archive expands beyond {MAX_EXPORT_BYTES // (1024 * 1024)} MiB")
+            base = info.filename.rsplit("/", 1)[-1]
+            if not base.lower().endswith(_TEXT_MEMBERS) or base.startswith(".") or "__MACOSX" in info.filename:
+                continue
+            members.append((info.filename, zf.read(info)))
+    if not members:
+        raise ValueError(f"{source_name}: the archive holds no .json, .xml, .csv or .txt file")
+    return members
+
+
+def _text(data: bytes, name: str) -> str:
+    for enc in ("utf-8-sig", "utf-16"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"{name}: not UTF-8 or UTF-16 text")
+
+
+def _load_json(data: bytes, name: str) -> Any:
+    try:
+        return json.loads(_text(data, name))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{name}: not valid JSON ({e.msg} at line {e.lineno})")
+
+
+def _csv_rows(data: bytes, name: str) -> List[List[str]]:
+    import csv
+    import io
+    text = _text(data, name)
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
+    rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]
+    return [r for r in rows if any(r)]
+
+
+def _norm_key(k: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(k).strip().lower()).strip("_")
+
+
+def _csv_records(rows: List[List[str]]) -> List[Dict[str, str]]:
+    """Header row → records keyed by the normalised column names."""
+    header = [_norm_key(c) or f"col{i}" for i, c in enumerate(rows[0])]
+    return [{(header[i] if i < len(header) else f"col{i}"): c for i, c in enumerate(r)} for r in rows[1:]]
+
+
+def _xml_root(data: bytes, name: str):
+    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
+        raise ValueError(f"{name}: DTD/entities are not accepted")
+    try:
+        return ET.fromstring(data)
+    except ET.ParseError as e:
+        raise ValueError(f"{name}: not well-formed XML ({e})")
+
+
+def _xml_to_obj(el) -> Any:
+    """An XML element as the JSON-shaped object the key walker reads:
+    attributes and children as keys, repeated children as lists, text as
+    the value of a leaf (or "#text" beside children)."""
+    obj: Dict[str, Any] = dict(el.attrib)
+    text = " ".join((el.text or "").split())
+    kids = list(el)
+    if not kids and not obj:
+        return text
+    for c in kids:
+        t = _tag(c)
+        val = _xml_to_obj(c)
+        if t in obj:
+            if not isinstance(obj[t], list):
+                obj[t] = [obj[t]]
+            obj[t].append(val)
+        else:
+            obj[t] = val
+    if text:
+        obj["#text"] = text
+    return obj
+
+
+# ── Facets from JSON keys (the JSON twin of _policy_facets) ────────────
+class _Facets:
+    """Accumulates {facet: {elements, items, texts}} exactly as the XML
+    walker does, so the efficacy mapping scores every vendor the same way."""
+
+    def __init__(self) -> None:
+        self.found: Dict[str, Dict[str, Any]] = {}
+        self.unknown: set = set()
+
+    def add(self, key: str, texts=(), items=(), n: int = 1) -> None:
+        f = self.found.setdefault(key, {"elements": 0, "items": [], "texts": []})
+        f["elements"] += n
+        for t in texts:
+            t = " ".join(str(t).split())
+            if t:
+                f["texts"].append(t[:200])
+        for t in items:
+            t = " ".join(str(t).split())
+            if t:
+                f["items"].append(t[:200])
+
+    def result(self) -> Dict[str, Any]:
+        for f in self.found.values():
+            f["items"] = f["items"][:512]
+            f["texts"] = f["texts"][:64]
+        return {"facets": self.found, "unrecognised": sorted(self.unknown)[:40]}
+
+
+# Keys that carry identity, bookkeeping or structure, never detection.
+_JSON_IGNORE = frozenset((
+    "id", "name", "description", "enabled", "status", "state", "active", "created", "created_at", "created_by", "modified", "modified_at", "modified_by",
+    "updated", "updated_at", "version", "position", "order", "uuid", "type", "value", "values", "items", "rule", "rules", "policy", "policies",
+    "policy_name", "policy_id", "rule_name", "rule_id", "predefined_policy", "condition_relation_type", "operator", "relation", "comment", "comments",
+    "notes", "tags", "owner", "last_modified", "policy_level", "level", "data_type", "data", "text", "title", "label", "index", "count_of_rules",
+    "rule_groups", "rule_group", "rulegroups", "rulegroup", "profile_name", "profile_id", "template", "templates", "results", "total", "page",
+))
+_ITEM_KEY_RE = re.compile(r"(keyword|phrase|regex|regular_?expression|pattern|term|entr(y|ies)|string|expression|value)s?$", re.I)
+
+
+def _facet_of_key(key: str) -> Optional[str]:
+    """_facet_of over a JSON key with its separators removed, so
+    file_types reads as filetype and threshold_value_from as threshold."""
+    return _facet_of(re.sub(r"[^a-z0-9]", "", str(key).lower()))
+
+
+def _scalars(v: Any) -> List[str]:
+    if isinstance(v, bool):
+        return []
+    if isinstance(v, (str, int, float)):
+        return [str(v)]
+    if isinstance(v, list):
+        return [str(x) for x in v if isinstance(x, (str, int, float)) and not isinstance(x, bool)]
+    return []
+
+
+def _empty(v: Any) -> bool:
+    return v is None or (isinstance(v, (str, list, dict)) and not v)
+
+
+def _walk_json(node: Any, fx: _Facets, special=None, overrides: Optional[Dict[str, str]] = None, ignore=frozenset(), inherit: Optional[str] = None) -> None:
+    """Facets recognised in a JSON policy from its key names, the way
+    _policy_facets reads element names: each key is classified with the
+    same FACETS tags (an adapter's overrides first), the scalar values
+    under it become the facet's texts (and its items for keyword / regex
+    keys), and keys recognised as nothing are listed. Everything under a
+    classified key belongs to that facet (an exception's sources are part
+    of the exception). Empty values are not counted. `special(key, value,
+    fx)` lets an adapter take a whole subtree (a classifier list) and
+    return True when it did."""
+    if isinstance(node, list):
+        for x in node:
+            _walk_json(x, fx, special, overrides, ignore, inherit)
+        return
+    if not isinstance(node, dict):
+        return
+    for k, v in node.items():
+        key = str(k)
+        kl = _norm_key(key)
+        if _empty(v):
+            continue
+        if inherit:
+            sc = _scalars(v)
+            if sc:
+                fx.add(inherit, texts=[_norm_channel(x) for x in sc] if inherit == "channel" else sc,
+                       items=sc if inherit == "content_patterns" and _ITEM_KEY_RE.search(kl) else (), n=0)
+            _walk_json(v, fx, special, overrides, ignore, inherit)
+            continue
+        if special and special(kl, v, fx):
+            continue
+        facet = (overrides or {}).get(kl) or (None if kl in ignore or kl in _JSON_IGNORE else _facet_of_key(kl))
+        if facet is None:
+            if kl not in _JSON_IGNORE and kl not in ignore and not isinstance(v, (dict, list)) and not kl.startswith("#"):
+                fx.unknown.add(key)
+            _walk_json(v, fx, special, overrides, ignore)
+            continue
+        sc = _scalars(v)
+        fx.add(facet, texts=[_norm_channel(x) for x in sc] if facet == "channel" else sc, items=sc if facet == "content_patterns" and _ITEM_KEY_RE.search(kl) else ())
+        _walk_json(v, fx, special, overrides, ignore, inherit=facet)
+
+
+def _items_of(obj: Dict[str, Any]) -> List[str]:
+    """The keyword / regex / dictionary items spelled out in a classifier,
+    entity or classification object, whichever key the vendor used."""
+    out: List[str] = []
+    for k, v in obj.items():
+        if not _ITEM_KEY_RE.search(_norm_key(k)) or _norm_key(k) in ("value", "values"):
+            continue
+        if isinstance(v, str):
+            out.append(v)
+        elif isinstance(v, list):
+            for x in v:
+                if isinstance(x, str):
+                    out.append(x)
+                elif isinstance(x, dict):
+                    for kk in ("phrase", "keyword", "term", "pattern", "regex", "value", "entry", "text", "name"):
+                        if isinstance(x.get(kk), str):
+                            out.append(x[kk])
+                            break
+    return out
+
+
+def _thresholds_of(obj: Dict[str, Any]) -> List[str]:
+    out = []
+    for k, v in obj.items():
+        kl = _norm_key(k)
+        if any(w in kl for w in ("threshold", "count", "occurrence", "min_", "minimum", "percentage", "proximity", "score")) and isinstance(v, (int, float, str)) and not isinstance(v, bool):
+            if str(v).strip():
+                out.append(f"{kl} {v}")
+    return out
+
+
+_CHANNEL_WORDS = (
+    (("http", "https", "web", "browser", "upload", "post", "share", "ftp", "form", "webmail", "proxy"), "web"),
+    (("smtp", "email", "e-mail", "mail", "exchange", "outlook", "gmail"), "email"),
+    (("endpoint", "removable", "usb", "print", "clipboard", "lan", "local", "device", "screen"), "endpoint"),
+    (("api", "saas", "cloud storage", "casb", "at rest", "api-enabled", "api enabled"), "saas-api"),
+    (("download", "view", "preview"), "cloud-download"),
+)
+
+
+def _norm_channel(text: str, default: Optional[str] = None) -> str:
+    """A source channel, activity or policy type in the vocabulary the
+    efficacy mapping scores: web, email, endpoint, saas-api,
+    cloud-download, with the source's own word kept in parentheses."""
+    t = str(text).strip()
+    low = t.lower()
+    for words, kind in _CHANNEL_WORDS:
+        if any(w in low for w in words):
+            return f"{kind} ({t})"
+    return f"{default} ({t})" if default else t
+
+
+def _policy_id(obj: Dict[str, Any], name: str, prefix: str, keys=("policy_id", "policyid", "id", "uuid", "policy_uuid")) -> str:
+    for k in keys:
+        for kk, v in obj.items():
+            if _norm_key(kk) == k and isinstance(v, (str, int)) and not isinstance(v, bool) and str(v).strip():
+                return str(v).strip()
+    return f"{prefix}-{slug(name)}"
+
+
+def _policy_name(obj: Dict[str, Any], keys=("policy_name", "policyname", "name", "title", "rule_group_name")) -> Optional[str]:
+    for k in keys:
+        for kk, v in obj.items():
+            if _norm_key(kk) == k and isinstance(v, str) and v.strip():
+                return v.strip()
+    return None
+
+
+def _policy_status(obj: Dict[str, Any]) -> Optional[str]:
+    for kk, v in obj.items():
+        k = _norm_key(kk)
+        if k in ("enabled", "active", "is_enabled"):
+            if isinstance(v, bool):
+                return "enabled" if v else "disabled"
+            if isinstance(v, str):
+                return "enabled" if v.strip().lower() in ("true", "yes", "enabled", "on", "1") else "disabled"
+        if k in ("status", "state", "policy_status") and isinstance(v, str):
+            return v.strip().lower()
+    return None
+
+
+def _find_policies(obj: Any, is_policy, list_keys=("policies", "policy", "data", "items", "results", "templates", "policy_templates", "policytemplates", "rule_groups", "rulegroups")) -> List[Dict[str, Any]]:
+    """Every policy object in a JSON export: the object itself, a list of
+    them, or a wrapper with a list under one of the usual keys."""
+    if isinstance(obj, dict):
+        if is_policy(obj):
+            return [obj]
+        for kk, v in obj.items():
+            if _norm_key(kk) in list_keys and isinstance(v, (list, dict)):
+                found = _find_policies(v, is_policy, list_keys)
+                if found:
+                    return found
+        return []
+    if isinstance(obj, list):
+        out: List[Dict[str, Any]] = []
+        for x in obj:
+            out.extend(_find_policies(x, is_policy, list_keys))
+        return out
+    return []
+
+
+def _finish(policies: List[Dict[str, Any]], data: bytes, source_name: str, default_name: str, what: str) -> Dict[str, Any]:
+    if not policies:
+        raise ValueError(f"No {what} found in {os.path.basename(str(source_name or default_name))}; check the export and its file type")
+    ids = [p["id"] for p in policies]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Duplicate policy IDs in export: " + ", ".join(sorted({i for i in ids if ids.count(i) > 1})[:5]))
+    return {"source_file": os.path.basename(str(source_name or default_name)), "sha256": hashlib.sha256(data).hexdigest(),
+            "policies": sorted(policies, key=lambda x: x["id"])}
+
+
+# ── Forcepoint adapter ─────────────────────────────────────────────────
+# The Security Manager exports a zip of <policy name>.json files (one per
+# policy) plus policy_names_metadata.txt, optionally with the classifier
+# and resource definitions; the REST API returns the same policy JSON
+# (policy_name, enabled, policy_level, rules[] with rule_name, enabled,
+# severity, action_plan, parts_count_type, condition_relation_type,
+# classifiers[] with classifier_name, predefined, threshold_type,
+# threshold_value_from, threshold_calculate_type, sources, destinations,
+# exceptions).
+_FP_OVERRIDES = {"sources": "identity_scope", "source": "identity_scope", "endpoints": "identity_scope", "endpoint_groups": "identity_scope",
+                 "destinations": "channel", "destination": "channel", "channels": "channel", "channel": "channel",
+                 "action_plan": "response_action", "action_plans": "response_action", "actionplan": "response_action", "action": "response_action",
+                 "file_properties": "file_conditions", "exceptions": "exceptions", "exception": "exceptions"}
+_FP_IGNORE = frozenset(("parts_count_type", "classifier_name", "classifier_type", "predefined", "position", "resource_name", "resources"))
+
+
+def _fp_classifier_facet(c: Dict[str, Any]) -> str:
+    ctype = re.sub(r"[^a-z]", "", str(c.get("classifier_type") or c.get("type") or c.get("kind") or "").lower())
+    if "fingerprint" in ctype or "idm" in ctype or "document" in ctype:
+        return "edm" if any(w in ctype for w in ("database", "db", "structured", "edm", "table")) else "idm"
+    if "edm" in ctype or "database" in ctype or "exactdata" in ctype:
+        return "edm"
+    if "machine" in ctype or ctype in ("ml", "mlclassifier", "machinelearning"):
+        return "ml"
+    if "file" in ctype or "property" in ctype or "properties" in ctype:
+        return "file_conditions"
+    if c.get("predefined") is True or "script" in ctype or "predefined" in ctype or "builtin" in ctype:
+        return "data_identifiers"
+    if ctype in ("keyphrase", "keyphrases", "regex", "regularexpression", "regularexpressions", "dictionary", "pattern", "keyword", "keywords", "phrase", "custom"):
+        return "content_patterns"
+    if c.get("predefined") is False or _items_of(c):
+        return "content_patterns"
+    return "data_identifiers"
+
+
+def _fp_special(defs: Dict[str, Dict[str, Any]]):
+    def special(kl: str, v: Any, fx: _Facets) -> bool:
+        if kl not in ("classifiers", "classifier", "content_classifiers", "content_classifier") or not isinstance(v, (list, dict)):
+            return False
+        for c in (v if isinstance(v, list) else [v]):
+            if isinstance(c, str):
+                c = {"classifier_name": c}
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("classifier_name") or c.get("name") or "").strip()
+            merged = dict(defs.get(name.lower(), {}), **c) if name else c
+            facet = _fp_classifier_facet(merged)
+            items = _items_of(merged) if facet == "content_patterns" else []
+            fx.add(facet, texts=[name] if name else (), items=items)
+            th = [f"{merged.get('threshold_type') or 'CHECK_GREATER_THAN'} {merged[k]}" + (f" {merged['threshold_calculate_type']}" if merged.get("threshold_calculate_type") else "")
+                  for k in merged if _norm_key(k).startswith("threshold_value") and isinstance(merged[k], (int, float, str)) and not isinstance(merged[k], bool) and str(merged[k]).strip()]
+            if th:
+                fx.add("match_thresholds", texts=th)
+        return True
+    return special
+
+
+def _fp_is_policy(d: Dict[str, Any]) -> bool:
+    keys = {_norm_key(k) for k in d}
+    return "policy_name" in keys or ("rules" in keys and ("name" in keys or "policy_id" in keys)) or ("name" in keys and "rules" in keys)
+
+
+def _fp_is_classifier_file(obj: Any) -> bool:
+    items = obj if isinstance(obj, list) else obj.get("classifiers") if isinstance(obj, dict) else None
+    return isinstance(items, list) and bool(items) and all(isinstance(x, dict) and ("classifier_name" in x or "classifier_type" in x) and "rules" not in x for x in items)
+
+
+def inventory_forcepoint(data: bytes, source_name: str = "policies.zip") -> Dict[str, Any]:
+    """Forcepoint policy export (zip of one JSON per policy, or one policy
+    / list / REST response as JSON) → the inventory."""
+    members: List[Tuple[str, Any]] = []
+    if _is_zip(data):
+        for mname, mdata in _unzip(data, source_name):
+            if mname.lower().endswith(".json"):
+                members.append((mname, _load_json(mdata, mname)))
+    else:
+        members.append((source_name, _load_json(data, source_name)))
+    defs: Dict[str, Dict[str, Any]] = {}
+    for _mname, obj in members:
+        if _fp_is_classifier_file(obj):
+            for c in (obj if isinstance(obj, list) else obj["classifiers"]):
+                defs[str(c.get("classifier_name") or c.get("name") or "").lower()] = c
+    special = _fp_special(defs)
+    policies: List[Dict[str, Any]] = []
+    for mname, obj in members:
+        if _fp_is_classifier_file(obj):
+            continue
+        for pobj in _find_policies(obj, _fp_is_policy):
+            name = _policy_name(pobj) or Path(mname).stem
+            fx = _Facets()
+            _walk_json(pobj, fx, special, _FP_OVERRIDES, _FP_IGNORE)
+            entry = {"id": _policy_id(pobj, name, "fp"), "name": name, "active_status": _policy_status(pobj), "child_tags": sorted(str(k) for k in pobj),
+                     "source_member": mname if _is_zip(data) else None, "rules": [str(r.get("rule_name") or r.get("name") or "") for r in (pobj.get("rules") or []) if isinstance(r, dict)][:64]}
+            entry.update(fx.result())
+            policies.append(entry)
+    return _finish(policies, data, source_name, "policies.zip", "Forcepoint policies (policy_name with rules)")
+
+
+# ── Netskope adapter ───────────────────────────────────────────────────
+# Real-time Protection policies export as JSON or CSV (policy name,
+# status, source, destination, activities, DLP profile, action); DLP
+# profiles link rules, rules link entities (predefined identifiers or
+# custom dictionaries) with count / percentage thresholds; custom
+# dictionaries export as one CSV per dictionary, one keyword or regex per
+# line. All of it may arrive in one zip.
+_NSK_OVERRIDES = {"activities": "channel", "activity": "channel", "destination": "channel", "destinations": "channel", "app": "channel", "apps": "channel",
+                  "application": "channel", "applications": "channel", "cloud_app": "channel", "category": "channel", "categories": "channel",
+                  "app_categories": "channel", "policy_type": "channel", "source": "identity_scope", "sources": "identity_scope", "users": "identity_scope",
+                  "user_groups": "identity_scope", "organizational_units": "identity_scope", "ous": "identity_scope", "action": "response_action",
+                  "actions": "response_action", "file_filters": "file_conditions", "filters": "file_conditions", "constraints": "file_conditions",
+                  "exclude": "exceptions", "excluded": "exceptions", "exclusions": "exceptions", "fingerprint": "edm", "fingerprints": "edm",
+                  "ml_classifier": "ml", "ml_classifiers": "ml", "classifier": "ml", "classifiers": "ml", "user_notification": "response_action", "template": "response_action"}
+_NSK_IGNORE = frozenset(("profile", "profiles", "dlp_profile", "dlp_profiles", "dlp_rule", "dlp_rules", "entities", "identifiers", "data_identifiers", "dictionary", "dictionaries", "policy_name"))
+_NSK_POLICY_COLS = ("policy_name", "name", "action", "activities", "profile", "dlp_profile", "profiles")
+
+
+def _nsk_entity_facet(e: Dict[str, Any], dicts: Dict[str, Dict[str, Any]]) -> Tuple[str, List[str]]:
+    name = str(e.get("name") or e.get("entity") or e.get("identifier") or "").strip()
+    etype = re.sub(r"[^a-z]", "", str(e.get("type") or e.get("entity_type") or e.get("kind") or "").lower())
+    d = dicts.get(name.lower())
+    if d is not None or e.get("custom") is True or etype in ("dictionary", "customdictionary", "regex", "keyword", "custom"):
+        items = (d or {}).get("entries") or _items_of(e)
+        return "content_patterns", list(items)
+    if "fingerprint" in etype or "exact" in etype or "edm" in etype:
+        return "edm", []
+    if "document" in etype or "idm" in etype:
+        return "idm", []
+    if "ml" in etype or "classifier" in etype:
+        return "ml", []
+    return "data_identifiers", []
+
+
+def _nsk_special(dicts: Dict[str, Dict[str, Any]], profiles: Dict[str, Any], rules: Dict[str, Any], refs: Dict[str, List[str]], depth: List[int]):
+    def walk_named(kind: str, names: List[str], fx: _Facets) -> None:
+        table = profiles if kind == "profiles" else rules
+        for n in names:
+            n = str(n).strip()
+            if not n:
+                continue
+            refs.setdefault(kind, []).append(n)
+            obj = table.get(n.lower())
+            if obj is None:
+                refs.setdefault("unresolved", []).append(f"{kind[:-1]}: {n}")
+                continue
+            if depth[0] > 6:
+                continue
+            depth[0] += 1
+            try:
+                _walk_json(obj, fx, special, _NSK_OVERRIDES, _NSK_IGNORE)
+            finally:
+                depth[0] -= 1
+
+    def special(kl: str, v: Any, fx: _Facets) -> bool:
+        if kl in ("profile", "profiles", "dlp_profile", "dlp_profiles"):
+            names = _scalars(v) if not isinstance(v, str) else re.split(r"[,;|]\s*", v)
+            names = names or [str(x.get("name")) for x in (v if isinstance(v, list) else []) if isinstance(x, dict) and x.get("name")]
+            walk_named("profiles", names, fx)
+            for x in (v if isinstance(v, list) else [v]):
+                if isinstance(x, dict):
+                    _walk_json(x, fx, special, _NSK_OVERRIDES, _NSK_IGNORE)
+            return True
+        if kl in ("dlp_rule", "dlp_rules", "rules") and (isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))):
+            walk_named("rules", re.split(r"[,;|]\s*", v) if isinstance(v, str) else v, fx)
+            return True
+        if kl in ("entities", "identifiers", "data_identifiers", "entity", "identifier") and isinstance(v, (list, dict, str)):
+            for e in (v if isinstance(v, list) else [v]):
+                if isinstance(e, str):
+                    e = {"name": e}
+                if not isinstance(e, dict):
+                    continue
+                facet, items = _nsk_entity_facet(e, dicts)
+                name = str(e.get("name") or e.get("entity") or e.get("identifier") or "").strip()
+                if facet == "content_patterns" and name:
+                    refs.setdefault("dictionaries", []).append(name)
+                fx.add(facet, texts=[name] if name else (), items=items)
+                th = _thresholds_of(e)
+                if th:
+                    fx.add("match_thresholds", texts=th)
+            return True
+        if kl in ("dictionary", "dictionaries") and isinstance(v, (str, list)):
+            for n in (re.split(r"[,;|]\s*", v) if isinstance(v, str) else _scalars(v)):
+                d = dicts.get(str(n).strip().lower())
+                refs.setdefault("dictionaries", []).append(str(n).strip())
+                fx.add("content_patterns", texts=[n], items=(d or {}).get("entries") or [])
+            return True
+        if kl in ("activities", "activity", "destination", "destinations", "app", "apps", "application", "applications", "cloud_app", "category", "categories", "app_categories", "policy_type"):
+            vals = re.split(r"[,;|]\s*", v) if isinstance(v, str) else _scalars(v)
+            default = "web" if kl != "policy_type" else None
+            kind = "cloud-download" if kl in ("activities", "activity") else None
+            fx.add("channel", texts=[_norm_channel(x, default) if not kind or not any(w in x.lower() for w in ("download", "view", "preview")) else f"cloud-download ({x})" for x in vals if str(x).strip()])
+            if isinstance(v, (dict, list)):
+                _walk_json(v, fx, special, _NSK_OVERRIDES, _NSK_IGNORE, inherit="channel")
+            return True
+        return False
+    return special
+
+
+def _nsk_is_policy(d: Dict[str, Any]) -> bool:
+    keys = {_norm_key(k) for k in d}
+    return bool(keys & {"policy_name"}) or ("name" in keys and bool(keys & {"action", "activities", "profile", "dlp_profile", "profiles", "dlp_profiles", "destination"}))
+
+
+def _nsk_dictionary_from_csv(rows: List[List[str]], stem: str) -> Dict[str, Any]:
+    entries = [r[0] for r in rows if r and r[0]]
+    if entries and _norm_key(entries[0]) in ("keyword", "keywords", "regex", "entry", "entries", "term", "terms", "value", "values", "pattern", "patterns", "dictionary"):
+        entries = entries[1:]
+    return {"name": stem, "entries": entries[:512]}
+
+
+def inventory_netskope(data: bytes, source_name: str = "policies.zip") -> Dict[str, Any]:
+    """Netskope Real-time Protection policies (JSON or CSV), with the DLP
+    profile / rule JSON and the dictionary CSVs that came with them → the
+    inventory. Profiles and rules are joined to the policies by name."""
+    members: List[Tuple[str, bytes]] = _unzip(data, source_name) if _is_zip(data) else [(source_name, data)]
+    dicts: Dict[str, Dict[str, Any]] = {}
+    profiles: Dict[str, Any] = {}
+    rules: Dict[str, Any] = {}
+    policy_objs: List[Tuple[str, Dict[str, Any]]] = []
+    for mname, mdata in members:
+        low = mname.lower()
+        stem = Path(mname).stem
+        if low.endswith(".json"):
+            obj = _load_json(mdata, mname)
+            if isinstance(obj, dict):
+                for kk, v in obj.items():
+                    k = _norm_key(kk)
+                    if k in ("profiles", "dlp_profiles") and isinstance(v, list):
+                        profiles.update({str(x.get("name", "")).lower(): x for x in v if isinstance(x, dict) and x.get("name")})
+                    elif k in ("rules", "dlp_rules") and isinstance(v, list) and all(isinstance(x, dict) and not _nsk_is_policy(x) for x in v):
+                        rules.update({str(x.get("name", "")).lower(): x for x in v if isinstance(x, dict) and x.get("name")})
+                    elif k in ("dictionaries", "dlp_dictionaries") and isinstance(v, list):
+                        for x in v:
+                            if isinstance(x, dict) and x.get("name"):
+                                dicts[str(x["name"]).lower()] = {"name": x["name"], "entries": _items_of(x) or _scalars(x.get("entries"))}
+            for p in _find_policies(obj, _nsk_is_policy):
+                policy_objs.append((mname, p))
+        elif low.endswith(".csv"):
+            rows = _csv_rows(mdata, mname)
+            if not rows:
+                continue
+            header = {_norm_key(c) for c in rows[0]}
+            if len(rows[0]) > 1 and header & set(_NSK_POLICY_COLS):
+                for rec in _csv_records(rows):
+                    if _nsk_is_policy(rec):
+                        policy_objs.append((mname, rec))
+            else:
+                d = _nsk_dictionary_from_csv(rows, stem)
+                dicts[stem.lower()] = d
+    policies: List[Dict[str, Any]] = []
+    for mname, pobj in policy_objs:
+        name = _policy_name(pobj) or Path(mname).stem
+        refs: Dict[str, List[str]] = {}
+        fx = _Facets()
+        _walk_json(pobj, fx, _nsk_special(dicts, profiles, rules, refs, [0]), _NSK_OVERRIDES, _NSK_IGNORE)
+        entry = {"id": _policy_id(pobj, name, "nsk"), "name": name, "active_status": _policy_status(pobj), "child_tags": sorted(str(k) for k in pobj),
+                 "source_member": mname if _is_zip(data) else None, "references": {k: sorted(set(v))[:32] for k, v in refs.items()}}
+        entry.update(fx.result())
+        policies.append(entry)
+    snap = _finish(policies, data, source_name, "policies.zip", "Netskope Real-time Protection policies (policy name with action, activities or profile)")
+    snap["dictionaries"] = sorted(({"name": d["name"], "entries": len(d.get("entries") or [])} for d in dicts.values()), key=lambda x: x["name"].lower())
+    snap["profiles"] = sorted(p.get("name", "") for p in profiles.values())
+    return snap
+
+
+# ── Skyhigh adapter ────────────────────────────────────────────────────
+# Policy Templates export (zip; JSON or XML members with rule groups →
+# rules → classifications, conditions, response actions) or SSE Policy
+# API JSON (policy types 0 = API DLP, 1 = Proxy DLP).
+_SKY_OVERRIDES = {"response": "response_action", "responses": "response_action", "response_actions": "response_action", "actions": "response_action", "action": "response_action",
+                  "remediation": "response_action", "users": "identity_scope", "groups": "identity_scope", "user_groups": "identity_scope", "applies_to": "identity_scope",
+                  "content_type": "file_conditions", "content_types": "file_conditions", "size": "file_conditions", "file": "file_conditions", "files": "file_conditions",
+                  "exclusions": "exceptions", "exclusion": "exceptions", "exceptions": "exceptions", "exception": "exceptions", "fingerprint": "idm", "structured": "edm",
+                  "minimum_score": "match_thresholds", "min_score": "match_thresholds", "score_threshold": "match_thresholds", "proximity": "match_thresholds"}
+# Services (Box, Salesforce, …) are the apps a policy watches, not the
+# channel: the policy type says whether the policy is Proxy DLP (web) or
+# API DLP (SaaS), so services are not counted against the web share.
+_SKY_IGNORE = frozenset(("classifications", "classification", "content_classifications", "conditions", "condition", "policy_type", "policytype", "score",
+                         "services", "service", "cloud_services", "cloud_service"))
+
+
+def _sky_class_facet(c: Dict[str, Any]) -> str:
+    ctype = re.sub(r"[^a-z]", "", " ".join(str(c.get(k) or "") for k in ("type", "classification_type", "classificationType", "kind", "category")).lower())
+    if any(w in ctype for w in ("idm", "indexeddocument", "document", "unstructured")):
+        return "idm"
+    if any(w in ctype for w in ("edm", "structured", "exactdata", "exact")):
+        return "edm"
+    if any(w in ctype for w in ("ml", "machine", "model")):
+        return "ml"
+    if c.get("predefined") is True or c.get("built_in") is True or c.get("builtin") is True or any(w in ctype for w in ("precanned", "predefined", "builtin", "system")):
+        return "data_identifiers"
+    if any(w in ctype for w in ("keyword", "dictionary", "advancedpattern", "regex", "pattern", "custom")) or _items_of(c):
+        return "content_patterns"
+    return "data_identifiers"
+
+
+def _sky_special(kl: str, v: Any, fx: _Facets) -> bool:
+    if kl in ("classifications", "classification", "content_classifications", "data_identifiers") and isinstance(v, (list, dict, str)):
+        for c in (v if isinstance(v, list) else [v]):
+            if isinstance(c, str):
+                c = {"name": c}
+            if not isinstance(c, dict):
+                continue
+            facet = _sky_class_facet(c)
+            name = str(c.get("name") or c.get("classification_name") or c.get("#text") or "").strip()
+            fx.add(facet, texts=[name] if name else (), items=_items_of(c) if facet == "content_patterns" else [])
+            th = _thresholds_of(c)
+            if th:
+                fx.add("match_thresholds", texts=th)
+        return True
+    if kl in ("policy_type", "policytype"):
+        kind = {"0": "saas-api (API DLP)", "1": "web (Proxy DLP)"}.get(str(v).strip())
+        fx.add("channel", texts=[kind or _norm_channel(str(v))])
+        return True
+    return False
+
+
+def _sky_is_policy(d: Dict[str, Any]) -> bool:
+    keys = {_norm_key(k) for k in d}
+    return bool(keys & {"policy_name", "policyname"}) or ("name" in keys and bool(keys & {"rule_groups", "rulegroups", "rule_group", "rulegroup", "rules", "rule", "policy_type", "policytype", "classifications", "classification"}))
+
+
+def inventory_skyhigh(data: bytes, source_name: str = "policy-templates.zip") -> Dict[str, Any]:
+    """Skyhigh Policy Templates export (zip of JSON / XML), or one policy /
+    list as JSON or XML → the inventory."""
+    members: List[Tuple[str, bytes]] = _unzip(data, source_name) if _is_zip(data) else [(source_name, data)]
+    policies: List[Dict[str, Any]] = []
+    for mname, mdata in members:
+        low = mname.lower()
+        stripped = mdata.lstrip()
+        if low.endswith(".xml") or (not low.endswith((".json", ".csv", ".txt")) and stripped.startswith(b"<")):
+            root = _xml_root(mdata, mname)
+            obj = {_tag(root): _xml_to_obj(root)}
+        elif low.endswith(".json") or stripped.startswith((b"{", b"[")):
+            obj = _load_json(mdata, mname)
+        else:
+            continue
+        for pobj in _find_policies(obj, _sky_is_policy, list_keys=("policies", "policy", "data", "items", "results", "templates", "policy_templates", "policytemplates", "policytemplate", "policy_template", "dlp_policies", "dlppolicies")):
+            name = _policy_name(pobj) or Path(mname).stem
+            fx = _Facets()
+            _walk_json(pobj, fx, _sky_special, _SKY_OVERRIDES, _SKY_IGNORE)
+            groups = pobj.get("rule_groups") or pobj.get("ruleGroups") or pobj.get("ruleGroup") or pobj.get("rule_group") or []
+            groups = groups if isinstance(groups, list) else [groups]
+            entry = {"id": _policy_id(pobj, name, "sky"), "name": name, "active_status": _policy_status(pobj), "child_tags": sorted(str(k) for k in pobj),
+                     "source_member": mname if _is_zip(data) else None, "rule_groups": [str(g.get("name") or "") for g in groups if isinstance(g, dict)][:64]}
+            entry.update(fx.result())
+            policies.append(entry)
+    return _finish(policies, data, source_name, "policy-templates.zip", "Skyhigh policies (a policy name with rule groups, rules or classifications)")
+
+
+# ── One entry point: the vendor decides the reader ─────────────────────
+READERS = {"symantec": inventory_bytes, "forcepoint": inventory_forcepoint, "netskope": inventory_netskope, "skyhigh": inventory_skyhigh}
+
+
+def inventory_export(vendor_id: str, data: bytes, source_name: str = "") -> Dict[str, Any]:
+    v = vendor(vendor_id)
+    ext = os.path.splitext(str(source_name or ""))[1].lower()
+    if ext and ext not in v["accepts"]:
+        raise ValueError(f"{v['name']}: {ext} files are not an export this adapter reads; it accepts {', '.join(v['accepts'])}")
+    snap = READERS[v["id"]](data, source_name or ("export" + (v["accepts"][0] if v["accepts"] else "")))
+    snap["vendor"] = v["id"]
+    return snap
+
+
 def decisions_template(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     """A starting decisions file for this export: the SHA-256 filled in,
     every source policy listed with nothing approved, and one worked
@@ -365,7 +1219,7 @@ def slug(s: str) -> str:
     return x[:60]
 
 
-def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: str = "sym") -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: str = "sym", vendor_id: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """(terraform, report). The report's `ready` is True only when every
     source policy has an approved disposition or translation and every
     referenced object was generated; the Terraform is deployable only then."""
@@ -378,8 +1232,9 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     if len({p.get("source_id") for p in selected}) != len(selected):
         raise ValueError("Duplicate source_id in decisions")
     res: Dict[str, Dict[str, Any]] = {"zia_dlp_dictionaries": {}, "zia_dlp_engines": {}, "zia_dlp_web_rules": {}}
-    report: Dict[str, Any] = {"source_sha256": snapshot["sha256"], "provider_version": PROVIDER_VERSION,
-                              "semantic_equivalence": "manual_review_required_native_xml_not_interpreted",
+    vendor_id = vendor_id or snapshot.get("vendor") or "symantec"
+    report: Dict[str, Any] = {"source_sha256": snapshot["sha256"], "provider_version": PROVIDER_VERSION, "vendor": vendor_id,
+                              "semantic_equivalence": "manual_review_required_native_export_not_interpreted",
                               "converted": [], "questions": [], "blocked": [], "dispositions": []}
 
     def question(source_id, reason, kind="ASK"):
@@ -474,6 +1329,9 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
           "provider": {"zia": {}}, "resource": {k: v for k, v in res.items() if v}}
     report["ready"] = not report["blocked"]
     report["efficacy"] = efficacy(snapshot, decisions, res)
+    if vendor_id in VENDORS:
+        xr = crossref(vendor_id)
+        report["crossref"] = {"vendor": vendor_id, "source_api": xr["source_api"], "rows": xr["rows"], "carried": xr["carried"]}
     report["counts"] = {"source_policies": len(by_id), "converted_web_rules": len(report["converted"]),
                         "blocked_policies_or_objects": len(report["questions"]),
                         "dictionaries": len(res["zia_dlp_dictionaries"]), "engines": len(res["zia_dlp_engines"]),
@@ -485,30 +1343,32 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
 def inventory_upload(vendor_id: str, export_file: Dict[str, Any]) -> Dict[str, Any]:
     v = vendor(vendor_id)
     data = decode_upload(export_file)
-    snapshot = inventory_bytes(data, export_file.get("name") or "export.xml")
-    return {"vendor": v["id"], "vendor_name": v["name"], "snapshot": snapshot, "decisions_template": decisions_template(snapshot)}
+    snapshot = inventory_export(v["id"], data, export_file.get("name") or "")
+    return {"vendor": v["id"], "vendor_name": v["name"], "snapshot": snapshot, "decisions_template": decisions_template(snapshot), "crossref": crossref(v["id"])}
 
 
 def compile_upload(vendor_id: str, export_file: Dict[str, Any], decisions: Any) -> Dict[str, Any]:
     v = vendor(vendor_id)
     data = decode_upload(export_file)
-    snapshot = inventory_bytes(data, export_file.get("name") or "export.xml")
+    snapshot = inventory_export(v["id"], data, export_file.get("name") or "")
     if isinstance(decisions, dict) and "content" in decisions and "policies" not in decisions:
         try:
             decisions = json.loads(decode_upload(decisions).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             raise ValueError(f"Decisions file is not valid JSON: {e}")
-    tf, report = compile_export(snapshot, decisions, prefix=v["prefix"])
+    tf, report = compile_export(snapshot, decisions, prefix=v["prefix"], vendor_id=v["id"])
     return {"vendor": v["id"], "vendor_name": v["name"],
             "snapshot": {"source_file": snapshot["source_file"], "sha256": snapshot["sha256"], "policy_count": len(snapshot["policies"])},
             "report": report, "terraform": tf if report["ready"] else None}
 
 
 # ── Command line: the same steps, plus the export fetcher ──────────────
-def fetch_export(url: str, token: str, out) -> int:
-    """One authenticated HTTPS GET of a tenant's documented export URL.
-    Refuses redirects (the bearer token must not follow to another
-    origin), caps the response at MAX_EXPORT_BYTES, writes mode 0600."""
+def fetch_export(url: str, token: str, out, header: str = "Authorization: Bearer") -> int:
+    """One authenticated HTTPS GET of a tenant's documented export URL
+    (Symantec's export URL, a Forcepoint REST policy, a Netskope REST API
+    v2 call with its Netskope-Api-Token header). Refuses redirects (the
+    token must not follow to another origin), caps the response at
+    MAX_EXPORT_BYTES, accepts XML or JSON only, writes mode 0600."""
     import urllib.request
     from urllib.parse import urlsplit
     parts = urlsplit(url)
@@ -516,15 +1376,19 @@ def fetch_export(url: str, token: str, out) -> int:
         raise ValueError("Only HTTPS URLs are accepted")
     if not token:
         raise ValueError("Token is missing")
-    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token, "Accept": "application/xml"}, method="GET")
+    hname, _, hprefix = str(header or "Authorization: Bearer").partition(":")
+    hname = hname.strip() or "Authorization"
+    if not re.fullmatch(r"[A-Za-z0-9-]+", hname):
+        raise ValueError("The token header name must be a plain HTTP header name")
+    req = urllib.request.Request(url, headers={hname: (hprefix.strip() + " " + token).strip(), "Accept": "application/json, application/xml"}, method="GET")
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, request, fp, code, msg, headers, newurl):
             return None
     with urllib.request.build_opener(NoRedirect).open(req, timeout=30) as response:
         data = response.read(MAX_EXPORT_BYTES + 1)
-    if len(data) > MAX_EXPORT_BYTES or not data.lstrip().startswith(b"<"):
-        raise ValueError("Response exceeds the size limit or is not XML")
+    if len(data) > MAX_EXPORT_BYTES or not data.lstrip().startswith((b"<", b"{", b"[")):
+        raise ValueError("Response exceeds the size limit or is not XML or JSON")
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
@@ -549,27 +1413,33 @@ def main(argv=None) -> int:
     comp.add_argument("--decisions", type=Path, required=True)
     comp.add_argument("--vendor", default="symantec")
     comp.add_argument("--out", type=Path, default=Path("build"))
-    fe = sub.add_parser("fetch", help="Fetch the XML export from the tenant's documented export URL (token from an environment variable)")
+    fe = sub.add_parser("fetch", help="Fetch an XML or JSON export from the tenant's documented export URL or REST API (token from an environment variable)")
     fe.add_argument("--url", required=True)
     fe.add_argument("--token-env", required=True)
+    fe.add_argument("--header", default="Authorization: Bearer", help="How the token is sent: 'Authorization: Bearer' (default; Symantec, Forcepoint access token) or 'Netskope-Api-Token'")
     fe.add_argument("--out", required=True, type=Path)
+    xr = sub.add_parser("crossref", help="Print the vendor's API cross-reference (source object/field → ZIA object/field, API call, Terraform)")
+    xr.add_argument("--vendor", default="symantec")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "fetch":
             token = os.environ.get(args.token_env)
             if not token:
                 ap.error("Token environment variable is missing")
-            fetch_export(args.url, token, args.out)
+            fetch_export(args.url, token, args.out, header=args.header)
             print("Saved export to", args.out)
             return 0
         v = vendor(args.vendor)
-        snapshot = inventory_xml(args.export)
+        if args.cmd == "crossref":
+            print(json.dumps(crossref(v["id"]), indent=2, ensure_ascii=False))
+            return 0
+        snapshot = inventory_export(v["id"], Path(args.export).read_bytes(), Path(args.export).name)
         _write_json(args.out / "source-inventory.json", snapshot)
         if args.cmd == "inventory":
             _write_json(args.out / "decisions.template.json", decisions_template(snapshot))
             print("Inventory and a decisions template written. Review every policy, then run compile.")
             return 0
-        tf, report = compile_export(snapshot, json.loads(args.decisions.read_text()), prefix=v["prefix"])
+        tf, report = compile_export(snapshot, json.loads(args.decisions.read_text()), prefix=v["prefix"], vendor_id=v["id"])
         _write_json(args.out / "migration-report.json", report)
         if report["ready"]:
             _write_json(args.out / "main.tf.json", tf)

@@ -100,15 +100,27 @@ def test_xml_entities_and_bad_xml_are_rejected():
         vm.inventory_bytes(b"<policyExport/>")
 
 
-def test_the_vendor_registry_lists_the_planned_adapters_and_refuses_them():
+def test_the_vendor_registry_has_four_adapters_each_with_its_file_types_and_cross_reference():
     ids = [v["id"] for v in vm.vendors()]
     assert ids == ["symantec", "forcepoint", "netskope", "skyhigh"]
-    assert vm.vendor("symantec")["status"] == "available"
-    for planned in ("forcepoint", "netskope", "skyhigh"):
-        with pytest.raises(ValueError, match="not built yet"):
-            vm.vendor(planned)
+    for vid in ids:
+        v = vm.vendor(vid)
+        assert v["status"] == "available" and v["accepts"] and v["files"] and v["source_api"]["base"] and v["source_api"]["calls"]
+        assert {f["ext"] for f in v["files"]} == set(v["accepts"]), vid
+        xr = vm.crossref(vid)
+        assert len(xr["rows"]) >= 12, vid
+        for r in xr["rows"]:
+            assert r["carried"] in vm.CARRIED and r["zia_api"] and r["terraform"] and r["source_field"] and r["zia_field"], (vid, r)
+            assert r["facet"] in vm.FACETS or r["facet"] in ("policy", "notification"), (vid, r)
+        # Every facet the efficacy mapping scores has a row saying where it lands.
+        assert set(vm.FACETS) <= {r["facet"] for r in xr["rows"]}, vid
+    assert vm.vendor("forcepoint")["accepts"] == [".zip", ".json"] and vm.vendor("netskope")["accepts"] == [".zip", ".json", ".csv"] and vm.vendor("skyhigh")["accepts"] == [".zip", ".json", ".xml"]
     with pytest.raises(ValueError, match="Unknown vendor"):
         vm.vendor("mcafee")
+    with pytest.raises(ValueError, match=r"\.xml files are not an export this adapter reads"):
+        vm.inventory_export("forcepoint", EXPORT, "policies.xml")
+    # Nothing in the tables is a call this tool makes: activation is named as never called.
+    assert "never called" in vm.ZIA_TARGETS["activate"]["api"]
 
 
 def test_the_page_calls_inventory_then_compile_without_touching_a_tenant():
@@ -128,9 +140,13 @@ def test_the_page_calls_inventory_then_compile_without_touching_a_tenant():
     assert r.status_code == 200 and r.json()["report"]["ready"] is True
     assert r.json()["terraform"]["resource"]["zia_dlp_web_rules"]["sym_sym_101"]["state"] == "DISABLED"
     # Refusals read as sentences.
-    assert c.post("/api/vendor-migrate/inventory", json={"vendor": "netskope", "export": _upload("x.xml", EXPORT)}).status_code == 400
-    assert "not built yet" in c.post("/api/vendor-migrate/inventory", json={"vendor": "netskope", "export": _upload("x.xml", EXPORT)}).json()["detail"]
+    r = c.post("/api/vendor-migrate/inventory", json={"vendor": "netskope", "export": _upload("x.xml", EXPORT)})
+    assert r.status_code == 400 and ".xml files are not an export this adapter reads" in r.json()["detail"]
     assert c.post("/api/vendor-migrate/inventory", json={"vendor": "symantec", "export": _upload("x.xml", b"<policyExport/>")}).status_code == 400
+    assert c.post("/api/vendor-migrate/inventory", json={"vendor": "mcafee", "export": _upload("x.xml", EXPORT)}).status_code == 400
+    # The vendor list carries each adapter's file types and cross-reference for the page.
+    fp = next(v for v in vendors["vendors"] if v["id"] == "forcepoint")
+    assert fp["status"] == "available" and fp["crossref"] and fp["source_api"]["base"].endswith("/dlp/rest/v1") and inv["crossref"]["vendor"] == "symantec"
     # The API sits under /api/ like every other call, behind the same UI-token middleware; only the page is exempt.
     exempt = srv.__dict__.get("_TOKEN_EXEMPT_PATHS") or ()
     assert "/api/vendor-migrate/inventory" not in exempt and "/api/vendor-migrate/compile" not in exempt
@@ -236,3 +252,183 @@ def test_the_page_renders_the_efficacy_mapping():
     page = _page().get("/report/vendor").text
     assert 'id="vmEfficacy"' in page and "function renderEfficacy(e)" in page and "'Not computable'" in page and "How the number is computed" in page
     assert "attest" in page
+
+
+# ── Forcepoint, Netskope, Skyhigh: their export file types read into the same inventory ──
+def _zip(files):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, content in files.items():
+            z.writestr(name, content if isinstance(content, (str, bytes)) else json.dumps(content))
+    return buf.getvalue()
+
+
+FP_POLICY = {"policy_name": "PCI upload block", "enabled": True, "predefined_policy": False, "policy_level": {"level": "HIGH", "data_type": "PCI"},
+             "rules": [{"rule_name": "cards", "enabled": True, "severity": "HIGH", "action_plan": "Block All", "parts_count_type": "WHOLE_TRANSACTION", "condition_relation_type": "AND",
+                        "classifiers": [{"classifier_name": "Customer context", "predefined": False, "position": 1, "threshold_type": "CHECK_GREATER_THAN", "threshold_value_from": 3, "threshold_calculate_type": "UNIQUE"},
+                                        {"classifier_name": "Credit Card Numbers (Default)", "predefined": True, "position": 2, "threshold_type": "CHECK_GREATER_THAN", "threshold_value_from": 1},
+                                        {"classifier_name": "HR database", "classifier_type": "database_fingerprint", "predefined": False}],
+                        "sources": {"users": ["finance-team"], "endpoints": []},
+                        "destinations": {"channels": ["HTTP", "HTTPS", "EMAIL", "ENDPOINT_REMOVABLE_MEDIA"]},
+                        "exceptions": [{"sources": ["ceo"]}]}]}
+FP_CLASSIFIERS = [{"classifier_name": "Customer context", "classifier_type": "key_phrase", "phrases": ["customer", "account number", "cardholder"]},
+                  {"classifier_name": "Acct regex", "classifier_type": "regex", "patterns": ["account[ -]?[0-9]{6,10}"]}]
+
+
+def _fp_zip():
+    return _zip({"PCI upload block.json": FP_POLICY, "HR to webmail.json": {"policy_name": "HR to webmail", "enabled": False, "rules": []},
+                 "policy_names_metadata.txt": "PCI upload block\nHR to webmail\n", "classifiers.json": FP_CLASSIFIERS})
+
+
+def test_forcepoint_reads_the_policy_zip_and_the_rest_json():
+    snap = vm.inventory_export("forcepoint", _fp_zip(), "policies.zip")
+    assert snap["vendor"] == "forcepoint" and [p["name"] for p in snap["policies"]] == ["HR to webmail", "PCI upload block"]
+    p = next(x for x in snap["policies"] if x["name"] == "PCI upload block")
+    f = p["facets"]
+    assert p["id"] == "fp-pci_upload_block" and p["active_status"] == "enabled" and p["rules"] == ["cards"] and p["source_member"] == "PCI upload block.json"
+    # The classifier definitions shipped in the zip give the key-phrase classifier its items.
+    assert f["content_patterns"]["items"] == ["customer", "account number", "cardholder"] and f["content_patterns"]["texts"] == ["Customer context"]
+    assert f["data_identifiers"]["texts"] == ["Credit Card Numbers (Default)"], "predefined true is an identifier"
+    assert f["edm"]["texts"] == ["HR database"], "a database fingerprint is EDM"
+    assert f["match_thresholds"]["texts"] == ["CHECK_GREATER_THAN 3 UNIQUE", "CHECK_GREATER_THAN 1"]
+    assert f["channel"]["texts"] == ["web (HTTP)", "web (HTTPS)", "email (EMAIL)", "endpoint (ENDPOINT_REMOVABLE_MEDIA)"]
+    assert f["identity_scope"]["texts"] == ["finance-team"] and f["exceptions"]["texts"] == ["ceo"], "an exception's sources belong to the exception"
+    assert f["response_action"]["texts"] == ["Block All"] and f["severity"]["texts"] == ["HIGH"] and p["unrecognised"] == []
+    assert next(x for x in snap["policies"] if x["name"] == "HR to webmail")["facets"] == {}, "an empty rules list is nothing, not a facet"
+    # One policy as REST JSON, no zip.
+    single = vm.inventory_export("forcepoint", json.dumps(FP_POLICY).encode(), "policy.json")
+    assert [p["id"] for p in single["policies"]] == ["fp-pci_upload_block"] and single["policies"][0]["facets"]["content_patterns"]["items"] == [], "no classifier definitions, so no items"
+    with pytest.raises(ValueError, match="No Forcepoint policies"):
+        vm.inventory_export("forcepoint", b'{"hello": 1}', "x.json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        vm.inventory_export("forcepoint", b"{", "x.json")
+
+
+def test_password_protected_and_oversized_archives_are_refused():
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("p.json", json.dumps(FP_POLICY))
+    data = bytearray(buf.getvalue())
+    cd = data.index(b"PK\x01\x02")
+    data[cd + 8] |= 0x1   # the central directory's encryption flag, as a password-protected export sets it
+    with pytest.raises(ValueError, match="password-protected"):
+        vm._unzip(bytes(data), "policies.zip")
+    with pytest.raises(ValueError, match="not a zip archive"):
+        vm.inventory_export("forcepoint", b"PK\x03\x04junk", "policies.zip")
+    with pytest.raises(ValueError, match="holds no .json"):
+        vm._unzip(_zip({"a.bin": b"\x00"}), "x.zip")
+    old = vm.ZIP_MEMBER_LIMIT
+    vm.ZIP_MEMBER_LIMIT = 1
+    try:
+        with pytest.raises(ValueError, match="more than 1 files"):
+            vm._unzip(_fp_zip(), "policies.zip")
+    finally:
+        vm.ZIP_MEMBER_LIMIT = old
+
+
+NSK_POLICIES = [{"policy_name": "Block PCI uploads", "status": "enabled", "source": "Finance", "destination": "Box, Dropbox", "activities": "Upload, Post, Download",
+                 "profile": "PCI profile", "action": "Block", "severity": "High"}]
+NSK_DLP = {"profiles": [{"name": "PCI profile", "rules": ["PCI rule"], "file_filters": {"file_types": ["xlsx"], "size": "10MB"}}],
+           "rules": [{"name": "PCI rule", "severity": "High", "operator": "AND", "entities": [{"name": "Credit Card Number", "count": 5}, {"name": "Customer terms", "type": "dictionary", "count": 2}]}]}
+
+
+def test_netskope_joins_policies_profiles_rules_and_dictionary_csvs_by_name():
+    snap = vm.inventory_export("netskope", _zip({"rtp-policies.json": NSK_POLICIES, "dlp.json": NSK_DLP, "Customer terms.csv": "keyword\ncustomer\naccount number\ncardholder\n"}), "netskope.zip")
+    p = snap["policies"][0]
+    f = p["facets"]
+    assert p["id"] == "nsk-block_pci_uploads" and p["references"] == {"profiles": ["PCI profile"], "rules": ["PCI rule"], "dictionaries": ["Customer terms"]}
+    assert f["content_patterns"]["items"] == ["customer", "account number", "cardholder"], "the dictionary CSV's entries, header line dropped"
+    assert f["data_identifiers"]["texts"] == ["Credit Card Number"] and f["match_thresholds"]["texts"] == ["count 5", "count 2"]
+    assert f["channel"]["texts"] == ["web (Box)", "web (Dropbox)", "web (Upload)", "web (Post)", "cloud-download (Download)"], "destinations and upload / post are web; a download is not inspected by ZIA web DLP"
+    assert f["file_conditions"]["texts"] == ["xlsx", "10MB"] and f["identity_scope"]["texts"] == ["Finance"] and f["response_action"]["texts"] == ["Block"]
+    assert snap["dictionaries"] == [{"name": "Customer terms", "entries": 3}] and snap["profiles"] == ["PCI profile"] and p["unrecognised"] == []
+    # The CSV export alone: the same policy, the profile named but unresolved.
+    csv = "Policy Name,Status,Source,Destination,Activities,Profile,Action\nBlock PCI uploads,Enabled,Finance,Box,Upload;Post,PCI profile,Block\n"
+    one = vm.inventory_export("netskope", csv.encode(), "rtp.csv")["policies"][0]
+    assert one["id"] == "nsk-block_pci_uploads" and one["active_status"] == "enabled" and one["references"]["unresolved"] == ["profile: PCI profile"]
+    assert one["facets"]["channel"]["texts"] == ["web (Box)", "web (Upload)", "web (Post)"] and "content_patterns" not in one["facets"]
+    with pytest.raises(ValueError, match="No Netskope Real-time Protection policies"):
+        vm.inventory_export("netskope", b"keyword\ncustomer\n", "dict.csv")
+
+
+SKY = {"policy_name": "PCI proxy", "policy_type": 1, "enabled": True,
+       "rule_groups": [{"name": "cards", "severity": "High",
+                        "rules": [{"name": "r1", "classifications": [{"name": "Customer terms", "type": "dictionary", "entries": [{"term": "customer", "score": 10}, {"term": "cardholder", "score": 10}]},
+                                                                     {"name": "Credit Card Number", "predefined": True},
+                                                                     {"name": "Acct", "type": "advanced_pattern", "pattern": "account[ -]?[0-9]{6,10}"}],
+                                   "conditions": {"minimum_score": 20}, "response": ["Block", "Notify"], "users": ["finance"], "services": ["Box"], "exceptions": []}]}]}
+SKY_XML = "<policy name='API scan' policyType='0'><ruleGroup name='g'><rule name='r'><classification type='keyword'><keyword>ssn</keyword><keyword>tax</keyword></classification><response>Quarantine</response></rule></ruleGroup></policy>"
+
+
+def test_skyhigh_reads_policy_templates_as_json_or_xml():
+    snap = vm.inventory_export("skyhigh", _zip({"template/PCI proxy.json": SKY, "template/api.xml": SKY_XML}), "templates.zip")
+    by = {p["name"]: p for p in snap["policies"]}
+    f = by["PCI proxy"]["facets"]
+    assert by["PCI proxy"]["id"] == "sky-pci_proxy" and by["PCI proxy"]["rule_groups"] == ["cards"]
+    assert f["channel"]["texts"] == ["web (Proxy DLP)"], "policy type 1 is Proxy DLP; services are the apps, not the channel"
+    assert f["content_patterns"]["items"] == ["customer", "cardholder", "account[ -]?[0-9]{6,10}"] and f["content_patterns"]["texts"] == ["Customer terms", "Acct"]
+    assert f["data_identifiers"]["texts"] == ["Credit Card Number"] and f["match_thresholds"]["texts"] == ["20"]
+    assert f["response_action"]["texts"] == ["Block", "Notify"] and f["identity_scope"]["texts"] == ["finance"] and "exceptions" not in f and by["PCI proxy"]["unrecognised"] == []
+    x = by["API scan"]["facets"]
+    assert x["channel"]["texts"] == ["saas-api (API DLP)"] and x["content_patterns"]["items"] == ["ssn", "tax"] and x["response_action"]["texts"] == ["Quarantine"]
+    with pytest.raises(ValueError, match="DTD"):
+        vm.inventory_export("skyhigh", b'<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><policy name="x"/>', "t.xml")
+
+
+def test_each_adapter_compiles_through_the_same_contract_with_its_own_prefix_and_cross_reference():
+    c = _page()
+    for vid, name, data, ids in (("forcepoint", "policies.zip", _fp_zip(), ["fp-hr_to_webmail", "fp-pci_upload_block"]),
+                                 ("netskope", "netskope.zip", _zip({"rtp.json": NSK_POLICIES, "dlp.json": NSK_DLP, "Customer terms.csv": "customer\ncardholder\n"}), ["nsk-block_pci_uploads"]),
+                                 ("skyhigh", "templates.zip", _zip({"PCI proxy.json": SKY}), ["sky-pci_proxy"])):
+        r = c.post("/api/vendor-migrate/inventory", json={"vendor": vid, "export": _upload(name, data)})
+        assert r.status_code == 200, r.text
+        inv = r.json()
+        assert [p["id"] for p in inv["snapshot"]["policies"]] == ids and inv["crossref"]["vendor"] == vid
+        tpl = inv["decisions_template"]
+        assert tpl["source_sha256"] == inv["snapshot"]["sha256"] and [p["source_id"] for p in tpl["policies"]] == ids
+        d = {"source_sha256": tpl["source_sha256"],
+             "dictionaries": [{"id": "cust", "name": "CUST", "approved": True, "phrases": ["customer", "cardholder"], "patterns": []}],
+             "engines": [{"id": "e1", "name": "E1", "approved": True, "zia_expression": "((D{{dict:cust}}.S > 2))"}],
+             "policies": [{"source_id": i, "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "BLOCK", "order": n + 1, "engine_refs": ["e1"]} for n, i in enumerate(ids)]}
+        r = c.post("/api/vendor-migrate/compile", json={"vendor": vid, "export": _upload(name, data), "decisions": d})
+        assert r.status_code == 200, r.text
+        out = r.json()
+        rep = out["report"]
+        assert rep["ready"] and rep["vendor"] == vid and rep["crossref"]["vendor"] == vid and len(rep["crossref"]["rows"]) >= 12
+        rules = out["terraform"]["resource"]["zia_dlp_web_rules"]
+        assert set(rules) == {vm.slug(f"{vm.VENDORS[vid]['prefix']}_{i}") for i in ids} and all(v["state"] == "DISABLED" for v in rules.values())
+        scored = [p for p in rep["efficacy"]["policies"] if p["fidelity"] is not None]
+        assert scored and rep["efficacy"]["overall_fidelity"] is not None, vid
+        main = next(p for p in scored if p["source_id"] == ids[-1])
+        byf = {f["facet"]: f for f in main["facets"]}
+        assert byf["content_patterns"]["basis"] == "computed" and byf["response_action"]["score"] == 1, vid
+    # Forcepoint's arithmetic: 2 of 3 items, thresholds present, 2 of 4 channels web, action; identifiers and EDM not attested.
+    snap = vm.inventory_export("forcepoint", _fp_zip(), "policies.zip")
+    d = {"source_sha256": snap["sha256"], "dictionaries": [{"id": "cust", "name": "CUST", "approved": True, "phrases": ["customer", "cardholder"]}],
+         "engines": [{"id": "e1", "name": "E1", "approved": True, "zia_expression": "((D{{dict:cust}}.S > 2))"}],
+         "policies": [{"source_id": "fp-pci_upload_block", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "BLOCK", "order": 1, "engine_refs": ["e1"]},
+                      {"source_id": "fp-hr_to_webmail", "disposition": "retired", "approved": True, "reason": "webmail is blocked by URL filtering"}]}
+    _tf, rep = vm.compile_export(snap, d, prefix="fp", vendor_id="forcepoint")
+    p = next(x for x in rep["efficacy"]["policies"] if x["source_id"] == "fp-pci_upload_block")
+    byf = {f["facet"]: f for f in p["facets"]}
+    assert round(byf["content_patterns"]["score"], 4) == 0.6667 and byf["match_thresholds"]["score"] == 1 and byf["channel"]["score"] == 0.5 and byf["data_identifiers"]["basis"] == "fixed" and byf["edm"]["basis"] == "fixed"
+    expected = (25 * 2 / 3 + 15 * 0 + 10 * 0 + 5 * 1 + 10 * 0.5 + 8 * 0 + 4 * 0 + 4 * 1 + 2 * 0) / (25 + 15 + 10 + 5 + 10 + 8 + 4 + 4 + 2) * 100
+    assert p["fidelity"] == round(expected, 1) == 36.9 and p["weight"] == 83
+    with tempfile.TemporaryDirectory() as td:
+        pth = Path(td)
+        (pth / "policies.zip").write_bytes(_fp_zip())
+        assert vm.main(["inventory", str(pth / "policies.zip"), "--vendor", "forcepoint", "--out", str(pth / "out")]) == 0
+        assert json.loads((pth / "out" / "source-inventory.json").read_text())["vendor"] == "forcepoint"
+        assert vm.main(["crossref", "--vendor", "netskope"]) == 0
+
+
+def test_the_page_shows_the_cross_reference_and_accepts_each_vendors_files():
+    page = _page().get("/report/vendor").text
+    for needle in ('id="vmXref"', "function renderCrossref(", "Source object", "ZIA object", "Terraform", "How it is carried", 'accept=".xml,.json,.zip,.csv"', "renderCrossref(rep.crossref"):
+        assert needle in page, needle
+    xp = _page().get("/static/explain.js").text
+    assert "Forcepoint, Netskope and Skyhigh" in xp and "cross-reference" in xp
