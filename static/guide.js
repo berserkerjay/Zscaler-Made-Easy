@@ -594,7 +594,8 @@ async function _gdProfilesLoad() {
     GD.profiles = data.profiles || [];
     if (!GD.packs.length) {
       const pr = await fetch('/api/dlp-packs', { cache: 'no-store' }).then(x => x.json()).catch(() => ({}));
-      GD.packs = (pr.packs || []).filter(p => p.baseline);
+      // Every installed pack, the baselines first: an industry's packs (the Fed and CJIS packs among them) must be tickable here.
+      GD.packs = [...(pr.packs || [])].sort((a, b) => (a.baseline ? 0 : 1) - (b.baseline ? 0 : 1));
     }
     const sel = _gdProfileSel();
     GD.profileHasSecret = !!(sel && sel.has_secret);
@@ -646,6 +647,44 @@ async function _gdApplyScope(p) {
     }
   } catch (e) { GD.scope = null; }
   _gdScopeNote();
+  _gdStudioFollowScope();
+}
+// Choosing an industry on the profile form: the industry's packs are ticked
+// on the form at once (the operator adds or drops packs from there) and the
+// scope follows, so Deploy policy packs pre-selects them without a save.
+async function _gdIndustryChanged(industry) {
+  const p = Object.assign({}, GD.profileDetail || {}, { id: GD.profile || '', industry: industry || '' });
+  if (!industry) { GD.scope = null; _gdScopeNote(); _gdStudioFollowScope(); return; }
+  try {
+    const r = await fetch(`/api/vertical-scope?industry=${encodeURIComponent(industry)}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const sc = await r.json();
+    // The industry's packs replace what was ticked for the previous industry; more can be ticked afterwards.
+    document.querySelectorAll('.gd-prof-pack').forEach(cb => { cb.checked = sc.scoped && sc.packs.includes(cb.value); });
+    GD.scope = sc;
+    if (sc.scoped && !(Array.isArray(p.frameworks) && p.frameworks.length)) {
+      document.querySelectorAll('.fw-cb').forEach(cb => { cb.checked = sc.frameworks.includes(cb.value); });
+    }
+  } catch (e) { GD.scope = null; }
+  _gdScopeNote();
+  _gdStudioFollowScope();
+}
+// Ticking or unticking a pack on the profile form narrows or widens the scope's packs right away.
+function _gdProfPacksChanged() {
+  const ticked = Array.from(document.querySelectorAll('.gd-prof-pack:checked')).map(x => x.value);
+  if (GD.scope && GD.scope.scoped) {
+    const names = {};
+    (GD.packs || []).forEach(p => { names[p.id] = p.name || p.id; });
+    const industryPacks = (GD.scope.industry_packs || GD.scope.packs || []);
+    GD.scope.packs = ticked.length ? ticked : industryPacks;
+    GD.scope.pack_names = GD.scope.packs.map(id => names[id] || id);
+    GD.scope.packs_from = ticked.length ? 'profile' : 'industry';
+  }
+  _gdScopeNote();
+  _gdStudioFollowScope();
+}
+function _gdStudioFollowScope() {
+  if (typeof _dzAutoSelectFromScope === 'function') { try { _dzAutoSelectFromScope(); } catch (e) { /* studio not loaded */ } }
   if (typeof _dzRenderSelect === 'function' && document.getElementById('dzBody')) { try { _dzRenderSelect(); } catch (e) { /* studio closed */ } }
 }
 function _gdScopeNote() {
@@ -730,7 +769,7 @@ function _gdProfilesRender() {
   const last = det.last_assessed || (det.history || []).slice(-1)[0];
   const opts = ['<option value="">— no profile (type the details below) —</option>']
     .concat((GD.profiles || []).map(p => `<option value="${_gdE(p.id)}" ${p.id === GD.profile ? 'selected' : ''}>${_gdE(p.name)}${p.industry ? ` · ${_gdE(p.industry)}` : ''}${p.last_assessed ? ` · last ${_gdE(new Date(p.last_assessed.at).toLocaleDateString())}, ${p.last_assessed.score ?? '?'}%` : ''}</option>`)).join('');
-  const packs = (GD.packs || []).map(p => `<label class="gd-prof-pack-l"><input type="checkbox" class="gd-prof-pack" value="${_gdE(p.id)}" ${(det.baseline_packs || []).includes(p.id) ? 'checked' : ''}> ${_gdE(p.name || p.id)}</label>`).join('');
+  const packs = (GD.packs || []).map(p => `<label class="gd-prof-pack-l"><input type="checkbox" class="gd-prof-pack" value="${_gdE(p.id)}" ${(det.baseline_packs || []).includes(p.id) ? 'checked' : ''} onchange="_gdProfPacksChanged()"> ${_gdE(p.name || p.id)}</label>`).join('');
   bar.innerHTML = `
     <div class="gd-prof-top">
       <div class="gd-prof-title"><span class="gd-eyebrow">Tenant profiles</span>
@@ -746,7 +785,7 @@ function _gdProfilesRender() {
       <summary>${sel ? `Profile details${det.has_secret ? ' · secret remembered on this laptop' : ' · secret not stored (paste it below)'}` : 'Profile details (industry, applicable policy packs, notes, secret)'}</summary>
       <div class="gd-prof-grid">
         <label>Profile name<input id="gdProfName" value="${_gdE(det.name || '')}" placeholder="Acme Health"><span class="gd-need">Usually the customer name. Sample: <code>Acme Health</code></span></label>
-        <label>Industry<select id="gdProfIndustry"><option value="">—</option>${GD_INDUSTRIES.map(i => `<option ${det.industry === i ? 'selected' : ''}>${i}</option>`).join('')}</select><span class="gd-need">Helps you pick the right policy pack; it does not change any check.</span></label>
+        <label>Industry<select id="gdProfIndustry" onchange="_gdIndustryChanged(this.value)"><option value="">—</option>${GD_INDUSTRIES.map(i => `<option ${det.industry === i ? 'selected' : ''}>${i}</option>`).join('')}</select><span class="gd-need">Ticks the industry's policy packs below and pre-selects them in Deploy policy packs; add more packs as needed. It does not change any check.</span></label>
         <div class="gd-prof-packs"><span class="lbl">Policy packs that apply to this customer</span>${packs || '<span class="gd-need">No policy packs installed.</span>'}<span class="gd-need">The journey is measured only against the ticked policy packs. Leave all unticked to measure against every policy pack.</span></div>
         <label class="gd-prof-wide">Notes<textarea id="gdProfNotes" rows="2" placeholder="Kickoff 12 May; admin contact: Pat Lee; PHI pack agreed, enable SSL rule after change window.">${_gdE(det.notes || '')}</textarea></label>
         <label class="gd-prof-remember"><input type="checkbox" id="gdProfRemember" ${det.has_secret ? 'checked' : ''}> Remember the client secret on this laptop
