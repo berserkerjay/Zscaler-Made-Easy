@@ -216,14 +216,41 @@ async function _dzLoadWriteMode() {
   } catch (e) { DZ.write = null; }
   if (DZ.step === 1 || DZ.step === 3) _dzRender();
 }
+// The switch asks in the app's own dialog (ui_auth.js): never the browser's
+// prompt() / alert() / confirm(), which an embedded browser may refuse
+// silently, so that clicking Enable write mode looked as if nothing happened.
+// What happened, and why the server refused if it did, is written into the
+// banner itself as well as announced.
+const _dzDlg = () => window.dlpDialog || null;
 async function _dzSetWriteMode(enable) {
   const w = DZ.write || {};
+  const dlg = _dzDlg();
   let confirm = '';
+  DZ.writeNote = '';
   if (enable) {
-    if (!w.can_toggle) { alert(w.reason || 'Write mode can only be enabled from the start script on this server.'); return; }
-    confirm = prompt(`Enable write mode on this server?\n\nIt applies to every browser and tab using this server, and stays on until the server restarts (there is a Back to read-only button). Deploy Studio will then CREATE the objects you approve in the tenant. Every rule still arrives DISABLED; existing objects are not overwritten (with confidence tweaks on, the confidence of dictionaries a pack tunes is modified, and each such change is listed as Will modify for your approval).\n\nType ${w.confirm_phrase || 'YES_I_UNDERSTAND'} to continue:`, '') || '';
-    if (!confirm) return;
-  } else if (!window.confirm('Switch back to read-only? Preflight and the journey check keep working; deploying will be refused until write mode is enabled again.')) return;
+    if (!w.can_toggle) {
+      DZ.writeNote = w.reason || 'Write mode can only be enabled from the start script on this server.';
+      if (dlg) await dlg.notice({ title: 'Write mode cannot be enabled from here', body: DZ.writeNote, tone: 'bad' });
+      _dzRender(); return;
+    }
+    const expected = w.confirm_phrase || 'YES_I_UNDERSTAND';
+    const body = `It applies to every browser and tab using this server, and stays on until the server restarts (there is a Back to read-only button).\n\nWith write mode on, this app can create and delete DLP policy in the tenant you are signed in to. Deploy policy packs creates the rules, engines, dictionaries and application groups you approve: every rule arrives DISABLED and existing objects are not overwritten (with confidence tweaks on, the confidence of dictionaries a pack tunes is modified, and each such change is listed as Will modify for your approval). The removal review and Undo delete the objects you pick, after their own confirmation.`;
+    if (dlg) {
+      confirm = await dlg.phrase({ title: 'Enable write mode on this server?', body, phrase: expected, okLabel: 'Enable write mode' });
+    } else {
+      try { confirm = window.prompt(`Enable write mode on this server?\n\n${body}\n\nType ${expected} to continue:`, ''); } catch (e) { confirm = null; }
+    }
+    if (!confirm) {
+      DZ.writeNote = 'Still read-only: no confirmation phrase was entered.' + (dlg ? '' : ' If no box appeared, this browser cannot show prompts; start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat instead.');
+      announce(DZ.writeNote); _dzRender(); return;
+    }
+  } else {
+    let ok = false;
+    const q = { title: 'Switch back to read-only?', body: 'Preflight and the journey check keep working; deploying will be refused until write mode is enabled again.', okLabel: 'Back to read-only' };
+    if (dlg) ok = await dlg.ask(q);
+    else { try { ok = window.confirm(`${q.title}\n\n${q.body}`); } catch (e) { ok = false; } }
+    if (!ok) return;
+  }
   try {
     const r = await fetch('/api/write-mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable, confirm }) });
     const data = await r.json().catch(() => ({}));
@@ -234,19 +261,24 @@ async function _dzSetWriteMode(enable) {
     if (DZ.removal && document.getElementById('rmConsent')) { _dzRemovalRender(); return; }
     // A plan made in read-only mode carries a read-only blocker; refresh it.
     if (DZ.report && DZ.step >= 2) { _dzRunPreflight(); return; }
-  } catch (e) { alert(`Could not change write mode: ${e.message}`); }
+  } catch (e) {
+    DZ.writeNote = `Could not change write mode: ${e.message}`;
+    announce(DZ.writeNote);
+    if (dlg) await dlg.notice({ title: 'Could not change write mode', body: String(e.message || e), fix: 'The server answered above. A wrong phrase or a server bound beyond localhost is refused; start it with START_Zscaler_Assessment_WRITES_ENABLED.bat to enable writes from the start script instead.', tone: 'bad' });
+  }
   _dzRender();
 }
 function _dzWriteBanner() {
   const w = DZ.write;
   if (!w) return '';
+  const note = DZ.writeNote ? `<div class="d dz-write-note" role="status">${_dzE(DZ.writeNote)}</div>` : '';
   if (w.enabled) {
-    return `<div class="dz-write on"><span class="dz-status ready">Write mode</span><div><div class="t">Deploying will create objects in the tenant you approve.</div>
-      <div class="d">Every rule arrives DISABLED; existing objects are not overwritten (confidence tweaks on existing dictionaries are listed as <em>Will modify</em> for approval). ${w.source === 'session' ? 'Enabled from this app: it applies to every browser using this server until the server restarts, or until you click Back to read-only.' : 'Set by the start script (ENABLE_WRITE_ACTIONS); on until the server restarts.'}</div></div>
+    return `<div class="dz-write on"><span class="dz-status ready">Write mode</span><div><div class="t">Deploying will create objects in the tenant you approve; the removal review and Undo can delete them.</div>
+      <div class="d">This app can now create and delete DLP policy in the tenant you are signed in to. Every rule arrives DISABLED; existing objects are not overwritten (confidence tweaks on existing dictionaries are listed as <em>Will modify</em> for approval). ${w.source === 'session' ? 'Enabled from this app: it applies to every browser using this server until the server restarts, or until you click Back to read-only.' : 'Set by the start script (ENABLE_WRITE_ACTIONS); on until the server restarts.'}</div>${note}</div>
       ${w.source === 'session' ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(false)">Back to read-only</button>` : ''}</div>`;
   }
   return `<div class="dz-write off"><span class="dz-status warnings">Read-only</span><div><div class="t">Preflight, the plan and the journey check work; deploying is refused.</div>
-    <div class="d">${w.can_toggle ? 'Enable write mode here when the customer has agreed to the plan. You will be asked to type a confirmation phrase.' : _dzE(w.reason || '')}</div></div>
+    <div class="d">${w.can_toggle ? 'Write mode lets this app create and delete DLP policy in the tenant you are signed in to. Enable it here when the customer has agreed to the plan; you will be asked to type a confirmation phrase in a box on this page.' : _dzE(w.reason || '')}</div>${note}</div>
     ${w.can_toggle ? `<button type="button" class="dz-btn primary" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}</div>`;
 }
 
