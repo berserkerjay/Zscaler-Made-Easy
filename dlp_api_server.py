@@ -2019,17 +2019,18 @@ async def dlp_pack_terraform_summary(pack_id: str):
         raise HTTPException(status_code=404, detail=f"Unknown pack '{pack_id}'.")
     import pack_terraform
     purpose = {
-        "versions.tf": "Terraform and provider version pins (zscaler/zia ~> 4.8).",
-        "provider.tf": "Provider block; credentials come from variables or ZSCALER_* environment variables.",
-        "variables.tf": "Inputs: credentials, rule starting order, admin rank, activation, tenant-specific IDs.",
+        "terraform.tf": "Terraform and provider version pins (zscaler/zia ~> 4.8), optional remote backend.",
+        "providers.tf": "Provider block; credentials come from variables or ZSCALER_* environment variables.",
+        "variables.tf": "Inputs: credentials, rule starting order, admin rank, activation, tenant ids per channel; typed, described, validated.",
+        "locals.tf": "The managed dictionaries, engines and rules as lists (the outputs read them).",
         "terraform.tfvars.example": "Copy to terraform.tfvars and fill in (git-ignored).",
         "dictionaries.tf": "DLP dictionaries (custom ones as resources, predefined ones as data lookups).",
         "engines.tf": "DLP engines with their expressions referencing the dictionaries above.",
         "rules.tf": "Every rule of the pack: Web/Endpoint/SaaS/Email DLP and the containment rules.",
         "imports.tf": "Gap mode only: import blocks adopting objects that already exist in the tenant.",
         "activation.tf": "Activates the pending ZIA configuration after apply.",
-        "outputs.tf": "IDs and names of everything created.",
-        "README.md": "How to run it, ordering notes, gap summary.",
+        "outputs.tf": "IDs and names of everything created, each output described.",
+        "README.md": "Requirements, inputs, outputs, state and lock file, how to verify and review, gap summary.",
         ".gitignore": "Keeps state, tfvars and .terraform/ out of git.",
         ".terraform.lock.hcl": "Provider checksum lock (committed).",
     }
@@ -3316,6 +3317,27 @@ async def vendor_migrate_compile(req: VendorMigrateCompileRequest):
         return vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/vendor-migrate/workspace")
+async def vendor_migrate_workspace(req: VendorMigrateCompileRequest):
+    """The compiled migration as a Terraform workspace (.zip): the same file
+    layout as the pack hand-off (terraform.tf, providers.tf, variables.tf,
+    dictionaries.tf, engines.tf, rules.tf, locals.tf, outputs.tf, README.md,
+    .gitignore, terraform.tfvars.example), fmt-clean HCL, with the
+    migration report beside it. 409 with the report while anything is
+    blocked. Nothing is written to the tenant or to disk."""
+    import vendor_migrate
+    try:
+        out = vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not out.get("terraform"):
+        raise HTTPException(status_code=409, detail={"cause": "Blocked: answer the questions in the migration report, then compile again.",
+                                                     "report": out.get("report")})
+    data = vendor_migrate.workspace_zip(out)
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="dlp-check-{out["vendor"]}-migration-terraform.zip"'})
 
 
 @app.get("/report/vendor")
