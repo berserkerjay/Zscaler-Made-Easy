@@ -609,6 +609,23 @@ see [If something goes wrong](#if-something-goes-wrong).
 Nothing is connected to Zscaler yet. The app only reaches a tenant once
 you type in credentials and click **Authenticate**.
 
+**Port 8000 already in use** (for example the local install is running
+on the same computer): run the container on another port. Put this line
+in a file named `.env` in the app folder (create it with Notepad; on
+Windows choose "All files" as the type when saving, so Notepad does not
+add `.txt` to the name):
+
+```
+DLP_CHECK_HOST_PORT=8001
+```
+
+then `docker compose up -d --build` again and open
+`http://localhost:8001/?token=…`; `docker logs dlp-check` prints that
+address. Both copies can run side by side: the local install on 8000, the
+container on 8001. Each has its own UI token and its own saved data.
+Running by hand instead of with Compose: use `-p 127.0.0.1:8001:8000`
+and `-e DLP_CHECK_HOST_PORT=8001`.
+
 ### Build and run it by hand (without Docker Compose)
 
 Use this when the server has Docker but not the Compose plugin, or when

@@ -13,7 +13,10 @@ services:
     image: dlp-check:local
     container_name: dlp-check
     ports:
-      - "127.0.0.1:8000:8000"
+      # Host port: 8000 unless DLP_CHECK_HOST_PORT is set in .env (for example
+      # 8001 when the local install already uses 8000). The app inside the
+      # container always listens on 8000.
+      - "127.0.0.1:${DLP_CHECK_HOST_PORT:-8000}:8000"
     env_file:
       - path: .env
         required: false
@@ -21,12 +24,13 @@ services:
       ZSCALER_BIND_HOST: 0.0.0.0        # inside the container only; the publish above is loopback
       # The server refuses to start bound beyond loopback unless SSO is fully
       # configured or this is set — here it's safe because the bind above is
-      # container-internal only; ports: "127.0.0.1:8000:8000" is what actually
+      # container-internal only; the "127.0.0.1:" in ports: is what actually
       # controls host exposure. If you change that mapping to publish beyond
       # the host's loopback, configure SSO (see SECURITY.md) instead of just
       # relying on this override.
       ZSCALER_ALLOW_NONLOCAL_BIND: "YES_I_UNDERSTAND"
       ZSCALER_PORT: "8000"
+      DLP_CHECK_HOST_PORT: "${DLP_CHECK_HOST_PORT:-8000}"   # so the printed address uses the host port
       DLP_CHECK_USER_PACKS: /data/user_packs   # packs added from Advanced settings persist on the volume
     volumes:
       - dlpcheck-data:/data
