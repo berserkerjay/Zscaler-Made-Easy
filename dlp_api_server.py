@@ -1870,6 +1870,9 @@ async def vertical_scope(profile_id: str = "", industry: str = ""):
     scope = vertical.scope_for(profile, all_frameworks=list(FRAMEWORK_DESCRIPTIONS), all_packs=[p["id"] for p in packs])
     names = {p["id"]: p.get("name") or p["id"] for p in packs}
     scope["pack_names"] = [names.get(pid, pid) for pid in scope["packs"]]
+    # The industry's own packs, whatever the profile ticked: what the form
+    # falls back to when every pack is unticked again.
+    scope["industry_packs"] = [pid for pid in (vertical.INDUSTRY_PACKS.get(scope["industry"]) or []) if pid in names]
     scope["industries"] = vertical.INDUSTRIES
     return scope
 
