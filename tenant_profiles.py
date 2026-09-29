@@ -31,7 +31,7 @@ HISTORY_LIMIT = 50
 
 PROFILE_FIELDS = ("name", "org_name", "assessor", "cloud", "vanity_domain", "client_id", "customer_id",
                   "auth_method", "username",
-                  "industry", "baseline_packs", "scopes", "frameworks", "notes")
+                  "industry", "baseline_packs", "scopes", "frameworks", "channels", "notes")
 # The remembered secrets: the OneAPI client secret, and the password and
 # API key of the classic ZIA sign-in. Each is kept in the credential store
 # (or the owner-only file) under its own key; the profile holds a marker.

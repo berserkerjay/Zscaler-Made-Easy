@@ -624,7 +624,9 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         ("Cloud", cfg.get("cloud", "Unknown")),
         ("Date", datetime.now().strftime("%B %d, %Y")),
         ("Total Checks", str(len(results))),
-        ("Assessed", (f"{cov['assessed']} of {cov['total']}" + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")) if cov else str(len(results))),
+        ("Assessed", (f"{cov['assessed']} of {cov['total']}"
+                      + (f" ({cov['not_permitted']} not permitted)" if cov["not_permitted"] else "")
+                      + (f" ({cov.get('not_in_scope', 0)} not in scope)" if cov.get("not_in_scope") else "")) if cov else str(len(results))),
         ("Overall Score", overall_text + (f" — {cov['configured']} configured of {cov['scored']} scoreable" if cov and cov["scored"] else "")),
         ("Maturity Level", mat),
     ]
@@ -657,6 +659,9 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         if cov["not_permitted"]:
             summary.add_run(f"The assessment is partial: {cov['assessed']} of {cov['total']} checks ran; "
                             f"{cov['not_permitted']} could not because the API client's role does not include their feature. ")
+        if cov.get("not_in_scope"):
+            summary.add_run(f"{cov['not_in_scope']} checks are not in scope: their channel is covered by an alternative "
+                            f"solution, as declared on the Scope page, so the tenant was not read for them. ")
 
     summary2 = doc.add_paragraph()
     summary2.add_run("Configured correctly: ").bold = True
@@ -667,6 +672,29 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
     summary2.add_run(f"{counts['REVIEW']} checks. ")
     summary2.add_run("Not configured/N/A: ").bold = True
     summary2.add_run(f"{counts['INFO']} checks" + (f" (of which {cov['not_permitted']} not permitted, {cov['errors']} could not be checked)." if cov else "."))
+
+    # ── Channel coverage (the Scope page's declaration) ───────────
+    chcov = cfg.get("channel_coverage") if isinstance(cfg, dict) else None
+    if isinstance(chcov, dict) and chcov.get("declared"):
+        doc.add_heading("Channel Coverage", level=2)
+        doc.add_paragraph(str(chcov.get("note") or ""))
+        doc.add_paragraph("A channel covered by an alternative solution is not assessed here: its checks are reported "
+                          "as Not in scope and left out of the score. A gap is a channel nothing covers; its checks ran "
+                          "and their findings are the evidence.")
+        ch_table = doc.add_table(rows=1, cols=4)
+        ch_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
+        for i, h in enumerate(["Channel", "Coverage", "Checks not in scope", "Note"]):
+            cell = ch_table.rows[0].cells[i]
+            cell.text = h
+            cell.paragraphs[0].runs[0].bold = True
+        for label, key in (("Zscaler", "zscaler"), ("Alternative solution", "alternative"), ("Gap", "gaps")):
+            for row in chcov.get(key) or []:
+                cells = ch_table.add_row().cells
+                cells[0].text = str(row.get("name") or row.get("id") or "")
+                cells[1].text = label
+                cells[2].text = str(row.get("checks_not_in_scope") or 0) if key == "alternative" else "—"
+                cells[3].text = str(row.get("note") or "")
+        doc.add_paragraph()
 
     # ── Maturity Model Explanation ────────────────────────────────
     doc.add_heading("Maturity Model & Scoring Methodology", level=2)

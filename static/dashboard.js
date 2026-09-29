@@ -232,7 +232,7 @@
             <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
           </div>
         </div>
-        <p class="db-scope-p">Which Zscaler data security channels your organization owns. For channels you don't own, indicate if you use an alternative solution.</p>
+        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it. <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap; the assessment still reads the tenant and the findings show what is missing. The declaration is saved with the tenant profile and printed in the report.</p>
         <div id="dbChList" class="db-ch-list"></div>
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
@@ -317,6 +317,28 @@
       });
     });
   }
+  // What the assessment and the tenant profile read: every channel with its
+  // choice (zscaler / alternative / gap), note and name (channel_scope.py
+  // applies it: an "alternative" channel's checks are reported as not in
+  // scope). A profile's saved declaration replaces this browser's copy.
+  window.__dbChannelScope = function () {
+    const out = {};
+    allChannels().forEach(c => { const st = channelState[c.id] || {}; out[c.id] = { choice: st.choice === 'zscaler' || st.choice === 'alternative' ? st.choice : 'gap', note: st.note || '', name: c.name }; });
+    return out;
+  };
+  window.__dbChannelsSet = function (declared) {
+    if (!declared || typeof declared !== 'object') return;
+    const next = {};
+    Object.entries(declared).forEach(([id, v]) => {
+      if (!v || typeof v !== 'object') return;
+      if (v.choice === 'zscaler' || v.choice === 'alternative') next[id] = { choice: v.choice, note: String(v.note || '') };
+      if (!allChannels().some(c => c.id === id) && String(id).startsWith('custom_') && v.name) {
+        channelsExtra.push({ id, name: String(v.name), risk: 'medium', category: 'Custom', icon: '🧩', what: 'Added by you; tracked the same way as the built-in channels.' });
+      }
+    });
+    channelState = next; saveChannelState(channelState); saveExtra();
+    if (scopeView) renderChannelsList();
+  };
   const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results', 'dbLastRun'];
   function showScopeView() {
     if (!scopeView) { scopeView = buildScopeView(); renderChannelsList(); }
@@ -597,6 +619,14 @@
     if (reviews.length) items.push(['warn', '🔎', `<strong>${reviews.length} item${reviews.length === 1 ? '' : 's'} to review</strong> with the customer: they are configured, but not the way Zscaler recommends.`]);
     if (strongest && strongest[1].pct >= 75) items.push(['ok', '✅', `<strong>Strongest area: ${E(strongest[0])}</strong> at ${strongest[1].pct}%; ${strongest[1].pass || 0} checks configured.`]);
     if (data.permissions && data.permissions.blocked) items.push(['warn', '🔏', `<strong>${data.permissions.blocked} check${data.permissions.blocked === 1 ? '' : 's'} could not run</strong>: the API client's role lacks their feature. The card below says what to grant.`]);
+    // The Scope page's channel declaration, as the server applied it.
+    const cc = data.channel_coverage;
+    if (cc && cc.declared) {
+      const alt = cc.alternative || [], gaps = cc.gaps || [];
+      const altTxt = alt.length ? `${alt.length} covered elsewhere (${alt.map(a => E(a.name) + (a.note ? ` — ${E(a.note)}` : '')).join(', ')}; ${cc.not_in_scope || 0} check${cc.not_in_scope === 1 ? '' : 's'} not in scope)` : '';
+      const gapTxt = gaps.length ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} (${gaps.map(g => E(g.name)).join(', ')})` : 'no gaps';
+      items.push([gaps.length ? 'warn' : 'ok', '🎯', `<strong>Channels: ${(cc.zscaler || []).length} on Zscaler</strong>${altTxt ? `, ${altTxt}` : ''}, ${gapTxt}. Declared on the Scope page.`]);
+    }
     if (!items.length) items.push(['ok', '✅', `<strong>${passes.length} of ${checks.length} checks configured.</strong> Nothing needs action.`]);
     host.innerHTML = items.slice(0, 5).map(([cls, ico, html]) => `<li class="${cls}"><span class="db-ico" aria-hidden="true">${ico}</span><span>${html}</span></li>`).join('');
   }
@@ -665,8 +695,9 @@
     ring('dbCompArc', 100);
     const cp = $('dbCompPct'), ct = $('dbCompTxt');
     if (cp) cp.textContent = sum.state === 'partial' ? 'Partial' : 'Done';
-    if (ct) ct.textContent = sum.not_permitted
-      ? `${sum.assessed} of ${sum.total} assessed · ${sum.not_permitted} not permitted${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`
+    const extra = [sum.not_permitted ? `${sum.not_permitted} not permitted` : '', sum.not_in_scope ? `${sum.not_in_scope} not in scope` : '', sum.errors ? `${sum.errors} could not be checked` : ''].filter(Boolean);
+    if (ct) ct.textContent = (sum.not_permitted || sum.not_in_scope)
+      ? `${sum.assessed} of ${sum.total} assessed · ${extra.join(' · ')}`
       : `${sum.total} checks assessed${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`;
     radar(data.sections); pillars(data.sections); insights(data); actions(data); footer(data); decorateChecks();
     const s = $('dbCurScore'); if (s) s.textContent = measured ? `${score}% · ${data.maturity || level(score)[0]}` : 'Not assessed';

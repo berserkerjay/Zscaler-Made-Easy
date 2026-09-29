@@ -134,14 +134,19 @@ def assessment_permission_summary(results: Iterable[Dict[str, Any]], scopes: Opt
 # allowed to run is "not permitted" — coverage the tenant owner can
 # restore by granting a permission — while a feature that is simply not
 # licensed or not in use is "informational". Both are outside the score.
-CLASSES = ("configured", "action_required", "needs_review", "not_permitted", "error", "informational")
+CLASSES = ("configured", "action_required", "needs_review", "not_permitted", "not_in_scope", "error", "informational")
 CLASS_LABELS = {"configured": "Configured", "action_required": "Action required", "needs_review": "Needs review",
-                "not_permitted": "Not permitted", "error": "Could not be checked", "informational": "Not configured"}
+                "not_permitted": "Not permitted", "not_in_scope": "Not in scope", "error": "Could not be checked",
+                "informational": "Not configured"}
 SCORE_FORMULA = "configured ÷ (configured + action required + needs review)"
 
 
 def classify(result: Dict[str, Any]) -> str:
     """The class of one check result (CLASSES)."""
+    # A check whose channel the customer declared covered elsewhere (the
+    # Scope page, channel_scope) was never run: not in scope, outside the score.
+    if result.get("out_of_scope"):
+        return "not_in_scope"
     st = str(result.get("status") or "").upper()
     if st == "PASS":
         return "configured"
@@ -167,15 +172,19 @@ def assessment_summary(results: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     rows = list(results)
     counts = {c: 0 for c in CLASSES}
     not_permitted_ids: List[Any] = []
+    not_in_scope_ids: List[Any] = []
     for r in rows:
         c = classify(r)
         counts[c] += 1
         if c == "not_permitted":
             not_permitted_ids.append(r.get("id"))
+        elif c == "not_in_scope":
+            not_in_scope_ids.append(r.get("id"))
     total = len(rows)
     scored = counts["configured"] + counts["action_required"] + counts["needs_review"]
     score = round(counts["configured"] / scored * 100) if scored else None
-    excluded = counts["not_permitted"] + counts["error"] + counts["informational"]
+    excluded = counts["not_permitted"] + counts["not_in_scope"] + counts["error"] + counts["informational"]
+    # Not-in-scope checks were left out on purpose: the run is still complete.
     if total == 0:
         state = "unassessed"
     elif counts["not_permitted"] or counts["error"]:
@@ -184,9 +193,11 @@ def assessment_summary(results: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         state = "complete"
     return {
         "total": total,
-        "assessed": total - counts["not_permitted"],
+        "assessed": total - counts["not_permitted"] - counts["not_in_scope"],
         "not_permitted": counts["not_permitted"],
         "not_permitted_ids": not_permitted_ids,
+        "not_in_scope": counts["not_in_scope"],
+        "not_in_scope_ids": not_in_scope_ids,
         "errors": counts["error"],
         "informational": counts["informational"],
         "configured": counts["configured"],
