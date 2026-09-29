@@ -263,7 +263,8 @@ GUI_ADDONS = [
     ("guide.css", "style"),
     ("reports.css", "style"),
     ("dashboard.css", "style"),
-    ("ui_auth.js", "script"),       # first: the in-app unlock and notice dialogs the fetch wrapper and the guide use
+    ("icons.js", "script"),         # first: the symbol set every page and add-on draws its icons from
+    ("ui_auth.js", "script"),       # the in-app unlock and notice dialogs the fetch wrapper and the guide use
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
     ("guide.js", "script"),

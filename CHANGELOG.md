@@ -7,6 +7,11 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-29
 
+### Human Interface Guidelines, stage 3: one symbol set instead of emoji
+- **Before.** About 150 emoji stood in for icons: the sidebar, every toolbar button, the dashboard tiles, insights and actions, the findings rows (drawn as CSS generated text that screen readers read aloud), dialog titles, step chips, the framework checkboxes, report-page buttons. They rendered differently on every platform and font, and a few were bare text inside a button's accessible name.
+- **Now** `static/icons.js` is a bundled symbol set: 70 symbols drawn as inline SVG on a 24-point grid in `currentColor`, so each takes the colour and size of the text it sits in and looks the same on Windows, macOS and Linux, offline. The emoji stay in the markup as the readable fallback; at load, and whenever new content renders, each one is swapped for its symbol inside an `aria-hidden` span, and the findings rows get a real icon element instead of generated text. The sidebar, tiles, findings, dialogs, Deploy Studio and report pages all draw from the same set. SF Symbols themselves are licensed for Apple platforms only, so this is an SF-style set of the app's own.
+- **Verified.** `tests/test_icons.py` (every emoji has a symbol, every symbol has a path, the script is first on the page and on every report page); the full suite; in a browser: no emoji left visible on the landing, Connect, results, findings, Studio or Digest pages.
+
 ### Human Interface Guidelines, stage 1: one token layer, flat surfaces, the system type scale
 - **What you asked for.** "The UI should be aligned with Apple's Human Interface Guidelines", with the stack unchanged. This is the first of five stages; it replaces the look without touching a flow.
 - **Before.** A dark navy glass theme: a radial page gradient, translucent blurred cards, cyan and purple glows on the rings, bands and buttons, gradient text in the title, gradient action buttons, hover lifts and shimmer animations; sizes, spacing and radii chosen per element (54 distinct font sizes, a quarter of the spacing on an 8px grid); every add-on stylesheet carrying its own colour literals.
