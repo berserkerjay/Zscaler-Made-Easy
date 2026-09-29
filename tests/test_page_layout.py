@@ -1,6 +1,6 @@
 """Page layout requests: no Quick start page (it overlapped the sidebar
 workflow and was removed), tenant details folded into the Connect step,
-the Evaluate All Rules flow and simulator in the migration wizard."""
+the Evaluate All Rules decision flow in the migration wizard (its transaction simulator was removed)."""
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -71,7 +71,7 @@ def test_authenticate_ends_with_an_inline_success_or_an_in_app_failure_dialog():
     assert "optional <code>keyring</code> package is installed, otherwise" in guide
     c = _page()
     html = c.get("/").text
-    assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules(migrateRules)" in html
+    assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules" not in html, "the wizard no longer hands rules to a simulator"
     js = c.get("/static/eval_all.js").text
     assert "Tie on the action" in js and "lowest order number" in js and "about-first-match-wins-and-evaluate-all-rules-for-dlp" in js
 
@@ -83,10 +83,11 @@ def test_evaluate_all_rules_has_its_own_tab_with_the_tie_breaker():
     assert 'id="evalAllFlow"' in page.text and "/static/eval_all.js" in page.text and 'role="img"' in page.text
     assert "SaaS Security API DLP" in page.text and "first match" in page.text
     js = c.get("/static/eval_all.js").text
-    assert "EA_EVAL_ALL = { web: true, endpoint: true, email: true, saas: false }" in js and "No tie-breaker on this channel" in js
-    # The reference tab is the decision only: the simulator stays in the migration wizard.
-    assert "const EA_SIMULATOR = location.pathname !== '/report/evalall'" in js and "if (EA_SIMULATOR) _eaRun()" in js
-    assert "simulator" not in page.text.lower().replace("the simulator that runs", "")
+    assert "No tie-breaker on this channel" in js and "SaaS Security API DLP rules are the exception" in js
+    # The Simulate a transaction section is gone from both places the flow renders: no rule table, no presets, no result box.
+    for gone in ("Simulate a transaction", "eaMatch", "eaResult", "_eaRun", "EA_SIMULATOR", "EA_PRESETS", "evalAllLoadRules", "evalAllSimulate", "ea-table"):
+        assert gone not in js, gone
+    assert "simulat" not in page.text.lower() and "simulat" not in c.get("/static/explain.js").text.lower()
     assert TestClient(srv.app).get("/report/evalall").status_code == 200
     html = c.get("/").text
     assert "openEvalAllTab()" in html and "How Evaluate All Rules decides" in html
