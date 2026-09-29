@@ -60,3 +60,8 @@ checks_config.json.tmp
 
 # Local launcher state (start.sh --background)
 server.pid
+
+# Organisation root certificates for the container build (certs/README.md)
+certs/*.crt
+certs/*.pem
+certs/*.cer
