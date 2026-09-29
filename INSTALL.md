@@ -532,8 +532,8 @@ last lines it prints are:
 ```
   UI token: …
   (also in /data/ui_token.txt; the launcher opens the browser with it, anyone else gets 401)
-  Open http://localhost:8000/?token=… in your browser
-  (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:8000 of this machine only)
+  Open http://localhost:8001/?token=… in your browser
+  (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:8001 of this machine only)
 ```
 
 (Under `docker compose up` each line starts with `dlp-check  | `.) Open
@@ -557,13 +557,13 @@ docker compose logs dlp-check      # the UI token and the address
 ```
 
 The container starts again by itself after a reboot until you run
-`docker compose down`. It listens on the server's own `127.0.0.1:8000`
+`docker compose down`. It listens on the server's own `127.0.0.1:8001`
 only, on purpose. To use it from your PC as one person, open a tunnel
-from your PC and then browse to `http://localhost:8000/?token=…` on your
+from your PC and then browse to `http://localhost:8001/?token=…` on your
 PC:
 
 ```bash
-ssh -L 8000:127.0.0.1:8000 you@server
+ssh -L 8001:127.0.0.1:8001 you@server
 ```
 
 For a team, keep the `127.0.0.1:` at the start of the `ports:` line in
@@ -609,22 +609,11 @@ see [If something goes wrong](#if-something-goes-wrong).
 Nothing is connected to Zscaler yet. The app only reaches a tenant once
 you type in credentials and click **Authenticate**.
 
-**Port 8000 already in use** (for example the local install is running
-on the same computer): run the container on another port. Put this line
-in a file named `.env` in the app folder (create it with Notepad; on
-Windows choose "All files" as the type when saving, so Notepad does not
-add `.txt` to the name):
-
-```
-DLP_CHECK_HOST_PORT=8001
-```
-
-then `docker compose up -d --build` again and open
-`http://localhost:8001/?token=…`; `docker logs dlp-check` prints that
-address. Both copies can run side by side: the local install on 8000, the
-container on 8001. Each has its own UI token and its own saved data.
-Running by hand instead of with Compose: use `-p 127.0.0.1:8001:8000`
-and `-e DLP_CHECK_HOST_PORT=8001`.
+**Ports:** the container is on `http://localhost:8001`, so it runs side
+by side with a local install, which uses 8000. Each has its own UI token
+and its own saved data. For another port, put `DLP_CHECK_HOST_PORT=8002`
+(or any free port) in a file named `.env` in the app folder and run
+`docker compose up -d` again; `docker logs dlp-check` prints the address.
 
 ### Build and run it by hand (without Docker Compose)
 
@@ -650,9 +639,10 @@ docker volume create dlpcheck-data
 
 ```bash
 docker run -d --name dlp-check \
-  -p 127.0.0.1:8000:8000 \
+  -p 127.0.0.1:8001:8000 \
   -v dlpcheck-data:/data \
   -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND \
+  -e DLP_CHECK_HOST_PORT=8001 \
   -e DLP_CHECK_USER_PACKS=/data/user_packs \
   --read-only --tmpfs /tmp:size=256m \
   --cap-drop ALL --security-opt no-new-privileges:true \
@@ -664,14 +654,14 @@ docker run -d --name dlp-check \
 Windows (PowerShell or Command Prompt), the same command on one line:
 
 ```
-docker run -d --name dlp-check -p 127.0.0.1:8000:8000 -v dlpcheck-data:/data -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
+docker run -d --name dlp-check -p 127.0.0.1:8001:8000 -v dlpcheck-data:/data -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
 ```
 
 What each part does:
 
 | Part | Why |
 |---|---|
-| `-p 127.0.0.1:8000:8000` | Publishes the app on this machine only. Keep the `127.0.0.1:`; see the warning above about `0.0.0.0`. |
+| `-p 127.0.0.1:8001:8000` | Publishes the app on port 8001 of this machine only (the local install uses 8000). Keep the `127.0.0.1:`; see the warning above about `0.0.0.0`. |
 | `-v dlpcheck-data:/data` | Mounts the storage volume, so profiles, deployment records, the audit log, uploaded packs and the token survive rebuilds. |
 | `-e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND` | Lets the server listen inside the container. Without it the app refuses to start. |
 | `--read-only --tmpfs /tmp` | The app folder stays read-only; only `/data` and a small `/tmp` are writable. |
