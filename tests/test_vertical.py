@@ -35,3 +35,29 @@ def test_vertical_scope_endpoint_and_profile(tmp_path, monkeypatch):
     assert "_gdApplyScope" in c.get("/static/guide.js").text and "gdScopeNote" in c.get("/static/guide.js").text
     js = c.get("/static/deploy_studio.js").text
     assert "GD.scope" in js and "showAllPacks" in js
+
+
+def test_the_industry_pre_selects_its_packs_on_the_form_and_in_the_studio(tmp_path, monkeypatch):
+    """"If I select the industry in the tenant config it should auto select
+    the packs (which I can add more if needed)": choosing an industry ticks
+    its packs on the profile form and refreshes the scope at once; Deploy
+    policy packs opens with the scope's packs selected and re-selects only
+    when the scope changes, so the operator's own additions and removals
+    stand."""
+    monkeypatch.setenv("DLP_CHECK_PROFILES", str(tmp_path / "profiles.json"))
+    c = TestClient(srv.app); c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    s = c.get("/api/vertical-scope?industry=Healthcare").json()
+    assert s["industry_packs"] == [p for p in v.INDUSTRY_PACKS["Healthcare"] if p in s["packs"] or True][:len(s["industry_packs"])] and set(s["industry_packs"]) <= set(v.INDUSTRY_PACKS["Healthcare"])
+    assert c.get("/api/vertical-scope").json()["industry_packs"] == []
+    guide = c.get("/static/guide.js").text
+    assert 'id="gdProfIndustry" onchange="_gdIndustryChanged(this.value)"' in guide and "async function _gdIndustryChanged(industry)" in guide
+    assert "cb.checked = sc.scoped && sc.packs.includes(cb.value)" in guide, "the industry's packs are ticked on the form"
+    assert 'class="gd-prof-pack" value="${_gdE(p.id)}"' in guide and 'onchange="_gdProfPacksChanged()"' in guide and "function _gdProfPacksChanged()" in guide
+    assert "GD.scope.packs = ticked.length ? ticked : industryPacks" in guide and "function _gdStudioFollowScope()" in guide
+    assert "pre-selects them in Deploy policy packs; add more packs as needed" in guide
+    assert "GD.packs = [...(pr.packs || [])].sort((a, b) => (a.baseline ? 0 : 1) - (b.baseline ? 0 : 1))" in guide, "every installed pack is tickable on the form, so the Fed and CJIS industries can tick theirs"
+    js = c.get("/static/deploy_studio.js").text
+    assert "function _dzAutoSelectFromScope()" in js and "if (DZ.autoKey === key) return false;" in js, "one turn per scope; the operator's changes stand"
+    assert js.index("_dzAutoSelectFromScope();") < js.index("function _dzAutoSelectFromScope()") or "_dzAutoSelectFromScope();\n" in js.split("async function openDlpPacksModal()")[1].split("\n}\n")[0], "the sheet pre-selects when it opens"
+    assert "function _dzAutoNoteHtml()" in js and "Pre-selected for ${_dzE(sc.industry)}" in js and "${_dzAutoNoteHtml()}" in js
+    assert "(pre-selected for ${_dzE(DZ.autoIndustry || '')})" in js
