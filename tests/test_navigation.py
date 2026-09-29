@@ -49,14 +49,14 @@ def test_the_last_result_survives_a_reload_of_its_tab():
 def test_labels_say_what_they_open_and_no_icon_is_used_twice():
     c = _page()
     html = c.get("/").text
-    assert "Rule Migration wizard" in html and "How Evaluate All Rules decides" in html
+    assert "Rule migration wizard" in html and "How Evaluate All Rules decides" in html
     assert "Zscaler SDK &amp; docs updates" in html and ">Zscaler Updates<" not in html
     assert "New assessment (clears results)" in html and "Run Another Assessment" not in html
     dash = c.get("/static/dashboard.js").text
     assert "'Start a new assessment', 'clears these results, then run again'" in dash
     assert "setCurrent('review');" in dash.split("function renderDashboard(data)")[1].split("window.__dbRunStarted")[0]
     guide = c.get("/static/guide.js").text
-    assert "Choose a scope in Tenant Configuration" not in guide and "Journey card (Deploy Policy Packs)" in guide
+    assert "Choose a scope in Tenant Configuration" not in guide and "Journey card (Deploy policy packs)" in guide
     toolbar = html.split('<div class="hero-toolbar"')[1].split("</div>\n  </div>")[0]
     icons = []
     for line in toolbar.splitlines():

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Regulatory &amp; Compliance Alignment — Zscaler Assessment</title>
+<title>Regulatory &amp; compliance alignment — Zscaler Assessment</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
@@ -138,7 +138,7 @@
     }
     if (q.get('error')) { fail('The compliance view could not be generated', q.get('error')); return; }
     const id = q.get('id');
-    if (!id) { fail('No assessment selected', 'Run an assessment and click "Open Regulatory & Compliance Alignment" on the results page.'); return; }
+    if (!id) { fail('No assessment selected', 'Run an assessment and click "Open Regulatory & compliance alignment" on the results page.'); return; }
     load(id).catch(e => fail('This view is no longer available', `${e.message}. Reports are kept in memory while the server runs; open it again from the assessment page.`));
   })();
   </script>

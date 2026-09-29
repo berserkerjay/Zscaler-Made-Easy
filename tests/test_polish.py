@@ -65,7 +65,7 @@ def test_contrast_tokens_landmarks_and_headings():
     assert ".field input::placeholder { color: var(--dim); opacity: 0.8; }" in html
     assert "body.theme-light #zccDiagModal > div" in html
     assert 'role="document"' not in html and '<div id="results" role="region" aria-label="Assessment results">' in html
-    assert '<span aria-hidden="true">🔧</span> Review &amp; Remediate' in html and '<span aria-hidden="true">📄</span> Export All (CSV)' in html
+    assert '<span aria-hidden="true">🔧</span> Review &amp; remediate' in html and '<span aria-hidden="true">📄</span> Export all (CSV)' in html
     js = c.get("/static/dashboard.js").text
     assert js.count('<h3 class="db-tile-t"') + js.count('<h3 class="db-tile-t db-tile-t-row"') == 5
     assert "heroCard.setAttribute('role', 'region')" in js

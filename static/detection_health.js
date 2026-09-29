@@ -1,4 +1,4 @@
-// ── FP/TP Detection Ratio renderer ───────────────────────────────────────
+// ── FP/TP detection ratio renderer ───────────────────────────────────────
 // What the tenant's DLP rules actually do, from Workflow Automation
 // incidents and the analysts' verdicts: per rule, engine, dictionary,
 // channel and application. Pure DOM; data from /api/detection-health.
@@ -124,7 +124,7 @@ async function _dhApplyFlow(tenant, p, direction, box, host) {
   const verb = direction === 'apply' ? 'Apply' : 'Roll back';
   box.innerHTML = `<div class="dh-preview"><strong>${verb}: what would change</strong>${_dhStepsHtml(pv)}
     <div class="df-hint">${_dhE(pv.note || '')}</div>
-    <div class="dh-pactions">${pv.ok && pv.changes ? `<label class="df-ctl"><input type="checkbox" class="dh-ok"> <span class="lbl">I have reviewed the change and want it applied to the tenant</span></label><button type="button" class="rp-btn primary" data-go="${direction}" disabled>${verb} now</button>` : `<span class="df-by">${pv.ok ? 'Nothing to change.' : 'Refused: fix the reason above, refresh FP/TP Detection Ratio and decide again.'}</span>`}<button type="button" class="rp-btn" data-cancel="1">Close</button></div></div>`;
+    <div class="dh-pactions">${pv.ok && pv.changes ? `<label class="df-ctl"><input type="checkbox" class="dh-ok"> <span class="lbl">I have reviewed the change and want it applied to the tenant</span></label><button type="button" class="rp-btn primary" data-go="${direction}" disabled>${verb} now</button>` : `<span class="df-by">${pv.ok ? 'Nothing to change.' : 'Refused: fix the reason above, refresh FP/TP detection ratio and decide again.'}</span>`}<button type="button" class="rp-btn" data-cancel="1">Close</button></div></div>`;
   const cb = box.querySelector('.dh-ok'), go = box.querySelector('[data-go]');
   if (cb && go) cb.addEventListener('change', () => { go.disabled = !cb.checked; });
   box.querySelector('[data-cancel]').addEventListener('click', () => { box.innerHTML = ''; });

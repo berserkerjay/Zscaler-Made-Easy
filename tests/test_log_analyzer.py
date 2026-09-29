@@ -226,5 +226,5 @@ def test_endpoint_and_pages(monkeypatch):
     anon = _client(with_token=False)
     assert anon.post("/api/logs/analyze", json={"files": [{"name": "a.log", "content": "x"}]}).status_code == 401
     page = anon.get("/report/logs")
-    assert page.status_code == 200 and "Log Analyzer" in page.text and 'for="laFiles"' in page.text and "/api/logs/analyze" in page.text
+    assert page.status_code == 200 and "Log analyzer" in page.text and 'for="laFiles"' in page.text and "/api/logs/analyze" in page.text
     assert anon.get("/help").status_code == 200 and "What does everything do" in anon.get("/help").text

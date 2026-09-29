@@ -1,4 +1,4 @@
-// ── Data Flow Map renderer ──────────────────────────────────────────
+// ── Data flow map renderer ──────────────────────────────────────────
 // Draws one traced path as a row of hops: the data security controls in
 // the order ZIA processes a web request (device → Client Connector →
 // forwarding → PAC → Cloud App Control → URL Filtering → SSL → File Type

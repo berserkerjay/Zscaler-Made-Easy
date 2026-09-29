@@ -2,9 +2,9 @@
 // Turns the assessment page into the dashboard look: a left sidebar
 // (workflow steps, then every tool the toolbar had, grouped the same
 // way; the current tenant; the theme toggle), a compact header, and the
-// results drawn as an Overall Maturity Score ring with the maturity band,
-// a Completion ring, a Score Distribution radar, one pillar card per
-// section, Key Insights and action tiles, with the findings as list rows
+// results drawn as an Overall maturity score ring with the maturity band,
+// a Completion ring, a Score distribution radar, one pillar card per
+// section, Key insights and action tiles, with the findings as list rows
 // carrying a risk chip and a sticky progress footer.
 //
 // Nothing here is a new source of truth: the sidebar MOVES the toolbar's
@@ -79,7 +79,7 @@
   // on the first blank field and the run is queued; not yet authenticated
   // → Authenticate runs, then the assessment; already signed in → run.
   const say = t => { if (typeof announce === 'function') announce(t); };
-  const FIELD_LABELS = { org: 'Organization Name', assessor: 'Assessor Name', vd: 'Vanity Domain', cid: 'Client ID', csec: 'Client Secret', zuser: 'Admin Username', zpass: 'Admin Password', zkey: 'API Key' };
+  const FIELD_LABELS = { org: 'Organization name', assessor: 'Assessor name', vd: 'Vanity domain', cid: 'Client ID', csec: 'Client secret', zuser: 'Admin username', zpass: 'Admin password', zkey: 'API key' };
   function missingFields() {
     const v = id => (($(id) || {}).value || '').trim();
     const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
@@ -147,7 +147,7 @@
   // this sidebar or the legacy step strip above it, or whenever the app
   // itself sends the operator there (a missing field, a failed sign-in,
   // a reset). Scope has its own combined page (Channels, Assessment
-  // Scope, Compliance Frameworks) — see below.
+  // Scope, Compliance frameworks) — see below.
   const CONFIG_VIEW_KEYS = new Set(['configure']);
   function showTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = false; const cc = $('configCard'); if (cc) cc.hidden = false; }
   function hideTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = true; const cc = $('configCard'); if (cc) cc.hidden = true; }
@@ -177,7 +177,7 @@
   // parts of the platform to check, and which compliance frameworks the
   // report should map to. Channel ownership is a one-time input (there
   // is no API for "what does the customer already own"), kept in this
-  // browser; Assessment Scope and Compliance Frameworks are the same
+  // browser; Assessment scope and Compliance frameworks are the same
   // live form fields the assessment itself reads — moved here, not
   // copied, so nothing gets out of sync. ──────────────────────────────
   const CHANNELS_KEY = 'zassess_channels_v1';
@@ -205,7 +205,7 @@
     { id: 'workflow_automation', name: 'Workflow Automation', risk: 'low', category: 'Operations', icon: '🔀',
       what: 'Automated incident response and remediation workflows for DLP events, reducing manual effort and response time.' },
   ];
-  const RISK_LABEL = { critical: 'Critical Risk', high: 'High Risk', medium: 'Medium Risk', low: 'Low Risk' };
+  const RISK_LABEL = { critical: 'Critical risk', high: 'High risk', medium: 'Medium risk', low: 'Low risk' };
   const RISK_CLS = { critical: 'fail', high: 'warn-strong', medium: 'warn', low: 'ok' };
   function loadChannelState() {
     try { const raw = localStorage.getItem(CHANNELS_KEY); const d = raw ? JSON.parse(raw) : {}; return (d && typeof d === 'object') ? d : {}; } catch (e) { return {}; }
@@ -258,7 +258,7 @@
       if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
       setCurrent('configure');
     });
-    // Assessment Scope and Compliance Frameworks are moved in, not
+    // Assessment scope and Compliance frameworks are moved in, not
     // copied: the same live checkboxes runAssessment() already reads.
     const sf = $('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf);
     const fw = $('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw);
@@ -371,7 +371,7 @@
         bandHost.innerHTML = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'].map((b, i) => `<span class="${i < idx ? 'done' : i === idx ? 'now' : ''}" ${i === idx ? 'aria-current="true"' : ''}>${b}</span>`).join('');
       } else if (bandHost) bandHost.innerHTML = '';
       const sn = $('scoreNum'); if (sn) sn.textContent = measured ? `${score}%` : '—';
-      const sl = $('scoreLabel'); if (sl) sl.textContent = last.maturity || (measured ? 'Maturity Level' : 'Not assessed');
+      const sl = $('scoreLabel'); if (sl) sl.textContent = last.maturity || (measured ? 'Maturity level' : 'Not assessed');
       const sm = $('scoreMeta'); if (sm) sm.textContent = `Previous result · run ${new Date(last.at).toLocaleString()}`;
       const cp = $('dbCompPct'), ct = $('dbCompTxt');
       if (cp) cp.textContent = '—';
@@ -423,7 +423,7 @@
     heroCard.innerHTML = `
       <div class="db-grid">
         <div class="db-tile glow">
-          <h3 class="db-tile-t">Overall Maturity Score</h3>
+          <h3 class="db-tile-t">Overall maturity score</h3>
           <div class="db-ring">
             <svg viewBox="0 0 120 120" role="img" aria-labelledby="dbRingLbl"><title id="dbRingLbl">Overall maturity score</title>
               <defs><linearGradient id="dbRingGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="0.6" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
@@ -453,7 +453,7 @@
       </div>
       <div class="db-pillars" id="dbPillars"></div>
       <div class="db-two">
-        <div class="db-tile"><h3 class="db-tile-t">Key Insights</h3><ul class="db-insights" id="dbInsights"></ul></div>
+        <div class="db-tile"><h3 class="db-tile-t">Key insights</h3><ul class="db-insights" id="dbInsights"></ul></div>
         <div class="db-tile"><h3 class="db-tile-t">Next actions</h3><div class="db-actions" id="dbActions"></div></div>
       </div>`;
     heroCard.querySelector('#dbRadarExpand').addEventListener('click', () => openRadarModal());
@@ -527,7 +527,7 @@
       dlg = document.createElement('div');
       dlg.id = 'dbRadarModal'; dlg.className = 'db-modal'; dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'dbRadarModalTitle');
       dlg.innerHTML = `<div class="db-modal-card">
-        <div class="db-modal-h"><h2 id="dbRadarModalTitle">Score Distribution</h2><button type="button" class="rp-btn" id="dbRadarClose" aria-label="Close">✕ Close</button></div>
+        <div class="db-modal-h"><h2 id="dbRadarModalTitle">Score distribution</h2><button type="button" class="rp-btn" id="dbRadarClose" aria-label="Close">✕ Close</button></div>
         <div id="dbRadarBig"></div>
         <table class="db-radar-legend"><caption class="sr-only">Score by section</caption><thead><tr><th scope="col">Section</th><th scope="col">Score</th></tr></thead><tbody id="dbRadarTbl"></tbody></table>
       </div>`;
@@ -540,7 +540,7 @@
     $('dbRadarTbl').innerHTML = Object.entries(lastSections).map(([k, d]) => { const m = d.pct !== null && d.pct !== undefined; return `<tr><td>${E(k)}</td><td style="color:${m ? pctColor(d.pct) : 'var(--dim)'}">${m ? d.pct + '%' : 'Not measured'}</td></tr>`; }).join('');
     dlg.classList.add('open');
     ($('dbRadarClose') || dlg).focus();
-    say('Score Distribution, expanded view.');
+    say('Score distribution, expanded view.');
   }
   function closeRadarModal() {
     const dlg = $('dbRadarModal'); if (!dlg) return;
@@ -554,7 +554,7 @@
   const icon = name => { const [, sym, emoji] = iconName(name); return (typeof window.dlpIcon === 'function' && window.dlpIcon(sym)) || emoji; };
   function pillars(sections) {
     const host = $('dbPillars'); if (!host) return;
-    // Automation Readiness (SDK/OneAPI, Terraform, Ansible, ZPA, ZCC, IaC
+    // Automation readiness (SDK/OneAPI, Terraform, Ansible, ZPA, ZCC, IaC
     // Hygiene) still runs and still counts toward the overall score; it
     // just doesn't get its own tiles cluttering this grid.
     host.innerHTML = Object.entries(sections || {}).filter(([name]) => !/^Automation — /.test(name)).map(([name, d]) => {
@@ -608,11 +608,11 @@
     // catalogue is not loaded yet the tile says only what it knows.
     const withRecipe = (typeof _findRecipeForCheck === 'function' && window._remediationCatalog) ? open.filter(c => _findRecipeForCheck(c.id)).length : null;
     const A = [
-      ['🔧', 'Review & Remediate', fails ? `${fails} to fix${withRecipe !== null ? ` · ${withRecipe} with a one-click recipe` : ''}` : 'nothing to fix', () => typeof openRemediationReview === 'function' && openRemediationReview()],
-      ['🗺️', 'Traffic Flow & Gaps', 'where inspection is lost', () => typeof openDataFlowTab === 'function' && openDataFlowTab()],
+      ['🔧', 'Review & remediate', fails ? `${fails} to fix${withRecipe !== null ? ` · ${withRecipe} with a one-click recipe` : ''}` : 'nothing to fix', () => typeof openRemediationReview === 'function' && openRemediationReview()],
+      ['🗺️', 'Traffic flow & gaps', 'where inspection is lost', () => typeof openDataFlowTab === 'function' && openDataFlowTab()],
       ['📄', 'Generate report', 'Word document for the customer', () => typeof downloadDocx === 'function' && downloadDocx()],
       ['📦', 'Deploy a policy pack', 'close the gaps, preflight first', () => typeof openDlpPacksModal === 'function' && openDlpPacksModal()],
-      ['🧭', 'Path Analyzer', 'what blocks one destination', () => typeof openPathAnalyzerTab === 'function' && openPathAnalyzerTab()],
+      ['🧭', 'Path analyzer', 'what blocks one destination', () => typeof openPathAnalyzerTab === 'function' && openPathAnalyzerTab()],
       ['🔁', 'Start a new assessment', 'clears these results, then run again', () => typeof resetForm === 'function' && resetForm()],
     ];
     host.innerHTML = A.map(([ico, t, s], i) => `<button type="button" class="db-action" data-i="${i}"><span class="db-ico" aria-hidden="true">${ico}</span><strong>${E(t)}</strong><span class="s">${E(s)}</span></button>`).join('');
@@ -629,7 +629,7 @@
     const checks = data.checks || [];
     const ok = checks.filter(c => c.status === 'PASS').length, gaps = checks.filter(c => c.status === 'FAIL').length, rev = checks.filter(c => c.status === 'REVIEW').length;
     f.innerHTML = `<span><strong>${ok} of ${checks.length}</strong> checks configured · <strong>${gaps}</strong> gap${gaps === 1 ? '' : 's'} remaining${rev ? ` · ${rev} to review` : ''}</span>
-      <button type="button" class="db-foot-btn" id="dbFootBtn">${gaps ? 'Continue to Review & Remediate →' : 'Generate the report →'}</button>`;
+      <button type="button" class="db-foot-btn" id="dbFootBtn">${gaps ? 'Continue to review & remediate →' : 'Generate the report →'}</button>`;
     $('dbFootBtn').addEventListener('click', () => { if (gaps && typeof openRemediationReview === 'function') openRemediationReview(); else if (typeof downloadDocx === 'function') downloadDocx(); });
     f.hidden = false;
     document.body.classList.add('db-has-footer');
@@ -645,7 +645,7 @@
       row.dataset.ico = '';
       row.insertAdjacentHTML('afterbegin', `<span class="db-row-ico" aria-hidden="true">${icon(sec)}</span>`);
       const st = row.querySelector('.check-status');
-      if (st && !st.title) { const risk = { 'Action Required': ['High Risk', 'status-FAIL'], 'Needs Review': ['Medium Risk', 'status-REVIEW'], 'Not Configured': ['Low Risk', 'status-INFO'], 'Configured': ['Configured', 'status-PASS'] }[st.textContent.trim()]; if (risk) st.title = `${st.textContent.trim()} · ${risk[0]}`; }
+      if (st && !st.title) { const risk = { 'Action required': ['High risk', 'status-FAIL'], 'Needs review': ['Medium risk', 'status-REVIEW'], 'Not configured': ['Low risk', 'status-INFO'], 'Configured': ['Configured', 'status-PASS'] }[st.textContent.trim()]; if (risk) st.title = `${st.textContent.trim()} · ${risk[0]}`; }
       const label = row.querySelector('.check-label');
       if (label && sec && !row.querySelector('.db-cat')) label.insertAdjacentHTML('afterend', `<span class="db-cat">${E(sec)}</span>`);
     });

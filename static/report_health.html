@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FP/TP Detection Ratio — Zscaler Assessment</title>
+<title>FP/TP detection ratio — Zscaler Assessment</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/reports.css">
@@ -64,7 +64,7 @@
     async function refresh(ev) {
       ev.preventDefault();
       const btn = document.getElementById('dhRefresh');
-      if (!window.opener || window.opener.closed || typeof window.opener.__detectionHealthGenerate !== 'function') { meta.textContent = 'Open the assessment tab and run FP/TP Detection Ratio again to refresh.'; return; }
+      if (!window.opener || window.opener.closed || typeof window.opener.__detectionHealthGenerate !== 'function') { meta.textContent = 'Open the assessment tab and run FP/TP detection ratio again to refresh.'; return; }
       btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Reading…';
       try { await load(await window.opener.__detectionHealthGenerate(Number(document.getElementById('dhDays').value) || 30)); }
       catch (e) { meta.textContent = `Refresh failed: ${e.message}`; }

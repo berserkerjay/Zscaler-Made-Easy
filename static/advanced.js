@@ -69,7 +69,7 @@
       ['Adding and removing packs', lib.writes_allowed ? '<span class="chip ok">Allowed</span>' : '<span class="chip warn">Locked</span> <span class="dim">bind to 127.0.0.1 or set ZSCALER_UI_AUTH=1</span>'],
       ['Bind host', `<code>${E(lib.bind_host)}</code> <span class="dim">(ZSCALER_BIND_HOST${lib.env && lib.env.ZSCALER_BIND_HOST ? ' = ' + E(lib.env.ZSCALER_BIND_HOST) : ' not set'})</span>`],
       ['UI token gate', lib.ui_auth ? '<span class="chip ok">On</span> <span class="dim">every browser needs the token from ui_token.txt</span>' : '<span class="chip">Off</span> <span class="dim">ZSCALER_UI_AUTH=0 or not enforced</span>'],
-      ['Changes to the Zscaler tenant', lib.writes_to_tenant ? '<span class="chip warn">Enabled</span> <span class="dim">Deploy Policy Packs and remediation can write, after your approval</span>' : '<span class="chip ok">Read-only</span> <span class="dim">the app only reads the tenant; set ZSCALER_WRITES=1 to allow deployments</span>'],
+      ['Changes to the Zscaler tenant', lib.writes_to_tenant ? '<span class="chip warn">Enabled</span> <span class="dim">Deploy policy packs and remediation can write, after your approval</span>' : '<span class="chip ok">Read-only</span> <span class="dim">the app only reads the tenant; set ZSCALER_WRITES=1 to allow deployments</span>'],
       ['Upload limit', `${E(lib.max_upload_mb)} MB per upload`],
     ];
     $('advServer').querySelector('tbody').innerHTML = rows.map(([k, v]) => `<tr><th scope="row" class="adv-k">${E(k)}</th><td>${v}</td></tr>`).join('');
@@ -146,7 +146,7 @@
       const tfHtml = tf.ok
         ? `<div style="margin-top:0.5rem;"><strong>Transcribed to Terraform.</strong> ${tf.resources} resource${tf.resources === 1 ? '' : 's'} and ${tf.data_sources} data source${tf.data_sources === 1 ? '' : 's'} in ${(tf.files || []).length} files (${(tf.files || []).map(E).join(', ')}), saved beside the pack in <code>${E(tf.dir)}</code>. Same policy, vendor-neutral and reviewable in a pull request. <a class="rp-btn" href="${E(tf.download)}" style="margin-left:0.4rem;">⬇ Export Terraform</a></div>`
         : `<div style="margin-top:0.5rem;color:var(--warn);"><strong>Added, but the Terraform transcription failed:</strong> ${E(tf.error || 'unknown error')}. The pack is usable; use the Terraform button in the library once the cause is fixed.</div>`;
-      say('ok', `<strong>Added “${E(p.name || p.id)}”.</strong> It is now offered in Deploy Policy Packs, the Data Flow Map and the Terraform hand-off. Rules are created DISABLED and monitor-only when deployed, so nothing changes in the tenant until you review and enable them.${r.validation && r.validation.native ? ' The upload was a native Zscaler export: ids became names and tenant-specific scope was dropped (see the warnings above).' : ''}${tfHtml}`);
+      say('ok', `<strong>Added “${E(p.name || p.id)}”.</strong> It is now offered in Deploy policy packs, the Data flow map and the Terraform hand-off. Rules are created DISABLED and monitor-only when deployed, so nothing changes in the tenant until you review and enable them.${r.validation && r.validation.native ? ' The upload was a native Zscaler export: ids became names and tenant-specific scope was dropped (see the warnings above).' : ''}${tfHtml}`);
       chosen = []; preview = null; $('advFiles').value = ''; $('advFileList').innerHTML = ''; $('advPreview').hidden = true;
       $('advName').value = ''; $('advId').value = ''; $('advDesc').value = '';
       await loadLibrary();

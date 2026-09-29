@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Deployment Flow — Zscaler Assessment</title>
+<title>Deployment flow — Zscaler Assessment</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/static/deploy_studio.css">
@@ -20,12 +20,12 @@
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <span class="sep"></span>
       <label class="fl-find"><span class="lbl">Find</span><input type="search" id="flFind" placeholder="dictionary, engine or rule name" aria-label="Find a node by name"></label>
-      <a class="rp-btn" id="flRefresh" href="#" title="Read the plan currently shown in Deploy Policy Packs">↻ Refresh</a>
+      <a class="rp-btn" id="flRefresh" href="#" title="Read the plan currently shown in Deploy policy packs">↻ Refresh</a>
     </nav>
     <div class="fl-grid">
       <main class="rp-card fl-main">
         <div id="rpBody">
-          <div class="rp-wait"><div class="spin"></div>Waiting for the plan from Deploy Policy Packs… keep the assessment tab open.</div>
+          <div class="rp-wait"><div class="spin"></div>Waiting for the plan from Deploy policy packs… keep the assessment tab open.</div>
         </div>
       </main>
       <aside class="rp-card fl-side" id="flSide" aria-live="polite">
@@ -146,11 +146,11 @@
       ev.preventDefault();
       const p = fromOpener() || fromStorage();
       if (p) render(p);
-      else meta.textContent = 'No plan yet: run preflight in Deploy Policy Packs, then click Refresh.';
+      else meta.textContent = 'No plan yet: run preflight in Deploy policy packs, then click Refresh.';
     });
     // First paint: the opener pushes the plan itself; if this tab was
     // reloaded (or opened by hand) use the last plan it stored.
-    setTimeout(() => { if (!current) { const p = fromOpener() || fromStorage(); if (p) render(p); else body.innerHTML = '<div class="tt-gone"><strong>No plan to draw yet.</strong> Run preflight in Deploy Policy Packs on the assessment page, then click ↗ Open in new tab on the flow (or ↻ Refresh here).</div>'; } }, 600);
+    setTimeout(() => { if (!current) { const p = fromOpener() || fromStorage(); if (p) render(p); else body.innerHTML = '<div class="tt-gone"><strong>No plan to draw yet.</strong> Run preflight in Deploy policy packs on the assessment page, then click ↗ Open in new tab on the flow (or ↻ Refresh here).</div>'; } }, 600);
     setInterval(() => { document.getElementById('flLive').hidden = !(window.opener && !window.opener.closed); }, 2000);
   })();
   </script>
