@@ -575,9 +575,13 @@
   }
   function actions(data) {
     const host = $('dbActions'); if (!host) return;
-    const fails = (data.checks || []).filter(c => c.status === 'FAIL').length;
+    const open = (data.checks || []).filter(c => c.status === 'FAIL' || c.status === 'REVIEW');
+    const fails = open.filter(c => c.status === 'FAIL').length;
+    // "with a recipe" is the same matcher the findings rows use; when the
+    // catalogue is not loaded yet the tile says only what it knows.
+    const withRecipe = (typeof _findRecipeForCheck === 'function' && window._remediationCatalog) ? open.filter(c => _findRecipeForCheck(c.id)).length : null;
     const A = [
-      ['🔧', 'Review & Remediate', fails ? `${fails} finding${fails === 1 ? '' : 's'} to fix` : 'nothing to fix', () => typeof openRemediationReview === 'function' && openRemediationReview()],
+      ['🔧', 'Review & Remediate', fails ? `${fails} to fix${withRecipe !== null ? ` · ${withRecipe} with a one-click recipe` : ''}` : 'nothing to fix', () => typeof openRemediationReview === 'function' && openRemediationReview()],
       ['🗺️', 'Traffic Flow & Gaps', 'where inspection is lost', () => typeof openDataFlowTab === 'function' && openDataFlowTab()],
       ['📄', 'Generate report', 'Word document for the customer', () => typeof downloadDocx === 'function' && downloadDocx()],
       ['📦', 'Deploy a policy pack', 'close the gaps, preflight first', () => typeof openDlpPacksModal === 'function' && openDlpPacksModal()],
@@ -610,7 +614,7 @@
       const sec = hdr ? hdr.textContent.trim() : '';
       row.dataset.ico = icon(sec);
       const st = row.querySelector('.check-status');
-      if (st) { const risk = { 'Action Required': ['High Risk', 'status-FAIL'], 'Needs Review': ['Medium Risk', 'status-REVIEW'], 'Not Configured': ['Low Risk', 'status-INFO'], 'Configured': ['Configured', 'status-PASS'] }[st.textContent.trim()]; if (risk) st.title = `${st.textContent.trim()} · ${risk[0]}`; }
+      if (st && !st.title) { const risk = { 'Action Required': ['High Risk', 'status-FAIL'], 'Needs Review': ['Medium Risk', 'status-REVIEW'], 'Not Configured': ['Low Risk', 'status-INFO'], 'Configured': ['Configured', 'status-PASS'] }[st.textContent.trim()]; if (risk) st.title = `${st.textContent.trim()} · ${risk[0]}`; }
       const label = row.querySelector('.check-label');
       if (label && sec && !row.querySelector('.db-cat')) label.insertAdjacentHTML('afterend', `<span class="db-cat">${E(sec)}</span>`);
     });

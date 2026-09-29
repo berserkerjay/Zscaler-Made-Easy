@@ -26,4 +26,10 @@ def test_catalog_exposes_the_check_ids_and_the_page_matches_on_them():
     by = {r["check_id"]: r for r in cat}
     assert "4.1" in by["SSL-01"]["checks"] and "5.3" in by["DLP-01"]["checks"]
     html = c.get("/", cookies={security.UI_TOKEN_COOKIE: security.ui_token()}).text
-    assert "(r.checks || []).includes(cid)" in html and "...(r.checks || [])" in html
+    assert "(r.checks || []).includes(cid)" in html
+    # One matcher for every path (the row button, the wizard's criteria, Apply), in the server's order.
+    body = html.split("function _findRecipeForCheck(check_id)")[1].split("async function openRemediationWizard")[0]
+    assert "if (r.check_id === check_id) return r;" in body and "(r.checks || []).includes(check_id)" in body and "check_id.startsWith(r.check_id)" in body
+    assert body.index("r.check_id === check_id") < body.index("(r.checks || []).includes(check_id)") < body.index("startsWith")
+    assert "const isRemediable = (cid) => !!_findRecipeForCheck(cid);" in html
+    assert html.count("_findRecipeForCheck(") >= 5

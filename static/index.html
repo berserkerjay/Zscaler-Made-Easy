@@ -498,6 +498,8 @@
   .status-FAIL { background: rgba(239,68,68,0.15); color: var(--fail); border: 1px solid rgba(239,68,68,0.3); }
   .status-REVIEW { background: rgba(245,158,11,0.15); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
   .status-INFO { background: rgba(100,116,139,0.15); color: var(--info); border: 1px solid rgba(100,116,139,0.3); }
+  .status-NOTPERM { background: repeating-linear-gradient(45deg, rgba(100,116,139,0.18) 0 4px, rgba(100,116,139,0.06) 4px 8px); color: var(--info); border: 1px dashed rgba(100,116,139,0.6); }
+  .status-ERROR { background: rgba(100,116,139,0.08); color: var(--info); border: 1px dotted rgba(100,116,139,0.6); }
   .check-body { flex: 1; min-width: 0; }
   .check-id { font-size: 0.72rem; color: var(--dim); font-family: 'SF Mono', Menlo, Consolas, monospace; }
   .check-label { font-weight: 600; font-size: 0.92rem; letter-spacing: -0.005em; }
@@ -1242,6 +1244,8 @@
         <div class="stat"><div class="stat-num" style="color:var(--fail)" id="failCount">0</div><div class="stat-label">Action Required</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Needs Review</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">Not Configured</div></div>
+        <div class="stat" id="notPermStat" hidden><div class="stat-num" style="color:var(--info)" id="notPermCount">0</div><div class="stat-label">Not permitted</div></div>
+        <div class="stat" id="errorStat" hidden><div class="stat-num" style="color:var(--info)" id="errorCount">0</div><div class="stat-label">Could not be checked</div></div>
       </div>
       <p class="stat-note" id="coverageNote" aria-live="polite"></p>
     </div>
@@ -1274,12 +1278,15 @@
 
     <div class="card">
       <h2>Detailed Findings</h2>
-      <div class="checks-filter">
-        <button class="filter-btn active" onclick="filterChecks('all',this)">All</button>
-        <button class="filter-btn" onclick="filterChecks('FAIL',this)">Action Required</button>
-        <button class="filter-btn" onclick="filterChecks('REVIEW',this)">Needs Review</button>
-        <button class="filter-btn" onclick="filterChecks('PASS',this)">Configured</button>
-        <button class="filter-btn" onclick="filterChecks('INFO',this)">Not Configured</button>
+      <p class="stat-note">Every check, grouped by section. <strong>Action Required</strong> and <strong>Needs Review</strong> count against the score; <strong>Not Configured</strong>, <strong>Not permitted</strong> and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
+      <div class="checks-filter" role="group" aria-label="Filter findings by status">
+        <button class="filter-btn active" data-filter="all" data-label="All" onclick="filterChecks('all',this)">All</button>
+        <button class="filter-btn" data-filter="FAIL" data-label="Action Required" onclick="filterChecks('FAIL',this)">Action Required</button>
+        <button class="filter-btn" data-filter="REVIEW" data-label="Needs Review" onclick="filterChecks('REVIEW',this)">Needs Review</button>
+        <button class="filter-btn" data-filter="PASS" data-label="Configured" onclick="filterChecks('PASS',this)">Configured</button>
+        <button class="filter-btn" data-filter="INFO" data-label="Not Configured" onclick="filterChecks('INFO',this)">Not Configured</button>
+        <button class="filter-btn" data-filter="NOTPERM" data-label="Not permitted" onclick="filterChecks('NOTPERM',this)" hidden>Not permitted</button>
+        <button class="filter-btn" data-filter="ERROR" data-label="Could not be checked" onclick="filterChecks('ERROR',this)" hidden>Could not be checked</button>
       </div>
       <div id="checksList"></div>
     </div>
@@ -2683,7 +2690,11 @@ function showResults(data) {
   document.getElementById('passCount').textContent = sum.configured;
   document.getElementById('failCount').textContent = sum.action_required;
   document.getElementById('warnCount').textContent = sum.needs_review;
-  document.getElementById('infoCount').textContent = sum.informational + sum.not_permitted + sum.errors;
+  // Each class in its own tile: "Not Configured" is informational only, a
+  // refused or failed read is never folded into it.
+  document.getElementById('infoCount').textContent = sum.informational;
+  document.getElementById('notPermCount').textContent = sum.not_permitted; document.getElementById('notPermStat').hidden = !sum.not_permitted;
+  document.getElementById('errorCount').textContent = sum.errors; document.getElementById('errorStat').hidden = !sum.errors;
   const cov = document.getElementById('coverageNote');
   if (cov) cov.textContent = coverageSentence(sum, data.metadata);
 
@@ -3003,28 +3014,25 @@ function renderChecks(checks, filter) {
   // so we only render the 🔧 Remediate button where it's meaningful.
   // A recipe names the assessment checks it answers ("4.1", "A.2" …)
   // in `checks`; its own id is matched too (exact or prefix).
-  const remediableIds = new Set(
-    (window._remediationCatalog || []).flatMap(r => [r.check_id, ...(r.checks || [])])
-  );
-  const isRemediable = (cid) => {
-    if (remediableIds.has(cid)) return true;
-    // Prefix match — a recipe for 'FW-01' covers 'FW-01.dns' etc.
-    for (const r of (window._remediationCatalog || [])) if (cid && cid.startsWith(r.check_id)) return true;
-    return false;
-  };
+  const isRemediable = (cid) => !!_findRecipeForCheck(cid);
 
   // A check the API client was not allowed to run says so on its row, so
   // "Not Configured" is never read as "the customer has not configured it".
+  // The row's class is its own (permissions.classify): configured,
+  // action_required, needs_review, not_permitted, error, informational.
   const notPermitted = new Set(((typeof reportData !== 'undefined' && reportData && reportData.summary && reportData.summary.not_permitted_ids) || []).filter(Boolean));
+  const classOf = c => notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
+  const PILL = {PASS:'Configured', FAIL:'Action Required', REVIEW:'Needs Review', INFO:'Not Configured', NOTPERM:'Not permitted', ERROR:'Could not be checked'};
+  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
   for (const c of checks) {
-    const st = c.status === 'ERROR' ? 'INFO' : c.status;
+    const st = classOf(c);
     if (filter !== 'all' && st !== filter) continue;
     if (c.section !== curSec) {
       curSec = c.section;
       list.innerHTML += `<div class="section-header">${escapeHtml(curSec)}</div>`;
     }
-    const stLabel = notPermitted.has(c.id) ? 'Not permitted' : c.status === 'ERROR' ? 'Could not be checked'
-      : ({PASS:'Configured', FAIL:'Action Required', REVIEW:'Needs Review', INFO:'Not Configured'}[st] || st);
+    const stLabel = PILL[st] || st;
+    const stTitle = PILL_TITLE[st] ? ` title="${escapeHtml(PILL_TITLE[st])}"` : '';
     // Remediate button only on actionable (FAIL/REVIEW) rows that have a recipe
     const showRemediate = (st === 'FAIL' || st === 'REVIEW') && isRemediable(c.id);
     const remediateBtn = showRemediate
@@ -3040,9 +3048,18 @@ function renderChecks(checks, filter) {
         ${st !== 'PASS' && pl.do ? `<dt>What to do</dt><dd>${escapeHtml(pl.do)}</dd>` : ''}
         <dt>${st === 'PASS' ? 'What this gives the business' : 'Once fixed'}</dt><dd>${escapeHtml(pl.outcome || '')}</dd>
       </dl>` : '';
-    list.innerHTML += `<div class="check-item"><span class="check-status status-${st}">${stLabel}</span><div class="check-body">${remediateBtn}<span class="check-id">[${escapeHtml(c.id)}]</span> <span class="check-label">${escapeHtml(c.label)}</span>${plainHtml}<details class="check-raw"><summary>Technical detail</summary><div class="check-detail">${escapeHtml(c.detail || '')}</div></details></div></div>`;
+    list.innerHTML += `<div class="check-item" data-class="${st}"><span class="check-status status-${st}"${stTitle}>${stLabel}</span><div class="check-body">${remediateBtn}<span class="check-id">[${escapeHtml(c.id)}]</span> <span class="check-label">${escapeHtml(c.label)}</span>${plainHtml}<details class="check-raw"><summary>Technical detail</summary><div class="check-detail">${escapeHtml(c.detail || '')}</div></details></div></div>`;
   }
   if (!list.innerHTML) list.innerHTML = '<p style="padding:2rem;text-align:center;color:var(--dim)">No checks match this filter.</p>';
+  // The filter buttons carry their counts, so "Not permitted (2)" is visible
+  // before anyone clicks it.
+  const counts = {};
+  for (const c of checks) { const k = classOf(c); counts[k] = (counts[k] || 0) + 1; }
+  document.querySelectorAll('.checks-filter .filter-btn[data-filter]').forEach(b => {
+    const k = b.dataset.filter; const n = k === 'all' ? checks.length : (counts[k] || 0);
+    b.textContent = `${b.dataset.label} (${n})`;
+    if (k === 'NOTPERM' || k === 'ERROR') b.hidden = n === 0;
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -3070,10 +3087,14 @@ async function _loadRemediationCatalog() {
 // Preload so renderChecks can decide which rows get the Remediate button
 _loadRemediationCatalog();
 
+// The one matcher every remediation path uses, in the server's order
+// (remediation.get_recipe): the recipe's own id, then the assessment checks
+// it names in `checks` ("4.1", "A.1" …), then a prefix of its id.
 function _findRecipeForCheck(check_id) {
-  for (const r of (window._remediationCatalog || [])) {
-    if (r.check_id === check_id || (check_id || '').startsWith(r.check_id)) return r;
-  }
+  const cat = window._remediationCatalog || [];
+  for (const r of cat) if (r.check_id === check_id) return r;
+  for (const r of cat) if ((r.checks || []).includes(check_id)) return r;
+  for (const r of cat) if (check_id && check_id.startsWith(r.check_id)) return r;
   return null;
 }
 
@@ -3289,9 +3310,11 @@ async function openRemediationReview() {
     for (const r of recipes) if (cid && cid.startsWith(r.check_id)) return r;
     return null;
   };
+  let openCount = 0;
   for (const c of checks) {
     const st = c.status === 'ERROR' ? 'INFO' : c.status;
     if (st !== 'FAIL' && st !== 'REVIEW') continue;
+    openCount++;
     const recipe = isRem(c.id);
     if (recipe) {
       candidates.push({
@@ -3307,8 +3330,8 @@ async function openRemediationReview() {
   if (!candidates.length) {
     list.innerHTML = `<div style="padding:1.2rem;text-align:center;color:var(--dim);">
       <div style="font-size:1.4rem;margin-bottom:0.4rem;">🎉</div>
-      No remediable findings in this assessment — either everything passed or no recipes cover the open items.
-      <div style="font-size:0.78rem;margin-top:0.4rem;">Recipe catalog has ${recipes.length} remediation(s). Add more in <code>remediation.py</code>.</div>
+      ${openCount ? `None of the ${openCount} open finding${openCount === 1 ? '' : 's'} has a one-click recipe; each one's <em>What to do</em> says where to fix it in the ZIA portal.` : 'No open findings: nothing to remediate.'}
+      <div style="font-size:0.78rem;margin-top:0.4rem;">The recipe catalogue covers ${recipes.length} kinds of change.</div>
     </div>`;
     document.getElementById('reviewStartBtn').style.display = 'none';
   } else {
@@ -3326,7 +3349,7 @@ async function openRemediationReview() {
             <input type="checkbox" class="reviewCheck" data-check-id="${escapeHtml(it.check_id)}" checked style="margin-top:0.2rem;flex-shrink:0;">
             <div style="flex:1;min-width:0;">
               <div style="font-weight:600;font-size:0.85rem;">
-                <span style="color:${stColor};font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(it.status)}</span>
+                <span style="color:${stColor};font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">${it.status === 'FAIL' ? 'Action required' : 'Needs review'}</span>
                 <code style="color:var(--dim);font-size:0.75rem;margin:0 0.3rem;">${escapeHtml(it.check_id)}</code>
                 ${escapeHtml(it.label)}
               </div>
@@ -3339,7 +3362,7 @@ async function openRemediationReview() {
       <div style="display:flex;gap:0.5rem;margin-bottom:0.6rem;">
         <button type="button" class="btn btn-ghost" onclick="_reviewSelectAll(true)" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Select all</button>
         <button type="button" class="btn btn-ghost" onclick="_reviewSelectAll(false)" style="padding:0.3rem 0.7rem;font-size:0.75rem;">Clear</button>
-        <span style="flex:1;text-align:right;color:var(--dim);font-size:0.78rem;align-self:center;">${candidates.length} remediable finding(s)</span>
+        <span style="flex:1;text-align:right;color:var(--dim);font-size:0.78rem;align-self:center;">${candidates.length} of ${openCount} open finding${openCount === 1 ? '' : 's'} ${candidates.length === 1 ? 'has' : 'have'} a recipe</span>
       </div>
       ${html}`;
     document.getElementById('reviewStartBtn').style.display = 'inline-flex';
@@ -3393,7 +3416,7 @@ function _showWizardStep() {
   document.getElementById('wizardFindingLabel').innerHTML = `
     <div style="font-weight:600;">${escapeHtml(item.label)}</div>
     <div style="color:var(--dim);font-size:0.78rem;margin-top:0.2rem;">
-      <code>${escapeHtml(item.check_id)}</code> · ${escapeHtml(item.section)} · status <strong style="color:${item.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)'};">${escapeHtml(item.status)}</strong>
+      <code>${escapeHtml(item.check_id)}</code> · ${escapeHtml(item.section)} · <strong style="color:${item.status === 'FAIL' ? 'var(--fail)' : 'var(--warn)'};">${item.status === 'FAIL' ? 'Action required' : 'Needs review'}</strong>
     </div>
     <div style="color:var(--dim);font-size:0.8rem;margin-top:0.3rem;padding:0.4rem 0.5rem;background:var(--well);border-radius:4px;">${escapeHtml(item.detail)}</div>`;
   document.getElementById('wizardRecipe').textContent = recipe.label;
@@ -3401,9 +3424,13 @@ function _showWizardStep() {
   document.getElementById('wizardDestructive').innerHTML = recipe.destructive
     ? '<div style="margin:0.4rem 0;padding:0.45rem 0.65rem;background:rgba(239,68,68,0.08);border-left:3px solid var(--fail);border-radius:4px;font-size:0.78rem;"><strong>⚠ Writes to the tenant.</strong> Requires START_Zscaler_Assessment_WRITES_ENABLED.bat. Preview first; confirm before apply.</div>'
     : '';
-  document.getElementById('wizardFormFields').innerHTML = recipe.fields.map(f => _renderField(f)).join('');
+  const fields = document.getElementById('wizardFormFields');
+  fields.innerHTML = recipe.fields.map(f => _renderField(f)).join('');
   document.getElementById('wizardResult').innerHTML = '';
   document.getElementById('wizardApplyBtn').style.display = 'none';
+  // Apply is for the plan that was previewed: a change to any field after
+  // the preview hides Apply until the new values are previewed.
+  if (!fields.dataset.guarded) { fields.dataset.guarded = '1'; fields.addEventListener('input', () => { const a = document.getElementById('wizardApplyBtn'); if (a && a.style.display !== 'none') { a.style.display = 'none'; const r = document.getElementById('wizardResult'); if (r) r.innerHTML = '<div style="color:var(--dim);padding:0.4rem;">The values changed since the preview. Click Preview again to see the plan for the new values.</div>'; } }); }
 
   // Progress bar
   const pct = Math.round((idx / total) * 100);
@@ -3938,7 +3965,7 @@ function _ensureReviewModal() {
         <h2 id="reviewTitle" style="margin:0;"><span aria-hidden="true">🔧</span> Review &amp; Remediate</h2>
         <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" aria-label="Close review dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
       </div>
-      <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.6rem;">Findings below have an auto-remediation recipe. Tick which ones to fix, then click Start — the wizard walks through them one at a time, with Preview / Apply / Skip at each step.</p>
+      <p style="color:var(--dim);font-size:0.85rem;margin-bottom:0.6rem;" id="reviewIntro">These are the open findings that have a one-click recipe; the other findings are fixed in the ZIA portal as their <em>What to do</em> says. Ticking a finding only puts it in the walkthrough. Nothing changes in the tenant until you preview each step, click Apply and confirm, and only when write mode is on.</p>
       <div id="reviewList" style="max-height:55vh;overflow-y:auto;margin-bottom:0.8rem;"></div>
       <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
         <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" style="padding:0.5rem 1rem;">Cancel</button>

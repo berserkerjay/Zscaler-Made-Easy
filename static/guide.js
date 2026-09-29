@@ -82,8 +82,8 @@ function _gdSteps() {
     {
       n: 3, title: 'Read the results',
       state: assessed ? 'ready' : 'todo',
-      what: 'The Summary card gives the score and maturity level. Detailed Findings lists every failed or warned check with what it means and how to fix it. Regulatory Alignment maps findings to frameworks the customer cares about.',
-      need: 'Nothing. Walk the customer through Critical findings first; they are the ones that expose data today.',
+      what: 'The Summary card gives the score and what it counts. Detailed Findings lists every check, grouped by section and filterable by status, with what it means and what to do; a 🔧 button marks the findings that have a one-click recipe. Regulatory Alignment maps findings to frameworks the customer cares about.',
+      need: 'Nothing. Walk the customer through the Action Required findings first; they are the ones that expose data today.',
       status: assessed ? 'Scroll down to Summary, Scores by Section and Detailed Findings.' : 'Available after the assessment runs.',
       actions: [{ label: 'Jump to results', fn: '_gdGoResults()', kind: 'quiet', disabled: !assessed }],
     },
