@@ -430,7 +430,10 @@ def test_only_the_allowed_branches_are_accepted_and_a_missing_one_is_refused_bef
     with pytest.raises(SystemExit):
         au.main(["--dir", app, "--no-deps", "--branch", "feature/x"])   # argparse refuses anything outside the allowlist
     # An allowed branch this origin does not have: refused, the install untouched.
-    res = au.update(app, install_deps=False, branch="DLP-CHECK-QA")
-    assert not res["ok"] and "no branch named DLP-CHECK-QA" in res["error"], res
+    res = au.update(app, install_deps=False, branch="qa")
+    assert not res["ok"] and "no branch named qa" in res["error"], res
+    # The names are the standard three; the old QA name is mapped, not refused, so an install still on it keeps updating.
+    assert au.BRANCHES == ("main", "qa", "dev") and au.valid_branch("DLP-CHECK-QA") == "qa"
+    assert [b["name"] for b in au.branch_choices(app)] == ["main", "qa", "dev"]
     assert au.current_branch(app) == "main" and (repos["app"] / "dlp_api_server.py").read_text() == "print('v1')\n"
     assert au.main(["--dir", app, "--status", "--branch", "main"]) == 0

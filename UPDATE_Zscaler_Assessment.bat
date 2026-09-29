@@ -63,7 +63,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-REM Optional first argument: the branch to update to - main, DLP-CHECK-QA or dev
+REM Optional first argument: the branch to update to - main, qa or dev
 REM (default: the branch this install is on). Example: UPDATE_Zscaler_Assessment.bat dev
 set "BRANCH_ARG="
 if not "%~1"=="" set "BRANCH_ARG=--branch %~1"
