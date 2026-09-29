@@ -505,7 +505,8 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
     assert res["status"] == "removed" and res["complete"]
     assert seq == ["delete:policy", "activate", "wait-active", "delete:engine", "activate", "wait-active", "delete:dictionary", "activate", "wait-active"]
-    assert [a["after"] for a in res["activations"]] == ["rules", "engines", "final"] and all(a["activated"] for a in res["activations"])
+    assert [a["after"] for a in res["activations"]] == ["rules", "engines", "dictionaries"] and all(a["activated"] for a in res["activations"])
+    assert res["activation"]["after"] == "dictionaries" and res["activation_required"] is False and res["verification"]["activation_status"] == "ACTIVE"
     # A tier whose deletes are refused and retried carries the retry activation with its tier name, and the shapes stay uniform.
     client3 = _deletable(_tenant(with_survivors=False))
     z3 = client3.zia
@@ -520,7 +521,7 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     monkeypatch.setattr(pr, "RETRY_BASE_SECONDS", 0.0)
     plan3 = pr.plan_removal(client3, [pack])
     res3 = pr.remove(client3, [pack], plan_hash=plan3["plan_hash"], writes_enabled=True)
-    assert res3["status"] == "removed" and [a["after"] for a in res3["activations"]] == ["rules", "engines (retry pass 1)", "engines", "final"]
+    assert res3["status"] == "removed" and [a["after"] for a in res3["activations"]] == ["rules", "engines (retry pass 1)", "engines", "dictionaries"]
     # Only the last tier attempted, its delete refused: the activation after it is the final one, so the tenant is settled.
     client4 = _deletable(_tenant(with_survivors=True))   # the engine and dictionary are kept: something else uses them
     z4 = client4.zia
@@ -529,7 +530,16 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     monkeypatch.setattr(pr.pc, "activate", lambda zia: (seq4.append("activate") or {"activated": True, "status": "ACTIVE", "error": None}))
     plan4 = pr.plan_removal(client4, [pack])
     res4 = pr.remove(client4, [pack], plan_hash=plan4["plan_hash"], writes_enabled=True)
-    assert seq4 == ["delete:policy", "activate"] and [a["after"] for a in res4["activations"]] == ["final"] and res4["status"] == "failed"
+    assert seq4 == ["delete:policy", "activate"] and [a["after"] for a in res4["activations"]] == ["rules"] and res4["status"] == "failed"
+    assert res4["activation"]["after"] == "rules" and res4["activation_required"] is False, "the activation that ran is the one reported"
+    # A run stopped before its first delete reaches ZIA sends no activation at all.
+    client5 = _deletable(_tenant(with_survivors=False))
+    seq5 = []
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: (seq5.append("activate") or {"activated": True, "status": "ACTIVE", "error": None}))
+    plan5 = pr.plan_removal(client5, [pack])
+    cancel = __import__("threading").Event(); cancel.set()
+    res5 = pr.remove(client5, [pack], plan_hash=plan5["plan_hash"], writes_enabled=True, cancel=cancel)
+    assert seq5 == [] and res5["activations"] == [] and res5["activation"] is None and res5["stopped"] and all(r["status"] == "skipped" for r in res5["results"])
     # Every rule delete refused for good: the activation after the rules tier still runs; the engine and the
     # dictionary are then kept because the surviving rule still uses them, and nothing more is activated.
     client2 = _deletable(_tenant(with_survivors=False))
@@ -545,16 +555,17 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     assert seq2 == ["delete:policy", "activate", "wait-active"], seq2
     by = {r["kind"]: r for r in res2["results"]}
     assert by["policy"]["status"] == "failed" and by["engine"]["status"] == "skipped" and by["dictionary"]["status"] == "skipped"
-    assert res2["status"] == "failed" and not res2["complete"] and res2["activation"] is None
+    assert res2["status"] == "failed" and not res2["complete"] and res2["activation"]["after"] == "rules" and res2["activation_required"] is False
     assert any(l.startswith("Activating after the rules (0 deleted)") for l in logs)
 
 
 def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
     """Step 4 of the Inline DLP Rule migration wizard deletes web rules
     through the assessment's raw client; it now activates once the rules
-    are gone (rules → activate), reports whether the activation ran, sends
-    nothing when write mode is off and activates nothing when nothing was
-    deleted."""
+    were attempted (rules → activate, whatever ZIA answered, then a wait for
+    ACTIVE), reports whether the activation ran and what ZIA reported, sends
+    nothing when write mode is off and activates nothing when no delete was
+    attempted."""
     import rule_migrator as rm
     import security
 
@@ -599,3 +610,31 @@ def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
     monkeypatch.setattr(security, "_write_override", False)
     c4 = Client()
     assert rm.delete_all_rules(c4, dry_run=False)["status"] == "blocked" and c4.calls == []
+
+
+def test_the_wizards_activation_poll_bypasses_the_clients_response_cache(monkeypatch):
+    """The assessment client caches every GET by path; the poll for ACTIVE
+    sets the /status entry aside before each read so a PENDING answer
+    cached earlier never masks the activation settling."""
+    import collections
+    import threading
+    import rule_migrator as rm
+
+    class CachingClient:
+        def __init__(self):
+            self._c = collections.OrderedDict({"/zia/api/v1/status|{}": ({"status": "PENDING"}, 200), "/zia/api/v1/webDlpRules|{}": ([], 200)})
+            self._lock = threading.Lock()
+            self.reads = 0
+
+        def get(self, ep, p=None):
+            k = "/zia/api/v1/status|{}"
+            if k in self._c:
+                return self._c[k]
+            self.reads += 1
+            res = ({"status": "ACTIVE"}, 200)
+            self._c[k] = res
+            return res
+
+    c = CachingClient()
+    assert rm._wait_active_raw(c, 0.0) == "ACTIVE" and c.reads == 1, "the stale PENDING entry was set aside and ZIA was asked again"
+    assert "/zia/api/v1/webDlpRules|{}" in c._c, "other cached paths are left alone"

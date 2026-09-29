@@ -1252,6 +1252,23 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
 ACTIVATION_WAIT_SECONDS = 45.0
 
 
+def _uncached_status(client):
+    """GET /zia/status with the assessment client's response cache set
+    aside for that path: the client caches every 200 by path, and a poll
+    that re-read its first answer would never see PENDING become ACTIVE."""
+    cache = getattr(client, "_c", None)
+    lock = getattr(client, "_lock", None)
+    if cache is not None:
+        try:
+            ctx = lock if lock is not None else __import__("contextlib").nullcontext()
+            with ctx:
+                for k in [k for k in list(cache) if str(k).split("|", 1)[0].rstrip("/").endswith("/status")]:
+                    cache.pop(k, None)
+        except Exception:  # noqa: BLE001 - a cache that cannot be cleared is read as is
+            pass
+    return client.get("/zia/status")
+
+
 def _wait_active_raw(client, seconds: float) -> Optional[str]:
     """Poll GET /zia/status through the raw client until ZIA reports
     ACTIVE, for at most `seconds`; the last status seen (None when the
@@ -1261,7 +1278,7 @@ def _wait_active_raw(client, seconds: float) -> Optional[str]:
     status = None
     while True:
         try:
-            data, code = client.get("/zia/status")
+            data, code = _uncached_status(client)
         except Exception:
             return status
         if code not in (200, 204) or not isinstance(data, dict):

@@ -734,8 +734,11 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     TIERS = ops.DELETE_TIERS
     TIER_LABEL = dict(enumerate(ops.TIER_LABELS))
     entries: Dict[Tuple[str, Optional[str], str], Dict[str, Any]] = {}
-    attempted_any = False          # some tier had objects to remove
-    activated_after_last = False   # the last attempted tier was followed by its activation
+    final_activation: Optional[Dict[str, Any]] = None   # the last activation issued, whichever tier it followed
+    settled_status: Optional[str] = None
+    last_sent_tier = "rules"
+    sent_any = False               # some delete reached ZIA (a STOPPED run that never sent one activates nothing)
+    activated_after_last = False   # the last tier that sent a delete was followed by its activation
 
     def attempt(c: Dict[str, Any], entry: Dict[str, Any]) -> bool:
         """One delete of one object, after checking the id still carries the
@@ -793,8 +796,6 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
                 tier = [c for c in tier if c not in kept_now]
                 if not tier:
                     continue
-        attempted_any = True
-        activated_after_last = False
         deleted_here = 0
         pending = list(tier)
         # Up to three passes over the tier: the first straight through, the
@@ -839,9 +840,17 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
         # activate. ZIA validates a delete against the saved configuration,
         # so an engine whose rules are only pending-deleted is still "in
         # use"; the activation runs even when this tier deleted nothing
-        # (a refused delete, an object already gone), so the next tier
-        # always starts from a settled tenant.
+        # (every delete refused by ZIA), so the next tier always starts
+        # from a settled tenant. A tier that sent nothing (every object
+        # already gone or skipped, or the run stopped first) is not
+        # followed by one.
         more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
+        # A delete that reached ZIA (deleted, or refused by ZIA) is what an
+        # activation follows; a call the run stopped before sending is not.
+        sent_here = sum(1 for c in tier if entries.get((c["kind"], c.get("channel"), str(c["id"])), {}).get("status") in ("deleted", "failed"))
+        if sent_here:
+            sent_any = True
+            activated_after_last = False
         if ops.stop_reason():
             # Say what was never tried, then finish the bookkeeping below.
             for c in to_remove:
@@ -852,28 +861,30 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
                     recorder.record(c["kind"], c["name"], "skipped", op="delete", channel=c.get("channel"), entry=entry,
                                     reason=f"not attempted: {ops.stop_reason()}")
             break
-        if tier and more:
+        if sent_here and more:
             _log(f"Activating after the {TIER_LABEL[ti]} ({deleted_here} deleted) and waiting for ZIA to report ACTIVE before removing the {TIER_LABEL.get(ti + 1, 'rest')}…")
             act = pc.activate(zia)
-            activations.append(dict(act, after=TIER_LABEL[ti]))
+            final_activation = dict(act, after=TIER_LABEL[ti])
+            activations.append(final_activation)
             _log("Activation " + ("requested." if act.get("activated") else f"could not run: {act.get('error')}"))
-            status = _settle(zia, settle_seconds, _log)
-            _log(f"Activation status: {status or 'unknown'}.")
+            settled_status = _settle(zia, settle_seconds, _log)
+            _log(f"Activation status: {settled_status or 'unknown'}.")
             names_cache.clear()   # re-read after activation
             activated_after_last = True
+        last_sent_tier = TIER_LABEL[ti] if sent_here else last_sent_tier
 
-    # Final activation after the last tier that had something to remove
-    # (the dictionaries, or whichever tier came last), whatever its deletes
+    # The activation after the last tier that sent a delete (the
+    # dictionaries, or whichever tier came last), whatever its deletes
     # returned, so every deletion is live; then wait for ZIA to report
     # ACTIVE (an activation is not instantaneous). A tier already followed
-    # by its activation is not activated twice.
-    final_activation = None
-    settled_status = None
-    if attempted_any and not activated_after_last:
-        _log("Activating pending ZIA changes…")
-        final_activation = pc.activate(zia)
-        activations.append(dict(final_activation, after="final"))
-        _log("Activation " + ("done." if final_activation.get("activated") else f"could not run: {final_activation.get('error')}"))
+    # by its activation is not activated twice, and a run that sent no
+    # delete activates nothing.
+    if sent_any and not activated_after_last:
+        _log(f"Activating after the {last_sent_tier} and waiting for ZIA to report ACTIVE…")
+        act = pc.activate(zia)
+        final_activation = dict(act, after=last_sent_tier)
+        activations.append(final_activation)
+        _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))
         settled_status = _settle(zia, settle_seconds, _log)
 
     # VERIFY BY READING: run the same discovery the preview ran, against
