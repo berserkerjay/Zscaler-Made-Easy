@@ -257,3 +257,14 @@ def test_the_container_option_says_how_to_install_docker_step_by_step():
     # The compose file really needs 2.24: its env_file uses the long syntax.
     compose = _read("docker-compose.yml")
     assert "required: false" in compose
+
+
+def test_the_container_can_be_built_and_run_by_hand_with_the_same_settings_as_compose():
+    guide = open(os.path.join(ROOT, "INSTALL.md")).read()
+    part = guide.split("### Build and run it by hand")[1].split("## First run")[0]
+    for piece in ("docker build -t dlp-check:local .", "docker volume create dlpcheck-data", "-v dlpcheck-data:/data",
+                  "-p 127.0.0.1:8000:8000", "ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND", "--read-only", "--cap-drop ALL",
+                  "no-new-privileges:true", "--restart unless-stopped", "docker logs dlp-check"):
+        assert piece in part, piece
+    compose = open(os.path.join(ROOT, "docker-compose.yml")).read()
+    assert "127.0.0.1:8000:8000" in compose and "dlpcheck-data:/data" in compose and "mem_limit: 1g" in compose

@@ -590,6 +590,90 @@ see [If something goes wrong](#if-something-goes-wrong).
 Nothing is connected to Zscaler yet. The app only reaches a tenant once
 you type in credentials and click **Authenticate**.
 
+### Build and run it by hand (without Docker Compose)
+
+Use this when the server has Docker but not the Compose plugin, or when
+your team manages containers with plain `docker` commands. It builds the
+same image and runs it with the same settings as `docker-compose.yml`.
+Run every command from the app folder (the one that holds `Dockerfile`).
+
+**1. Build the image** from the `Dockerfile`:
+
+```bash
+docker build -t dlp-check:local .
+```
+
+**2. Create the storage volume** once. Everything the app saves lives in
+it, mounted at `/data` inside the container:
+
+```bash
+docker volume create dlpcheck-data
+```
+
+**3. Run the container.** Mac and Linux:
+
+```bash
+docker run -d --name dlp-check \
+  -p 127.0.0.1:8000:8000 \
+  -v dlpcheck-data:/data \
+  -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND \
+  -e DLP_CHECK_USER_PACKS=/data/user_packs \
+  --read-only --tmpfs /tmp:size=256m \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  --pids-limit 256 --memory 1g \
+  --restart unless-stopped \
+  dlp-check:local
+```
+
+Windows (PowerShell or Command Prompt), the same command on one line:
+
+```
+docker run -d --name dlp-check -p 127.0.0.1:8000:8000 -v dlpcheck-data:/data -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
+```
+
+What each part does:
+
+| Part | Why |
+|---|---|
+| `-p 127.0.0.1:8000:8000` | Publishes the app on this machine only. Keep the `127.0.0.1:`; see the warning above about `0.0.0.0`. |
+| `-v dlpcheck-data:/data` | Mounts the storage volume, so profiles, deployment records, the audit log, uploaded packs and the token survive rebuilds. |
+| `-e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND` | Lets the server listen inside the container. Without it the app refuses to start. |
+| `--read-only --tmpfs /tmp` | The app folder stays read-only; only `/data` and a small `/tmp` are writable. |
+| `--cap-drop ALL --security-opt no-new-privileges:true` | The container gets no extra Linux privileges. |
+| `--restart unless-stopped` | Starts again after a reboot until you stop it. |
+
+Credentials or other settings from a file: add `--env-file .env` before
+`dlp-check:local`. To allow deploys from the container, put
+`ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in that `.env` file.
+
+**4. Open it.** Read the UI token and open the address it prints:
+
+```bash
+docker logs dlp-check
+```
+
+**Checks and everyday use:**
+
+```bash
+docker ps --filter name=dlp-check          # STATUS should say "healthy" after about 30 seconds
+docker exec dlp-check cat /data/ui_token.txt   # the UI token again
+docker stop dlp-check                      # stop it
+docker start dlp-check                     # start it again
+```
+
+**Update it** after getting the latest code: build again, then replace
+the container. The volume keeps your data.
+
+```bash
+docker build -t dlp-check:local .
+docker rm -f dlp-check
+```
+
+Then run the step 3 command again.
+
+**Remove it completely**, data included: `docker rm -f dlp-check`, then
+`docker volume rm dlpcheck-data`, then `docker image rm dlp-check:local`.
+
 ---
 
 ## First run: the UI token
