@@ -197,6 +197,8 @@ async function openDlpPacksModal() {
     DZ.packs = (await r.json()).packs || [];
     // Drop selections for packs that no longer exist.
     DZ.selected = new Set([...DZ.selected].filter(id => DZ.packs.some(p => p.id === id)));
+    // The tenant profile's industry (or its ticked packs) pre-selects the packs; the operator adds or drops from there.
+    _dzAutoSelectFromScope();
   } catch (e) {
     DZ.packs = []; DZ.error = `Couldn't load packs: ${e.message}`;
   }
@@ -312,6 +314,38 @@ function _dzRender() {
   ({ 1: _dzRenderSelect, 2: _dzRenderReview, 3: _dzRenderApprove, 4: _dzRenderDeploy })[DZ.step]();
 }
 
+// ── Pre-selection from the tenant profile ────────────────────────
+// The profile's industry (or the packs ticked on the profile) decides the
+// packs Deploy policy packs starts with: they are ticked when the sheet
+// opens and again whenever the scope changes (another industry chosen,
+// packs ticked on the profile). What the operator changes by hand after
+// that is theirs: a cleared or widened selection stays as it is until the
+// scope itself changes.
+function _dzScopeKey(sc) { return sc && sc.scoped ? `${sc.industry}|${sc.packs_from}|${(sc.packs || []).join(',')}` : ''; }
+function _dzAutoSelectFromScope() {
+  const sc = (window.GD && GD.scope && GD.scope.scoped) ? GD.scope : null;
+  if (!sc || !Array.isArray(DZ.packs) || !DZ.packs.length) return false;
+  const key = _dzScopeKey(sc);
+  if (DZ.autoKey === key) return false;   // this scope already had its turn; the operator's changes stand
+  const want = (sc.packs || []).filter(id => DZ.packs.some(p => p.id === id));
+  DZ.selected = new Set(want);
+  DZ.autoSelected = new Set(want);
+  DZ.autoKey = key;
+  DZ.autoIndustry = sc.industry;
+  DZ.autoFrom = sc.packs_from;
+  return true;
+}
+function _dzAutoNoteHtml() {
+  const sc = (window.GD && GD.scope && GD.scope.scoped) ? GD.scope : null;
+  if (!sc || !DZ.autoSelected || !DZ.autoSelected.size) return '';
+  const names = id => ((DZ.packs.find(p => p.id === id) || {}).name || id);
+  const still = [...DZ.autoSelected].filter(id => DZ.selected.has(id));
+  const added = [...DZ.selected].filter(id => !DZ.autoSelected.has(id));
+  const dropped = [...DZ.autoSelected].filter(id => !DZ.selected.has(id));
+  return `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Pre-selected for ${_dzE(sc.industry)}${DZ.autoFrom === 'profile' ? ' (the packs ticked on the tenant profile)' : ' (the industry\'s packs from the tenant profile)'}: ${_dzE([...DZ.autoSelected].map(names).join(', '))}</div>
+    <div class="d">Tick more packs to add them, or untick any; the selection is yours from here.${added.length ? ` Added by you: ${_dzE(added.map(names).join(', '))}.` : ''}${dropped.length ? ` Dropped by you: ${_dzE(dropped.map(names).join(', '))}.` : ''}${!still.length && !added.length ? ' Nothing is selected now.' : ''}</div></div></div>`;
+}
+
 // ── Step 1: select ────────────────────────────────────────────────
 function _dzRenderSelect() {
   const body = document.getElementById('dzBody');
@@ -364,6 +398,7 @@ function _dzRenderSelect() {
     }).join('');
     body.innerHTML = `
       ${_dzWriteBanner()}
+      ${_dzAutoNoteHtml()}
       <div class="dz-grid">${cards}</div>
       ${(() => { const sc = (window.GD && GD.scope && GD.scope.scoped) ? GD.scope : null; if (!sc) return ''; const hidden = DZ.packs.filter(p => !sc.packs.includes(p.id) && !DZ.selected.has(p.id)); if (!hidden.length) return ''; return `<div class="dz-scope-fold"><span class="d">Scope: ${_dzE(sc.industry)} (from the tenant profile). ${DZ.showAllPacks ? `All packs shown; ${hidden.length} are outside this vertical.` : `${hidden.length} pack(s) for other verticals are folded away: ${_dzE(hidden.map(p => p.name || p.id).join(', '))}.`}</span> <button type="button" class="dz-link" onclick="DZ.showAllPacks = !DZ.showAllPacks; _dzRenderSelect()">${DZ.showAllPacks ? 'Show only this vertical' : 'Show all packs'}</button></div>`; })()}
       <div class="dz-options">
@@ -386,7 +421,7 @@ function _dzRenderSelect() {
   const tot = k => sel.reduce((a, p) => a + (p[k] || 0), 0);
   document.getElementById('dzFoot').innerHTML = `
     <div class="dz-summary">${sel.length
-      ? `<strong style="color:var(--text);">${_dzN(sel.length, 'pack')}</strong> · ${tot('dictionaries')} dictionaries · ${tot('engines')} engines · ${tot('policies')} policies<div class="d" style="margin-top:0.2rem;">Channels — ${_dzTargetsSummary(sel.map(p => p.id))}. Preflight reads the tenant and writes nothing.</div>`
+      ? `<strong style="color:var(--text);">${_dzN(sel.length, 'pack')}</strong>${DZ.autoSelected && DZ.autoSelected.size && sel.every(p => DZ.autoSelected.has(p.id)) && sel.length === DZ.autoSelected.size ? ` <span class="d">(pre-selected for ${_dzE(DZ.autoIndustry || '')})</span>` : ''} · ${tot('dictionaries')} dictionaries · ${tot('engines')} engines · ${tot('policies')} policies<div class="d" style="margin-top:0.2rem;">Channels — ${_dzTargetsSummary(sel.map(p => p.id))}. Preflight reads the tenant and writes nothing.</div>`
       : 'Select at least one pack to continue.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="closeDlpPacksModal()">Cancel</button>
