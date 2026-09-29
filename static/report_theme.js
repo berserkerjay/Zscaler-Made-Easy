@@ -26,7 +26,7 @@
       const btn = document.createElement('button');
       btn.id = 'themeToggleBtn';
       btn.type = 'button';
-      btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:var(--card-solid, rgba(15,23,42,0.85));border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;backdrop-filter:blur(6px);';
+      btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:var(--card-solid, var(--well));border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;';
       btn.addEventListener('click', () => apply(document.body.classList.contains('theme-light') ? 'dark' : 'light', true));
       document.body.appendChild(btn);
       apply(current(), false);
@@ -148,7 +148,7 @@
       const b = document.createElement('a');
       b.id = 'backHomeBtn'; b.href = '/'; b.textContent = '← Back to the assessment';
       b.setAttribute('aria-label', 'Back to the assessment page');
-      b.style.cssText = 'position:fixed;top:0.6rem;left:0.6rem;z-index:2147483000;padding:0.5rem 0.85rem;border-radius:10px;background:#1d4ed8;color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,0.35);';
+      b.style.cssText = 'position:fixed;top:0.6rem;left:0.6rem;z-index:2147483000;padding:0.5rem 0.85rem;border-radius:10px;background:var(--accent);color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,0.35);';
       b.addEventListener('click', goHome);
       document.body.appendChild(b);
     }

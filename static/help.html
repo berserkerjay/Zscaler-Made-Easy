@@ -12,11 +12,11 @@
   .hp-sec h2 { font-size: 1.1rem; margin: 1.2rem 0 0.5rem; }
   .hp-sec h3 { font-size: 1rem; margin: 0; }
   .hp-first { counter-reset: step; list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
-  .hp-first li { counter-increment: step; display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.6rem; align-items: start; background: var(--well); border-radius: 10px; padding: 0.6rem 0.8rem; }
+  .hp-first li { counter-increment: step; display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.6rem; align-items: start; background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
   .hp-first li::before { content: counter(step); font-weight: 800; color: var(--accent); font-size: 1.2rem; line-height: 1.2; }
   .hp-first li a { color: var(--accent); font-weight: 600; }
   .hp-first li span { display: block; color: var(--dim); font-size: 0.85rem; }
-  .hp-card { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 0.9rem 1rem; margin: 0.6rem 0; scroll-margin-top: 4rem; }
+  .hp-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); padding: 0.9rem 1rem; margin: 0.6rem 0; scroll-margin-top: 4rem; }
   .hp-card .g { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
   .hp-card .xp-dl { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 0.3rem 0.9rem; margin: 0.5rem 0 0.4rem; font-size: 0.9rem; line-height: 1.5; }
   .hp-card .xp-dl dt { font-weight: 600; color: var(--dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.15rem; }

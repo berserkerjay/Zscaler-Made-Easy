@@ -20,7 +20,7 @@ def test_quick_start_is_a_top_button_that_opens_its_own_tab():
     assert '<h2>Quick Start</h2>' not in html, "the Quick Start card must be gone from the page body"
     assert html.index('aria-label="Start"') < html.index('aria-label="Find the gaps"'), "Start comes first in the toolbar"
     qs = c.get("/quickstart")
-    assert qs.status_code == 200 and "Quick Start</span> Assessment" in qs.text and "OneAPI credentials" in qs.text
+    assert qs.status_code == 200 and "Quick start</span> assessment" in qs.text and "OneAPI credentials" in qs.text
     assert TestClient(srv.app).get("/quickstart").status_code == 200   # no token needed for the page itself
 
 

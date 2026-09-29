@@ -193,7 +193,7 @@ function _eaRender() {
 (function () {
   const style = document.createElement('style');
   style.textContent = `
-  .ea-wrap { margin: 0 0 0.9rem; padding: 0.75rem 1rem; background: var(--well); border: 1px solid var(--border); border-radius: 10px; }
+  .ea-wrap { margin: 0 0 0.9rem; padding: 0.75rem 1rem; background: var(--well); border: 1px solid var(--border); border-radius: var(--r-md); }
   .ea-wrap > summary { cursor: pointer; font-size: 0.95rem; }
   .ea-flow { display: flex; flex-direction: column; gap: 0.6rem; margin: 0.8rem 0 0.4rem; }
   .ea-lane { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; padding: 0.55rem 0.7rem; border: 1px dashed var(--border); border-radius: 8px; }
