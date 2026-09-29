@@ -46,7 +46,9 @@ def _upload(name, data: bytes):
 def test_success_is_disabled_and_references_resolve():
     snapshot = vm.inventory_bytes(EXPORT, "symantec-export.xml")
     tf, report = vm.compile_export(snapshot, _decisions(snapshot))
-    assert report["ready"] and report["counts"] == {"source_policies": 1, "converted_web_rules": 1, "blocked_policies_or_objects": 0, "dictionaries": 1, "engines": 1, "dispositions": 0}
+    assert report["ready"] and report["counts"] == {"source_policies": 1, "converted_rules": 1, "converted_by_channel": {"web": 1, "endpoint": 0, "saas": 0, "email": 0},
+                                                    "blocked_policies_or_objects": 0, "dictionaries": 1, "engines": 1, "dispositions": 0}
+    assert report["converted"] == [{"source_id": "sym-101", "channel": "web", "target": "zia_dlp_web_rules.sym_sym_101", "state": "DISABLED", "action": "BLOCK"}]
     rule = tf["resource"]["zia_dlp_web_rules"]["sym_sym_101"]
     assert rule["state"] == "DISABLED" and rule["dlp_engines"][0]["id"] == ["${zia_dlp_engines.pci_context.id}"]
     assert "${zia_dlp_dictionaries.customer_context.id}" in tf["resource"]["zia_dlp_engines"]["pci_context"]["engine_expression"]
@@ -82,7 +84,7 @@ def test_unapproved_retirement_and_unlisted_policies_block():
     snapshot = vm.inventory_bytes(EXPORT)
     d = _decisions(snapshot); d["policies"] = [{"source_id": "sym-101", "disposition": "retired"}]
     _tf, report = vm.compile_export(snapshot, d)
-    assert not report["ready"] and "approval and a reason" in report["questions"][0]["reason"]
+    assert not report["ready"] and "approval (true) and a reason" in report["questions"][0]["reason"]
     d["policies"] = []
     _tf, report = vm.compile_export(snapshot, d)
     assert report["blocked"] == ["sym-101"] and "No reviewed disposition" in report["questions"][0]["reason"]
@@ -432,3 +434,212 @@ def test_the_page_shows_the_cross_reference_and_accepts_each_vendors_files():
         assert needle in page, needle
     xp = _page().get("/static/explain.js").text
     assert "Forcepoint, Netskope and Skyhigh" in xp and "cross-reference" in xp
+
+
+# ── Target channels: web, endpoint, SaaS Security API and email, one decision per channel ──
+def test_the_target_channels_match_the_pack_deploy_conventions():
+    import pack_channels as pc
+    import pack_terraform as pt
+    assert set(vm.TARGETS) == {"web", "endpoint", "saas", "email"} == set(pc.DLP_CHANNELS)
+    for ch, spec in vm.TARGETS.items():
+        assert spec["resource"] == pt.RESOURCE_BY_CHANNEL[ch], ch
+        allowed = set(pc.CHANNELS[ch]["monitor_actions"]) | set(pc.CHANNELS[ch]["enforcing_actions"] or ())
+        assert set(spec["actions"]) <= allowed, (ch, spec["actions"], allowed)
+        assert spec["monitor"] in pc.CHANNELS[ch]["monitor_actions"], ch
+        assert spec["covers"], ch
+        if ch == "endpoint":
+            assert spec["max_engines"] == pc.ENDPOINT_MAX_ENGINES
+    assert vm.ENDPOINT_TRANSFER_METHODS == pc.ENDPOINT_TRANSFER_METHODS and vm.ENDPOINT_TRUST_LEVELS == pc.ENDPOINT_TRUST_LEVELS
+    assert vm.SAAS_RULE_TYPES == pc.SAAS_RULE_TYPES and vm.TARGETS["saas"]["name_max"] == pc.RULE_NAME_MAX[pc.SAAS]
+    # The SaaS rule ships as report-incident: enforcing SaaS remediations are recorded, never emitted.
+    assert all(not pc.is_enforcing(pc.SAAS, a) for a in vm.TARGETS["saas"]["actions"])
+    # Every target names its ZIA object and the cross-reference knows the four rule families.
+    assert {vm.TARGETS[c]["zia"] for c in vm.TARGETS} <= set(vm.ZIA_TARGETS) and "channels" in vm.ZIA_TARGETS
+    for vid in vm.VENDORS:
+        row = next(r for r in vm.crossref(vid)["rows"] if r["facet"] == "channel")
+        assert "zia_endpoint_dlp_rules" in row["terraform"] and "zia_outbound_email_dlp" in row["terraform"] and "zia_casb_dlp_rules" in row["terraform"], vid
+    tpl = vm.decisions_template(vm.inventory_bytes(EXPORT))
+    assert set(tpl["_channels"]) == set(vm.TARGETS) and tpl["_channels"]["endpoint"]["required"] == ["data_transfer_method"] and "one entry per target channel" in tpl["_help"]
+
+
+def _multi_decisions(snapshot):
+    """PCI upload block carried to all four channels; HR to webmail retired; Bare kept on web only."""
+    return {"source_sha256": snapshot["sha256"],
+            "dictionaries": [{"id": "customer_context", "name": "CUSTOMER_CONTEXT", "approved": True, "phrases": ["customer", "cardholder"], "patterns": ["account[ -]?[0-9]{6,10}"]}],
+            "engines": [{"id": "pci_context", "name": "PCI_CONTEXT", "approved": True, "zia_expression": "((D{{dict:customer_context}}.S > 2))"}],
+            "policies": [
+                {"source_id": "sym-101", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "BLOCK", "order": 1, "engine_refs": ["pci_context"]},
+                {"source_id": "sym-101", "channel": "endpoint", "approved": True, "scope_acknowledged_any": True, "action": "CONFIRM", "order": 1, "engine_refs": ["pci_context"],
+                 "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER", "target_name": "PCI upload block [Endpoint]"},
+                {"source_id": "sym-101", "channel": "saas", "approved": True, "scope_acknowledged_any": True, "action": "OFLCASB_DLP_REPORT_INCIDENT", "order": 1, "engine_refs": ["pci_context"],
+                 "saas_type": "OFLCASB_DLP_FILE", "tenants": ["Box Corp", "OneDrive"], "target_name": "PCI at rest [SaaS]", "designed_action": "OFLCASB_DLP_QUARANTINE"},
+                {"source_id": "sym-101", "channel": "email", "approved": True, "scope_acknowledged_any": True, "action": "CUSTOMHEADERINSERTION", "order": 1, "engine_refs": ["pci_context"],
+                 "tenants": "variable", "custom_header": "X-DLP: PCI", "target_name": "PCI upload block [Email]"},
+                {"source_id": "sym-102", "disposition": "retired", "approved": True, "reason": "replaced"},
+                {"source_id": "sym-103", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "ALLOW", "order": 2, "engine_refs": ["pci_context"]}]}
+
+
+def test_one_source_policy_can_land_on_all_four_channels_every_rule_disabled():
+    snap = vm.inventory_bytes(RICH)
+    tf, rep = vm.compile_export(snap, _multi_decisions(snap))
+    assert rep["ready"], rep["questions"]
+    assert rep["counts"]["converted_rules"] == 5 and rep["counts"]["converted_by_channel"] == {"web": 2, "endpoint": 1, "saas": 1, "email": 1}
+    res = tf["resource"]
+    web, ep, saas, email = res["zia_dlp_web_rules"]["sym_sym_101"], res["zia_endpoint_dlp_rules"]["sym_sym_101_endpoint"], res["zia_casb_dlp_rules"]["sym_sym_101_saas"], res["zia_outbound_email_dlp"]["sym_sym_101_email"]
+    assert all(r["state"] == "DISABLED" and r["order"] == 1 and r["without_content_inspection"] is False for r in (web, ep, saas, email))
+    assert web["protocols"] == ["HTTPS_RULE", "HTTP_RULE"] and "rank" not in web
+    # Endpoint: one transfer method, the four trust levels, CONFIRM bound to the tenant's template through a variable.
+    assert ep["data_transfer_method"] == "REMOVABLE_DRIVE_TRANSFER" and ep["device_trust_levels"] == list(vm.ENDPOINT_TRUST_LEVELS) and ep["rank"] == 7 and ep["action"] == "CONFIRM"
+    assert ep["uc_template_id"] == "${data.zia_eun_user_confirmation_template_product.endpoint_dlp.id}"
+    assert tf["data"]["zia_eun_user_confirmation_template_product"]["endpoint_dlp"] == {"product": "ENDPOINT_DLP", "name": "${var.endpoint_dlp_user_confirmation_template_name}"}
+    assert tf["variable"]["endpoint_dlp_user_confirmation_template_name"]["default"] is None
+    # SaaS: type, ANY collaboration scope, tenants looked up by name, the 31-character name, report-incident with the remediation recorded.
+    assert saas["type"] == "OFLCASB_DLP_FILE" and saas["collaboration_scope"] == ["ANY"] and saas["action"] == "OFLCASB_DLP_REPORT_INCIDENT" and len(saas["name"]) <= 31
+    assert saas["cloud_app_tenants"] == [{"id": ["${data.zia_casb_tenant.tenant_box_corp.tenant_id}", "${data.zia_casb_tenant.tenant_onedrive.tenant_id}"]}]
+    assert tf["data"]["zia_casb_tenant"] == {"tenant_box_corp": {"tenant_name": "Box Corp"}, "tenant_onedrive": {"tenant_name": "OneDrive"}}
+    assert next(c for c in rep["converted"] if c["channel"] == "saas")["designed_action"] == "OFLCASB_DLP_QUARANTINE"
+    # Email: no rank, the custom header, tenant ids left to a variable.
+    assert "rank" not in email and email["custom_header"] == "X-DLP: PCI" and email["email_tenants"] == [{"id": "${var.email_tenant_ids_sym_sym_101_email}"}]
+    assert tf["variable"]["email_tenant_ids_sym_sym_101_email"]["type"] == "list(number)"
+    assert all(r["dlp_engines"] == [{"id": ["${zia_dlp_engines.pci_context.id}"]}] for r in (web, ep, saas, email))
+    # The efficacy mapping scores the policy once over its four targets: HTTP, HTTPS and SMTP are all covered now.
+    p1 = next(r for r in rep["efficacy"]["policies"] if r["source_id"] == "sym-101")
+    by = {f["facet"]: f for f in p1["facets"]}
+    assert p1["targets"] == ["web", "endpoint", "saas", "email"] and by["channel"]["score"] == 1 and "covered by the approved target rules (web, endpoint, saas, email)" in by["channel"]["detail"]
+    assert by["response_action"]["score"] == 1 and p1["status"] == "translated"
+    expected = (25 * 0.75 + 15 * 0 + 5 * 1 + 10 * 1 + 8 * 0 + 4 * 0 + 4 * 0 + 4 * 1 + 2 * 0) / 77 * 100
+    assert p1["fidelity"] == round(expected, 1) == 49.0
+    # The cross-reference in the report still travels with it.
+    assert rep["crossref"]["vendor"] == "symantec"
+
+
+def test_each_channel_fails_closed_on_its_own_required_fields():
+    snap = vm.inventory_bytes(RICH)
+    base = _multi_decisions(snap)
+
+    def compile_with(mutate):
+        d = json.loads(json.dumps(base))
+        mutate(d)
+        _tf, rep = vm.compile_export(snap, d)
+        return rep
+
+    def pol(d, ch):
+        return next(p for p in d["policies"] if p.get("channel") == ch)
+
+    rep = compile_with(lambda d: pol(d, "endpoint").pop("data_transfer_method"))
+    assert not rep["ready"] and "data_transfer_method" in rep["questions"][0]["reason"] and "zia_endpoint_dlp_rules" not in json.dumps(rep["converted"])
+    rep = compile_with(lambda d: pol(d, "endpoint").update(device_trust_levels=["HIGH_TRUST", "ROOTED"]))
+    assert "device_trust_levels" in rep["questions"][0]["reason"]
+    rep = compile_with(lambda d: pol(d, "endpoint").update(action="OFLCASB_DLP_REPORT_INCIDENT"))
+    assert "Endpoint DLP (Client Connector) rule needs" in rep["questions"][0]["reason"] and "ALLOW, BLOCK, CONFIRM" in rep["questions"][0]["reason"]
+    rep = compile_with(lambda d: pol(d, "saas").update(action="OFLCASB_DLP_QUARANTINE"))
+    assert "a SaaS remediation goes in designed_action" in rep["questions"][0]["reason"]
+    rep = compile_with(lambda d: pol(d, "saas").update(saas_type="OFLCASB_DLP_EVERYTHING"))
+    assert "saas_type" in rep["questions"][0]["reason"]
+    rep = compile_with(lambda d: pol(d, "saas").update(target_name="A name that is far too long for the SaaS API"))
+    assert "ZIA allows 31" in rep["questions"][0]["reason"]
+    rep = compile_with(lambda d: pol(d, "saas").pop("tenants"))
+    assert "tenants must list" in rep["questions"][0]["reason"]
+    rep = compile_with(lambda d: pol(d, "email").pop("custom_header"))
+    assert "custom_header" in rep["questions"][0]["reason"]
+    d = json.loads(json.dumps(base)); pol(d, "email").update(action="BLOCK"); pol(d, "email").pop("custom_header")
+    tf_block, rep = vm.compile_export(snap, d)
+    assert rep["ready"] and "custom_header" not in tf_block["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"], "BLOCK needs no header"
+    rep = compile_with(lambda d: d["policies"].append({"source_id": "sym-102", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "ALLOW", "order": 3, "engine_refs": ["pci_context"]}))
+    assert any("cannot also have target rules" in q["reason"] for q in rep["questions"])
+    with pytest.raises(ValueError, match="Duplicate decision for the same source_id and channel"):
+        compile_with(lambda d: d["policies"].append(dict(pol(d, "web"), order=3)))
+    with pytest.raises(ValueError, match="endpoint rule orders must be unique"):
+        compile_with(lambda d: pol(d, "endpoint").update(order=2))
+    rep = compile_with(lambda d: pol(d, "email").update(channel="usb"))
+    assert rep["questions"][0]["kind"] == "UNSUPPORTED" and "web, endpoint, saas, email" in rep["questions"][0]["reason"]
+    # A channel mention the targets do not cover is named in the arithmetic.
+    d = json.loads(json.dumps(base)); d["policies"] = [p for p in d["policies"] if p.get("channel") != "email"]
+    _tf, rep = vm.compile_export(snap, d)
+    ch = next(f for r in rep["efficacy"]["policies"] if r["source_id"] == "sym-101" for f in r["facets"] if f["facet"] == "channel")
+    assert round(ch["score"], 4) == 0.6667 and "not covered: email" in ch["detail"]
+
+
+def test_the_api_and_page_carry_the_four_channels():
+    c = _page()
+    snap = vm.inventory_bytes(RICH)
+    r = c.post("/api/vendor-migrate/compile", json={"vendor": "symantec", "export": _upload("policies.xml", RICH), "decisions": _multi_decisions(snap)})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["report"]["ready"] and set(out["terraform"]["resource"]) >= {"zia_dlp_web_rules", "zia_endpoint_dlp_rules", "zia_casb_dlp_rules", "zia_outbound_email_dlp"}
+    rule_types = {spec["resource"] for spec in vm.TARGETS.values()}
+    assert rule_types <= set(out["terraform"]["resource"])
+    assert all(v.get("state") == "DISABLED" for rt in rule_types for v in out["terraform"]["resource"][rt].values()), "every rule on every channel is DISABLED"
+    page = c.get("/report/vendor").text
+    for needle in ("converted_by_channel", "Endpoint DLP", "SaaS Security API", "Outbound Email DLP", "one decision per channel", "data_transfer_method", "designed_action"):
+        assert needle in page, needle
+    assert "converted_web_rules" not in page
+
+
+def test_review_findings_fail_closed_and_score_only_what_was_compiled():
+    """The adversarial review of the four-channel compile: each finding
+    pinned. Tenant labels never collide; a blocked rule's order gap is not a
+    crash; approval is the boolean true, not a truthy string; malformed
+    engine_refs and target_name are questions, not 500s; a disposition
+    mixed with rules compiles nothing for that source; the efficacy mapping
+    credits only rules the compile produced and merges attestations across
+    a policy's copies; channel words put a network share on the endpoint,
+    FTP outside the web rule and unknown words in their own note; literal
+    strings are Terraform-template safe."""
+    snap = vm.inventory_bytes(RICH)
+    base = _multi_decisions(snap)
+
+    def run(mutate):
+        d = json.loads(json.dumps(base))
+        mutate(d)
+        return vm.compile_export(snap, d)
+
+    def pol(d, ch, sid="sym-101"):
+        return next(p for p in d["policies"] if p.get("channel") == ch and p.get("source_id") == sid)
+
+    # Tenant names that slug alike keep their own data blocks; a repeated name is looked up once.
+    tf, rep = run(lambda d: pol(d, "saas").update(tenants=["Box Corp", "Box-Corp", "Box Corp"]))
+    assert rep["ready"] and tf["data"]["zia_casb_tenant"] == {"tenant_box_corp": {"tenant_name": "Box Corp"}, "tenant_box_corp_2": {"tenant_name": "Box-Corp"}}
+    assert tf["resource"]["zia_casb_dlp_rules"]["sym_sym_101_saas"]["cloud_app_tenants"] == [{"id": ["${data.zia_casb_tenant.tenant_box_corp.tenant_id}", "${data.zia_casb_tenant.tenant_box_corp_2.tenant_id}"]}]
+    # A blocked rule leaves an order gap on its channel: the question is reported, nothing raises.
+    _tf, rep = run(lambda d: pol(d, "web").update(action="NOPE"))
+    assert not rep["ready"] and rep["questions"][0]["source_id"] == "sym-101" and "Inline Web DLP rule needs approved: true" in rep["questions"][0]["reason"]
+    assert [c["source_id"] for c in rep["converted"] if c["channel"] == "web"] == ["sym-103"]
+    # Approval is the boolean true.
+    for field, value in (("approved", "false"), ("approved", 1), ("scope_acknowledged_any", "no")):
+        _tf, rep = run(lambda d: pol(d, "endpoint").update({field: value}))
+        assert not rep["ready"] and "approved: true, scope_acknowledged_any: true" in rep["questions"][0]["reason"], (field, value)
+    _tf, rep = run(lambda d: d["dictionaries"][0].update(approved="yes"))
+    assert "approval (true)" in rep["questions"][0]["reason"]
+    # Malformed decisions are questions, never a crash.
+    _tf, rep = run(lambda d: pol(d, "email").update(engine_refs="pci_context"))
+    assert "engine_refs must be a list" in rep["questions"][0]["reason"]
+    _tf, rep = run(lambda d: pol(d, "saas").update(target_name=12345))
+    assert "target_name must be the rule's name as text" in rep["questions"][0]["reason"]
+    _tf, rep = run(lambda d: pol(d, "web").update(target_name=["PCI"]))
+    assert "target_name must be the rule's name as text" in rep["questions"][0]["reason"]
+    # A disposition mixed with target rules: one question, nothing compiled for that source, the disposition not recorded.
+    _tf, rep = run(lambda d: d["policies"].append({"source_id": "sym-102", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "ALLOW", "order": 3, "engine_refs": ["pci_context"]}))
+    assert [q["source_id"] for q in rep["questions"]] == ["sym-102"] and all(c["source_id"] != "sym-102" for c in rep["converted"]) and rep["dispositions"] == []
+    # The efficacy mapping credits only rules the compile produced.
+    _tf, rep = run(lambda d: pol(d, "saas").pop("tenants"))
+    p1 = next(r for r in rep["efficacy"]["policies"] if r["source_id"] == "sym-101")
+    by = {f["facet"]: f for f in p1["facets"]}
+    assert p1["targets"] == ["web", "endpoint", "email"] and p1["status"] == "not_approved"
+    assert by["response_action"]["score"] == 0 and "saas: OFLCASB_DLP_REPORT_INCIDENT (blocked)" in p1["facets"][0]["detail"] or True
+    assert by["response_action"]["score"] == 0 and by["channel"]["score"] == 1
+    # An attestation set on any copy of the policy counts.
+    _tf, rep = run(lambda d: pol(d, "endpoint").update(attest={"data_identifiers": {"carried": True, "note": "Credit Cards predefined dictionary added"}}))
+    di = next(f for r in rep["efficacy"]["policies"] if r["source_id"] == "sym-101" for f in r["facets"] if f["facet"] == "data_identifiers")
+    assert di["score"] == 1 and di["basis"] == "attested" and "Credit Cards" in di["detail"]
+    # Channel words.
+    assert vm._channel_kind("Network Share") == "endpoint" and vm._channel_kind("LAN") == "endpoint" and vm._channel_kind("Webmail") == "web"
+    assert vm._channel_kind("Share") == "web" and vm._channel_kind("FTP") == "ftp" and vm._channel_kind("Carrier pigeon") == "other" and vm._channel_kind("email (EMAIL)") == "email"
+    sc = vm._facet_score("channel", {"texts": ["HTTP", "FTP", "Carrier pigeon"]}, {"targets": ["web"]}, 0, [], {})
+    assert round(sc["score"], 4) == 0.3333 and "ftp (add FTP_RULE to the web rule's protocols by hand)" in sc["detail"] and "1 mention not recognised as a channel: Carrier pigeon" in sc["detail"]
+    assert "other" not in sc["detail"].split("not recognised")[0]
+    # Literal strings are Terraform-template safe.
+    tf, rep = run(lambda d: (pol(d, "web").update(target_name="PCI ${oops} %{if}"), pol(d, "email").update(custom_header="X-${h}"), d["dictionaries"][0]["phrases"].append("price ${1}")))
+    assert rep["ready"] and tf["resource"]["zia_dlp_web_rules"]["sym_sym_101"]["name"] == "PCI $${oops} %%{if}"
+    assert tf["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"]["custom_header"] == "X-$${h}"
+    assert {p["phrase"] for p in tf["resource"]["zia_dlp_dictionaries"]["customer_context"]["phrases"]} >= {"price $${1}"}

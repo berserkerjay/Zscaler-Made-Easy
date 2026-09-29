@@ -65,7 +65,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Migrate</span> from another DLP</h1>
-      <p>Turn a Symantec, Forcepoint, Netskope or Skyhigh DLP policy export into disabled ZIA dictionaries, engines and web rules, through decisions a person reviewed. Each adapter reads its vendor's own export file types and shows the API cross-reference from the vendor's objects and fields to ZIA's. Nothing is inferred from the vendor's file beyond each policy's id, name, status and the detection facets its field names expose; nothing is written to the tenant; every generated rule is DISABLED until change control enables it.</p>
+      <p>Turn a Symantec, Forcepoint, Netskope or Skyhigh DLP policy export into disabled ZIA dictionaries, engines and rules on every channel (web, endpoint, SaaS Security API, email), through decisions a person reviewed. Each adapter reads its vendor's own export file types and shows the API cross-reference from the vendor's objects and fields to ZIA's. Nothing is inferred from the vendor's file beyond each policy's id, name, status and the detection facets its field names expose; nothing is written to the tenant; every generated rule is DISABLED until change control enables it.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
@@ -113,7 +113,14 @@
         <h3>Review the decisions</h3>
         <ol class="vm-steps">
           <li>Click <strong>Download decisions template</strong>: it carries this export's SHA-256 and lists every policy with nothing approved.</li>
-          <li>For every policy, either an approved <strong>web</strong> translation (action BLOCK / CONFIRM / ALLOW, one to four <code>engine_refs</code>, a unique order from 1, <code>scope_acknowledged_any: true</code> because the generated rule applies to Any user and location) or an approved <strong>retired</strong> / <strong>out_of_scope</strong> disposition with a reason.</li>
+          <li>For every policy, either approved target translations, <strong>one decision per channel</strong> (copy the entry to carry a policy to more than one), or an approved <strong>retired</strong> / <strong>out_of_scope</strong> disposition with a reason. Each translation names its channel and the channel's action, one to four <code>engine_refs</code>, a unique order from 1 within that channel, <code>scope_acknowledged_any: true</code> because the generated rule applies to Any user and location, and the channel's own fields (listed under <code>_channels</code> in the template):
+            <ul>
+              <li><strong>web</strong> (Inline Web DLP): action BLOCK / CONFIRM / ALLOW.</li>
+              <li><strong>endpoint</strong> (Endpoint DLP, Client Connector): action ALLOW / BLOCK / CONFIRM and <code>data_transfer_method</code>, one of REMOVABLE_DRIVE_TRANSFER, NETWORK_DRIVE_TRANSFER, APPLICATION_FILE_ACCESS, PRINTING (one per rule); <code>device_trust_levels</code> optional.</li>
+              <li><strong>saas</strong> (SaaS Security API): action OFLCASB_DLP_REPORT_INCIDENT / OFLCASB_DLP_ALLOW, <code>saas_type</code> (OFLCASB_DLP_FILE, …), <code>tenants</code> (onboarded tenant names, or "variable"), a <code>target_name</code> of at most 31 characters; the remediation you intend (quarantine, remove sharing) goes in <code>designed_action</code> and is set in the portal once incidents are reviewed.</li>
+              <li><strong>email</strong> (Outbound Email DLP): action ALLOW / BLOCK / CUSTOMHEADERINSERTION (with <code>custom_header</code>), <code>tenants</code> as for saas.</li>
+            </ul>
+          </li>
           <li>Spell out the dictionaries (phrases, patterns) and engines (a ZIA expression; <code>{{dict:ID}}</code> references a dictionary in the same file) and approve each one.</li>
           <li>Facets the mapping cannot compute (predefined identifiers, EDM, IDM, ML) are listed under each policy's <code>attest</code>; set <code>carried</code> to true, false or a fraction with a note once you have built the equivalent by hand, and the efficacy mapping counts it.</li>
           <li>Upload the reviewed file below and compile. Anything unmapped blocks the run and is listed as a question; the report ends with the efficacy mapping, the share of each policy's recognised detection the translation carries.</li>
@@ -145,7 +152,7 @@
         <div id="vmEfficacy"></div>
         <details class="vm-xref"><summary>API cross-reference used for this vendor (also in migration-report.json)</summary><div id="vmReportXref"></div></details>
         <h3>What happens next</h3>
-        <p class="vm-dim">Every generated web rule is <strong>DISABLED</strong> and applies to Any user and location. Hand <code>main.tf.json</code> to the platform team (or open the Terraform hand-off for the tenant's existing objects), run <code>terraform init / validate / plan</code>, apply in a test tenant, compare source and target incidents in monitor mode, then enable the rules one by one and order them with the tenant's existing policy. This page never contacts a tenant.</p>
+        <p class="vm-dim">Every generated rule, on every channel, is <strong>DISABLED</strong> and applies to Any user and location. SaaS Security API rules ship as report-incident with the intended remediation recorded; SaaS and email tenant ids are looked up by name or left to a Terraform variable; an endpoint CONFIRM rule binds the tenant's user-confirmation template through a variable. Hand <code>main.tf.json</code> to the platform team (or open the Terraform hand-off for the tenant's existing objects), run <code>terraform init / validate / plan</code>, apply in a test tenant, compare source and target incidents in monitor mode, then enable the rules one by one and order them with the tenant's existing policy. This page never contacts a tenant.</p>
       </section>
     </main>
   </div>
@@ -297,16 +304,20 @@
         announce('The compile failed. ' + e.message);
       } finally { setEnabled('vmCompile', true); }
     });
+    const CHANNEL_LABEL = { web: 'Inline Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security API', email: 'Outbound Email DLP' };
+    function byChannel(c) {
+      return Object.entries(c.converted_by_channel || {}).filter(([, n]) => n).map(([k, n]) => `${n} ${CHANNEL_LABEL[k] || k}`).join(', ') || 'none';
+    }
     function renderReport(d) {
       const rep = d.report, c = rep.counts || {};
       $('vmVerdict').className = `vm-verdict ${rep.ready ? 'ok' : 'bad'}`;
       $('vmVerdict').innerHTML = rep.ready
-        ? `<strong>Ready: every source policy has a reviewed decision.</strong><span>${c.converted_web_rules} web rule${c.converted_web_rules === 1 ? '' : 's'} generated, all DISABLED, with ${c.dictionaries} dictionar${c.dictionaries === 1 ? 'y' : 'ies'} and ${c.engines} engine${c.engines === 1 ? '' : 's'}; ${c.dispositions} polic${c.dispositions === 1 ? 'y' : 'ies'} retired or out of scope.</span>`
+        ? `<strong>Ready: every source policy has a reviewed decision.</strong><span>${c.converted_rules} rule${c.converted_rules === 1 ? '' : 's'} generated (${byChannel(c)}), all DISABLED, with ${c.dictionaries} dictionar${c.dictionaries === 1 ? 'y' : 'ies'} and ${c.engines} engine${c.engines === 1 ? '' : 's'}; ${c.dispositions} polic${c.dispositions === 1 ? 'y' : 'ies'} retired or out of scope.</span>`
         : `<strong>Blocked: ${c.blocked_policies_or_objects} question${c.blocked_policies_or_objects === 1 ? '' : 's'} to answer.</strong><span>No Terraform is emitted until every policy, dictionary and engine has a reviewed, approved decision. Fix the decisions file and compile again.</span>`;
-      $('vmCounts').innerHTML = [['Source policies', c.source_policies], ['Converted web rules', c.converted_web_rules], ['Blocked', c.blocked_policies_or_objects], ['Dictionaries', c.dictionaries], ['Engines', c.engines], ['Retired / out of scope', c.dispositions], ['Provider', `zscaler/zia ${rep.provider_version}`], ['Export SHA-256', rep.source_sha256]]
+      $('vmCounts').innerHTML = [['Source policies', c.source_policies], ['Converted rules', `${c.converted_rules} (${byChannel(c)})`], ['Blocked', c.blocked_policies_or_objects], ['Dictionaries', c.dictionaries], ['Engines', c.engines], ['Retired / out of scope', c.dispositions], ['Provider', `zscaler/zia ${rep.provider_version}`], ['Export SHA-256', rep.source_sha256]]
         .map(([k, v]) => `<div class="vm-fact"><div class="k">${E(k)}</div><div class="v ${k === 'Export SHA-256' ? 'vm-code' : ''}">${E(v)}</div></div>`).join('');
       $('vmQuestions').innerHTML = (rep.questions || []).length ? `<h3>Questions (each one blocks the run)</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">What is needed</th></tr></thead><tbody>${rep.questions.map(q => `<tr><td class="vm-code">${E(q.source_id)}</td><td><span class="vm-chip ${q.kind === 'UNSUPPORTED' ? 'bad' : 'on'}">${E(q.kind)}</span></td><td>${E(q.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
-      $('vmConverted').innerHTML = (rep.converted || []).length ? `<h3>Converted</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Target</th><th scope="col">State</th></tr></thead><tbody>${rep.converted.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td class="vm-code">${E(x.target)}</td><td><span class="vm-chip">${E(x.state)}</span></td></tr>`).join('')}</tbody></table></div>` : '';
+      $('vmConverted').innerHTML = (rep.converted || []).length ? `<h3>Converted</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Channel</th><th scope="col">Target</th><th scope="col">Action</th><th scope="col">State</th></tr></thead><tbody>${rep.converted.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(CHANNEL_LABEL[x.channel] || x.channel)}</td><td class="vm-code">${E(x.target)}</td><td class="vm-code">${E(x.action)}${x.designed_action ? `<div class="vm-dim">designed_action ${E(x.designed_action)}: set in the portal once incidents are reviewed</div>` : ''}</td><td><span class="vm-chip">${E(x.state)}</span></td></tr>`).join('')}</tbody></table></div>` : '';
       $('vmDispositions').innerHTML = (rep.dispositions || []).length ? `<h3>Retired or out of scope</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Disposition</th><th scope="col">Reason</th></tr></thead><tbody>${rep.dispositions.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(x.disposition)}</td><td>${E(x.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
       renderEfficacy(rep.efficacy);
       $('vmReportXref').innerHTML = renderCrossref(rep.crossref, true);
@@ -324,9 +335,10 @@
       const rows = (e.policies || []).map(p => {
         const fid = p.fidelity;
         const chip = p.status === 'translated' ? `<span class="vm-chip ok">${pct(fid)}</span>` : p.status === 'not_approved' ? `<span class="vm-chip bad">${pct(fid)} · not approved</span>` : `<span class="vm-chip">${E(p.status.replace(/_/g, ' '))}</span>`;
+        const targets = (p.targets || []).length ? `<span class="vm-dim" style="font-weight:400;">→ ${E(p.targets.map(t => CHANNEL_LABEL[t] || t).join(', '))}</span>` : '';
         const facets = (p.facets || []).length ? `<div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Facet in the source</th><th scope="col">Seen</th><th scope="col">Carried to ZIA as</th><th scope="col">Score</th><th scope="col">Points</th><th scope="col">Basis</th><th scope="col">Arithmetic</th></tr></thead><tbody>${p.facets.map(f => `<tr><td><strong>${E(f.name)}</strong>${(f.source_sample || []).length ? `<div class="vm-dim vm-code">${E(f.source_sample.join(' · ')).slice(0, 220)}</div>` : ''}</td><td>${E(f.source_elements)}</td><td class="vm-dim">${E(f.zia)}</td><td>${Math.round(f.score * 100)}%</td><td>${E(f.points)} / ${E(f.weight)}</td><td><span class="vm-basis ${E(f.basis)}">${E(f.basis)}</span></td><td class="vm-dim">${E(f.detail)}</td></tr>`).join('')}</tbody></table></div>` : '';
         const unk = (p.unrecognised || []).length ? `<p class="vm-dim">Elements in the export not recognised as a detection facet (not scored): <span class="vm-code">${E(p.unrecognised.join(', '))}</span></p>` : '';
-        return `<details class="vm-pol"><summary>${chip}<span>${E(p.name)}</span><span class="vm-code vm-dim">${E(p.source_id)}</span>${p.note ? `<span class="vm-dim" style="font-weight:400;">${E(p.note)}</span>` : ''}</summary><div class="body">${facets}${unk}</div></details>`;
+        return `<details class="vm-pol"><summary>${chip}<span>${E(p.name)}</span><span class="vm-code vm-dim">${E(p.source_id)}</span>${targets}${p.note ? `<span class="vm-dim" style="font-weight:400;">${E(p.note)}</span>` : ''}</summary><div class="body">${facets}${unk}</div></details>`;
       }).join('');
       host.innerHTML = top + method + rows;
     }
