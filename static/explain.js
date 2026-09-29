@@ -162,12 +162,12 @@
     next: 'Follow the setup order; check the traps list before moving anything.',
   };
   X.dsarchitect = {
-    group: 'Reference', name: 'Data Security Architect', href: 'https://sites.google.com/zscaler.com/datasecurityarchitecture/data-security-architect',
-    what: 'Zscaler\'s internal Data Security Architect site on Google Sites: the reference architecture and flows the data-security team keeps for itself. It lives outside this tool; the sidebar button and the Reference architecture link on the flow pages open it in a new tab.',
-    why: 'This tool\'s flow pages (Traffic flow & gaps, Path analyzer, SSL inspection flow, Bypass & non-inspected traffic) are the gap analysis and the traffic flows read live from a tenant; the Architect site is the reference architecture they are measured against, so a gap on a flow page and its intended design sit one click apart.',
-    when: 'While reading a flow page or a gap, when a finding or a proposal needs the team\'s reference architecture behind it, or when the portable framework pages need checking against the current source.',
-    get: 'The live site, in a new tab. It needs a zscaler.com Google sign-in and a network path to sites.google.com; a customer laptop or a blocked proxy will not open it.',
-    next: 'Compare the tenant\'s flow with the reference flow there, then use the framework pages, the policy packs or the Terraform hand-off to close the gap.',
+    group: 'Reference', name: 'Data Security Architect', href: '/reference/data-security-architect',
+    what: 'Zscaler\'s data-security reference architecture, offline inside the tool: the DLP chain end to end, then one module per link (dictionaries, engines, inline web, endpoint, email, SaaS API and SSPM, EDM and IDM, AI security, Workflow Automation), each with its diagrams, limits tables and gotchas, plus the setup sequences that break when a step is skipped and the symptom-to-cause walkbacks.',
+    why: 'This tool\'s flow pages (Traffic flow & gaps, Path analyzer, SSL inspection flow, Bypass & non-inspected traffic) are the gap analysis and the traffic flows read live from a tenant; the Architect page is the reference architecture they are measured against, so a gap on a flow page and its intended design sit one click apart.',
+    when: 'While reading a flow page or a gap, when a finding or a proposal needs the reference architecture behind it, when a channel is set up in the wrong order, or when a symptom (empty Workflow Automation, a rule that never fires) needs walking back to its cause.',
+    get: 'Thirty-three diagrams (click any one for full size), the limits and behaviour tables for dictionaries and engines, what reaches DLP and what never does per channel, the setup sequence per channel with its gates, and the walkbacks ordered by hit-rate. The live source site is linked at the top for the current version.',
+    next: 'Compare the tenant\'s flow with the reference flow, then use the framework pages, the policy packs or the Terraform hand-off to close the gap.',
   };
   X.terraform = {
     group: 'Close the gaps', name: 'Terraform hand-off', href: '/report/view?tool=terraform',
