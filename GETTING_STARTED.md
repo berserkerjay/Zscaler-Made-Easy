@@ -322,7 +322,7 @@ Dictionary and engine tuning proposals are made in the ZIA portal; the
 queue tracks them and says so. Every decision and every apply is in
 `audit.log`.
 
-## 4i. Always on: the digest (nothing to remember)
+## 4i. The six-hour digest (while the app runs)
 
 Toolbar › *Find the gaps › Digest*. Every six hours while the app runs, for
 every tenant profile that remembers its secret, the loop:

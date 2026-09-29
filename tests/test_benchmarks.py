@@ -60,7 +60,9 @@ def test_frameworks_include_nist_csf_and_glba_and_sort_weakest_first():
     ctl = cm.get_compliance_for_check("4.1")
     assert any(c.startswith("PR.DS-02") for c in ctl["NIST_CSF_2"]) and any(c.startswith("314.4(c)(3)") for c in ctl["GLBA"])
     rows = bm.frameworks_benchmark(_checks())
-    assert rows and rows[0]["alignment_pct"] <= rows[-1]["alignment_pct"]
+    measured = [r for r in rows if r["alignment_pct"] is not None]
+    assert measured and measured[0]["alignment_pct"] <= measured[-1]["alignment_pct"]
+    assert rows[len(measured):] == [r for r in rows if r["alignment_pct"] is None], "unmeasured frameworks sort last"
     assert {"NIST_CSF_2", "GLBA", "PCI_DSS"} <= {r["key"] for r in rows}
 
 

@@ -38,7 +38,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Regulatory</span> &amp; Compliance Alignment</h1>
-      <p>Every assessment check maps to controls in the regulatory frameworks below. Pick a framework to see which controls are met, partially met or not met, with the findings that back each one.</p>
+      <p>Every assessment check maps to controls in the regulatory frameworks below. Pick a framework to see which controls are met, partially met or not met, with the findings that back each one. The percentage on a card is the share of this assessment's mapped checks that are configured, not a share of the framework's controls met and not a certification.</p>
       <span class="badge" id="rpMeta"></span>
     </header>
     <nav class="rp-bar" aria-label="Report actions">
@@ -87,11 +87,12 @@
         const s = report.summary[k] || {}, d = (report.drilldown || {})[k] || {};
         const name = (s.name || k).split(' — ')[0];
         const desc = (report.descriptions || {})[k] || s.name || '';
-        return `<button type="button" class="cp-card" data-fw="${E(k)}" aria-pressed="${current === k}" aria-label="${E(name)}: ${E(s.status || '')}, ${s.alignment_pct || 0} percent alignment">
+        const measured = s.alignment_pct !== null && s.alignment_pct !== undefined;
+        return `<button type="button" class="cp-card" data-fw="${E(k)}" aria-pressed="${current === k}" aria-label="${E(name)}: ${E(s.status || '')}, ${measured ? `${s.alignment_pct} percent of mapped checks configured` : 'not measured'}">
           <div class="row"><span class="name">${E(name)}</span><span class="cp-status ${cls(s.status)}">${E(s.status || '?')}</span></div>
           <div class="desc">${E(desc.split(' — ').slice(1).join(' — ') || desc)}</div>
-          <div class="cp-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, s.alignment_pct || 0))}%"></i></div>
-          <div class="cp-counts"><span>${s.alignment_pct || 0}% · ${s.control_count || 0} controls</span>${d.total_controls != null ? `<span style="color:var(--pass);">✓ ${d.met}</span><span style="color:var(--warn);">◑ ${d.partially_met}</span><span style="color:var(--fail);">✗ ${d.not_met}</span>` : ''}</div>
+          <div class="cp-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, measured ? s.alignment_pct : 0))}%"></i></div>
+          <div class="cp-counts"><span>${measured ? `${s.alignment_pct}% of ${s.scored_count} mapped checks configured` : 'not measured: no scoreable mapped check'} · ${s.control_count || 0} controls</span>${d.total_controls != null ? `<span style="color:var(--pass);">✓ ${d.met}</span><span style="color:var(--warn);">◑ ${d.partially_met}</span><span style="color:var(--fail);">✗ ${d.not_met}</span>` : ''}</div>
         </button>`;
       }).join('');
       body.innerHTML = `<div class="cp-grid" role="group" aria-label="Frameworks">${cards || '<div class="cp-empty">No framework is mapped for this assessment.</div>'}</div><div class="cp-drill" id="cpDrill"></div>`;

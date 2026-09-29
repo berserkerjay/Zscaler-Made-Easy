@@ -20,7 +20,7 @@ API and the page share one computation."""
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import compliance_mapping as cm
 from report_docx import _BP_FALLBACKS, _parse_detail_for_bp
@@ -98,8 +98,13 @@ def annotate(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def _pct(n: int, d: int) -> int:
-    return round(n / d * 100) if d else 100
+def _pct(n: int, d: int) -> Optional[int]:
+    """A share of measured checks; None (not measured) when nothing was measured, never 100."""
+    return round(n / d * 100) if d else None
+
+
+def _pct_text(p: Optional[int]) -> str:
+    return "n/a" if p is None else f"{p}%"
 
 
 def best_practice_benchmark(results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -155,7 +160,7 @@ def dlp_programme_benchmark(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         measured = [r for r in rs if r.get("status") in ("PASS", "FAIL", "REVIEW")]
         passed = [r for r in measured if r.get("status") == "PASS"]
         pct = _pct(len(passed), len(measured))
-        met = bool(measured) and pct >= 75
+        met = pct is not None and pct >= 75
         if met and not blocked:
             reached = i
         elif measured:
@@ -174,9 +179,10 @@ def frameworks_benchmark(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     rows = []
     for key, s in summary.items():
         rows.append({"key": key, "name": s["name"].split(" — ")[0], "full_name": s["name"], "status": s["status"],
-                     "alignment_pct": s["alignment_pct"], "controls": s["control_count"], "passing": s["passing_count"],
+                     "alignment_pct": s["alignment_pct"], "scored": s.get("scored_count", 0), "controls": s["control_count"], "passing": s["passing_count"],
                      "failing": s["failing_count"], "review": s["review_count"]})
-    rows.sort(key=lambda r: (r["alignment_pct"], r["name"]))
+    # Weakest first; a framework with nothing scoreable (pct None) goes last.
+    rows.sort(key=lambda r: (r["alignment_pct"] is None, r["alignment_pct"] or 0, r["name"]))
     return rows
 
 
@@ -205,11 +211,11 @@ def benchmark_report(report: Dict[str, Any]) -> Dict[str, Any]:
 def to_markdown(b: Dict[str, Any], org: str = "") -> str:
     bp = b["best_practices"]
     lines = [f"# Benchmark alignment{' — ' + org if org else ''}", "",
-             f"Assessment score {b.get('score')}% ({b.get('maturity')}). Zscaler best-practice alignment {bp['pct']}% (grade {bp['grade']}): "
+             f"Assessment score {_pct_text(b.get('score'))} ({b.get('maturity') or 'Not assessed'}). Zscaler best-practice alignment {_pct_text(bp['pct'])} (grade {bp['grade']}): "
              f"{bp['aligned']} of {bp['measured']} measured checks aligned, {bp['deviations']} deviations, {bp['not_measured']} not measured.", "",
              "## Zscaler best practices by area", "", "| Area | Aligned | Measured | Alignment | Grade |", "|---|---|---|---|---|"]
     for a in bp["areas"]:
-        lines.append(f"| {a['area']} | {a['aligned']} | {a['measured']} | {a['pct']}% | {a['grade']} |")
+        lines.append(f"| {a['area']} | {a['aligned']} | {a['measured']} | {_pct_text(a['pct'])} | {a['grade']} |")
     lines += ["", "## Deviations from best practice", ""]
     for a in bp["areas"]:
         for g in a["gaps"]:
@@ -221,7 +227,7 @@ def to_markdown(b: Dict[str, Any], org: str = "") -> str:
         lines.append(f"- {'✓' if s['met'] else '✗'} {s['n']}. {s['name']} — {s['what']}: {s['passed']}/{s['measured']} ({s['pct'] if s['pct'] is not None else 'n/a'}%)")
     lines += ["", "## Frameworks", "", "| Framework | Alignment | Status | Controls | Failing |", "|---|---|---|---|---|"]
     for f in b["frameworks"]:
-        lines.append(f"| {f['name']} | {f['alignment_pct']}% | {f['status']} | {f['controls']} | {f['failing']} |")
+        lines.append(f"| {f['name']} | {'n/a' if f['alignment_pct'] is None else str(f['alignment_pct']) + '%'} | {f['status']} | {f['controls']} | {f['failing']} |")
     if b.get("journey") and b["journey"].get("status") not in (None, "pending"):
         j = b["journey"]
         lines += ["", f"## Data governance journey: stage {j.get('stage')} of 5, {j.get('score')}%", ""]

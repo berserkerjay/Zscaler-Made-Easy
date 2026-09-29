@@ -622,8 +622,8 @@
           <span aria-hidden="true">🩺</span> FP/TP Detection Ratio
         </button>
         <button class="btn btn-ghost" onclick="openDigestTab()"
-                aria-label="Open the Digest: what the always-on loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
-                title="Every six hours the app re-reads guidance, FP/TP Detection Ratio, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, and writes a digest. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
+                aria-label="Open the Digest: what the six-hour loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
+                title="While this server runs, every six hours the app re-reads guidance, FP/TP Detection Ratio, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, and writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
           <span aria-hidden="true">🔁</span> Digest
         </button>
       </div>
@@ -1035,7 +1035,7 @@
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;">
       <div>
         <h2 style="margin-bottom:0.25rem;">Compliance Coverage</h2>
-        <p style="font-size:0.88rem;color:var(--dim);">Every check maps to controls in 8 major regulatory frameworks. After running an assessment, you'll see a per-framework alignment summary with click-through to specific controls.</p>
+        <p style="font-size:0.88rem;color:var(--dim);">Every check maps to controls in the regulatory frameworks listed below. After a run you see, per framework, the share of this assessment's mapped checks that are configured, with click-through to the controls. That share is evidence of alignment, not a certification and not a share of the framework's controls met.</p>
       </div>
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="exportChecks('all','csv')" style="padding:0.5rem 0.9rem;font-size:0.8rem;">📄 Export All (CSV)</button>
@@ -1268,7 +1268,7 @@
 
     <div class="card" id="complianceCard">
       <h2>Regulatory &amp; Compliance Alignment</h2>
-      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:0.8rem;">Every check maps to controls in the selected frameworks. The control-by-control view, with the findings behind each control, opens in its own tab.</p>
+      <p style="font-size:0.85rem;color:var(--dim);margin-bottom:0.8rem;">Every check maps to controls in the selected frameworks. The percentage is the share of this assessment's mapped checks that are configured (configured ÷ configured + action required + needs review), not a share of the framework's controls met; a framework with no scoreable check says so. The control-by-control view, with the findings behind each control, opens in its own tab.</p>
       <div id="complianceGrid" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem;" aria-live="polite"></div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
         <button class="btn btn-primary" onclick="openComplianceTab()" aria-label="Open Regulatory and Compliance Alignment in a new tab" style="padding:0.55rem 1.1rem;font-size:0.85rem;">↗ Open Regulatory &amp; Compliance Alignment</button>
@@ -2821,7 +2821,7 @@ function renderBenchmarks(b) {
       <div style="font-size:0.8rem;margin-top:0.3rem;">${s.measured ? `${s.passed}/${s.measured} · <strong style="color:${pctColor(s.pct)}">${s.pct}%</strong>` : 'not measured in this run'}</div>
       ${(s.todo || []).length ? `<div style="font-size:0.72rem;color:var(--dim);margin-top:0.25rem;">Next: ${s.todo.slice(0, 3).map(t => `[${E(t.id)}] ${E(t.label)}`).join(' · ')}${s.todo.length > 3 ? ` · +${s.todo.length - 3} more` : ''}</div>` : ''}
     </div>`).join('');
-  const fws = (b.frameworks || []).map(f => `<span style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem;border-radius:100px;border:1px solid var(--border);font-size:0.78rem;"><strong>${E(f.name)}</strong> <span style="color:${pctColor(f.alignment_pct)};font-weight:700;">${f.alignment_pct}%</span> <span style="color:var(--dim);">${E(f.status)}</span></span>`).join(' ');
+  const fws = (b.frameworks || []).map(f => `<span style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.3rem 0.6rem;border-radius:100px;border:1px solid var(--border);font-size:0.78rem;" title="${f.alignment_pct == null ? 'No scoreable check maps to this framework in this run' : `${f.passing} of ${f.scored} mapped checks configured`}"><strong>${E(f.name)}</strong> <span style="color:${f.alignment_pct == null ? 'var(--dim)' : pctColor(f.alignment_pct)};font-weight:700;">${f.alignment_pct == null ? '—' : f.alignment_pct + '%'}</span> <span style="color:var(--dim);">${E(f.status)}</span></span>`).join(' ');
   const j = b.journey;
   const journey = !j ? '' : (j.status === 'pending'
     ? `<div style="color:var(--dim);font-size:0.85rem;"><span class="gd-spin" aria-hidden="true"></span> Policy pack journey still being measured; this line fills in when it lands.</div>`
@@ -2829,7 +2829,7 @@ function renderBenchmarks(b) {
   return `
     <div style="display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;padding:0.9rem 1rem;border:1px solid var(--border);border-radius:12px;background:var(--well);margin-bottom:0.9rem;">
       <div style="text-align:center;"><div style="font-size:2.4rem;font-weight:800;line-height:1;color:${gradeColor(bp.grade)};">${E(bp.grade || '–')}</div><div style="font-size:0.7rem;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;">grade</div></div>
-      <div><div style="font-weight:700;">Zscaler best-practice alignment: <span style="color:${pctColor(bp.pct)};">${bp.pct}%</span></div>
+      <div><div style="font-weight:700;">Zscaler best-practice alignment: <span style="color:${bp.pct == null ? 'var(--dim)' : pctColor(bp.pct)};">${bp.pct == null ? 'not measured' : bp.pct + '%'}</span></div>
         <div style="font-size:0.82rem;color:var(--dim);">${bp.aligned} of ${bp.measured} measured checks follow the stated best practice · ${bp.deviations} deviations · ${bp.not_measured} not measured (not licensed or not reachable). Grade A ≥ 90%, B ≥ 75%, C ≥ 60%, D ≥ 40%.</div>
         ${bar(bp.pct, pctColor(bp.pct))}</div>
     </div>
@@ -2895,11 +2895,13 @@ async function loadCompliance(data) {
     const grid = document.getElementById('complianceGrid');
     grid.innerHTML = '';
     for (const [key, s] of Object.entries(fw)) {
-      const color = s.status === 'Aligned' ? 'var(--pass)' : s.status === 'Partial' ? 'var(--warn)' : 'var(--fail)';
+      const measured = s.alignment_pct !== null && s.alignment_pct !== undefined;
+      const color = !measured ? 'var(--dim)' : s.status === 'Aligned' ? 'var(--pass)' : s.status === 'Partial' ? 'var(--warn)' : 'var(--fail)';
       const shortName = (s.name || key).split(' — ')[0];
-      grid.innerHTML += `<button type="button" onclick="openComplianceTab('${escapeHtml(key)}')" title="Open ${escapeHtml(shortName)} control by control" style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;background:var(--well);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;font:inherit;font-size:0.8rem;">
+      const basis = measured ? `${s.passing_count} of ${s.scored_count} mapped checks configured (not a share of the framework's controls met)` : 'no scoreable check maps to this framework in this run';
+      grid.innerHTML += `<button type="button" onclick="openComplianceTab('${escapeHtml(key)}')" title="Open ${escapeHtml(shortName)} control by control · ${escapeHtml(basis)}" style="display:inline-flex;align-items:center;gap:0.45rem;padding:0.4rem 0.7rem;background:var(--well);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;font:inherit;font-size:0.8rem;">
         <span style="font-weight:600;">${escapeHtml(shortName)}</span>
-        <span style="font-size:0.68rem;font-weight:700;color:${color};padding:0.15rem 0.45rem;background:${color}1a;border-radius:5px;border:1px solid ${color}55;">${escapeHtml(s.status)} · ${s.alignment_pct}%</span>
+        <span style="font-size:0.68rem;font-weight:700;color:${color};padding:0.15rem 0.45rem;background:${color}1a;border-radius:5px;border:1px solid ${color}55;">${escapeHtml(s.status)}${measured ? ` · ${s.alignment_pct}%` : ''}</span>
       </button>`;
     }
     document.getElementById('complianceCard').style.display = 'block';

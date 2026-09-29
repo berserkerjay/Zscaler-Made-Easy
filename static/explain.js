@@ -98,9 +98,9 @@
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
   X.digest = {
-    group: 'Find the gaps', name: 'Digest and the always-on loop', href: '/report/digest',
-    what: 'Every six hours the app re-reads the guidance sources, FP/TP Detection Ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide.',
-    why: 'Nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence.',
+    group: 'Find the gaps', name: 'Digest — the six-hour loop', href: '/report/digest',
+    what: 'While this app\'s server is running, every six hours it re-reads the guidance sources, FP/TP Detection Ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
+    why: 'While the server is up, nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence. For a schedule that outlives the server, use Task Scheduler or cron (the Digest tab says how).',
     when: 'Read it when it arrives; open the tab to run the loop now, to see which sources are stale, or to check what is notified where.',
     get: 'The latest digest with counts, the full text, the watched sources with their state, the SaaS capability matrix, the schedule and the notification settings.',
     next: 'Decide the new proposals in FP/TP Detection Ratio; a stale source or a missing notification setting is fixed in local_settings.bat.',

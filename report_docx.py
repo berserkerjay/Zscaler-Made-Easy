@@ -1029,7 +1029,8 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                     stat_run.font.color.rgb = COLORS["REVIEW"]
                 else:
                     stat_run.font.color.rgb = COLORS["FAIL"]
-                row.cells[2].text = f"{summary['alignment_pct']}% ({summary['passing_count']}/{summary['covered_count'] - summary['info_count']})"
+                row.cells[2].text = (f"{summary['alignment_pct']}% ({summary['passing_count']}/{summary['covered_count'] - summary['info_count']} mapped checks configured)"
+                                     if summary.get("alignment_pct") is not None else "Not measured (no scoreable mapped check)")
                 row.cells[3].text = f"{summary['control_count']} control(s)"
 
             # Detailed framework breakdown
@@ -1039,7 +1040,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 doc.add_heading(FRAMEWORK_DESCRIPTIONS.get(fw_key, fw_key), level=3)
                 p = doc.add_paragraph()
                 p.add_run("Status: ").bold = True
-                stat_text = p.add_run(f"{summary['status']} ({summary['alignment_pct']}% alignment)")
+                stat_text = p.add_run(f"{summary['status']} ({summary['alignment_pct']}% of mapped checks configured)" if summary.get("alignment_pct") is not None else f"{summary['status']}")
                 stat_text.bold = True
                 if summary["status"] == "Aligned":
                     stat_text.font.color.rgb = COLORS["PASS"]

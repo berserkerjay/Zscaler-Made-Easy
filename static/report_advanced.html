@@ -21,7 +21,8 @@
       <a class="rp-btn" href="#formats">What the app accepts</a>
       <a class="rp-btn" href="#update">Update the app</a>
       <a class="rp-btn" href="#server">This server</a>
-      <a class="rp-btn" href="#sbd">Secure by Design score</a>
+      <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
+      <a class="rp-btn" href="#upstream">Daily upstream check</a>
       <a class="rp-btn" href="#credits">Credits</a>
       <span class="sep"></span>
       <a class="rp-btn" id="advRefresh" href="#" title="Re-read the library from disk">↻ Refresh</a>
@@ -99,13 +100,24 @@
         </section>
 
         <section id="sbd" aria-labelledby="advSbdH">
-          <h2 class="df-h" id="advSbdH">CISA Secure by Design score</h2>
-          <p class="adv-lead">How this app itself measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
+          <h2 class="df-h" id="advSbdH">CISA Secure by Design score — for this app, not the tenant</h2>
+          <p class="adv-lead">How DLP-Check itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; Compliance Alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
           <div id="advSbdBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Measuring…</span></div>
           <div class="adv-actions"><button type="button" class="rp-btn" id="advSbdCheck">Re-check</button></div>
           <div class="tw"><table class="bp-table adv-table" id="advSbd" aria-describedby="advSbdH">
             <thead><tr><th scope="col">Control</th><th scope="col">Status</th><th scope="col">What was found</th><th scope="col">What to do</th></tr></thead>
             <tbody><tr><td colspan="4" class="dim">Measuring…</td></tr></tbody>
+          </table></div>
+        </section>
+
+        <section id="upstream" aria-labelledby="advUpH">
+          <h2 class="df-h" id="advUpH">Daily upstream contract check</h2>
+          <p class="adv-lead">Once a day (06:23 UTC) a job in the repository's GitHub Actions cross-checks what this app sends to Zscaler against the installed SDK, PyPI's latest release, the Terraform provider's version, schema and docs, and Zscaler's API reference; drift opens an <code>upstream-drift</code> issue there and a clean day closes it. That is a check of this app's code against Zscaler's interfaces — not a CISA check, and not a check of any customer tenant — and this server cannot read its result. What this server can run itself is the offline half: the installed SDK and the committed Terraform against the payloads the shipped packs produce. It runs in under a second and is shown below.</p>
+          <div id="advUpBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Checking…</span></div>
+          <div class="adv-actions"><button type="button" class="rp-btn" id="advUpCheck">Run the offline check now</button></div>
+          <div class="tw"><table class="bp-table adv-table" id="advUp" aria-describedby="advUpH">
+            <thead><tr><th scope="col">Level</th><th scope="col">Area</th><th scope="col">Finding</th></tr></thead>
+            <tbody><tr><td colspan="3" class="dim">Checking…</td></tr></tbody>
           </table></div>
         </section>
 

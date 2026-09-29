@@ -34,8 +34,8 @@
 <body class="report-page df-page">
   <div class="rp-page">
     <header class="hero rp-hero">
-      <h1><span class="accent">Digest</span> and the always-on loop</h1>
-      <p>Every six hours the app re-reads guidance, FP/TP Detection Ratio, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, writes a digest, and tells you when there is something to decide. Nothing is written to any tenant.</p>
+      <h1><span class="accent">Digest</span> — the six-hour loop</h1>
+      <p>While this app's server is running, every six hours it re-reads the guidance sources, FP/TP Detection Ratio, the SaaS tenants and the packs' drift, for every tenant profile that remembers its secret, and writes a digest. It does not run the assessment checks or re-score the tenant (run the assessment for that), and it stops when the server stops; for a schedule that survives the server, use Task Scheduler or cron as described below. Nothing is written to any tenant.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
@@ -99,20 +99,24 @@
       const latest = (data.digests || [])[0];
       if (!latest) {
         $('dgVerdict').className = 'dg-verdict';
-        $('dgVerdict').innerHTML = '<strong>No digest yet.</strong> The loop runs 30 seconds after the server starts and every six hours after that for every tenant profile that remembers its secret. Click Run the loop now to make one.';
+        $('dgVerdict').innerHTML = '<strong>No digest yet.</strong> The loop runs 30 seconds after the server starts and every six hours after that, while the server runs, for every tenant profile that remembers its secret. Click Run the loop now to make one.';
         $('dgTiles').innerHTML = ''; $('dgFull').textContent = '';
       } else {
         const s = latest.summary || {};
         $('dgVerdict').className = `dg-verdict ${latest.noteworthy ? 'hot' : 'ok'}`;
-        $('dgVerdict').innerHTML = `<strong>${latest.noteworthy ? 'Something needs a look.' : 'Nothing new.'}</strong> Run at ${E(fmt(latest.at))}.`;
-        $('dgTiles').innerHTML = tile('New proposals', s.proposals_new || 0, 'decide them in FP/TP Detection Ratio') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
+        // The verdict says what the run covered: with no stored secret the loop
+        // looked at guidance and the SaaS matrix only, and says so.
+        const nT = Number(s.tenants || 0);
+        const scope = nT ? `${nT} tenant profile${nT === 1 ? '' : 's'} evaluated.` : 'No tenant was evaluated: no tenant profile remembers its secret, so this run covered the guidance sources and the SaaS capability matrix only. Save a profile with Remember ticked to include a tenant.';
+        $('dgVerdict').innerHTML = `<strong>${latest.noteworthy ? 'Something needs a look.' : 'Nothing new.'}</strong> Run at ${E(fmt(latest.at))}. ${E(scope)}`;
+        $('dgTiles').innerHTML = tile('Tenants evaluated', nT, nT ? 'profiles with a remembered secret' : 'no profile remembers its secret') + tile('New proposals', s.proposals_new || 0, 'decide them in FP/TP Detection Ratio') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
           + tile('Stale sources', s.stale_sources || 0) + tile('SaaS tenants not active', s.tenants_not_active || 0) + tile('Packs moved', s.drift_changed || 0, 'journey stage changed') + tile('Errors', s.errors || 0);
         $('dgMd').href = `/api/digests/${encodeURIComponent(latest.id)}?format=markdown`; $('dgMd').setAttribute('aria-disabled', 'false');
         try { $('dgFull').textContent = await (await fetch(`/api/digests/${encodeURIComponent(latest.id)}?format=markdown`)).text(); } catch (e) { $('dgFull').textContent = ''; }
       }
       const sc = data.schedule || {}, n = data.notifications || {};
       const next = sc.next_run_at ? fmt(sc.next_run_at * 1000) : 'after the server starts';
-      $('dgSched').innerHTML = tile('Every', `${n.interval_hours || 6} h`, `next ${next}`) + tile('Last run', sc.last_run_at ? fmt(sc.last_run_at) : 'not yet', sc.last_status ? `status ${sc.last_status}` : '')
+      $('dgSched').innerHTML = tile('Every', `${n.interval_hours || 6} h`, `while the server runs · next ${next}`) + tile('Last run', sc.last_run_at ? fmt(sc.last_run_at) : 'not yet', sc.last_status ? `status ${sc.last_status}` : '')
         + tile('E-mail', n.email && n.email.configured ? 'on' : 'off', n.email && n.email.configured ? `to ${n.email.to}` : 'set DLP_CHECK_SMTP_HOST and DLP_CHECK_DIGEST_TO')
         + tile('Chat webhook', n.webhook && n.webhook.configured ? (n.webhook.kind || 'on') : 'off', n.webhook && n.webhook.configured ? n.webhook.host : 'set DLP_CHECK_DIGEST_WEBHOOK (https)')
         + tile('Send when', n.mode || 'noteworthy', 'DLP_CHECK_NOTIFY') + tile('Guidance queue', (data.guidance_queue || {}).open || 0, 'open, app-wide') + tile('References recorded', (data.checks_config || {}).references || 0, 'checks_config.json');
