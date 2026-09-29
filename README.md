@@ -54,7 +54,7 @@ Type the tenant's API credentials in the form, or save a tenant profile.
 Install Docker first (INSTALL.md, *Run it in a container instead*, Step 1, has the steps for Windows, Mac and Linux), then:
 
 ```bash
-docker compose up --build          # published on 127.0.0.1:8000 only
+docker compose up --build          # published on 127.0.0.1:8001 only (the local install uses 8000)
 docker logs dlp-check              # shows the UI token
 ```
 

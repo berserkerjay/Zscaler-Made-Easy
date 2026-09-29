@@ -97,7 +97,7 @@ def test_installs_are_hash_pinned_and_container_files_are_present():
     df = open(os.path.join(ROOT, "Dockerfile")).read()
     assert "USER dlpcheck" in df and "--require-hashes" in df and "HEALTHCHECK" in df
     dc = open(os.path.join(ROOT, "docker-compose.yml")).read()
-    assert '"127.0.0.1:${DLP_CHECK_HOST_PORT:-8000}:8000"' in dc and "read_only: true" in dc and "no-new-privileges:true" in dc
+    assert '"127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000"' in dc and "read_only: true" in dc and "no-new-privileges:true" in dc
     wf = open(os.path.join(ROOT, ".github", "workflows", "tests.yml")).read()
     assert "pip-audit" in wf and "cyclonedx" in wf and "trivy" in wf
     assert "github.actor == github.repository_owner" in open(os.path.join(ROOT, ".github", "workflows", "apply-patch.yml")).read()
