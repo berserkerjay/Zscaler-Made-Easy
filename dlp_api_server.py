@@ -4602,7 +4602,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     # publishes it on the host's 127.0.0.1 only, so the address a person
     # opens is localhost, not 0.0.0.0 (which is not an address to browse to).
     in_container = os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
-    open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{port}/"
+    # In a container the address a person opens uses the host's port, which
+    # can differ from the port inside (DLP_CHECK_HOST_PORT, e.g. 8001 when a
+    # local install already has 8000).
+    shown_port = port
+    if in_container:
+        hp = os.environ.get("DLP_CHECK_HOST_PORT", "").strip()
+        if hp.isdigit() and 0 < int(hp) < 65536:
+            shown_port = int(hp)
+    open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{shown_port}/"
     if _security.ui_auth_enabled():
         try:
             token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
@@ -4621,7 +4629,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception:  # noqa: BLE001 - a browser that cannot open never stops the server
             pass
     if in_container and host == "0.0.0.0":
-        print(f"  (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:{port} of this machine only)\n")
+        print(f"  (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:{shown_port} of this machine only)\n")
     elif host != "127.0.0.1":
         print("  ⚠  WARNING: bound to a non-loopback address — anyone on the network")
         print(f"     can reach this server. Currently listening on {host}:{port}.")
