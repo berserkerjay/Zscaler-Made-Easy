@@ -32,16 +32,20 @@ body.theme-light #dbSidebar { background: rgba(255,255,255,0.92); box-shadow: 12
 
 /* Mobile: the sidebar slides in from a ☰ button in the header */
 #dbMenuBtn { display: none; position: fixed; top: 0.7rem; left: 0.7rem; z-index: 950; min-height: 40px; padding: 0.4rem 0.7rem; border-radius: 10px; border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; cursor: pointer; }
+#dbBackdrop { display: none; position: fixed; inset: 0; z-index: 890; background: rgba(0,0,0,0.45); }
 @media (max-width: 1000px) {
   body.db-layout .container { margin-left: 0; padding-top: 3.6rem; }
-  #dbSidebar { transform: translateX(-100%); }
-  body.db-open #dbSidebar { transform: none; transition: transform 0.25s var(--ease, ease); }
-  body.db-layout #gdHelpFab { left: 1rem; }
+  /* Off-canvas and out of the tab order until opened; a backdrop closes it. */
+  #dbSidebar { transform: translateX(-100%); visibility: hidden; transition: transform 0.25s var(--ease, ease), visibility 0s linear 0.25s; }
+  body.db-open #dbSidebar { transform: none; visibility: visible; transition: transform 0.25s var(--ease, ease), visibility 0s; }
+  body.db-open #dbBackdrop { display: block; }
   #dbMenuBtn { display: inline-flex; }
+  body.db-open #dbMenuBtn { left: calc(var(--db-w) + 0.7rem); }   /* beside the open sidebar, not over its brand row */
 }
 
-body.db-layout #gdHelpFab { left: calc(var(--db-w) + 1rem); }
-body.db-has-footer #gdHelpFab { bottom: 4.4rem; }
+/* The "? Help" button lives in the sidebar foot with the theme toggle (docked by dashboard.js), never floating over the content. */
+#dbSidebar #gdHelpFab { position: static !important; box-shadow: none !important; padding: 0.35rem 0.6rem !important; min-height: 32px; margin-left: auto; font-size: 0.78rem; white-space: nowrap; }
+.db-foot { flex-wrap: wrap; }
 body.db-has-footer .container { padding-bottom: 6.5rem; }
 
 /* Compact header */
@@ -102,7 +106,8 @@ body.theme-light .db-band span.now { color: #fff; }
 .db-action { display: grid; gap: 0.2rem; padding: 0.8rem 0.9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--well); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.2s var(--ease, ease), transform 0.2s var(--ease, ease); }
 .db-action:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 0 20px var(--accent-glow); }
 .db-action .db-ico { font-size: 1.3rem; } .db-action strong { font-size: 0.88rem; } .db-action span.s { font-size: 0.72rem; color: var(--dim); }
-@media (max-width: 1100px) { .db-grid { grid-template-columns: 1fr 1fr; } .db-grid .db-tile:first-child { grid-column: 1 / -1; } }
+/* The breakpoints are viewport widths while the sidebar takes 264px of it: below 1250px the three tiles no longer fit side by side with a readable Completion ring. */
+@media (max-width: 1250px) { .db-grid { grid-template-columns: 1fr 1fr; } .db-grid .db-tile:first-child { grid-column: 1 / -1; } }
 @media (max-width: 760px) { .db-grid, .db-two, .db-actions { grid-template-columns: 1fr; } .db-grid .db-tile:first-child { grid-column: auto; } }
 
 /* Findings as list rows with risk chips (.db-rows is set on #checksList, so the mirrored results tab gets them too) */
@@ -165,13 +170,21 @@ body.theme-light #dbFooter { background: rgba(255,255,255,0.9); }
 .db-ch-edit, .db-ch-expand { min-height: 34px; min-width: 34px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--dim); cursor: pointer; font-size: 0.95rem; }
 .db-ch-edit:hover, .db-ch-expand:hover { color: var(--text); border-color: var(--border-strong); }
 .db-chip.risk-fail { background: rgba(239,68,68,0.14); color: var(--fail); }
-.db-chip.risk-warn-strong { background: rgba(245,158,11,0.2); color: #f59e0b; }
+.db-chip.risk-warn-strong { background: rgba(245,158,11,0.2); color: var(--warn); }
 .db-chip.risk-warn { background: rgba(245,158,11,0.12); color: var(--warn); }
 .db-chip.risk-ok { background: rgba(16,185,129,0.14); color: var(--pass); }
 @media (max-width: 760px) { .db-ch-row { grid-template-columns: auto auto 1fr; } .db-ch-choice, .db-ch-edit, .db-ch-expand { grid-column: 3; } }
 
-/* ── Score Distribution: expand + the full-size modal ───────────────── */
+/* ── Score by section: bars first, the radar as the expanded view ──── */
+h3.db-tile-t { margin: 0 0 0.6rem; }
 .db-tile-t-row { display: flex; align-items: center; justify-content: space-between; }
+.db-secbars { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; gap: 0.3rem; }
+.db-secbars li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px, 1.2fr) 3.2rem; align-items: center; gap: 0.5rem; font-size: 0.76rem; }
+.db-secbars .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.db-secbars .b { height: 6px; border-radius: 3px; background: rgba(148,163,184,0.18); overflow: hidden; }
+.db-secbars .b i { display: block; height: 100%; border-radius: 3px; }
+.db-secbars .p { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.db-expand[disabled] { opacity: 0.45; cursor: not-allowed; }
 .db-expand { min-height: 26px; min-width: 26px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--dim); cursor: pointer; font-size: 0.85rem; line-height: 1; }
 .db-expand:hover { color: var(--text); border-color: var(--border-strong); }
 .db-radar-pct { font-size: 8px; font-weight: 700; fill: var(--accent-hover); }

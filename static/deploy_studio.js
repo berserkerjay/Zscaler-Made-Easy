@@ -182,6 +182,7 @@ function _ensureDlpPacksModal() {
 
 async function openDlpPacksModal() {
   _ensureDlpPacksModal();
+  DZ._opener = document.activeElement;   // focus returns there when the Studio closes
   const m = document.getElementById('dlpDeployModal');
   m.classList.add('is-open');
   document.body.style.overflow = 'hidden';
@@ -254,6 +255,8 @@ function closeDlpPacksModal() {
   if (!m) return;
   m.classList.remove('is-open');
   document.body.style.overflow = '';
+  const o = DZ._opener; DZ._opener = null;
+  if (o && document.body.contains(o) && typeof o.focus === 'function') o.focus();
 }
 
 function _dzRender() {

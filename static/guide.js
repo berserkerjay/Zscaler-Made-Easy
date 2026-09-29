@@ -126,6 +126,7 @@ function _gdSteps() {
 function _gdGoMigration() {
   const m = document.getElementById('migrateModal');
   if (!m) { alert('The Inline DLP Rule Migration wizard is not available on this page.'); return; }
+  GD._migrateOpener = document.activeElement;   // focus goes back there on close
   m.style.display = 'block';
   document.body.style.overflow = 'hidden';
   // Expand any collapsed section inside the wizard so it opens ready to use.
@@ -136,6 +137,8 @@ function closeMigrateModal() {
   const m = document.getElementById('migrateModal');
   if (m) m.style.display = 'none';
   document.body.style.overflow = '';
+  const o = GD._migrateOpener; GD._migrateOpener = null;
+  if (o && document.body.contains(o) && typeof o.focus === 'function') o.focus();
 }
 window.closeMigrateModal = closeMigrateModal;
 document.addEventListener('keydown', e => {
