@@ -1,9 +1,9 @@
 # DLP-Check in a container: pinned base, hash-pinned dependencies, no root,
 # read-only filesystem, loopback publish. Build:  docker build -t dlp-check .
 # Run (see docker-compose.yml for the full set of flags):
-#   docker run --rm -p 127.0.0.1:8000:8000 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
+#   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
 # The UI token is printed on the container's console (docker logs) and
-# written to /data/ui_token.txt; open http://localhost:8000/?token=<it>.
+# written to /data/ui_token.txt; open http://localhost:8001/?token=<it>.
 FROM python:3.11-slim-bookworm AS base
 
 # The floating 3.11 tag picks up the current Debian and Python security

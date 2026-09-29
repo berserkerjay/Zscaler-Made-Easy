@@ -47,7 +47,7 @@ def test_installer_and_container_install_the_same_pinned_file_and_run_the_same_e
     assert "requirements.lock" in _read("INSTALL_Zscaler_Assessment.bat") and "--require-hashes" in _read("INSTALL_Zscaler_Assessment.bat")
     assert "dlp_api_server.py" in _read("start.sh") and "dlp_api_server.py" in _read("START_Zscaler_Assessment.bat")
     compose = _read("docker-compose.yml")
-    assert "build: ." in compose and "127.0.0.1:${DLP_CHECK_HOST_PORT:-8000}:8000" in compose and "read_only: true" in compose
+    assert "build: ." in compose and "127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "read_only: true" in compose
 
 
 def test_shell_scripts_parse_and_are_executable():

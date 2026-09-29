@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-29
 
+### The container publishes on port 8001 by default
+- **What you asked for.** "Change it in the yml file so when I deploy the container it works" beside the local install on 8000.
+- **Now** `docker-compose.yml` publishes the container on `127.0.0.1:8001` with no `.env` needed, and the container prints `http://localhost:8001/?token=…`. The local install stays on 8000. `DLP_CHECK_HOST_PORT` in `.env` still picks another port. `INSTALL.md`, `README.md` and the `docker run` example use 8001.
+
 ### Run the container beside a local install: choose the host port
 - **What you asked for.** "I am running the local install and docker and it won't let both run on 8000. Can I run the docker container on 8001?"
 - **Now** `DLP_CHECK_HOST_PORT=8001` in a `.env` file next to `docker-compose.yml` publishes the container on `127.0.0.1:8001` (still loopback only; 8000 when unset), and the container prints `http://localhost:8001/?token=…` so the link it gives works. The app inside the container stays on 8000. `INSTALL.md` says how, including for `docker run`.
