@@ -295,7 +295,10 @@ function closeDlpPacksModal() {
 
 function _dzRender() {
   if (DZ.removal) return _dzRemovalRender();
+  // The sheet's chrome is the deploy wizard's again (a removal renames it while it runs).
+  document.getElementById('dzTitle').textContent = 'Deploy policy packs';
   const steps = document.getElementById('dzSteps');
+  steps.setAttribute('aria-label', 'Deployment steps');
   steps.innerHTML = DZ_STEPS.map((s, i) => {
     const n = i + 1;
     const cls = n === DZ.step ? 'is-active' : (n < DZ.step ? 'is-done' : '');
@@ -1119,7 +1122,11 @@ function _dzRemovalRender() {
   const pick = R.mode === 'pick';
   const names = pick ? ['Select', ...RM_STEPS] : RM_STEPS;
   const base = pick ? 0 : 1;
+  // The sheet is a removal now: its title, its step strip and its footer say so
+  // (the deploy footer with Run preflight must never show under a removal).
+  document.getElementById('dzTitle').textContent = pick ? 'Remove rules' : (R.mode === 'deployment' ? 'Undo a deployment' : `Remove ${(R.pack && R.pack.name) || 'the pack'}`);
   const steps = document.getElementById('dzSteps');
+  steps.setAttribute('aria-label', 'Removal steps');
   steps.innerHTML = names.map((s, i) => {
     const n = base + i, cls = n === R.step ? 'is-active' : (n < R.step ? 'is-done' : '');
     return `<div class="dz-step ${cls}" ${n === R.step ? 'aria-current="step"' : ''}><span class="n">${n < R.step ? '✓' : i + 1}</span>${s}</div>`;
@@ -1204,7 +1211,11 @@ function _dzRemovalSelect() {
       <button type="button" class="dz-link" onclick="_dzPickSet(() => false)">Clear</button>
     </div>
     ${groups || '<div class="dz-empty">No rules match the filter.</div>'}
-    ${orphanGroups}
+    ${orphanGroups}`;
+  document.getElementById('dzFoot').innerHTML = `
+    <div class="dz-summary">${R.selected.size
+      ? `<strong style="color:var(--text);">${_dzN(R.selected.size, 'item')}</strong> ticked. The preview adds the engines and dictionaries only they use, and writes nothing.`
+      : 'Tick at least one rule, engine or dictionary to continue. Nothing is deleted yet.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
       <button type="button" class="dz-btn primary" onclick="_dzRemovalPickPreview()" ${R.selected.size && !DZ.busy ? '' : 'disabled'}>${DZ.busy ? 'Planning…' : `Preview removal of ${R.selected.size} item(s)`}</button>
@@ -1267,7 +1278,11 @@ function _dzRemovalPreview() {
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What was checked</div><div class="d">Every DLP rule on every channel of ${_dzE(R.plan.tenant_label || 'the tenant')} and every engine were read. An engine goes only when no rule outside this selection uses it; a dictionary goes only when no engine that stays uses it; predefined Zscaler objects are never touched. ${_dzN(remove.filter(i => i.kind === 'policy').length, 'rule')}, ${_dzN(remove.filter(i => i.kind === 'engine').length, 'engine')} and ${_dzN(remove.filter(i => i.kind === 'dictionary').length, 'dictionary', 'dictionaries')} will be removed; ${_dzN(keep.length, 'object')} kept. The same usage check runs again right before each engine and dictionary is deleted.</div></div></div>
     <div class="dz-h" style="margin-top:1rem;">Will remove<span class="count">${remove.length}</span></div>
     <div class="dz-rows">${removeSorted.map(row).join('')}</div>
-    ${keep.length ? `<div class="dz-h" style="margin-top:1rem;">Kept (still used elsewhere)<span class="count">${keep.length}</span></div><div class="dz-rows">${keep.map(row).join('')}</div>` : ''}`}
+    ${keep.length ? `<div class="dz-h" style="margin-top:1rem;">Kept (still used elsewhere)<span class="count">${keep.length}</span></div><div class="dz-rows">${keep.map(row).join('')}</div>` : ''}`}`;
+  document.getElementById('dzFoot').innerHTML = `
+    <div class="dz-summary">${remove.length
+      ? `<strong style="color:var(--text);">${_dzN(remove.length, 'object')}</strong> will be removed · ${_dzN(keep.length, 'object')} kept. Nothing is deleted yet.`
+      : 'Nothing to remove.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
       ${R.mode === 'pick' ? '<button type="button" class="dz-btn quiet" onclick="DZ.removal.step=0;_dzRemovalRender()">Back to the rules</button>' : ''}
@@ -1295,14 +1310,15 @@ function _dzRemovalApprove() {
     ${list(byKind('engine'), 'Engines to remove')}
     ${list(byKind('dictionary'), 'Dictionaries to remove')}
     ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no DLP-Check tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
-    <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I have read the list above and I authorize the permanent removal of these ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>
+    <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I have read the list above and I authorize the permanent removal of these ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>`;
+  document.getElementById('dzFoot').innerHTML = `
+    <div class="dz-summary">${!writeOn ? ((DZ.write || {}).can_toggle ? 'The server is read-only: click Enable write mode (you will type the confirmation phrase), then Remove now unlocks.' : _dzE((DZ.write || {}).reason || 'The server is read-only and write mode cannot be enabled from here; start it with START_Zscaler_Assessment_WRITES_ENABLED.bat.')) : (R.consent ? 'Ready: Remove now deletes the objects above and verifies by a fresh read.' : 'Tick the box to enable Remove now.')}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print or save as PDF</button>
       ${!writeOn && (DZ.write || {}).can_toggle ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}
       <button type="button" class="dz-btn danger" ${writeOn && R.consent ? '' : 'disabled'} title="${writeOn ? '' : 'Enable write mode first'}" onclick="_dzRemovalApply()">Remove now</button>
-    </div>
-    <div class="dz-summary">${!writeOn ? ((DZ.write || {}).can_toggle ? 'The server is read-only: click Enable write mode (you will type the confirmation phrase), then Remove now unlocks.' : _dzE((DZ.write || {}).reason || 'The server is read-only and write mode cannot be enabled from here; start it with START_Zscaler_Assessment_WRITES_ENABLED.bat.')) : (R.consent ? 'Ready: Remove now deletes the objects above and verifies by a fresh read.' : 'Tick the box to enable Remove now.')}</div>`;
+    </div>`;
 }
 
 function _dzRemovalBusy() {
@@ -1315,8 +1331,8 @@ function _dzRemovalBusy() {
     <div class="dz-card sev-info"><div class="bar"></div><div>
       <div class="t">What is happening</div>
       <div class="d">Rules first, then activate; engines, then activate; dictionaries, then activate — waiting for ZIA to report ACTIVE after each activation (up to 45 seconds), because ZIA refuses to delete an engine while a rule that uses it is only pending deletion. When the last activation has settled the tenant is read again to prove nothing of the pack is left. Each line below is one answer from the tenant; a few minutes is normal.</div></div></div>
-    ${_dzJobLiveHtml('Removal log')}
-    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button></div>`;
+    ${_dzJobLiveHtml('Removal log')}`;
+  document.getElementById('dzFoot').innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button><button class="dz-btn danger" disabled>Removing…</button></div>`;
 }
 
 function _dzRemovalDone() {
@@ -1343,12 +1359,14 @@ function _dzRemovalDone() {
     </div>
     ${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').length ? `<div class="dz-h" style="margin-top:0.8rem;">Not removed</div><div class="dz-rows">${(data.results || []).filter(x => x.status === 'failed' || x.status === 'skipped' || x.status === 'still_present').map(x => `<div class="dz-row st-fail"><span class="ic">!</span><div><div class="nm">${_dzE(x.name)}</div><div class="rs">${_dzE(x.error ? (x.explanation ? `${x.error} — What this means: ${x.explanation}` : x.error) : (x.reason || ''))}</div></div></div>`).join('')}</div>` : ''}
     ${kept.length ? `<div class="dz-h" style="margin-top:0.8rem;">Kept (still in use)<span class="count">${kept.length}</span></div><div class="dz-rows">${kept.map(i => `<div class="dz-row st-reuse"><span class="ic">↺</span><div><div class="nm">${_dzE(RM_KIND[i.kind] || i.kind)}: ${_dzE(i.name)}</div><div class="rs">${_dzE(i.keep || '')}</div></div></div>`).join('')}</div>` : ''}
+    ${(data.logs || []).length ? `<details class="dz-fold"><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(data.logs.join('\n'))}</div></details>` : ''}`;
+  document.getElementById('dzFoot').innerHTML = `
+    <div class="dz-summary">Removal ${_dzE(data.status || 'finished')}${v.read ? (v.clean ? ' · verified by a fresh read.' : ` · ${_dzN(remaining.length, 'object')} still present.`) : ' · not verified yet.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalVerifyAgain()" ${DZ.busy ? 'disabled' : ''}>Verify again</button>
       ${remaining.length && v.plan ? `<button type="button" class="dz-btn danger" onclick="_dzRemovalLeftovers()">Remove leftovers</button>` : ''}
       <button type="button" class="dz-btn primary" onclick="_dzRemovalClose()">Back to packs</button>
-    </div>
-    ${(data.logs || []).length ? `<details class="dz-fold"><summary><div class="dz-h">Log</div></summary><div class="dz-log">${_dzE(data.logs.join('\n'))}</div></details>` : ''}`;
+    </div>`;
 }
 
 // A fresh read of the tenant, on demand: the same discovery the preview

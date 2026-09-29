@@ -638,3 +638,34 @@ def test_the_wizards_activation_poll_bypasses_the_clients_response_cache(monkeyp
     c = CachingClient()
     assert rm._wait_active_raw(c, 0.0) == "ACTIVE" and c.reads == 1, "the stale PENDING entry was set aside and ZIA was asked again"
     assert "/zia/api/v1/webDlpRules|{}" in c._c, "other cached paths are left alone"
+
+
+def test_the_removal_sheet_owns_its_title_and_footer_on_every_step():
+    """"On the Remove rules option it says deploy at the top and still
+    shows preflight at the bottom": a removal renames the sheet, labels the
+    step strip as removal steps and writes each step's buttons into the
+    sheet's footer, so the deploy footer with Run preflight never shows
+    under a removal; leaving it restores the deploy chrome."""
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    js = open(os.path.join(root, "static", "deploy_studio.js"), encoding="utf-8").read()
+
+    def body(fn):
+        m = re.search(r"function %s\(\) \{(.*?)\n\}\n" % fn, js, re.S)
+        assert m, fn
+        return m.group(1)
+    render = body("_dzRemovalRender")
+    assert "document.getElementById('dzTitle').textContent = pick ? 'Remove rules'" in render and "'Undo a deployment'" in render and "`Remove ${(R.pack && R.pack.name) || 'the pack'}`" in render
+    assert "steps.setAttribute('aria-label', 'Removal steps')" in render
+    for fn, needle in (("_dzRemovalSelect", "Preview removal of"), ("_dzRemovalPreview", "Continue to approve"), ("_dzRemovalApprove", "Remove now"),
+                       ("_dzRemovalBusy", "dzJobStop"), ("_dzRemovalDone", "Back to packs")):
+        b = body(fn)
+        foot = b.split("document.getElementById('dzFoot').innerHTML")
+        assert len(foot) == 2, f"{fn} writes the sheet footer once"
+        assert needle in foot[1], f"{fn}: {needle} sits in the footer"
+        assert '<div class="dz-actions">' not in foot[0] and "<div class=\"dz-actions\">" not in foot[0], f"{fn} leaves no button row in the body"
+        assert '<div class="dz-summary">' in foot[1], f"{fn}: the footer carries a one-line summary"
+    deploy = body("_dzRender")
+    assert "document.getElementById('dzTitle').textContent = 'Deploy policy packs'" in deploy and "steps.setAttribute('aria-label', 'Deployment steps')" in deploy
+    assert "Run preflight" not in body("_dzRemovalSelect") and "Run preflight" in body("_dzRenderSelect")
