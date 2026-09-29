@@ -13,27 +13,27 @@
 (function () {
   if (window.dlpDialog) return;
   const CSS = `
-    dialog.dlp-dlg { border: 1px solid var(--border, #334155); border-radius: 12px; padding: 0; max-width: min(92vw, 520px); width: 100%;
-      background: var(--card, #0f172a); color: var(--text, #e2e8f0); box-shadow: 0 24px 64px rgba(0,0,0,0.45); font: inherit; }
-    dialog.dlp-dlg::backdrop { background: rgba(2,6,23,0.6); }
-    .dlp-dlg-body { padding: 1.1rem 1.25rem 1.25rem; }
-    .dlp-dlg h2 { margin: 0 0 0.5rem; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; }
-    .dlp-dlg .dlp-dlg-tone { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--accent, #3b82f6); flex: none; }
-    .dlp-dlg.ok .dlp-dlg-tone { background: var(--pass, #22c55e); } .dlp-dlg.bad .dlp-dlg-tone { background: var(--fail, #ef4444); }
-    .dlp-dlg p { margin: 0.35rem 0; line-height: 1.5; font-size: 0.92rem; }
-    .dlp-dlg .dlp-dlg-fix { margin-top: 0.6rem; padding: 0.6rem 0.75rem; border-left: 3px solid var(--accent, #3b82f6); background: rgba(148,163,184,0.08); border-radius: 6px; }
-    .dlp-dlg details { margin-top: 0.6rem; font-size: 0.85rem; } .dlp-dlg details summary { cursor: pointer; color: var(--dim, #94a3b8); }
-    .dlp-dlg code { display: block; white-space: pre-wrap; word-break: break-word; margin-top: 0.4rem; padding: 0.5rem 0.6rem; border-radius: 6px;
-      background: rgba(15,23,42,0.5); border: 1px solid var(--border, #334155); font-size: 0.78rem; max-height: 10rem; overflow: auto; }
-    .dlp-dlg label { display: block; margin: 0.75rem 0 0.35rem; font-size: 0.85rem; color: var(--dim, #94a3b8); }
-    .dlp-dlg input { width: 100%; box-sizing: border-box; padding: 0.55rem 0.7rem; border-radius: 8px; border: 1px solid var(--border, #334155);
-      background: var(--well, #0b1220); color: inherit; font: inherit; }
-    .dlp-dlg .dlp-dlg-err { color: var(--fail, #ef4444); font-size: 0.85rem; min-height: 1.2em; margin-top: 0.4rem; }
-    .dlp-dlg .dlp-dlg-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
-    .dlp-dlg button { font: inherit; font-weight: 600; padding: 0.5rem 0.95rem; border-radius: 8px; cursor: pointer; border: 1px solid var(--border, #334155); background: transparent; color: inherit; }
-    .dlp-dlg button.primary { background: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); color: #fff; }
-    .dlp-dlg button:focus-visible, .dlp-dlg input:focus-visible, .dlp-dlg summary:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
-    body.theme-light dialog.dlp-dlg { background: #fff; color: #0f172a; } body.theme-light .dlp-dlg input { background: #f8fafc; }`;
+    dialog.dlp-dlg { border: 1px solid var(--border, #334155); border-radius: var(--r-lg, 12px); padding: 0; max-width: min(92vw, 480px); width: 100%;
+      background: var(--card-solid, #1c1c1e); color: var(--text, #fff); box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,0.45)); font: inherit; }
+    dialog.dlp-dlg::backdrop { background: rgba(0,0,0,0.45); }
+    .dlp-dlg-body { padding: var(--sp-5, 20px) var(--sp-6, 24px) var(--sp-6, 24px); }
+    .dlp-dlg h2 { margin: 0 0 var(--sp-2, 8px); font-size: var(--fs-title3, 1rem); font-weight: 600; display: flex; align-items: center; gap: var(--sp-2, 8px); }
+    .dlp-dlg .dlp-dlg-tone { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent, #0a84ff); flex: none; }
+    .dlp-dlg.ok .dlp-dlg-tone { background: var(--pass, #30d158); } .dlp-dlg.bad .dlp-dlg-tone { background: var(--fail, #ff453a); }
+    .dlp-dlg p { margin: var(--sp-1, 4px) 0; line-height: 1.5; font-size: var(--fs-callout, 0.875rem); }
+    .dlp-dlg .dlp-dlg-fix { margin-top: var(--sp-3, 12px); padding: var(--sp-2, 8px) var(--sp-3, 12px); border-left: 3px solid var(--accent, #0a84ff); background: var(--well, #2c2c2e); border-radius: var(--r-sm, 6px); }
+    .dlp-dlg details { margin-top: var(--sp-3, 12px); font-size: var(--fs-subhead, 0.8125rem); } .dlp-dlg details summary { cursor: pointer; color: var(--dim, #98989f); }
+    .dlp-dlg code { display: block; white-space: pre-wrap; word-break: break-word; margin-top: var(--sp-2, 8px); padding: var(--sp-2, 8px) var(--sp-3, 12px); border-radius: var(--r-sm, 6px);
+      background: var(--well, #2c2c2e); border: 1px solid var(--border, #334155); font-size: var(--fs-footnote, 0.75rem); max-height: 10rem; overflow: auto; }
+    .dlp-dlg label { display: block; margin: var(--sp-3, 12px) 0 var(--sp-1, 4px); font-size: var(--fs-subhead, 0.8125rem); color: var(--dim, #98989f); }
+    .dlp-dlg input { width: 100%; box-sizing: border-box; min-height: var(--ctl-md, 36px); padding: var(--sp-2, 8px) var(--sp-3, 12px); border-radius: var(--r-md, 10px); border: 1px solid var(--border, #334155);
+      background: var(--card-solid, #1c1c1e); color: inherit; font: inherit; }
+    .dlp-dlg .dlp-dlg-err { color: var(--fail, #ff453a); font-size: var(--fs-subhead, 0.8125rem); min-height: 1.2em; margin-top: var(--sp-2, 8px); }
+    .dlp-dlg .dlp-dlg-actions { display: flex; gap: var(--sp-2, 8px); justify-content: flex-end; margin-top: var(--sp-4, 16px); }
+    .dlp-dlg button { font: inherit; font-weight: 600; min-height: var(--ctl-md, 36px); padding: 0 var(--sp-4, 16px); border-radius: var(--r-md, 10px); cursor: pointer; border: 1px solid var(--border, #334155); background: transparent; color: inherit; }
+    .dlp-dlg button.primary { background: var(--btn, #0a84ff); border-color: transparent; color: #fff; }
+    .dlp-dlg button:focus-visible, .dlp-dlg input:focus-visible, .dlp-dlg summary:focus-visible { outline: 2px solid var(--accent, #0a84ff); outline-offset: 2px; }
+    body.theme-light dialog.dlp-dlg { background: var(--card-solid, #fff); color: var(--text, #000); } body.theme-light .dlp-dlg input { background: var(--card-solid, #fff); }`;
   let styled = false;
   function ensureStyle() {
     if (styled || !document.head) return;

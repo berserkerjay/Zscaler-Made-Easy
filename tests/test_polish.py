@@ -57,9 +57,11 @@ def test_keyboard_focus_is_visible_and_actions_are_buttons_that_give_focus_back(
 def test_contrast_tokens_landmarks_and_headings():
     c = _c()
     html = c.get("/").text
-    assert "--info: #94a3b8;" in html and "--info: #64748b" not in html
+    assert "--info: #98989f;" in html and "--info: #64748b" not in html
+    # No gradient anywhere: a destructive or write action is a flat semantic-colour fill.
     assert "linear-gradient(135deg,#f59e0b,#ef4444)" not in html and "linear-gradient(135deg, #f59e0b, #ef4444)" not in html
-    assert "linear-gradient(135deg,#b45309,#b91c1c)" in html and "linear-gradient(135deg, #b45309, #b91c1c)" in html
+    assert "linear-gradient(135deg,#b45309,#b91c1c)" not in html and "background:var(--fail);color:white" in html
+    assert ".activate-btn {" in html and "background: var(--warn); color: #fff;" in html
     assert ".field input::placeholder { color: var(--dim); opacity: 0.8; }" in html
     assert "body.theme-light #zccDiagModal > div" in html
     assert 'role="document"' not in html and '<div id="results" role="region" aria-label="Assessment results">' in html
@@ -68,6 +70,6 @@ def test_contrast_tokens_landmarks_and_headings():
     assert js.count('<h3 class="db-tile-t"') + js.count('<h3 class="db-tile-t db-tile-t-row"') == 5
     assert "heroCard.setAttribute('role', 'region')" in js
     css = c.get("/static/dashboard.css").text
-    assert ".db-chip.risk-warn-strong { background: rgba(245,158,11,0.2); color: var(--warn); }" in css
+    assert ".db-chip.risk-warn-strong { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }" in css
     theme = c.get("/static/report_theme.js").text
     assert "background:var(--card-solid, rgba(15,23,42,0.85))" in theme

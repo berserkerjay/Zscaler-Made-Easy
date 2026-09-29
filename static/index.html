@@ -6,65 +6,97 @@
 <title>Zscaler Platform Assessment</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
 <style>
+  /* ── Design tokens (Apple Human Interface Guidelines conventions, on the web) ──
+     One accent (system blue), semantic colours for pass / warn / fail / info,
+     flat elevated surfaces (base → grouped card → well) separated by
+     hairlines, the system font at a fixed type scale, an 8pt spacing grid
+     and one set of radii. No glows, no gradients, no glass. Every other
+     stylesheet reads these tokens; none defines colours of its own.
+     The names --card, --card-solid, --well, --dim, --btn, --accent-hover
+     and --accent-glow are kept so the add-on stylesheets keep working:
+     --card is now opaque (no glass), --accent-glow is a plain focus tint. */
   :root {
-    /* Dark theme — default */
-    --bg: #0a0e1a;
-    --bg-grad: radial-gradient(ellipse at top, #1a2341 0%, #0a0e1a 60%);
-    --card: rgba(30, 41, 59, 0.6);
-    --card-solid: #1e293b;
-    --border: rgba(148, 163, 184, 0.15);
-    --border-strong: rgba(148, 163, 184, 0.3);
-    --text: #f1f5f9;
-    --dim: #9fb0c3;
-    --well: rgba(15, 23, 42, 0.6);
-    --btn: #1d4ed8;
-    --btn-hover: #1e40af;
-    --chip-ok: #34d399;
-    --chip-warn: #fbbf24;
-    --chip-fail: #f87171;
-    --chip-info: #60a5fa;
-    --chip-purple: #c084fc;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-glow: rgba(59, 130, 246, 0.4);
-    --pass: #10b981;
-    --fail: #ef4444;
-    --warn: #f59e0b;
-    --info: #94a3b8;   /* ≥ 4.5:1 on the card background; #64748b was 3:1 */
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
-    --shadow-md: 0 8px 24px rgba(0,0,0,0.3);
-    --shadow-lg: 0 20px 60px rgba(0,0,0,0.4);
-    --ease: cubic-bezier(0.4, 0, 0.2, 1);
-    --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Dark (default): system grouped backgrounds and labels */
+    --bg: #000000;
+    --card: #1c1c1e;
+    --card-solid: #1c1c1e;
+    --well: #2c2c2e;
+    --well-2: #3a3a3c;
+    --border: rgba(84, 84, 88, 0.65);        /* separator */
+    --border-strong: rgba(84, 84, 88, 1);
+    --text: #ffffff;
+    --dim: #98989f;                         /* secondary label, ≥ 4.5:1 on the card */
+    --tertiary: #636366;                    /* tertiary label: large or decorative only */
+    --accent: #0a84ff;                      /* system blue */
+    --accent-hover: #409cff;
+    --accent-tint: rgba(10, 132, 255, 0.16);
+    --accent-glow: rgba(10, 132, 255, 0.28);
+    --btn: #0a84ff;
+    --btn-hover: #0071e3;
+    --pass: #30d158;
+    --warn: #ff9f0a;
+    --fail: #ff453a;
+    --info: #98989f;
+    --chip-ok: #30d158;
+    --chip-warn: #ff9f0a;
+    --chip-fail: #ff453a;
+    --chip-info: #64d2ff;
+    --chip-purple: #bf5af2;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.45);
+    --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+    --ease-bounce: var(--ease);
+    /* Type scale (system font): large title → caption */
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Cascadia Mono", monospace;
+    --fs-large-title: 1.75rem;   /* 28 */
+    --fs-title1: 1.375rem;       /* 22 */
+    --fs-title2: 1.125rem;       /* 18 */
+    --fs-title3: 1rem;           /* 16 */
+    --fs-headline: 0.9375rem;    /* 15, semibold */
+    --fs-body: 0.9375rem;        /* 15 */
+    --fs-callout: 0.875rem;      /* 14 */
+    --fs-subhead: 0.8125rem;     /* 13 */
+    --fs-footnote: 0.75rem;      /* 12 */
+    --fs-caption: 0.6875rem;     /* 11 */
+    /* 8pt grid */
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+    /* Radii */
+    --r-sm: 6px; --r-md: 10px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
+    /* Control heights */
+    --ctl-sm: 28px; --ctl-md: 36px; --ctl-lg: 44px;
   }
   /* Light theme — activated by body.theme-light set via JS */
   body.theme-light {
-    --bg: #f8fafc;
-    --bg-grad: radial-gradient(ellipse at top, #e2e8f0 0%, #f8fafc 60%);
-    --card: rgba(255, 255, 255, 0.85);
+    --bg: #f2f2f7;
+    --card: #ffffff;
     --card-solid: #ffffff;
-    --border: rgba(100, 116, 139, 0.2);
-    --border-strong: rgba(100, 116, 139, 0.4);
-    --text: #0f172a;
-    --dim: #475569;
-    --well: rgba(241, 245, 249, 0.92);
-    --btn: #1d4ed8;
-    --btn-hover: #1e40af;
-    --chip-ok: #047857;
-    --chip-warn: #9a3412;
-    --chip-fail: #b91c1c;
-    --chip-info: #1d4ed8;
-    --chip-purple: #6b21a8;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-glow: rgba(37, 99, 235, 0.35);
-    --pass: #047857;
-    --fail: #dc2626;
-    --warn: #b45309;
-    --info: #475569;
-    --shadow-sm: 0 2px 8px rgba(15,23,42,0.08);
-    --shadow-md: 0 8px 24px rgba(15,23,42,0.12);
-    --shadow-lg: 0 20px 60px rgba(15,23,42,0.18);
+    --well: #f2f2f7;
+    --well-2: #e5e5ea;
+    --border: rgba(60, 60, 67, 0.29);
+    --border-strong: rgba(60, 60, 67, 0.5);
+    --text: #000000;
+    --dim: #6e6e73;
+    --tertiary: #aeaeb2;
+    --accent: #0066cc;                      /* system blue, at ≥ 4.5:1 on white */
+    --accent-hover: #0055aa;
+    --accent-tint: rgba(0, 102, 204, 0.12);
+    --accent-glow: rgba(0, 102, 204, 0.25);
+    --btn: #0066cc;
+    --btn-hover: #0055aa;
+    --pass: #248a3d;                        /* the accessible variants */
+    --warn: #c93400;
+    --fail: #d70015;
+    --info: #6e6e73;
+    --chip-ok: #248a3d;
+    --chip-warn: #c93400;
+    --chip-fail: #d70015;
+    --chip-info: #0066cc;
+    --chip-purple: #8944ab;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
     color-scheme: light;
   }
   body.theme-light { color: var(--text); }
@@ -81,17 +113,20 @@
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   html { scroll-behavior: smooth; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font);
+    font-size: var(--fs-body);
     background: var(--bg);
-    background-image: var(--bg-grad);
-    background-attachment: fixed;
     color: var(--text);
     min-height: 100vh;
-    line-height: 1.55;
-    font-feature-settings: "ss01", "cv01", "cv11";
-    letter-spacing: -0.005em;
+    line-height: 1.47;
     position: relative;
   }
+  h1, h2, h3, h4 { letter-spacing: -0.01em; line-height: 1.2; }
+  h1 { font-size: var(--fs-large-title); font-weight: 700; }
+  h2 { font-size: var(--fs-title1); font-weight: 700; }
+  h3 { font-size: var(--fs-title3); font-weight: 600; }
+  code, pre, kbd { font-family: var(--mono); }
+  a { color: var(--accent); }
 
   /* ── Branding watermark layer ──
      Only renders when the user has dropped files into static/branding/.
@@ -159,7 +194,6 @@
   details:focus-visible, label:focus-visible {
     outline: 3px solid var(--accent-hover);
     outline-offset: 2px;
-    box-shadow: 0 0 0 5px rgba(59,130,246,0.2);
   }
 
   /* Respect prefers-reduced-motion — disables every animation /
@@ -195,63 +229,52 @@
   button, .btn, input[type="checkbox"], input[type="radio"], a[role="button"] {
     min-height: 32px;
   }
-  .btn { min-height: 40px; }
-  #stepBar .step-item { background: none; border: 1px solid transparent; border-radius: 8px; padding: 0.25rem 0.55rem; font: inherit; font-size: 0.8rem; cursor: pointer; }
+  .btn { min-height: var(--ctl-md); }
+  #stepBar .step-item { background: none; border: 1px solid transparent; border-radius: var(--r-sm); padding: var(--sp-1) var(--sp-2); font: inherit; font-size: var(--fs-subhead); cursor: pointer; }
   #stepBar .step-item:hover { border-color: var(--border); background: var(--well); }
   #stepBar .step-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .container { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem; animation: fadeInUp 0.6s var(--ease); }
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  .container { max-width: 1100px; margin: 0 auto; padding: var(--sp-8) var(--sp-6); }
+  @keyframes fadeInUp { from { opacity: 0; } to { opacity: 1; } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-  @keyframes attention {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
-    50%      { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
-  }
   .activate-banner {
-    padding: 0.65rem 0.85rem;
-    background: linear-gradient(90deg, rgba(245,158,11,0.15), rgba(245,158,11,0.05));
-    border: 1px solid rgba(245, 158, 11, 0.5);
-    border-radius: 8px;
-    margin-top: 0.5rem;
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--well);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--r-md);
+    margin-top: var(--sp-2);
     display: flex; justify-content: space-between; align-items: center;
-    gap: 0.75rem; flex-wrap: wrap;
-    animation: attention 2s ease-out 1;
+    gap: var(--sp-3); flex-wrap: wrap;
   }
+  /* A filled button in the semantic colour: white text ≥ 4.5:1 in both themes. */
   .activate-btn {
-    padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 600;
-    background: linear-gradient(135deg, #b45309, #b91c1c);   /* white text stays ≥ 4.5:1 across the gradient */
-    color: white; border: 0; border-radius: 6px; cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s;
+    min-height: var(--ctl-md); padding: 0 var(--sp-4); font-size: var(--fs-subhead); font-weight: 600;
+    background: var(--warn); color: #fff; border: 0; border-radius: var(--r-md); cursor: pointer;
   }
-  .activate-btn:hover  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.4); }
-  .activate-btn:active { transform: scale(0.97); }
-  .activate-btn.green  { background: linear-gradient(135deg, #10b981, #059669); }
-  .activate-btn.green:hover { box-shadow: 0 4px 12px rgba(16,185,129,0.4); }
+  .activate-btn:hover  { filter: brightness(0.92); }
+  .activate-btn:active { filter: brightness(0.85); }
+  .activate-btn.green  { background: var(--pass); }
 
-  /* Header */
-  .hero { text-align: center; margin-bottom: 3rem; padding: 1rem 0; }
-  .hero h1 { font-size: 2.8rem; font-weight: 800; margin-bottom: 0.75rem; letter-spacing: -0.03em; line-height: 1.1; }
-  .hero h1 .accent { background: linear-gradient(135deg, #3b82f6, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .hero p { color: var(--dim); font-size: 1.1rem; font-weight: 400; }
-  .hero .badge { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(59,130,246,0.1); color: var(--accent); padding: 0.35rem 1rem; border-radius: 100px; font-size: 0.78rem; font-weight: 500; margin-top: 0.75rem; border: 1px solid rgba(59,130,246,0.2); }
-  .hero .badge::before { content: '●'; color: var(--pass); font-size: 0.6rem; animation: pulse 2s ease-in-out infinite; }
+  /* Header: a title and a one-line subtitle, left-aligned like a window title area */
+  .hero { text-align: left; margin-bottom: var(--sp-6); padding: var(--sp-2) 0; }
+  .hero h1 { font-size: var(--fs-large-title); font-weight: 700; margin-bottom: var(--sp-1); }
+  .hero h1 .accent { color: var(--accent); }
+  .hero p { color: var(--dim); font-size: var(--fs-body); font-weight: 400; }
+  .hero .badge { display: inline-flex; align-items: center; gap: var(--sp-2); background: var(--well); color: var(--dim); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-pill); font-size: var(--fs-footnote); font-weight: 500; margin-top: var(--sp-2); border: 1px solid var(--border); }
+  .hero .badge::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--pass); }
 
-  /* Cards - frosted glass effect */
+  /* Cards: opaque grouped surfaces with a hairline, no glass, no lift */
   .card {
     background: var(--card);
-    backdrop-filter: blur(12px) saturate(140%);
-    -webkit-backdrop-filter: blur(12px) saturate(140%);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 2rem;
-    margin-bottom: 1.25rem;
-    box-shadow: var(--shadow-md);
-    transition: border-color 0.3s var(--ease), transform 0.3s var(--ease);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    margin-bottom: var(--sp-4);
+    box-shadow: var(--shadow-sm);
   }
-  .card:hover { border-color: var(--border-strong); }
-  .card h2 { font-size: 1.4rem; margin-bottom: 1.25rem; font-weight: 700; letter-spacing: -0.02em; }
-  .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: var(--dim); font-weight: 500; }
+  .card h2 { font-size: var(--fs-title2); margin-bottom: var(--sp-4); font-weight: 600; }
+  .card h3 { font-size: var(--fs-subhead); margin-bottom: var(--sp-2); color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
   /* Collapsible card sections — every .card top-level h2/h3 toggles
      its section in place (chevron shows the state). Read-only sections
@@ -267,11 +290,11 @@
     all: unset;
     display: inline-flex;
     align-items: center;
-    gap: 0.55rem;
+    gap: var(--sp-2);
     cursor: pointer;
     font: inherit;
     color: inherit;
-    border-radius: 6px;
+    border-radius: var(--r-sm);
   }
   .card-toggle:hover { color: var(--accent); }
   .card-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -292,249 +315,222 @@
     background: transparent;
     border: 1px solid var(--border);
     color: var(--dim);
-    border-radius: 6px;
+    border-radius: var(--r-sm);
     font-size: 0.7em;
     line-height: 1;
-    padding: 0.25rem 0.45rem;
+    padding: var(--sp-1) var(--sp-2);
     cursor: pointer;
-    transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
   }
   .card-popout:hover { color: var(--accent); border-color: var(--accent); }
   .card.collapsed > :not(h2):not(h3):not(.card-header-row) { display: none !important; }
-  .card.collapsed { padding-bottom: 1rem; }
+  .card.collapsed { padding-bottom: var(--sp-4); }
 
   /* Quick-start */
-  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1rem 0; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); margin: var(--sp-4) 0; }
   .step {
-    padding: 1.25rem;
+    padding: var(--sp-5);
     background: var(--well);
-    border-radius: 12px;
+    border-radius: var(--r-lg);
     border: 1px solid var(--border);
-    transition: all 0.3s var(--ease);
     cursor: default;
   }
-  .step:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 8px 20px rgba(59,130,246,0.15); }
-  .step-num { font-size: 0.7rem; color: var(--accent); font-weight: 700; letter-spacing: 0.12em; }
-  .step-title { font-weight: 600; margin: 0.4rem 0 0.25rem; font-size: 0.95rem; }
-  .step-desc { font-size: 0.8rem; color: var(--dim); line-height: 1.5; }
-  .help-toggle { display: inline-block; cursor: pointer; color: var(--accent); font-size: 0.85rem; font-weight: 500; text-decoration: none; padding: 0.4rem 0; transition: color 0.2s var(--ease); }
+  .step-num { font-size: var(--fs-caption); color: var(--accent); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+  .step-title { font-weight: 600; margin: var(--sp-1) 0; font-size: var(--fs-headline); }
+  .step-desc { font-size: var(--fs-subhead); color: var(--dim); line-height: 1.45; }
+  .help-toggle { display: inline-block; cursor: pointer; color: var(--accent); font-size: var(--fs-subhead); font-weight: 500; text-decoration: none; padding: var(--sp-2) 0; }
   .help-toggle:hover { color: var(--accent-hover); }
   .help-content {
     max-height: 0;
     overflow: hidden;
     margin-top: 0;
-    padding: 0 1.25rem;
+    padding: 0 var(--sp-5);
     background: var(--well);
-    border-radius: 12px;
+    border-radius: var(--r-lg);
     border: 1px solid var(--border);
-    transition: max-height 0.4s var(--ease), padding 0.4s var(--ease), margin-top 0.4s var(--ease);
+    transition: max-height 0.3s var(--ease), padding 0.3s var(--ease), margin-top 0.3s var(--ease);
   }
-  .help-content.open { max-height: 800px; margin-top: 1rem; padding: 1.25rem; }
-  .help-content h4 { margin: 0.5rem 0 0.4rem; color: var(--accent); font-size: 0.9rem; font-weight: 600; }
-  .help-content ol, .help-content ul { margin-left: 1.25rem; font-size: 0.85rem; color: var(--dim); }
-  .help-content li { margin: 0.3rem 0; }
-  .help-content code { background: rgba(59,130,246,0.1); color: var(--accent); padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.8rem; font-family: 'SF Mono', Menlo, Consolas, monospace; }
+  .help-content.open { max-height: 800px; margin-top: var(--sp-4); padding: var(--sp-5); }
+  .help-content h4 { margin: var(--sp-2) 0 var(--sp-1); color: var(--text); font-size: var(--fs-subhead); font-weight: 600; }
+  .help-content ol, .help-content ul { margin-left: var(--sp-5); font-size: var(--fs-subhead); color: var(--dim); }
+  .help-content li { margin: var(--sp-1) 0; }
+  .help-content code { background: var(--well-2); color: var(--text); padding: 1px var(--sp-1); border-radius: var(--r-sm); font-size: var(--fs-footnote); font-family: var(--mono); }
 
-  /* Form */
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  /* Form: text fields with a hairline, a tinted ring on focus */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5); }
   .field { display: flex; flex-direction: column; }
   .field[hidden] { display: none; }   /* the sign-in method hides the fields of the other one */
   .field.full { grid-column: 1 / -1; }
-  .field label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--text); margin-bottom: 0.5rem; font-weight: 500; letter-spacing: -0.005em; }
-  .field label .required { color: var(--fail); font-size: 0.7rem; }
-  .field .helper { font-size: 0.75rem; color: var(--dim); margin-top: 0.4rem; line-height: 1.4; }
+  .field label { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-subhead); color: var(--text); margin-bottom: var(--sp-1); font-weight: 600; }
+  .field label .required { color: var(--fail); font-size: var(--fs-caption); }
+  .field .helper { font-size: var(--fs-footnote); color: var(--dim); margin-top: var(--sp-1); line-height: 1.4; }
   .field input, .field select {
     width: 100%;
-    padding: 0.75rem 1rem;
-    background: var(--well);
+    min-height: var(--ctl-md);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--card-solid);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--r-md);
     color: var(--text);
-    font-size: 0.95rem;
+    font-size: var(--fs-body);
     font-family: inherit;
     transition: border-color 0.2s var(--ease), background 0.2s var(--ease), box-shadow 0.2s var(--ease);   /* never the outline: a focus ring appears at once */
   }
   .field input::placeholder { color: var(--dim); opacity: 0.8; }
-  .field input:hover, .field select:hover { border-color: var(--border-strong); background: var(--well); }
+  .field input:hover, .field select:hover { border-color: var(--border-strong); }
   .field input:focus, .field select:focus {
     border-color: var(--accent);
-    background: var(--well);
-    box-shadow: 0 0 0 4px rgba(59,130,246,0.15);
+    box-shadow: 0 0 0 3px var(--accent-tint);
   }
   /* A keyboard focus on a form field is a visible ring, not only a glow. */
   .field input:focus-visible, .field select:focus-visible { outline: 3px solid var(--accent-hover); outline-offset: 2px; }
   .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
-  .field input.error, .field.has-error input { border-color: var(--fail); box-shadow: 0 0 0 4px rgba(239,68,68,0.1); }
-  .field .err-msg { font-size: 0.78rem; color: var(--fail); margin-top: 0.4rem; display: none; animation: fadeInUp 0.2s var(--ease); }
+  .field input.error, .field.has-error input { border-color: var(--fail); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fail) 18%, transparent); }
+  .field .err-msg { font-size: var(--fs-footnote); color: var(--fail); margin-top: var(--sp-1); display: none; }
   .field.has-error .err-msg { display: block; }
 
-  /* Buttons - Apple-style */
+  /* Buttons: filled (primary), tinted (secondary), plain/bordered (ghost) —
+     one accent, no gradient, no shadow, no lift; pressed = darker. */
   .btn {
-    padding: 0.8rem 1.8rem;
-    border: none;
-    border-radius: 10px;
-    font-size: 0.95rem;
+    min-height: var(--ctl-md);
+    padding: 0 var(--sp-4);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    font-size: var(--fs-subhead);
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s var(--ease);
+    transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--sp-2);
     font-family: inherit;
-    letter-spacing: -0.01em;
     user-select: none;
   }
-  .btn:active:not(:disabled) { transform: scale(0.97); }
-  .btn-primary {
-    background: linear-gradient(135deg, var(--btn), #1d4ed8);
-    color: white;
-    box-shadow: 0 4px 12px var(--accent-glow);
-  }
-  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+  .btn:active:not(:disabled) { filter: brightness(0.9); }
+  .btn-primary { background: var(--btn); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--btn-hover); }
   .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-secondary { background: rgba(255,255,255,0.08); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: rgba(255,255,255,0.12); border-color: var(--border-strong); }
-  .btn-ghost { background: transparent; color: var(--dim); border: 1px solid var(--border); }
-  .btn-ghost:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255,255,255,0.04); }
-  .actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 1.75rem; flex-wrap: wrap; }
-  .actions .status-msg { color: var(--dim); font-size: 0.85rem; transition: color 0.2s var(--ease); }
+  .btn-secondary { background: var(--accent-tint); color: var(--accent); }
+  .btn-secondary:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--well); border-color: var(--border-strong); }
+  .btn-destructive, .btn.danger { background: var(--fail); color: #fff; }
+  .actions { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-6); flex-wrap: wrap; }
+  .actions .status-msg { color: var(--dim); font-size: var(--fs-subhead); }
   .actions .status-msg.error { color: var(--fail); }
   .actions .status-msg.success { color: var(--pass); }
 
-  /* Progress - smooth animated bar */
-  .progress-card { display: none; animation: fadeInUp 0.4s var(--ease); }
+  /* Progress: a plain determinate bar */
+  .progress-card { display: none; }
   .progress-card.active { display: block; }
-  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-  .progress-header .pct { font-size: 2rem; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-  .progress-bar { height: 8px; background: var(--well); border-radius: 100px; overflow: hidden; margin: 0.5rem 0; position: relative; }
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), #60a5fa, #a78bfa);
-    background-size: 200% 100%;
-    width: 0%;
-    transition: width 0.5s var(--ease);
-    border-radius: 100px;
-    animation: shimmer 2s linear infinite;
-  }
-  .progress-detail { font-size: 0.85rem; color: var(--dim); margin-top: 0.5rem; font-variant-numeric: tabular-nums; }
+  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-4); }
+  .progress-header .pct { font-size: var(--fs-title1); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  .progress-bar { height: 6px; background: var(--well-2); border-radius: var(--r-pill); overflow: hidden; margin: var(--sp-2) 0; position: relative; }
+  .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.4s var(--ease); border-radius: var(--r-pill); }
+  .progress-detail { font-size: var(--fs-subhead); color: var(--dim); margin-top: var(--sp-2); font-variant-numeric: tabular-nums; }
 
-  /* Results - hero score reveal */
-  #results { display: none; animation: fadeInUp 0.6s var(--ease); }
+  /* Results */
+  #results { display: none; }
   .score-hero {
     text-align: center;
-    padding: 3rem 2rem;
-    background: linear-gradient(135deg, var(--card), var(--well));
-    backdrop-filter: blur(20px);
-    border-radius: 20px;
-    margin-bottom: 1.5rem;
+    padding: var(--sp-8) var(--sp-6);
+    background: var(--card);
+    border-radius: var(--r-lg);
+    margin-bottom: var(--sp-4);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-sm);
     position: relative;
-    overflow: hidden;
   }
-  .score-hero::before {
-    content: '';
-    position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-    background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 50%);
-    animation: pulse 4s ease-in-out infinite;
-    pointer-events: none;
-  }
-  .score-num { font-size: 6rem; font-weight: 800; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; position: relative; }
-  .score-label { font-size: 1.4rem; color: var(--text); margin-top: 0.75rem; font-weight: 600; position: relative; }
-  .score-meta { color: var(--dim); font-size: 0.9rem; margin-top: 0.5rem; position: relative; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin: 1.5rem 0; }
+  .score-num { font-size: 4rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; position: relative; }
+  .score-label { font-size: var(--fs-title2); color: var(--text); margin-top: var(--sp-2); font-weight: 600; position: relative; }
+  .score-meta { color: var(--dim); font-size: var(--fs-subhead); margin-top: var(--sp-1); position: relative; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin: var(--sp-5) 0; }
   .stat {
     text-align: center;
-    padding: 1.5rem 0.75rem;
+    padding: var(--sp-5) var(--sp-3);
     background: var(--well);
-    border-radius: 14px;
+    border-radius: var(--r-lg);
     border: 1px solid var(--border);
-    transition: all 0.3s var(--ease);
   }
-  .stat:hover { transform: translateY(-2px); border-color: var(--border-strong); }
-  .stat-num { font-size: 2.25rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-  .stat-label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0.5rem; font-weight: 600; }
+  .stat-num { font-size: var(--fs-large-title); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat-label { font-size: var(--fs-caption); color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; margin-top: var(--sp-2); font-weight: 600; }
 
   /* Section scores */
-  .section-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.65rem; }
+  .section-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-2); }
   .section-row {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 0.85rem 1.1rem;
+    padding: var(--sp-3) var(--sp-4);
     background: var(--well);
-    border-radius: 10px; border: 1px solid var(--border);
-    transition: all 0.2s var(--ease);
+    border-radius: var(--r-md); border: 1px solid var(--border);
   }
-  .section-row:hover { border-color: var(--border-strong); transform: translateX(2px); }
-  .section-name { font-size: 0.88rem; }
-  .section-score { font-weight: 700; font-size: 1rem; font-variant-numeric: tabular-nums; }
+  .section-name { font-size: var(--fs-subhead); }
+  .section-score { font-weight: 600; font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
 
-  /* Checks - smooth filtering */
-  .checks-filter { margin-bottom: 1.25rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  /* Findings filter: a segmented control */
+  .checks-filter { margin-bottom: var(--sp-4); display: inline-flex; gap: 2px; flex-wrap: wrap; padding: 2px; border-radius: var(--r-md); background: var(--well-2); }
   .filter-btn {
-    padding: 0.5rem 1.1rem;
-    border: 1px solid var(--border);
-    border-radius: 100px;
+    min-height: var(--ctl-sm);
+    padding: 0 var(--sp-3);
+    border: 0;
+    border-radius: 8px;
     background: transparent;
-    color: var(--dim);
+    color: var(--text);
     cursor: pointer;
-    font-size: 0.82rem;
+    font-size: var(--fs-subhead);
     font-family: inherit;
     font-weight: 500;
-    transition: all 0.2s var(--ease);
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
   }
-  .filter-btn:hover { color: var(--text); border-color: var(--border-strong); transform: translateY(-1px); }
-  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); box-shadow: 0 2px 8px rgba(59,130,246,0.2); }
+  .filter-btn:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .filter-btn.active { background: var(--card-solid); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm); }
+  .filter-btn[hidden] { display: none; }
   .check-item {
-    display: flex; align-items: flex-start; gap: 1rem;
-    padding: 1rem;
+    display: flex; align-items: flex-start; gap: var(--sp-4);
+    padding: var(--sp-4);
     border-bottom: 1px solid var(--border);
-    transition: background 0.15s var(--ease);
   }
-  .check-item:hover { background: rgba(255,255,255,0.02); }
+  .check-item:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
   .check-item:last-child { border-bottom: none; }
+  /* Status pills: a tinted capsule in the semantic colour */
   .check-status {
-    font-size: 0.7rem; font-weight: 700; padding: 0.3rem 0.7rem;
-    border-radius: 6px; white-space: nowrap; min-width: 130px; text-align: center;
+    font-size: var(--fs-caption); font-weight: 600; padding: var(--sp-1) var(--sp-3);
+    border-radius: var(--r-pill); white-space: nowrap; min-width: 130px; text-align: center;
     letter-spacing: 0.02em;
   }
-  .status-PASS { background: rgba(16,185,129,0.15); color: var(--pass); border: 1px solid rgba(16,185,129,0.3); }
-  .status-FAIL { background: rgba(239,68,68,0.15); color: var(--fail); border: 1px solid rgba(239,68,68,0.3); }
-  .status-REVIEW { background: rgba(245,158,11,0.15); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
-  .status-INFO { background: rgba(100,116,139,0.15); color: var(--info); border: 1px solid rgba(100,116,139,0.3); }
-  .status-NOTPERM { background: repeating-linear-gradient(45deg, rgba(100,116,139,0.18) 0 4px, rgba(100,116,139,0.06) 4px 8px); color: var(--info); border: 1px dashed rgba(100,116,139,0.6); }
-  .status-ERROR { background: rgba(100,116,139,0.08); color: var(--info); border: 1px dotted rgba(100,116,139,0.6); }
+  .status-PASS { background: color-mix(in srgb, var(--pass) 16%, transparent); color: var(--pass); }
+  .status-FAIL { background: color-mix(in srgb, var(--fail) 16%, transparent); color: var(--fail); }
+  .status-REVIEW { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .status-INFO { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
+  .status-NOTPERM { background: transparent; color: var(--info); border: 1px dashed var(--border-strong); }
+  .status-ERROR { background: transparent; color: var(--info); border: 1px dotted var(--border-strong); }
   .check-body { flex: 1; min-width: 0; }
-  .check-id { font-size: 0.72rem; color: var(--dim); font-family: 'SF Mono', Menlo, Consolas, monospace; }
-  .check-label { font-weight: 600; font-size: 0.92rem; letter-spacing: -0.005em; }
-  .check-detail { font-size: 0.83rem; color: var(--dim); margin-top: 0.35rem; line-height: 1.55; }
-  .check-plain { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 0.2rem 0.8rem; margin: 0.4rem 0 0.2rem; font-size: 0.86rem; line-height: 1.5; }
-  .check-plain dt { font-weight: 600; color: var(--dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.15rem; }
+  .check-id { font-size: var(--fs-footnote); color: var(--dim); font-family: var(--mono); }
+  .check-label { font-weight: 600; font-size: var(--fs-body); }
+  .check-detail { font-size: var(--fs-subhead); color: var(--dim); margin-top: var(--sp-1); line-height: 1.5; }
+  .check-plain { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: var(--sp-1) var(--sp-3); margin: var(--sp-2) 0 var(--sp-1); font-size: var(--fs-subhead); line-height: 1.5; }
+  .check-plain dt { font-weight: 600; color: var(--dim); font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
   .check-plain dd { margin: 0; }
-  .check-raw { margin-top: 0.3rem; } .check-raw > summary { cursor: pointer; font-size: 0.76rem; color: var(--dim); list-style: revert; }
+  .check-raw { margin-top: var(--sp-1); } .check-raw > summary { cursor: pointer; font-size: var(--fs-footnote); color: var(--dim); list-style: revert; }
   .check-raw > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
   @media (max-width: 600px) { .check-plain { grid-template-columns: 1fr; } }
+  /* Section header: a grouped-list section title */
   .section-header {
-    padding: 0.7rem 1.1rem;
-    background: linear-gradient(90deg, rgba(59,130,246,0.12), transparent);
-    color: var(--accent);
-    font-weight: 700;
-    font-size: 0.85rem;
-    margin-top: 1.25rem;
-    border-left: 3px solid var(--accent);
-    border-radius: 0 8px 8px 0;
-    letter-spacing: -0.005em;
+    padding: var(--sp-4) var(--sp-1) var(--sp-1);
+    color: var(--dim);
+    font-weight: 600;
+    font-size: var(--fs-footnote);
+    margin-top: var(--sp-3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   /* Download bar */
-  .download-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .download-bar { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-5); flex-wrap: wrap; }
 
   /* Hero toolbar — grid prevents crowding and overlap */
   .hero-toolbar {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    gap: 0.4rem;
-    margin-top: 0.9rem;
-    max-width: 720px;
+    gap: var(--sp-2);
+    margin-top: var(--sp-3);
     margin-left: auto;
     margin-right: auto;
   }
@@ -542,15 +538,14 @@
     width: 100%;
     justify-content: center;
     white-space: nowrap;
-    font-size: 0.8rem;
-    padding: 0.5rem 0.6rem;
-    min-height: 38px;
+    font-size: var(--fs-subhead);
+    padding: 0 var(--sp-3);
   }
-  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
-  .tool-group { display: grid; gap: 0.35rem; padding: 0.55rem 0.6rem 0.6rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card); text-align: left; }
-  .auth-status { font-size: 0.85rem; color: var(--dim); }
+  .hero-toolbar { max-width: 980px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .tool-group { display: grid; gap: var(--sp-1); padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); text-align: left; }
+  .auth-status { font-size: var(--fs-subhead); color: var(--dim); }
   .auth-status.ok { color: var(--pass); } .auth-status.bad { color: var(--fail); }
-  .tool-group-l { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 0 0.2rem; }
+  .tool-group-l { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); padding: 0 var(--sp-1); }
 
   /* Responsive */
   @media (max-width: 1000px) { .stats { grid-template-columns: repeat(2, 1fr); } }   /* six tiles at 960px: two rows of two, not four then two */
@@ -705,8 +700,8 @@
 
   <!-- DLP Efficacy modal -->
   <div id="dlpEffModal" role="dialog" aria-modal="true" aria-labelledby="dlpEffModalTitle"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;">
-    <div style="max-width:960px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem 1.8rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:2rem 1rem;">
+    <div style="max-width:960px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem 1.8rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
         <h2 id="dlpEffModalTitle" style="margin:0;font-size:1.2rem;">
           <span aria-hidden="true">📊</span> DLP Dictionary &amp; Engine Efficacy
@@ -755,8 +750,8 @@
   <!-- Bypass inventory modal -->
   <!-- Required API Access modal — rendered from /api/permissions/required -->
   <div id="permissionsModal" role="dialog" aria-modal="true" aria-labelledby="permissionsModalTitle"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
-    <div style="max-width:960px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:960px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
         <h2 id="permissionsModalTitle" style="margin:0;">
           <span aria-hidden="true">🔑</span> Required API Access per Assessment Scope
@@ -770,7 +765,7 @@
     </div>
   </div>
 
-  <div id="bypassModal" role="dialog" aria-modal="true" aria-labelledby="bypassModalTitle" aria-describedby="bypassModalDesc" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:1.5rem 1rem;">
+  <div id="bypassModal" role="dialog" aria-modal="true" aria-labelledby="bypassModalTitle" aria-describedby="bypassModalDesc" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:1.5rem 1rem;">
     <div class="bp-panel">
       <div class="bp-head">
         <div>
@@ -793,8 +788,8 @@
   </div>
 
   <!-- Update-check modal -->
-  <div id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;">
-    <div style="max-width:900px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+  <div id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:3rem 1rem;">
+    <div style="max-width:900px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
         <h2 id="updateModalTitle" style="margin:0;"><span aria-hidden="true">🔄</span> Zscaler Update Check</h2>
         <button class="btn btn-ghost" onclick="closeUpdateModal()" aria-label="Close update-check dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
@@ -1052,7 +1047,7 @@
   </div>
 
   <!-- Inline DLP Rule Migration: opens as a modal from the Evaluate All Rules button (not inline on the page). -->
-  <div id="migrateModal" role="dialog" aria-modal="true" aria-labelledby="migrateModalTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2.5rem 1rem;">
+  <div id="migrateModal" role="dialog" aria-modal="true" aria-labelledby="migrateModalTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:2.5rem 1rem;">
   <div class="card" style="max-width:1000px;margin:0 auto;position:relative;">
     <button class="btn btn-ghost" onclick="closeMigrateModal()" aria-label="Close the Evaluate All Rules wizard" style="position:absolute;top:0.9rem;right:0.9rem;padding:0.35rem 0.7rem;font-size:0.82rem;">✕ Close</button>
     <div style="margin-bottom:1rem;">
@@ -1228,7 +1223,7 @@
       <button class="btn btn-secondary" onclick="downloadJSON()">Download JSON</button>
       <button class="btn btn-ghost" onclick="openRemediationReview()"
               aria-label="Review and remediate findings"
-              style="background:linear-gradient(135deg,#b45309,#b91c1c);color:white;border:0;">
+              style="background:var(--fail);color:white;border:0;">
         <span aria-hidden="true">🔧</span> Review &amp; Remediate
       </button>
       <button class="btn btn-ghost" onclick="resetForm()" title="Clears these results and goes back to Connect to the tenant; nothing runs until you click Run assessment">New assessment (clears results)</button>
@@ -1403,7 +1398,7 @@ function _renderBackdropIntensityControl() {
   el.id = 'bgIntensityControl';
   el.setAttribute('role', 'region');
   el.setAttribute('aria-label', 'Backdrop intensity');
-  el.style.cssText = 'position:fixed;bottom:0.75rem;left:0.75rem;z-index:800;background:var(--well);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.6rem;font-size:0.72rem;color:var(--dim);display:flex;gap:0.35rem;align-items:center;backdrop-filter:blur(6px);';
+  el.style.cssText = 'position:fixed;bottom:0.75rem;left:0.75rem;z-index:800;background:var(--well);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.6rem;font-size:0.72rem;color:var(--dim);display:flex;gap:0.35rem;align-items:center;';
   el.innerHTML = `
     <span style="margin-right:0.25rem;">🎨 Backdrop</span>
     <label style="cursor:pointer;"><input type="radio" name="bgi" value="subtle" ${_savedIntensity==='subtle'?'checked':''} style="width:auto;cursor:pointer;"> Subtle</label>
@@ -1447,7 +1442,7 @@ function _renderThemeToggle() {
   const btn = document.createElement('button');
   btn.id = 'themeToggleBtn';
   btn.type = 'button';
-  btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:var(--well);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;backdrop-filter:blur(6px);';
+  btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:var(--well);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;';
   btn.addEventListener('click', () => {
     const isLight = document.body.classList.contains('theme-light');
     _applyTheme(isLight ? 'dark' : 'light');
@@ -3044,7 +3039,7 @@ function renderChecks(checks, filter) {
     const remediateBtn = showRemediate
       ? `<button type="button" onclick="openRemediationWizard('${encodeURIComponent(c.id)}')"
                  aria-label="Remediate ${escapeHtml(c.label)}"
-                 style="float:right;margin-left:0.5rem;background:linear-gradient(135deg,#b45309,#b91c1c);color:white;border:0;padding:0.3rem 0.7rem;font-size:0.75rem;border-radius:5px;cursor:pointer;">
+                 style="float:right;margin-left:0.5rem;background:var(--fail);color:white;border:0;padding:0.3rem 0.7rem;font-size:0.75rem;border-radius:5px;cursor:pointer;">
            🔧 Remediate</button>`
       : '';
     const pl = c.plain || null;
@@ -3263,9 +3258,9 @@ function _ensureRemediationModal() {
   m.setAttribute('role', 'dialog');
   m.setAttribute('aria-modal', 'true');
   m.setAttribute('aria-labelledby', 'remediationTitle');
-  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:3rem 1rem;';
   m.innerHTML = `
-    <div style="max-width:720px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="max-width:720px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
         <h2 id="remediationTitle" style="margin:0;">🔧 Remediate</h2>
         <button type="button" class="btn btn-ghost" onclick="closeRemediationModal()" aria-label="Close remediation dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
@@ -3276,7 +3271,7 @@ function _ensureRemediationModal() {
       <div style="display:flex;gap:0.5rem;margin-top:0.8rem;">
         <button type="button" class="btn btn-primary" onclick="remediationPreview()" style="padding:0.55rem 1rem;font-size:0.85rem;">Preview plan (dry-run)</button>
         <button type="button" id="remediationActivateBtn" onclick="remediationActivate()"
-                style="display:none;padding:0.55rem 1rem;font-size:0.85rem;background:linear-gradient(135deg,#b45309,#b91c1c);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+                style="display:none;padding:0.55rem 1rem;font-size:0.85rem;background:var(--fail);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
           ⚡ Activate (apply live)
         </button>
       </div>
@@ -3945,9 +3940,9 @@ function _ensureBestPracticesModal() {
   m.setAttribute('role', 'dialog');
   m.setAttribute('aria-modal', 'true');
   m.setAttribute('aria-labelledby', 'bestPracticesTitle');
-  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:3rem 1rem;';
   m.innerHTML = `
-    <div style="max-width:820px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="max-width:820px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
         <h2 id="bestPracticesTitle" style="margin:0;"><span aria-hidden="true">📚</span> Zscaler Best Practices Library</h2>
         <button type="button" class="btn btn-ghost" onclick="closeBestPracticesModal()" aria-label="Close best-practices library" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
@@ -3967,9 +3962,9 @@ function _ensureReviewModal() {
   m.setAttribute('role', 'dialog');
   m.setAttribute('aria-modal', 'true');
   m.setAttribute('aria-labelledby', 'reviewTitle');
-  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:3rem 1rem;';
   m.innerHTML = `
-    <div style="max-width:820px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="max-width:820px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
         <h2 id="reviewTitle" style="margin:0;"><span aria-hidden="true">🔧</span> Review &amp; Remediate</h2>
         <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" aria-label="Close review dialog" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
@@ -3979,7 +3974,7 @@ function _ensureReviewModal() {
       <div style="display:flex;justify-content:flex-end;gap:0.5rem;">
         <button type="button" class="btn btn-ghost" onclick="closeReviewModal()" style="padding:0.5rem 1rem;">Cancel</button>
         <button type="button" id="reviewStartBtn" onclick="startRemediationWizard()"
-                style="padding:0.5rem 1.2rem;background:linear-gradient(135deg,#b45309,#b91c1c);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+                style="padding:0.5rem 1.2rem;background:var(--fail);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
           Start Wizard →
         </button>
       </div>
@@ -3997,9 +3992,9 @@ function _ensureWizardModal() {
   m.setAttribute('role', 'dialog');
   m.setAttribute('aria-modal', 'true');
   m.setAttribute('aria-labelledby', 'wizardTitle');
-  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:2rem 1rem;';
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:2rem 1rem;';
   m.innerHTML = `
-    <div style="max-width:760px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="max-width:760px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <!-- Progress header -->
       <div style="margin-bottom:0.6rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
@@ -4025,7 +4020,7 @@ function _ensureWizardModal() {
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button type="button" id="wizardPreviewBtn" class="btn btn-primary" onclick="wizardPreview()" style="padding:0.5rem 1rem;font-size:0.85rem;">Preview plan</button>
           <button type="button" id="wizardApplyBtn" onclick="wizardApply()"
-                  style="display:none;padding:0.5rem 1rem;font-size:0.85rem;background:linear-gradient(135deg,#b45309,#b91c1c);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
+                  style="display:none;padding:0.5rem 1rem;font-size:0.85rem;background:var(--fail);color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;">
             ⚡ Apply now
           </button>
         </div>
@@ -4604,9 +4599,9 @@ function _ensureZccDiagModal() {
   m.setAttribute('role', 'dialog');
   m.setAttribute('aria-modal', 'true');
   m.setAttribute('aria-labelledby', 'zccDiagTitle');
-  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:1000;overflow:auto;padding:3rem 1rem;';
+  m.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;overflow:auto;padding:3rem 1rem;';
   m.innerHTML = `
-    <div style="max-width:960px;margin:0 auto;background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="max-width:960px;margin:0 auto;background:var(--card-solid);border:1px solid var(--border);border-radius:14px;padding:1.5rem;box-shadow:var(--shadow-lg);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
         <h2 id="zccDiagTitle" style="margin:0;"><span aria-hidden="true">🔍</span> ZCC Endpoint Diagnostics</h2>
         <button type="button" class="btn btn-ghost" onclick="closeZccDiagModal()" aria-label="Close ZCC diagnostics" style="padding:0.4rem 0.8rem;font-size:0.85rem;">✕ Close</button>
