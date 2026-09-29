@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-29
 
+### Install guide: build and run the container by hand
+- **What you asked for.** Instructions to run the container manually, mounting its storage, without Docker Compose.
+- **Now** `INSTALL.md` has *Build and run it by hand*: `docker build`, `docker volume create dlpcheck-data`, and a `docker run` with the same settings as `docker-compose.yml` (loopback-only port, the `/data` volume mount, read-only filesystem, no extra privileges, restart policy), for Mac/Linux and on one line for Windows, plus how to read the UI token, check health, update and remove it. A test keeps the commands in step with the compose file.
+
 ### Connect step counts Web, Endpoint, SaaS and Email DLP rules
 - **What you asked for.** "Show how many SaaS, Email, Endpoint DLP and Web DLP rules exist" on the Connect to the tenant step.
 - **Now** the connection check reads every DLP channel and the step says, for example, "0 Web DLP rules · 2 Endpoint DLP rules · 1 SaaS DLP rules · 3 Email DLP rules". A channel the API client cannot read shows "unreadable" with a line saying why, instead of 0. Read-only, like the rest of the check.
