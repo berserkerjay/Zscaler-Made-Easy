@@ -13,7 +13,7 @@
 (function () {
   if (window.dlpDialog) return;
   const CSS = `
-    dialog.dlp-dlg { border: 1px solid var(--border, #334155); border-radius: var(--r-lg, 12px); padding: 0; max-width: min(92vw, 480px); width: 100%;
+    dialog.dlp-dlg { margin: auto; border: 1px solid var(--border, #334155); border-radius: var(--r-lg, 12px); padding: 0; max-width: min(92vw, 480px); width: 100%;
       background: var(--card-solid, #1c1c1e); color: var(--text, #fff); box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,0.45)); font: inherit; }
     dialog.dlp-dlg::backdrop { background: rgba(0,0,0,0.45); }
     .dlp-dlg-body { padding: var(--sp-5, 20px) var(--sp-6, 24px) var(--sp-6, 24px); }
