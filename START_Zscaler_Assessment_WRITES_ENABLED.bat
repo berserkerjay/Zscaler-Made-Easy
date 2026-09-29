@@ -1,5 +1,5 @@
 @echo off
-REM ═════════════════════════════════════════════════════════════════════
+REM =====================================================================
 REM  START with WRITE ACTIONS ENABLED
 REM  --------------------------------
 REM  This variant enables the safety-gated write endpoints:
@@ -16,7 +16,7 @@ REM    - Binds to 127.0.0.1 (no network exposure)
 REM    - Requires credential entry in the GUI
 REM    - Runs every write as dry-run unless the caller explicitly passes
 REM      dry_run=false (which the GUI only sends after a confirm prompt)
-REM ═════════════════════════════════════════════════════════════════════
+REM =====================================================================
 
 title Zscaler Platform Assessment (WRITES ENABLED)
 

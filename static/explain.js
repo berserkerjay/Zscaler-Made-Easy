@@ -111,7 +111,7 @@
     why: 'Building dictionaries, engines and rules by hand takes days and is error-prone. A pack is the design the customer would end up with, deployed in minutes, with nothing they already have overwritten.',
     when: 'After the assessment, when the customer has agreed to close the gap. Preflight is safe to run any time: it writes nothing.',
     get: 'A plan (create / keep / conflict), impact cards, and after deploying a record you can undo.',
-    next: 'Activate in the ZIA portal, enable rules one at a time in monitor mode, then harden.',
+    next: 'DLP-Check activates the change when the deployment finishes (if that call is refused, activate in the ZIA Admin Portal); then enable rules one at a time in monitor mode, and harden.',
   };
   X.flow = {
     group: 'Close the gaps', name: 'Deploy flow diagram', href: '/report/flow',
@@ -355,7 +355,7 @@
     ['Plan hash', 'A fingerprint of the plan you approved. If the tenant changes between approval and deploy, the fingerprint no longer matches and nothing is written until you review again.'],
     ['Journey (where is this tenant?)', 'The data-governance journey has five stages: Foundation (dictionaries and engines exist), Policies deployed (every rule exists), Visibility (SSL decrypts the risky app classes and DLP rules are enabled), Containment (Cloud App Control, File Type and URL rules are enabled), Enforcement (DLP rules block). The assessment and the pack card place the tenant on that ladder and list the exact rules to enable or harden next.'],
     ['Customized', 'A policy pack object the customer changed: a rule they enabled, an action they hardened from ALLOW to BLOCK, a dictionary they tuned. That is progress, not drift. It is kept as-is and shown as customized; converge mode (an explicit API option) is the only thing that overwrites it.'],
-    ['Activation', 'ZIA saves changes as pending. After a deploy, an admin must click Activate in the ZIA Admin Portal for the new rules to take effect for users.'],
+    ['Activation', 'ZIA saves changes as pending until they are activated. A deploy or a removal from DLP-Check activates when it finishes (a removal after every tier) and reads the tenant back; if that call is refused, an admin activates in the ZIA Admin Portal. A proposal applied from FP/TP detection ratio stays pending for an admin to activate.'],
     ['Read-only vs write mode', 'The server starts read-only: assessment, preflight and journey checks all work, deploying is refused. Deploy policy packs shows the current mode and an Enable write mode button (type the confirmation phrase; it lasts until the server restarts). START_Zscaler_Assessment_WRITES_ENABLED.bat starts in write mode from the outset. Stay read-only when you only want to show the customer the plan.'],
     ['OneAPI credentials', 'The client ID and secret of an API client created in ZIdentity, plus the vanity domain (the short name in the login URL, acme for acme.zslogin.net) and the cloud (Production for almost everyone).'],
     ['Terraform hand-off', 'The same pack as a Terraform workspace for the official zscaler/zia provider, for customers whose platform team manages Zscaler as code. Gap mode reads the tenant and imports existing objects so the first plan shows exactly the gap; static mode needs no credentials. Terraform then owns the objects: a later plan shows how the tenant moved, and apply would converge it, so use plan to assess and apply deliberately.'],

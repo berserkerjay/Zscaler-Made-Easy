@@ -1,4 +1,4 @@
-' Zscaler Assessment — silent launcher.
+' Zscaler Assessment - silent launcher.
 ' Starts the server with no console window and opens the browser.
 ' The desktop and Start Menu shortcuts point here. Server output goes to
 ' server.log next to this file; STOP_Zscaler_Assessment.bat stops it.
@@ -69,11 +69,20 @@ If Not running Then
     Note "could not run START_Zscaler_Assessment.bat: " & Err.Description
     Err.Clear
   End If
-  WScript.Sleep 4000
+  ' Wait until the server answers (at most 30 s) rather than a fixed 4 s:
+  ' a first start on a slow laptop (antivirus scanning a fresh Python)
+  ' takes longer, and the server writes ui_token.txt before it listens,
+  ' so once it answers the token file is the new one, never a stale copy.
+  waited = 0
+  Do While Not Pinging() And waited < 30000
+    WScript.Sleep 500
+    waited = waited + 500
+  Loop
+  If Not Pinging() Then Note "the server did not answer on port " & port & " within 30 s; see server.log"
 End If
 
 If restart Then
-  If Not Pinging() Then Note "restart: the server did not answer on port " & port & " 4 s after the start; see server.log"
+  If Not Pinging() Then Note "restart: the server did not answer on port " & port & " within 30 s of the start; see server.log"
   WScript.Quit 0
 End If
 

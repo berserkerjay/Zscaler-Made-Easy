@@ -39,7 +39,7 @@
 // ── UI token ──────────────────────────────────────────────────────────
 // Every page shares this: if the server answers 401 "token required", ask
 // for the token once (it is in ui_token.txt next to the app, or on the
-// server console), unlock, and retry the request.
+// server's log or terminal), unlock, and retry the request.
 (function () {
   if (window.__dlpAuthWrapped) return;
   window.__dlpAuthWrapped = true;
@@ -53,7 +53,7 @@
     askFailed = null;
     try {
       if (window.__dlpUnlockDialog) return await window.__dlpUnlockDialog(message);
-      return window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also printed on the server console). Paste it here:');
+      return window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also in server.log, or the terminal window that runs the app). Paste it here:');
     } catch (e) { askFailed = String(e && e.message || e); return null; }
   }
   // A cancelled unlock is respected for a while; a deliberate action asks
