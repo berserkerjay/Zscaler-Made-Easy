@@ -38,6 +38,17 @@
   .vm-fact .v { font-size: 0.95rem; word-break: break-word; }
   .vm-dim { color: var(--dim); font-size: 0.85rem; }
   .vm-code { font-family: var(--mono); font-size: 0.78rem; word-break: break-all; }
+  .vm-eff-top { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin: 0.4rem 0 0.8rem; }
+  .vm-eff-pct { font-size: 2rem; font-weight: 700; line-height: 1; }
+  .vm-eff-pct.na { font-size: 1.1rem; color: var(--dim); }
+  .vm-bar { height: 8px; border-radius: 999px; background: var(--well-2, var(--well)); overflow: hidden; min-width: 160px; flex: 1; }
+  .vm-bar i { display: block; height: 100%; background: var(--accent); }
+  details.vm-pol { border: 1px solid var(--border); border-radius: var(--r-lg); margin: 0.5rem 0; background: var(--card); }
+  details.vm-pol > summary { cursor: pointer; padding: 0.6rem 0.9rem; font-weight: 600; list-style: revert; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  details.vm-pol > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-lg); }
+  details.vm-pol .body { padding: 0 0.9rem 0.8rem; }
+  .vm-basis { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); white-space: nowrap; }
+  .vm-basis.computed { color: var(--pass); border-color: var(--pass); } .vm-basis.attested { color: var(--accent); border-color: var(--accent); } .vm-basis.fixed { color: var(--warn); border-color: var(--warn); }
   .vm-steps { margin: 0.2rem 0 0 1.2rem; font-size: 0.9rem; line-height: 1.55; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 </style>
@@ -91,7 +102,8 @@
           <li>Click <strong>Download decisions template</strong>: it carries this export's SHA-256 and lists every policy with nothing approved.</li>
           <li>For every policy, either an approved <strong>web</strong> translation (action BLOCK / CONFIRM / ALLOW, one to four <code>engine_refs</code>, a unique order from 1, <code>scope_acknowledged_any: true</code> because the generated rule applies to Any user and location) or an approved <strong>retired</strong> / <strong>out_of_scope</strong> disposition with a reason.</li>
           <li>Spell out the dictionaries (phrases, patterns) and engines (a ZIA expression; <code>{{dict:ID}}</code> references a dictionary in the same file) and approve each one.</li>
-          <li>Upload the reviewed file below and compile. Anything unmapped blocks the run and is listed as a question.</li>
+          <li>Facets the mapping cannot compute (predefined identifiers, EDM, IDM, ML) are listed under each policy's <code>attest</code>; set <code>carried</code> to true, false or a fraction with a note once you have built the equivalent by hand, and the efficacy mapping counts it.</li>
+          <li>Upload the reviewed file below and compile. Anything unmapped blocks the run and is listed as a question; the report ends with the efficacy mapping, the share of each policy's recognised detection the translation carries.</li>
         </ol>
       </section>
 
@@ -116,6 +128,8 @@
         <div id="vmQuestions"></div>
         <div id="vmConverted"></div>
         <div id="vmDispositions"></div>
+        <h3 id="vmEffH">Efficacy mapping: how much of the source detection the translation carries</h3>
+        <div id="vmEfficacy"></div>
         <h3>What happens next</h3>
         <p class="vm-dim">Every generated web rule is <strong>DISABLED</strong> and applies to Any user and location. Hand <code>main.tf.json</code> to the platform team (or open the Terraform hand-off for the tenant's existing objects), run <code>terraform init / validate / plan</code>, apply in a test tenant, compare source and target incidents in monitor mode, then enable the rules one by one and order them with the tenant's existing policy. This page never contacts a tenant.</p>
       </section>
@@ -253,6 +267,26 @@
       $('vmQuestions').innerHTML = (rep.questions || []).length ? `<h3>Questions (each one blocks the run)</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">What is needed</th></tr></thead><tbody>${rep.questions.map(q => `<tr><td class="vm-code">${E(q.source_id)}</td><td><span class="vm-chip ${q.kind === 'UNSUPPORTED' ? 'bad' : 'on'}">${E(q.kind)}</span></td><td>${E(q.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
       $('vmConverted').innerHTML = (rep.converted || []).length ? `<h3>Converted</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Target</th><th scope="col">State</th></tr></thead><tbody>${rep.converted.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td class="vm-code">${E(x.target)}</td><td><span class="vm-chip">${E(x.state)}</span></td></tr>`).join('')}</tbody></table></div>` : '';
       $('vmDispositions').innerHTML = (rep.dispositions || []).length ? `<h3>Retired or out of scope</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Disposition</th><th scope="col">Reason</th></tr></thead><tbody>${rep.dispositions.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(x.disposition)}</td><td>${E(x.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
+      renderEfficacy(rep.efficacy);
+    }
+    // The efficacy mapping: one number per policy and overall, each with
+    // the arithmetic that produced it. "Not computable" is shown as such,
+    // never as 0% or 100%.
+    function pct(v) { return (v === null || v === undefined) ? '—' : `${v}%`; }
+    function renderEfficacy(e) {
+      const host = $('vmEfficacy');
+      if (!e) { host.innerHTML = ''; return; }
+      const ov = e.overall_fidelity;
+      const top = `<div class="vm-eff-top"><div class="vm-eff-pct ${ov === null ? 'na' : ''}">${ov === null ? 'Not computable' : E(ov) + '%'}</div>${ov === null ? '' : `<div class="vm-bar" role="img" aria-label="${E(ov)} percent carried"><i style="width:${ov}%"></i></div>`}<div class="vm-dim">${E(e.note)}</div></div>`;
+      const method = `<details><summary class="vm-dim">How the number is computed</summary><p class="vm-dim">${E(e.method)}</p><p class="vm-dim">Weights: ${Object.entries(e.weights || {}).map(([k, w]) => `${E(k.replace(/_/g, ' '))} ${w}`).join(' · ')}. Only facets present in a policy's export count toward its denominator.</p></details>`;
+      const rows = (e.policies || []).map(p => {
+        const fid = p.fidelity;
+        const chip = p.status === 'translated' ? `<span class="vm-chip ok">${pct(fid)}</span>` : p.status === 'not_approved' ? `<span class="vm-chip bad">${pct(fid)} · not approved</span>` : `<span class="vm-chip">${E(p.status.replace(/_/g, ' '))}</span>`;
+        const facets = (p.facets || []).length ? `<div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Facet in the source</th><th scope="col">Seen</th><th scope="col">Carried to ZIA as</th><th scope="col">Score</th><th scope="col">Points</th><th scope="col">Basis</th><th scope="col">Arithmetic</th></tr></thead><tbody>${p.facets.map(f => `<tr><td><strong>${E(f.name)}</strong>${(f.source_sample || []).length ? `<div class="vm-dim vm-code">${E(f.source_sample.join(' · ')).slice(0, 220)}</div>` : ''}</td><td>${E(f.source_elements)}</td><td class="vm-dim">${E(f.zia)}</td><td>${Math.round(f.score * 100)}%</td><td>${E(f.points)} / ${E(f.weight)}</td><td><span class="vm-basis ${E(f.basis)}">${E(f.basis)}</span></td><td class="vm-dim">${E(f.detail)}</td></tr>`).join('')}</tbody></table></div>` : '';
+        const unk = (p.unrecognised || []).length ? `<p class="vm-dim">Elements in the export not recognised as a detection facet (not scored): <span class="vm-code">${E(p.unrecognised.join(', '))}</span></p>` : '';
+        return `<details class="vm-pol"><summary>${chip}<span>${E(p.name)}</span><span class="vm-code vm-dim">${E(p.source_id)}</span>${p.note ? `<span class="vm-dim" style="font-weight:400;">${E(p.note)}</span>` : ''}</summary><div class="body">${facets}${unk}</div></details>`;
+      }).join('');
+      host.innerHTML = top + method + rows;
     }
     $('vmDlReport').addEventListener('click', () => { if (result) download('migration-report.json', result.report); });
     $('vmDlTf').addEventListener('click', () => { if (result && result.terraform) download('main.tf.json', result.terraform); });

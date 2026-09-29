@@ -104,6 +104,95 @@ def _direct_text(node, field: str) -> Optional[str]:
     return None
 
 
+# ── Detection facets: what a source policy is made of ─────────────────
+# The export's schema is not interpreted; facets are recognised from the
+# element names (and the text they carry) under each policy. The facet
+# list is what the efficacy mapping scores: each facet found in the
+# source is either carried by the ZIA translation, carried in part,
+# dropped, or attested by a reviewer. Weights say how much of a policy's
+# detection each facet is; only facets present in the source count.
+FACETS: Dict[str, Dict[str, Any]] = {
+    "content_patterns": {"name": "Keywords, phrases and regular expressions", "weight": 25,
+                         "tags": ("keyword", "phrase", "regex", "regularexpression", "pattern", "contentmatches", "matchkeyword"),
+                         "zia": "Patterns & Phrases dictionaries referenced by the rule's engines",
+                         "how": "the source's keyword and regex items against the phrases and patterns in the approved dictionaries the rule's engines reference"},
+    "data_identifiers": {"name": "Predefined data identifiers", "weight": 15, "tags": ("dataidentifier", "identifier", "datatype", "classifier"),
+                         "zia": "Zscaler's ~120 predefined dictionaries (not created by this adapter)",
+                         "how": "not computable: a predefined dictionary is chosen by hand; a reviewer attests which identifiers are covered"},
+    "edm": {"name": "Exact Data Match", "weight": 10, "tags": ("edm", "exactdata", "exactmatch"), "zia": "EDM dictionary from the Index Tool VM",
+            "how": "not computable: EDM needs the Index Tool VM and a template; attested when built"},
+    "idm": {"name": "Indexed Document Match", "weight": 10, "tags": ("idm", "indexeddocument", "documentmatch", "fingerprint"), "zia": "IDM dictionary from the Index Tool VM",
+            "how": "not computable: IDM needs the Index Tool VM and a template; attested when built"},
+    "ml": {"name": "Machine-learning / vector classifiers", "weight": 5, "tags": ("vml", "machinelearning", "vector", "mlclassifier", "classification"),
+           "zia": "ML predefined dictionaries where one exists", "how": "not computable: attested when an ML dictionary is chosen"},
+    "match_thresholds": {"name": "Match counts and thresholds", "weight": 5, "tags": ("mincount", "matchcount", "minmatches", "threshold", "count", "occurrence"),
+                         "zia": "the engine expression's strict \"more than N\"",
+                         "how": "carried when every referenced engine expression carries a numeric threshold"},
+    "channel": {"name": "Channels and protocols", "weight": 10, "tags": ("protocol", "channel", "destination", "endpointdestination", "network", "application", "app"),
+                "zia": "Inline Web DLP rule (HTTP/HTTPS)",
+                "how": "the share of the source's protocol mentions that are web (http, https, web, ftp); this adapter emits web rules only"},
+    "identity_scope": {"name": "Users, groups, senders and recipients", "weight": 8, "tags": ("sender", "recipient", "user", "group", "department", "policygroup", "scope"),
+                       "zia": "the rule's users / groups / departments criteria",
+                       "how": "dropped: the generated rule applies to Any (that is what scope_acknowledged_any acknowledges)"},
+    "file_conditions": {"name": "File type, size and name conditions", "weight": 4, "tags": ("filetype", "filesize", "filename", "attachment", "mimetype", "extension"),
+                        "zia": "the rule's file types and size limits", "how": "dropped: not emitted by this adapter; set on the rule by hand"},
+    "exceptions": {"name": "Exceptions", "weight": 4, "tags": ("exception", "exclude", "exempt", "whitelist", "allowlist"),
+                   "zia": "Exclude subexpressions and DLP Advanced Settings exemptions", "how": "dropped: not emitted by this adapter"},
+    "response_action": {"name": "Response rules and actions", "weight": 4, "tags": ("response", "action", "block", "notify", "quarantine", "encrypt", "remediat"),
+                        "zia": "the rule's action (Allow / Block / Confirm) plus auditor and template",
+                        "how": "carried when the rule's action is approved; notifications, quarantine and encryption responses are not carried"},
+    "severity": {"name": "Severity", "weight": 2, "tags": ("severity", "priority", "risk"), "zia": "rule severity", "how": "dropped: not emitted by this adapter"},
+}
+_WEB_PROTOCOL_RE = re.compile(r"\b(https?|web|ftp|browser|upload)\b", re.I)
+_THRESHOLD_RE = re.compile(r">\s*\d+")
+
+
+_FACET_ORDER = ("edm", "idm", "ml", "data_identifiers") + tuple(k for k in FACETS if k not in ("edm", "idm", "ml", "data_identifiers"))
+
+
+def _facet_of(tag: str) -> Optional[str]:
+    """The facet an element name belongs to; the specific detection types
+    win over the generic content match (contentMatchesDataIdentifier is an
+    identifier, not a keyword)."""
+    t = tag.lower()
+    for key in _FACET_ORDER:
+        if any(needle in t for needle in FACETS[key]["tags"]):
+            return key
+    return None
+
+
+def _policy_facets(node) -> Dict[str, Any]:
+    """Facets recognised under one policy element: per facet the element
+    count and, for a few, the item texts that the scoring compares. The
+    unrecognised element names are listed so a reviewer sees what was
+    ignored."""
+    found: Dict[str, Dict[str, Any]] = {}
+    unknown: set = set()
+    for el in node.iter():
+        if el is node:
+            continue
+        tag = _tag(el)
+        key = _facet_of(tag)
+        if key is None:
+            if tag.lower() not in ("id", "name", "description", "activestatus", "rule", "rules", "detectionrules", "condition", "conditions", "policy", "value", "values", "item", "items"):
+                unknown.add(tag)
+            continue
+        f = found.setdefault(key, {"elements": 0, "items": [], "texts": []})
+        f["elements"] += 1
+        text = " ".join((el.text or "").split())
+        if text:
+            f["texts"].append(text[:200])
+            if key == "content_patterns" and el.tag.lower().endswith(("keyword", "phrase", "regex", "regularexpression", "pattern")):
+                f["items"].append(text[:200])
+        for k, v in el.attrib.items():
+            if key == "channel" and v:
+                f["texts"].append(str(v)[:100])
+    for f in found.values():
+        f["items"] = f["items"][:512]
+        f["texts"] = f["texts"][:64]
+    return {"facets": found, "unrecognised": sorted(unknown)[:40]}
+
+
 def inventory_bytes(data: bytes, source_name: str = "export.xml") -> Dict[str, Any]:
     """Symantec XML export → {source_file, sha256, policies}. Read-only;
     DTDs and entities are refused before parsing."""
@@ -121,8 +210,10 @@ def inventory_bytes(data: bytes, source_name: str = "export.xml") -> Dict[str, A
         name = node.get("name") or _direct_text(node, "name")
         if not ident or not name:
             continue
-        policies.append({"id": str(ident), "name": name, "active_status": _direct_text(node, "activeStatus"),
-                         "child_tags": sorted({_tag(c) for c in node})})
+        entry = {"id": str(ident), "name": name, "active_status": _direct_text(node, "activeStatus"),
+                 "child_tags": sorted({_tag(c) for c in node})}
+        entry.update(_policy_facets(node))
+        policies.append(entry)
     if not policies:
         raise ValueError("No policy elements with an id and name were found; provide an export fixture")
     ids = [p["id"] for p in policies]
@@ -153,9 +244,117 @@ def decisions_template(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         "engines": [{"id": "example_engine", "name": "EXAMPLE_ENGINE", "approved": False, "description": "Migrated from the source DLP",
                      "zia_expression": "((D{{dict:example_context}}.S > 1))"}],
         "policies": [{"source_id": p["id"], "source_name": p["name"], "disposition": "", "reason": "", "channel": "web", "approved": False,
-                      "scope_acknowledged_any": False, "action": "", "order": i + 1, "engine_refs": [], "target_name": p["name"]}
+                      "scope_acknowledged_any": False, "action": "", "order": i + 1, "engine_refs": [], "target_name": p["name"],
+                      # The efficacy mapping computes what it can from the export and the
+                      # decisions; facets it cannot compute (predefined identifiers, EDM,
+                      # IDM, ML) count as 0 unless a reviewer attests them here: true,
+                      # false or a fraction 0-1, with a note.
+                      "attest": {k: {"carried": False, "note": ""} for k in sorted(p.get("facets") or {}) if FACETS[k]["how"].startswith("not computable")}}
                      for i, p in enumerate(snapshot["policies"])],
     }
+
+
+# ── Efficacy mapping ───────────────────────────────────────────────────
+def _clamp(x: float) -> float:
+    return max(0.0, min(1.0, float(x)))
+
+
+def _facet_score(key: str, src: Dict[str, Any], pol: Dict[str, Any], dict_items: int, engine_exprs: List[str], attest: Dict[str, Any]) -> Dict[str, Any]:
+    """One facet's score in [0, 1] with the arithmetic that produced it.
+    `basis` says whether the number was computed, attested or fixed."""
+    spec = FACETS[key]
+    at = attest.get(key) if isinstance(attest, dict) else None
+    if isinstance(at, dict) and at.get("carried") not in (None, ""):
+        c = at["carried"]
+        val = 1.0 if c is True else 0.0 if c is False else _clamp(c) if isinstance(c, (int, float)) else 0.0
+        return {"score": val, "basis": "attested", "detail": f"reviewer attested {val:.0%}" + (f": {at.get('note')}" if at.get("note") else "")}
+    if key == "content_patterns":
+        n = len(src.get("items") or []) or src.get("elements", 0)
+        if n <= 0:
+            return {"score": 0.0, "basis": "computed", "detail": "no keyword or regex items readable in the export"}
+        val = _clamp(dict_items / n)
+        return {"score": val, "basis": "computed", "detail": f"{dict_items} phrases and patterns in the referenced dictionaries ÷ {n} keyword and regex items in the source = {val:.0%}"}
+    if key == "match_thresholds":
+        if not engine_exprs:
+            return {"score": 0.0, "basis": "computed", "detail": "no engine referenced"}
+        with_t = sum(1 for e in engine_exprs if _THRESHOLD_RE.search(e))
+        val = with_t / len(engine_exprs)
+        return {"score": val, "basis": "computed", "detail": f"{with_t} of {len(engine_exprs)} referenced engine expressions carry a numeric threshold = {val:.0%}"}
+    if key == "channel":
+        texts = src.get("texts") or []
+        if not texts:
+            return {"score": 1.0 if pol.get("channel") == "web" else 0.0, "basis": "computed", "detail": "no protocol named in the source; the web rule is taken as the whole channel"}
+        web = sum(1 for t in texts if _WEB_PROTOCOL_RE.search(t))
+        val = web / len(texts)
+        return {"score": val, "basis": "computed", "detail": f"{web} of {len(texts)} protocol mentions are web = {val:.0%}; endpoint, email and SaaS mentions need their own adapter"}
+    if key == "response_action":
+        ok = pol.get("action") in SAFE_ACTIONS and bool(pol.get("approved"))
+        return {"score": 1.0 if ok else 0.0, "basis": "computed", "detail": ("action " + str(pol.get("action")) + " approved; notification, quarantine and encryption responses are not carried") if ok else "no approved action"}
+    if key in ("identity_scope", "file_conditions", "exceptions", "severity"):
+        return {"score": 0.0, "basis": "fixed", "detail": spec["how"]}
+    return {"score": 0.0, "basis": "fixed", "detail": spec["how"] + " (nothing attested)"}
+
+
+def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """How much of each source policy's detection the ZIA translation
+    carries, as a weighted percentage over the facets the export exposes,
+    with the arithmetic per facet. Retired and out-of-scope policies are
+    listed but not scored; a policy whose export carries no recognisable
+    detection facet is "not computable", never a number."""
+    by_id = {p["id"]: p for p in snapshot["policies"]}
+    dict_sizes = {slug(d.get("id", "")): len(d.get("phrases") or []) + len(d.get("patterns") or [])
+                  for d in decisions.get("dictionaries", []) or [] if d.get("approved")}
+    engines = {slug(e.get("id", "")): e.get("zia_expression", "") or "" for e in decisions.get("engines", []) or [] if e.get("approved")}
+    rows = []
+    tot_w = tot_s = 0.0
+    for p in decisions.get("policies", []) or []:
+        sid = str(p.get("source_id", ""))
+        src = by_id.get(sid)
+        if not src:
+            continue
+        if p.get("disposition") in ("retired", "out_of_scope"):
+            rows.append({"source_id": sid, "name": src["name"], "status": p["disposition"], "fidelity": None, "facets": [], "note": "not scored: the policy is not being carried over"})
+            continue
+        facets = src.get("facets") or {}
+        if not facets:
+            rows.append({"source_id": sid, "name": src["name"], "status": "not_computable", "fidelity": None, "facets": [],
+                         "note": "the export carries no recognisable detection element for this policy (only id, name and status), so no percentage is claimed"})
+            continue
+        refs = [slug(x) for x in (p.get("engine_refs") or [])]
+        exprs = [engines[r] for r in refs if r in engines]
+        dict_items = 0
+        for e in exprs:
+            for m in re.finditer(r"zia_dlp_dictionaries\.([a-z0-9_]+)\.id|\{\{dict:([A-Za-z0-9_-]+)\}\}", e):
+                dict_items += dict_sizes.get(slug(m.group(1) or m.group(2)), 0)
+        attest = p.get("attest") or {}
+        frows = []
+        w_sum = s_sum = 0.0
+        for key in FACETS:
+            if key not in facets:
+                continue
+            sc = _facet_score(key, facets[key], p, dict_items, exprs, attest)
+            w = FACETS[key]["weight"]
+            w_sum += w; s_sum += w * sc["score"]
+            frows.append({"facet": key, "name": FACETS[key]["name"], "weight": w, "source_elements": facets[key]["elements"],
+                          "source_sample": (facets[key].get("items") or facets[key].get("texts") or [])[:5],
+                          "zia": FACETS[key]["zia"], "score": round(sc["score"], 4), "points": round(w * sc["score"], 2), "basis": sc["basis"], "detail": sc["detail"]})
+        fid = round(s_sum / w_sum * 100, 1) if w_sum else None
+        tot_w += w_sum; tot_s += s_sum
+        rows.append({"source_id": sid, "name": src["name"], "status": "translated" if p.get("approved") else "not_approved", "fidelity": fid,
+                     "points": round(s_sum, 2), "weight": round(w_sum, 2), "facets": frows, "unrecognised": src.get("unrecognised") or [],
+                     "note": f"{s_sum:.1f} of {w_sum:.0f} weighted points carried = {fid}%" if fid is not None else ""})
+    overall = round(tot_s / tot_w * 100, 1) if tot_w else None
+    scored = [r for r in rows if r["fidelity"] is not None]
+    return {"overall_fidelity": overall, "scored_policies": len(scored), "policies": rows,
+            "method": ("Per policy: every detection facet recognised in the export (by element name) is scored 0-1 against what the "
+                       "decisions carry (computed where the export and the decisions expose the numbers, attested by a reviewer for "
+                       "predefined identifiers, EDM, IDM and ML, fixed at 0 for what this adapter never emits), weighted by the facet's "
+                       "share of a policy's detection; fidelity = weighted points carried ÷ weighted points present. Overall = the same "
+                       "ratio over every scored policy. Retired policies and exports with no recognisable detection element are not "
+                       "scored and no number is claimed for them."),
+            "weights": {k: v["weight"] for k, v in FACETS.items()},
+            "note": (f"{overall}% of the recognised detection across {len(scored)} scored polic{'y' if len(scored) == 1 else 'ies'} is carried by the translation."
+                     if overall is not None else "Not computable: no scored policy exposes a detection facet the mapping can measure.")}
 
 
 # ── Compile (vendor-agnostic) ──────────────────────────────────────────
@@ -274,6 +473,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     tf = {"terraform": {"required_providers": {"zia": {"source": "zscaler/zia", "version": PROVIDER_VERSION}}},
           "provider": {"zia": {}}, "resource": {k: v for k, v in res.items() if v}}
     report["ready"] = not report["blocked"]
+    report["efficacy"] = efficacy(snapshot, decisions, res)
     report["counts"] = {"source_policies": len(by_id), "converted_web_rules": len(report["converted"]),
                         "blocked_policies_or_objects": len(report["questions"]),
                         "dictionaries": len(res["zia_dlp_dictionaries"]), "engines": len(res["zia_dlp_engines"]),
