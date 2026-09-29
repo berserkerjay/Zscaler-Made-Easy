@@ -64,6 +64,15 @@ ZIA_TARGETS: Dict[str, Dict[str, str]] = {
             "terraform": "data zia_dlp_idm_profile · zia_dlp_dictionaries (idm_profile_match_accuracy)"},
     "engine": {"object": "dlpEngines", "api": "GET /dlpEngines · POST /dlpEngines · PUT /dlpEngines/{id} · GET /dlpEngines/lite", "terraform": "zia_dlp_engines"},
     "rule": {"object": "webDlpRules", "api": "GET /webDlpRules · POST /webDlpRules · PUT /webDlpRules/{id} · GET /webDlpRules/lite", "terraform": "zia_dlp_web_rules"},
+    "endpoint_rule": {"object": "endPointDlpRules (Endpoint DLP)", "api": "GET /endPointDlpRules · POST /endPointDlpRules · PUT /endPointDlpRules/{id} · GET /endPointDlpRules/lite",
+                      "terraform": "zia_endpoint_dlp_rules · data zia_eun_user_confirmation_template_product (CONFIRM)"},
+    "saas_rule": {"object": "casbDlpRules (SaaS Security API)", "api": "GET /casbDlpRules · POST /casbDlpRules · PUT /casbDlpRules/{id} · GET /casbTenant/lite (onboarded tenants)",
+                  "terraform": "zia_casb_dlp_rules · data zia_casb_tenant"},
+    "email_rule": {"object": "emailDlpRules (Outbound Email DLP)", "api": "GET /emailDlpRules · POST /emailDlpRules · PUT /emailDlpRules/{id} · GET /casbTenant/lite (onboarded email tenants)",
+                   "terraform": "zia_outbound_email_dlp · data zia_casb_tenant"},
+    "channels": {"object": "webDlpRules · endPointDlpRules · casbDlpRules · emailDlpRules (one target rule per channel)",
+                 "api": "POST /webDlpRules · POST /endPointDlpRules · POST /casbDlpRules · POST /emailDlpRules",
+                 "terraform": "zia_dlp_web_rules · zia_endpoint_dlp_rules · zia_casb_dlp_rules · zia_outbound_email_dlp"},
     "template": {"object": "dlpNotificationTemplates", "api": "GET /dlpNotificationTemplates · POST /dlpNotificationTemplates", "terraform": "zia_dlp_notification_templates"},
     "identity": {"object": "webDlpRules.users / groups / departments / locations / locationGroups", "api": "GET /users · GET /groups · GET /departments · GET /locations (ids for the rule's criteria)",
                  "terraform": "zia_dlp_web_rules.users / groups / departments / locations (id blocks)"},
@@ -86,6 +95,47 @@ def _row(facet: str, source_object: str, source_field: str, target: str, zia_fie
 # dropped (no ZIA equivalent).
 CARRIED = ("generated", "reviewed", "attested", "manual", "dropped")
 
+# ── Target channels: the ZIA rule a decision can land on ───────────────
+# The same conventions the policy packs deploy with (pack_channels and
+# pack_terraform; tests pin the parity): every rule DISABLED, the
+# channel's own action vocabulary, its API limits, its required fields.
+ENDPOINT_TRUST_LEVELS = ("UNKNOWN_DEVICETRUSTLEVEL", "LOW_TRUST", "MEDIUM_TRUST", "HIGH_TRUST")
+ENDPOINT_TRANSFER_METHODS = ("REMOVABLE_DRIVE_TRANSFER", "NETWORK_DRIVE_TRANSFER", "APPLICATION_FILE_ACCESS", "PRINTING")
+SAAS_RULE_TYPES = ("OFLCASB_DLP_FILE", "OFLCASB_DLP_EMAIL", "OFLCASB_DLP_CRM", "OFLCASB_DLP_ITSM",
+                   "OFLCASB_DLP_COLLAB", "OFLCASB_DLP_REPO", "OFLCASB_DLP_STORAGE", "OFLCASB_DLP_GENAI")
+TARGETS: Dict[str, Dict[str, Any]] = {
+    "web": {"label": "Inline Web DLP", "resource": "zia_dlp_web_rules", "zia": "rule", "covers": ("web",),
+            "actions": ("BLOCK", "CONFIRM", "ALLOW"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": None, "needs": (),
+            "fields": "protocols HTTP/HTTPS; the rule applies to Any user and location (scope_acknowledged_any)"},
+    "endpoint": {"label": "Endpoint DLP (Client Connector)", "resource": "zia_endpoint_dlp_rules", "zia": "endpoint_rule", "covers": ("endpoint",),
+                 "actions": ("ALLOW", "BLOCK", "CONFIRM"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": 7, "needs": ("data_transfer_method",),
+                 "fields": ("data_transfer_method: one of " + ", ".join(ENDPOINT_TRANSFER_METHODS) + " (one per rule; copy the entry for another method); "
+                            "device_trust_levels optional (default all four: " + ", ".join(ENDPOINT_TRUST_LEVELS) + "); CONFIRM binds the tenant's Endpoint DLP "
+                            "user-confirmation template through a Terraform variable")},
+    "saas": {"label": "SaaS Security API DLP (out-of-band CASB)", "resource": "zia_casb_dlp_rules", "zia": "saas_rule", "covers": ("saas-api",),
+             "actions": ("OFLCASB_DLP_REPORT_INCIDENT", "OFLCASB_DLP_ALLOW"), "monitor": "OFLCASB_DLP_REPORT_INCIDENT", "max_engines": 4, "name_max": 31, "rank": 7,
+             "needs": ("saas_type", "tenants"),
+             "fields": ("saas_type: one of " + ", ".join(SAAS_RULE_TYPES) + "; tenants: the onboarded SaaS application tenant names (Administration > SaaS Application "
+                        "Tenants) or the word \"variable\" to fill the ids in at terraform plan; the rule ships as report-incident (SaaS remediations such as "
+                        "quarantine or remove sharing go in designed_action and are set in the portal once incidents are reviewed); target_name at most 31 characters")},
+    "email": {"label": "Outbound Email DLP", "resource": "zia_outbound_email_dlp", "zia": "email_rule", "covers": ("email",),
+              "actions": ("ALLOW", "BLOCK", "CUSTOMHEADERINSERTION"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": None, "needs": ("tenants",),
+              "fields": "tenants: the onboarded email tenant names or \"variable\"; custom_header when the action is CUSTOMHEADERINSERTION"},
+}
+_CHANNEL_KINDS = ("web", "email", "endpoint", "saas-api", "cloud-download")
+
+
+def _channel_kind(text: str) -> str:
+    """The channel vocabulary word a source mention belongs to (web, email,
+    endpoint, saas-api, cloud-download), from the adapter's normalised text
+    or from the raw protocol name; anything else is "other"."""
+    t = str(text).strip().lower()
+    for k in _CHANNEL_KINDS:
+        if t == k or t.startswith(k + " ") or t.startswith(k + "("):
+            return k
+    norm = _norm_channel(text)
+    return norm.split(" (", 1)[0] if norm != str(text).strip() else "other"
+
 # ── Vendors ────────────────────────────────────────────────────────────
 # One entry per source product: the file types its export produces
 # (`files`, what the page accepts), how to get them, the source API the
@@ -100,7 +150,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
         "accepts": [".xml"], "status": "available",
         "files": [{"ext": ".xml", "what": "Enforce Policy Export/Import XML: one file, every selected policy with its detection rules, response rules, policy groups and exceptions"}],
         "how": "In the Enforce console export the policies (Manage > Policies > Policy List > Export); or fetch the XML from your tenant's documented export URL with the command-line fetcher.",
-        "coverage": "Custom phrase/pattern dictionaries, explicitly reviewed engine expressions and ZIA inline web DLP rules. Detection, response, exception, scope, EDM, IDM, endpoint, email and SaaS semantics are not inferred from the XML; each needs a reviewed decision.",
+        "coverage": "Custom phrase/pattern dictionaries, explicitly reviewed engine expressions and ZIA web, endpoint, SaaS Security API and email DLP rules (one decision per channel). Detection, response, exception, scope, EDM and IDM semantics are not inferred from the XML; each needs a reviewed decision.",
         "source_api": {"name": "Symantec DLP Enforce REST API", "base": "https://<Enforce server>/ProtectManager/webservices/v2 (Incident Reporting and Update API)",
                        "auth": "Enforce user with the Incident Reporting role; HTTPS basic or SAML session",
                        "calls": ["Policy Export/Import: Manage > Policies > Policy List > Export (XML); there is no policy read API, the XML is the source",
@@ -113,7 +163,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
             _row("idm", "Indexed Document Matching profile", "IDM profile, similarity %", "idm", "IDM profile + dictionary (match accuracy)", "attested", ""),
             _row("ml", "Vector Machine Learning profile", "VML profile", "predefined", "ML predefined dictionary where one exists", "attested", ""),
             _row("match_thresholds", "Detection rule minMatches / count", "minMatches, match count", "engine", "engineExpression ((D<dict>.S > n)); AND/OR between conditions", "reviewed", "strict 'more than n': a Symantec minMatches of 3 is .S > 2"),
-            _row("channel", "Policy > protocol / endpoint destination", "protocol (HTTP, HTTPS, FTP, SMTP, endpoint)", "rule", "protocols [HTTP_RULE, HTTPS_RULE, FTP_RULE]", "generated", "web protocols only; SMTP, endpoint and cloud-app channels need the Email, Endpoint or SaaS adapter"),
+            _row("channel", "Policy > protocol / endpoint destination", "protocol (HTTP, HTTPS, FTP, SMTP, endpoint)", "channels", "one decision per target channel: web (protocols HTTP/HTTPS), email (email_tenants), endpoint (data_transfer_method), saas (type, cloud_app_tenants)", "generated", "HTTP/HTTPS → web; SMTP → email; endpoint destinations → endpoint (one transfer method per rule); cloud storage at rest → saas; FTP has no DLP rule beyond the web rule's FTP_RULE"),
             _row("identity_scope", "Policy group, sender / recipient / user conditions", "policyGroup, sender, recipient, user, group", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any; set the criteria on the rule after apply"),
             _row("file_conditions", "Attachment / file type, size, name conditions", "attachmentFileType, fileSize, fileName", "rule", "fileTypes, minSize", "manual", ""),
             _row("exceptions", "Detection rule exceptions", "exception conditions", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules; DLP Advanced Settings", "dropped", ""),
@@ -128,7 +178,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
         "files": [{"ext": ".zip", "what": "Policy export: one <policy name>.json per policy plus policy_names_metadata.txt; classifiers and resources as further JSON files when included at export; refused if password-protected"},
                   {"ext": ".json", "what": "One policy, a list of policies, or a REST API response (GET /dlp/rest/v1/policy/…) in the same field names"}],
         "how": "Export from the Forcepoint Security Manager (Main > Policy Management > DLP Policies > Export): a zip of one <policy name>.json per policy plus policy_names_metadata.txt. Leave the password off and include classifiers and resources, so keyword, regex and dictionary items travel with the policies. A policy JSON fetched from the REST API (GET /dlp/rest/v1/policy/…) is accepted too.",
-        "coverage": "Policies, rules and their classifiers (key phrase, regex and dictionary classifiers with their items when the export includes classifier definitions; predefined and script classifiers as identifiers; file and database fingerprinting as IDM and EDM; machine-learning classifiers), thresholds (threshold_type / threshold_value_from / UNIQUE), destination channels, sources, exceptions, action plans and severity, read from the JSON field names. Web rules only; email, endpoint and cloud-app channels need their own adapter.",
+        "coverage": "Policies, rules and their classifiers (key phrase, regex and dictionary classifiers with their items when the export includes classifier definitions; predefined and script classifiers as identifiers; file and database fingerprinting as IDM and EDM; machine-learning classifiers), thresholds (threshold_type / threshold_value_from / UNIQUE), destination channels, sources, exceptions, action plans and severity, read from the JSON field names. Target rules on every channel: web, endpoint (one transfer method per rule), SaaS Security API and email, one decision per channel.",
         "source_api": {"name": "Forcepoint DLP REST API (Security Manager)", "base": "https://<Forcepoint Security Manager>:9443/dlp/rest/v1",
                        "auth": "POST /auth/refresh-token (username and password headers) → refresh token; POST /auth/access-token (refresh-token header) → access token sent as Authorization: Bearer",
                        "calls": ["GET /policy/… : policy list and one policy's rules, classifiers, thresholds, sources, destinations (the same JSON the export zip carries)",
@@ -144,7 +194,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
             _row("idm", "File fingerprinting classifier", "fingerprint (file / unstructured)", "idm", "IDM profile + dictionary", "attested", ""),
             _row("ml", "Machine learning classifier", "classifier_type machine_learning", "predefined", "ML predefined dictionary where one exists", "attested", ""),
             _row("match_thresholds", "Classifier threshold and rule part count", "threshold_type CHECK_GREATER_THAN, threshold_value_from, threshold_calculate_type UNIQUE, parts_count_type", "engine", "engineExpression ((D<dict>.S > n)) or .U > n for unique matches; condition_relation_type AND / OR between classifiers", "reviewed", ""),
-            _row("channel", "Rule destinations", "rules[].destinations (HTTP, HTTPS, FTP, Email, Endpoint removable media, printing, LAN, cloud apps)", "rule", "protocols [HTTP_RULE, HTTPS_RULE, FTP_RULE]", "generated", "web destinations only; Email, Endpoint and cloud-app destinations need the Email, Endpoint or SaaS adapter"),
+            _row("channel", "Rule destinations", "rules[].destinations (HTTP, HTTPS, FTP, Email, Endpoint removable media, printing, LAN, cloud apps)", "channels", "one decision per target channel: HTTP/HTTPS → web; Email → email; removable media / printing / LAN → endpoint (REMOVABLE_DRIVE_TRANSFER, PRINTING, NETWORK_DRIVE_TRANSFER, one per rule); sanctioned cloud apps at rest → saas", "generated", "each destination family becomes its own DISABLED rule; approve one decision per channel"),
             _row("identity_scope", "Rule sources", "rules[].sources (users, groups, endpoints, networks)", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any"),
             _row("file_conditions", "File properties classifier, destination file size", "file_properties (type, size, name)", "rule", "fileTypes, minSize", "manual", ""),
             _row("exceptions", "Rule exceptions", "exceptions (sources, destinations, classifiers exempted)", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
@@ -161,7 +211,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
                   {"ext": ".csv", "what": "The same policy export as CSV (policy name, status, source, destination, activities, profile, action), or one custom dictionary per file (one keyword or regex per line, regex dictionaries hold at most 25 entries)"},
                   {"ext": ".zip", "what": "The policy export together with every dictionary CSV and any profile / rule JSON, so entities, thresholds and dictionary items are read with the policies"}],
         "how": "Export from the tenant: Policies > Real-time Protection > Export (JSON or CSV). Put it in a zip together with each custom dictionary's CSV (Policies > Profiles > DLP > Dictionaries) and, where your tenant's REST API v2 exposes them, the DLP profile and rule JSON, so entities, thresholds and dictionary items are read with the policies.",
-        "coverage": "Real-time Protection policies (name, status, source, destination apps and categories, activities, DLP profile, action, severity), DLP profiles (rules, file filters), DLP rules (predefined entities as identifiers, custom dictionary and regex entities with their items from the dictionary CSVs, count and percentage thresholds, severity), fingerprint and ML classifiers, read from the JSON keys and CSV columns. Web rules only; API-enabled (SaaS) and endpoint policies need their own adapter.",
+        "coverage": "Real-time Protection policies (name, status, source, destination apps and categories, activities, DLP profile, action, severity), DLP profiles (rules, file filters), DLP rules (predefined entities as identifiers, custom dictionary and regex entities with their items from the dictionary CSVs, count and percentage thresholds, severity), fingerprint and ML classifiers, read from the JSON keys and CSV columns. Target rules on every channel: web for Real-time Protection, saas for API-enabled Protection, endpoint and email where the policy names them, one decision per channel.",
         "source_api": {"name": "Netskope REST API v2", "base": "https://<tenant>.goskope.com/api/v2",
                        "auth": "Netskope-Api-Token header (a REST API v2 token from Settings > Tools > REST API v2, scoped to the endpoints used)",
                        "calls": ["Real-time Protection policies: no create or read endpoint; export them from the UI (Policies > Real-time Protection > Export, JSON or CSV)",
@@ -176,7 +226,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
             _row("idm", "Document fingerprint classifier (unstructured)", "fingerprint (document)", "idm", "IDM profile + dictionary", "attested", ""),
             _row("ml", "ML classifier (résumés, source code, tax forms, …)", "ml classifier name", "predefined", "ML predefined dictionary where one exists", "attested", ""),
             _row("match_thresholds", "DLP rule count / percentage thresholds and AND / OR", "count, threshold, percentage, operator", "engine", "engineExpression ((D<dict>.S > n)); AND / OR", "reviewed", "percentage thresholds have no ZIA equivalent: choose a count"),
-            _row("channel", "Activities and destination", "activities (Upload, Post, Share, Download, …), destination apps / categories", "apps", "protocols [HTTP_RULE, HTTPS_RULE]; cloudApplications; urlCategories", "generated", "upload, post and share are inline web; downloads are not inspected by ZIA web DLP unless dlpDownloadScanEnabled; API-enabled (SaaS) policies need the SaaS adapter"),
+            _row("channel", "Activities and destination", "activities (Upload, Post, Share, Download, …), destination apps / categories; API-enabled Protection policies", "channels", "upload / post / share → web (protocols HTTP/HTTPS, cloudApplications, urlCategories); API-enabled Protection → saas (casbDlpRules type by app family, cloud_app_tenants); webmail → email", "generated", "downloads are not inspected by ZIA web DLP unless dlpDownloadScanEnabled; one decision per target channel"),
             _row("identity_scope", "Source", "source: users, user groups, OUs, locations", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any"),
             _row("file_conditions", "DLP profile file filters", "file_filters: file types, size", "rule", "fileTypes, minSize", "manual", ""),
             _row("exceptions", "Policy exclusions", "exclude users / apps / activities", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
@@ -193,14 +243,14 @@ VENDORS: Dict[str, Dict[str, Any]] = {
                   {"ext": ".json", "what": "One policy or a list from the SSE Policy API (policy types 0 = API DLP, 1 = Proxy DLP)"},
                   {"ext": ".xml", "what": "A policy template member in XML, read by the same element names"}],
         "how": "Export from Skyhigh: Policy > DLP Policies > Policy Templates > Export (a zip of at most 50 rule groups and 64 KB; dictionaries are not synced into it, so add each dictionary's export to the same zip). A policy JSON from the SSE Policy API is accepted too.",
-        "coverage": "Policy templates: rule groups, rules and their classifications (keywords with proximity, dictionaries with scores, advanced patterns / regex, pre-canned classifications as identifiers, IDM and EDM, ML), thresholds, the policy type (API DLP or Proxy DLP), applies-to users and groups, file conditions, exceptions, response actions and severity, read from the JSON keys or XML element names. Web (Proxy DLP) rules only; API DLP policies need the SaaS adapter.",
+        "coverage": "Policy templates: rule groups, rules and their classifications (keywords with proximity, dictionaries with scores, advanced patterns / regex, pre-canned classifications as identifiers, IDM and EDM, ML), thresholds, the policy type (API DLP or Proxy DLP), applies-to users and groups, file conditions, exceptions, response actions and severity, read from the JSON keys or XML element names. Target rules on every channel: web for Proxy DLP, saas for API DLP, endpoint and email where the template names them, one decision per channel.",
         "source_api": {"name": "Skyhigh SSE Policy API and Policy Templates", "base": "https://<Skyhigh SSE console for your region>/… (the SSE API reference gives the path for your tenant's region)",
                        "auth": "API token from the SSE console (Settings > API), sent as a bearer token",
                        "calls": ["Policy Templates: Policy > DLP Policies > Policy Templates > Import / Export (zip, at most 50 rule groups and 64 KB; dictionaries are exported separately)",
                                  "Policy API: list and get DLP policies (policy types 0 = API DLP, 1 = Proxy DLP); create and update are Skyhigh-side only",
                                  "Incidents API: DLP incidents for the before/after comparison in monitor mode"]},
         "crossref": [
-            _row("policy", "Policy template / rule group", "policy name, rule_groups[].name, policy_type (0 API DLP, 1 Proxy DLP)", "rule", "name, state (always DISABLED here)", "generated", "one ZIA web rule per Proxy DLP rule group or rule, as the decisions say; API DLP policies need the SaaS adapter"),
+            _row("policy", "Policy template / rule group", "policy name, rule_groups[].name, policy_type (0 API DLP, 1 Proxy DLP)", "rule", "name, state (always DISABLED here)", "generated", "one ZIA rule per Proxy DLP (web) or API DLP (saas) rule group or rule, as the decisions say"),
             _row("content_patterns", "Keyword classification (200-character proximity)", "classifications[] type keyword: keywords, proximity", "dictionary", "phrases[].phrase; proximity on the dictionary", "generated", ""),
             _row("content_patterns", "Dictionary classification (scored entries −99..999)", "dictionary entries with scores", "dictionary", "phrases[].phrase", "generated", "ZIA counts occurrences, it has no per-term score: the engine threshold replaces the dictionary's score threshold"),
             _row("content_patterns", "Advanced pattern (regex) classification", "classifications[] type advanced_pattern / regex: pattern", "dictionary", "patterns[].pattern (8 per dictionary, validated by the API)", "generated", ""),
@@ -209,7 +259,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
             _row("edm", "Structured / exact data classification", "EDM", "edm", "EDM schema + dictionary", "attested", ""),
             _row("ml", "ML classification", "ml", "predefined", "ML predefined dictionary where one exists", "attested", ""),
             _row("match_thresholds", "Rule conditions: counts, minimum score, proximity", "count, threshold, minimum score", "engine", "engineExpression ((D<dict>.S > n)); AND / OR", "reviewed", ""),
-            _row("channel", "Policy type and services", "policy_type (1 Proxy DLP = web; 0 API DLP = SaaS), services / cloud services", "apps", "protocols [HTTP_RULE, HTTPS_RULE]; cloudApplications", "generated", ""),
+            _row("channel", "Policy type and services", "policy_type (1 Proxy DLP = web; 0 API DLP = SaaS), services / cloud services", "channels", "Proxy DLP → web (protocols HTTP/HTTPS, cloudApplications); API DLP → saas (casbDlpRules type by service family, cloud_app_tenants)", "generated", "one decision per target channel"),
             _row("identity_scope", "Applies to", "users, groups", "identity", "users, groups, departments", "manual", "the generated rule applies to Any"),
             _row("file_conditions", "File conditions", "content type, file size, file name", "rule", "fileTypes, minSize", "manual", ""),
             _row("exceptions", "Exceptions / exclusions", "exceptions", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
@@ -298,8 +348,8 @@ FACETS: Dict[str, Dict[str, Any]] = {
                          "zia": "the engine expression's strict \"more than N\"",
                          "how": "carried when every referenced engine expression carries a numeric threshold"},
     "channel": {"name": "Channels and protocols", "weight": 10, "tags": ("protocol", "channel", "destination", "endpointdestination", "network", "application", "app"),
-                "zia": "Inline Web DLP rule (HTTP/HTTPS)",
-                "how": "the share of the source's protocol mentions that are web (http, https, web, ftp); this adapter emits web rules only"},
+                "zia": "Web, Endpoint, SaaS Security API and Email DLP rules (one target rule per channel)",
+                "how": "the share of the source's channel mentions (web, email, endpoint, SaaS API; downloads are never inspected) that the approved target rules cover"},
     "identity_scope": {"name": "Users, groups, senders and recipients", "weight": 8, "tags": ("sender", "recipient", "user", "group", "department", "policygroup", "scope"),
                        "zia": "the rule's users / groups / departments criteria",
                        "how": "dropped: the generated rule applies to Any (that is what scope_acknowledged_any acknowledges)"},
@@ -1087,10 +1137,15 @@ def decisions_template(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     every source policy listed with nothing approved, and one worked
     dictionary and engine to copy. Every field is reviewed by a person."""
     return {
-        "_help": ("Review every policy: either an approved web-rule translation (channel web, action BLOCK/CONFIRM/ALLOW, 1-4 engine_refs, "
-                  "a unique order from 1, scope_acknowledged_any true because the generated rule applies to Any user/location) or an approved "
-                  "retired/out_of_scope disposition with a reason. Dictionaries and engines are spelled out here and approved one by one; "
-                  "{{dict:ID}} in an engine expression references a dictionary below. A changed export SHA-256 invalidates this file."),
+        "_help": ("Review every policy: either approved target-rule translations (one entry per target channel: web, endpoint, saas or email, "
+                  "each with the channel's action, 1-4 engine_refs, a unique order from 1 within that channel, scope_acknowledged_any true "
+                  "because the generated rule applies to Any user/location, and the channel's own fields listed under _channels) or one approved "
+                  "retired/out_of_scope disposition with a reason. To carry a source policy to more than one channel, copy its entry and change "
+                  "the channel. Dictionaries and engines are spelled out here and approved one by one; {{dict:ID}} in an engine expression "
+                  "references a dictionary below. A changed export SHA-256 invalidates this file."),
+        "_channels": {k: {"label": v["label"], "terraform": v["resource"], "actions": list(v["actions"]), "monitor_action": v["monitor"],
+                          "fields": v["fields"], "required": list(v["needs"]), "max_engines": v["max_engines"], "name_max": v["name_max"]}
+                      for k, v in TARGETS.items()},
         "source_sha256": snapshot["sha256"],
         "source_file": snapshot.get("source_file", ""),
         "dictionaries": [{"id": "example_context", "name": "EXAMPLE_CONTEXT", "approved": False, "description": "Migrated from the source DLP",
@@ -1135,15 +1190,23 @@ def _facet_score(key: str, src: Dict[str, Any], pol: Dict[str, Any], dict_items:
         val = with_t / len(engine_exprs)
         return {"score": val, "basis": "computed", "detail": f"{with_t} of {len(engine_exprs)} referenced engine expressions carry a numeric threshold = {val:.0%}"}
     if key == "channel":
+        targets = list(pol.get("targets") or [])
+        covered = {k for t in targets for k in TARGETS.get(t, {}).get("covers", ())}
         texts = src.get("texts") or []
         if not texts:
-            return {"score": 1.0 if pol.get("channel") == "web" else 0.0, "basis": "computed", "detail": "no protocol named in the source; the web rule is taken as the whole channel"}
-        web = sum(1 for t in texts if _WEB_PROTOCOL_RE.search(t))
-        val = web / len(texts)
-        return {"score": val, "basis": "computed", "detail": f"{web} of {len(texts)} protocol mentions are web = {val:.0%}; endpoint, email and SaaS mentions need their own adapter"}
+            return {"score": 1.0 if targets else 0.0, "basis": "computed",
+                    "detail": (f"no channel named in the source; the approved {', '.join(targets)} rule is taken as the whole channel") if targets else "no channel named in the source and no target rule approved"}
+        kinds = [_channel_kind(t) for t in texts]
+        hit = sum(1 for k in kinds if k in covered)
+        val = hit / len(texts)
+        missed = sorted({k for k in kinds if k not in covered})
+        note = ""
+        if missed:
+            note = "; not covered: " + ", ".join(missed) + (" (downloads are never inspected by DLP)" if "cloud-download" in missed else " (approve a target rule on that channel)")
+        return {"score": val, "basis": "computed", "detail": f"{hit} of {len(texts)} channel mentions are covered by the approved target rules ({', '.join(targets) or 'none'}) = {val:.0%}{note}"}
     if key == "response_action":
-        ok = pol.get("action") in SAFE_ACTIONS and bool(pol.get("approved"))
-        return {"score": 1.0 if ok else 0.0, "basis": "computed", "detail": ("action " + str(pol.get("action")) + " approved; notification, quarantine and encryption responses are not carried") if ok else "no approved action"}
+        ok = bool(pol.get("action_ok"))
+        return {"score": 1.0 if ok else 0.0, "basis": "computed", "detail": ("action " + str(pol.get("action_text")) + " approved; notification, quarantine and encryption responses are not carried") if ok else "no approved action on every target"}
     if key in ("identity_scope", "file_conditions", "exceptions", "severity"):
         return {"score": 0.0, "basis": "fixed", "detail": spec["how"]}
     return {"score": 0.0, "basis": "fixed", "detail": spec["how"] + " (nothing attested)"}
@@ -1161,32 +1224,42 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
     engines = {slug(e.get("id", "")): e.get("zia_expression", "") or "" for e in decisions.get("engines", []) or [] if e.get("approved")}
     rows = []
     tot_w = tot_s = 0.0
+    # One source policy may have several decisions, one per target channel;
+    # the policy is scored once, over everything its approved targets carry.
+    groups: Dict[str, List[Dict[str, Any]]] = {}
     for p in decisions.get("policies", []) or []:
-        sid = str(p.get("source_id", ""))
+        groups.setdefault(str(p.get("source_id", "")), []).append(p)
+    for sid, plist in groups.items():
         src = by_id.get(sid)
         if not src:
             continue
-        if p.get("disposition") in ("retired", "out_of_scope"):
-            rows.append({"source_id": sid, "name": src["name"], "status": p["disposition"], "fidelity": None, "facets": [], "note": "not scored: the policy is not being carried over"})
+        disp = next((p["disposition"] for p in plist if p.get("disposition") in ("retired", "out_of_scope")), None)
+        if disp:
+            rows.append({"source_id": sid, "name": src["name"], "status": disp, "fidelity": None, "facets": [], "targets": [], "note": "not scored: the policy is not being carried over"})
             continue
         facets = src.get("facets") or {}
         if not facets:
-            rows.append({"source_id": sid, "name": src["name"], "status": "not_computable", "fidelity": None, "facets": [],
+            rows.append({"source_id": sid, "name": src["name"], "status": "not_computable", "fidelity": None, "facets": [], "targets": [],
                          "note": "the export carries no recognisable detection element for this policy (only id, name and status), so no percentage is claimed"})
             continue
-        refs = [slug(x) for x in (p.get("engine_refs") or [])]
+        refs = list(dict.fromkeys(slug(x) for p in plist for x in (p.get("engine_refs") or [])))
         exprs = [engines[r] for r in refs if r in engines]
         dict_items = 0
         for e in exprs:
             for m in re.finditer(r"zia_dlp_dictionaries\.([a-z0-9_]+)\.id|\{\{dict:([A-Za-z0-9_-]+)\}\}", e):
                 dict_items += dict_sizes.get(slug(m.group(1) or m.group(2)), 0)
-        attest = p.get("attest") or {}
+        approved_targets = [str(p.get("channel")) for p in plist
+                            if p.get("approved") and p.get("channel") in TARGETS and p.get("action") in TARGETS[p["channel"]]["actions"]]
+        pol = {"targets": list(dict.fromkeys(approved_targets)),
+               "action_ok": bool(approved_targets) and len(approved_targets) == len(plist),
+               "action_text": ", ".join(f"{p.get('channel')}: {p.get('action')}" for p in plist)}
+        attest = next((p["attest"] for p in plist if isinstance(p.get("attest"), dict) and p["attest"]), {})
         frows = []
         w_sum = s_sum = 0.0
         for key in FACETS:
             if key not in facets:
                 continue
-            sc = _facet_score(key, facets[key], p, dict_items, exprs, attest)
+            sc = _facet_score(key, facets[key], pol, dict_items, exprs, attest)
             w = FACETS[key]["weight"]
             w_sum += w; s_sum += w * sc["score"]
             frows.append({"facet": key, "name": FACETS[key]["name"], "weight": w, "source_elements": facets[key]["elements"],
@@ -1194,8 +1267,8 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
                           "zia": FACETS[key]["zia"], "score": round(sc["score"], 4), "points": round(w * sc["score"], 2), "basis": sc["basis"], "detail": sc["detail"]})
         fid = round(s_sum / w_sum * 100, 1) if w_sum else None
         tot_w += w_sum; tot_s += s_sum
-        rows.append({"source_id": sid, "name": src["name"], "status": "translated" if p.get("approved") else "not_approved", "fidelity": fid,
-                     "points": round(s_sum, 2), "weight": round(w_sum, 2), "facets": frows, "unrecognised": src.get("unrecognised") or [],
+        rows.append({"source_id": sid, "name": src["name"], "status": "translated" if all(p.get("approved") for p in plist) else "not_approved", "fidelity": fid,
+                     "points": round(s_sum, 2), "weight": round(w_sum, 2), "facets": frows, "unrecognised": src.get("unrecognised") or [], "targets": pol["targets"],
                      "note": f"{s_sum:.1f} of {w_sum:.0f} weighted points carried = {fid}%" if fid is not None else ""})
     overall = round(tot_s / tot_w * 100, 1) if tot_w else None
     scored = [r for r in rows if r["fidelity"] is not None]
@@ -1203,7 +1276,8 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
             "method": ("Per policy: every detection facet recognised in the export (by element name) is scored 0-1 against what the "
                        "decisions carry (computed where the export and the decisions expose the numbers, attested by a reviewer for "
                        "predefined identifiers, EDM, IDM and ML, fixed at 0 for what this adapter never emits), weighted by the facet's "
-                       "share of a policy's detection; fidelity = weighted points carried ÷ weighted points present. Overall = the same "
+                       "share of a policy's detection; fidelity = weighted points carried ÷ weighted points present. A policy with "
+                       "several target rules (web, endpoint, SaaS API, email) is scored once over all of them. Overall = the same "
                        "ratio over every scored policy. Retired policies and exports with no recognisable detection element are not "
                        "scored and no number is claimed for them."),
             "weights": {k: v["weight"] for k, v in FACETS.items()},
@@ -1229,9 +1303,20 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         raise ValueError("Decision file source_sha256 does not match export; review source changes")
     by_id = {p["id"]: p for p in snapshot["policies"]}
     selected = decisions.get("policies", []) or []
-    if len({p.get("source_id") for p in selected}) != len(selected):
-        raise ValueError("Duplicate source_id in decisions")
+    # One decision per source policy and target channel (a policy carried to
+    # web and email is two entries); a disposition is one entry on its own.
+    pairs = [(str(p.get("source_id", "")), str(p.get("channel") or "") if p.get("disposition") not in ("retired", "out_of_scope") else "disposition") for p in selected]
+    if len(set(pairs)) != len(pairs):
+        dup = sorted({f"{s} ({c})" for s, c in pairs if pairs.count((s, c)) > 1})
+        raise ValueError("Duplicate decision for the same source_id and channel: " + ", ".join(dup))
+    per_source: Dict[str, int] = {}
+    for s, _c in pairs:
+        per_source[s] = per_source.get(s, 0) + 1
     res: Dict[str, Dict[str, Any]] = {"zia_dlp_dictionaries": {}, "zia_dlp_engines": {}, "zia_dlp_web_rules": {}}
+    for spec in TARGETS.values():
+        res.setdefault(spec["resource"], {})
+    data_blocks: Dict[str, Dict[str, Any]] = {}
+    variables: Dict[str, Dict[str, Any]] = {}
     vendor_id = vendor_id or snapshot.get("vendor") or "symantec"
     report: Dict[str, Any] = {"source_sha256": snapshot["sha256"], "provider_version": PROVIDER_VERSION, "vendor": vendor_id,
                               "semantic_equivalence": "manual_review_required_native_export_not_interpreted",
@@ -1291,52 +1376,137 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if source_id not in by_id:
             raise ValueError("Decision references absent source policy: " + source_id)
         if p.get("disposition") in ("retired", "out_of_scope"):
-            if not p.get("approved") or not p.get("reason"):
+            if per_source.get(source_id, 0) > 1:
+                question(source_id, "A retired or out-of-scope policy cannot also have target rules; keep one decision for it")
+            elif not p.get("approved") or not p.get("reason"):
                 question(source_id, "Retirement or exclusion needs approval and a reason")
             else:
                 report["dispositions"].append({"source_id": source_id, "disposition": p["disposition"], "reason": p["reason"]})
             continue
-        if p.get("channel") != "web":
-            question(source_id, "Channel needs a reviewed target adapter: " + str(p.get("channel")), "UNSUPPORTED")
+        channel = str(p.get("channel") or "")
+        spec = TARGETS.get(channel)
+        if not spec:
+            question(source_id, f"Channel must be one of {', '.join(TARGETS)}: {channel!r}", "UNSUPPORTED")
             continue
         engines = p.get("engine_refs", []) or []
-        if (not p.get("approved") or not p.get("scope_acknowledged_any") or p.get("action") not in SAFE_ACTIONS
-                or not 1 <= len(engines) <= 4 or not isinstance(p.get("order"), int) or isinstance(p.get("order"), bool) or p["order"] < 1):
-            question(source_id, "Web rule needs approval, explicit Any-scope acknowledgement, action, 1-4 engines and positive order")
+        if (not p.get("approved") or not p.get("scope_acknowledged_any") or p.get("action") not in spec["actions"]
+                or not 1 <= len(engines) <= spec["max_engines"] or not isinstance(p.get("order"), int) or isinstance(p.get("order"), bool) or p["order"] < 1):
+            question(source_id, f"{spec['label']} rule needs approval, explicit Any-scope acknowledgement, an action from {', '.join(spec['actions'])}, "
+                                f"1-{spec['max_engines']} engines and a positive order"
+                                + ("; a SaaS remediation goes in designed_action" if channel == "saas" else ""))
             continue
         missing_engines = [x for x in engines if slug(x) not in res["zia_dlp_engines"]]
         if missing_engines:
             question(source_id, "Engine not generated: " + ", ".join(missing_engines))
             continue
-        key = slug(f"{prefix}_{source_id}")
-        if key in res["zia_dlp_web_rules"]:
-            raise ValueError("Duplicate web rule slug: " + key)
-        res["zia_dlp_web_rules"][key] = {"name": p.get("target_name") or by_id[source_id]["name"],
-                                         "action": p["action"], "order": p["order"], "state": "DISABLED",
-                                         "protocols": ["HTTPS_RULE", "HTTP_RULE"], "without_content_inspection": False,
-                                         "dlp_engines": [{"id": ["${zia_dlp_engines." + slug(x) + ".id}" for x in engines]}]}
-        report["converted"].append({"source_id": source_id, "target": "zia_dlp_web_rules." + key, "state": "DISABLED"})
+        name = p.get("target_name") or by_id[source_id]["name"]
+        if spec["name_max"] and len(name) > spec["name_max"]:
+            question(source_id, f"{spec['label']} rule name '{name}' is {len(name)} characters; ZIA allows {spec['name_max']}. Set a shorter target_name")
+            continue
+        key = slug(f"{prefix}_{source_id}" + ("" if channel == "web" else f"_{channel}"))
+        if key in res[spec["resource"]]:
+            raise ValueError(f"Duplicate {channel} rule slug: " + key)
+        rule: Dict[str, Any] = {"name": name, "action": p["action"], "order": p["order"], "state": "DISABLED", "without_content_inspection": False,
+                                "dlp_engines": [{"id": ["${zia_dlp_engines." + slug(x) + ".id}" for x in engines]}]}
+        if spec["rank"] is not None:
+            rule["rank"] = spec["rank"]
+        problem = _channel_fields(channel, p, key, rule, data_blocks, variables)
+        if problem:
+            question(source_id, problem)
+            continue
+        res[spec["resource"]][key] = rule
+        entry = {"source_id": source_id, "channel": channel, "target": f"{spec['resource']}.{key}", "state": "DISABLED", "action": p["action"]}
+        if p.get("designed_action"):
+            entry["designed_action"] = str(p["designed_action"])
+        report["converted"].append(entry)
     selected_ids = {str(p.get("source_id", "")) for p in selected}
     for source_id in by_id:
         if source_id not in selected_ids:
             question(source_id, "No reviewed disposition or translation")
-    orders = [v["order"] for v in res["zia_dlp_web_rules"].values()]
-    if len(set(orders)) != len(orders) or sorted(orders) != list(range(1, len(orders) + 1)):
-        raise ValueError("Generated web-rule orders must be unique and contiguous starting at 1")
-    if len(orders) > WEB_RULE_LIMIT:
-        raise ValueError(f"ZIA API web-rule limit exceeded ({WEB_RULE_LIMIT})")
+    for channel, spec in TARGETS.items():
+        orders = [v["order"] for v in res[spec["resource"]].values()]
+        if len(set(orders)) != len(orders) or sorted(orders) != list(range(1, len(orders) + 1)):
+            raise ValueError(f"Generated {channel} rule orders must be unique and contiguous starting at 1")
+        if channel == "web" and len(orders) > WEB_RULE_LIMIT:
+            raise ValueError(f"ZIA API web-rule limit exceeded ({WEB_RULE_LIMIT})")
     tf = {"terraform": {"required_providers": {"zia": {"source": "zscaler/zia", "version": PROVIDER_VERSION}}},
           "provider": {"zia": {}}, "resource": {k: v for k, v in res.items() if v}}
+    if data_blocks:
+        tf["data"] = data_blocks
+    if variables:
+        tf["variable"] = variables
     report["ready"] = not report["blocked"]
     report["efficacy"] = efficacy(snapshot, decisions, res)
     if vendor_id in VENDORS:
         xr = crossref(vendor_id)
         report["crossref"] = {"vendor": vendor_id, "source_api": xr["source_api"], "rows": xr["rows"], "carried": xr["carried"]}
-    report["counts"] = {"source_policies": len(by_id), "converted_web_rules": len(report["converted"]),
+    report["counts"] = {"source_policies": len(by_id), "converted_rules": len(report["converted"]),
+                        "converted_by_channel": {ch: sum(1 for c in report["converted"] if c["channel"] == ch) for ch in TARGETS},
                         "blocked_policies_or_objects": len(report["questions"]),
                         "dictionaries": len(res["zia_dlp_dictionaries"]), "engines": len(res["zia_dlp_engines"]),
                         "dispositions": len(report["dispositions"])}
     return tf, report
+
+
+def _channel_fields(channel: str, p: Dict[str, Any], key: str, rule: Dict[str, Any], data_blocks: Dict[str, Dict[str, Any]], variables: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """Fill the channel's own attributes into `rule` (and the data sources
+    and variables they need) from the decision; return the question that
+    blocks the rule when a required field is missing or invalid."""
+    if channel == "web":
+        rule["protocols"] = ["HTTPS_RULE", "HTTP_RULE"]
+        return None
+    if channel == "endpoint":
+        dtm = p.get("data_transfer_method")
+        if dtm not in ENDPOINT_TRANSFER_METHODS:
+            return f"Endpoint DLP rule needs data_transfer_method, one of {', '.join(ENDPOINT_TRANSFER_METHODS)} (one per rule; copy the entry for another method)"
+        levels = p.get("device_trust_levels") or list(ENDPOINT_TRUST_LEVELS)
+        if not isinstance(levels, list) or not levels or any(x not in ENDPOINT_TRUST_LEVELS for x in levels):
+            return f"device_trust_levels must be a non-empty list from {', '.join(ENDPOINT_TRUST_LEVELS)}"
+        rule["data_transfer_method"] = dtm
+        rule["device_trust_levels"] = list(levels)
+        if p["action"] == "CONFIRM":
+            # ZIA requires a user-confirmation template for CONFIRM; the tenant's ENDPOINT_DLP one is looked up by name at plan time.
+            data_blocks.setdefault("zia_eun_user_confirmation_template_product", {})["endpoint_dlp"] = {"product": "ENDPOINT_DLP", "name": "${var.endpoint_dlp_user_confirmation_template_name}"}
+            variables["endpoint_dlp_user_confirmation_template_name"] = {"type": "string", "default": None,
+                                                                         "description": "User Confirmation template for Endpoint DLP CONFIRM rules; null uses the tenant's default ENDPOINT_DLP template."}
+            rule["uc_template_id"] = "${data.zia_eun_user_confirmation_template_product.endpoint_dlp.id}"
+        return None
+    if channel == "saas":
+        t = p.get("saas_type")
+        if t not in SAAS_RULE_TYPES:
+            return f"SaaS Security API rule needs saas_type, one of {', '.join(SAAS_RULE_TYPES)}"
+        rule["type"] = t
+        rule["collaboration_scope"] = ["ANY"]
+        return _tenants(p, key, rule, "cloud_app_tenants", "SaaS application", data_blocks, variables)
+    if channel == "email":
+        if p["action"] == "CUSTOMHEADERINSERTION":
+            header = p.get("custom_header")
+            if not isinstance(header, str) or not header.strip() or len(header) > 128:
+                return "CUSTOMHEADERINSERTION needs custom_header (the header text, up to 128 characters)"
+            rule["custom_header"] = header.strip()
+        return _tenants(p, key, rule, "email_tenants", "email", data_blocks, variables)
+    return f"Channel {channel!r} has no target adapter"
+
+
+def _tenants(p: Dict[str, Any], key: str, rule: Dict[str, Any], block: str, what: str, data_blocks: Dict[str, Dict[str, Any]], variables: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """SaaS / email tenants: names of onboarded tenants become
+    zia_casb_tenant data lookups; the word "variable" leaves the ids to a
+    Terraform variable filled in at plan time. Anything else blocks."""
+    want = p.get("tenants")
+    if isinstance(want, str) and want.strip().lower() == "variable":
+        var = f"{block.split('_')[0]}_tenant_ids_{key}"
+        variables[var] = {"type": "list(number)", "description": f"IDs of the onboarded {what} tenants rule '{rule['name']}' applies to (Administration > SaaS Application Tenants)."}
+        rule[block] = [{"id": "${var." + var + "}"}]
+        return None
+    if isinstance(want, list) and want and all(isinstance(x, str) and x.strip() for x in want):
+        ids = []
+        for n in want:
+            lbl = slug("tenant_" + n)
+            data_blocks.setdefault("zia_casb_tenant", {})[lbl] = {"tenant_name": n.strip()}
+            ids.append("${data.zia_casb_tenant." + lbl + ".tenant_id}")
+        rule[block] = [{"id": ids}]
+        return None
+    return f"tenants must list the onboarded {what} tenant names, or be the word \"variable\" to fill the ids in at terraform plan"
 
 
 # ── The page's two calls ───────────────────────────────────────────────
