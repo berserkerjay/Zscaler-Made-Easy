@@ -1764,7 +1764,8 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
 @app.post("/api/tenant/check")
 async def tenant_check(req: TenantCredsRequest):
     """Read-only connection test for the Start-here panel: authenticates,
-    counts DLP dictionaries, engines and web DLP rules, and explains any
+    counts DLP dictionaries, engines and the Web, Endpoint, SaaS and Email
+    DLP rules, and explains any
     failure in plain language with what to do next."""
     creds = _tenant_creds(req)
     label = tenant_auth.label(creds)
@@ -1796,6 +1797,15 @@ async def tenant_check(req: TenantCredsRequest):
         out["web_rules"] = 0 if err else len(rules or [])
         if err:
             out["problems"].append("Web DLP rules could not be listed; the role may lack DLP policy read access.")
+        # The other DLP channels, so the operator sees the whole DLP policy
+        # before deploying into it. None = could not be read (said in problems).
+        import pack_channels as pc
+        for ch, key, name in ((pc.ENDPOINT, "endpoint_rules", "Endpoint DLP"), (pc.SAAS, "saas_rules", "SaaS Security API DLP"),
+                              (pc.EMAIL, "email_rules", "Email DLP")):
+            n, cerr = pc.count_rules(z, ch)
+            out[key] = n
+            if cerr:
+                out["problems"].append(f"{name} rules could not be listed; the role may lack read access to them or the tenant has no subscription for them.")
         return out
 
     try:

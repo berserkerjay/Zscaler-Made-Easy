@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-29
 
+### Connect step counts Web, Endpoint, SaaS and Email DLP rules
+- **What you asked for.** "Show how many SaaS, Email, Endpoint DLP and Web DLP rules exist" on the Connect to the tenant step.
+- **Now** the connection check reads every DLP channel and the step says, for example, "0 Web DLP rules · 2 Endpoint DLP rules · 1 SaaS DLP rules · 3 Email DLP rules". A channel the API client cannot read shows "unreadable" with a line saying why, instead of 0. Read-only, like the rest of the check.
+
 ### Dictionary API check; SaaS and Email rules counted under their own channel
 - **What you asked for.** "Check that the API for DLP dictionaries is correct", and "when trying to deploy all channels with zbp pack it is not recognizing the channels for email and saas correctly".
 - **Dictionary API.** Every call matches Zscaler's SDK and API: `GET/POST /dlpDictionaries`, `PUT` and `DELETE /dlpDictionaries/{id}`, field names converted to the API's camelCase, phrases and patterns sent as (action, text) pairs with the `PHRASE_COUNT_TYPE_*` / `PATTERN_COUNT_TYPE_*` and `MATCH_*_CUSTOM_PHRASE_PATTERN_DICTIONARY` values. One call was wrong: the confidence-level change on an existing dictionary (the CJIS pack's Medical → Low) sent only four fields, and a PUT replaces the dictionary, so it could reset proximity, identifiers and other settings. It now sends the whole dictionary as the tenant has it with only the confidence level changed.
