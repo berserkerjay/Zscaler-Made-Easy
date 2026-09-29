@@ -540,8 +540,9 @@ def test_each_channel_fails_closed_on_its_own_required_fields():
     assert "tenants must list" in rep["questions"][0]["reason"]
     rep = compile_with(lambda d: pol(d, "email").pop("custom_header"))
     assert "custom_header" in rep["questions"][0]["reason"]
-    rep = compile_with(lambda d: pol(d, "email").update(action="BLOCK"))
-    assert rep["ready"] and "custom_header" not in vm.compile_export(snap, json.loads(json.dumps(base)))[0]["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"] or True
+    d = json.loads(json.dumps(base)); pol(d, "email").update(action="BLOCK"); pol(d, "email").pop("custom_header")
+    tf_block, rep = vm.compile_export(snap, d)
+    assert rep["ready"] and "custom_header" not in tf_block["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"], "BLOCK needs no header"
     rep = compile_with(lambda d: d["policies"].append({"source_id": "sym-102", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "ALLOW", "order": 3, "engine_refs": ["pci_context"]}))
     assert any("cannot also have target rules" in q["reason"] for q in rep["questions"])
     with pytest.raises(ValueError, match="Duplicate decision for the same source_id and channel"):
