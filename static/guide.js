@@ -99,7 +99,7 @@ function _gdSteps() {
       n: 5, title: 'Close the gap: deploy from here, or hand off as Terraform',
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
       what: 'Two ways to create the missing objects. <strong>Deploy from here</strong>: enable write mode in Deploy Policy Packs, review, tick the consent box, deploy; every rule arrives disabled and nothing the customer already has is overwritten. <strong>Hand off as Terraform</strong>: for customers whose platform team manages Zscaler as code, download the same policy pack as a Terraform workspace; in gap mode it imports what exists so their first plan is exactly the gap.',
-      need: 'Deploying from here needs write mode (a confirmation phrase, until the server restarts). The Terraform route needs nothing from this tool after the download; the platform team needs an API client with write access.',
+      need: 'Deploying from here needs write mode: a confirmation phrase, after which it stays on for this server (every browser using it) until the server restarts or you switch it back. The Terraform route needs nothing from this tool after the download; the platform team needs an API client with write access.',
       status: deployed ? 'Deployed. Activate in the ZIA portal, then enable rules one by one.' : 'Choose the route the customer prefers. Both start from the same preflight.',
       actions: [{ label: 'Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }, { label: 'Terraform hand-off', fn: "openToolTab('terraform')", kind: 'quiet' }],
     },

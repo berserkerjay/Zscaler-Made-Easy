@@ -17,11 +17,11 @@ const DZ_STATUS = {
   create:             { label: 'Will create',     cls: 'st-create',  icon: '+', help: 'This object does not exist in the tenant yet. Deploying creates it exactly as the pack defines it.' },
   modify:             { label: 'Will modify',     cls: 'st-modify',  icon: '✎', help: 'An existing tenant object will be changed (a confidence tweak). The change is listed so you can approve it.' },
   restore:            { label: 'Will overwrite',  cls: 'st-modify',  icon: '↺', help: 'Converge mode only: this policy pack object was changed in the tenant and you asked for it to be reset to the policy pack definition.' },
-  reuse:              { label: 'Already present', cls: 'st-reuse',   icon: '✓', help: 'The tenant already has this object with the same content. Nothing is written; the pack simply uses it.' },
+  reuse:              { label: 'Already present', cls: 'st-reuse',   icon: '✓', help: 'The tenant already has this object; its content matched where the tenant let it be compared (the row says when it could not be). Nothing is written; the pack simply uses it.' },
   reuse_differs:      { label: 'Kept as-is',      cls: 'st-differs', icon: '≠', help: 'The tenant has an object with this name but different content (for a policy pack: the customer customized it, for example enabled the rule or hardened its action). The tenant version is kept and used; the pack version is not applied.' },
   conflict:           { label: 'Conflict',        cls: 'st-blocked', icon: '!', help: 'Two selected packs define this name differently, or it clashes with a predefined Zscaler object. Deselect one pack or rename it.' },
-  blocked_dependency: { label: 'Skipped',         cls: 'st-blocked', icon: '–', help: 'Something this object needs is missing (a dictionary, an engine, an onboarded SaaS tenant, a licensed feature). It will not be created until that exists.' },
-  skip_empty:         { label: 'Skipped',         cls: 'st-blocked', icon: '–', help: 'This dictionary has no phrases or patterns, so it could never match anything and is not created.' },
+  blocked_dependency: { label: 'Skipped: needs a prerequisite', cls: 'st-blocked', icon: '–', help: 'Something this object needs is missing (a dictionary, an engine, an onboarded SaaS tenant, a licensed feature). It will not be created until that exists.' },
+  skip_empty:         { label: 'Skipped: empty',  cls: 'st-blocked', icon: '–', help: 'This dictionary has no phrases or patterns, so it could never match anything and is not created.' },
   noop:               { label: 'No change',       cls: 'st-reuse',   icon: '✓', help: 'The tweak\'s target is already at the desired value.' },
   // apply results
   created:  { label: 'Created',  cls: 'st-ok',      icon: '✓', help: 'Created in the tenant. It becomes active for users only after ZIA activation.' },
@@ -220,7 +220,7 @@ async function _dzSetWriteMode(enable) {
   let confirm = '';
   if (enable) {
     if (!w.can_toggle) { alert(w.reason || 'Write mode can only be enabled from the start script on this server.'); return; }
-    confirm = prompt(`Enable write mode for this server session?\n\nDeploy Studio will then CREATE objects in the tenant you approve. Every rule still arrives DISABLED, existing objects are never overwritten, and read-only returns when the server restarts.\n\nType ${w.confirm_phrase || 'YES_I_UNDERSTAND'} to continue:`, '') || '';
+    confirm = prompt(`Enable write mode on this server?\n\nIt applies to every browser and tab using this server, and stays on until the server restarts (there is a Back to read-only button). Deploy Studio will then CREATE the objects you approve in the tenant. Every rule still arrives DISABLED; existing objects are not overwritten (with confidence tweaks on, the confidence of dictionaries a pack tunes is modified, and each such change is listed as Will modify for your approval).\n\nType ${w.confirm_phrase || 'YES_I_UNDERSTAND'} to continue:`, '') || '';
     if (!confirm) return;
   } else if (!window.confirm('Switch back to read-only? Preflight and the journey check keep working; deploying will be refused until write mode is enabled again.')) return;
   try {
@@ -228,7 +228,7 @@ async function _dzSetWriteMode(enable) {
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
     DZ.write = data;
-    announce(data.enabled ? 'Write mode enabled for this session.' : 'Read-only mode.');
+    announce(data.enabled ? 'Write mode enabled on this server until it restarts.' : 'Read-only mode.');
     // The removal review is open: refresh it so Remove now unlocks in place.
     if (DZ.removal && document.getElementById('rmConsent')) { _dzRemovalRender(); return; }
     // A plan made in read-only mode carries a read-only blocker; refresh it.
@@ -241,7 +241,7 @@ function _dzWriteBanner() {
   if (!w) return '';
   if (w.enabled) {
     return `<div class="dz-write on"><span class="dz-status ready">Write mode</span><div><div class="t">Deploying will create objects in the tenant you approve.</div>
-      <div class="d">Every rule arrives DISABLED and existing objects are never overwritten. ${w.source === 'session' ? 'Enabled from this window; the server returns to read-only when it restarts.' : 'Set by the start script (ENABLE_WRITE_ACTIONS).'}</div></div>
+      <div class="d">Every rule arrives DISABLED; existing objects are not overwritten (confidence tweaks on existing dictionaries are listed as <em>Will modify</em> for approval). ${w.source === 'session' ? 'Enabled from this app: it applies to every browser using this server until the server restarts, or until you click Back to read-only.' : 'Set by the start script (ENABLE_WRITE_ACTIONS); on until the server restarts.'}</div></div>
       ${w.source === 'session' ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(false)">Back to read-only</button>` : ''}</div>`;
   }
   return `<div class="dz-write off"><span class="dz-status warnings">Read-only</span><div><div class="t">Preflight, the plan and the journey check work; deploying is refused.</div>
@@ -348,7 +348,7 @@ function _dzRenderSelect() {
   const tot = k => sel.reduce((a, p) => a + (p[k] || 0), 0);
   document.getElementById('dzFoot').innerHTML = `
     <div class="dz-summary">${sel.length
-      ? `<strong style="color:var(--text);">${_dzN(sel.length, 'pack')}</strong> · ${tot('dictionaries')} dictionaries · ${tot('engines')} engines · ${tot('policies')} policies`
+      ? `<strong style="color:var(--text);">${_dzN(sel.length, 'pack')}</strong> · ${tot('dictionaries')} dictionaries · ${tot('engines')} engines · ${tot('policies')} policies<div class="d" style="margin-top:0.2rem;">Channels — ${_dzTargetsSummary(sel.map(p => p.id))}. Preflight reads the tenant and writes nothing.</div>`
       : 'Select at least one pack to continue.'}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="closeDlpPacksModal()">Cancel</button>
@@ -573,7 +573,8 @@ async function _dzRunPreflight() {
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
     DZ.report = data;
-    announce(`Preflight ${data.status}: ${data.will_create} changes, ${data.warnings.length} warnings.`);
+    const c = _dzCounts(data);
+    announce(`Preflight ${data.status}: ${c.create} to create, ${c.modify + c.restore} to change, ${c.blocked} skipped or in conflict, ${(data.warnings || []).length} warnings.`);
   } catch (e) {
     DZ.error = e.message;
   } finally {
@@ -621,6 +622,20 @@ function _dzSection(title, items, { open = true, fn } = {}) {
   return `<details class="dz-fold" ${open ? 'open' : ''}><summary><div class="dz-h">${title}<span class="count">${items.length}</span></div></summary>${rows}</details>`;
 }
 
+// One count vocabulary for the whole Studio (hero, tiles, gates, the
+// announcement): create / modify / restore are the writes, reuse_differs is
+// kept as-is, conflicts and skips are separate, reuse and noop are "already
+// in place". Nothing else counts items.
+function _dzCounts(R) {
+  const items = (R && R.items) || [];
+  const n = s => items.filter(i => i.status === s).length;
+  const c = { create: n('create'), modify: n('modify'), restore: n('restore'), differs: n('reuse_differs'),
+              conflict: n('conflict'), dependency: n('blocked_dependency'), empty: n('skip_empty'), reuse: n('reuse'), noop: n('noop') };
+  c.writes = c.create + c.modify + c.restore;
+  c.blocked = c.conflict + c.dependency + c.empty;
+  c.inplace = c.reuse + c.noop;
+  return c;
+}
 function _dzRenderReview() {
   const body = document.getElementById('dzBody');
   const foot = document.getElementById('dzFoot');
@@ -640,10 +655,13 @@ function _dzRenderReview() {
   const restores = by('restore');
   const creates = [...by('create'), ...by('modify'), ...restores];
   const differs = by('reuse_differs');
-  const blocked = [...by('conflict'), ...by('blocked_dependency'), ...by('skip_empty')];
+  const conflicts = by('conflict');
+  const skipped = [...by('blocked_dependency'), ...by('skip_empty')];
   const reused = [...by('reuse'), ...by('noop')];
+  const c = _dzCounts(R);
   const lead = { ready: 'Ready to deploy', warnings: 'Ready, with things to review', blocked: 'Deployment is blocked' }[R.status];
-  const sub = `${_dzN(creates.length, 'change')}${restores.length ? ` (${_dzN(restores.length, 'converge overwrite')})` : ''} · ${_dzN(differs.length, 'existing object')} kept as-is · ${_dzN(blocked.length, 'item')} skipped · ${_dzN(reused.length, 'item')} already in place`;
+  // The same numbers as the tiles and the gates, in one line.
+  const sub = `${_dzN(c.create, 'object')} to create${c.modify ? ` · ${c.modify} to modify` : ''}${c.restore ? ` · ${c.restore} to overwrite (converge)` : ''} · ${c.differs} kept as-is${c.conflict ? ` · ${_dzN(c.conflict, 'conflict')}` : ''} · ${c.dependency + c.empty} skipped · ${c.inplace} already in place`;
   const t = R.tenant || {};
   body.innerHTML = `
     <div class="dz-hero">
@@ -651,9 +669,10 @@ function _dzRenderReview() {
       <div><div class="lead">${_dzE(R.tenant_label || 'tenant')}</div><div class="sub">${sub}</div></div>
     </div>
     <div class="dz-kv">
-      <div><div class="k">Will create</div><div class="v">${creates.filter(i => i.status === 'create').length}</div></div>
-      <div><div class="k">${restores.length ? 'Will overwrite / modify' : 'Will modify'}</div><div class="v">${creates.filter(i => i.status === 'modify' || i.status === 'restore').length}</div></div>
-      <div><div class="k">Skipped</div><div class="v">${blocked.length}</div></div>
+      <div><div class="k">Will create</div><div class="v">${c.create}</div></div>
+      <div><div class="k">${c.restore ? 'Will overwrite / modify' : 'Will modify'}</div><div class="v">${c.modify + c.restore}</div></div>
+      <div><div class="k">Kept as-is</div><div class="v">${c.differs}</div></div>
+      <div><div class="k">${c.conflict ? 'Skipped / conflicts' : 'Skipped'}</div><div class="v">${c.blocked}</div></div>
       <div><div class="k">Tenant rules</div><div class="v">${t.rules ?? '–'}<span style="font-size:0.75rem;color:var(--dim);font-weight:500;"> / ${t.rule_cap || 127}</span></div></div>
     </div>
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
@@ -661,11 +680,12 @@ function _dzRenderReview() {
       <ul class="dz-note">
         <li><strong>Nothing has been written.</strong> This is a dry run against the live tenant.</li>
         <li><strong>Impact cards</strong> say what changes for the tenant as a whole: greenfield or brownfield, rules inserted at the top of the policy, enforcing actions, activation.</li>
-        <li><strong>Existing objects are never overwritten.</strong> A rule the customer enabled or hardened, or a dictionary they tuned, is kept exactly as it is and shown as <em>Kept as-is</em>. Only what is missing gets created.</li>
+        <li><strong>Existing objects are not overwritten.</strong> A rule the customer enabled or hardened, or a dictionary they tuned, is kept exactly as it is and shown as <em>Kept as-is</em>. What is missing gets created (<em>Will create</em>). The one change to an existing object is a confidence tweak on a dictionary the pack tunes, listed as <em>Will modify</em> (turn off <em>Apply confidence tweaks</em> on the Select step to avoid it); converge mode, when asked for, overwrites and is listed as <em>Will overwrite</em>.</li>
+        <li><strong>Skipped vs conflict.</strong> <em>Skipped: needs a prerequisite</em> and <em>Skipped: empty</em> are left out and everything else still deploys; a <em>Conflict</em> (two packs, or a predefined Zscaler name) must be resolved by deselecting a pack or renaming.</li>
         <li><strong>Tenant prerequisites</strong> are things the tenant must already have (a predefined dictionary, an onboarded SaaS tenant, a licensed feature). Missing ones skip only the rules that need them.</li>
         <li><strong>The lists</strong> group the objects by what will happen to them. Hover any status chip for what it means. The dependency diagram (dictionaries feed engines feed rules) is on the <em>How a deployment works</em> page.</li>
         <li>Every rule ships <strong>DISABLED</strong>, so deploying never affects users. Enable rules in the portal after tuning.</li>
-        <li><strong>Two ways to close the gap.</strong> <em>Review &amp; approve</em> creates the missing objects from here (write mode needed). <em>Hand off as Terraform</em> gives a platform team the same objects as a Terraform workspace whose first <code>terraform plan</code> is exactly this list.</li>
+        <li><strong>Two ways to close the gap.</strong> <em>Review &amp; approve</em> creates the missing objects from here (write mode needed). <em>Hand off as Terraform</em> gives a platform team the same objects as a Terraform workspace: in gap mode its first <code>terraform plan</code> creates what this list creates and imports what already exists (an object the customer customized then shows as an update in place; the hand-off notes say how to keep their version).</li>
       </ul></details>
     ${(R.impacts || []).length ? `<div class="dz-h">Impact on this tenant</div>` : ''}
     ${(R.impacts || []).map(i => `<div class="dz-card sev-${_dzE(i.severity)}"><div class="bar"></div><div><div class="t">${_dzE(i.title)}</div><div class="d">${_dzE(i.detail)}</div></div></div>`).join('')}
@@ -673,7 +693,8 @@ function _dzRenderReview() {
     ${_dzSection('Converge mode — will be overwritten with the policy pack', restores)}
     ${_dzSection('Changes that will be written', creates.filter(i => i.status !== 'restore'))}
     ${_dzSection('Already exist, customized by the customer — kept as-is', differs)}
-    ${_dzSection('Skipped — dependency or conflict', blocked)}
+    ${_dzSection('Conflicts — resolve before deploying (deselect a pack or rename)', conflicts)}
+    ${_dzSection('Skipped — a prerequisite is missing, or the dictionary is empty', skipped)}
     ${_dzSection('Already in place — nothing to do', reused, { open: false })}`;
   _dzFlowSyncTab(items, null);   // the standalone flow page, if open, follows the plan
   foot.innerHTML = `
@@ -682,7 +703,7 @@ function _dzRenderReview() {
     <div class="dz-actions">
       <button type="button" class="dz-btn" onclick="DZ.step=1;_dzRender()">← Back</button>
       <button type="button" class="dz-btn" onclick="_dzRunPreflight()">Re-run</button>
-      <button type="button" class="dz-btn" title="Close this gap with Terraform instead: opens the hand-off page for the selected packs (what you get, how to run it, download in gap mode so terraform plan shows exactly these changes)." onclick="openToolTab('terraform', [...DZ.selected].join(','))">Hand off as Terraform</button>
+      <button type="button" class="dz-btn" title="Close this gap with Terraform instead: opens the hand-off page for the selected packs (what you get, how to run it, download in gap mode so the first terraform plan creates only what is missing here and imports the rest)." onclick="openToolTab('terraform', [...DZ.selected].join(','))">Hand off as Terraform</button>
       <button type="button" class="dz-btn primary" ${R.status === 'blocked' ? 'disabled' : ''} onclick="DZ.step=3;DZ.consent=false;_dzRender()">Review &amp; approve <span aria-hidden="true">→</span></button>
     </div>`;
 }
@@ -693,18 +714,22 @@ function _dzRenderReview() {
 // closed and what opens it, instead of a greyed-out button.
 function _dzGatesHtml(R, { step } = {}) {
   const w = DZ.write || {};
-  const items = R ? (R.items || []) : [];
-  const creates = items.filter(i => ['create', 'restore', 'modify'].includes(i.status)).length;
+  const c = _dzCounts(R);
   const gates = [];
+  const writesText = `${_dzN(c.create, 'object')} to create${c.modify ? `, ${c.modify} to modify` : ''}${c.restore ? `, ${c.restore} to overwrite` : ''}`;
   if (!R) gates.push({ ok: false, text: 'Run preflight first: it reads the tenant and builds the plan.' });
   else if (R.status === 'blocked') gates.push({ ok: false, text: `The plan is blocked: ${(R.blockers || ['see the reason above']).join(' ')}` });
-  else gates.push({ ok: true, text: `The plan can be deployed (${_dzN(creates, 'object')} to create${R.status === 'warnings' ? '; read the warnings' : ''}).` });
-  if (R && R.status !== 'blocked') gates.push(creates ? { ok: true, text: 'There is something to create.' } : { ok: false, text: 'Nothing to create: every object of this pack already exists in the tenant (the journey card shows how far it is).' });
+  else gates.push({ ok: true, text: `The plan can be deployed (${writesText}${R.status === 'warnings' ? '; read the warnings' : ''}).` });
+  if (R && R.status !== 'blocked') gates.push(c.writes ? { ok: true, text: `There is something to write (${writesText}).` }
+    : { ok: false, text: c.blocked && !c.inplace ? `Nothing to write: every object is skipped or in conflict (${c.conflict} conflict, ${c.dependency + c.empty} skipped); read the plan's sections.`
+      : c.blocked ? `Nothing to write: ${c.inplace + c.differs} object(s) already exist and ${c.blocked} are skipped or in conflict.`
+      : 'Nothing to write: every object of this pack already exists in the tenant (the journey card shows how far it is).' });
+  if (c.conflict) gates.push({ ok: false, warn: true, text: `${_dzN(c.conflict, 'conflict')}: those objects and what depends on them are left out until you deselect a pack or rename.` });
   // A packed channel left unticked is said here, before approval, not only in the log afterwards.
   for (const u of _dzUntickedChannels([...DZ.selected])) {
     gates.push({ ok: false, warn: true, text: `${u.name}: ${u.labels.join(', ')} unticked — the ${_dzN(u.rules, 'rule')} this pack ships there will NOT be deployed. Go back to Select and tick the channel${u.labels.length === 1 ? '' : 's'} to deploy them.` });
   }
-  if (w.enabled) gates.push({ ok: true, text: 'Write mode is on for this server session.' });
+  if (w.enabled) gates.push({ ok: true, text: 'Write mode is on for this server (every browser using it) until the server restarts.' });
   else gates.push({ ok: false, text: w.can_toggle ? 'Write mode is off: click Enable write mode and type the confirmation phrase.' : `Write mode is off and cannot be enabled from here${w.reason ? ': ' + w.reason : ''}. Start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.` });
   if (step === 3) gates.push(DZ.consent ? { ok: true, text: 'You have ticked the approval box.' } : { ok: false, text: 'Tick the approval box above.' });
   else gates.push({ ok: true, text: 'Next: Review & approve, tick the approval box, then Deploy to tenant.' });
@@ -838,14 +863,14 @@ function _dzRenderApprove() {
     ${warns.length ? `<div class="dz-h">Warnings<span class="count">${warns.length}</span></div><div class="dz-rows">${warns.map(w => `<div class="dz-row st-differs"><span class="ic" aria-hidden="true">!</span><div class="rs" style="margin-top:0.25rem;color:var(--text);">${_dzE(w)}</div><div></div></div>`).join('')}</div>` : ''}
     ${_dzSection('Exactly what will be written', writes)}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Before you approve, confirm with the customer</div><div class="d">
-      1. The tenant name above is the right tenant. &nbsp;2. The customer has seen this list and agreed. &nbsp;3. The customer knows an admin must activate changes in the ZIA portal afterwards, and that every new rule arrives disabled.
+      1. The tenant name above is the right tenant. &nbsp;2. The customer has seen this list and agreed. &nbsp;3. The customer knows the deploy activates the changes in ZIA when it completes (if activation cannot run, the result says so and an admin activates in the ZIA portal), and that every new rule arrives disabled.
       ${restores.length ? ' &nbsp;4. Converge mode is on: the objects listed above will be overwritten with the policy pack. If the customer changed any of them on purpose, stop and deploy without converge mode.' : ''}
     </div></div></div>
     <div class="dz-consent">
       <input type="checkbox" id="dzConsent" ${DZ.consent ? 'checked' : ''} onchange="DZ.consent=this.checked;_dzRenderApprove()">
       <label for="dzConsent">I've reviewed this plan and the warnings above, and I authorize these changes to <strong>${_dzE(R.tenant_label || 'the tenant')}</strong>. ${restores.length
         ? `<strong>${_dzN(restores.length, 'customized object')} will be overwritten</strong> with the policy pack definition (converge mode); every other existing object is left untouched.`
-        : 'Existing objects are never overwritten;'} Changes are activated in ZIA automatically when the deploy completes.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
+        : `Existing objects are not overwritten${_dzCounts(R).modify ? ` (${_dzN(_dzCounts(R).modify, 'confidence tweak')} on existing dictionaries, listed above as Will modify)` : ''}.`} The deploy activates the changes in ZIA when it completes.<br><code>plan ${_dzE((R.plan_hash || '').slice(0, 12))}</code></label>
     </div>`;
   const writeOff = DZ.write && !DZ.write.enabled;
   document.getElementById('dzFoot').innerHTML = `
@@ -937,7 +962,7 @@ function _dzRenderDeploy() {
         <li><strong>Enable rules one at a time</strong> in Policy &gt; Data Loss Prevention, starting with the monitor-only ones, and raise their severity once incidents look right.</li>
         <li><strong>Review incidents</strong> after a few days, then tune. Changes the customer makes in the portal are kept; fold the good ones back into the pack so the next tenant starts from them.</li>
         <li><strong>Measure the journey</strong> on the next visit: run the assessment, or click <em>Where is this tenant?</em> on the pack card. It shows the stage reached (Foundation → Policies deployed → Visibility → Containment → Enforcement) and exactly which rules to enable or harden next.</li>
-        <li>If the customer manages Zscaler with Terraform, use <strong>Export Terraform</strong> on the review step to hand them the same configuration with state.</li>
+        <li>If the customer manages Zscaler with Terraform, use <strong>Hand off as Terraform</strong> on the review step to hand them the same configuration with state.</li>
       </ol></div></div></div>
     ${_dzSection('Failed', results.filter(r => r.status === 'failed'), { fn: r => _dzRow(r, 'failed', r.explanation ? `${r.error} — What this means: ${r.explanation}` : r.error) })}
     ${_dzSection('Overwritten with the policy pack (converge mode)', results.filter(r => r.status === 'restored'), { fn: r => _dzRow(r, 'restored', `${r.id ? `ID ${r.id}` : ''}${r.drift && r.drift.length ? ` · ${r.drift.join(', ')}` : ''}`) })}
