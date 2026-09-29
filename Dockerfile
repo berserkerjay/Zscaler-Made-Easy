@@ -22,6 +22,26 @@ RUN apt-get update && apt-get -y --no-install-recommends upgrade && rm -rf /var/
 RUN groupadd --system dlpcheck && useradd --system --gid dlpcheck --home-dir /app --shell /usr/sbin/nologin dlpcheck
 
 WORKDIR /app
+
+# Networks with TLS inspection (Zscaler or another proxy) re-sign HTTPS
+# with the organisation's own root certificate, which this image does not
+# trust: pip then fails with CERTIFICATE_VERIFY_FAILED on pypi.org, and the
+# app fails the same way on the Zscaler API. Put that root certificate in
+# certs/ as a Base-64 (PEM) file before building (INSTALL.md says how);
+# it is added to the image's trust store, and pip, requests and Python's
+# own ssl all use that store. With certs/ empty nothing changes.
+COPY certs/ /tmp/extra-ca/
+RUN set -e; n=0; \
+    for f in /tmp/extra-ca/*.crt /tmp/extra-ca/*.pem /tmp/extra-ca/*.cer; do \
+      [ -f "$f" ] || continue; \
+      grep -q "BEGIN CERTIFICATE" "$f" || { echo "certs/$(basename "$f") is not a Base-64 (PEM) certificate; export it as Base-64 and build again" >&2; exit 1; }; \
+      n=$((n+1)); cp "$f" "/usr/local/share/ca-certificates/extra-ca-$n.crt"; \
+    done; \
+    rm -rf /tmp/extra-ca; update-ca-certificates >/dev/null; echo "extra root certificates added: $n"
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
 COPY requirements.lock requirements.txt ./
 # Hash-pinned install: every wheel must match requirements.lock. Build
 # tools (setuptools, wheel) are not needed at runtime and carry their own

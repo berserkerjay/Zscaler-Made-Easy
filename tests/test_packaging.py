@@ -66,3 +66,19 @@ def test_secret_and_state_files_never_reach_the_image_or_the_repository():
     for name in ("tenant_config.json", "tenant_profiles.json", "local_settings.env", "*.log", ".venv/"):
         assert name in gitignore, f"{name} is not git-ignored"
     assert os.path.exists(os.path.join(ROOT, "local_settings.env.example"))
+
+
+def test_the_container_build_trusts_a_corporate_root_certificate_from_certs():
+    # TLS inspection re-signs pypi.org: the build must accept the company's
+    # root certificate before pip runs, and the app must use it too.
+    df = _read("Dockerfile")
+    assert df.index("COPY certs/") < df.index("pip install --require-hashes"), "certificates go in before pip runs"
+    assert "update-ca-certificates" in df and "BEGIN CERTIFICATE" in df
+    for var in ("PIP_CERT", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
+        assert f"{var}=/etc/ssl/certs/ca-certificates.crt" in df, var
+    assert os.path.exists(os.path.join(ROOT, "certs", "README.md")), "COPY certs/ needs the folder in every checkout"
+    assert "certs" not in _read(".dockerignore").split()
+    gi = _read(".gitignore")
+    assert "certs/*.crt" in gi and "certs/*.pem" in gi and "certs/*.cer" in gi, "organisation certificates stay local"
+    guide = _read("INSTALL.md")
+    assert 'Zscaler Root CA' in guide and "certs\\zscaler-root.crt" in guide and "extra root certificates added" in guide

@@ -483,14 +483,33 @@ prints **Hello from Docker!**.
 *On a work network with TLS inspection (Zscaler or another proxy):* the
 Docker download and `hello-world` usually work, because Docker Desktop
 trusts the certificates Windows and macOS trust. The app's own build
-(Step 3) downloads Python libraries from `pypi.org` and Debian updates
-from `deb.debian.org` inside the build, which does not trust your
-company's inspection certificate, and fails with
-`CERTIFICATE_VERIFY_FAILED`. Either build on a network without
-inspection, or ask IT to exempt `pypi.org`, `files.pythonhosted.org`,
-`deb.debian.org` and Docker Hub from inspection. For a proxy, set it in
-Docker Desktop under **Settings → Resources → Proxies** (Linux:
-`docs.docker.com/engine/daemon/proxy/`).
+(Step 3) downloads Python libraries from `pypi.org` inside the build,
+which does not trust your company's inspection certificate, and stops
+with `CERTIFICATE_VERIFY_FAILED` ("unable to get local issuer
+certificate") at step `[6/8]`. Fix it once, before Step 3: put your
+company's root certificate in the app's `certs` folder, and the build and
+the running app both trust it.
+
+- **Windows** (PowerShell, in the app folder), for Zscaler:
+
+  ```powershell
+  $c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
+  if (-not $c) { "Zscaler Root CA not found: ask IT for the root certificate as a Base-64 .crt file and save it in the certs folder" } else { "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline certs\zscaler-root.crt; "Saved certs\zscaler-root.crt" }
+  ```
+
+- **Mac** (Terminal, in the app folder):
+  `security find-certificate -c "Zscaler Root CA" -p > certs/zscaler-root.crt`
+- **Linux:** copy the root certificate IT gave you (Base-64 / PEM, the
+  text that starts `-----BEGIN CERTIFICATE-----`) into `certs/`.
+- **Another inspection product:** ask IT for its root certificate as a
+  Base-64 file and save it in `certs/` with the ending `.crt`.
+
+Then build again (`docker compose up -d --build`). The build log says
+`extra root certificates added: 1`. The certificate file stays on your
+machine: files in `certs/` are git-ignored. Instead of a certificate, IT
+can also exempt `pypi.org` and `files.pythonhosted.org` from inspection.
+For a proxy, set it in Docker Desktop under **Settings → Resources →
+Proxies** (Linux: `docs.docker.com/engine/daemon/proxy/`).
 
 **Step 2 — Get the code**, the same way as above: sign in to GitHub, go
 to the repository page, **Code → Download ZIP**, extract it somewhere you
@@ -812,7 +831,7 @@ container and its saved data, then delete the folder.)
 | `WSL 2 installation is incomplete` or `Virtualization support not detected` (Windows) | WSL 2 is not set up, or virtualization is off in the computer's firmware | Run `wsl --install --no-distribution` in an administrator PowerShell and restart; if virtualization is off, ask IT to turn on Intel VT-x or AMD-V in the BIOS/UEFI |
 | `You are not allowed to use Docker, you must be in the docker-users group` (Windows) | Your Windows account is not in the docker-users group | Container Step 1, Windows step 5 |
 | `services.dlp-check.env_file.0 must be a string` | Docker Compose is older than 2.24 | Update Docker Desktop (*Check for updates*), or on Linux install Docker from Docker's repository as in container Step 1 |
-| `CERTIFICATE_VERIFY_FAILED` during `docker compose up --build` | The build's downloads go through TLS inspection | See *On a work network with TLS inspection* under container Step 1 |
+| `CERTIFICATE_VERIFY_FAILED` during `docker compose up --build` (step `[6/8]`, `pip install`) | The build's downloads go through TLS inspection | Put the company root certificate in the `certs` folder and build again: *On a work network with TLS inspection* under container Step 1 has the one-line export |
 | Asked for a UI token you don't have | You opened the address by hand, or the app restarted | Find it as described in [First run](#first-run-the-ui-token) |
 | `That UI token is not valid for this server` | The app restarted and minted a new token | Open the app from the shortcut again, or read the new token from `ui_token.txt` |
 | `port 8000 … is already in use` | A previous copy of the app is still running (or something else uses port 8000) | Windows: `STOP_Zscaler_Assessment.bat` (it stops whatever listens on the port). Mac/Linux: `Ctrl + C` in the other terminal, or `./stop.sh` |
