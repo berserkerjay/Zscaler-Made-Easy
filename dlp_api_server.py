@@ -1382,7 +1382,13 @@ async def digests_run(req: DigestRunRequest):
     try:
         d = await asyncio.to_thread(_continuous_eval_once, req.notify)
     except Exception as e:  # noqa: BLE001
+        _DH_REFRESH_STATE["last_status"] = "error"
+        _DH_REFRESH_STATE["last_error"] = str(e)[:200]
+        _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         raise HTTPException(status_code=500, detail=f"the evaluation failed: {type(e).__name__}: {str(e)[:200]}")
+    # The same bookkeeping the scheduled run does, so the Digest tab's
+    # "Last run" and its status are right after a manual run too.
+    _DH_REFRESH_STATE["last_status"] = "ok"
     _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return {"ok": True, "digest": d}
 
@@ -1465,37 +1471,17 @@ async def report_health_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
-# Every 6 hours, for each tenant profile that remembers its secret, run the
-# report and keep a compact entry in the profile's history, so the trend is
-# there on the next visit without anyone clicking. Same cadence as the
-# best-practices refresh; nothing is written to any tenant.
+# Every 6 hours while this server process runs, for each tenant profile that
+# remembers its secret, continuous_eval.run_once reads FP/TP Detection Ratio,
+# the SaaS tenants and the packs' drift (never the assessment checks or the
+# score) and writes a digest. Same cadence as the best-practices refresh;
+# nothing is written to any tenant. The loop dies with the process: a
+# schedule that must survive it is Task Scheduler / cron running
+# continuous_eval.py --once.
 _DH_REFRESH_INTERVAL_SECONDS = 6 * 3600
 _DH_REFRESH_STATE: Dict[str, Any] = {"enabled": True, "interval_seconds": _DH_REFRESH_INTERVAL_SECONDS, "last_run_at": None,
-                                     "next_run_at": None, "last_status": None, "profiles": {}}
-
-
-def _dh_refresh_once() -> None:
-    import detection_health
-    import tenant_profiles
-    for p in tenant_profiles.list_profiles():
-        if not p.get("has_secret"):
-            continue
-        pid = p["id"]
-        try:
-            full = tenant_profiles.get(pid, with_secret=True) or {}
-            creds = tenant_profiles.creds_from(full)
-            client = _build_sdk_client(creds)
-            rep = detection_health.generate(client, days=30)
-            s = rep.get("summary") or {}
-            tenant_profiles.add_history(pid, {"detection_health": {
-                "incidents": rep.get("incident_count"), "closed": s.get("closed"), "not_real": s.get("not_real"), "fp_rate_pct": s.get("fp_rate_pct"),
-                "noisy_rules": s.get("noisy_rules"), "dead_rules": s.get("dead_rules"), "promotable_rules": s.get("promotable_rules"),
-                "noisy_dictionaries": s.get("noisy_dictionaries"), "delivery": (rep.get("delivery") or {}).get("path"),
-                "errors": len(rep.get("errors") or [])}})
-            _DH_REFRESH_STATE["profiles"][pid] = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": "ok",
-                                                  "incidents": rep.get("incident_count"), "errors": len(rep.get("errors") or [])}
-        except Exception as e:  # noqa: BLE001
-            _DH_REFRESH_STATE["profiles"][pid] = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "status": "error", "error": str(e)[:200]}
+                                     "next_run_at": None, "last_status": None, "profiles": {},
+                                     "runs_while": "this server process is running"}
 
 
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
@@ -2524,6 +2510,45 @@ async def pack_library_bundle(pack_id: str):
                     headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}.json"'})
 
 
+# The daily upstream contract check (the SDK, the Terraform provider and
+# Zscaler's API reference against what the app sends) runs in GitHub
+# Actions at 06:23 UTC (.github/workflows/upstream_check.yml) and files an
+# `upstream-drift` issue on drift. This server cannot read that run; what
+# it can do is the same check's offline part — the installed SDK and the
+# committed Terraform against the payloads the shipped packs produce —
+# on demand, in well under a second, cached for an hour.
+_UPSTREAM_CACHE: Dict[str, Any] = {"at": 0.0, "report": None}
+_UPSTREAM_CACHE_SECONDS = 3600
+
+
+@app.get("/api/upstream-check")
+async def upstream_check_offline(refresh: bool = False):
+    """The offline half of the daily upstream contract check, run on this
+    server now (or within the last hour): findings, the installed SDK
+    version, the provider pin, and where the daily online run lives."""
+    import upstream_check
+    now = time.time()
+    if refresh or not _UPSTREAM_CACHE["report"] or now - _UPSTREAM_CACHE["at"] > _UPSTREAM_CACHE_SECONDS:
+        try:
+            rep = await asyncio.to_thread(upstream_check.run, True)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"the offline upstream check failed: {type(e).__name__}: {str(e)[:200]}")
+        _UPSTREAM_CACHE["report"] = rep
+        _UPSTREAM_CACHE["at"] = now
+    rep = _UPSTREAM_CACHE["report"]
+    findings = rep.get("findings") or []
+    return {"generated": rep.get("generated"), "offline": True, "cached_seconds": int(now - _UPSTREAM_CACHE["at"]),
+            "ok": not any(f.get("level") == "drift" for f in findings),
+            "drift": [f for f in findings if f.get("level") == "drift"], "notes": [f for f in findings if f.get("level") != "drift"],
+            "sdk_installed": ((rep.get("sdk") or {}).get("installed") or {}).get("version"),
+            "terraform_pinned": (rep.get("terraform") or {}).get("pinned"),
+            "endpoints_checked": sorted(((rep.get("app") or {}).get("payload_keys") or {}).keys()),
+            "daily": {"where": "GitHub Actions, .github/workflows/upstream_check.yml", "schedule": "06:23 UTC daily and on demand",
+                      "covers": "the online half too: PyPI's latest SDK release diffed on the modules the app calls, the 2.x prerelease's service definition, the provider's latest version, schema and docs, and Zscaler's API reference",
+                      "result": "drift opens or updates one issue labelled upstream-drift in the repository and fails the job; a clean day closes it. This server does not read that run.",
+                      "not": "this is not a CISA check and not a check of the customer's tenant"}}
+
+
 @app.get("/api/secure-by-design")
 async def secure_by_design_score():
     """How this app measures against CISA's Secure by Design principles and
@@ -3172,7 +3197,8 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
     for k in keys:
         sm = (rep.get("summary") or {}).get(k) or {}
         d = (rep.get("drilldown") or {}).get(k) or {}
-        lines += [f"## {sm.get('name') or k}", "", f"**{sm.get('status', '?')}** — {sm.get('alignment_pct', 0)}% alignment, {sm.get('control_count', 0)} controls"
+        pct = sm.get("alignment_pct")
+        lines += [f"## {sm.get('name') or k}", "", f"**{sm.get('status', '?')}** — {'not measured' if pct is None else f'{pct}% of mapped checks configured'}, {sm.get('control_count', 0)} controls"
                   + (f": {d.get('met', 0)} met, {d.get('partially_met', 0)} partially met, {d.get('not_met', 0)} not met, {d.get('not_tested', 0)} not tested" if d else ""), ""]
         for c in d.get("controls") or []:
             lines.append(f"- **{c.get('control')}** — {c.get('status')} ({c.get('passing_count', 0)} passing, {c.get('failing_count', 0)} failing, {c.get('review_count', 0)} review)")

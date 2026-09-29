@@ -532,8 +532,8 @@ function _dzSbdHtml(s) {
   if (!s) return '';
   const sev = { high: 'sev-high', medium: 'sev-warning', info: 'sev-info', none: 'sev-info' };
   const items = (s.findings || []).map(f => `<li class="dz-sbd-f ${sev[f.severity] || 'sev-info'}"><div class="t"><span class="dz-chip kind-muted">${_dzE(f.principle)}</span> ${_dzE(f.title)}</div><div class="d">${_dzE(f.detail)}</div><div class="d"><strong>What to do:</strong> ${_dzE(f.next)}</div>${(f.objects || []).length ? `<div class="d dz-sbd-objs">${f.objects.map(o => _dzE(o.name)).join(', ')}${f.count > f.objects.length ? ` and ${f.count - f.objects.length} more` : ''}</div>` : ''}</li>`).join('');
-  return `<details class="dz-fold dz-sbd" ${s.ok ? '' : 'open'}><summary>Secure by Design: ${s.ok ? 'no deviation from the pack in this tenant' : `${(s.findings || []).length} finding(s), highest ${_dzE(s.level)}`}</summary>
-    <div class="d">CISA's principles applied to this pack as it is in the tenant: the whole design deployed (ownership of outcomes), every change recorded in the pack (transparency), nothing weakened against it (secure defaults).</div>
+  return `<details class="dz-fold dz-sbd" ${s.ok ? '' : 'open'}><summary>Secure by Design (this pack's objects in the tenant): ${s.ok ? 'no deviation from the pack' : `${(s.findings || []).length} finding(s), highest ${_dzE(s.level)}`}</summary>
+    <div class="d">CISA's Secure by Design principles applied to this pack's own objects as they are in the tenant — not a compliance score for the tenant: the whole design deployed (ownership of outcomes), every change recorded in the pack (transparency), nothing weakened against it (secure defaults).</div>
     ${items ? `<ul class="dz-sbd-list">${items}</ul>` : '<div class="d">Every object is where the pack says it should be, and nothing has been changed or weakened outside the pack.</div>'}</details>`;
 }
 

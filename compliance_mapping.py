@@ -354,10 +354,16 @@ def get_framework_summary(results: list) -> dict:
     # Convert sets to sorted lists, compute status
     out = {}
     for fw, data in fw_status.items():
+        # alignment_pct is the share of this assessment's mapped checks that
+        # are configured (PASS ÷ (PASS + FAIL + REVIEW)) — not a share of the
+        # framework's controls met. With nothing scoreable it is None and
+        # the status "Not measured", never 100.
         scored = data["covered_count"] - data["info_count"]
         passing = data["passing_count"]
         failing = data["failing_count"]
-        if failing > scored * 0.25:
+        if not scored:
+            status = "Not measured"
+        elif failing > scored * 0.25:
             status = "Gaps"
         elif passing >= scored * 0.75 and failing == 0:
             status = "Aligned"
@@ -374,7 +380,9 @@ def get_framework_summary(results: list) -> dict:
             "review_count": data["review_count"],
             "info_count": data["info_count"],
             "status": status,
-            "alignment_pct": round(passing / scored * 100) if scored else 100,
+            "scored_count": scored,
+            "alignment_pct": round(passing / scored * 100) if scored else None,
+            "alignment_basis": "share of this assessment's mapped checks that are configured (PASS ÷ (PASS + FAIL + REVIEW)); not a share of the framework's controls met",
         }
     return out
 

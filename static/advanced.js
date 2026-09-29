@@ -249,6 +249,26 @@
   $('advSbdCheck').addEventListener('click', loadSbd);
   loadSbd();
 
+  // ---- Daily upstream contract check (the offline half, run here) ----------
+  function renderUp(d) {
+    const nD = (d.drift || []).length, nN = (d.notes || []).length;
+    $('advUpBox').innerHTML = `
+      <div class="adv-sbd-score"><div class="n">${nD ? E(nD) : '✓'}<span class="pct">${nD ? ' drift' : ''}</span></div><div class="g">${nD ? 'Act on these' : 'No drift'}</div></div>
+      <div class="adv-sbd-counts"><span class="chip ${nD ? 'bad' : 'ok'}">${E(nD)} drift</span> <span class="chip">${E(nN)} note${nN === 1 ? '' : 's'}</span> <span class="chip">SDK ${E(d.sdk_installed || '?')}</span> <span class="chip">provider ${E(d.terraform_pinned || '?')}</span>
+        <div class="dim" style="margin-top:0.35rem;">Offline check run on this server ${d.cached_seconds ? `${Math.round(d.cached_seconds / 60)} min ago` : 'just now'} (${E(d.generated || '')}); endpoints covered: ${E((d.endpoints_checked || []).join(', ') || '—')}.</div>
+        <div class="dim" style="margin-top:0.25rem;">The daily online run: ${E((d.daily || {}).where || '')}, ${E((d.daily || {}).schedule || '')}. ${E((d.daily || {}).result || '')}</div></div>`;
+    const rows = [...(d.drift || []), ...(d.notes || [])];
+    $('advUp').querySelector('tbody').innerHTML = rows.map(f => `<tr><td><span class="chip ${f.level === 'drift' ? 'bad' : ''}">${E(f.level)}</span></td><td>${E(f.area)}</td><td class="adv-sbd-ev">${E(f.text)}</td></tr>`).join('')
+      || '<tr><td colspan="3" class="dim">Every payload field the app sends is known to the installed SDK, and the committed Terraform parses. Nothing to act on.</td></tr>';
+  }
+  async function loadUp(refresh) {
+    $('advUpBox').innerHTML = '<span class="dim">Checking…</span>';
+    try { renderUp(await api(`/api/upstream-check${refresh ? '?refresh=1' : ''}`)); }
+    catch (e) { $('advUpBox').innerHTML = `<span class="warn">Could not run the check: ${E(e.message)}</span>`; }
+  }
+  $('advUpCheck').addEventListener('click', () => loadUp(true));
+  loadUp(false);
+
   // ---- wiring ---------------------------------------------------------------
   $('advUpdCheck').addEventListener('click', checkUpdate);
   $('advUpdBtn').addEventListener('click', runUpdate);
