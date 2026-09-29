@@ -1,4 +1,4 @@
-# Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
+# Written by DLP-Check. Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
 #   export ZSCALER_CLIENT_ID="..." ZSCALER_CLIENT_SECRET="..." ZSCALER_VANITY_DOMAIN="acme" ZSCALER_CLOUD=""
 
 # zscaler_client_id     = "..."
@@ -9,29 +9,11 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
-# saas_tenant_ids_bank_payment_card_data_saas = [123456]
-# saas_tenant_ids_bank_payment_card_data_email = [123456]
-# saas_tenant_ids_bank_payment_card_2_saas = [123456]
-# saas_tenant_ids_bank_payment_card_data_bulk_email = [123456]
-# saas_tenant_ids_bank_payment_instruction_saas = [123456]
-# saas_tenant_ids_bank_payment_instructions_email = [123456]
-# saas_tenant_ids_bank_customer_pii_saas = [123456]
-# saas_tenant_ids_bank_customer_pii_global_email = [123456]
-# saas_tenant_ids_bank_us_pii_saas = [123456]
-# saas_tenant_ids_bank_us_pii_email = [123456]
-# saas_tenant_ids_bank_customer_pii_bulk_saas = [123456]
-# saas_tenant_ids_bank_customer_pii_bulk_email = [123456]
-# saas_tenant_ids_bank_customer_financial_saas = [123456]
-# saas_tenant_ids_bank_customer_financial_records_email = [123456]
-# saas_tenant_ids_bank_kyc_and_aml_files_saas = [123456]
-# saas_tenant_ids_bank_kyc_and_aml_files_email = [123456]
-# saas_tenant_ids_bank_credit_and_loan_saas = [123456]
-# saas_tenant_ids_bank_credit_and_loan_applications_email = [123456]
-# saas_tenant_ids_bank_mnpi_and_deal_saas = [123456]
-# saas_tenant_ids_bank_mnpi_and_deal_information_email = [123456]
-# saas_tenant_ids_bank_financial_saas = [123456]
-# saas_tenant_ids_bank_financial_information_email = [123456]
-# saas_tenant_ids_bank_confidential_saas = [123456]
-# saas_tenant_ids_bank_confidential_markings_email = [123456]
-# saas_tenant_ids_bank_credentials_saas = [123456]
-# saas_tenant_ids_bank_credentials_email = [123456]
+
+# Onboarded SaaS Security API tenant ids (Administration > SaaS Application Tenants): one list for every SaaS Security API rule, or per rule name.
+# saas_tenant_ids_default = [123456]
+# saas_tenant_ids = { "Rule name" = [123456] }
+
+# Onboarded outbound email tenant ids (Administration > SaaS Application Tenants): one list for every outbound email rule, or per rule name.
+# email_tenant_ids_default = [123456]
+# email_tenant_ids = { "Rule name" = [123456] }

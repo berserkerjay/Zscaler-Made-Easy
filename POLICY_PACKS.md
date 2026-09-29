@@ -699,18 +699,23 @@ card) returns the static workspace.
 
 | File | Contents |
 |---|---|
-| `versions.tf` | `zscaler/zia ~> 4.8`, Terraform `>= 1.5`, commented S3 backend |
-| `provider.tf` | provider from variables or `ZSCALER_*` environment variables |
-| `variables.tf` | credentials (sensitive), `rule_starting_order`, `policy_rank`, `activate`, SaaS tenant ID lists when not resolved |
+| `terraform.tf` | `zscaler/zia ~> 4.8`, Terraform `>= 1.5`, commented S3 backend |
+| `providers.tf` | provider from variables or `ZSCALER_*` environment variables |
+| `variables.tf` | credentials (sensitive), `rule_starting_order` and `policy_rank` (validated, non-nullable), `activate`, and per channel `saas_tenant_ids` / `email_tenant_ids` (a map of rule name to ids) with a `_default` list, when the pack does not name the tenants |
+| `locals.tf` | the managed dictionaries, engines and rules as lists, for the outputs |
 | `dictionaries.tf` | `data "zia_dlp_dictionaries"` for predefined templates and referenced predefined dictionaries; one resource per pack dictionary |
 | `engines.tf` | expressions rewritten to `D${zia_dlp_dictionaries.x.id}.S` |
 | `rules.tf` | `zia_dlp_web_rules` / `zia_endpoint_dlp_rules` / `zia_casb_dlp_rules` / `zia_outbound_email_dlp`; `cloud_app_classes` become a `data "zia_cloud_applications"` lookup with a precondition |
 | `activation.tf` | `zia_activation_status` after every rule (`activate = false` to skip) |
+| `outputs.tf` | dictionary and engine name => id maps and the rule names, each described |
 | `imports.tf` | gap mode only |
+| `README.md`, `.gitignore`, `terraform.tfvars.example` | requirements, inputs, outputs, state and lock-file guidance, verify and review steps; state and secrets kept out of git |
 
 Every object carries a `[DLP-Check baseline|pack <id> v<ver>] Terraform-managed.`
-description tag. CI regenerates the committed workspaces and runs
-`terraform init` + `validate` against the real provider schema.
+description tag. Every file is written the way `terraform fmt` lays it out
+(`pack_terraform.hcl_fmt`); CI regenerates the committed workspaces, fails
+on any drift or new file, runs `terraform fmt -check`, and `terraform init`
++ `validate` against the real provider schema.
 
 **Shipping convention.** Every rule in every shipped pack is delivered
 `"state": "DISABLED"` with `"severity": "RULE_SEVERITY_INFO"`, the same way

@@ -134,17 +134,19 @@ def test_missing_available_actions_blocks_only_that_rule(tmp_path):
 def test_terraform_for_control_rules(tmp_path):
     pack = control_pack(tmp_path, meta=dict(BASELINE_META, name="Containment Baseline"))
     files = pt.generate(pack)
-    r = files["rules.tf"]
+    import re as _re
+    r = _re.sub(r"(?m)^(\s*)(\S+)[ \t]+=[ \t]+", r"\1\2 = ", files["rules.tf"])   # terraform fmt alignment collapsed
+    assert pt.hcl_fmt(files["rules.tf"]) == files["rules.tf"], "laid out the way terraform fmt does"
     assert 'resource "zia_cloud_app_control_rule" "cac_fileshare"' in r
-    assert 'type                         = "FILE_SHARE"' in r
+    assert 'type = "FILE_SHARE"' in r
     assert 'data "zia_cloud_app_control_rule_actions" "cac_fileshare_actions"' in r
     assert 'endswith(a, v)]) ? startswith(a, "BLOCK_")' in r and '["_UPLOAD", "_SHARE"]' in r
     assert 'data "zia_cloud_applications" "apps_file_share"' in r and 'policy_type = "cloud_application_policy"' in r
-    assert 'resource "zia_file_type_control_rules" "ftc_block_archives"' in r and 'filtering_action             = "BLOCK"' in r
-    assert 'resource "zia_url_filtering_rules" "url_block_unknown_post"' in r and 'request_methods              = ["POST"]' in r
+    assert 'resource "zia_file_type_control_rules" "ftc_block_archives"' in r and 'filtering_action = "BLOCK"' in r
+    assert 'resource "zia_url_filtering_rules" "url_block_unknown_post"' in r and 'request_methods = ["POST"]' in r
     assert 'resource "zia_ssl_inspection_rules" "ssl_decrypt_ai"' in r
     assert 'data "zia_cloud_applications" "apps_ssl_ai_ml"' in r and 'policy_type = "cloud_application_ssl_policy"' in r
-    assert "  action {\n" in r and 'type                   = "DECRYPT"' in r and "ssl_interception_cert {" in r
+    assert "  action {\n" in r and 'type = "DECRYPT"' in r and "ssl_interception_cert {" in r
     assert "dlp_engines" not in r
     # Gap mode import id for Cloud App Control rules is type:id.
     client = control_client(cac_rules=[Obj(id=9501, name="CAC-FileShare", type="FILE_SHARE", order=1, rank=7, state="DISABLED",

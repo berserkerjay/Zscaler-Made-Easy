@@ -390,7 +390,7 @@ def check_service_definition(defn: Dict[str, Any], keys: Dict[str, Set[str]], la
 # ---------------------------------------------------------------------------
 
 def pinned_provider_constraint(tf_dir: str = TERRAFORM_DIR) -> Optional[str]:
-    for path in sorted(glob.glob(os.path.join(tf_dir, "*", "versions.tf"))):
+    for path in sorted(glob.glob(os.path.join(tf_dir, "*", "terraform.tf"))):
         src = open(path, encoding="utf-8").read()
         # The provider's own block, not Terraform's required_version.
         m = re.search(r'source\s*=\s*"' + re.escape(PROVIDER) + r'"\s*version\s*=\s*"([^"]+)"', src)
@@ -512,8 +512,8 @@ def provider_schema(workspace: Optional[str] = None, terraform: str = "terraform
     import shutil
     if not shutil.which(terraform):
         return None, "terraform is not installed"
-    ws = workspace or (sorted(glob.glob(os.path.join(TERRAFORM_DIR, "*", "versions.tf")))[:1] or [""])[0]
-    ws = os.path.dirname(ws) if ws.endswith("versions.tf") else ws
+    ws = workspace or (sorted(glob.glob(os.path.join(TERRAFORM_DIR, "*", "terraform.tf")))[:1] or [""])[0]
+    ws = os.path.dirname(ws) if ws.endswith("terraform.tf") else ws
     if not ws or not os.path.isdir(ws):
         return None, "no committed workspace"
     try:

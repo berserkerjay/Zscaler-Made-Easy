@@ -46,7 +46,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-PROVIDER_VERSION = "4.8.8"
+# The same Terraform and provider constraints as the pack hand-off, so the two
+# converters cannot drift: a `~>` constraint in the configuration, the exact
+# build fixed by the team's .terraform.lock.hcl.
+from pack_terraform import PROVIDER_SOURCE, PROVIDER_VERSION, TERRAFORM_VERSION  # noqa: E402
 SAFE_ACTIONS = ("BLOCK", "CONFIRM", "ALLOW")
 MATCH_TYPES = ("MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY", "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY", "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE")
 MAX_EXPORT_BYTES = 32 * 1024 * 1024
@@ -121,8 +124,10 @@ TARGETS: Dict[str, Dict[str, Any]] = {
                         "Tenants) or the word \"variable\" to fill the ids in at terraform plan; the rule ships as report-incident (SaaS remediations such as "
                         "quarantine or remove sharing go in designed_action and are set in the portal once incidents are reviewed); target_name at most 31 characters")},
     "email": {"label": "Outbound Email DLP", "resource": "zia_outbound_email_dlp", "zia": "email_rule", "covers": ("email",),
-              "actions": ("ALLOW", "BLOCK", "CUSTOMHEADERINSERTION"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": None, "needs": ("tenants",),
-              "fields": "tenants: the onboarded email tenant names or \"variable\"; custom_header when the action is CUSTOMHEADERINSERTION"},
+              "actions": ("ALLOW", "BLOCK"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": None, "needs": ("tenants",),
+              "fields": ("tenants: the onboarded email tenant names or \"variable\"; action ALLOW or BLOCK (the zscaler/zia provider accepts ALLOW, BLOCK or "
+                         "QUARANTINE on an email rule, not CUSTOMHEADERINSERTION), so a custom header goes in designed_action (CUSTOMHEADERINSERTION) with "
+                         "custom_header, recorded in the report and set in the portal once incidents are reviewed")},
 }
 _CHANNEL_KINDS = ("web", "email", "endpoint", "saas-api", "cloud-download", "ftp")
 
@@ -1315,6 +1320,24 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
 
 
 # ── Compile (vendor-agnostic) ──────────────────────────────────────────
+from dlp_importer import DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, fit_description  # noqa: E402
+
+
+def _fit(text: str, limit: int) -> str:
+    """A description within ZIA's limit for the object, counted in UTF-8
+    bytes as ZIA and the provider count it (they refuse longer)."""
+    return fit_description(str(text or ""), "", limit)
+
+
+def rule_label(prefix: str, source_id: str, channel: str = "web") -> str:
+    """The Terraform label of a migrated rule: the vendor prefix, the source
+    id, then the channel for every target but web. Kept exactly as earlier
+    versions wrote it (a Symantec id "sym-101" is sym_sym_101), so a
+    migration someone already applied keeps its resource addresses; and
+    injective, since every label carries the prefix once in front."""
+    return slug(f"{prefix}_{source_id}" + ("" if channel == "web" else f"_{channel}"))
+
+
 def slug(s: str) -> str:
     x = re.sub(r"[^a-z0-9_]", "_", str(s).lower()).strip("_")
     if not x or x[0].isdigit():
@@ -1359,6 +1382,8 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     data_blocks: Dict[str, Dict[str, Any]] = {}
     variables: Dict[str, Dict[str, Any]] = {}
     vendor_id = vendor_id or snapshot.get("vendor") or "symantec"
+    origin = f"{(VENDORS.get(vendor_id) or {}).get('name', vendor_id)} export {snapshot['sha256'][:12]}"
+    default_desc = f"Migrated from {origin} by DLP-Check."
     report: Dict[str, Any] = {"source_sha256": snapshot["sha256"], "provider_version": PROVIDER_VERSION, "vendor": vendor_id,
                               "semantic_equivalence": "manual_review_required_native_export_not_interpreted",
                               "converted": [], "questions": [], "blocked": [], "dispositions": []}
@@ -1379,7 +1404,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if any(not isinstance(x, str) or not 0 < len(x) <= 128 for x in phrases) or any(not isinstance(x, str) or not 0 < len(x) <= 256 for x in patterns):
             question(d.get("id", "?"), "Dictionary phrase/pattern length invalid")
             continue
-        obj: Dict[str, Any] = {"name": _lit(d["name"]), "description": _lit(d.get("description", "Migrated from the source DLP")),
+        obj: Dict[str, Any] = {"name": _lit(d["name"]), "description": _lit(_fit(d.get("description") or default_desc, DICT_DESCRIPTION_MAX)),
                                "dictionary_type": "PATTERNS_AND_PHRASES",
                                "custom_phrase_match_type": d.get("match_type", "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY")}
         if obj["custom_phrase_match_type"] not in MATCH_TYPES:
@@ -1410,7 +1435,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if missing or "{{" in expr2 or "${" in expr:
             question(e.get("id", "?"), "Unresolved dictionary reference or unsafe interpolation: " + ", ".join(missing))
             continue
-        res["zia_dlp_engines"][key] = {"name": _lit(e["name"]), "description": _lit(e.get("description", "Migrated from the source DLP")),
+        res["zia_dlp_engines"][key] = {"name": _lit(e["name"]), "description": _lit(_fit(e.get("description") or default_desc, ENGINE_DESCRIPTION_MAX)),
                                        "engine_expression": expr2, "custom_dlp_engine": True}
 
     for p in selected:
@@ -1441,7 +1466,9 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
                 or not 1 <= len(engines) <= spec["max_engines"] or not isinstance(p.get("order"), int) or isinstance(p.get("order"), bool) or p["order"] < 1):
             question(source_id, f"{spec['label']} rule needs approved: true, scope_acknowledged_any: true, an action from {', '.join(spec['actions'])}, "
                                 f"1-{spec['max_engines']} engines and a positive order"
-                                + ("; a SaaS remediation goes in designed_action" if channel == "saas" else ""))
+                                + ("; a SaaS remediation goes in designed_action" if channel == "saas" else "")
+                                + ("; a custom header goes in designed_action (CUSTOMHEADERINSERTION) with custom_header: the zscaler/zia provider "
+                                   "accepts ALLOW, BLOCK or QUARANTINE on an email rule, not CUSTOMHEADERINSERTION" if channel == "email" else ""))
             continue
         missing_engines = [x for x in engines if slug(x) not in res["zia_dlp_engines"]]
         if missing_engines:
@@ -1455,10 +1482,12 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if spec["name_max"] and len(name) > spec["name_max"]:
             question(source_id, f"{spec['label']} rule name '{name}' is {len(name)} characters; ZIA allows {spec['name_max']}. Set a shorter target_name")
             continue
-        key = slug(f"{prefix}_{source_id}" + ("" if channel == "web" else f"_{channel}"))
+        key = rule_label(prefix, source_id, channel)
         if key in res[spec["resource"]]:
             raise ValueError(f"Duplicate {channel} rule slug: " + key)
-        rule: Dict[str, Any] = {"name": _lit(name), "action": p["action"], "order": p["order"], "state": "DISABLED", "without_content_inspection": False,
+        src_name = str(by_id[source_id].get("name") or "")[:80]
+        rule: Dict[str, Any] = {"name": _lit(name), "description": _lit(_fit(f"Migrated from {origin}, source policy {source_id} ({src_name}); reviewed decision.", 255)),
+                                "action": p["action"], "order": p["order"], "state": "DISABLED", "without_content_inspection": False,
                                 "dlp_engines": [{"id": ["${zia_dlp_engines." + slug(x) + ".id}" for x in engines]}]}
         if spec["rank"] is not None:
             rule["rank"] = spec["rank"]
@@ -1471,6 +1500,8 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         entry = {"source_id": source_id, "channel": channel, "target": f"{spec['resource']}.{key}", "state": "DISABLED", "action": p["action"]}
         if p.get("designed_action"):
             entry["designed_action"] = str(p["designed_action"])
+            if channel == "email" and isinstance(p.get("custom_header"), str) and p["custom_header"].strip():
+                entry["custom_header"] = p["custom_header"].strip()
         report["converted"].append(entry)
     selected_ids = {str(p.get("source_id", "")) for p in selected}
     for source_id in by_id:
@@ -1485,7 +1516,9 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
                 raise ValueError(f"Generated {channel} rule orders must be unique and contiguous starting at 1")
             if channel == "web" and len(orders) > WEB_RULE_LIMIT:
                 raise ValueError(f"ZIA API web-rule limit exceeded ({WEB_RULE_LIMIT})")
-    tf = {"terraform": {"required_providers": {"zia": {"source": "zscaler/zia", "version": PROVIDER_VERSION}}},
+    tf = {"//": f"Generated by DLP-Check from a reviewed {origin} (decisions bound to its SHA-256). Every rule ships DISABLED. "
+                "Credentials come from ZSCALER_CLIENT_ID / ZSCALER_CLIENT_SECRET / ZSCALER_VANITY_DOMAIN / ZSCALER_CLOUD.",
+          "terraform": {"required_version": TERRAFORM_VERSION, "required_providers": {"zia": {"source": PROVIDER_SOURCE, "version": PROVIDER_VERSION}}},
           "provider": {"zia": {}}, "resource": {k: v for k, v in res.items() if v}}
     if data_blocks:
         tf["data"] = data_blocks
@@ -1535,11 +1568,10 @@ def _channel_fields(channel: str, p: Dict[str, Any], key: str, rule: Dict[str, A
         rule["collaboration_scope"] = ["ANY"]
         return _tenants(p, key, rule, "cloud_app_tenants", "SaaS application", data_blocks, variables)
     if channel == "email":
-        if p["action"] == "CUSTOMHEADERINSERTION":
+        if str(p.get("designed_action") or "") == "CUSTOMHEADERINSERTION":
             header = p.get("custom_header")
             if not isinstance(header, str) or not header.strip() or len(header) > 128:
-                return "CUSTOMHEADERINSERTION needs custom_header (the header text, up to 128 characters)"
-            rule["custom_header"] = _lit(header.strip())
+                return "designed_action CUSTOMHEADERINSERTION needs custom_header (the header text, up to 128 characters)"
         return _tenants(p, key, rule, "email_tenants", "email", data_blocks, variables)
     return f"Channel {channel!r} has no target adapter"
 
@@ -1550,9 +1582,21 @@ def _tenants(p: Dict[str, Any], key: str, rule: Dict[str, Any], block: str, what
     Terraform variable filled in at plan time. Anything else blocks."""
     want = p.get("tenants")
     if isinstance(want, str) and want.strip().lower() == "variable":
-        var = f"{'saas' if block == 'cloud_app_tenants' else 'email'}_tenant_ids_{key}"   # the same names the pack Terraform uses
-        variables[var] = {"type": "list(number)", "description": f"IDs of the onboarded {what} tenants rule '{rule['name']}' applies to (Administration > SaaS Application Tenants)."}
-        rule[block] = [{"id": "${var." + var + "}"}]
+        # The same two variables per channel the pack Terraform uses: a map of
+        # rule name -> ids with a default list for every rule not named, and a
+        # plan-time check that says which rule still needs its ids.
+        kind = "saas" if block == "cloud_app_tenants" else "email"
+        variables[f"{kind}_tenant_ids"] = {"type": "map(list(number))", "default": {}, "nullable": False,
+                                           "description": f"Onboarded {what} tenant ids per rule name (Administration > SaaS Application Tenants); "
+                                                          f"a rule not listed here uses {kind}_tenant_ids_default."}
+        variables[f"{kind}_tenant_ids_default"] = {"type": "list(number)", "default": [], "nullable": False,
+                                                   "description": f"Onboarded {what} tenant ids for every {what} rule not listed in {kind}_tenant_ids."}
+        name_lit = '"' + str(rule["name"]).replace("\\", "\\\\").replace('"', '\\"') + '"'
+        expr = f"lookup(var.{kind}_tenant_ids, {name_lit}, var.{kind}_tenant_ids_default)"
+        rule[block] = [{"id": "${" + expr + "}"}]
+        rule["lifecycle"] = [{"precondition": [{"condition": "${length(" + expr + ") > 0}",
+                                                "error_message": f"Rule {rule['name']}: set {kind}_tenant_ids[{name_lit}] or {kind}_tenant_ids_default to the ids "
+                                                                 f"of the onboarded {what} tenants (Administration > SaaS Application Tenants)."}]}]
         return None
     if isinstance(want, list) and want and all(isinstance(x, str) and x.strip() for x in want):
         ids = []
@@ -1569,6 +1613,36 @@ def _tenants(p: Dict[str, Any], key: str, rule: Dict[str, Any], block: str, what
         rule[block] = [{"id": ids}]
         return None
     return f"tenants must list the onboarded {what} tenant names, or be the word \"variable\" to fill the ids in at terraform plan"
+
+
+def workspace_files(tf: Dict[str, Any], report: Dict[str, Any], vendor_name: str, source_file: str = "") -> Dict[str, str]:
+    """The compiled Terraform as the reviewable workspace a platform team
+    commits: the same file layout as the pack hand-off (terraform.tf,
+    providers.tf, variables.tf, dictionaries.tf, engines.tf, rules.tf,
+    locals.tf, outputs.tf, README.md, .gitignore, terraform.tfvars.example),
+    fmt-clean HCL, plus migration-report.json for the review record."""
+    import pack_terraform as pt
+    counts = report.get("counts") or {}
+    note = (f"Generated by DLP-Check from a reviewed {vendor_name} export"
+            + (f" (`{source_file}`" if source_file else " (")
+            + f"{', ' if source_file else ''}SHA-256 `{str(report.get('source_sha256', ''))[:12]}…`): "
+            f"{counts.get('converted_rules', 0)} rules from {counts.get('source_policies', 0)} source policies, "
+            f"{counts.get('dispositions', 0)} retired or out of scope. `migration-report.json` beside these files is the review record "
+            "(every conversion, question and efficacy figure).")
+    files = pt.render_json_workspace(tf, title=f"{vendor_name} migration", source_note=note)
+    files["migration-report.json"] = json.dumps(dict({"//": "Written by DLP-Check: the review record of this migration."}, **report),
+                                                indent=2, ensure_ascii=False) + "\n"
+    return files
+
+
+def workspace_zip(result: Dict[str, Any]) -> bytes:
+    """compile_upload's result (ready) as one zip, one folder."""
+    import pack_terraform as pt
+    if not result.get("terraform"):
+        raise ValueError("Blocked: answer the questions in the migration report, then compile again.")
+    files = workspace_files(result["terraform"], result["report"], result.get("vendor_name") or result.get("vendor") or "",
+                            (result.get("snapshot") or {}).get("source_file") or "")
+    return pt.zip_workspaces({f"{result.get('vendor') or 'vendor'}-migration": files})
 
 
 # ── The page's two calls ───────────────────────────────────────────────
@@ -1675,9 +1749,14 @@ def main(argv=None) -> int:
         _write_json(args.out / "migration-report.json", report)
         if report["ready"]:
             _write_json(args.out / "main.tf.json", tf)
-            print("READY: disabled Terraform written; review and run terraform init/validate/plan.")
+            import pack_terraform as pt
+            pt.write_workspace(workspace_files(tf, report, v["name"], Path(args.export).name), str(args.out / "terraform"))
+            print("READY: disabled Terraform written (main.tf.json, and the same as an HCL workspace in terraform/); "
+                  "review and run terraform init/validate/plan in one of them, not both.")
             return 0
         (args.out / "main.tf.json").unlink(missing_ok=True)
+        import pack_terraform as pt
+        pt.remove_generated(str(args.out / "terraform"), names=("README.md", ".gitignore", "terraform.tfvars.example", "migration-report.json"))
         print("BLOCKED: see migration-report.json; no deployable Terraform emitted.", file=sys.stderr)
         return 2
     except (ValueError, OSError, json.JSONDecodeError) as exc:

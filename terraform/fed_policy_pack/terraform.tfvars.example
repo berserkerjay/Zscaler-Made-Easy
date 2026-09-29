@@ -1,4 +1,4 @@
-# Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
+# Written by DLP-Check. Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
 #   export ZSCALER_CLIENT_ID="..." ZSCALER_CLIENT_SECRET="..." ZSCALER_VANITY_DOMAIN="acme" ZSCALER_CLOUD=""
 
 # zscaler_client_id     = "..."
@@ -9,37 +9,11 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
-# saas_tenant_ids_z_atomic_energy_act_saas = [123456]
-# saas_tenant_ids_z_atomic_energy_act_email = [123456]
-# saas_tenant_ids_z_financial_information_saas = [123456]
-# saas_tenant_ids_z_financial_information_email = [123456]
-# saas_tenant_ids_z_fouo_markings_high_saas = [123456]
-# saas_tenant_ids_z_fouo_markings_high_confidence_email = [123456]
-# saas_tenant_ids_z_fouo_markings_medium_saas = [123456]
-# saas_tenant_ids_z_fouo_markings_medium_confidence_email = [123456]
-# saas_tenant_ids_z_itar_international_saas = [123456]
-# saas_tenant_ids_z_itar_international_traffic_in_arms_regulations_email = [123456]
-# saas_tenant_ids_z_standard_forms_saas = [123456]
-# saas_tenant_ids_z_standard_forms_email = [123456]
-# saas_tenant_ids_z_tlp_red_saas = [123456]
-# saas_tenant_ids_z_tlp_red_email = [123456]
-# saas_tenant_ids_z_tlp_amber_strict_saas = [123456]
-# saas_tenant_ids_z_tlp_amber_strict_email = [123456]
-# saas_tenant_ids_z_tlp_amber_saas = [123456]
-# saas_tenant_ids_z_tlp_amber_email = [123456]
-# saas_tenant_ids_z_us_pii_saas = [123456]
-# saas_tenant_ids_z_us_pii_email = [123456]
-# saas_tenant_ids_z_us_phi_medium_saas = [123456]
-# saas_tenant_ids_z_us_phi_medium_confidence_email = [123456]
-# saas_tenant_ids_z_us_phi_high_saas = [123456]
-# saas_tenant_ids_z_us_phi_high_confidence_email = [123456]
-# saas_tenant_ids_z_private_keys_saas = [123456]
-# saas_tenant_ids_z_private_keys_email = [123456]
-# saas_tenant_ids_cui_monitor_marked_saas = [123456]
-# saas_tenant_ids_cui_monitor_marked_documents_email = [123456]
-# saas_tenant_ids_cui_monitor_weak_saas = [123456]
-# saas_tenant_ids_cui_monitor_weak_markings_email = [123456]
-# saas_tenant_ids_cui_monitor_all_saas = [123456]
-# saas_tenant_ids_cui_monitor_all_email = [123456]
-# saas_tenant_ids_cui_monitor_contextual_saas = [123456]
-# saas_tenant_ids_cui_monitor_contextual_email = [123456]
+
+# Onboarded SaaS Security API tenant ids (Administration > SaaS Application Tenants): one list for every SaaS Security API rule, or per rule name.
+# saas_tenant_ids_default = [123456]
+# saas_tenant_ids = { "Rule name" = [123456] }
+
+# Onboarded outbound email tenant ids (Administration > SaaS Application Tenants): one list for every outbound email rule, or per rule name.
+# email_tenant_ids_default = [123456]
+# email_tenant_ids = { "Rule name" = [123456] }
