@@ -785,6 +785,26 @@ def _rule_summary(r: Any, channel: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+def count_rules(zia, channel: str) -> Tuple[Optional[int], Optional[str]]:
+    """How many rules the tenant has on one DLP channel (top-level rules;
+    Endpoint sub-rules are not counted), with the same listing calls the
+    deploy uses. Returns (count, error)."""
+    svc = getattr(zia, CHANNELS[channel]["service"], None)
+    if svc is None:
+        return None, f"{CHANNELS[channel]['service']} is not available in the installed zscaler-sdk-python"
+    try:
+        if channel == SAAS:
+            lister = getattr(svc, "list_all_rules", None)
+            data, err = _nx(lister()) if lister else _nx(svc.list_rules("ANY"))
+        else:
+            data, err = _nx(svc.list_rules())
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)[:200]
+    if err:
+        return None, str(err)[:200]
+    return len(data or []), None
+
+
 def needs(policy_defs: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     """What tenant state the plan has to read for these policies."""
     out = {"channels": set(), "casb": False, "templates": False, "labels": False, "app_classes": set(),
