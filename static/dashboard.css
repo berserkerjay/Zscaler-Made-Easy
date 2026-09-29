@@ -114,7 +114,10 @@ body.theme-light .db-band span.now { color: #fff; }
 
 /* Findings as list rows with risk chips (.db-rows is set on #checksList, so the mirrored results tab gets them too) */
 .db-rows .check-item { padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card-solid); margin-bottom: 0.5rem; align-items: center; }
-.db-rows .check-item::before { content: attr(data-ico); width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--well); font-size: 1rem; }
+.db-rows .check-item::before { content: attr(data-ico); width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--r-md); background: var(--well); font-size: 1rem; }
+.db-rows .check-item[data-ico=""]::before { display: none; }   /* the icon is a real element (dashboard.js decorateChecks) */
+.db-row-ico { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--r-md); background: var(--well); color: var(--dim); }
+.db-row-ico .ico { width: 18px; height: 18px; }
 .db-rows .check-status { min-width: 118px; border-radius: 100px; font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; }
 .db-rows .check-item .check-body .db-cat { display: inline-block; margin-left: 0.4rem; font-size: 0.7rem; color: var(--dim); padding: 0.05rem 0.45rem; border: 1px solid var(--border); border-radius: 100px; }
 .db-rows .section-header { background: none; border-left: 0; padding: 0.4rem 0.2rem; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }

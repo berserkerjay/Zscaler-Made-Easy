@@ -547,8 +547,11 @@
     dlg.classList.remove('open');
     const btn = document.getElementById('dbRadarExpand'); if (btn) btn.focus();
   }
-  const ICONS = [[/ssl|tls/i, '🔒'], [/firewall|fw/i, '🧱'], [/dlp|data|inline|web/i, '🛡️'], [/incident|workflow/i, '🚨'], [/genai|ai\b/i, '🤖'], [/zpa|access/i, '🔑'], [/zcc|client|portal/i, '💻'], [/compliance|regulat/i, '📜'], [/email|mail/i, '✉️'], [/saas|cloud/i, '☁️'], [/endpoint|device/i, '🖥️'], [/log|nss|siem/i, '🧾']];
-  const icon = name => (ICONS.find(([re]) => re.test(name || '')) || [null, '📁'])[1];
+  // One symbol per section family (icons.js), used by the pillar tiles and
+  // the findings rows; the emoji is only the fallback when icons.js is absent.
+  const ICONS = [[/ssl|tls/i, 'lock', '🔒'], [/firewall|fw/i, 'bricks', '🧱'], [/dlp|data|inline|web/i, 'shield', '🛡️'], [/incident|workflow/i, 'siren', '🚨'], [/genai|ai\b/i, 'cpu', '🤖'], [/zpa|access/i, 'key', '🔑'], [/zcc|client|portal/i, 'laptop', '💻'], [/compliance|regulat/i, 'scroll', '📜'], [/email|mail/i, 'envelope', '✉️'], [/saas|cloud/i, 'cloud', '☁️'], [/endpoint|device/i, 'desktop', '🖥️'], [/log|nss|siem/i, 'receipt', '🧾']];
+  const iconName = name => (ICONS.find(([re]) => re.test(name || '')) || [null, 'folder', '📁']);
+  const icon = name => { const [, sym, emoji] = iconName(name); return (typeof window.dlpIcon === 'function' && window.dlpIcon(sym)) || emoji; };
   function pillars(sections) {
     const host = $('dbPillars'); if (!host) return;
     // Automation Readiness (SDK/OneAPI, Terraform, Ansible, ZPA, ZCC, IaC
@@ -633,10 +636,14 @@
   }
   function decorateChecks() {
     document.querySelectorAll('#checksList .check-item').forEach(row => {
-      if (row.dataset.ico) return;
+      if (row.dataset.decorated) return;
+      row.dataset.decorated = '1';
       const hdr = row.previousElementSibling && row.previousElementSibling.classList.contains('section-header') ? row.previousElementSibling : (() => { let p = row.previousElementSibling; while (p && !p.classList.contains('section-header')) p = p.previousElementSibling; return p; })();
       const sec = hdr ? hdr.textContent.trim() : '';
-      row.dataset.ico = icon(sec);
+      // A real element (screen readers skip it) rather than CSS generated
+      // text, which most of them read aloud.
+      row.dataset.ico = '';
+      row.insertAdjacentHTML('afterbegin', `<span class="db-row-ico" aria-hidden="true">${icon(sec)}</span>`);
       const st = row.querySelector('.check-status');
       if (st && !st.title) { const risk = { 'Action Required': ['High Risk', 'status-FAIL'], 'Needs Review': ['Medium Risk', 'status-REVIEW'], 'Not Configured': ['Low Risk', 'status-INFO'], 'Configured': ['Configured', 'status-PASS'] }[st.textContent.trim()]; if (risk) st.title = `${st.textContent.trim()} · ${risk[0]}`; }
       const label = row.querySelector('.check-label');
