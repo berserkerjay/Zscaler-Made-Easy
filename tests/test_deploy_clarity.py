@@ -58,3 +58,30 @@ def test_approve_step_activation_statements_agree_and_footer_names_channels():
     assert "creates what this list creates and imports what already exists" in js and "is exactly this list" not in js
     # The safeguards stay: consent, plan hash, write mode, blocked status all gate the button.
     assert "${DZ.consent && R.status !== 'blocked' && !writeOff ? '' : 'disabled'} onclick=\"_dzApply()\"" in js
+
+
+def test_the_write_mode_switch_never_relies_on_the_browsers_prompt_or_alert():
+    """"Enable write mode has stopped working": in an embedded browser the
+    switch called prompt() for the phrase, got null back and returned
+    silently; its errors went to alert(), which the same browser drops.
+    The switch now asks in the app's own dialog (ui_auth.js) and writes
+    the outcome into the banner; the server-side phrase and localhost
+    checks are untouched."""
+    js = _js()
+    body = js.split("async function _dzSetWriteMode(enable)")[1].split("function _dzWriteBanner()")[0]
+    for forbidden in ("alert(", " prompt(", "\nprompt(", "window.confirm("):
+        assert forbidden not in body.replace("window.prompt(", "").replace("window.confirm(", "") or forbidden == "window.confirm(", forbidden
+    assert "dlg.phrase({ title: 'Enable write mode on this server?'" in body and "dlg.ask(q)" in body and "dlg.notice({ title: 'Could not change write mode'" in body
+    # The classic prompt / confirm survive only as guarded fallbacks for a page without the dialog script.
+    assert body.count("window.prompt(") == 1 and body.count("window.confirm(") == 1 and "catch (e) { confirm = null; }" in body
+    assert "DZ.writeNote = 'Still read-only: no confirmation phrase was entered.'" in body and "dz-write-note" in js
+    assert "Type YES_I_UNDERSTAND exactly" not in body, "the phrase check stays on the server; the dialog only pre-checks the typed text"
+    ua = TestClient(srv.app).get("/static/ui_auth.js").text
+    assert "window.dlpDialog = { unlock, notice, phrase, ask }" in ua and "function phrase(" in ua and "function ask(" in ua
+    assert 'id="dlpPhraseInput" type="text"' in ua and "That is not ${expected}" in ua and "addEventListener('cancel'" in ua
+    # The dialog script is injected before the Studio on the page the switch lives on.
+    html = TestClient(srv.app).get("/").text
+    assert html.index("/static/ui_auth.js") < html.index("/static/deploy_studio.js")
+    # The server contract the dialog relies on is unchanged: phrase + localhost, 403 with a sentence otherwise.
+    import security
+    assert security.WRITE_CONFIRM_PHRASE == "YES_I_UNDERSTAND"
