@@ -1091,8 +1091,8 @@ function _dzRemovalRender() {
   }).join('');
   const subs = { 0: `Every DLP rule in ${_dzE((R.inventory && R.inventory.tenant_label) || 'the tenant')} on every channel. Tick the leftovers; their engines and dictionaries follow, unless something else still uses them. Nothing is deleted yet.`,
                  1: `The check before anything goes: which rules, which engines and dictionaries follow them, and what is kept because something else in ${_dzE((R.plan && R.plan.tenant_label) || 'the tenant')} still uses it. Nothing is deleted yet.`,
-                 2: 'Review the exact list, then approve. Deletion is in dependency order and needs write mode.',
-                 3: 'Removing, activating, then waiting for ZIA to report the activation — keep this window open.',
+                 2: 'Review the exact list, then approve. Deletion runs rules → activate → engines → activate → dictionaries → activate, and needs write mode.',
+                 3: 'Removing tier by tier (rules, then engines, then dictionaries), activating after each and waiting for ZIA to report ACTIVE — keep this window open.',
                  4: 'Verified by a fresh read of the tenant after activation.' };
   document.getElementById('dzSub').textContent = subs[R.step];
   ({ 0: _dzRemovalSelect, 1: _dzRemovalPreview, 2: _dzRemovalApprove, 3: _dzRemovalBusy, 4: _dzRemovalDone })[R.step]();
@@ -1279,7 +1279,7 @@ function _dzRemovalBusy() {
     <div class="dz-progress"><div class="bar"></div></div>
     <div class="dz-card sev-info"><div class="bar"></div><div>
       <div class="t">What is happening</div>
-      <div class="d">Rules first, then engines, then dictionaries, activating between tiers and waiting for ZIA to report ACTIVE each time (up to 45 seconds), because ZIA refuses to delete an engine while a rule that uses it is only pending deletion. When the deletes are done the tenant is activated once more and read again to prove nothing of the pack is left. Each line below is one answer from the tenant; a few minutes is normal.</div></div></div>
+      <div class="d">Rules first, then activate; engines, then activate; dictionaries, then activate — waiting for ZIA to report ACTIVE after each activation (up to 45 seconds), because ZIA refuses to delete an engine while a rule that uses it is only pending deletion. When the last activation has settled the tenant is read again to prove nothing of the pack is left. Each line below is one answer from the tenant; a few minutes is normal.</div></div></div>
     ${_dzJobLiveHtml('Removal log')}
     <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button></div>`;
 }

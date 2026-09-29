@@ -40,9 +40,15 @@ the reference this path is measured against. The app never runs it.
 2. **Dependencies come first, dependents go first.** Create order is
    `pack_ops.CREATE_ORDER`: dictionary → engine → application group →
    rule (parent rule before its sub-rules). Delete order is
-   `pack_ops.DELETE_TIERS`: rules and application groups → engines →
-   dictionaries, with an activation and a wait for ACTIVE between tiers,
-   because ZIA validates a delete against the activated configuration.
+   `pack_ops.DELETE_TIERS`: rules and application groups → activate →
+   engines → activate → dictionaries → activate, always in that order,
+   with a wait for ACTIVE after each activation, because ZIA validates a
+   delete against the activated configuration. The activation after a
+   tier runs whenever a delete in that tier reached ZIA, even when every
+   one was refused, so the next tier starts from a settled tenant; a tier
+   that sent nothing (objects already gone or kept, a run stopped before
+   its first call) is not followed by one, so a stopped run publishes
+   nothing it did not write.
 3. **ZIA's limits are handled the same way for every kind.** A rate
    limit (429), a busy tenant (502/503/504) or a timeout is retried up to
    three times with backoff inside `call()`. A delete refused because the
