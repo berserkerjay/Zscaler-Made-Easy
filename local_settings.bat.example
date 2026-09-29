@@ -1,0 +1,40 @@
+@echo off
+REM Copy this file to local_settings.bat (same folder). It is git-ignored, so
+REM the settings survive UPDATE_Zscaler_Assessment.bat and fresh clones.
+REM Remove the "REM " in front of a line to activate it.
+
+REM Laptop behind Zscaler Client Connector or another TLS-inspecting proxy:
+REM point Python at your organisation's root CA (export it as .pem).
+REM set REQUESTS_CA_BUNDLE=C:\certs\zscaler-root-ca.pem
+REM set SSL_CERT_FILE=C:\certs\zscaler-root-ca.pem
+
+REM Corporate proxy for outbound HTTPS (api.zsapi.net, *.zslogin.net, pypi.org).
+REM set HTTPS_PROXY=http://proxy.corp.example:8080
+
+REM Default tenant, so the GUI fields can be left blank (secrets are better
+REM kept in a tenant profile with "remember the secret on this laptop").
+REM set ZSCALER_CLOUD=production
+REM set ZSCALER_VANITY_DOMAIN=acme
+REM set ZSCALER_CLIENT_ID=
+REM set ZSCALER_CLIENT_SECRET=
+REM Classic ZIA API instead of a ZIdentity API client (tenants without ZIdentity; ZIA only):
+REM set ZSCALER_AUTH_METHOD=legacy
+REM set ZSCALER_USERNAME=
+REM set ZSCALER_PASSWORD=
+REM set ZSCALER_API_KEY=
+
+REM Start in write mode without the in-app switch.
+REM set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
+
+REM Continuous evaluation digest (every 6 hours while the app runs, or from
+REM RUN_Continuous_Evaluation.bat in Task Scheduler). E-mail needs an SMTP
+REM relay; the webhook is a Teams or Slack incoming webhook (https only).
+REM set DLP_CHECK_SMTP_HOST=smtp.example.com
+REM set DLP_CHECK_SMTP_PORT=587
+REM set DLP_CHECK_SMTP_USER=
+REM set DLP_CHECK_SMTP_PASSWORD=
+REM set DLP_CHECK_DIGEST_FROM=dlp-check@example.com
+REM set DLP_CHECK_DIGEST_TO=soc@example.com
+REM set DLP_CHECK_DIGEST_WEBHOOK=https://example.webhook.office.com/webhookb2/...
+REM Send the digest: noteworthy (default: only when there is something to decide), always, or never.
+REM set DLP_CHECK_NOTIFY=noteworthy

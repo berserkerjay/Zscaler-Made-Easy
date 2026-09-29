@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<style id="appStyle"></style>
+<link rel="stylesheet" href="/static/deploy_studio.css">
+<link rel="stylesheet" href="/static/guide.css">
+<link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/dashboard.css">
+<style>
+  .tt-gone { padding: 1rem 1.2rem; border-radius: var(--r-lg); border: 1px solid var(--warn); color: var(--text); }
+</style>
+</head>
+<body class="tool-tab report-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1 id="rpTitle">Loading…</h1>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
+      <a class="rp-btn" href="/" id="ttBack">← Back to the assessment</a>
+      <span class="sep"></span>
+    </nav>
+    <main class="rp-card">
+      <div class="tt-panel" id="rpBody">
+        <div class="rp-wait"><div class="spin"></div>Working… this tab fills in as the assessment tab finishes. Keep the assessment tab open.</div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  // This tab is a live mirror of a tool dialog in the assessment tab: the
+  // dialog's content is copied here whenever it changes, clicks on its
+  // buttons are forwarded to the real buttons, and typed values flow back.
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const kind = q.get('tool') || '';
+    const body = document.getElementById('rpBody');
+    const gone = () => {
+      body.innerHTML = '<div class="tt-gone"><strong>The assessment tab was closed.</strong> This report was generated there; open the assessment again and run the tool once more.</div>';
+    };
+    window.__ttApply = function (html, inputs) {
+      body.innerHTML = html;
+      // Forward clicks: every element that had an onclick in the dialog is
+      // matched to the same element (by index) in the assessment tab.
+      body.querySelectorAll('[onclick]').forEach((el, i) => {
+        const code = el.getAttribute('onclick') || '';
+        el.removeAttribute('onclick');
+        if (/close[A-Za-z]*Modal\(/.test(code)) { el.remove(); return; }
+        el.dataset.call = String(i);
+      });
+      // Mirror current input values from the dialog.
+      const mine = body.querySelectorAll('input, textarea, select');
+      (inputs || []).forEach((v, i) => { const el = mine[i]; if (!el) return; if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v.checked; else if (v.value != null) el.value = v.value; });
+    };
+    body.addEventListener('click', e => {
+      const el = e.target.closest('[data-call]');
+      if (!el) return;
+      e.preventDefault();
+      if (!window.opener || window.opener.closed) { gone(); return; }
+      try { window.opener.__toolTabClick(kind, Number(el.dataset.call)); } catch (err) { gone(); }
+    });
+    const forward = e => {
+      const el = e.target;
+      if (!el.matches || !el.matches('input, textarea, select')) return;
+      const idx = Array.from(body.querySelectorAll('input, textarea, select')).indexOf(el);
+      if (!window.opener || window.opener.closed) return;
+      try { window.opener.__toolTabInput(kind, idx, el.value, el.checked); } catch (err) { /* ignore */ }
+    };
+    body.addEventListener('input', forward);
+    body.addEventListener('change', forward);
+    if (!window.opener) { gone(); }
+    setInterval(() => { if (window.opener && window.opener.closed && !body.querySelector('.tt-gone')) gone(); }, 2000);
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advanced settings — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page adv-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Advanced</span> settings</h1>
+      <p>Add your own policy packs so they show up everywhere the app offers a pack: Deploy policy packs, the Data flow map, the Terraform hand-off and the detection validator. A pack is a set of dictionaries, engines and rules; you can bring one as JSON (including Zscaler's own API export), as Terraform for the Zscaler provider, or as a ZIP of either. Every pack you add is transcribed to Terraform on the spot, so the same policy exists in a vendor-neutral form you can export from the library.</p>
+      <span class="badge" id="rpMeta">Loading the library…</span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="#add">Add a pack</a>
+      <a class="rp-btn" href="#formats">What the app accepts</a>
+      <a class="rp-btn" href="#update">Update the app</a>
+      <a class="rp-btn" href="#server">This server</a>
+      <a class="rp-btn" href="#sbd">This app's Secure by Design score</a>
+      <a class="rp-btn" href="#upstream">Daily upstream check</a>
+      <a class="rp-btn" href="#credits">Credits</a>
+      <span class="sep"></span>
+      <a class="rp-btn" id="advRefresh" href="#" title="Re-read the library from disk">↻ Refresh</a>
+    </nav>
+    <main class="rp-card">
+      <div id="rpBody" class="bp-body" style="padding:0;">
+        <div id="advStatus" class="adv-status" role="status" aria-live="polite" hidden></div>
+
+        <section aria-labelledby="advLibH">
+          <h2 class="df-h" id="advLibH">Policy pack library</h2>
+          <p class="adv-lead">Built-in packs ship with the app. Uploaded packs are yours: they live in the library folder on this machine and survive updates. Every pack here is offered by Deploy policy packs.</p>
+          <div class="tw"><table class="bp-table adv-table" id="advPacks" aria-describedby="advLibH">
+            <thead><tr><th scope="col">Pack</th><th scope="col">Source</th><th scope="col">Dictionaries</th><th scope="col">Engines</th><th scope="col">Rules</th><th scope="col">Channels</th><th scope="col">Actions</th></tr></thead>
+            <tbody><tr><td colspan="7" class="dim">Loading…</td></tr></tbody>
+          </table></div>
+        </section>
+
+        <section id="add" aria-labelledby="advAddH">
+          <h2 class="df-h" id="advAddH">Add a policy pack</h2>
+          <p class="adv-lead">Pick the files, check them, then add. Nothing touches your Zscaler tenant here: adding a pack only stores it on this machine. Deploying it is a separate, reviewed step in Deploy policy packs.</p>
+          <div class="adv-grid">
+            <div class="adv-drop" id="advDrop" tabindex="0" role="group" aria-labelledby="advDropL">
+              <label id="advDropL" for="advFiles" class="adv-drop-l">Drop files here or choose them</label>
+              <input type="file" id="advFiles" multiple accept=".json,.tf,.zip,application/json,application/zip">
+              <div class="adv-drop-hint">JSON pack, the three pack files, Terraform (.tf) or a ZIP. Up to 8 MB.</div>
+              <ul id="advFileList" class="adv-files" aria-label="Chosen files"></ul>
+            </div>
+            <div class="adv-fields">
+              <label class="adv-field"><span>Pack name</span><input type="text" id="advName" placeholder="Taken from the files when left empty" autocomplete="off"></label>
+              <label class="adv-field"><span>Pack id <small>(folder name, letters, digits and _)</small></span><input type="text" id="advId" placeholder="Taken from the name when left empty" autocomplete="off"></label>
+              <label class="adv-field"><span>Description</span><input type="text" id="advDesc" placeholder="What this pack protects and for whom" autocomplete="off"></label>
+              <div class="adv-actions">
+                <button type="button" class="rp-btn" id="advCheck">Check files</button>
+                <button type="button" class="rp-btn primary" id="advAdd" disabled>Add to library</button>
+              </div>
+            </div>
+          </div>
+          <div id="advPreview" class="adv-preview" hidden></div>
+        </section>
+
+        <section id="formats" aria-labelledby="advFmtH">
+          <h2 class="df-h" id="advFmtH">What the app accepts</h2>
+          <div class="adv-cols">
+            <div class="bp-card">
+              <div class="t">One JSON file (easiest)</div>
+              <p>An object with a <code>name</code>, a <code>description</code> and three lists: <code>dictionaries</code>, <code>engines</code> and <code>policies</code>. Each dictionary has a name, patterns and phrases; each engine has a name and an expression such as <code>(D:My Dictionary &gt; 2)</code>; each rule names its engines and its channel (web, endpoint, saas, email, or a containment channel).</p>
+              <p><a class="rp-btn" id="advExample" href="/api/pack-library/global_banking_baseline/bundle">Download a complete example</a></p>
+            </div>
+            <div class="bp-card">
+              <div class="t">The three pack files</div>
+              <p><code>dlp_dictionaries.json</code>, <code>dlp_engines.json</code> and <code>dlp_policies.json</code> (plus an optional <code>pack.json</code> for the name and description), the same layout as the packs the app ships with. A ZIP of a pack folder works too.</p>
+            </div>
+            <div class="bp-card">
+              <div class="t">Terraform</div>
+              <p>Files for the <code>zscaler/zia</code> provider: <code>zia_dlp_dictionaries</code>, <code>zia_dlp_engines</code>, the DLP rule resources (web, endpoint, SaaS, email) and the containment rules (Cloud App Control, File Type Control, URL Filtering, SSL Inspection). A workspace exported from the Terraform hand-off round-trips. Objects must be referenced by name; an id copied from another tenant is reported because it will not exist in yours.</p>
+            </div>
+          </div>
+          <p class="adv-lead">Every upload is checked before it is stored: patterns must compile, dictionaries must fit Zscaler's limits, engines must reference dictionaries, rules must reference engines. Problems block the upload; warnings are shown and allowed.</p>
+        </section>
+
+        <section id="update" aria-labelledby="advUpdH">
+          <h2 class="df-h" id="advUpdH">App version and updates</h2>
+          <p class="adv-lead">Update pulls the latest release from GitHub, reinstalls dependencies and restarts the app in place. Your settings and saved packs are kept. This is the same update the desktop launcher runs; do it here when the app is already open.</p>
+          <div id="advUpdBox" class="adv-update" role="status" aria-live="polite"><span class="dim">Checking for updates…</span></div>
+          <div class="adv-actions">
+            <button type="button" class="rp-btn primary" id="advUpdBtn" hidden>Update now</button>
+            <button type="button" class="rp-btn" id="advUpdCheck">Check again</button>
+          </div>
+          <div id="advUpdSteps" class="adv-update-steps" hidden></div>
+        </section>
+
+        <section id="server" aria-labelledby="advSrvH">
+          <h2 class="df-h" id="advSrvH">This server</h2>
+          <div class="tw"><table class="bp-table adv-table" id="advServer" aria-describedby="advSrvH"><tbody><tr><td class="dim">Loading…</td></tr></tbody></table></div>
+        </section>
+
+        <section id="sbd" aria-labelledby="advSbdH">
+          <h2 class="df-h" id="advSbdH">CISA Secure by Design score — for this app, not the tenant</h2>
+          <p class="adv-lead">How DLP-Check itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; compliance alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
+          <div id="advSbdBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Measuring…</span></div>
+          <div class="adv-actions"><button type="button" class="rp-btn" id="advSbdCheck">Re-check</button></div>
+          <div class="tw"><table class="bp-table adv-table" id="advSbd" aria-describedby="advSbdH">
+            <thead><tr><th scope="col">Control</th><th scope="col">Status</th><th scope="col">What was found</th><th scope="col">What to do</th></tr></thead>
+            <tbody><tr><td colspan="4" class="dim">Measuring…</td></tr></tbody>
+          </table></div>
+        </section>
+
+        <section id="upstream" aria-labelledby="advUpH">
+          <h2 class="df-h" id="advUpH">Daily upstream contract check</h2>
+          <p class="adv-lead">Once a day (06:23 UTC) a job in the repository's GitHub Actions cross-checks what this app sends to Zscaler against the installed SDK, PyPI's latest release, the Terraform provider's version, schema and docs, and Zscaler's API reference; drift opens an <code>upstream-drift</code> issue there and a clean day closes it. That is a check of this app's code against Zscaler's interfaces — not a CISA check, and not a check of any customer tenant — and this server cannot read its result. What this server can run itself is the offline half: the installed SDK and the committed Terraform against the payloads the shipped packs produce. It runs in under a second and is shown below.</p>
+          <div id="advUpBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Checking…</span></div>
+          <div class="adv-actions"><button type="button" class="rp-btn" id="advUpCheck">Run the offline check now</button></div>
+          <div class="tw"><table class="bp-table adv-table" id="advUp" aria-describedby="advUpH">
+            <thead><tr><th scope="col">Level</th><th scope="col">Area</th><th scope="col">Finding</th></tr></thead>
+            <tbody><tr><td colspan="3" class="dim">Checking…</td></tr></tbody>
+          </table></div>
+        </section>
+
+        <section id="credits" aria-labelledby="advCreditsH">
+          <div class="adv-credits">
+            <h2 id="advCreditsH">Credits</h2>
+            <p>This product was created through the collaboration of<br><strong>Jason&nbsp;Smith, Nick&nbsp;Tucker and Eunice&nbsp;Aguilar</strong>.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/advanced.js"></script>
+</body>
+</html>

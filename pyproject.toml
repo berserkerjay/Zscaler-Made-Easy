@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dlp-check"
+version = "2026.9.13"
+description = "Zscaler DLP assessment and policy-pack deployment: 300+ automated checks, guided deploy / verify / remove of policy packs, reports and continuous evaluation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Internal tooling. Not for redistribution."}
+# The runtime dependencies. Installs pin every wheel by hash from
+# requirements.lock (install.sh, INSTALL_Zscaler_Assessment.bat and the
+# Dockerfile all install from that file); this list is the source it is
+# compiled from (make lock): pip-compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt
+dependencies = [
+    "requests>=2.28.0",
+    "fastapi>=0.115.0",
+    "starlette>=0.47.0",
+    "uvicorn>=0.22.0",
+    "rich>=13.0.0",
+    "zscaler-sdk-python>=1.9.0",
+    "mcp[cli]>=1.2.0",
+    "python-docx>=1.0.0",
+    "pyjwt[crypto]>=2.10.1",
+    "msgpack>=1.2.1",
+    "setuptools>=78.1.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pyflakes>=3", "httpx"]
+
+# The app runs from its own folder (the web UI, the policy packs and the
+# Terraform workspaces live next to the modules), so it is installed
+# editable (pip install -e .) by install.sh; these commands then run the
+# same modules the container's CMD runs.
+[project.scripts]
+dlp-check = "dlp_api_server:main"
+dlp-check-assess = "dlp_assessment_full_auto:main"
+dlp-check-evaluate = "continuous_eval:main"
+
+[tool.setuptools]
+py-modules = [
+    "app_update", "audit", "benchmarks", "bp_crawler", "bp_sources", "bypass_report", "channel_scope", "compliance_mapping",
+    "continuous_eval", "corpus_engines", "data_flow", "deployments", "detection_health", "discover_endpoints",
+    "dlp_api_server", "dlp_assessment_full_auto", "dlp_efficacy", "dlp_importer", "dlp_mcp_server", "guidance",
+    "log_analyzer", "native_zscaler", "pack_channels", "pack_deploy", "pack_from_tenant", "pack_jobs", "pack_library", "pack_ops", "path_analyzer", "tenant_auth",
+    "pack_removal", "pack_terraform", "permissions", "plain_english", "proposal_apply", "proposals", "remediation",
+    "report_docx", "rule_migrator", "saas_matrix", "scope_permissions", "sdk_client", "secure_by_design", "security",
+    "sso", "ssl_flow", "tenant_profiles", "upstream_check", "vendor_migrate", "vertical", "zcc_evaluation", "zscaler_automation_checks", "zscaler_best_practices",
+    "zscaler_clouds", "zscaler_full_checks", "zscaler_genai_checks", "zscaler_rbac_checks", "zscaler_update_check",
+    "zscaler_zdx_checks", "zscaler_zidentity_checks",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"

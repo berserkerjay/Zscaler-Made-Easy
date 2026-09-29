@@ -1,0 +1,704 @@
+[
+  {
+    "name": "ZBP-Financial Information-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-ITAR International Traffic in Arms Regulations-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-ITAR Phrases"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-TLP Red-Monitor",
+    "description": "One rule per engine: this rule carries ZBP-TLP Red only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-TLP Red"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-TLP Amber Strict-Monitor",
+    "description": "One rule per engine: this rule carries ZBP-TLP Amber Strict only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-TLP Amber Strict"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-TLP Amber-Monitor",
+    "description": "One rule per engine: this rule carries ZBP-TLP Amber only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-TLP Amber"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-US PII-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-US PHI - Medium Confidence-Monitor",
+    "description": "One rule per engine: this rule carries ZBP-US PHI - Medium Confidence only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-US PHI - Medium Confidence"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-US PHI - High Confidence-Monitor",
+    "description": "One rule per engine: this rule carries ZBP-US PHI - High Confidence only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-US PHI - High Confidence"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-Private Keys-Monitor",
+    "description": "",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "ZBP-Financial Information [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-Financial Informatio [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-Financial Information [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-ITAR International Traffic in Arms Regulations [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-ITAR International Traffic in Arms Regulations-Monitor\" (ZBP-ITAR Phrases). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-ITAR Phrases"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-ITAR International [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-ITAR International Traffic in Arms Regulations-Monitor\" (ZBP-ITAR Phrases). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-ITAR Phrases"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-ITAR International Traffic in Arms Regulations [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-ITAR International Traffic in Arms Regulations-Monitor\" (ZBP-ITAR Phrases). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-ITAR Phrases"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Red [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-TLP Red-Monitor\" (ZBP-TLP Red). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Red"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Red [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-TLP Red-Monitor\" (ZBP-TLP Red). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Red"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Red [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-TLP Red-Monitor\" (ZBP-TLP Red). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Red"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Amber Strict [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-TLP Amber Strict-Monitor\" (ZBP-TLP Amber Strict). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Amber Strict"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Amber Strict [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-TLP Amber Strict-Monitor\" (ZBP-TLP Amber Strict). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Amber Strict"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Amber Strict [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-TLP Amber Strict-Monitor\" (ZBP-TLP Amber Strict). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Amber Strict"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Amber [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-TLP Amber-Monitor\" (ZBP-TLP Amber). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Amber"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Amber [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-TLP Amber-Monitor\" (ZBP-TLP Amber). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Amber"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-TLP Amber [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-TLP Amber-Monitor\" (ZBP-TLP Amber). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-TLP Amber"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PII [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-US PII-Monitor\" (ZBP-US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PII [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-US PII-Monitor\" (ZBP-US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PII [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-US PII-Monitor\" (ZBP-US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PHI - Medium Confidence [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-US PHI - Medium Confidence-Monitor\" (ZBP-US PHI - Medium Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PHI - Medium Confidence"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PHI - Medium [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-US PHI - Medium Confidence-Monitor\" (ZBP-US PHI - Medium Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PHI - Medium Confidence"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PHI - Medium Confidence [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-US PHI - Medium Confidence-Monitor\" (ZBP-US PHI - Medium Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PHI - Medium Confidence"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PHI - High Confidence [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-US PHI - High Confidence-Monitor\" (ZBP-US PHI - High Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PHI - High Confidence"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PHI - High [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-US PHI - High Confidence-Monitor\" (ZBP-US PHI - High Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PHI - High Confidence"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-US PHI - High Confidence [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-US PHI - High Confidence-Monitor\" (ZBP-US PHI - High Confidence). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PHI - High Confidence"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "ZBP-Private Keys [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"ZBP-Private Keys-Monitor\" (ZBP-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "ZBP-Private Keys [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"ZBP-Private Keys-Monitor\" (ZBP-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "ZBP-Private Keys [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"ZBP-Private Keys-Monitor\" (ZBP-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  }
+]

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Path analyzer — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page pa-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Path</span> analyzer <span class="sf-live" id="paLive" hidden><i></i>live</span></h1>
+      <p>Type what a user would type: a URL, a hostname or an IP address. The analyzer reads the tenant as it is right now and walks that user's traffic hop by hop, from Client Connector to the DLP rule, and tells you in one line where it stops, what decides that, and everything on the way that blocks or impacts it.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/reference/data-security-architect#inline" target="_blank" rel="noopener" title="Data Security Architect: the reference architecture this flow is measured against (inline web module; opens in a new tab)">Reference architecture ↗</a>
+      <span class="sep"></span>
+      <label class="df-ctl"><span class="lbl">Destination</span><input type="text" id="paDest" placeholder="https://drive.google.com/…, dropbox.com or 203.0.113.10" aria-label="Destination: a URL, hostname or IP address" aria-describedby="paHow" autocomplete="off" spellcheck="false"></label>
+      <label class="df-ctl"><span class="lbl">Network</span><select id="paNet" aria-label="Network the device is on"></select></label>
+      <label class="df-ctl"><span class="lbl">Platform</span><select id="paPlat" aria-label="Platform"></select></label>
+      <label class="df-ctl" id="paTenantWrap" hidden><span class="lbl">Tenant</span><select id="paTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="paRun">Analyze</button>
+      <button type="button" class="rp-btn" id="paFresh" title="Read the tenant again before analyzing (otherwise the last read is reused)" aria-pressed="false">↻ Fresh read</button>
+      <a class="rp-btn" id="expJson" hidden download="path-analysis.json">JSON</a>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <details class="pa-framework" id="paFramework" open>
+        <summary>The framework: how Zscaler processes a policy, device to incident</summary>
+        <div class="df-hint">Every analysis below walks this exact order — Zscaler's own documented policy-enforcement sequence — starting from the destination's <strong>assigned Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with Endpoint DLP, SaaS Security API and Email DLP evaluated in parallel on the same data. Nothing here is specific to one destination; it is the reference every result is measured against.</div>
+        <div id="paFrameworkBody"></div>
+      </details>
+      <div id="paBody">
+        <div class="pa-intro" id="paHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Type a destination</strong> exactly as a user would: a full URL, a hostname or an IP address. Pick the network the device is on and its platform.</li>
+            <li><strong>Analyze.</strong> The first run reads the tenant (Client Connector profiles, PAC files and every ZIA policy: about a minute of API calls, shown live). Later runs reuse that read and only look the destination up, so they take a few seconds.</li>
+            <li><strong>Read the verdict.</strong> One line says where the traffic ends and which object decides it; below it every point that blocks or impacts the traffic is listed with the rule or profile by name, then the path hop by hop against the framework above.</li>
+          </ol>
+          <div class="df-hint">Nothing is written to the tenant. The answer is the configuration's answer for any user, group and location at this moment, not a transaction log; the assumptions are listed under every result.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/data_flow.js"></script>
+  <script>
+  (function () {
+    const E = _dfE;
+    const body = document.getElementById('paBody');
+    const meta = document.getElementById('rpMeta');
+    const live = document.getElementById('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const NETWORKS = [['off', 'Off network (remote)'], ['on', 'On trusted network (office)'], ['vpn', 'On VPN']];
+    const PLATFORMS = ['windows', 'macos', 'ios', 'android', 'linux'];
+    const NET_LABEL = Object.fromEntries(NETWORKS);
+    const STATUS = Object.assign({ alert: ['Security alert', 'fail'] }, DF_STATUS);
+    const SEV_RANK = { high: 0, medium: 1, low: 2, info: 3 };
+    let lastReport = '';   // report_id of the last tenant read, reused for the next destination
+    let fresh = false, running = false, job = null;
+
+    document.getElementById('paNet').innerHTML = NETWORKS.map(([k, l]) => `<option value="${k}">${E(l)}</option>`).join('');
+    document.getElementById('paPlat').innerHTML = PLATFORMS.map(p => `<option value="${p}">${p}</option>`).join('');
+    document.getElementById('paLive').hidden = !(window.opener && !window.opener.closed);
+    // The reference framework diagram (Zscaler's own documented policy
+    // order, device to incident) is static — it needs no tenant read and
+    // is shown before any destination is analyzed, so the page always
+    // represents the framework every result is measured against.
+    renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'));
+
+    // Credentials: the assessment tab that opened this page holds them;
+    // otherwise a saved tenant profile, or what the server has in its
+    // environment / tenant_config.json.
+    async function tenantChoices() {
+      const wrap = document.getElementById('paTenantWrap'), sel = document.getElementById('paTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = document.getElementById('paTenant').value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+
+    // ── the live job ────────────────────────────────────────────────
+    function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    function phase(logs) {
+      for (let i = logs.length - 1; i >= 0; i--) {
+        const l = logs[i];
+        if (/^(Reading|Asking|Tracing|Reusing|Placing|Tenant read)/.test(l)) return l.replace(/…$/, '').trim();
+      }
+      return logs.length ? 'Working…' : 'Connecting to the tenant…';
+    }
+    function liveHtml(dest) {
+      return `<div class="pa-live">
+        <div class="pa-live-h"><span class="spin" aria-hidden="true"></span><strong>Analyzing ${E(dest)}</strong><span class="df-by" id="paPhase">Connecting to the tenant…</span><span class="sep"></span><span class="pa-elapsed" id="paElapsed">0:00</span><button type="button" class="rp-btn" id="paStop">Stop</button></div>
+        <div class="pa-log pa-log-live" id="paLog" role="log" aria-live="polite" aria-label="What the analyzer is doing">Connecting to the tenant…</div>
+      </div>`;
+    }
+    function liveUpdate(snap) {
+      const log = document.getElementById('paLog'); if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
+      const ph = document.getElementById('paPhase'); if (ph) ph.textContent = phase(snap.logs || []);
+      const el = document.getElementById('paElapsed'); if (el && snap.elapsed_seconds != null) el.textContent = mmss(snap.elapsed_seconds);
+      const stop = document.getElementById('paStop'); if (stop && snap.cancel_requested) { stop.disabled = true; stop.textContent = 'Stopping…'; }
+    }
+    async function follow(jobId) {
+      let next = 0, misses = 0; const logs = [];
+      for (;;) {
+        await new Promise(res => setTimeout(res, 1200));
+        let snap;
+        try {
+          const r = await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(jobId)}?since=${next}`, { cache: 'no-store' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          snap = await r.json(); misses = 0;
+        } catch (e) {
+          if (++misses >= 20) throw new Error(`Lost contact with the app while the analysis continued (${e.message}).`);
+          continue;
+        }
+        logs.push(...(snap.logs || [])); next = snap.next;
+        liveUpdate(Object.assign({}, snap, { logs }));
+        if (snap.status !== 'running') return Object.assign({}, snap, { logs });
+      }
+    }
+    async function stop() {
+      if (!job) return;
+      const b = document.getElementById('paStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
+    }
+
+    async function run() {
+      if (running) return;
+      const dest = document.getElementById('paDest').value.trim();
+      if (!dest) { fail('Nothing to analyze', 'Type a URL, a hostname or an IP address first.'); document.getElementById('paDest').focus(); return; }
+      const net = document.getElementById('paNet').value, plat = document.getElementById('paPlat').value;
+      const btn = document.getElementById('paRun');
+      running = true; btn.disabled = true; btn.textContent = 'Analyzing…';
+      body.innerHTML = liveHtml(dest);
+      document.getElementById('paStop').addEventListener('click', stop);
+      say(`Analyzing ${dest}.`);
+      const t0 = Date.now();
+      const tick = setInterval(() => { const el = document.getElementById('paElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
+      try {
+        const payload = Object.assign({}, credBody(), { destination: dest, network: net, platform: plat, report_id: fresh ? '' : lastReport });
+        const r = await fetch('/api/path-analyzer/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        job = d.job_id;
+        const snap = await follow(job);
+        if (snap.status !== 'done' || !snap.result) throw new Error(snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the analysis finished.' : 'The analysis did not finish.'));
+        const res = snap.result;
+        if (res.report_id) lastReport = res.report_id;
+        setFresh(false);
+        render(res, snap.logs || []);
+        say(`Verdict: ${res.verdict.headline}`);
+      } catch (e) {
+        fail('The analysis could not run', e.message);
+        say(`The analysis could not run: ${e.message}`);
+      } finally {
+        clearInterval(tick); running = false; job = null; btn.disabled = false; btn.textContent = 'Analyze';
+      }
+    }
+    function fail(title, msg) {
+      if (/You clicked Stop/.test(msg)) { title = 'Stopped'; msg = msg.replace(/^Stopped:\s*/, ''); }
+      const hint = /credential|sign in|token|401|403|Sign in|profile/i.test(msg) ? ' Sign in on the assessment page first and open the Path analyzer from there, or choose a saved tenant profile in the bar above.' : '';
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${E(title)}</div><div>${E(msg)}${E(hint)}</div></div>`;
+    }
+    function setFresh(on) { fresh = on; const b = document.getElementById('paFresh'); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.classList.toggle('primary', on); }
+
+    // ── the result ──────────────────────────────────────────────────
+    function chip(status) { const [lab, cls] = STATUS[status] || [status, 'dim']; return `<span class="df-chip st-${cls}">${E(lab)}</span>`; }
+    const SEV_CLS = { high: 'fail', medium: 'warn', low: 'info', info: 'dim' };
+    const CHAN_ICO = { web: '🌐', endpoint: '💻', saas: '☁️', email: '✉️' };
+    function mitigationsHtml(list) {
+      if (!list || !list.length) return '<div class="df-hop-d pa-none">Nothing to mitigate: this path is already blocked, or already covered end to end.</div>';
+      return `<ol class="pa-mitigations">${list.map(m => `<li class="pa-mitigation sev-${E(m.severity)}">
+          <div class="df-hop-h"><span class="pa-mit-ico" aria-hidden="true">${CHAN_ICO[m.channel] || '🛡️'}</span><strong>${E(m.action)}</strong><span class="sev">${E(m.severity)}</span></div>
+          <div class="df-hop-d">${E(m.why)}</div>
+        </li>`).join('')}</ol>`;
+    }
+    function yesno(b, yes, no) { return `<span class="v ${b ? 'ok' : 'no'}">${b ? yes : no}</span>`; }
+    function render(res, logs) {
+      const v = res.verdict, t = res.trace, d = res.destination, lk = res.lookup || {};
+      const [olab, ocls] = DF_OUTCOME[v.outcome] || [v.outcome, 'dim'];
+      const impacts = (v.impacts || []).slice().sort((a, b) => (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9));
+      const blockers = impacts.filter(i => i.status === 'bypass' || i.status === 'blocked' || i.status === 'alert');
+      const others = impacts.filter(i => !blockers.includes(i));
+      const item = i => `<li class="pa-impact sev-${E(i.severity || 'medium')}">
+          <div class="df-hop-h">${chip(i.status)}<strong>${E(i.label)}</strong>${i.rule ? `<span class="df-by">by <code>${E(i.rule)}</code></span>` : ''}<span class="sev">${E(i.severity || '')}</span></div>
+          <div class="df-hop-d">${E(i.detail)}</div>
+          ${i.fix ? `<div class="df-hop-d pa-fix"><strong>What to do:</strong> ${E(i.fix)}</div>` : ''}
+        </li>`;
+      const chans = Object.values(t.channels || {}).map(c => { const [lab, cls] = DF_STATUS[c.status] || [c.status, 'dim']; return `<div class="df-chan st-${cls}"><div class="df-hop-h"><span class="df-chip st-${cls}">${E(lab)}</span><strong>${E(c.label)}</strong></div><div class="df-hop-d">${E(c.detail)}</div></div>`; }).join('');
+      // The assigned app / forwarding profile for this destination, network
+      // and platform — the two objects the framework above starts from.
+      const zccHop = (t.hops || []).find(h => h.key === 'zcc');
+      const fwdHop = (t.hops || []).find(h => h.key === 'forwarding');
+      const appProf = (zccHop && zccHop.decided_by && zccHop.decided_by.name) || (zccHop && zccHop.profile) || '—';
+      const fwdProf = (fwdHop && fwdHop.decided_by && fwdHop.decided_by.name) || '—';
+      const fwdMode = (fwdHop && fwdHop.mode) ? ` (${E(fwdHop.mode)})` : '';
+      meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
+      body.innerHTML = `
+        <section class="pa-verdict st-${ocls}" aria-labelledby="paHeadline">
+          <div class="pa-verdict-top">${chip(v.outcome === 'bypassed' ? 'bypass' : v.outcome === 'blocked' ? 'blocked' : v.outcome)}<span class="df-by">${E(d.input)} · ${E(NET_LABEL[res.network] || res.network)} · ${E(res.platform)}</span></div>
+          <h2 id="paHeadline" class="pa-headline">${E(v.headline)}</h2>
+          <p class="pa-summary">${E(v.summary)}</p>
+          <div class="pa-facts">
+            <span class="df-prof"><span class="k">Stops at</span><span class="v">${E(v.stops_at || 'reaches the destination')}</span></span>
+            <span class="df-prof"><span class="k">Decided by</span><span class="v">${E(v.blocked_by || (v.stops_at ? 'the profile named below' : '—'))}</span></span>
+            <span class="df-prof"><span class="k">Reaches Zscaler</span>${yesno(v.reaches_zscaler, 'yes', 'no')}</span>
+            <span class="df-prof"><span class="k">Decrypted</span>${yesno(v.decrypted, 'yes', 'no')}</span>
+            <span class="df-prof"><span class="k">Content inspected</span>${yesno(v.content_inspected, 'yes', 'no')}</span>
+            <span class="df-prof"><span class="k">ZIA categories</span><span class="v">${E((v.categories || []).join(', ') || (lk.error ? `lookup failed: ${lk.error}` : 'none returned'))}</span></span>
+            ${(v.applications || []).length ? `<span class="df-prof"><span class="k">Cloud app</span><span class="v">${E(v.applications.join(', '))}</span></span>` : ''}
+          </div>
+          <div class="df-profiles">
+            <span class="df-prof"><span class="k">Assigned Client Connector app profile</span><span class="v">${E(appProf)}</span></span>
+            <span class="df-prof"><span class="k">Assigned forwarding profile</span><span class="v">${E(fwdProf)}${E(fwdMode)}</span></span>
+          </div>
+        </section>
+        <h2 class="df-h">What blocks this traffic</h2>
+        ${blockers.length ? `<ol class="pa-impacts">${blockers.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">Nothing blocks it: the traffic reaches the destination.</div>'}
+        <h2 class="df-h">What impacts it on the way</h2>
+        ${others.length ? `<ol class="pa-impacts">${others.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">No blind spot, weak point or assumption changes the answer on this path.</div>'}
+        <h2 class="df-h">What to do about it, across every channel</h2>
+        <div class="df-hint">Reasoned across Web, Endpoint, SaaS Security API and Email DLP together: Endpoint DLP is weighed first whenever the network path itself sees nothing (bypassed or encrypted), because it is the one control that runs on the device regardless of where the traffic goes; Email and SaaS coverage are suggested only when this destination is actually shaped like webmail or a sanctioned cloud app.</div>
+        ${mitigationsHtml(v.mitigations)}
+        <h2 class="df-h">The path, hop by hop</h2>
+        <div class="df-flow-wrap">${_dfSvg(t)}</div>
+        <div class="df-hint">Each box is a control in the order ZIA applies it; click one for the rule or profile that decided it.</div>
+        <div class="df-hops" id="paHops">${(t.hops || []).map(_dfHopDetail).join('')}</div>
+        <h2 class="df-h">Other channels for the same data</h2>
+        <div class="df-chans">${chans || '<div class="df-hop-d">No channel information.</div>'}</div>
+        <h2 class="df-h">Assumptions</h2>
+        <ul class="pa-assume">${(res.assumptions || []).map(a => `<li>${E(a)}</li>`).join('')}</ul>
+        <details class="pa-details"><summary>What was read (${logs.length} line${logs.length === 1 ? '' : 's'})</summary><div class="pa-log">${E(logs.join('\n'))}</div></details>`;
+      body.querySelectorAll('.df-node').forEach(n => {
+        const go = () => { const el = body.querySelector(`.df-hop[data-hop="${n.dataset.hop}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('sel'); setTimeout(() => el.classList.remove('sel'), 1600); } };
+        n.addEventListener('click', go);
+        n.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      });
+      const exp = document.getElementById('expJson');
+      exp.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(res, null, 2));
+      exp.download = `path-${(d.host || 'analysis').replace(/[^a-z0-9.-]/gi, '_')}.json`;
+      exp.hidden = false;
+      history.replaceState(null, '', `/report/path?d=${encodeURIComponent(d.input)}&n=${encodeURIComponent(res.network)}&p=${encodeURIComponent(res.platform)}`);
+    }
+
+    document.getElementById('paRun').addEventListener('click', run);
+    document.getElementById('paDest').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+    document.getElementById('paFresh').addEventListener('click', () => { setFresh(!fresh); say(fresh ? 'The next analysis reads the tenant again.' : 'The next analysis reuses the last read.'); });
+    tenantChoices();
+    const q = new URLSearchParams(location.search);
+    if (q.get('d')) document.getElementById('paDest').value = q.get('d');
+    if (q.get('n') && NET_LABEL[q.get('n')]) document.getElementById('paNet').value = q.get('n');
+    if (q.get('p') && PLATFORMS.includes(q.get('p'))) document.getElementById('paPlat').value = q.get('p');
+    if (q.get('id') && q.get('id').startsWith('dataflow-')) lastReport = q.get('id');
+    if (q.get('d') && q.get('run') === '1') tenantChoices().then(run);
+  })();
+  </script>
+</body>
+</html>

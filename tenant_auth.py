@@ -1,0 +1,278 @@
+"""Tenant credentials: the two ways DLP-Check can sign in to a ZIA tenant.
+
+    oneapi   ZIdentity API client (client id, client secret, vanity domain)
+             through OneAPI: <vanity>.zslogin.net and api.zsapi.net.
+             The default, and the only way to reach ZPA, ZCC and ZDX.
+    legacy   The classic ZIA API (admin username, password and the API key
+             from ZIA Administration > API Key Management) against
+             zsapi.<cloud>.net. For tenants that have not enabled ZIdentity
+             / OneAPI. ZIA only.
+
+One credential dict, the same nine keys everywhere (`CRED_KEYS`), flows
+from the form, a saved profile, the environment or tenant_config.json to
+the two client stacks: the raw-HTTP assessment client
+(dlp_assessment_full_auto.Client) and the Zscaler SDK client the policy
+packs use (dlp_api_server._build_sdk_client, sdk_client.SdkClient). This
+module owns the shape, the method rules, the environment names, the API
+key obfuscation the classic sign-in needs and the SDK legacy client.
+"""
+from __future__ import annotations
+
+import os
+import time
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+ONEAPI = "oneapi"
+LEGACY = "legacy"
+METHODS = (ONEAPI, LEGACY)
+
+# Spellings accepted for a method (forms, profiles, environment, scripts).
+_METHOD_ALIASES = {
+    "oneapi": ONEAPI, "one_api": ONEAPI, "one-api": ONEAPI, "zidentity": ONEAPI, "oauth": ONEAPI, "oauth2": ONEAPI, "api_client": ONEAPI,
+    "legacy": LEGACY, "legacy_api": LEGACY, "legacy-api": LEGACY, "classic": LEGACY, "zia": LEGACY, "zia_api": LEGACY,
+    "apikey": LEGACY, "api_key": LEGACY, "api-key": LEGACY, "username": LEGACY,
+}
+
+CRED_KEYS = ("auth_method", "cloud", "vanity_domain", "client_id", "client_secret", "customer_id", "username", "password", "api_key")
+SECRET_KEYS = ("client_secret", "password", "api_key")
+# What each method cannot do without.
+REQUIRED = {ONEAPI: ("vanity_domain", "client_id", "client_secret"), LEGACY: ("username", "password", "api_key")}
+# The identity fields: typed, they say which method the person means.
+IDENTITY = {ONEAPI: "client_id", LEGACY: "username"}
+LABELS = {"vanity_domain": "vanity domain", "client_id": "API client ID", "client_secret": "API client secret",
+          "username": "admin username", "password": "password", "api_key": "API key", "cloud": "cloud"}
+# Environment variable per key (local_settings.env / .bat, the container's .env).
+ENV = {"auth_method": "ZSCALER_AUTH_METHOD", "cloud": "ZSCALER_CLOUD", "vanity_domain": "ZSCALER_VANITY_DOMAIN",
+       "client_id": "ZSCALER_CLIENT_ID", "client_secret": "ZSCALER_CLIENT_SECRET", "customer_id": "ZSCALER_CUSTOMER_ID",
+       "username": "ZSCALER_USERNAME", "password": "ZSCALER_PASSWORD", "api_key": "ZSCALER_API_KEY"}
+
+LEGACY_SESSION_PATH = "/api/v1/authenticatedSession"
+
+
+# ---------------------------------------------------------------------------
+# The credential dict
+# ---------------------------------------------------------------------------
+
+def normalize_method(value: Any) -> str:
+    """'oneapi', 'legacy' or '' (not stated) for any accepted spelling;
+    ValueError, naming the two methods, for anything else."""
+    v = str(value or "").strip().lower()
+    if not v:
+        return ""
+    if v in _METHOD_ALIASES:
+        return _METHOD_ALIASES[v]
+    raise ValueError(f"Unknown sign-in method '{value}'. Use 'oneapi' (ZIdentity API client) or 'legacy' (ZIA admin username, password and API key).")
+
+
+def method_of(creds: Dict[str, Any]) -> str:
+    """The method the credentials are for: the stated one, else legacy when
+    a username or API key is given and no client id, else oneapi."""
+    stated = normalize_method(creds.get("auth_method"))
+    if stated:
+        return stated
+    if (creds.get("username") or creds.get("api_key")) and not creds.get("client_id"):
+        return LEGACY
+    return ONEAPI
+
+
+def normalize(creds: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """Every key of CRED_KEYS as a stripped string, `auth_method` resolved."""
+    creds = creds or {}
+    out = {k: str(creds.get(k) or "").strip() for k in CRED_KEYS}
+    out["auth_method"] = method_of(out)
+    return out
+
+
+def missing(creds: Dict[str, Any]) -> List[str]:
+    """The required fields the method still lacks (keys of CRED_KEYS)."""
+    c = normalize(creds)
+    return [k for k in REQUIRED[c["auth_method"]] if not c[k]]
+
+
+def complete(creds: Dict[str, Any]) -> bool:
+    """True when the method has everything it needs to sign in."""
+    return not missing(creds)
+
+
+def started(creds: Dict[str, Any]) -> bool:
+    """True when the person has typed the identity of a tenant (a client id
+    or a username), even if the rest is missing."""
+    c = normalize(creds)
+    return bool(c[IDENTITY[c["auth_method"]]])
+
+
+def without_identity(creds: Dict[str, Any]) -> Dict[str, str]:
+    """The dict with the identity and secret fields blanked (cloud, vanity
+    domain and customer id kept): what may be combined with credentials
+    from another source without pairing a typed id with a stored secret."""
+    c = normalize(creds)
+    for k in ("client_id", "client_secret", "username", "password", "api_key"):
+        c[k] = ""
+    c["auth_method"] = str(creds.get("auth_method") or "")
+    return c
+
+
+def merge(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[str, str]:
+    """`primary` wins; blanks are filled from `fallback`. The method stays
+    as stated (blank when neither states one): call normalize() to resolve
+    it once every source has been consulted."""
+    p = {k: str((primary or {}).get(k) or "").strip() for k in CRED_KEYS}
+    f = {k: str((fallback or {}).get(k) or "").strip() for k in CRED_KEYS}
+    return {k: p[k] or f[k] for k in CRED_KEYS}
+
+
+def from_env(environ: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """Credentials from the ZSCALER_* environment variables."""
+    env = os.environ if environ is None else environ
+    return normalize({k: env.get(v, "") for k, v in ENV.items()})
+
+
+def label(creds: Dict[str, Any]) -> str:
+    """How the tenant is named in messages: 'acme (zscalerten)' for OneAPI,
+    'admin@acme.com (zscalerten, classic API)' for the legacy sign-in."""
+    c = normalize(creds)
+    cloud = c["cloud"] or "production"
+    if c["auth_method"] == LEGACY:
+        return f"{c['username'] or '?'} ({cloud}, classic API)"
+    return f"{c['vanity_domain'] or '?'} ({cloud})"
+
+
+def identity(creds: Dict[str, Any]) -> str:
+    """The masked identity for an error message."""
+    c = normalize(creds)
+    if c["auth_method"] == LEGACY:
+        return f"username={c['username'] or '?'}"
+    return f"client_id={_mask(c['client_id'])}"
+
+
+def _mask(value: str, keep: int = 3) -> str:
+    v = value or ""
+    if len(v) <= keep * 2 + 2:
+        return "•" * max(3, len(v))
+    return f"{v[:keep]}…{v[-keep:]} (len={len(v)})"
+
+
+def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
+    """`text` with every secret value of `creds` replaced by its mask, so
+    an error can be shown without leaking a password or a key."""
+    out = str(text or "")
+    for k in SECRET_KEYS:
+        v = str((creds or {}).get(k) or "")
+        if v and v in out:
+            out = out.replace(v, _mask(v))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The classic ZIA sign-in
+# ---------------------------------------------------------------------------
+
+def obfuscate_api_key(api_key: str, now_ms: Optional[int] = None) -> Tuple[int, str]:
+    """The (timestamp, obfuscated key) pair the classic ZIA API expects in
+    POST /api/v1/authenticatedSession: the key is rebuilt from the API
+    key's characters picked by the digits of the timestamp's last six
+    digits and of that number halved, exactly as Zscaler documents it."""
+    now = int(now_ms if now_ms is not None else time.time() * 1000)
+    seed = list(api_key or "")
+    if len(seed) < 12:
+        raise ValueError("The ZIA API key is 12 characters; this one is shorter.")
+    n = str(now)[-6:]
+    r = str(int(n) >> 1).zfill(6)
+    key = "".join(seed[int(ch)] for ch in n)
+    for ch in r:
+        key += seed[int(ch) + 2]
+    return now, key
+
+
+def legacy_login_payload(username: str, password: str, api_key: str, now_ms: Optional[int] = None) -> Dict[str, Any]:
+    """The JSON body of the classic sign-in."""
+    ts, key = obfuscate_api_key(api_key, now_ms)
+    return {"apiKey": key, "username": username, "password": password, "timestamp": ts}
+
+
+# OneAPI-only ZIA services (not on the SDK's legacy helper) that the app
+# uses: built on the helper's own request executor, which rewrites the
+# OneAPI path prefix to the classic /api/v1 one.
+_ONEAPI_ONLY_SERVICES = {
+    "endpoint_dlp_rules": ("zscaler.zia.endpoint_dlp_rules", "EndpointDLPRulesAPI"),
+    "endpoint_dlp_sub_rules": ("zscaler.zia.endpoint_dlp_sub_rules", "EndpointDLPSubRulesAPI"),
+    "outbound_email_dlp_rules": ("zscaler.zia.outbound_email_dlp_rules", "OutboundEmailDLPRulesAPI"),
+    "endpoint_application_groups": ("zscaler.zia.endpoint_application_groups", "EndpointApplicationGroupsAPI"),
+    "endpoint_applications": ("zscaler.zia.endpoint_applications", "EndpointApplicationsAPI"),
+    "end_user_notification_templates": ("zscaler.zia.end_user_notification_templates", "EndUserNotificationTemplatesAPI"),
+    "dlp_endpoint_resource": ("zscaler.zia.dlp_endpoint_resource", "DLPEndpointResourceAPI"),
+}
+
+
+class LegacyZiaServices:
+    """`client.zia` for the classic sign-in: every service the SDK's legacy
+    helper has, plus the OneAPI-only ones built on the same executor."""
+
+    def __init__(self, helper: Any):
+        self._helper = helper
+
+    def __getattr__(self, name: str) -> Any:
+        helper = self.__dict__.get("_helper")
+        if helper is not None and hasattr(helper, name):
+            return getattr(helper, name)
+        spec = _ONEAPI_ONLY_SERVICES.get(name)
+        if spec is None or helper is None:
+            raise AttributeError(f"{name} is not available through the classic ZIA API sign-in")
+        import importlib
+        module = importlib.import_module(spec[0])
+        return getattr(module, spec[1])(helper.request_executor)
+
+
+class LegacyZiaClient:
+    """The object the rest of the app expects from the SDK: `.zia` with the
+    ZIA services, `authenticate()` and `close()`. Everything the policy
+    packs do goes through `.zia.<service>` with the same (data, response,
+    error) answers as the OneAPI client."""
+
+    use_legacy_client = True
+
+    def __init__(self, helper: Any):
+        self._helper = helper
+        self.zia = LegacyZiaServices(helper)
+
+    def authenticate(self) -> bool:
+        """The helper signed in when it was built; make sure the session is
+        still valid (it idles out after five minutes)."""
+        ensure = getattr(self._helper, "ensure_valid_session", None)
+        if callable(ensure):
+            ensure()
+        return True
+
+    def close(self) -> None:
+        end = getattr(self._helper, "deauthenticate", None)
+        if callable(end):
+            try:
+                end()
+            except Exception:  # noqa: BLE001 — best effort
+                pass
+
+    def __getattr__(self, name: str) -> Any:
+        # ZPA, ZCC, ZDX and the rest have no classic client: say so plainly.
+        raise AttributeError(f"{name} is not available with the classic ZIA API sign-in; it covers ZIA only")
+
+
+def build_legacy_sdk_client(creds: Dict[str, Any], *, timeout: int = 90) -> LegacyZiaClient:
+    """Sign in to the classic ZIA API through the Zscaler SDK's legacy
+    helper (it signs in as it is built, so a bad password raises here)."""
+    from zscaler.zia.legacy import LegacyZIAClientHelper
+    import zscaler_clouds
+    c = normalize(creds)
+    helper = LegacyZIAClientHelper(cloud=zscaler_clouds.legacy_cloud_name(c["cloud"]), timeout=timeout,
+                                   username=c["username"], password=c["password"], api_key=c["api_key"],
+                                   override_url=zscaler_clouds.legacy_api_base(c["cloud"]))
+    return LegacyZiaClient(helper)
+
+
+def describe(method: str) -> str:
+    """One line for messages and docs."""
+    return ("the classic ZIA API (admin username, password and API key at zsapi.<cloud>.net; ZIA only)" if method == LEGACY
+            else "OneAPI (a ZIdentity API client: client ID, client secret and vanity domain)")
+
+
+def keys_for(method: str) -> Iterable[str]:
+    return REQUIRED[normalize_method(method) or ONEAPI]

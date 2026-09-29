@@ -1,0 +1,1197 @@
+[
+  {
+    "name": "SRC-CSharp Signal",
+    "description": "C# (C-Sharp) syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\busing\\b\\s+(?:System|Microsoft|Newtonsoft|Azure|Amazon|Google)(?:\\.[A-Z][A-Za-z0-9]+)*\\s*;"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bnamespace\\b\\s+[A-Z][A-Za-z0-9_]*(?:\\.[A-Z][A-Za-z0-9_]+)*\\s*\\{?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\b(?:public|private|protected|static|abstract)\\b\\s+){0,2}\\b(?:internal|sealed|partial)\\b(?:\\s+\\w+){0,2}\\s+\\b(?:class|interface|struct|enum|record)\\b\\s+[A-Z]|^\\s*(?:\\bpublic\\b\\s+)?\\binterface\\b\\s+I[A-Z]\\w*|^\\s*\\bclass\\b\\s+[A-Z]\\w*\\s*:\\s*I[A-Z]\\w*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\b(?:public|private|protected|internal)\\s+)?(?:\\bstatic\\s+)?(?:\\basync\\s+)?(?:\\b(?:override|virtual|abstract|sealed)\\s+)?\\b(?:Task|ValueTask|I[A-Z]\\w*|void|string|int|bool|double|decimal|long|object)(?:<[^>]+>)?(?:\\?)?\\s+[A-Z]\\w*\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bConsole\\.(?:WriteLine|Write|ReadLine|ReadKey)\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bString\\.(?:Format|IsNullOrEmpty|IsNullOrWhiteSpace|Join|Split)\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bthrow\\b\\s+\\bnew\\b\\s+(?:ArgumentNull|ArgumentOutOfRange|Argument|InvalidOperation|NotImplemented|NotSupported|ObjectDisposed|InvalidCast|FormatException|UnauthorizedAccess|FileNotFound|HttpRequest|TaskCanceled|Timeout)Exception\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\[\\b(?:HttpGet|HttpPost|HttpPut|HttpDelete|Route|Serializable|Authorize|FromBody|Required|JsonProperty|Test|Fact)\\b(?:\\s*\\([^)]*\\))?\\]"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Using directive importing .NET-distinctive namespaces"
+      },
+      {
+        "n": "2",
+        "what": "Namespace declaration with Pascal-cased dotted name"
+      },
+      {
+        "n": "3",
+        "what": "Class/interface/struct/enum declaration with C#-distinctive modifiers"
+      },
+      {
+        "n": "4",
+        "what": "Method declaration with C#-distinctive return types"
+      },
+      {
+        "n": "5",
+        "what": "Console output calls"
+      },
+      {
+        "n": "6",
+        "what": "String static method calls"
+      },
+      {
+        "n": "7",
+        "what": "Throw with specific .NET exception types"
+      },
+      {
+        "n": "8",
+        "what": "C#/.NET attributes in square brackets"
+      }
+    ]
+  },
+  {
+    "name": "SRC-CSharp Anchor",
+    "description": "C# (C-Sharp) structural fingerprint (v4.14): C# file structure: using-directives OR namespace declaration",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\busing\\b\\s+(?:System|Microsoft|Newtonsoft|Azure|Amazon|Google)(?:\\.[A-Z]\\w*)*\\s*;|^\\s*\\bnamespace\\b\\s+[A-Z][\\w.]*\\s*[\\{;]"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-CPlusPlus Signal",
+    "description": "C++ syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*#\\s*include\\s*[<\"][a-zA-Z0-9_./]{1,200}[>\"]"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\busing\\b\\s+\\bnamespace\\b\\s+[a-zA-Z_][a-zA-Z0-9_:]*\\s*;"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bclass\\b\\s+[A-Z][A-Za-z0-9_]*(?:\\s*:\\s*\\b(?:public|private|protected)\\b\\s+[A-Z][A-Za-z0-9_:<>,\\s]*)?\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\btemplate\\b\\s*<\\s*\\b(?:typename|class)\\b\\s+[A-Z]\\w*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bvirtual\\b\\s+[\\w:&*<>]+\\s+[a-zA-Z_]\\w*\\s*\\(|\\boverride\\b\\s*[;{=)]|=\\s*0\\s*;"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:cout|cerr|clog)\\b\\s*<<|\\bcin\\b\\s*>>|\\bendl\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:std::)?\\b(?:unique_ptr|shared_ptr|weak_ptr|make_unique|make_shared)\\b\\s*<"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bcatch\\b\\s*\\(\\s*(?:\\bconst\\b\\s+)?[a-zA-Z_:][\\w:]*\\s*&?\\s*[a-zA-Z_]\\w*\\s*\\)"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Preprocessor #include directive"
+      },
+      {
+        "n": "2",
+        "what": "Using namespace declaration"
+      },
+      {
+        "n": "3",
+        "what": "Class declaration with inheritance"
+      },
+      {
+        "n": "4",
+        "what": "Template declarations"
+      },
+      {
+        "n": "5",
+        "what": "Virtual methods, override, and pure virtual"
+      },
+      {
+        "n": "6",
+        "what": "Stream I/O operators"
+      },
+      {
+        "n": "7",
+        "what": "Smart pointer types"
+      },
+      {
+        "n": "8",
+        "what": "Catch clause with type binding"
+      }
+    ]
+  },
+  {
+    "name": "SRC-CPlusPlus Anchor",
+    "description": "C++ structural fingerprint (v4.14): C++ file fingerprint: #include OR using namespace std OR std::-specific types OR stream operators OR template syntax",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*#\\s*include\\s*[<\"]|\\busing\\s+namespace\\s+std\\b|\\bstd::(?:cout|cin|cerr|endl|string|vector|unique_ptr|shared_ptr|make_unique|make_shared|move|forward)\\b|\\b(?:cout|cerr)\\s*<<|\\bcin\\s*>>|\\btemplate\\s*<\\s*(?:typename|class)\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Go Signal",
+    "description": "Go syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bpackage\\b\\s+[a-z][a-zA-Z0-9_]*\\s*$"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bimport\\b\\s+(?:\\(|['\"`])"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\btype\\b\\s+[A-Z][A-Za-z0-9_]*\\s+\\b(?:struct|interface)\\b\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bfunc\\b\\s*\\(\\s*[a-zA-Z_]\\w*\\s+\\*?[A-Z]\\w*\\s*\\)\\s+[a-zA-Z_]\\w*\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bfunc\\b\\s+[a-zA-Z_]\\w*\\s*\\([^)]*\\)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bfmt\\.(?:Println|Printf|Sprintf|Print|Errorf|Fprintf|Sprintln|Sprint)\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bif\\b\\s+\\berr\\b\\s*!=\\s*\\bnil\\b|\\b(?:errors\\.(?:New|Is|As|Wrap|Unwrap)|fmt\\.Errorf)\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?:\\bgo\\b\\s+\\w+\\s*\\(|\\bdefer\\b\\s+\\w+\\s*\\(|\\bchan\\b\\s+\\*?\\w+)"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Package declaration"
+      },
+      {
+        "n": "2",
+        "what": "Import statement (block or single)"
+      },
+      {
+        "n": "3",
+        "what": "Type declaration as struct or interface"
+      },
+      {
+        "n": "4",
+        "what": "Method with receiver"
+      },
+      {
+        "n": "5",
+        "what": "Function declaration"
+      },
+      {
+        "n": "6",
+        "what": "fmt package calls"
+      },
+      {
+        "n": "7",
+        "what": "Go-style error handling"
+      },
+      {
+        "n": "8",
+        "what": "Concurrency primitives: goroutines, defer, channels"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Go Anchor",
+    "description": "Go structural fingerprint (v4.14): Go package declaration",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bpackage\\b\\s+[a-z][a-zA-Z0-9_]*\\s*$"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-HTML Signal",
+    "description": "HTML syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor. Tag openings are written \\x3c (the API edge rejects a body containing <script and the like with 406 'Request Rejected').",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "<![Dd][Oo][Cc][Tt][Yy][Pp][Ee]\\s+[Hh][Tt][Mm][Ll](?:\\s+[^>]*)?>"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3chtml\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3chead\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3cbody\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3ctitle\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3cmeta\\s+[^>]*charset\\s*=\\s*['\"]?[A-Za-z0-9-]+['\"]?\\s*/?>"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3cscript\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\x3clink\\s+[^>]*rel\\s*=\\s*['\"](?:stylesheet|icon|preload|prefetch)['\"]"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "HTML5 doctype declaration"
+      },
+      {
+        "n": "2",
+        "what": "Opening html tag"
+      },
+      {
+        "n": "3",
+        "what": "Opening head tag"
+      },
+      {
+        "n": "4",
+        "what": "Opening body tag"
+      },
+      {
+        "n": "5",
+        "what": "Opening title tag"
+      },
+      {
+        "n": "6",
+        "what": "Meta charset declaration"
+      },
+      {
+        "n": "7",
+        "what": "Script tag"
+      },
+      {
+        "n": "8",
+        "what": "Link tag with rel attribute"
+      }
+    ]
+  },
+  {
+    "name": "SRC-HTML Anchor",
+    "description": "HTML structural fingerprint (v4.14): HTML5 doctype declaration",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "<![Dd][Oo][Cc][Tt][Yy][Pp][Ee]\\s+[Hh][Tt][Mm][Ll](?:\\s+[^>]*)?>"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Java Signal",
+    "description": "Java syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bpackage\\b\\s+[a-z][a-zA-Z0-9_]*(?:\\.[a-z][a-zA-Z0-9_]*)*\\s*;"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bimport\\b\\s+(?:\\bstatic\\b\\s+)?(?:java|javax|org|com|io)\\.[a-zA-Z0-9_.*]+\\s*;"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\b(?:public|private|protected|static|final|abstract)\\b\\s+){1,3}\\b(?:class|interface|enum)\\b\\s+[A-Z]\\w*(?:\\s*<[^>]+>)?(?:\\s+\\b(?:extends|implements)\\b\\s+[A-Z]\\w*(?:\\s*,\\s*[A-Z]\\w*)*)*\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\b(?:public|private|protected)\\b\\s+(?:\\b(?:static|final|abstract|synchronized)\\b\\s+)*(?:\\b(?:void|int|long|double|float|boolean|String)\\b(?:<[^>]+>)?(?:\\[\\])?)\\s+[a-z]\\w*\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*@\\b(?:Override|Deprecated|SuppressWarnings|FunctionalInterface|Test|Before|After|RestController|Service|Component|Autowired|RequestMapping|GetMapping|PostMapping|Entity|Table|Repository|Configuration|Bean)\\b(?:\\s*\\([^)]*\\))?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bSystem\\.(?:out|err)\\.(?:println|print|printf)\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bnew\\s+(?:ArrayList|HashMap|HashSet|LinkedList|TreeMap|TreeSet|Vector|Stack|PriorityQueue|LinkedHashMap|LinkedHashSet|ConcurrentHashMap|CopyOnWriteArrayList)\\s*<"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?:\\bthrow\\b\\s+\\bnew\\b\\s+(?:[A-Z]\\w*)?Exception\\b\\s*\\(|\\bcatch\\b\\s*\\(\\s*[A-Z]\\w*Exception\\b)"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Package declaration with dotted path"
+      },
+      {
+        "n": "2",
+        "what": "Import statement from java/javax/org/com/io packages"
+      },
+      {
+        "n": "3",
+        "what": "Class/interface/enum with required access modifier and brace"
+      },
+      {
+        "n": "4",
+        "what": "Method declaration with access modifier and Java type"
+      },
+      {
+        "n": "5",
+        "what": "Java annotations"
+      },
+      {
+        "n": "6",
+        "what": "System.out logging calls"
+      },
+      {
+        "n": "7",
+        "what": "Java collection instantiation with diamond operator"
+      },
+      {
+        "n": "8",
+        "what": "Exception throw or catch"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Java Anchor",
+    "description": "Java structural fingerprint (v4.14): Java main method OR import from Java-distinctive package roots",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)\\bpublic\\s+static\\s+void\\s+main\\s*\\(|^\\s*\\bimport\\b\\s+(?:static\\s+)?[a-z][\\w.]*\\s*;"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-JavaScript Signal",
+    "description": "JavaScript syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\brequire\\b\\s*\\(\\s*['\"]"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bmodule\\.exports\\b|\\bexports\\.[a-zA-Z_$]|\\brequire\\b\\s*\\(\\s*['\"]"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bmodule\\.exports\\b\\s*="
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bfunction\\b(?:\\s+[a-zA-Z_$][a-zA-Z0-9_$]*)?\\s*\\([^)]*\\)\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?:[=(,]|\\breturn\\b|\\bawait\\b)\\s*(?:\\([^)]*\\)|\\b[a-zA-Z_$][\\w$]+)\\s*=>\\s*[\\{a-zA-Z_$\\(]"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:const|let|var)\\b\\s+\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bconsole\\.(?:log|error|warn|info|debug|trace)\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?:\\bfetch\\b\\s*\\(|\\.then\\b\\s*\\(|\\bPromise\\.(?:all|race|resolve|reject|allSettled)\\b|\\bnew\\s+Promise\\s*\\(|\\bawait\\s+\\w+\\.\\w+\\s*\\()"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "CommonJS require call"
+      },
+      {
+        "n": "2",
+        "what": "CommonJS module exports"
+      },
+      {
+        "n": "3",
+        "what": "Module exports assignment"
+      },
+      {
+        "n": "4",
+        "what": "Function declaration or expression"
+      },
+      {
+        "n": "5",
+        "what": "Arrow function in expression context"
+      },
+      {
+        "n": "6",
+        "what": "Destructuring assignment"
+      },
+      {
+        "n": "7",
+        "what": "console logging calls"
+      },
+      {
+        "n": "8",
+        "what": "Promise and async patterns"
+      }
+    ]
+  },
+  {
+    "name": "SRC-JavaScript Anchor",
+    "description": "JavaScript structural fingerprint (v4.14): CommonJS module syntax: module.exports OR require()",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bmodule\\.exports\\b|\\brequire\\b\\s*\\(\\s*['\"]"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Kotlin Signal",
+    "description": "Kotlin syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bpackage\\b\\s+[a-z][a-zA-Z0-9_]*(?:\\.[a-z][a-zA-Z0-9_]*)*\\s*$"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bimport\\b\\s+(?:kotlin(?:x)?\\.[a-z]|[a-z][a-zA-Z0-9_.]*\\.\\*\\s*$)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\b(?:public|private|protected|internal|open|final|abstract|sealed)\\b\\s+){0,2}\\b(?:data|sealed)\\b\\s+\\bclass\\b\\s+[A-Z][A-Za-z0-9_]*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\b(?:public|private|protected|internal|override|open|final|abstract|inline|suspend)\\b\\s+){0,3}\\bfun\\b\\s+(?:<[^>]+>\\s+)?[a-zA-Z_]\\w*\\s*\\([^)]*\\)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:suspend\\b\\s+\\bfun\\b|launch\\s*[\\{\\(]|async\\s*[\\{\\(]|runBlocking\\s*[\\{\\(]|withContext\\s*\\(|coroutineScope\\s*\\{)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)\\bwhen\\b\\s*(?:\\([^)]+\\))?\\s*\\{|^\\s*\\b(?:val|var)\\b\\s+[a-zA-Z_]\\w*\\s*(?::\\s*[A-Z]\\w*[\\w<>?\\[\\],\\s]{0,100})?\\s*="
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bfun\\b\\s+[A-Z][A-Za-z0-9_<>?]*\\.[a-zA-Z_]\\w*\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bcompanion\\b\\s+)?\\bobject\\b(?:\\s+[A-Z][A-Za-z0-9_]*)?\\s*[\\{:]|\\bcompanion\\s+object\\b"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Package declaration without semicolon"
+      },
+      {
+        "n": "2",
+        "what": "Import from Kotlin/Kotlinx packages or wildcard"
+      },
+      {
+        "n": "3",
+        "what": "Data class or sealed class declaration"
+      },
+      {
+        "n": "4",
+        "what": "Function declaration with `fun` keyword"
+      },
+      {
+        "n": "5",
+        "what": "Coroutine primitives"
+      },
+      {
+        "n": "6",
+        "what": "When expression or val/var with type annotation"
+      },
+      {
+        "n": "7",
+        "what": "Extension function declaration"
+      },
+      {
+        "n": "8",
+        "what": "Object or companion object declaration"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Kotlin Anchor",
+    "description": "Kotlin structural fingerprint (v4.14): Kotlin function (`fun`) or data class declaration",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bfun\\b\\s+[a-zA-Z_]\\w*\\s*[(<]|\\bdata\\s+class\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Python Signal",
+    "description": "Python syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bfrom\\b\\s+[a-zA-Z_][a-zA-Z0-9_.]*\\s+\\bimport\\b\\s+(?:[a-zA-Z_*][a-zA-Z0-9_,\\s]*|\\([^)]+\\))"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bimport\\b\\s+(?:\\w+\\s+\\bas\\s+\\w|(?:os|sys|json|re|math|asyncio|collections|itertools|functools|typing|logging|pathlib|argparse|hashlib|random|time|numpy|pandas|requests|flask|django|fastapi|sqlalchemy|pydantic|httpx)\\b)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\basync\\b\\s+)?\\bdef\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*\\([^)]*\\)\\s*:"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bclass\\b\\s+[A-Z][a-zA-Z0-9_]*(?:\\([^)]*\\))?\\s*:\\s*(?:#.*)?$"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bif\\b\\s+\\b__name__\\b\\s*==\\s*['\"]__main__['\"]\\s*:"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b__init__\\b\\s*\\(\\s*\\bself\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bfor\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*,\\s*[a-zA-Z_][a-zA-Z0-9_]*)*\\s+\\bin\\b\\s+\\S.*:"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bwith\\b\\s+\\S.*\\s+\\bas\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*:"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "from-import statement"
+      },
+      {
+        "n": "2",
+        "what": "Import statement with alias or stdlib module"
+      },
+      {
+        "n": "3",
+        "what": "Function declaration with `def`"
+      },
+      {
+        "n": "4",
+        "what": "Class declaration with end-of-line colon"
+      },
+      {
+        "n": "5",
+        "what": "Main guard idiom"
+      },
+      {
+        "n": "6",
+        "what": "__init__ method with self parameter"
+      },
+      {
+        "n": "7",
+        "what": "For-in loop with iterable"
+      },
+      {
+        "n": "8",
+        "what": "With-as context manager"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Python Anchor",
+    "description": "Python structural fingerprint (v4.14): Python function definition OR main guard OR from-import",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bdef\\b\\s+[a-zA-Z_]\\w*\\s*\\([^)]*\\)\\s*:|^\\s*\\bif\\b\\s+\\b__name__\\b\\s*==|^\\s*\\bfrom\\b\\s+[a-zA-Z_][\\w.]*\\s+\\bimport\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Rust Signal",
+    "description": "Rust syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\buse\\b\\s+[a-zA-Z_][a-zA-Z0-9_:]*(?:::\\{[^}]+\\})?(?:::\\*)?\\s*;"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bpub\\b(?:\\([^)]+\\))?\\s+)?\\bstruct\\b\\s+[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bimpl\\b(?:<[^>]+>)?\\s+(?:[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?\\s+\\bfor\\b\\s+)?[A-Z][A-Za-z0-9_]*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bpub\\b\\s+)?\\btrait\\b\\s+[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bpub\\b\\s+)?\\benum\\b\\s+[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bpub\\b(?:\\([^)]+\\))?\\s+)?(?:\\basync\\b\\s+)?\\bfn\\b\\s+[a-zA-Z_]\\w*\\s*(?:<[^>]+>)?\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bmatch\\b\\s+[\\w.\\[\\](){}&*]+\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:Result|Option)\\s*<"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Use statement (Rust module import)"
+      },
+      {
+        "n": "2",
+        "what": "Struct declaration"
+      },
+      {
+        "n": "3",
+        "what": "Impl block (method definitions)"
+      },
+      {
+        "n": "4",
+        "what": "Trait declaration"
+      },
+      {
+        "n": "5",
+        "what": "Enum declaration"
+      },
+      {
+        "n": "6",
+        "what": "Function declaration with `fn`"
+      },
+      {
+        "n": "7",
+        "what": "Match expression"
+      },
+      {
+        "n": "8",
+        "what": "Result or Option generic type"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Rust Anchor",
+    "description": "Rust structural fingerprint (v4.14): Rust function declaration OR impl block OR use statement",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bpub\\b\\s+)?\\bfn\\b\\s+[a-zA-Z_]\\w*\\s*[(<]|^\\s*\\bimpl\\b\\s+(?:<[^>]+>\\s+)?[A-Z]|^\\s*\\buse\\b\\s+[a-zA-Z_][\\w:]*(?:::\\{[^}]+\\})?(?:::\\*)?\\s*;"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-SQL Signal",
+    "description": "SQL syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Ss][Ee][Ll][Ee][Cc][Tt]\\b\\s+(?:\\*|\\bDISTINCT\\b|\\bTOP\\b|[A-Za-z_\"`\\[])"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Ii][Nn][Ss][Ee][Rr][Tt]\\b\\s+\\b[Ii][Nn][Tt][Oo]\\b\\s+[\\w.\\[\\]\"`]+\\s*(?:\\([^)]+\\))?\\s+\\b[Vv][Aa][Ll][Uu][Ee][Ss]\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Uu][Pp][Dd][Aa][Tt][Ee]\\b\\s+[\\w.\\[\\]\"`]+\\s+\\b[Ss][Ee][Tt]\\b\\s+\\w+\\s*="
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Dd][Ee][Ll][Ee][Tt][Ee]\\b\\s+\\b[Ff][Rr][Oo][Mm]\\b\\s+[\\w.\\[\\]\"`]+"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:CREATE|create)\\s+(?:OR\\s+REPLACE\\s+|or\\s+replace\\s+)?(?:TABLE|table|DATABASE|database|SCHEMA|schema|INDEX|index|VIEW|view|PROCEDURE|procedure|FUNCTION|function|TRIGGER|trigger)\\s+(?:IF\\s+NOT\\s+EXISTS\\s+|if\\s+not\\s+exists\\s+)?[\\w.\\[\\]\"`]+"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:[Aa][Ll][Tt][Ee][Rr]|[Dd][Rr][Oo][Pp])\\b\\s+\\b(?:[Tt][Aa][Bb][Ll][Ee]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]|[Ii][Nn][Dd][Ee][Xx]|[Vv][Ii][Ee][Ww]|[Ss][Cc][Hh][Ee][Mm][Aa])\\b\\s+(?:\\b[Ii][Ff]\\b\\s+\\b[Ee][Xx][Ii][Ss][Tt][Ss]\\b\\s+)?[\\w.\\[\\]\"`]+"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:[Ii][Nn][Nn][Ee][Rr]|[Ll][Ee][Ff][Tt]|[Rr][Ii][Gg][Hh][Tt]|[Ff][Uu][Ll][Ll]|[Cc][Rr][Oo][Ss][Ss])?\\b\\s*(?:\\b[Oo][Uu][Tt][Ee][Rr]\\b)?\\s*\\b[Jj][Oo][Ii][Nn]\\b\\s+[\\w.\\[\\]\"`]+\\s+(?:[a-zA-Z]+\\s+)?\\b[Oo][Nn]\\b\\s+"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:[Gg][Rr][Oo][Uu][Pp]|[Oo][Rr][Dd][Ee][Rr])\\b\\s+\\b[Bb][Yy]\\b\\s+[\\w.,\\s]{1,200}"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "SELECT statement"
+      },
+      {
+        "n": "2",
+        "what": "INSERT INTO statement"
+      },
+      {
+        "n": "3",
+        "what": "UPDATE SET statement"
+      },
+      {
+        "n": "4",
+        "what": "DELETE FROM statement"
+      },
+      {
+        "n": "5",
+        "what": "DDL CREATE statements"
+      },
+      {
+        "n": "6",
+        "what": "ALTER or DROP statements"
+      },
+      {
+        "n": "7",
+        "what": "JOIN clause"
+      },
+      {
+        "n": "8",
+        "what": "GROUP BY or ORDER BY clause"
+      }
+    ]
+  },
+  {
+    "name": "SRC-SQL Anchor",
+    "description": "SQL structural fingerprint (v4.14): Line-anchored SQL DDL or DML at start of line",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:CREATE(?:\\s+OR\\s+REPLACE)?\\s+(?:TABLE|INDEX|VIEW|SCHEMA|FUNCTION|PROCEDURE|TRIGGER)|(?:ALTER|DROP)\\s+(?:TABLE|INDEX|VIEW|SCHEMA)|INSERT\\s+INTO|DELETE\\s+FROM|UPDATE\\s+\\w+\\s+SET|SELECT\\s+(?:\\*|\\w)|WITH\\s+\\w+\\s+AS|GRANT\\s+|SET\\s+\\w+\\s*=)"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Swift Signal",
+    "description": "Swift syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\bimport\\b\\s+\\b(?:Foundation|UIKit|SwiftUI|Combine|CoreData|AVFoundation|MapKit|XCTest|CryptoKit|StoreKit|WidgetKit|AppKit|Dispatch)\\b\\s*$"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:protocol|extension|actor)\\s+[A-Z]\\w*|\\bfinal\\s+class\\s+[A-Z]\\w*|\\b(?:struct|enum|class)\\s+[A-Z]\\w*\\s*:\\s*(?:Codable|Identifiable|Hashable|Equatable|ObservableObject|View|Sendable|CaseIterable|RawRepresentable|Error|LocalizedError)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bfunc\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:<[^>]+>)?\\s*\\([^)]*\\)\\s*(?:\\basync\\b\\s+)?(?:\\bthrows\\b\\s+)?(?:->\\s*[A-Za-z_\\[\\]\\?\\!,\\s<>]+\\s*)?\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bguard\\b\\s+\\blet\\b\\s+[a-zA-Z_]\\w*\\s*="
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bif\\b\\s+\\blet\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*=\\s*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\binit\\b\\s*[?!]?\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\b(?:let|var)\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*[A-Z][A-Za-z0-9_<>\\[\\]?!,\\s]*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\\\\\([a-zA-Z_$]"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Import of Apple framework"
+      },
+      {
+        "n": "2",
+        "what": "Protocol, extension, actor, or struct with Codable"
+      },
+      {
+        "n": "3",
+        "what": "Function declaration with Swift conventions"
+      },
+      {
+        "n": "4",
+        "what": "Guard let binding"
+      },
+      {
+        "n": "5",
+        "what": "If let binding"
+      },
+      {
+        "n": "6",
+        "what": "Init constructor"
+      },
+      {
+        "n": "7",
+        "what": "Variable declaration with type annotation"
+      },
+      {
+        "n": "8",
+        "what": "String interpolation backslash escape"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Swift Anchor",
+    "description": "Swift structural fingerprint (v4.14): Swift-distinctive constructs: guard let, func with throws/->, or Apple framework import",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)\\bguard\\b\\s+\\blet\\b\\s+[a-zA-Z_]\\w*\\s*=|\\bfunc\\b\\s+[a-zA-Z_]\\w*\\s*\\([^)]*\\)\\s*(?:async\\s+)?(?:throws|->)|^\\s*\\bimport\\b\\s+\\b(?:Foundation|UIKit|SwiftUI|Combine|XCTest|CoreData|AVFoundation|MapKit|CryptoKit|StoreKit|WidgetKit|AppKit|Dispatch)\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-TypeScript Signal",
+    "description": "TypeScript syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bimport\\b\\s+(?:\\{|\\*\\s+\\bas\\b|[a-zA-Z_$])(?:[\\w$,\\s\\{\\}\\*]*?)\\s+\\bfrom\\b\\s+['\"]"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bexport\\b\\s+)?\\binterface\\b\\s+[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?(?:\\s+\\bextends\\b\\s+[A-Z][A-Za-z0-9_,\\s<>]+)?\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bexport\\b\\s+)?\\btype\\b\\s+[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?\\s*="
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bexport\\b\\s+)?(?:\\babstract\\b\\s+)?\\bclass\\b\\s+[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?(?:\\s+\\b(?:extends|implements)\\b\\s+[A-Z][A-Za-z0-9_,\\s<>]+)?\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": ":\\s*\\b(?:string|number|boolean|void|null|undefined|any|unknown|never|Promise|Array|Record|Partial|Readonly|Map|Set)\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bexport\\b\\s+)?\\benum\\b\\s+[A-Z][A-Za-z0-9_]*\\s*\\{"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\basync\\b\\s+(?:\\bfunction\\b|[a-zA-Z_$][a-zA-Z0-9_$]*\\s*\\()"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\bPromise\\s*<"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "ES module import"
+      },
+      {
+        "n": "2",
+        "what": "Interface declaration"
+      },
+      {
+        "n": "3",
+        "what": "Type alias declaration"
+      },
+      {
+        "n": "4",
+        "what": "Class declaration with TypeScript modifiers"
+      },
+      {
+        "n": "5",
+        "what": "Type annotation with primitives or generics"
+      },
+      {
+        "n": "6",
+        "what": "Enum declaration"
+      },
+      {
+        "n": "7",
+        "what": "Async function or method"
+      },
+      {
+        "n": "8",
+        "what": "Promise generic"
+      }
+    ]
+  },
+  {
+    "name": "SRC-TypeScript Anchor",
+    "description": "TypeScript structural fingerprint (v4.14): TypeScript-distinctive: type alias OR import type OR TS utility type",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:\\bexport\\b\\s+)?\\btype\\b\\s+[A-Z]\\w*(?:<[^>]+>)?\\s*=|\\bimport\\s+type\\b|\\b(?:Record|Readonly|Partial|Required|Pick|Omit|NonNullable|ReturnType|Awaited|Parameters)\\s*<"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-VBNet Signal",
+    "description": "Visual Basic (.NET) syntax evidence (v4.14): 8 patterns counted as unique matches. Fires the engine only together with the Anchor.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\b[Ii][Mm][Pp][Oo][Rr][Tt][Ss]\\b\\s+[A-Z][A-Za-z0-9]+(?:\\.[A-Z][A-Za-z0-9]+)*\\s*$"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\b(?:[Nn][Aa][Mm][Ee][Ss][Pp][Aa][Cc][Ee]|[Mm][Oo][Dd][Uu][Ll][Ee])\\b\\s+[A-Z][A-Za-z0-9_]*\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:Public|Private|Friend|Protected)(?:\\s+(?:Shared|Overrides|MustInherit|NotInheritable|Partial|MustOverride|Overridable))?\\s+Class\\s+[A-Z]\\w*"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*(?:[A-Za-z]{4,}\\s+){0,3}\\b(?:[Ss][Uu][Bb]|[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn])\\b\\s+[A-Z][A-Za-z0-9_]*\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Ee][Nn][Dd]\\b\\s+\\b(?:[Ss][Uu][Bb]|[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn]|[Cc][Ll][Aa][Ss][Ss]|[Mm][Oo][Dd][Uu][Ll][Ee]|[Nn][Aa][Mm][Ee][Ss][Pp][Aa][Cc][Ee]|[Ii][Nn][Tt][Ee][Rr][Ff][Aa][Cc][Ee]|[Ee][Nn][Uu][Mm]|[Ss][Tt][Rr][Uu][Cc][Tt][Uu][Rr][Ee])\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Dd][Ii][Mm]\\b\\s+[a-zA-Z_][a-zA-Z0-9_]*\\s+\\b[Aa][Ss]\\b\\s+(?:\\b[Nn][Ee][Ww]\\b\\s+)?[A-Z][A-Za-z0-9_]*\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Cc][Oo][Nn][Ss][Oo][Ll][Ee]\\.(?:[Ww][Rr][Ii][Tt][Ee][Ll][Ii][Nn][Ee]|[Ww][Rr][Ii][Tt][Ee]|[Rr][Ee][Aa][Dd][Ll][Ii][Nn][Ee]|[Rr][Ee][Aa][Dd][Kk][Ee][Yy])\\b\\s*\\("
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[Ff][Oo][Rr]\\b\\s+(?:\\b[Ee][Aa][Cc][Hh]\\b\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s+\\b[Aa][Ss]\\b\\s+[A-Z]\\w*\\b"
+      }
+    ],
+    "phrases": [],
+    "_patterns_explained": [
+      {
+        "n": "1",
+        "what": "Imports statement"
+      },
+      {
+        "n": "2",
+        "what": "Namespace or Module declaration"
+      },
+      {
+        "n": "3",
+        "what": "Class declaration with VB modifiers"
+      },
+      {
+        "n": "4",
+        "what": "Sub or Function declaration"
+      },
+      {
+        "n": "5",
+        "what": "End block markers"
+      },
+      {
+        "n": "6",
+        "what": "Dim variable declaration"
+      },
+      {
+        "n": "7",
+        "what": "Console output (case-insensitive)"
+      },
+      {
+        "n": "8",
+        "what": "For loop with As Type"
+      }
+    ]
+  },
+  {
+    "name": "SRC-VBNet Anchor",
+    "description": "Visual Basic (.NET) structural fingerprint (v4.14): VB structural markers: Imports + capital identifier OR End Sub/Function/etc.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?m)^\\s*\\b[Ii][Mm][Pp][Oo][Rr][Tt][Ss]\\b\\s+[A-Z]|\\b[Ee][Nn][Dd]\\s+(?:[Ss][Uu][Bb]|[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn]|[Cc][Ll][Aa][Ss][Ss]|[Mm][Oo][Dd][Uu][Ll][Ee]|[Nn][Aa][Mm][Ee][Ss][Pp][Aa][Cc][Ee]|[Ss][Tt][Rr][Uu][Cc][Tt][Uu][Rr][Ee])\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "SRC-Encrypted or ASCII Armored PGP Keys",
+    "description": "From the Fed pack (Encrypted or ASCII Armored PGP Keys).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "-{4,5}BEGIN (PGP|ENCRYPTED) PRIVATE\\b"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Encrypted Bouncy Castle Key Exports",
+    "description": "Bouncy Castle Key Exports triggers against the unique phrase within the exported key indicating it is encrypted",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bProc-Type: 4,ENCRYPTED\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Private Key"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "DEK-Info"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Private Keys-Plaintext Regex",
+    "description": "Detect Elliptic Curve(EC), Digital Signature Algorithm (DSA), Rivest-Shamir-Adleman (RSA), Secure Shell 2(SSH2), OpenSSH, Pretty Good Privacy(PGP), Gnu Privacy Guard(GPG) Private key types, when stored in plaintext",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "[- ]{4,5}BEGIN (EC|DSA|RSA|SSH2|OPENSSH|PGP|GPG) PRIVA"
+      }
+    ]
+  },
+  {
+    "name": "SRC-JWK Private Key",
+    "description": "From the Fed pack (JWK Private Key).",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\"kty\" ?: ?\"(EC|RSA)\""
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'\"d\"'"
+      }
+    ]
+  },
+  {
+    "name": "SRC-Private Key",
+    "description": "Detect leakage of credentials and secrets",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CRED_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_MEDIUM",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "hierarchical_identifiers": [
+      "CRED_PRIVATE_KEY"
+    ],
+    "hierarchical_dictionary": true,
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  }
+]

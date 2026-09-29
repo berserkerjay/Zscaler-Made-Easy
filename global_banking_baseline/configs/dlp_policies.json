@@ -1,0 +1,1016 @@
+[
+  {
+    "name": "Bank-Payment Card Data-Monitor",
+    "description": "Inline Web DLP: payment card data (PAN with CVV/PIN/expiry, several card numbers, magnetic tracks). Monitor-only to start; OCR on so photographed cards and scanned forms are inspected. Move to BLOCK after tuning.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Payment Card Data"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Payment Card Data-Bulk-Monitor",
+    "description": "Inline Web DLP: block bulk card-number exports (25+ distinct PANs or 5+ track records). Enforcing by design; ships disabled so you choose when.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Payment Card Data - Bulk"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Payment Instructions-Monitor",
+    "description": "Inline Web DLP: bank account identifiers (ABA, EU IBAN, global IBAN, SWIFT/BIC) in payment context. Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Account and Payment Instructions"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Customer PII (Global)-Monitor",
+    "description": "Inline Web DLP: customer personal data across jurisdictions (US SSN/ITIN, UK/CA/AU/ZA and IN/SG/HK national IDs, EU/APAC passports, DOB with US licence) plus Zscaler's US PII engine. Monitor-only. One rule per engine: this rule carries Bank-Customer PII (Global) only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Customer PII (Global)"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-US PII-Monitor",
+    "description": "Inline Web DLP: customer personal data across jurisdictions (US SSN/ITIN, UK/CA/AU/ZA and IN/SG/HK national IDs, EU/APAC passports, DOB with US licence) plus Zscaler's US PII engine. Monitor-only. One rule per engine: this rule carries ZBP-US PII only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Customer PII-Bulk-Monitor",
+    "description": "Inline Web DLP: block bulk customer-data exports (25+ distinct identifiers or 50+ dates of birth). Enforcing by design; ships disabled.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Customer PII - Bulk"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Customer Financial Records-Monitor",
+    "description": "Inline Web DLP: account statements, KYC/AML case files and loan applications that carry an identifier. Monitor-only. One rule per engine: this rule carries Bank-Customer Financial Records only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Customer Financial Records"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-KYC and AML Files-Monitor",
+    "description": "Inline Web DLP: account statements, KYC/AML case files and loan applications that carry an identifier. Monitor-only. One rule per engine: this rule carries Bank-KYC and AML Files only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-KYC and AML Files"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Credit and Loan Applications-Monitor",
+    "description": "Inline Web DLP: account statements, KYC/AML case files and loan applications that carry an identifier. Monitor-only. One rule per engine: this rule carries Bank-Credit and Loan Applications only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Credit and Loan Applications"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-MNPI and Deal Information-Monitor",
+    "description": "Inline Web DLP: material non-public information, deal documents and tax forms (Zscaler's Financial Information engine). Monitor-only. One rule per engine: this rule carries Bank-MNPI and Deal Information only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-MNPI and Deal Information"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Financial Information-Monitor",
+    "description": "Inline Web DLP: material non-public information, deal documents and tax forms (Zscaler's Financial Information engine). Monitor-only. One rule per engine: this rule carries ZBP-Financial Information only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Confidential Markings-Monitor",
+    "description": "Inline Web DLP: any document stamped with a bank confidentiality marking. Monitor-only; a good first rule to enable because it has almost no false positives.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "Bank-Confidential Markings"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Credentials-Monitor",
+    "description": "Inline Web DLP: private keys and secrets (Zscaler's Private Keys engine). Monitor-only.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "rank": 0,
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "protocols": [
+      "WEBSOCKETSSL_RULE",
+      "WEBSOCKET_RULE",
+      "FTP_RULE",
+      "HTTPS_RULE",
+      "HTTP_RULE"
+    ],
+    "severity": "RULE_SEVERITY_INFO"
+  },
+  {
+    "name": "Bank-Payment Card Data [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Card Data-Monitor\" (Bank-Payment Card Data). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Card Data [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Payment Card Data-Monitor\" (Bank-Payment Card Data). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Card Data [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Payment Card Data-Monitor\" (Bank-Payment Card Data). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Card Data-Bulk [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data - Bulk"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Card 2 [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data - Bulk"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Card Data-Bulk [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Payment Card Data-Bulk-Monitor\" (Bank-Payment Card Data - Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Payment Card Data - Bulk"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Instructions [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Payment Instructions-Monitor\" (Bank-Account and Payment Instructions). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Account and Payment Instructions"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Instruction [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Payment Instructions-Monitor\" (Bank-Account and Payment Instructions). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Account and Payment Instructions"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Payment Instructions [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Payment Instructions-Monitor\" (Bank-Account and Payment Instructions). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Account and Payment Instructions"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer PII (Global) [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Customer PII (Global)-Monitor\" (Bank-Customer PII (Global)). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer PII (Global)"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer PII [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Customer PII (Global)-Monitor\" (Bank-Customer PII (Global)). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer PII (Global)"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer PII (Global) [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Customer PII (Global)-Monitor\" (Bank-Customer PII (Global)). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer PII (Global)"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-US PII [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-US PII-Monitor\" (ZBP-US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-US PII [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-US PII-Monitor\" (ZBP-US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-US PII [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-US PII-Monitor\" (ZBP-US PII). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-US PII"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer PII-Bulk [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer PII - Bulk"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer PII-Bulk [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer PII - Bulk"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer PII-Bulk [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Customer PII-Bulk-Monitor\" (Bank-Customer PII - Bulk). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer PII - Bulk"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer Financial Records [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Customer Financial Records-Monitor\" (Bank-Customer Financial Records). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer Financial Records"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer Financial [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Customer Financial Records-Monitor\" (Bank-Customer Financial Records). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer Financial Records"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Customer Financial Records [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Customer Financial Records-Monitor\" (Bank-Customer Financial Records). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Customer Financial Records"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-KYC and AML Files [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-KYC and AML Files-Monitor\" (Bank-KYC and AML Files). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-KYC and AML Files"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-KYC and AML Files [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-KYC and AML Files-Monitor\" (Bank-KYC and AML Files). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-KYC and AML Files"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-KYC and AML Files [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-KYC and AML Files-Monitor\" (Bank-KYC and AML Files). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-KYC and AML Files"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Credit and Loan Applications [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Credit and Loan Applications-Monitor\" (Bank-Credit and Loan Applications). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Credit and Loan Applications"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Credit and Loan [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Credit and Loan Applications-Monitor\" (Bank-Credit and Loan Applications). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Credit and Loan Applications"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Credit and Loan Applications [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Credit and Loan Applications-Monitor\" (Bank-Credit and Loan Applications). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Credit and Loan Applications"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-MNPI and Deal Information [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-MNPI and Deal Information-Monitor\" (Bank-MNPI and Deal Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-MNPI and Deal Information"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-MNPI and Deal [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-MNPI and Deal Information-Monitor\" (Bank-MNPI and Deal Information). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-MNPI and Deal Information"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-MNPI and Deal Information [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-MNPI and Deal Information-Monitor\" (Bank-MNPI and Deal Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-MNPI and Deal Information"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Financial Information [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Financial [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Financial Information [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Financial Information-Monitor\" (ZBP-Financial Information). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Financial Information"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Confidential Markings [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Confidential Markings-Monitor\" (Bank-Confidential Markings). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Confidential Markings"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Confidential [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Confidential Markings-Monitor\" (Bank-Confidential Markings). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Confidential Markings"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Confidential Markings [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Confidential Markings-Monitor\" (Bank-Confidential Markings). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "Bank-Confidential Markings"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  },
+  {
+    "name": "Bank-Credentials [Endpoint]",
+    "channel": "endpoint",
+    "description": "Endpoint DLP: the same detection as the inline rule \"Bank-Credentials-Monitor\" (ZBP-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "channel_mirror": true,
+    "data_transfer_method": "REMOVABLE_DRIVE_TRANSFER",
+    "device_trust_levels": [
+      "UNKNOWN_DEVICETRUSTLEVEL",
+      "LOW_TRUST",
+      "MEDIUM_TRUST",
+      "HIGH_TRUST"
+    ],
+    "user_risk_score_levels": [
+      "LOW",
+      "MEDIUM",
+      "HIGH",
+      "CRITICAL"
+    ],
+    "without_content_inspection": false,
+    "eun_enabled": false,
+    "rank": 0
+  },
+  {
+    "name": "Bank-Credentials [SaaS]",
+    "channel": "saas",
+    "description": "SaaS Security API: the same detection as the inline rule \"Bank-Credentials-Monitor\" (ZBP-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "OFLCASB_DLP_REPORT_INCIDENT",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "channel_mirror": true,
+    "saas_type": "OFLCASB_DLP_FILE",
+    "tenants": "any",
+    "collaboration_scope": [
+      "ANY"
+    ],
+    "rank": 0
+  },
+  {
+    "name": "Bank-Credentials [Email]",
+    "channel": "email",
+    "description": "Email DLP: the same detection as the inline rule \"Bank-Credentials-Monitor\" (ZBP-Private Keys). Monitor-only; enable after reviewing incidents.",
+    "action": "ALLOW",
+    "state": "DISABLED",
+    "severity": "RULE_SEVERITY_INFO",
+    "engines": [
+      "ZBP-Private Keys"
+    ],
+    "channel_mirror": true,
+    "tenants": "any",
+    "rank": 0
+  }
+]

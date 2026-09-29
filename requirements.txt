@@ -1,0 +1,12 @@
+requests>=2.28.0
+fastapi>=0.115.0
+starlette>=0.47.0
+uvicorn>=0.22.0
+rich>=13.0.0
+zscaler-sdk-python>=1.9.0
+mcp[cli]>=1.2.0
+python-docx>=1.0.0
+pyjwt[crypto]>=2.10.1
+# Transitive pins raised for the image scan (Trivy HIGH):
+msgpack>=1.2.1
+setuptools>=78.1.1

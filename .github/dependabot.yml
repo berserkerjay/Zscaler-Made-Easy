@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Python: one grouped PR a month. requirements.lock must be regenerated with
+  # the same tooling after merging (pip-compile --generate-hashes --allow-unsafe).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      actions:
+        patterns: ["*"]
+  # The image follows the 3.11 line; a new Python major/minor changes the
+  # site-packages paths in the Dockerfile and is a deliberate upgrade.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

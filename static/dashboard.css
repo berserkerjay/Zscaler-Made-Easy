@@ -1,0 +1,225 @@
+/* ── Dashboard layout: the left sidebar and the assessment dashboard ──
+   Reads the design tokens from index.html's first <style> (never defines
+   colours of its own). A macOS-style source-list sidebar on a flat grouped
+   surface; the light theme (body.theme-light) keeps the same layout. */
+body.db-layout, body.tool-tab { --db-w: 264px; }
+body.db-layout .container { max-width: none; margin: 0 0 0 var(--db-w); padding: var(--sp-6) var(--sp-8) var(--sp-10); }
+body.db-layout .container > header, body.db-layout .container > main { max-width: 1240px; margin-left: auto; margin-right: auto; }
+
+/* Sidebar: a source list */
+#dbSidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--db-w); z-index: 900; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) var(--sp-3) var(--sp-3); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--card); border-right: 1px solid var(--border); }
+.db-brand { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
+.db-mark { width: 36px; height: 36px; border-radius: var(--r-md); display: grid; place-items: center; font-weight: 700; font-size: var(--fs-title3); color: #fff; background: var(--accent); }
+.db-brand-t { font-weight: 600; font-size: var(--fs-headline); line-height: 1.15; }
+.db-brand-s { font-size: var(--fs-caption); color: var(--dim); letter-spacing: 0.05em; text-transform: uppercase; }
+.db-nav { display: grid; gap: 2px; }
+.db-nav-l, #dbSidebar .tool-group-l { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); padding: var(--sp-3) var(--sp-2) var(--sp-1); }
+.db-item, #dbSidebar .tool-group .btn { display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: var(--ctl-md); padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-subhead); font-weight: 500; text-align: left; cursor: pointer; white-space: normal; justify-content: flex-start; transition: background 0.15s var(--ease, ease), color 0.15s var(--ease, ease); }
+.db-item:hover, #dbSidebar .tool-group .btn:hover { color: var(--text); background: var(--well); border-color: transparent; transform: none; }
+.db-item[aria-current="page"] { color: #fff; background: var(--accent); }
+.db-item .db-ico, #dbSidebar .tool-group .btn > span[aria-hidden] { width: 1.5rem; text-align: center; flex: none; font-size: 1rem; }
+#dbSidebar .tool-group { display: grid; gap: 2px; padding: 0; border: 0; background: transparent; }
+#dbSidebar .tool-group .btn { min-height: 32px; font-size: var(--fs-subhead); font-weight: 500; }
+.db-current { margin-top: auto; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--well); font-size: var(--fs-footnote); display: grid; gap: var(--sp-1); }
+.db-current-l { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); }
+.db-current-row { display: flex; justify-content: space-between; gap: var(--sp-2); }
+.db-current-row .k { color: var(--dim); } .db-current-row .v { font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.db-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border); font-size: var(--fs-footnote); color: var(--dim); }
+#dbSidebar #themeToggleBtn { position: static !important; padding: var(--sp-1) var(--sp-2) !important; }
+#dbSidebar #bgIntensityControl { position: static !important; }
+
+/* Mobile: the sidebar slides in from a ☰ button in the header */
+/* Both themes come from the tokens; these two rules only pin the surfaces so a theme switch repaints them at once. */
+body.theme-light #dbSidebar { background: var(--card); }
+body.theme-light #dbFooter { background: var(--card); }
+#dbMenuBtn { display: none; position: fixed; top: var(--sp-3); left: var(--sp-3); z-index: 950; min-height: var(--ctl-md); padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--border); background: var(--card-solid); color: var(--text); font: inherit; cursor: pointer; }
+#dbBackdrop { display: none; position: fixed; inset: 0; z-index: 890; background: rgba(0,0,0,0.45); }
+@media (max-width: 1000px) {
+  body.db-layout .container { margin-left: 0; padding-top: 3.6rem; }
+  /* Off-canvas and out of the tab order until opened; a backdrop closes it. */
+  #dbSidebar { transform: translateX(-100%); visibility: hidden; transition: transform 0.25s var(--ease, ease), visibility 0s linear 0.25s; }
+  body.db-open #dbSidebar { transform: none; visibility: visible; transition: transform 0.25s var(--ease, ease), visibility 0s; }
+  body.db-open #dbBackdrop { display: block; }
+  #dbMenuBtn { display: inline-flex; }
+  body.db-open #dbMenuBtn { left: calc(var(--db-w) + 0.7rem); }   /* beside the open sidebar, not over its brand row */
+}
+
+/* The "? Help" button lives in the sidebar foot with the theme toggle (docked by dashboard.js), never floating over the content. */
+#dbSidebar #gdHelpFab { position: static !important; box-shadow: none !important; padding: 0.35rem 0.6rem !important; min-height: 32px; margin-left: auto; font-size: 0.78rem; white-space: nowrap; }
+.db-foot { flex-wrap: wrap; }
+body.db-has-footer .container { padding-bottom: 6.5rem; }
+
+/* Compact header */
+body.db-layout .hero { text-align: left; margin-bottom: var(--sp-5); padding: var(--sp-1) 0 0; display: flex; align-items: flex-end; gap: var(--sp-4) var(--sp-6); flex-wrap: wrap; }
+body.db-layout .hero h1 { font-size: var(--fs-large-title); margin: 0; }
+body.db-layout .hero p { font-size: var(--fs-callout); flex: 1 1 260px; margin: 0 0 var(--sp-1); }
+body.db-layout .hero .badge { margin: 0 0 var(--sp-1); }
+body.db-layout .hero-toolbar[hidden] { display: none; }
+body.db-layout #stepBar { margin-left: 0; margin-right: 0; max-width: none; }
+
+/* Dashboard: score ring, completion ring, section bars, pillars, insights, actions */
+.score-hero.db-dash { text-align: left; padding: var(--sp-5); overflow: visible; }
+.score-hero.db-dash::before { display: none; }
+.db-grid { display: grid; grid-template-columns: 1.25fr 0.8fr 1fr; gap: var(--sp-4); position: relative; }
+.db-tile { padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); position: relative; overflow: hidden; }
+.db-tile.glow::after { display: none; }
+.db-tile-t { font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim); margin-bottom: var(--sp-3); }
+.db-ring { display: flex; align-items: center; gap: var(--sp-4); }
+.db-ring svg { width: 132px; height: 132px; flex: none; transform: rotate(-90deg); }
+.db-ring .track { fill: none; stroke: var(--well-2); stroke-width: 10; }
+.db-ring .arc { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.8s var(--ease, ease); }
+.db-ring.small svg { width: 96px; height: 96px; } .db-ring.small .track, .db-ring.small .arc { stroke-width: 8; }
+.db-ring-txt { display: grid; gap: 2px; min-width: 0; }
+.db-dash .score-num { font-size: 2.5rem; }
+.db-dash .score-label { font-size: var(--fs-headline); margin-top: 0; }
+.db-dash .score-meta { font-size: var(--fs-footnote); margin-top: 0; }
+.db-band { display: flex; gap: var(--sp-1); margin-top: var(--sp-4); flex-wrap: wrap; }
+.db-band span { flex: 1 1 auto; text-align: center; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); font-size: var(--fs-caption); font-weight: 600; color: var(--dim); background: var(--well); border: 1px solid transparent; }
+.db-band span.done { color: var(--text); background: var(--accent-tint); }
+.db-band span.now { color: #fff; background: var(--accent); }
+body.theme-light .db-band span.now { color: #fff; }
+.db-comp-n { font-size: var(--fs-title1); font-weight: 700; line-height: 1; }
+.db-comp-s { font-size: var(--fs-footnote); color: var(--dim); }
+.db-radar svg { width: 100%; height: auto; max-height: 190px; display: block; }
+.db-radar .web { fill: none; stroke: var(--border); }
+.db-radar .area { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 2; }
+.db-radar .pt { fill: var(--accent); }
+.db-radar text { font-size: 9px; fill: var(--dim); }
+.db-pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-4); }
+.db-pillar { padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); display: grid; gap: var(--sp-1); cursor: pointer; text-align: left; font: inherit; color: var(--text); transition: border-color 0.2s var(--ease, ease), background 0.2s var(--ease, ease); }
+.db-pillar:hover { border-color: var(--border-strong); background: var(--well); }
+.db-pillar-h { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.db-pillar-n { font-weight: 600; font-size: var(--fs-subhead); }
+.db-pillar-p { font-size: var(--fs-title1); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.db-bar { height: 6px; border-radius: 3px; background: var(--well-2); overflow: hidden; }
+.db-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.db-pillar-m { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-footnote); color: var(--dim); }
+.db-chip { display: inline-flex; align-items: center; padding: 2px var(--sp-2); border-radius: var(--r-pill); font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; background: var(--well-2); color: var(--dim); }
+.db-chip.ok { background: color-mix(in srgb, var(--pass) 16%, transparent); color: var(--pass); } .db-chip.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.db-chip.fail { background: color-mix(in srgb, var(--fail) 16%, transparent); color: var(--fail); } .db-chip.info { background: var(--accent-tint); color: var(--accent); }
+.db-chip.purple { background: color-mix(in srgb, var(--chip-purple) 16%, transparent); color: var(--chip-purple); }
+.db-two { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--sp-4); margin-top: var(--sp-4); }
+.db-insights { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.db-insights li { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 10px; background: var(--well); font-size: 0.84rem; line-height: 1.45; }
+.db-insights .db-ico { flex: none; }
+.db-insights li.fail { border-left: 3px solid var(--fail); } .db-insights li.warn { border-left: 3px solid var(--warn); } .db-insights li.ok { border-left: 3px solid var(--pass); }
+.db-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.db-action { display: grid; gap: 2px; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--well); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: border-color 0.2s var(--ease, ease), background 0.2s var(--ease, ease); }
+.db-action:hover { border-color: var(--accent); background: var(--accent-tint); }
+.db-action .db-ico { font-size: 1.25rem; } .db-action strong { font-size: var(--fs-subhead); } .db-action span.s { font-size: var(--fs-footnote); color: var(--dim); }
+/* The breakpoints are viewport widths while the sidebar takes 264px of it: below 1250px the three tiles no longer fit side by side with a readable Completion ring. */
+@media (max-width: 1250px) { .db-grid { grid-template-columns: 1fr 1fr; } .db-grid .db-tile:first-child { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .db-grid, .db-two, .db-actions { grid-template-columns: 1fr; } .db-grid .db-tile:first-child { grid-column: auto; } }
+
+/* Findings as list rows with risk chips (.db-rows is set on #checksList, so the mirrored results tab gets them too) */
+.db-rows .check-item { padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card-solid); margin-bottom: 0.5rem; align-items: center; }
+.db-rows .check-item::before { content: attr(data-ico); width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--r-md); background: var(--well); font-size: 1rem; }
+.db-rows .check-item[data-ico=""]::before { display: none; }   /* the icon is a real element (dashboard.js decorateChecks) */
+.db-row-ico { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: var(--r-md); background: var(--well); color: var(--dim); }
+.db-row-ico .ico { width: 18px; height: 18px; }
+.db-rows .check-status { min-width: 118px; border-radius: 100px; font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; }
+.db-rows .check-item .check-body .db-cat { display: inline-block; margin-left: 0.4rem; font-size: 0.7rem; color: var(--dim); padding: 0.05rem 0.45rem; border: 1px solid var(--border); border-radius: 100px; }
+.db-rows .section-header { background: none; border-left: 0; padding: 0.4rem 0.2rem; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+
+/* Sticky progress footer under the findings */
+#dbFooter { position: fixed; left: var(--db-w); right: 0; bottom: 0; z-index: 850; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; padding: var(--sp-2) var(--sp-6); border-top: 1px solid var(--border); background: var(--card); font-size: var(--fs-subhead); color: var(--dim); }
+#dbFooter[hidden] { display: none; }
+#dbFooter strong { color: var(--text); }
+#dbFooter .db-foot-btn { min-height: var(--ctl-md); padding: 0 var(--sp-4); border-radius: var(--r-md); border: 0; background: var(--btn); color: #fff; font: inherit; font-size: var(--fs-subhead); font-weight: 600; cursor: pointer; }
+#dbFooter .db-foot-btn:hover { background: var(--btn-hover); }
+@media (max-width: 1000px) { #dbFooter { left: 0; } }
+@media (prefers-reduced-motion: reduce) { .db-ring .arc, #dbSidebar, .db-pillar, .db-action { transition: none; } }
+.db-note { margin: 0.1rem 0.3rem 0.3rem; padding: 0.45rem 0.6rem; border-radius: 8px; font-size: 0.74rem; line-height: 1.4; color: var(--dim); background: var(--well); border: 1px solid var(--border); }
+.db-note.warn { color: var(--text); border-color: rgba(245,158,11,0.5); }
+.db-note[hidden] { display: none; }
+.db-item.busy { color: var(--text); }
+.db-band { flex-wrap: nowrap; }
+.db-band span { flex: 1 1 0; min-width: 0; padding: 0.3rem 0.2rem; font-size: 0.64rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-chip { white-space: nowrap; }
+.db-pillar-m { flex-wrap: wrap; gap: 0.3rem 0.5rem; }
+
+/* ── Scope (Channels + Assessment Scope + Compliance Frameworks,
+   combined into one page reachable from the Scope sidebar link) ────── */
+#dbScopeView { margin-bottom: 1.5rem; }
+.db-ch-hero { text-align: left; padding: 0.25rem 0 1rem; margin: 0; }
+.db-ch-hero h1 { font-size: 1.7rem; display: flex; align-items: center; gap: 0.5rem; }
+.db-ch-hero p { margin-top: 0.35rem; max-width: 70ch; }
+.db-scope-section { margin-bottom: 1.2rem; }
+.db-scope-section h2 { margin-bottom: 0.6rem; }
+.db-scope-section-h { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem 1rem; margin-bottom: 0.4rem; }
+.db-scope-section-h h2 { margin-bottom: 0; display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.db-scope-tally { font-size: 0.78rem; font-weight: 400; color: var(--dim); }
+.db-scope-tally strong { color: var(--text); }
+.db-scope-p { font-size: 0.86rem; color: var(--dim); margin: 0 0 0.8rem; max-width: 70ch; }
+.db-scope-foot { display: flex; align-items: center; justify-content: flex-start; gap: 0.9rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.db-scope-foot .db-scope-p { margin: 0; }
+.db-ch-bar { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+.db-ch-bar .sep { flex: 1; }
+.db-ch-list { display: grid; gap: 0.7rem; }
+.db-ch-row { display: grid; grid-template-columns: auto auto 1fr auto auto auto; align-items: flex-start; gap: 0.8rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: 14px; background: var(--card-solid); }
+.db-ch-row.gap { border-left: 3px solid var(--fail); }
+.db-ch-check input { width: 18px; height: 18px; margin-top: 0.2rem; }
+.db-ch-ico { font-size: 1.4rem; line-height: 1; margin-top: 0.1rem; }
+.db-ch-body { min-width: 0; }
+.db-ch-h { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+.db-ch-h strong { font-size: 1rem; }
+.db-ch-cat { font-size: 0.76rem; color: var(--dim); }
+.db-ch-body p { color: var(--dim); font-size: 0.86rem; line-height: 1.45; margin: 0; max-width: 62ch; }
+.db-ch-note { margin-top: 0.4rem; font-size: 0.8rem; color: var(--accent); }
+.db-ch-choice { display: flex; gap: 0.4rem; }
+.db-pill { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.4rem 0.85rem; border-radius: 100px; border: 1px solid var(--border); font-size: 0.8rem; cursor: pointer; color: var(--dim); user-select: none; }
+.db-pill input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.db-pill:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.db-pill.on { color: #fff; background: var(--btn, #2563eb); border-color: transparent; }
+.db-ch-edit, .db-ch-expand { min-height: 34px; min-width: 34px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--dim); cursor: pointer; font-size: 0.95rem; }
+.db-ch-edit:hover, .db-ch-expand:hover { color: var(--text); border-color: var(--border-strong); }
+.db-chip.risk-fail { background: color-mix(in srgb, var(--fail) 16%, transparent); color: var(--fail); }
+.db-chip.risk-warn-strong { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+.db-chip.risk-warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.db-chip.risk-ok { background: color-mix(in srgb, var(--pass) 16%, transparent); color: var(--pass); }
+@media (max-width: 760px) { .db-ch-row { grid-template-columns: auto auto 1fr; } .db-ch-choice, .db-ch-edit, .db-ch-expand { grid-column: 3; } }
+
+/* ── Score by section: bars first, the radar as the expanded view ──── */
+h3.db-tile-t { margin: 0 0 0.6rem; }
+.db-tile-t-row { display: flex; align-items: center; justify-content: space-between; }
+.db-secbars { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; gap: 0.3rem; }
+.db-secbars li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px, 1.2fr) 3.2rem; align-items: center; gap: 0.5rem; font-size: 0.76rem; }
+.db-secbars .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.db-secbars .b { height: 6px; border-radius: 3px; background: rgba(148,163,184,0.18); overflow: hidden; }
+.db-secbars .b i { display: block; height: 100%; border-radius: 3px; }
+.db-secbars .p { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.db-expand[disabled] { opacity: 0.45; cursor: not-allowed; }
+.db-expand { min-height: 26px; min-width: 26px; padding: 0; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--dim); cursor: pointer; font-size: 0.85rem; line-height: 1; }
+.db-expand:hover { color: var(--text); border-color: var(--border-strong); }
+.db-radar-pct { font-size: 8px; font-weight: 700; fill: var(--accent-hover); }
+.db-modal { display: none; position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,0.45); overflow: auto; padding: var(--sp-8) var(--sp-4); }
+.db-modal.open { display: block; }
+.db-modal-card { max-width: 760px; margin: 0 auto; background: var(--card-solid); border: 1px solid var(--border); border-radius: 16px; padding: 1.4rem 1.6rem; box-shadow: var(--shadow-lg); }
+.db-modal-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: 1rem; }
+.db-modal-h h2 { font-size: 1.2rem; margin: 0; }
+#dbRadarBig svg { width: 100%; height: auto; display: block; }
+#dbRadarBig svg .web { fill: none; stroke: rgba(148,163,184,0.2); }
+#dbRadarBig svg .area { fill: rgba(34,211,238,0.18); stroke: var(--db-cyan); stroke-width: 2; }
+#dbRadarBig svg .pt { fill: var(--db-cyan); }
+#dbRadarBig svg text:not(.db-radar-pct) { fill: var(--dim); }
+.db-radar-legend { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+.db-radar-legend th { text-align: left; color: var(--dim); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+.db-radar-legend td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); }
+
+/* ── Dashboard default content: the score tiles sit outside #results so
+   they're always on screen; this is the slim note above them pointing at
+   the last recorded assessment, or a plain start-here prompt ─────────── */
+.db-lastrun-note { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; margin: 0 0 1rem; }
+.db-lastrun-btn { min-height: 34px; padding: 0.4rem 0.9rem; border-radius: 8px; border: 0; background: var(--btn, #2563eb); color: #fff; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.db-lastrun-btn:hover { background: var(--btn-hover, #1d4ed8); }
+.db-radar-legend td:last-child { font-weight: 700; text-align: right; }
+
+/* Unmeasured states (docs/SCORING.md): a section with nothing scoreable and
+   a run that scored nothing show a dash and a neutral chip, never 0% or 100%. */
+.db-chip.na { background: rgba(148,163,184,0.16); color: var(--dim); }
+.db-pillar-p-na { color: var(--dim); }
+.db-pillar-na .db-bar i { background: transparent; }
+.section-score-na { color: var(--dim); font-weight: 600; font-size: 0.8rem; }
+.stat-note { margin: 0.6rem 0 0; font-size: 0.8rem; color: var(--dim); line-height: 1.45; }
+.stat-note:empty { display: none; }

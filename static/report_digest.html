@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digest — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .dg-sec { padding: 0.2rem 0.2rem 1rem; }
+  .dg-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+  .dg-sec h3 { font-size: 0.95rem; margin: 0.8rem 0 0.3rem; }
+  .dg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.6rem; }
+  .dg-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
+  .dg-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  .dg-tile .v { font-size: 1.3rem; font-weight: 700; }
+  .dg-tile .d { font-size: 0.8rem; color: var(--dim); }
+  .dg-verdict { border-radius: var(--r-lg); padding: 0.9rem 1.1rem; margin: 0.6rem 0; border: 1px solid var(--border); background: var(--well); }
+  .dg-verdict.hot { border-color: var(--warn); } .dg-verdict.ok { border-color: var(--pass); }
+  .dg-md { white-space: pre-wrap; font-size: 0.86rem; line-height: 1.5; background: var(--well); border-radius: var(--r-md); padding: 0.8rem 1rem; overflow-x: auto; }
+  table.dg-t { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+  table.dg-t th, table.dg-t td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.dg-t th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .dg-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); }
+  .dg-chip.ok { color: var(--pass); border-color: var(--pass); } .dg-chip.warn { color: var(--warn); border-color: var(--warn); } .dg-chip.dim { color: var(--dim); }
+  .dg-dim { color: var(--dim); font-size: 0.85rem; }
+  .dg-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .dg-status { font-size: 0.86rem; color: var(--dim); min-height: 1.3em; }
+  .dg-status.bad { color: var(--fail); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+</head>
+<body class="report-page df-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Digest</span> — the six-hour loop</h1>
+      <p>While this app's server is running, every six hours it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs' drift, for every tenant profile that remembers its secret, and writes a digest. It does not run the assessment checks or re-score the tenant (run the assessment for that), and it stops when the server stops; for a schedule that survives the server, use Task Scheduler or cron as described below. Nothing is written to any tenant.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/report/health" id="dgHealth" title="The FP/TP detection ratio report is generated from the assessment page (it reads the tenant); this opens it from there">FP/TP detection ratio</a>
+      <span class="sep"></span>
+      <button type="button" class="rp-btn primary" id="dgRun">Run the loop now</button>
+      <a class="rp-btn" id="dgMd" href="#" aria-disabled="true">Download latest (Markdown)</a>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div class="dg-status" id="dgStatus" aria-live="polite">Loading…</div>
+
+      <section class="dg-sec" aria-labelledby="dgLatestH">
+        <h2 id="dgLatestH">Latest digest</h2>
+        <div id="dgVerdict" class="dg-verdict" role="status"></div>
+        <div id="dgTiles" class="dg-grid"></div>
+        <details style="margin-top:0.6rem;"><summary>Read the full digest</summary><div id="dgFull" class="dg-md" style="margin-top:0.4rem;"></div></details>
+      </section>
+
+      <section class="dg-sec" aria-labelledby="dgSchedH">
+        <h2 id="dgSchedH">Schedule and notifications</h2>
+        <div id="dgSched" class="dg-grid"></div>
+        <p class="dg-dim">Settings live in <code>local_settings.bat</code> (or the environment): <code>DLP_CHECK_SMTP_HOST</code>, <code>DLP_CHECK_SMTP_PORT</code>, <code>DLP_CHECK_SMTP_USER</code>, <code>DLP_CHECK_SMTP_PASSWORD</code>, <code>DLP_CHECK_DIGEST_FROM</code>, <code>DLP_CHECK_DIGEST_TO</code> for e-mail; <code>DLP_CHECK_DIGEST_WEBHOOK</code> (an https Teams or Slack incoming webhook) for chat; <code>DLP_CHECK_NOTIFY</code> = <code>noteworthy</code> (default), <code>always</code> or <code>never</code>. Without the browser: <code>RUN_Continuous_Evaluation.bat</code> from Task Scheduler, or <code>python continuous_eval.py --once</code> from cron or the container.</p>
+      </section>
+
+      <section class="dg-sec" aria-labelledby="dgSrcH">
+        <h2 id="dgSrcH">Watched sources</h2>
+        <p class="dg-dim">Zscaler's own properties and the integration partners. A source that has not answered for seven days is flagged as stale, never silently kept. Each source names the guidance topics its articles can change.</p>
+        <div style="overflow-x:auto;"><table class="dg-t" id="dgSources"><thead><tr><th scope="col">Source</th><th scope="col">Tier</th><th scope="col">Can change</th><th scope="col">Last answered</th><th scope="col">State</th></tr></thead><tbody></tbody></table></div>
+      </section>
+
+      <section class="dg-sec" aria-labelledby="dgSaasH">
+        <h2 id="dgSaasH">SaaS tenant capability matrix</h2>
+        <p class="dg-dim" id="dgSaasNote"></p>
+        <details><summary>Show every application</summary><div style="overflow-x:auto;margin-top:0.4rem;"><table class="dg-t" id="dgSaas"><thead><tr><th scope="col">Application</th><th scope="col">Type</th><th scope="col">Capabilities</th></tr></thead><tbody></tbody></table></div></details>
+      </section>
+
+      <section class="dg-sec" aria-labelledby="dgPrevH">
+        <h2 id="dgPrevH">Previous digests</h2>
+        <div style="overflow-x:auto;"><table class="dg-t" id="dgPrev"><thead><tr><th scope="col">When</th><th scope="col">Verdict</th><th scope="col">New proposals</th><th scope="col">Guidance</th><th scope="col">Drift</th><th scope="col">Notified</th><th scope="col">Download</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    function announce(t) { const r = $('liveRegion'); if (r) { r.textContent = ''; setTimeout(() => { r.textContent = t; }, 30); } }
+    function status(t, bad) { const s = $('dgStatus'); s.textContent = t; s.classList.toggle('bad', !!bad); }
+    const fmt = t => { try { return new Date(t).toLocaleString(); } catch (e) { return t || ''; } };
+    function tile(k, v, d) { return `<div class="dg-tile"><div class="k">${E(k)}</div><div class="v">${E(v)}</div>${d ? `<div class="d">${E(d)}</div>` : ''}</div>`; }
+
+    async function load() {
+      let data;
+      try { const r = await fetch('/api/digests', { cache: 'no-store' }); data = await r.json(); if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`); }
+      catch (e) { status(`Could not load: ${e.message}`, true); return; }
+      status('');
+      const latest = (data.digests || [])[0];
+      if (!latest) {
+        $('dgVerdict').className = 'dg-verdict';
+        $('dgVerdict').innerHTML = '<strong>No digest yet.</strong> The loop runs 30 seconds after the server starts and every six hours after that, while the server runs, for every tenant profile that remembers its secret. Click Run the loop now to make one.';
+        $('dgTiles').innerHTML = ''; $('dgFull').textContent = '';
+      } else {
+        const s = latest.summary || {};
+        $('dgVerdict').className = `dg-verdict ${latest.noteworthy ? 'hot' : 'ok'}`;
+        // The verdict says what the run covered: with no stored secret the loop
+        // looked at guidance and the SaaS matrix only, and says so.
+        const nT = Number(s.tenants || 0);
+        const scope = nT ? `${nT} tenant profile${nT === 1 ? '' : 's'} evaluated.` : 'No tenant was evaluated: no tenant profile remembers its secret, so this run covered the guidance sources and the SaaS capability matrix only. Save a profile with Remember ticked to include a tenant.';
+        $('dgVerdict').innerHTML = `<strong>${latest.noteworthy ? 'Something needs a look.' : 'Nothing new.'}</strong> Run at ${E(fmt(latest.at))}. ${E(scope)}`;
+        $('dgTiles').innerHTML = tile('Tenants evaluated', nT, nT ? 'profiles with a remembered secret' : 'no profile remembers its secret') + tile('New proposals', s.proposals_new || 0, 'decide them in FP/TP detection ratio') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
+          + tile('Stale sources', s.stale_sources || 0) + tile('SaaS tenants not active', s.tenants_not_active || 0) + tile('Packs moved', s.drift_changed || 0, 'journey stage changed') + tile('Errors', s.errors || 0);
+        $('dgMd').href = `/api/digests/${encodeURIComponent(latest.id)}?format=markdown`; $('dgMd').setAttribute('aria-disabled', 'false');
+        try { $('dgFull').textContent = await (await fetch(`/api/digests/${encodeURIComponent(latest.id)}?format=markdown`)).text(); } catch (e) { $('dgFull').textContent = ''; }
+      }
+      const sc = data.schedule || {}, n = data.notifications || {};
+      const next = sc.next_run_at ? fmt(sc.next_run_at * 1000) : 'after the server starts';
+      $('dgSched').innerHTML = tile('Every', `${n.interval_hours || 6} h`, `while the server runs · next ${next}`) + tile('Last run', sc.last_run_at ? fmt(sc.last_run_at) : 'not yet', sc.last_status ? `status ${sc.last_status}` : '')
+        + tile('E-mail', n.email && n.email.configured ? 'on' : 'off', n.email && n.email.configured ? `to ${n.email.to}` : 'set DLP_CHECK_SMTP_HOST and DLP_CHECK_DIGEST_TO')
+        + tile('Chat webhook', n.webhook && n.webhook.configured ? (n.webhook.kind || 'on') : 'off', n.webhook && n.webhook.configured ? n.webhook.host : 'set DLP_CHECK_DIGEST_WEBHOOK (https)')
+        + tile('Send when', n.mode || 'noteworthy', 'DLP_CHECK_NOTIFY') + tile('Guidance queue', (data.guidance_queue || {}).open || 0, 'open, app-wide') + tile('References recorded', (data.checks_config || {}).references || 0, 'checks_config.json');
+      try {
+        const src = await (await fetch('/api/guidance/sources', { cache: 'no-store' })).json();
+        $('dgSources').querySelector('tbody').innerHTML = (src.sources || []).map(x => `<tr><td>${E(x.name)}<div class="dg-dim">${E(x.host || '')}</div></td><td>${E(x.tier)}</td><td>${E((x.affects || []).join(', ') || '—')}</td><td>${x.last_reached_at ? E(fmt(x.last_reached_at)) : 'never'}</td><td>${x.watched ? (x.stale ? `<span class="dg-chip warn">stale</span> ${E(x.last_error || '')}` : '<span class="dg-chip ok">answering</span>') : `<span class="dg-chip dim">not crawled</span> ${E(x.note || '')}`}</td></tr>`).join('');
+      } catch (e) { /* leave empty */ }
+      try {
+        const m = await (await fetch('/api/saas-apps', { cache: 'no-store' })).json();
+        $('dgSaasNote').textContent = `${(m.applications || []).length} applications, ${m.refreshed_from_pages ? 'refreshed from Zscaler\'s help pages' : 'shipped seed (refreshed from the help pages when they answer)'}${m.updated_at ? ', updated ' + fmt(m.updated_at) : ''}.` + (m.new_since_seed && m.new_since_seed.length ? ` Newly supported: ${m.new_since_seed.join(', ')}.` : '');
+        $('dgSaas').querySelector('tbody').innerHTML = (m.applications || []).map(a => `<tr><td>${E(a.name)}</td><td>${E((m.types || {})[a.type] || a.type || '')}</td><td>${E((a.capabilities || []).join(', '))}</td></tr>`).join('');
+      } catch (e) { /* leave empty */ }
+      $('dgPrev').querySelector('tbody').innerHTML = (data.digests || []).map(d => { const s = d.summary || {}; return `<tr><td>${E(fmt(d.at))}</td><td>${d.noteworthy ? '<span class="dg-chip warn">look</span>' : '<span class="dg-chip ok">quiet</span>'}</td><td>${E(s.proposals_new || 0)}</td><td>${E(s.guidance_new || 0)}</td><td>${E(s.drift_changed || 0)}</td><td>${E((d.notified || []).filter(x => x.sent).map(x => x.channel).join(', ') || '—')}</td><td><a class="rp-btn" href="/api/digests/${encodeURIComponent(d.id)}?format=markdown">Markdown</a></td></tr>`; }).join('') || '<tr><td colspan="7" class="dg-dim">None yet.</td></tr>';
+    }
+    // The FP/TP report needs the assessment page to generate it (that page
+    // holds the tenant sign-in); a bare /report/health would open empty.
+    $('dgHealth').addEventListener('click', e => {
+      e.preventDefault();
+      const o = window.opener;
+      if (o && !o.closed && typeof o.openDetectionHealthTab === 'function') { try { o.openDetectionHealthTab(); return; } catch (err) { /* fall through */ } }
+      status('Open the FP/TP detection ratio from the assessment page (Find the gaps): it needs that page\'s tenant sign-in to read the incidents.');
+      if (typeof window.__dlpGoHome === 'function') window.__dlpGoHome(); else location.href = '/';
+    });
+    $('dgRun').addEventListener('click', async () => {
+      $('dgRun').disabled = true; status('Running the loop… FP/TP detection ratio and the journey are read for every tenant profile that remembers its secret; this takes a minute per tenant.'); announce('Running the loop');
+      try {
+        const r = await fetch('/api/digests/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notify: true }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+        await load(); status('Done: the digest above is the one just made.'); announce('The loop finished');
+      } catch (e) { status(`The run failed: ${e.message}`, true); }
+      finally { $('dgRun').disabled = false; }
+    });
+    load();
+  })();
+  </script>
+</body>
+</html>

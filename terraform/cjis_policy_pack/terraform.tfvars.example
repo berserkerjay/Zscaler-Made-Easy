@@ -1,0 +1,39 @@
+# Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
+#   export ZSCALER_CLIENT_ID="..." ZSCALER_CLIENT_SECRET="..." ZSCALER_VANITY_DOMAIN="acme" ZSCALER_CLOUD=""
+
+# zscaler_client_id     = "..."
+# zscaler_client_secret = "..."
+# zscaler_vanity_domain = "acme"
+# zscaler_cloud         = ""
+
+rule_starting_order = 1
+policy_rank         = 7
+activate            = true
+# saas_tenant_ids_z_cjis_markings_saas = [123456]
+# saas_tenant_ids_z_cjis_markings_email = [123456]
+# saas_tenant_ids_z_cjis_identifier_saas = [123456]
+# saas_tenant_ids_z_cjis_identifier_email = [123456]
+# saas_tenant_ids_z_cjis_criminal_history_saas = [123456]
+# saas_tenant_ids_z_cjis_criminal_history_email = [123456]
+# saas_tenant_ids_z_cjis_ncic_iii_data_saas = [123456]
+# saas_tenant_ids_z_cjis_ncic_iii_data_email = [123456]
+# saas_tenant_ids_z_cjis_warrants_saas = [123456]
+# saas_tenant_ids_z_cjis_warrants_email = [123456]
+# saas_tenant_ids_z_cjis_biometric_saas = [123456]
+# saas_tenant_ids_z_cjis_biometric_email = [123456]
+# saas_tenant_ids_z_cjis_nics_firearms_saas = [123456]
+# saas_tenant_ids_z_cjis_nics_firearms_email = [123456]
+# saas_tenant_ids_z_cjis_info_sharing_saas = [123456]
+# saas_tenant_ids_z_cjis_info_sharing_email = [123456]
+# saas_tenant_ids_z_cjis_any_signal_saas = [123456]
+# saas_tenant_ids_z_cjis_any_signal_email = [123456]
+# saas_tenant_ids_z_cjis_markings_medium_saas = [123456]
+# saas_tenant_ids_z_cjis_markings_medium_confidence_email = [123456]
+# saas_tenant_ids_z_cjis_us_pii_saas = [123456]
+# saas_tenant_ids_z_cjis_us_pii_email = [123456]
+# saas_tenant_ids_z_cjis_tlp_red_saas = [123456]
+# saas_tenant_ids_z_cjis_tlp_red_email = [123456]
+# saas_tenant_ids_z_cjis_tlp_amber_strict_saas = [123456]
+# saas_tenant_ids_z_cjis_tlp_amber_strict_email = [123456]
+# saas_tenant_ids_z_cjis_tlp_amber_saas = [123456]
+# saas_tenant_ids_z_cjis_tlp_amber_email = [123456]

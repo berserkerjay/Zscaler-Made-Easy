@@ -1,0 +1,45 @@
+# docker compose up --build
+# Publishes on the host's loopback only; the container is read-only, runs
+# as a non-root user, drops every capability and cannot gain privileges.
+# Credentials: either type them in the GUI, or put ZSCALER_* in a local
+# .env file next to this compose file (git-ignored). To require sign-in
+# through an identity provider before the app is reachable at all (this
+# is the deployment SSO is meant for — see SECURITY.md), also put
+# ZSCALER_SSO_ENABLED=1 and the ZSCALER_SSO_ISSUER / _CLIENT_ID /
+# _CLIENT_SECRET / _REDIRECT_URL variables in that .env file.
+services:
+  dlp-check:
+    build: .
+    image: dlp-check:local
+    container_name: dlp-check
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ZSCALER_BIND_HOST: 0.0.0.0        # inside the container only; the publish above is loopback
+      # The server refuses to start bound beyond loopback unless SSO is fully
+      # configured or this is set — here it's safe because the bind above is
+      # container-internal only; ports: "127.0.0.1:8000:8000" is what actually
+      # controls host exposure. If you change that mapping to publish beyond
+      # the host's loopback, configure SSO (see SECURITY.md) instead of just
+      # relying on this override.
+      ZSCALER_ALLOW_NONLOCAL_BIND: "YES_I_UNDERSTAND"
+      ZSCALER_PORT: "8000"
+      DLP_CHECK_USER_PACKS: /data/user_packs   # packs added from Advanced settings persist on the volume
+    volumes:
+      - dlpcheck-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    restart: unless-stopped
+
+volumes:
+  dlpcheck-data:

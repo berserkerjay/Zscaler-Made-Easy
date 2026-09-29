@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+*.env
+venv/
+.venv/
+
+# Credentials
+tenant_config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local run artifacts
+*.log
+
+# Tenant profiles (local, may hold remembered secrets)
+tenant_profiles.json
+
+# Silent launcher output
+server.log
+launcher.log
+
+# Machine-specific settings (proxy, CA bundle, credentials)
+local_settings.bat
+local_settings.env
+deployments.json
+ui_token.txt
+audit.log*
+
+# Policy packs added from Advanced settings (local library)
+user_packs/
+updater_backup/
+# Continuous evaluation: the per-tenant approval queue (local, never committed)
+proposals.json
+proposals.json.tmp
+# Continuous evaluation: digests, guidance state and the refreshed SaaS matrix (local)
+digests/
+guidance_state.json
+guidance_state.json.tmp
+saas_apps.local.json
+checks_config.json.tmp
+
+# Local launcher state (start.sh --background)
+server.pid

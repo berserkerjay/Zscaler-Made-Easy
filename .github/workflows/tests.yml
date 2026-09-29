@@ -1,0 +1,164 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Hash-verified, same as the installer, the updater and the container —
+          # the tests run against exactly what a real install gets, not a loose
+          # requirements.txt resolution.
+          pip install --require-hashes --no-deps -r requirements.lock
+          pip install pytest httpx
+
+      - name: Byte-compile Python sources
+        run: python -m py_compile $(git ls-files '*.py')
+
+      - name: Syntax-check GUI scripts
+        run: |
+          for f in static/*.js; do node --check "$f"; done
+
+      - name: Unit tests
+        run: python -m pytest -q tests
+
+      - name: Smoke-test API server and Deploy Studio injection
+        run: |
+          pip install httpx
+          pip install httpx2 || true
+          python - <<'EOF'
+          import os; os.environ["ZSCALER_UI_AUTH"] = "0"
+          from fastapi.testclient import TestClient
+          import dlp_api_server as srv
+
+          c = TestClient(srv.app)
+          r = c.get("/")
+          assert r.status_code == 200, r.status_code
+          html = r.text
+          assert "deploy_studio.css" in html, "CSS add-on not injected"
+          assert "deploy_studio.js" in html, "JS add-on not injected"
+          for asset in ("/static/deploy_studio.js", "/static/deploy_studio.css"):
+              a = c.get(asset)
+              assert a.status_code == 200, f"{asset}: {a.status_code}"
+          packs = c.get("/api/dlp-packs")
+          assert packs.status_code == 200, packs.status_code
+          ids = sorted(p["id"] for p in packs.json().get("packs", []))
+          print("packs:", ids)
+          assert "fed_policy_pack" in ids and "cjis_policy_pack" in ids
+          # Writes must be disabled by default: apply endpoint refuses.
+          r = c.post("/api/dlp-packs/apply", json={"pack_ids": ids, "plan_hash": "x", "confirm": True})
+          assert r.status_code == 403, (r.status_code, r.text[:200])
+          print("smoke OK")
+          EOF
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Every pack mirrors its inline rules onto endpoint, saas and email
+        run: python tools/fan_out_channels.py --check
+
+      - name: Every payload field the app sends is known to the installed SDK (offline upstream check)
+        run: python upstream_check.py --offline
+
+      - name: Committed Terraform workspaces are up to date
+        run: |
+          python pack_terraform.py --out terraform
+          git diff --exit-code -- terraform || { echo "::error::terraform/ is stale; run: python pack_terraform.py --out terraform"; exit 1; }
+
+      - name: Validate generated Terraform against the zscaler/zia provider
+        run: |
+          rc=0
+          for d in terraform/*/; do
+            echo "== $d"
+            terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
+            terraform -chdir="$d" validate -no-color || rc=1
+          done
+          exit $rc
+
+      - name: Print file fingerprints
+        run: sha1sum $(git ls-files '*.py' 'static/*' 'tests/*' 'POLICY_PACKS.md')
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lock file matches requirements.txt (hash-pinned)
+        run: |
+          python -m pip install --upgrade pip pip-tools
+          # Compile on top of the committed lock: pip-compile keeps every pin that
+          # still satisfies requirements.txt, so this fails when requirements.txt
+          # changed without a re-lock, not whenever a dependency publishes a new
+          # version (new versions are picked up by `make lock`; known
+          # vulnerabilities in the pinned set are caught by pip-audit below).
+          cp requirements.lock requirements.check
+          pip-compile --quiet --generate-hashes --allow-unsafe --output-file=requirements.check requirements.txt
+          # Only the pinned package set must match; hashes are refreshed by the same tool.
+          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale (a dependency published a new version); run: make lock  (pip-compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt) and commit the result"; exit 1; }
+
+      - name: Install from the lock (hash-verified)
+        run: pip install --require-hashes --no-deps -r requirements.lock
+
+      - name: Known-vulnerability audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.lock --strict --desc on
+
+      - name: Software bill of materials (CycloneDX)
+        run: |
+          pip install cyclonedx-bom
+          cyclonedx-py requirements requirements.lock -o sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t dlp-check:ci .
+
+      - name: Image runs as non-root and answers /api/ping
+        run: |
+          # Published on the host's loopback only (see -p below); the container's
+          # own internal bind is 0.0.0.0 (baked in by the Dockerfile), so this
+          # mirrors docker-compose.yml's documented, safe use of the override.
+          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_AUTH=0 -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND dlp-check:ci)
+          sleep 8
+          docker exec "$id" id -u | grep -qv '^0$'
+          curl -fsS http://127.0.0.1:8000/api/ping
+          docker rm -f "$id" >/dev/null
+
+      - name: Scan the image for known vulnerabilities (Trivy)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH --format table dlp-check:ci

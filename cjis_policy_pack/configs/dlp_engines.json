@@ -1,0 +1,72 @@
+[
+  {
+    "name": "CJIS Markings High Confidence",
+    "description": "Explicit CJIS / CHRI / LES banner or portion markings — high-confidence indicator that the content is CJI regardless of payload.",
+    "expression": "((D:CJIS Marking Pattern (High Confidence) > 0) OR (D:Law Enforcement Sensitive (LES) Markings > 0))"
+  },
+  {
+    "name": "CJIS Markings Medium Confidence",
+    "description": "Looser CJIS keyword match — pairs with content indicators in other engines to cut false positives from casual mentions.",
+    "expression": "(D:CJIS Marking Pattern (Medium Confidence) > 0)"
+  },
+  {
+    "name": "CJIS Identifier Engine",
+    "description": "Structured CJIS identifiers — NCIC ORI, FBI UCN, State ID, NCIC Purpose Code. Any of these appearing in content is a strong signal.",
+    "expression": "((D:NCIC ORI Pattern > 0) OR (D:FBI UCN - Universal Control Number > 0) OR (D:State ID Number (SID) Reference > 0) OR (D:NCIC Purpose Code Pattern > 0))"
+  },
+  {
+    "name": "Criminal History - RAP Sheet Engine",
+    "description": "RAP-sheet / criminal-history terminology correlated with subject PII (SSN, DL, or DOB) within 500 chars. Suppresses matches on news articles that casually mention arrests.",
+    "expression": "((D:Criminal History - RAP Sheet Phrases > 0) AND ((D:Social Security Numbers (US) - CJIS Prox 500 > 0) OR (D:Drivers License (US) - CJIS Prox 500 > 0) OR (D:Date of Birth - CJIS Prox 500 > 0)))"
+  },
+  {
+    "name": "NCIC - III Data Engine",
+    "description": "NCIC or III query/response terminology correlated with subject PII — indicates a live CJI data transfer.",
+    "expression": "((D:NCIC - III Query Terminology > 0) AND ((D:Social Security Numbers (US) - CJIS Prox 500 > 0) OR (D:Drivers License (US) - CJIS Prox 500 > 0) OR (D:Date of Birth - CJIS Prox 500 > 0)))"
+  },
+  {
+    "name": "Warrant - Wanted-Person Engine",
+    "description": "Warrant/wanted terminology near subject PII — extradition, bench, arrest warrants referencing a named subject.",
+    "expression": "((D:Warrant - Wanted-Person Phrases > 0) AND ((D:Social Security Numbers (US) - CJIS Prox 500 > 0) OR (D:Drivers License (US) - CJIS Prox 500 > 0) OR (D:Date of Birth - CJIS Prox 500 > 0)))"
+  },
+  {
+    "name": "Biometric CJI Engine",
+    "description": "Biometric identifiers (fingerprint, palm, AFIS, NGI) with CJIS markings or any structured CJIS identifier — indicates fingerprint card or biometric record.",
+    "expression": "((D:Biometric - AFIS Terminology > 0) AND ((D:CJIS Marking Pattern (High Confidence) > 0) OR (D:NCIC ORI Pattern > 0) OR (D:FBI UCN - Universal Control Number > 0)))"
+  },
+  {
+    "name": "NICS Firearms Background Engine",
+    "description": "NICS / firearm background-check terminology — ATF Form 4473, NICS denial, prohibited-person language.",
+    "expression": "(D:NICS - Firearms Background Check Phrases > 0)"
+  },
+  {
+    "name": "Info-Sharing Portal Engine",
+    "description": "Exfil of N-DEx, LEEP, or Nlets derived content references — info-sharing-system terminology co-occurring with subject identifiers.",
+    "expression": "((D:N-DEx - Criminal-Justice Info Sharing > 0) AND ((D:Social Security Numbers (US) - CJIS Prox 500 > 0) OR (D:NCIC ORI Pattern > 0) OR (D:FBI UCN - Universal Control Number > 0)))"
+  },
+  {
+    "name": "CJIS Any-Signal Engine",
+    "description": "Any strong CJIS signal — explicit markings, structured identifiers, or RAP/NCIC/warrant content engines. Catch-all for broad monitoring.",
+    "expression": "((D:CJIS Marking Pattern (High Confidence) > 0) OR (D:Law Enforcement Sensitive (LES) Markings > 0) OR (D:NCIC ORI Pattern > 0) OR (D:FBI UCN - Universal Control Number > 0) OR (D:NCIC Purpose Code Pattern > 0))"
+  },
+  {
+    "name": "CJIS US PII",
+    "description": "From the Fed pack's US PII engine. Identity data of subjects, victims, witnesses and officers outside any CJI marking: five or more SSNs, TINs or alien registration numbers at high confidence, any one within 500 bytes of its label, or a date of birth with five or more driver's licence numbers.",
+    "expression": "((D:CJIS-Social Security Numbers (US) - High > 4) OR (D:Social Security Numbers (US) - CJIS Prox 500 > 0) OR (D:CJIS-Tax Identification Number (US) - High > 4) OR (D:CJIS-Tax Identification Number (US) - Prox 500 > 0) OR (D:CJIS-Alien Registration Number - High Confidence > 4) OR (D:CJIS-Alien Registration Number - Prox 500 > 0) OR ((D:CJIS-Date of Birth - High Confidence > 1) AND (D:CJIS-Drivers License (United States) - High > 4)))"
+  },
+  {
+    "name": "CJIS TLP Red",
+    "description": "From the Fed pack. Traffic Light Protocol RED marking: information for the named recipients only, shared under FBI, fusion-centre and ISAC agreements.",
+    "expression": "((D:CJIS-TLP Red > 0))"
+  },
+  {
+    "name": "CJIS TLP Amber Strict",
+    "description": "From the Fed pack. TLP:AMBER+STRICT marking: limited to the recipient organisation.",
+    "expression": "((D:CJIS-TLP Amber Strict > 0))"
+  },
+  {
+    "name": "CJIS TLP Amber",
+    "description": "From the Fed pack. TLP:AMBER marking: limited to the recipient organisation and its clients on a need-to-know basis.",
+    "expression": "((D:CJIS-TLP Amber > 0))"
+  }
+]
