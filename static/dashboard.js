@@ -51,16 +51,28 @@
   toolbar.hidden = true;
   // The theme toggle (rendered by the inline script) and the backdrop
   // control (rendered only with branding files) live in the sidebar foot.
+  // The floating "? Help" button (guide.js) docks here too, so nothing
+  // floats over the findings or the sticky footer.
   const dock = () => {
     const foot = $('dbFoot');
     ['themeToggleBtn', 'bgIntensityControl'].forEach(id => { const el = $(id); if (el && el.parentElement !== foot) foot.appendChild(el); });
+    // "? Help" sits in the brand row at the top of the sidebar: always on
+    // screen without scrolling the sidebar, never over the content.
+    const brand = aside.querySelector('.db-brand'), fab = $('gdHelpFab');
+    if (brand && fab && fab.parentElement !== brand) brand.appendChild(fab);
   };
   dock(); setTimeout(dock, 800); setTimeout(dock, 3000);
-  // ☰ on narrow screens
+  // ☰ on narrow screens: a backdrop closes the menu, so does Escape, and
+  // the off-canvas sidebar is out of the tab order (dashboard.css).
   const menu = document.createElement('button');
-  menu.id = 'dbMenuBtn'; menu.type = 'button'; menu.setAttribute('aria-controls', 'dbSidebar'); menu.setAttribute('aria-expanded', 'false'); menu.textContent = '☰ Menu';
-  menu.addEventListener('click', () => { const open = !document.body.classList.contains('db-open'); document.body.classList.toggle('db-open', open); menu.setAttribute('aria-expanded', String(open)); });
+  menu.id = 'dbMenuBtn'; menu.type = 'button'; menu.setAttribute('aria-controls', 'dbSidebar'); menu.setAttribute('aria-expanded', 'false'); menu.innerHTML = '<span aria-hidden="true">☰</span> Menu';
+  const setMenu = open => { document.body.classList.toggle('db-open', open); menu.setAttribute('aria-expanded', String(open)); if (!open && document.activeElement && aside.contains(document.activeElement)) menu.focus(); };
+  menu.addEventListener('click', () => setMenu(!document.body.classList.contains('db-open')));
   document.body.insertBefore(menu, aside);
+  const backdrop = document.createElement('div');
+  backdrop.id = 'dbBackdrop'; backdrop.addEventListener('click', () => setMenu(false));
+  document.body.insertBefore(backdrop, aside);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('db-open')) setMenu(false); });
   // ── Run assessment from the sidebar ─────────────────────────────
   // Sign in first when needed, then run on this page and land on the
   // dashboard (no pop-out tab): missing details → the Connect step opens
@@ -146,7 +158,7 @@
   // Workflow items: the same routes as the step strip, except Run.
   aside.querySelectorAll('.db-item').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.db;
-    document.body.classList.remove('db-open'); menu.setAttribute('aria-expanded', 'false');
+    setMenu(false);
     if (k === 'scope') { showScopeView(); setCurrent('scope'); return; }
     hideScopeView();
     if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
@@ -411,7 +423,7 @@
     heroCard.innerHTML = `
       <div class="db-grid">
         <div class="db-tile glow">
-          <div class="db-tile-t">Overall Maturity Score</div>
+          <h3 class="db-tile-t">Overall Maturity Score</h3>
           <div class="db-ring">
             <svg viewBox="0 0 120 120" role="img" aria-labelledby="dbRingLbl"><title id="dbRingLbl">Overall maturity score</title>
               <defs><linearGradient id="dbRingGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="0.6" stop-color="#22d3ee"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
@@ -426,7 +438,7 @@
           <div class="db-band" id="dbBand" aria-label="Maturity band"></div>
         </div>
         <div class="db-tile">
-          <div class="db-tile-t">Completion</div>
+          <h3 class="db-tile-t">Completion</h3>
           <div class="db-ring small">
             <svg viewBox="0 0 120 120" role="img" aria-labelledby="dbCompLbl"><title id="dbCompLbl">Assessment completion</title>
               <circle class="track" cx="60" cy="60" r="50"/><circle class="arc" id="dbCompArc" cx="60" cy="60" r="50" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
@@ -435,14 +447,14 @@
           </div>
         </div>
         <div class="db-tile db-radar">
-          <div class="db-tile-t db-tile-t-row">Score Distribution<button type="button" class="db-expand" id="dbRadarExpand" aria-label="Expand Score Distribution to full size" title="Expand to full size">⤢</button></div>
+          <h3 class="db-tile-t db-tile-t-row">Score by section<button type="button" class="db-expand" id="dbRadarExpand" aria-label="Show the scores by section as a radar, full size" title="Radar view, full size (three or more measured sections)">⤢</button></h3>
           <div id="dbRadar"></div>
         </div>
       </div>
       <div class="db-pillars" id="dbPillars"></div>
       <div class="db-two">
-        <div class="db-tile"><div class="db-tile-t">Key Insights</div><ul class="db-insights" id="dbInsights"></ul></div>
-        <div class="db-tile"><div class="db-tile-t">Next actions</div><div class="db-actions" id="dbActions"></div></div>
+        <div class="db-tile"><h3 class="db-tile-t">Key Insights</h3><ul class="db-insights" id="dbInsights"></ul></div>
+        <div class="db-tile"><h3 class="db-tile-t">Next actions</h3><div class="db-actions" id="dbActions"></div></div>
       </div>`;
     heroCard.querySelector('#dbRadarExpand').addEventListener('click', () => openRadarModal());
     // Moved out of #results (not copied) so the tiles are always on
@@ -452,6 +464,7 @@
     // mirrored results tab (tool_tabs.js) is told about the new id so
     // "Open in new tab" still carries the hero into that tab.
     heroCard.id = 'dbHero';
+    heroCard.setAttribute('role', 'region'); heroCard.setAttribute('aria-label', 'Dashboard: score, completion, sections, insights and next actions');
     lastRun.insertAdjacentElement('afterend', heroCard);
   }
   const BAND = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'];   // dlp_assessment_full_auto.maturity(): <25, <50, <75, <90, 90+
@@ -465,7 +478,9 @@
   // empty space; the box grows symmetrically, which is what keeps the
   // web centered no matter how many axes there are.
   function radarSvg(sections, { R, charW, fontSize, maxChars, full }) {
-    const names = Object.keys(sections || {});
+    // Only measured sections are drawn: an unmeasured one (pct null) has no
+    // point on the web, and the legend below the full view says "—" for it.
+    const names = Object.keys(sections || {}).filter(k => sections[k] && sections[k].pct !== null && sections[k].pct !== undefined);
     const n = names.length;
     const pt = (cx, cy, i, r) => { const a = -Math.PI / 2 + (2 * Math.PI * i) / n; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
     const shorts = names.map(k => { const s = SECTION_SHORT(k); return full ? s : s.slice(0, maxChars); });
@@ -489,15 +504,24 @@
     return `<svg viewBox="0 0 ${(halfX * 2).toFixed(0)} ${(halfY * 2).toFixed(0)}" role="img" aria-label="Score by section: ${E(names.map(k => `${k} ${sections[k].pct}%`).join(', '))}">${web}${spokes}<polygon class="area" points="${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ')}"/>${pts.map(p => `<circle class="pt" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${full ? 3.5 : 2.5}"/>`).join('')}${labels}${pctLabels}</svg>`;
   }
   let lastSections = null;
+  const measuredNames = s => Object.keys(s || {}).filter(k => s[k] && s[k].pct !== null && s[k].pct !== undefined);
+  // The tile's primary view is a plain list of bars — one row per section,
+  // readable at any width and by a screen reader — and the radar is the
+  // optional expanded view behind the ⤢ button (three or more measured
+  // sections; a radar with fewer has no shape to read).
   function radar(sections) {
     const host = $('dbRadar'); if (!host) return;
     lastSections = sections;
-    const names = Object.keys(sections || {});
-    if (names.length < 3) { host.innerHTML = `<div class="db-comp-s">${names.length ? 'Three or more sections are needed for the radar; the pillar cards below carry the scores.' : 'No sections scored yet.'}</div>`; return; }
-    host.innerHTML = radarSvg(sections, { R: 62, charW: 4.6, fontSize: 9, maxChars: 12, full: false });
+    const entries = Object.entries(sections || {});
+    const btn = $('dbRadarExpand'); if (btn) btn.disabled = measuredNames(sections).length < 3;
+    if (!entries.length) { host.innerHTML = '<div class="db-comp-s">No sections scored yet.</div>'; return; }
+    host.innerHTML = `<ol class="db-secbars" aria-label="Score by section">${entries.map(([k, d]) => {
+      const m = d.pct !== null && d.pct !== undefined;
+      return `<li><span class="n" title="${E(k)}">${E(SECTION_SHORT(k))}</span><span class="b" aria-hidden="true"><i style="width:${m ? Math.max(0, Math.min(100, d.pct)) : 0}%;background:${m ? pctColor(d.pct) : 'transparent'}"></i></span><span class="p" style="color:${m ? pctColor(d.pct) : 'var(--dim)'}">${m ? d.pct + '%' : '—'}</span><span class="sr-only">${m ? '' : ' not measured'}</span></li>`;
+    }).join('')}</ol>`;
   }
   function openRadarModal() {
-    if (!lastSections || Object.keys(lastSections).length < 3) return;
+    if (!lastSections || measuredNames(lastSections).length < 3) return;
     let dlg = $('dbRadarModal');
     if (!dlg) {
       dlg = document.createElement('div');
@@ -513,7 +537,7 @@
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && dlg.classList.contains('open')) closeRadarModal(); });
     }
     $('dbRadarBig').innerHTML = radarSvg(lastSections, { R: 220, charW: 6.6, fontSize: 13, maxChars: 999, full: true });
-    $('dbRadarTbl').innerHTML = Object.entries(lastSections).map(([k, d]) => `<tr><td>${E(k)}</td><td style="color:${pctColor(d.pct || 0)}">${d.pct}%</td></tr>`).join('');
+    $('dbRadarTbl').innerHTML = Object.entries(lastSections).map(([k, d]) => { const m = d.pct !== null && d.pct !== undefined; return `<tr><td>${E(k)}</td><td style="color:${m ? pctColor(d.pct) : 'var(--dim)'}">${m ? d.pct + '%' : 'Not measured'}</td></tr>`; }).join('');
     dlg.classList.add('open');
     ($('dbRadarClose') || dlg).focus();
     say('Score Distribution, expanded view.');

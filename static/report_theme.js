@@ -26,7 +26,7 @@
       const btn = document.createElement('button');
       btn.id = 'themeToggleBtn';
       btn.type = 'button';
-      btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:rgba(15,23,42,0.85);border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;backdrop-filter:blur(6px);';
+      btn.style.cssText = 'position:fixed;bottom:0.75rem;right:0.75rem;z-index:800;background:var(--card-solid, rgba(15,23,42,0.85));border:1px solid var(--border);border-radius:8px;padding:0.45rem 0.7rem;font-size:0.75rem;color:var(--text);cursor:pointer;backdrop-filter:blur(6px);';
       btn.addEventListener('click', () => apply(document.body.classList.contains('theme-light') ? 'dark' : 'light', true));
       document.body.appendChild(btn);
       apply(current(), false);
