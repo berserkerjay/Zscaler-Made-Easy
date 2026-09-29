@@ -148,7 +148,10 @@
       const b = document.createElement('a');
       b.id = 'backHomeBtn'; b.href = '/'; b.textContent = '← Back to the assessment';
       b.setAttribute('aria-label', 'Back to the assessment page');
-      b.style.cssText = 'position:fixed;top:0.6rem;left:0.6rem;z-index:2147483000;padding:0.5rem 0.85rem;border-radius:10px;background:var(--accent);color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 6px 20px rgba(0,0,0,0.35);';
+      // Bottom-left, clear of the page's own header (the reference pages
+      // put their brand top-left), with literal fallbacks: those pages do
+      // not define the app's tokens.
+      b.style.cssText = 'position:fixed;bottom:0.9rem;left:0.9rem;z-index:2147483000;min-height:36px;display:inline-flex;align-items:center;padding:0 0.9rem;border-radius:10px;background:var(--accent, #0a84ff);color:#fff;font:600 13px system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,0.25);';
       b.addEventListener('click', goHome);
       document.body.appendChild(b);
     }

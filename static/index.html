@@ -4756,7 +4756,7 @@ window.__bypassGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
   const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   _bypassReportCache = data;
   return data.report_id || '';
 };
@@ -4849,14 +4849,21 @@ window.__dataFlowGenerate = async function (platform) {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
   const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, platform: platform || 'windows' }) });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   return data.report_id;
 };
+// The server's error detail is a string or a {cause, fix} object; either
+// way the tab gets a sentence, never "[object Object]".
+function _reportErrorText(data, status) {
+  const d = data && data.detail;
+  if (d && typeof d === 'object') return [d.cause || d.message || d.error, d.fix].filter(Boolean).join(' ') || `Error ${status}`;
+  return (typeof d === 'string' && d) || `Error ${status}`;
+}
 window.__sslFlowGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
   const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error((data && data.detail) || `Error ${resp.status}`);
+  if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   return data.report_id;
 };
 
