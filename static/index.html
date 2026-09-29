@@ -648,8 +648,8 @@
       <div class="tool-group" role="group" aria-label="Reference">
         <div class="tool-group-l">Reference</div>
         <button class="btn btn-ghost" onclick="openEvalAllTab()"
-                aria-label="Open Evaluate All Rules: the decision flow with the tie-breaker and a simulator (opens in a new tab)"
-                title="How ZIA decides with Evaluate All Rules: every rule evaluated, the most restrictive action wins, a tie on the action is broken by rule order. With a simulator. Opens in a new tab.">
+                aria-label="Open Evaluate All Rules: the decision flow with the tie-breaker (opens in a new tab)"
+                title="How ZIA decides with Evaluate All Rules: every rule evaluated, the most restrictive action wins, a tie on the action is broken by rule order. Opens in a new tab.">
           <span aria-hidden="true">📖</span> How Evaluate All Rules decides
         </button>
         <button class="btn btn-ghost" onclick="openToolTab('bestpractices')"
@@ -1064,7 +1064,7 @@
     <!-- Pending-Activations Banner: appears when any step has a dry-run result that still needs to be activated live. -->
     <div id="pendingActivationsBanner" style="display:none;"></div>
 
-    <!-- How Evaluate All Rules decides, and a simulator for ties (static/eval_all.js). -->
+    <!-- How Evaluate All Rules decides: the decision flow with the tie-breaker (static/eval_all.js). -->
     <div id="evalAllFlow"></div>
 
     <!-- Step 1 -->
@@ -1722,7 +1722,6 @@ async function step2Download() {
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     migrateRules = data.rules || [];
-    if (typeof evalAllLoadRules === 'function') evalAllLoadRules(migrateRules);
     el.innerHTML = `
       <div style="color:var(--pass);font-weight:600;">✓ Downloaded ${migrateRules.length} DLP rules</div>
       <div style="color:var(--dim);margin-top:0.25rem;">Rules are cached in this session. Save a JSON backup before proceeding to Step 3.</div>

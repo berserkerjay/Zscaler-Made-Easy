@@ -3217,7 +3217,7 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
 
 @app.get("/report/evalall")
 async def report_evalall_page():
-    """Evaluate All Rules: the decision flow with the tie-breaker, and the simulator (static/report_evalall.html)."""
+    """Evaluate All Rules: the decision flow with the tie-breaker (static/report_evalall.html)."""
     page = os.path.join(STATIC_DIR, "report_evalall.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="page missing")
