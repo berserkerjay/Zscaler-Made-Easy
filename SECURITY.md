@@ -81,7 +81,7 @@ versions, and, for anything **High** or **Critical**, a **CWE**
 **Update app** button (or `UPDATE_Zscaler_Assessment.bat`) fast-forwards
 to by default. The button's **Branch** choice (or
 `UPDATE_Zscaler_Assessment.bat dev`, `python app_update.py --branch dev`)
-can also move an install to `DLP-CHECK-QA` (QA) or `dev` (development) —
+can also move an install to `qa` (QA) or `dev` (development) —
 the two branches a fix passes through before it reaches `main` (README,
 *Branching and releases*) — so a fix can be tried before it is promoted.
 Those two carry work that has not been through QA, and a report produced

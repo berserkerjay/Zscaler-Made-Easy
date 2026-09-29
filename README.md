@@ -144,7 +144,7 @@ feature branch → dev → qa → main
 - **`dev`** is where new work lands first: a feature branch is opened off
   `dev`, developed there, and merged back into `dev` by pull request once
   its own tests are green.
-- **`qa`** (`DLP-CHECK-QA` on GitHub) is `dev`'s work once it's ready to be
+- **`qa`** is `dev`'s work once it's ready to be
   verified end to end. Promoting is a fast-forward of `qa` to `dev`'s tip —
   never a new commit, never a rebase — so what gets tested is exactly what
   was merged, byte for byte.

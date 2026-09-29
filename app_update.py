@@ -247,14 +247,20 @@ def dirty_files(app_dir: str) -> List[str]:
 # reaches git on the command line, so this is an allowlist, not free text.
 # main is what customers run; the other two exist so a fix can be tried
 # before it is promoted (README: Branching and releases).
-BRANCHES: Tuple[str, ...] = ("main", "DLP-CHECK-QA", "dev")
-BRANCH_LABELS: Dict[str, str] = {"main": "Stable (main)", "DLP-CHECK-QA": "QA (DLP-CHECK-QA)", "dev": "Development (dev)"}
+BRANCHES: Tuple[str, ...] = ("main", "qa", "dev")
+BRANCH_LABELS: Dict[str, str] = {"main": "Stable (main)", "qa": "QA (qa)", "dev": "Development (dev)"}
 DEFAULT_BRANCH = "main"
+# The name a branch had before the three were standardised as dev → qa →
+# main. An install still checked out on the old name is treated as being
+# on the new one, so its Update button keeps working and moves it over.
+LEGACY_BRANCHES: Dict[str, str] = {"DLP-CHECK-QA": "qa"}
 
 
 def valid_branch(name: Any) -> str:
-    """The branch as one of BRANCHES, or ValueError naming the allowed ones."""
+    """The branch as one of BRANCHES (a legacy name is mapped to its new
+    one), or ValueError naming the allowed ones."""
     b = str(name or "").strip()
+    b = LEGACY_BRANCHES.get(b, b)
     if b not in BRANCHES:
         raise ValueError(f"Unknown branch {b!r}: choose one of {', '.join(BRANCHES)}.")
     return b
@@ -269,6 +275,7 @@ def current_branch(app_dir: str) -> Optional[str]:
     except Exception:  # noqa: BLE001
         return None
     name = _out(cp) if cp.returncode == 0 else ""
+    name = LEGACY_BRANCHES.get(name, name)
     return name if name and name != "HEAD" else None
 
 
