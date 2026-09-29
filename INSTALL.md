@@ -349,29 +349,148 @@ shared server, or if you would rather not install Python on your own
 machine. It works the same way on Windows, Mac and Linux.
 
 **Step 1 — Install Docker.**
-Docker is the program that runs containers.
+Docker is the program that runs containers. Follow the part for your
+computer, then do the check at the end of it; do not go on to Step 2
+until the check passes. Allow 15–30 minutes, most of it downloads and a
+restart.
 
-- **Windows or Mac:** go to `docker.com/products/docker-desktop`, download
-  **Docker Desktop**, install it like any other application, and open it
-  once so it finishes its own setup (it may ask you to restart).
-- **Linux:** install Docker and its compose plugin with your package
-  manager, for example on Ubuntu:
+> **Licence note for companies.** Docker Desktop (Windows and Mac) is
+> free for personal use, education and businesses with fewer than 250
+> employees *and* under US$10 million in annual revenue. A larger company
+> needs a paid Docker subscription for it, so check with IT before
+> installing it on a work computer. Docker Engine on Linux (the Linux
+> part below) has no such licence requirement.
 
-  ```bash
-  sudo apt update && sudo apt install -y docker.io docker-compose-v2
-  sudo usermod -aG docker $USER     # lets your user talk to Docker without sudo
-  ```
+*Windows 10 (22H2 or later) or Windows 11, 64-bit.* You need
+administrator rights on the computer for this part; if you do not have
+them, ask IT to do steps 1 to 3 for you.
 
-  then **log out and back in** (or put `sudo` in front of every `docker`
-  command below). Check with two commands: `docker ps` must print a
-  (possibly empty) table headed `CONTAINER ID`, not "permission denied
-  while trying to connect to the Docker daemon socket" (that means the
-  log-out has not happened yet); and `docker compose version` must print
-  **2.24 or newer** (the app's compose file uses a setting older Compose
-  does not understand). Ubuntu 22.04's packaged Compose is older: on it,
-  install Docker's own packages instead, following
-  `docs.docker.com/engine/install/ubuntu`. Add `git` to the install line
-  if you will clone the code on this machine (Ubuntu ships without it).
+1. **Turn on WSL 2** (the Windows feature Docker runs on). Click Start,
+   type `PowerShell`, right-click **Windows PowerShell**, choose **Run as
+   administrator**, click **Yes**. In the blue window type:
+
+   ```powershell
+   wsl --install --no-distribution
+   ```
+
+   and press Enter. When it finishes, restart the computer. (If it says
+   WSL is already installed, run `wsl --update` instead; no restart is
+   needed then.)
+2. **Download Docker Desktop.** Go to
+   `docs.docker.com/desktop/setup/install/windows-install/` and click
+   **Docker Desktop for Windows - x86_64** (or **- Arm (Beta)** only on an
+   ARM laptop, such as a Snapdragon Surface; Settings → System → About →
+   *System type* tells you which).
+3. **Install it.** Double-click `Docker Desktop Installer.exe` (in
+   Downloads), click **Yes** when Windows asks. On the *Configuration*
+   screen leave **Use WSL 2 instead of Hyper-V (recommended)** ticked and
+   click **OK**. When it says *Installation succeeded*, click **Close and
+   restart** (or **Close and log out**, then sign back in).
+4. **Start it once.** Click Start, type `Docker Desktop`, open it. Accept
+   the *Docker Subscription Service Agreement*. When it offers to sign
+   in, click **Continue without signing in** (or **Skip**); skip the
+   survey too. Wait until the bottom-left corner of the Docker Desktop
+   window says **Engine running** in green (the first start takes a
+   minute or two).
+5. **If it says "You are not allowed to use Docker, you must be in the
+   docker-users group":** the account that installed Docker is in that
+   group, yours is not. In an administrator PowerShell (as in step 1) run
+   `net localgroup docker-users "%USERNAME%" /add` with your Windows user
+   name in place of `%USERNAME%`, then sign out of Windows and back in.
+
+*Mac (macOS 13 or later; Docker supports the current macOS and the two
+before it).* You need your Mac's administrator password.
+
+1. **Find out which Mac you have:** Apple menu → **About This Mac**. If
+   it shows **Chip: Apple M1/M2/M3/M4…** you have Apple silicon; if it
+   shows **Processor: … Intel …** you have an Intel Mac.
+2. **Download Docker Desktop.** Go to
+   `docs.docker.com/desktop/setup/install/mac-install/` and click
+   **Docker Desktop for Mac with Apple silicon** or **… with Intel chip**
+   to match.
+3. **Install it.** Open `Docker.dmg` from Downloads and drag the Docker
+   whale onto the **Applications** folder in the window that opens.
+4. **Start it once.** Open **Applications** and double-click **Docker**.
+   When macOS asks "Docker is an app downloaded from the internet. Are you
+   sure you want to open it?", click **Open**. Accept the agreement,
+   choose **Use recommended settings**, click **Finish** and type your Mac
+   password. When it offers to sign in, click **Continue without signing
+   in** (or **Skip**). Wait until the whale icon in the menu bar at the top
+   of the screen stops animating and Docker Desktop shows **Engine
+   running**.
+
+*Checking Docker Desktop (Windows or Mac).* Open a **new** terminal
+(PowerShell on Windows, Terminal on Mac; a window opened before the
+install cannot see Docker) and run these three commands one at a time:
+
+```bash
+docker --version
+docker compose version
+docker run --rm hello-world
+```
+
+The first prints `Docker version …`; the second must print **2.24 or
+newer** (older Compose does not understand this app's
+`docker-compose.yml`; *Check for updates* in Docker Desktop's menu fixes
+that); the third downloads a tiny test image and prints **Hello from
+Docker!**. Docker Desktop must be running whenever you use the app: it
+starts with the computer unless you turn that off in its settings.
+
+*Linux (Ubuntu or Debian, including a server with no desktop).* Install
+Docker Engine from Docker's own package repository; the `docker.io`
+package Ubuntu ships is often too old for this app. Paste these commands
+one block at a time into a terminal (they ask for your `sudo` password):
+
+```bash
+# 1. Tools and Docker's signing key
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# 2. Docker's repository for this Ubuntu release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 3. Docker Engine, Compose and git
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin git
+
+# 4. Start Docker now and at every boot, and let your user run it without sudo
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+```
+
+On **Debian**, change both `linux/ubuntu` to `linux/debian` in steps 1
+and 2. On **Fedora or RHEL**, follow the page for your distribution at
+`docs.docker.com/engine/install/` instead, then do step 4 above.
+
+Then **log out and back in** (on a server: close the SSH session and
+connect again), so the `docker` group applies. *Check:* run
+
+```bash
+docker ps
+docker compose version
+docker run --rm hello-world
+```
+
+`docker ps` must print a (possibly empty) table headed `CONTAINER ID`,
+not "permission denied while trying to connect to the Docker daemon
+socket" (that means the log-out has not happened yet);
+`docker compose version` must print **2.24 or newer**; the last command
+prints **Hello from Docker!**.
+
+*On a work network with TLS inspection (Zscaler or another proxy):* the
+Docker download and `hello-world` usually work, because Docker Desktop
+trusts the certificates Windows and macOS trust. The app's own build
+(Step 3) downloads Python libraries from `pypi.org` and Debian updates
+from `deb.debian.org` inside the build, which does not trust your
+company's inspection certificate, and fails with
+`CERTIFICATE_VERIFY_FAILED`. Either build on a network without
+inspection, or ask IT to exempt `pypi.org`, `files.pythonhosted.org`,
+`deb.debian.org` and Docker Hub from inspection. For a proxy, set it in
+Docker Desktop under **Settings → Resources → Proxies** (Linux:
+`docs.docker.com/engine/daemon/proxy/`).
 
 **Step 2 — Get the code**, the same way as above: sign in to GitHub, go
 to the repository page, **Code → Download ZIP**, extract it somewhere you
@@ -604,6 +723,12 @@ container and its saved data, then delete the folder.)
 | Nothing at all happens when you double-click the shortcut (Windows) | The silent launcher was blocked or failed | Run `START_Zscaler_Assessment.bat --console` from a Command Prompt in the app folder and read the window; check `launcher.log` |
 | `Windows Script Host access is disabled on this machine` | Your company blocks `.vbs` launchers, which the shortcut uses | Open a Command Prompt in the app folder and run `START_Zscaler_Assessment.bat --console`; leave that window open while you use the app (closing it stops the app) |
 | `permission denied while trying to connect to the Docker daemon socket` | Your user may not talk to Docker yet | `sudo usermod -aG docker $USER`, then log out and back in; or put `sudo` in front of the docker commands |
+| `docker: command not found` or `'docker' is not recognized` | Docker is not installed, or the terminal was opened before it was | Install Docker (container Step 1), then open a new terminal |
+| `Cannot connect to the Docker daemon` or `error during connect` | Docker Desktop is not running (Windows, Mac), or the Docker service is stopped (Linux) | Start Docker Desktop and wait for **Engine running**; on Linux `sudo systemctl start docker` |
+| `WSL 2 installation is incomplete` or `Virtualization support not detected` (Windows) | WSL 2 is not set up, or virtualization is off in the computer's firmware | Run `wsl --install --no-distribution` in an administrator PowerShell and restart; if virtualization is off, ask IT to turn on Intel VT-x or AMD-V in the BIOS/UEFI |
+| `You are not allowed to use Docker, you must be in the docker-users group` (Windows) | Your Windows account is not in the docker-users group | Container Step 1, Windows step 5 |
+| `services.dlp-check.env_file.0 must be a string` | Docker Compose is older than 2.24 | Update Docker Desktop (*Check for updates*), or on Linux install Docker from Docker's repository as in container Step 1 |
+| `CERTIFICATE_VERIFY_FAILED` during `docker compose up --build` | The build's downloads go through TLS inspection | See *On a work network with TLS inspection* under container Step 1 |
 | Asked for a UI token you don't have | You opened the address by hand, or the app restarted | Find it as described in [First run](#first-run-the-ui-token) |
 | `That UI token is not valid for this server` | The app restarted and minted a new token | Open the app from the shortcut again, or read the new token from `ui_token.txt` |
 | `port 8000 … is already in use` | A previous copy of the app is still running (or something else uses port 8000) | Windows: `STOP_Zscaler_Assessment.bat` (it stops whatever listens on the port). Mac/Linux: `Ctrl + C` in the other terminal, or `./stop.sh` |
