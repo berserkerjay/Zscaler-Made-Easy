@@ -58,7 +58,7 @@ def test_report_tabs_share_the_app_stylesheet_and_theme():
     c = TestClient(srv.app)
     css = c.get("/app.css")
     assert css.status_code == 200 and "text/css" in css.headers["content-type"] and "no-cache" in css.headers["cache-control"]
-    assert "--bg: #0a0e1a" in css.text and "body.theme-light" in css.text and ".hero h1 .accent" in css.text and "<style>" not in css.text
+    assert "--bg: #000000" in css.text and "body.theme-light" in css.text and ".hero h1 .accent" in css.text and "<style>" not in css.text
     for path in ("/report/bypass?id=x", "/report/sslflow?id=x", "/report/view?tool=updates", "/report/flow", "/report/dataflow?id=x"):
         html = c.get(path).text
         assert '<link rel="stylesheet" href="/app.css">' in html, path
