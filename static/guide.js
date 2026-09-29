@@ -324,18 +324,25 @@ function _gdRender() {
   }
 }
 
+// The identity a connection result belongs to: the vanity domain for a
+// ZIdentity API client, the admin username for the classic sign-in — the
+// same key _gdSteps uses, so the status never goes blank on the classic sign-in.
+function _gdIdent() {
+  const legacy = (document.getElementById('authMethod') || {}).value === 'legacy';
+  return legacy ? _gdVal('zuser') : _gdVal('vd');
+}
 function _gdAuthStatus() {
   const st = document.getElementById('authStatus');
   if (!st) return;
   const c = GD.conn;
   if (GD.testing) { st.textContent = 'Authenticating…'; st.className = 'auth-status'; return; }
-  if (!c || c.vd !== _gdVal('vd')) { st.textContent = ''; st.className = 'auth-status'; return; }
+  if (!c || c.vd !== _gdIdent()) { st.textContent = ''; st.className = 'auth-status'; return; }
   st.className = 'auth-status ' + (c.ok ? 'ok' : 'bad');
   st.textContent = c.ok ? `Connected to ${c.label}. Now run the assessment from Start here, step 2.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
 }
 function _gdConnHtml() {
   const c = GD.conn;
-  if (!c || c.vd !== _gdVal('vd')) return '';
+  if (!c || c.vd !== _gdIdent()) return '';
   if (c.ok) {
     return `<div class="gd-conn ok"><strong>Connected.</strong> ${_gdE(c.label)} · ${c.dictionaries} dictionaries (${c.custom_dictionaries} custom) · ${c.engines} engines · ${c.web_rules} web DLP rules${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
   }
@@ -369,43 +376,83 @@ function _gdRun() {
   else if (typeof runAssessment === 'function') runAssessment(); else if (btn) btn.click();
   _gdRender();
 }
+// Which sign-in failed, in the caller's words. Four different things used
+// to read as "the tool's own server did not answer": this app's own UI
+// token missing (a 401 the fetch wrapper could not clear), the browser
+// being unable to show a dialog, the server really being unreachable, and
+// the tenant refusing the credentials. Each gets its own cause and fix.
+function _gdConnFailure(kind, extra) {
+  const K = {
+    token: { kind: 'local', cause: 'This app\'s own sign-in is missing: the UI token was not entered, so the request never reached Zscaler.',
+             fix: 'Open the app from its launcher, or paste the token from ui_token.txt (next to the app) into the unlock box, then click Authenticate again. This is not about the tenant credentials.' },
+    dialog: { kind: 'browser', cause: 'This browser could not show the sign-in dialog, so the request never reached Zscaler.',
+              fix: 'Open the app in Chrome, Edge or Firefox from its launcher (the launcher carries the token), then click Authenticate again.' },
+    server: { kind: 'transport', cause: 'The tool\'s own server did not answer.',
+              fix: 'Make sure the server window is still open (the launcher, ./start.sh or docker compose), then try again.' },
+  }[kind];
+  return Object.assign({ ok: false }, K, extra || {});
+}
 async function _gdTest() {
   if (typeof migrateCredBody !== 'function') return;
+  if (GD.testing) return;   // one check at a time: a second click while one is running is ignored
   const body = migrateCredBody(); delete body.customer_id;
+  const ident = body.auth_method === 'legacy' ? body.username : body.vanity_domain;   // what "same tenant" is compared on
   GD.testing = true; _gdRender();
+  const formBtn = document.getElementById('authBtn'); if (formBtn) { formBtn.disabled = true; formBtn.setAttribute('aria-busy', 'true'); }
+  if (window.__dlpAskAgain) window.__dlpAskAgain();   // a deliberate click may ask for this app's own token again
   try {
     const r = await fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
-    const ident = body.auth_method === 'legacy' ? body.username : body.vanity_domain;   // what "same tenant" is compared on
-    if (!r.ok) {
+    if (r.status === 401 && data && data.token_required) {
+      // The fetch wrapper marks a 401 it could not clear because the browser
+      // could not ask for the token at all (no dialog, prompt() unsupported).
+      GD.conn = r.dlpDialogUnavailable
+        ? _gdConnFailure('dialog', { vd: ident, raw: String(r.dlpDialogUnavailable) })
+        : _gdConnFailure('token', { vd: ident, raw: String(data.detail || 'HTTP 401 token_required') });
+    } else if (!r.ok) {
       const d = (data && typeof data.detail === 'object') ? data.detail : { cause: 'The connection failed.', fix: 'Re-check the tenant details and try again.', raw: String(data.detail || `HTTP ${r.status}`) };
-      GD.conn = { ok: false, vd: ident, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw };
+      GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', vd: ident, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
     } else {
       GD.conn = { ok: true, vd: ident, label: data.tenant_label, dictionaries: data.dictionaries, custom_dictionaries: data.custom_dictionaries,
                   engines: data.engines, web_rules: data.web_rules, problems: data.problems || [], at: new Date().toISOString() };
-      if (typeof announce === 'function') announce(`Connected to ${data.tenant_label}.`);
     }
   } catch (e) {
-    GD.conn = { ok: false, vd: body.vanity_domain, cause: 'The tool\'s own server did not answer.', fix: 'Make sure the server window is still open, then try again.', raw: e.message };
+    const msg = String(e && e.message || e);
+    GD.conn = /prompt|dialog|not supported|showModal/i.test(msg)
+      ? _gdConnFailure('dialog', { vd: ident, raw: msg })
+      : _gdConnFailure('server', { vd: ident, raw: msg });
   } finally {
     GD.testing = false; _gdSave(); _gdRender();
-    _gdAuthPopup(GD.conn);
+    if (formBtn) { formBtn.disabled = false; formBtn.removeAttribute('aria-busy'); }
+    _gdAuthVerdict(GD.conn);
   }
 }
-// The verdict as a popup the moment Authenticate finishes, so it cannot
-// be missed: SUCCESS with what the app can now see, or FAIL with why and
-// what to fix. Only the Authenticate buttons reach here, never a page load.
-function _gdAuthPopup(conn) {
+// The verdict the moment Authenticate finishes. Success stays inline: the
+// step-1 card turns green, the result is announced, and the next action
+// (Run assessment) is the obvious button — no dialog to dismiss. A
+// failure opens the app's own accessible dialog with the cause, what to
+// do, and the technical detail behind a disclosure (never a secret).
+function _gdAuthVerdict(conn) {
   if (!conn) return;
-  const n = v => (v === undefined || v === null ? '?' : v);
-  const msg = conn.ok
-    ? `SUCCESS — authenticated to ${conn.label || conn.vd || 'the tenant'}.\n\n` +
-      `The app can see ${n(conn.dictionaries)} dictionaries, ${n(conn.engines)} engines and ${n(conn.web_rules)} web DLP rules.\n` +
-      'Nothing was changed; the app only read the tenant.'
-    : `FAIL — you fat-fingered it (or the tenant said no).\n\n${conn.cause || 'The connection failed.'}\n${conn.fix || 'Re-check the tenant details and try again.'}` +
-      (conn.raw ? `\n\nDetail: ${String(conn.raw).slice(0, 300)}` : '');
-  try { window.alert(msg); } catch (e) { /* no window (tests) */ }
+  if (conn.ok) {
+    if (typeof announce === 'function') announce(`Connected to ${conn.label || conn.vd || 'the tenant'}. Next: run the assessment from Start here, step 2.`);
+    const card = document.querySelector('.gd-conn.ok');
+    if (card) { card.setAttribute('tabindex', '-1'); try { card.focus({ preventScroll: false }); } catch (e) {} }
+    return;
+  }
+  const title = conn.kind === 'local' ? 'This app needs its own sign-in first'
+    : conn.kind === 'browser' ? 'This browser could not show the sign-in dialog'
+    : conn.kind === 'transport' ? 'The app\'s server did not answer'
+    : conn.kind === 'permission' ? `Signed in, but not allowed to read ${conn.label || 'this tenant'}`
+    : `Could not connect to ${conn.label || conn.vd || 'the tenant'}`;
+  if (typeof announce === 'function') announce(`${title}. ${conn.cause || ''}`);
+  if (window.dlpDialog && window.dlpDialog.notice) {
+    window.dlpDialog.notice({ title, body: conn.cause || 'The connection failed.', fix: conn.fix || 'Re-check the tenant details and try again.',
+                              detail: conn.raw ? String(conn.raw).slice(0, 600) : '', tone: 'bad', okLabel: 'Back to the form' });
+  }
 }
+// Kept for callers that still name it.
+function _gdAuthPopup(conn) { return _gdAuthVerdict(conn); }
 function _gdSetMode(mode) {
   GD.mode = mode; _gdSave(); _gdApplyMode(); _gdRender();
   try { if (typeof announce === 'function') announce(mode === 'guided' ? 'Guided mode on: the Compliance Coverage card is folded away; every tool stays in the toolbar.' : 'Guided mode off: everything shown.'); } catch (e) { /* ignore */ }
@@ -695,7 +742,7 @@ function _gdProfilesRender() {
         <div class="gd-prof-packs"><span class="lbl">Policy packs that apply to this customer</span>${packs || '<span class="gd-need">No policy packs installed.</span>'}<span class="gd-need">The journey is measured only against the ticked policy packs. Leave all unticked to measure against every policy pack.</span></div>
         <label class="gd-prof-wide">Notes<textarea id="gdProfNotes" rows="2" placeholder="Kickoff 12 May; admin contact: Pat Lee; PHI pack agreed, enable SSL rule after change window.">${_gdE(det.notes || '')}</textarea></label>
         <label class="gd-prof-remember"><input type="checkbox" id="gdProfRemember" ${det.has_secret ? 'checked' : ''}> Remember the client secret on this laptop
-          <span class="gd-need">Stored in <code>tenant_profiles.json</code> next to the app (owner-only file, never sent back to the browser). Leave unticked on a shared machine.</span></label>
+          <span class="gd-need">Also the admin password and API key for the classic sign-in. Goes to this laptop's credential store when the optional <code>keyring</code> package is installed, otherwise into <code>tenant_profiles.json</code> next to the app (owner-only file); never sent back to the browser. Unticked, nothing secret is written and the form's values live only in this browser tab. Leave unticked on a shared machine.</span></label>
       </div>
       ${sel ? `<div class="gd-prof-hist"><span class="lbl">History${last ? ` · last assessed ${_gdE(new Date(last.at).toLocaleString())}, ${last.score ?? '?'}%${last.journey ? `, journey stage ${last.journey.stage || 0} of 5` : ''}` : ''}</span>${_gdHistoryHtml(det)}</div>` : ''}
     </details>`;

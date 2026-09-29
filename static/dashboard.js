@@ -345,16 +345,22 @@
     const det = window.GD && GD.profileDetail;
     const last = det && det.last_assessed;
     if (last) {
-      const score = Math.max(0, Math.min(100, Number(last.score) || 0));
-      const arc = $('dbRingArc'); if (arc) { const C = 2 * Math.PI * 50; arc.style.strokeDashoffset = String(C * (1 - score / 100)); }
+      // A previous result is shown as exactly that — labelled with its run
+      // time — and a run that scored nothing shows "—", not 0%.
+      const measured = last.score !== null && last.score !== undefined && Number.isFinite(Number(last.score));
+      const score = measured ? Math.max(0, Math.min(100, Number(last.score))) : null;
+      const arc = $('dbRingArc'); if (arc) { const C = 2 * Math.PI * 50; arc.style.strokeDashoffset = String(measured ? C * (1 - score / 100) : C); }
       const bandHost = $('dbBand');
-      if (bandHost) {
+      if (bandHost && measured) {
         const idx = score >= 90 ? 4 : score >= 75 ? 3 : score >= 50 ? 2 : score >= 25 ? 1 : 0;
         bandHost.innerHTML = ['Ad Hoc', 'Initial', 'Developing', 'Managed', 'Optimized'].map((b, i) => `<span class="${i < idx ? 'done' : i === idx ? 'now' : ''}" ${i === idx ? 'aria-current="true"' : ''}>${b}</span>`).join('');
-      }
-      const sn = $('scoreNum'); if (sn) sn.textContent = `${score}%`;
-      const sl = $('scoreLabel'); if (sl) sl.textContent = last.maturity || 'Maturity Level';
-      const sm = $('scoreMeta'); if (sm) sm.textContent = `As of the last run, ${new Date(last.at).toLocaleDateString()}`;
+      } else if (bandHost) bandHost.innerHTML = '';
+      const sn = $('scoreNum'); if (sn) sn.textContent = measured ? `${score}%` : '—';
+      const sl = $('scoreLabel'); if (sl) sl.textContent = last.maturity || (measured ? 'Maturity Level' : 'Not assessed');
+      const sm = $('scoreMeta'); if (sm) sm.textContent = `Previous result · run ${new Date(last.at).toLocaleString()}`;
+      const cp = $('dbCompPct'), ct = $('dbCompTxt');
+      if (cp) cp.textContent = '—';
+      if (ct) ct.textContent = `last run: ${last.checks ?? '?'} checks`;
       const journey = last.journey ? ` · journey stage ${last.journey.stage ?? 0} of 5` : '';
       lastRun.innerHTML = `<span>Showing the last recorded assessment for ${E(det.name || 'this tenant')}, run ${E(new Date(last.at).toLocaleString())}${journey}.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Run a fresh assessment</button>`;
     } else {
@@ -409,8 +415,8 @@
               <circle class="track" cx="60" cy="60" r="50"/><circle class="arc" id="dbRingArc" cx="60" cy="60" r="50" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
             </svg>
             <div class="db-ring-txt">
-              <div class="score-num" id="scoreNum">0%</div>
-              <div class="score-label" id="scoreLabel">Maturity Level</div>
+              <div class="score-num" id="scoreNum">—</div>
+              <div class="score-label" id="scoreLabel">Not assessed yet</div>
               <div class="score-meta" id="scoreMeta"></div>
             </div>
           </div>
@@ -422,7 +428,7 @@
             <svg viewBox="0 0 120 120" role="img" aria-labelledby="dbCompLbl"><title id="dbCompLbl">Assessment completion</title>
               <circle class="track" cx="60" cy="60" r="50"/><circle class="arc" id="dbCompArc" cx="60" cy="60" r="50" stroke-dasharray="314.16" stroke-dashoffset="314.16"/>
             </svg>
-            <div class="db-ring-txt"><div class="db-comp-n" id="dbCompPct">0%</div><div class="db-comp-s" id="dbCompTxt">no checks yet</div></div>
+            <div class="db-ring-txt"><div class="db-comp-n" id="dbCompPct">—</div><div class="db-comp-s" id="dbCompTxt">no run in this tab yet</div></div>
           </div>
         </div>
         <div class="db-tile db-radar">
@@ -522,11 +528,21 @@
     // Hygiene) still runs and still counts toward the overall score; it
     // just doesn't get its own tiles cluttering this grid.
     host.innerHTML = Object.entries(sections || {}).filter(([name]) => !/^Automation — /.test(name)).map(([name, d]) => {
-      const [lv, cls] = level(d.pct || 0);
-      const scored = (d.total || 0) - (d.info || 0);
+      const scored = (d.scored !== undefined) ? d.scored : (d.total || 0) - (d.info || 0);
+      const measured = scored > 0 && d.pct !== null && d.pct !== undefined;
+      if (!measured) {
+        // Nothing scoreable here (every result informational, not permitted
+        // or unable to run): no percentage and no level, never "100% Optimized".
+        return `<button type="button" class="db-pillar db-pillar-na" data-section="${E(name)}" aria-label="${E(name)}: not measured, ${d.total || 0} checks outside the score. Show these findings.">
+          <div class="db-pillar-h"><span class="db-pillar-n"><span aria-hidden="true">${icon(name)}</span> ${E(name)}</span><span class="db-pillar-p db-pillar-p-na">—</span></div>
+          <div class="db-bar"><i style="width:0"></i></div>
+          <div class="db-pillar-m"><span>no scoreable check · ${d.total || 0} outside the score</span><span class="db-chip na">Not measured</span></div>
+        </button>`;
+      }
+      const [lv, cls] = level(d.pct);
       return `<button type="button" class="db-pillar" data-section="${E(name)}" aria-label="${E(name)}: ${d.pct}%, ${d.pass || 0} of ${scored} configured, ${lv}. Show these findings.">
-        <div class="db-pillar-h"><span class="db-pillar-n"><span aria-hidden="true">${icon(name)}</span> ${E(name)}</span><span class="db-pillar-p" style="color:${pctColor(d.pct || 0)}">${d.pct}%</span></div>
-        <div class="db-bar"><i style="width:${Math.max(0, Math.min(100, d.pct || 0))}%"></i></div>
+        <div class="db-pillar-h"><span class="db-pillar-n"><span aria-hidden="true">${icon(name)}</span> ${E(name)}</span><span class="db-pillar-p" style="color:${pctColor(d.pct)}">${d.pct}%</span></div>
+        <div class="db-bar"><i style="width:${Math.max(0, Math.min(100, d.pct))}%"></i></div>
         <div class="db-pillar-m"><span>${d.pass || 0}/${scored} configured${d.fail ? ` · ${d.fail} to fix` : ''}${d.warn ? ` · ${d.warn} to review` : ''}</span><span class="db-chip ${cls}">${lv}</span></div>
       </button>`;
     }).join('');
@@ -540,7 +556,9 @@
     const host = $('dbInsights'); if (!host) return;
     const checks = data.checks || [];
     const fails = checks.filter(c => c.status === 'FAIL'), reviews = checks.filter(c => c.status === 'REVIEW'), passes = checks.filter(c => c.status === 'PASS');
-    const secs = Object.entries(data.sections || {});
+    // Only measured sections can be weakest or strongest: an unmeasured one
+    // (pct null, nothing scoreable) is neither.
+    const secs = Object.entries(data.sections || {}).filter(([, d]) => d.pct !== null && d.pct !== undefined && ((d.scored !== undefined ? d.scored : (d.total || 0) - (d.info || 0)) > 0));
     const weakest = secs.slice().sort((a, b) => (a[1].pct || 0) - (b[1].pct || 0))[0];
     const strongest = secs.slice().sort((a, b) => (b[1].pct || 0) - (a[1].pct || 0))[0];
     const items = [];
@@ -594,19 +612,46 @@
       if (label && sec && !row.querySelector('.db-cat')) label.insertAdjacentHTML('afterend', `<span class="db-cat">${E(sec)}</span>`);
     });
   }
+  // One vocabulary (index.html assessmentSummary / permissions.assessment_summary,
+  // docs/SCORING.md): execution completion and score coverage are two numbers.
+  const summaryOf = data => (typeof assessmentSummary === 'function') ? assessmentSummary(data) : (data.summary || { total: (data.checks || []).length, assessed: (data.checks || []).length, not_permitted: 0, errors: 0, score: data.score, state: 'complete' });
   function renderDashboard(data) {
-    const score = Number(data.score) || 0;
-    ring('dbRingArc', score); band(score);
-    const checks = data.checks || [], blocked = (data.permissions && data.permissions.blocked) || 0;
-    const ran = Math.max(0, checks.length - blocked), comp = checks.length ? Math.round(ran / checks.length * 100) : 0;
-    ring('dbCompArc', comp);
+    const sum = summaryOf(data);
+    const measured = sum.score !== null && sum.score !== undefined && Number.isFinite(Number(sum.score));
+    const score = measured ? Number(sum.score) : null;
+    ring('dbRingArc', measured ? score : 0);
+    if (measured) band(score); else { const b = $('dbBand'); if (b) b.innerHTML = ''; }
+    // Completion is about execution only: the run is finished, this is what
+    // ran and what the API client was not permitted to run. Never a
+    // percentage that mixes "finished" with "allowed".
+    ring('dbCompArc', 100);
     const cp = $('dbCompPct'), ct = $('dbCompTxt');
-    if (cp) cp.textContent = `${comp}%`;
-    if (ct) ct.textContent = blocked ? `${ran} of ${checks.length} checks ran; ${blocked} not permitted` : `${checks.length} checks ran`;
+    if (cp) cp.textContent = sum.state === 'partial' ? 'Partial' : 'Done';
+    if (ct) ct.textContent = sum.not_permitted
+      ? `${sum.assessed} of ${sum.total} assessed · ${sum.not_permitted} not permitted${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`
+      : `${sum.total} checks assessed${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`;
     radar(data.sections); pillars(data.sections); insights(data); actions(data); footer(data); decorateChecks();
-    const s = $('dbCurScore'); if (s) s.textContent = `${score}% · ${data.maturity || level(score)[0]}`;
+    const s = $('dbCurScore'); if (s) s.textContent = measured ? `${score}% · ${data.maturity || level(score)[0]}` : 'Not assessed';
     setCurrent('dashboard');
   }
+  // While a run is in flight the tiles say so — the Completion tile follows
+  // the same progress events as the progress card (index.html handleEvent),
+  // and a previous score stays visible only labelled as previous.
+  window.__dbRunStarted = function () {
+    const cp = $('dbCompPct'), ct = $('dbCompTxt'); if (cp) cp.textContent = '0%'; if (ct) ct.textContent = 'starting…';
+    ring('dbCompArc', 0);
+    const sm = $('scoreMeta'), sn = $('scoreNum');
+    if (sm) sm.textContent = (sn && sn.textContent !== '—') ? 'Assessing now · previous result shown until it finishes' : 'Assessing now';
+    const f = $('dbFooter'); if (f) f.hidden = true; document.body.classList.remove('db-has-footer');
+  };
+  window.__dbProgress = function (evt) {
+    if (!evt || evt.total === undefined || evt.completed === undefined) return;
+    const pct = evt.pct || Math.round(evt.completed / evt.total * 100);
+    ring('dbCompArc', pct);
+    const cp = $('dbCompPct'), ct = $('dbCompTxt');
+    if (cp) cp.textContent = `${pct}%`;
+    if (ct) ct.textContent = evt.journey ? `all ${evt.total} checks done · measuring the journey` : `${evt.completed} of ${evt.total} checks run`;
+  };
   // Wrap the inline script's entry points (top-level function declarations are window properties).
   const origShow = window.showResults, origRender = window.renderChecks, origReset = window.resetForm;
   if (typeof origShow === 'function') window.showResults = function (data) { origShow.apply(this, arguments); try { renderDashboard(data || {}); } catch (e) { console.error('dashboard', e); } };

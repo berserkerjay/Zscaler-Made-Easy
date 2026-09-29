@@ -1386,12 +1386,26 @@ def run_checks(client, checks, con=None):
             print(r.status)
     return results
 
+# The score (docs/SCORING.md): configured ÷ (configured + action required +
+# needs review), as a percentage. INFO and ERROR results — a feature that
+# is not licensed, a call the API client was not allowed to make, a check
+# that could not complete — are not in either side of that division, so
+# they neither raise nor lower the score. When nothing at all was
+# scoreable the score is None ("Not assessed"), never 100: an empty set is
+# not a perfect one.
+NOT_ASSESSED = "Not assessed"
+
 def maturity(p):
+    if p is None: return NOT_ASSESSED
     if p>=90: return "Optimized"
     if p>=75: return "Managed"
     if p>=50: return "Developing"
     if p>=25: return "Initial"
     return "Ad Hoc"
+
+def pct_text(p):
+    """'37%' or 'n/a' — never 'None%'."""
+    return "n/a" if p is None else f"{p}%"
 
 def compute(results):
     _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
@@ -1403,21 +1417,24 @@ def compute(results):
         secs[s][_map.get(r["status"],"info")]+=1
     for s in secs:
         scored=secs[s]["total"]-secs[s]["info"]  # INFO checks don't count against score
-        secs[s]["pct"]=round(secs[s]["pass"]/scored*100) if scored else 100
+        secs[s]["scored"]=scored
+        secs[s]["pct"]=round(secs[s]["pass"]/scored*100) if scored else None   # nothing scoreable: not measured
     scored_total=sum(s["total"]-s["info"] for s in secs.values())
     passed=sum(s["pass"] for s in secs.values())
-    return secs, round(passed/scored_total*100) if scored_total else 100
+    return secs, (round(passed/scored_total*100) if scored_total else None)
 
 def report(results, cfg, con=None):
     secs,overall=compute(results); mat=maturity(overall)
     if HAS_RICH and con:
         con.print("\n")
-        con.print(Panel.fit(f"[bold]{cfg.get('org_name','')}[/] · {datetime.now().strftime('%Y-%m-%d')}\n[bold {'green' if overall>=75 else 'yellow' if overall>=50 else 'red'}]{overall}% — {mat}[/]\n[dim]{len(REG)} checks · zero manual[/]",border_style="cyan",title="[bold cyan]DLP ASSESSMENT[/]"))
+        o=overall if overall is not None else 0
+        con.print(Panel.fit(f"[bold]{cfg.get('org_name','')}[/] · {datetime.now().strftime('%Y-%m-%d')}\n[bold {'dim' if overall is None else 'green' if o>=75 else 'yellow' if o>=50 else 'red'}]{pct_text(overall)} — {mat}[/]\n[dim]{len(REG)} checks · zero manual[/]",border_style="cyan",title="[bold cyan]DLP ASSESSMENT[/]"))
         t=Table(title="Scorecard",show_lines=True)
         t.add_column("Section",style="bold"); t.add_column("Score",justify="center"); t.add_column("P",style="green",justify="center"); t.add_column("F",style="red",justify="center"); t.add_column("R",style="yellow",justify="center")
         for s,d in secs.items():
-            c="green" if d["pct"]>=75 else "yellow" if d["pct"]>=50 else "red"
-            t.add_row(s,f"[{c}]{d['pct']}%[/]",str(d["pass"]),str(d["fail"]),str(d["warn"]))
+            p=d["pct"]
+            c="dim" if p is None else "green" if p>=75 else "yellow" if p>=50 else "red"
+            t.add_row(s,f"[{c}]{pct_text(p)}[/]",str(d["pass"]),str(d["fail"]),str(d["warn"]))
         con.print(t)
         con.print("\n[bold cyan]FINDINGS[/]")
         cur=""
@@ -1431,7 +1448,7 @@ def report(results, cfg, con=None):
             con.print(f"\n[bold red]CRITICAL ({len(fails)})[/]")
             for r in fails: con.print(f"  [red]✗[/] {r['id']}: {r['label']} — {r['detail']}")
     else:
-        print(f"\n{'='*64}\n  {cfg.get('org_name','')} · {overall}% {mat} · {len(REG)} checks\n{'='*64}")
+        print(f"\n{'='*64}\n  {cfg.get('org_name','')} · {pct_text(overall)} {mat} · {len(REG)} checks\n{'='*64}")
         for r in results: print(f"  {r['status']:>7} {r['id']:>5} {r['label']}")
 
 def save(results, cfg, path):

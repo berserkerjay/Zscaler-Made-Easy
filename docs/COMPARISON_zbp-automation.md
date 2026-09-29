@@ -41,7 +41,7 @@ engines and rules into a tenant. Everything else is different.
 | Existing objects | Terraform tries to create duplicates unless imported | Reused by name; content differences reported as warnings |
 | Provider / API | Provider 4.7.26 (enterprise) and 4.8.0 (endpoint, source-code), OneAPI auth | zscaler-sdk-python OneAPI everywhere; the one Terraform module pins provider `~> 3.0` with legacy username/password/API-key auth |
 | Activation | `zia_activation_status` resource in every workspace | Reminder card after deploy; activation left to the admin |
-| Credentials | `TF_VAR_*` / `ZSCALER_*` env or ignored `terraform.tfvars`, marked sensitive | Typed into the GUI per session, env fallback, secret never stored, masked in errors |
+| Credentials | `TF_VAR_*` / `ZSCALER_*` env or ignored `terraform.tfvars`, marked sensitive | Typed into the GUI per session, env fallback, secret kept only in the browser tab unless "remember" is ticked on a saved profile (keyring, else the owner-only profile file), masked in errors |
 | Write protection | None beyond Terraform's plan/apply prompt | Server refuses all writes unless `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND`; separate launcher |
 | Tests / CI | None | 32 pytest tests; GitHub Actions runs compile, JS syntax, tests, and a server smoke test on every push |
 | Reproducibility | Generators hard-code `/Users/michaelkoyfman/...` paths to a private MCP skill and private tenant exports; only the generated output is usable by others | Everything needed is in the repo; packs are plain JSON under `configs/` |
@@ -168,7 +168,7 @@ engines and rules into a tenant. Everything else is different.
   kept correct, where Terraform gets correctness from the provider.
 - **Activation is manual.** After a deploy the admin still has to
   activate in the portal.
-- **Credentials live in a browser tab.** The secret is never persisted,
+- **Credentials live in a browser tab.** The secret is not persisted unless "remember" is ticked on a saved profile,
   but it is typed into a page and sent with every request. Fine for a
   single-user desktop tool, weaker than `sensitive` Terraform variables
   in a CI pipeline.

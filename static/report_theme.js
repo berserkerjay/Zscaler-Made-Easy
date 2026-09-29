@@ -45,15 +45,32 @@
   window.__dlpAuthWrapped = true;
   const realFetch = window.fetch.bind(window);
   let asking = null;
+  // The app's own dialog (ui_auth.js, loaded before this file) asks for the
+  // token; the browser prompt is the fallback, guarded so an unsupported
+  // prompt() reads as "cancelled" and this wrapper never throws.
+  let askFailed = null;   // the last reason the browser could not ask at all
+  async function askForToken(message) {
+    askFailed = null;
+    try {
+      if (window.__dlpUnlockDialog) return await window.__dlpUnlockDialog(message);
+      return window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also printed on the server console). Paste it here:');
+    } catch (e) { askFailed = String(e && e.message || e); return null; }
+  }
+  // A cancelled unlock is respected for a while; a deliberate action asks
+  // again through window.__dlpAskAgain().
+  let declinedAt = 0;
+  const DECLINE_QUIET_MS = 30000;
+  window.__dlpAskAgain = () => { declinedAt = 0; };
   async function unlock(message) {
     if (asking) return asking;
+    if (Date.now() - declinedAt < DECLINE_QUIET_MS) return false;
     asking = (async () => {
-      const t = window.prompt((message || 'This server asks for its UI token.') + '\n\nIt is in ui_token.txt next to the app (also printed on the server console). Paste it here:');
-      if (t === null) return false;
-      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t.trim() }) });
+      const t = await askForToken(message);
+      if (t === null || t === undefined || !String(t).trim()) { declinedAt = Date.now(); return false; }
+      const r = await realFetch('/api/auth/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: String(t).trim() }) });
       return r.ok;
     })();
-    try { return await asking; } finally { asking = null; }
+    try { return await asking; } catch (e) { return false; } finally { asking = null; }
   }
   window.fetch = async function (input, init) {
     let r = await realFetch(input, init);
@@ -63,6 +80,7 @@
       if (body && body.token_required) {
         const ok = await unlock(body.detail);
         if (ok) r = await realFetch(input, init);
+        else { try { r.dlpTokenRequired = true; if (askFailed) r.dlpDialogUnavailable = askFailed; } catch (e) {} }
       }
     }
     return r;

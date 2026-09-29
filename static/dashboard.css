@@ -196,3 +196,12 @@ body.theme-light #dbFooter { background: rgba(255,255,255,0.9); }
 .db-lastrun-btn { min-height: 34px; padding: 0.4rem 0.9rem; border-radius: 8px; border: 0; background: var(--btn, #2563eb); color: #fff; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .db-lastrun-btn:hover { background: var(--btn-hover, #1d4ed8); }
 .db-radar-legend td:last-child { font-weight: 700; text-align: right; }
+
+/* Unmeasured states (docs/SCORING.md): a section with nothing scoreable and
+   a run that scored nothing show a dash and a neutral chip, never 0% or 100%. */
+.db-chip.na { background: rgba(148,163,184,0.16); color: var(--dim); }
+.db-pillar-p-na { color: var(--dim); }
+.db-pillar-na .db-bar i { background: transparent; }
+.section-score-na { color: var(--dim); font-weight: 600; font-size: 0.8rem; }
+.stat-note { margin: 0.6rem 0 0; font-size: 0.8rem; color: var(--dim); line-height: 1.45; }
+.stat-note:empty { display: none; }
