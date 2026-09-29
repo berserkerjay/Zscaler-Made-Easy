@@ -41,8 +41,9 @@ def test_the_sidebar_moves_the_toolbar_buttons_instead_of_copying_them():
     js = _read("dashboard.js")
     assert "tools.appendChild(g)" in js and "toolbar.hidden = true" in js, "the buttons move; no duplicate onclick targets"
     assert "'.tool-group'" in js and "'aria-label', 'Navigation'" in js and 'aria-label="Workflow"' in js
-    for step in ("configure", "scope", "run", "review"):
+    for step in ("configure", "scope", "review"):
         assert f'data-db="{step}"' in js, step
+    assert 'data-db="run"' not in js, "Run assessment is a button on the Scope assessment page, not a nav item"
     assert "_stepGo(k)" in js and "Current implementation" in js
     assert "'themeToggleBtn', 'bgIntensityControl'" in js, "the theme toggle docks in the sidebar foot"
     assert "aria-controls=\"dbSidebar\"" in js.replace("'", '"') or "setAttribute('aria-controls', 'dbSidebar')" in js
@@ -101,13 +102,18 @@ def test_the_mirrored_results_tab_is_styled_like_the_page():
 
 
 def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
-    """Clicking Run assessment in the sidebar: missing details open the
-    Connect step on the first blank field and queue the run; a tenant not
-    yet authenticated is authenticated, then assessed; a successful
-    Authenticate starts a queued run. The run happens on this page (no
-    pop-out tab), so the dashboard is where you land."""
+    """Clicking Run assessment on the Scope assessment page: a missing
+    organisation or assessor stays on that page (Report details); missing
+    sign-in details open the Connect step on the first blank field and
+    queue the run; a tenant not yet authenticated is authenticated, then
+    assessed; a successful Authenticate starts a queued run. The run
+    happens on this page (no pop-out tab), so the dashboard is where you
+    land."""
     js = _read("dashboard.js")
-    assert "function runFromSidebar()" in js and "if (k === 'run') { runFromSidebar(); return; }" in js
+    assert "function runFromSidebar()" in js and "sec.querySelector('#dbScopeRun').addEventListener('click', () => { runFromSidebar(); });" in js
+    assert "if (k === 'run')" not in js
+    assert "const report = missing.filter(id => id === 'org' || id === 'assessor');" in js and "under Report details, then click Run assessment" in js
+    assert "hideScopeView(); setCurrent('dashboard');" in js, "the Scope assessment page steps aside when the run starts"
     assert "function missingFields()" in js and "['org', 'assessor'].concat(legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec'])" in js
     assert "remembered && (id === 'csec' || id === 'zpass' || id === 'zkey')" in js, "a profile's remembered secret counts"
     assert "function signedIn()" in js and "GD.conn" in js
@@ -160,9 +166,9 @@ def test_tenant_configuration_is_hidden_until_its_own_sidebar_link_is_used():
 
 def test_connect_to_the_tenant_sits_directly_below_dashboard_in_the_sidebar():
     js = _read("dashboard.js")
-    keys = ("dashboard", "configure", "scope", "run", "review")
+    keys = ("dashboard", "configure", "scope", "review")
     nav = [k for k in re.findall(r'data-db="([a-z]+)"', js) if k in keys][:len(keys)]
-    assert nav == ["dashboard", "configure", "scope", "run", "review"], nav
+    assert nav == ["dashboard", "configure", "scope", "review"], nav
     assert 'data-db="channels"' not in js, "Channels is folded into Scope, not its own nav item"
 
 
@@ -189,14 +195,15 @@ def test_the_score_tiles_are_always_on_screen_even_before_a_run():
 
 
 def test_scope_combines_channels_assessment_scope_and_compliance_frameworks():
-    """Scope is one combined page, reached from a single sidebar link:
-    Channels (11 real channels — icon, risk, category, description — the
-    operator marks each Zscaler-owned or covered by an alternative, with
-    a running tally, persisted in this browser), then Assessment Scope,
-    then Compliance Frameworks — the same live checkboxes the assessment
-    itself reads, moved into the page rather than copied. It hides the
-    rest of the main content (including the guide panel) while it is
-    open, and a Continue button leads into Connect to the tenant."""
+    """Scope assessment is one combined page, reached from a single sidebar
+    link: Channels (11 real channels — icon, risk, category, description —
+    the operator marks each Zscaler-owned or covered by an alternative,
+    with a running tally), then Assessment Scope, then Compliance
+    Frameworks, then Report details (organisation, assessor) — the same
+    live fields the assessment itself reads, moved into the page rather
+    than copied, so the tenant configuration keeps sign-in details only.
+    It hides the rest of the main content (including the guide panel)
+    while it is open, and its Run assessment button is the run."""
     js = _read("dashboard.js")
     css = _read("dashboard.css")
     assert 'data-db="scope"' in js and "function showScopeView()" in js and "function hideScopeView()" in js
@@ -205,9 +212,13 @@ def test_scope_combines_channels_assessment_scope_and_compliance_frameworks():
                  "Endpoint Data Scan", "SSL/TLS Inspection", "Cloud App Control", "Device Control", "Workflow Automation"):
         assert f"name: '{name}'" in js, name
     assert "CHANNELS_KEY = 'zassess_channels_v1'" in js and "localStorage.setItem(CHANNELS_KEY" in js
-    assert "'stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results'" in js, "the guide panel is hidden with the rest of main, or it bleeds through"
-    assert "dbChFootTxt" in js and "dbScopeContinue" in js
+    assert "'stepBar', 'gdPanel', 'configPark', 'configCard', 'dbHero', 'progressCard', 'results'" in js, "the guide panel and the score tiles are hidden with the rest of main, or they bleed through"
+    assert "dbChFootTxt" in js and "dbScopeRun" in js and "dbScopeContinue" not in js
+    assert "Scope assessment</h1>" in js and 'data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope assessment</button>' in js
     assert "$('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf)" in js
     assert "$('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw)" in js
+    assert "['org', 'assessor'].forEach(id => { const el = $(id); const field = el && el.closest('.field'); if (field) sec.querySelector('#dbScopeReportBody').appendChild(field); });" in js
+    html = _read("index.html")
+    assert "Sign-in details only: what the app needs to read the tenant." in html
     for cls in (".db-ch-row", ".db-ch-choice", ".db-pill", ".db-scope-section", ".db-scope-tally", ".db-scope-foot", ".db-chip.risk-fail", ".db-chip.risk-ok"):
         assert cls in css, cls

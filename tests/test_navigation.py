@@ -22,7 +22,7 @@ def test_every_run_assessment_button_runs_on_the_page():
     assert "window.__dbRunFromSidebar()" in guide and "openToolTab('results', 'run')" not in guide
     assert "window.__dbRunFromSidebar = runFromSidebar" in dash and "runAssessment();" in dash
     assert "alert('An assessment is already running.')" not in guide
-    assert 'title="Run the assessment on this page"' in html
+    assert 'run the assessment on this page from there"' in html, "the step strip's Scope assessment step says the run happens on this page"
     # The mirrored tab stays as the explicit opt-in on the results.
     assert "openToolTab('results', 'view')" in html and "Open in new tab" in html
 

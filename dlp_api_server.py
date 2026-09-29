@@ -169,7 +169,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/quickstart", "/report/evalall", "/report/path", "/report/live"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3219,16 +3219,6 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
 async def report_evalall_page():
     """Evaluate All Rules: the decision flow with the tie-breaker, and the simulator (static/report_evalall.html)."""
     page = os.path.join(STATIC_DIR, "report_evalall.html")
-    if not os.path.exists(page):
-        raise HTTPException(status_code=404, detail="page missing")
-    with open(page, "r", encoding="utf-8") as f:
-        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
-
-
-@app.get("/quickstart")
-async def quickstart_page():
-    """Quick Start Assessment in its own tab (static/quickstart.html)."""
-    page = os.path.join(STATIC_DIR, "quickstart.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="page missing")
     with open(page, "r", encoding="utf-8") as f:

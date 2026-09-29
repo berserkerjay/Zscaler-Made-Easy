@@ -22,7 +22,7 @@ def _read(name):
 # Toolbar opener -> catalogue key. A new toolbar button must be added here
 # AND to explain.js, so nothing ships unexplained.
 TOOLBAR = {
-    "openQuickStartTab()": "quickstart", "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path",
+    "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
     "openToolTab('terraform')": "terraform", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
@@ -72,7 +72,7 @@ def test_every_report_route_has_an_explainer_and_loads_the_script():
     routes = sorted(r.path for r in srv.app.routes if getattr(r, "path", "").startswith("/report/"))
     for path in routes:
         assert f"'{path}'" in js, f"explain.js does not map {path}"
-    for name in sorted(n for n in os.listdir(STATIC) if n.startswith("report_") and n.endswith(".html")) + ["quickstart.html", "help.html"]:
+    for name in sorted(n for n in os.listdir(STATIC) if n.startswith("report_") and n.endswith(".html")) + ["help.html"]:
         html = _read(name)
         assert '<script src="/static/explain.js"></script>' in html, name
         assert '<script src="/static/report_theme.js"></script>' in html, name

@@ -1,6 +1,6 @@
-"""Page layout requests: Quick Start Assessment in its own tab from the top
-toolbar, tenant details folded into the Connect step, the Evaluate All
-Rules flow and simulator in the migration wizard."""
+"""Page layout requests: no Quick start page (it overlapped the sidebar
+workflow and was removed), tenant details folded into the Connect step,
+the Evaluate All Rules flow and simulator in the migration wizard."""
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -13,15 +13,15 @@ def _page():
     return c
 
 
-def test_quick_start_is_a_top_button_that_opens_its_own_tab():
+def test_quick_start_is_gone_it_overlapped_the_sidebar_workflow():
     c = _page()
     html = c.get("/").text
-    assert "Quick start assessment" in html and "openQuickStartTab()" in html
-    assert '<h2>Quick Start</h2>' not in html, "the Quick Start card must be gone from the page body"
+    assert "Quick start" not in html and "openQuickStartTab" not in html and "/quickstart" not in html
     assert html.index('aria-label="Start"') < html.index('aria-label="Find the gaps"'), "Start comes first in the toolbar"
-    qs = c.get("/quickstart")
-    assert qs.status_code == 200 and "Quick start</span> assessment" in qs.text and "OneAPI credentials" in qs.text
-    assert TestClient(srv.app).get("/quickstart").status_code == 200   # no token needed for the page itself
+    assert c.get("/quickstart").status_code == 404
+    for name in ("explain.js", "help.html"):
+        assert "quickstart" not in c.get(f"/static/{name}").text.lower(), name
+    assert "seven things" in c.get("/help").text
 
 
 def test_tenant_details_live_inside_the_connect_step():
@@ -95,7 +95,9 @@ def test_evaluate_all_rules_has_its_own_tab_with_the_tie_breaker():
 def test_step_strip_buttons_take_you_to_each_step():
     c = _page()
     html = c.get("/").text
-    for step in ("configure", "scope", "run", "review"):
+    for step in ("configure", "scope", "review"):
         assert f'<button type="button" class="step-item" data-step="{step}"' in html and f"_stepGo('{step}')" in html, step
+    assert 'data-step="run"' not in html, "Run assessment lives on the Scope assessment page, not as its own step"
+    assert "① Connect" in html and "② Scope assessment" in html and "③ Review + export" in html
     assert "function _stepGo(step)" in html and 'id="scopeField"' in html and "Click a step to go there" in html
     assert '<span class="step-item"' not in html, "the strip is made of real buttons, not labels"

@@ -33,8 +33,7 @@
       <div class="db-nav-l">Workflow</div>
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
-      <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope</button>
-      <button type="button" class="db-item" data-db="run"><span class="db-ico" aria-hidden="true">▶</span><span class="db-lbl">Run assessment</span></button>
+      <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope assessment</button>
       <button type="button" class="db-item" data-db="review"><span class="db-ico" aria-hidden="true">📋</span>Findings &amp; report</button>
     </nav>
     <div id="dbTools" role="navigation" aria-label="Tools"></div>
@@ -96,11 +95,12 @@
   }
   function note(text, kind) {
     let n = $('dbRunNote');
-    if (!n) { n = document.createElement('div'); n.id = 'dbRunNote'; n.className = 'db-note'; n.setAttribute('role', 'status'); const run = aside.querySelector('.db-item[data-db="run"]'); run.insertAdjacentElement('afterend', n); }
+    if (!n) { n = document.createElement('div'); n.id = 'dbRunNote'; n.className = 'db-note'; n.setAttribute('role', 'status'); const sc = aside.querySelector('.db-item[data-db="scope"]'); sc.insertAdjacentElement('afterend', n); }
     n.textContent = text || ''; n.hidden = !text; n.className = 'db-note' + (kind ? ' ' + kind : '');
   }
   let pendingRun = false;
   function goConnect(first) {
+    hideScopeView();   // the Scope assessment page steps aside for the sign-in form
     if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
     setCurrent('configure');
     if (first) setTimeout(() => { const el = $(first); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } }, 450);
@@ -111,12 +111,24 @@
     const btn = $('runBtn');
     if (btn && btn.disabled) return;   // already running (the Authenticate wrapper started it)
     runAssessment();
-    if (btn && btn.disabled) { setCurrent('run'); const prog = $('progressCard'); if (prog) prog.scrollIntoView({ behavior: 'smooth', block: 'start' }); say('Assessment started. The results open on this page when it finishes.'); }
+    // The run happens on the main page: the Scope assessment page steps
+    // aside and the progress card (then the results) is where you land.
+    if (btn && btn.disabled) { hideScopeView(); setCurrent('dashboard'); const prog = $('progressCard'); if (prog) prog.scrollIntoView({ behavior: 'smooth', block: 'start' }); say('Assessment started. The results open on this page when it finishes.'); }
   }
   async function runFromSidebar() {
     const btn = $('runBtn');
     if (btn && btn.disabled) { say('The assessment is already running.'); return; }
     const missing = missingFields();
+    // The organisation and assessor live on the Scope assessment page
+    // (report details); everything else is a sign-in detail on Connect.
+    const report = missing.filter(id => id === 'org' || id === 'assessor');
+    if (report.length) {
+      note(`Fill in ${report.map(id => FIELD_LABELS[id] || id).join(' and ')} under Report details, then click Run assessment.`, 'warn');
+      say('Fill in the report details first.');
+      showScopeView(); setCurrent('scope');
+      setTimeout(() => { const el = $(report[0]); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } }, 350);
+      return;
+    }
     if (missing.length) {
       pendingRun = true;
       note(`Sign in first: fill in ${missing.map(id => FIELD_LABELS[id] || id).join(', ')} and click Authenticate. The assessment starts by itself right after.`, 'warn');
@@ -162,12 +174,12 @@
     if (k === 'scope') { showScopeView(); setCurrent('scope'); return; }
     hideScopeView();
     if (k === 'dashboard') { const r = $('results'); if (r && getComputedStyle(r).display !== 'none') r.scrollIntoView({ behavior: 'smooth', block: 'start' }); else window.scrollTo({ top: 0, behavior: 'smooth' }); setCurrent('dashboard'); return; }
-    if (k === 'run') { runFromSidebar(); return; }
     if (typeof _stepGo === 'function') _stepGo(k);
     setCurrent(k);
   }));
-  // Every other "Run assessment" (the step strip, the guide's steps 2 and
-  // 7) funnels into this same runner, so a run always behaves the same way.
+  // Every "Run assessment" (the Scope assessment page's button, the step
+  // strip, the guide's steps 2 and 7) funnels into this same runner, so a
+  // run always behaves the same way.
   window.__dbRunFromSidebar = runFromSidebar;
   window.__dbNote = note;
 
@@ -221,8 +233,8 @@
     const sec = document.createElement('section');
     sec.id = 'dbScopeView'; sec.hidden = true; sec.setAttribute('aria-label', 'Scope');
     sec.innerHTML = `
-      <div class="hero db-ch-hero"><h1><span aria-hidden="true">🎯</span> Scope</h1>
-        <p>What this assessment covers: the Zscaler data-security channels you already run, which parts of the platform to check, and which compliance frameworks the report should map to.</p></div>
+      <div class="hero db-ch-hero"><h1><span aria-hidden="true">🎯</span> Scope assessment</h1>
+        <p>What this assessment covers and who it is for: the Zscaler data-security channels the customer already runs, which parts of the platform to check, which compliance frameworks the report should map to, and the organisation and assessor on the report cover. Then run it from here; sign-in details stay under Connect to the tenant.</p></div>
       <div class="card db-scope-section" id="dbScopeChannelsCard">
         <div class="db-scope-section-h">
           <h2>Channels <span class="db-scope-tally" id="dbChFootTxt"></span></h2>
@@ -237,8 +249,14 @@
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
       <div class="card db-scope-section" id="dbScopeFwCard"><div id="dbScopeFwBody"></div></div>
+      <div class="card db-scope-section" id="dbScopeReportCard">
+        <div class="db-scope-section-h"><h2>Report details</h2></div>
+        <p class="db-scope-p">Who the report is for and who ran it; both print on the cover.</p>
+        <div class="form-grid" id="dbScopeReportBody"></div>
+      </div>
       <div class="db-scope-foot">
-        <button type="button" class="rp-btn primary" id="dbScopeContinue">Continue to Connect the tenant →</button>
+        <button type="button" class="rp-btn primary" id="dbScopeRun">▶ Run assessment</button>
+        <span class="db-scope-p">Signs in first when needed. The assessment runs on this page; the results open on the Dashboard.</span>
       </div>`;
     const main = document.getElementById('main-content');
     main.insertBefore(sec, main.firstChild);
@@ -253,15 +271,14 @@
       channelsExtra.push({ id, name: name.trim(), risk: 'medium', category: 'Custom', icon: '🧩', what: 'Added by you; tracked the same way as the built-in channels.' });
       saveExtra(); renderChannelsList(); say(`${name.trim()} added.`);
     });
-    sec.querySelector('#dbScopeContinue').addEventListener('click', () => {
-      hideScopeView();
-      if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
-      setCurrent('configure');
-    });
-    // Assessment scope and Compliance frameworks are moved in, not
-    // copied: the same live checkboxes runAssessment() already reads.
+    sec.querySelector('#dbScopeRun').addEventListener('click', () => { runFromSidebar(); });
+    // Assessment scope, Compliance frameworks and the report details
+    // (organisation, assessor) are moved in, not copied: the same live
+    // fields runAssessment() already reads. The tenant configuration card
+    // keeps the sign-in details only.
     const sf = $('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf);
     const fw = $('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw);
+    ['org', 'assessor'].forEach(id => { const el = $(id); const field = el && el.closest('.field'); if (field) sec.querySelector('#dbScopeReportBody').appendChild(field); });
     return sec;
   }
   function channelRowHtml(c) {
@@ -339,7 +356,7 @@
     channelState = next; saveChannelState(channelState); saveExtra();
     if (scopeView) renderChannelsList();
   };
-  const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'progressCard', 'results', 'dbLastRun'];
+  const MAIN_CHILD_IDS = ['stepBar', 'gdPanel', 'configPark', 'configCard', 'dbHero', 'progressCard', 'results', 'dbLastRun'];
   function showScopeView() {
     if (!scopeView) { scopeView = buildScopeView(); renderChannelsList(); }
     MAIN_CHILD_IDS.forEach(id => { const el = $(id); if (el) el.dataset.dbHiddenFor = 'scope', el.style.display = 'none'; });
@@ -348,7 +365,7 @@
     scopeView.hidden = false;
     renderChannelsList();
     scopeView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    say('Scope.');
+    say('Scope assessment.');
   }
   function hideScopeView() {
     if (!scopeView || scopeView.hidden) return;
@@ -358,6 +375,9 @@
     document.querySelector('.hero').hidden = false;
   }
   window.__dbShowScope = showScopeView;
+  // Built at load (hidden) so the report details leave the tenant
+  // configuration card before anyone opens Connect to the tenant.
+  scopeView = buildScopeView(); renderChannelsList();
 
   // ── Dashboard default content: the score tiles (ring, completion,
   // radar, pillars, insights, actions) live outside #results so they are
@@ -404,7 +424,7 @@
       lastRun.innerHTML = `<span>No assessment recorded yet for this tenant — the tiles below fill in once you run one.</span> <button type="button" class="db-lastrun-btn" id="dbLastRunGo">Connect to the tenant &rarr;</button>`;
     }
     const go = $('dbLastRunGo');
-    if (go) go.addEventListener('click', () => { const btn = aside.querySelector(`.db-item[data-db="${last ? 'run' : 'configure'}"]`); if (btn) btn.click(); });
+    if (go) go.addEventListener('click', () => { const btn = aside.querySelector(`.db-item[data-db="${last ? 'scope' : 'configure'}"]`); if (btn) btn.click(); });
     lastRun.hidden = false;
   }
   const origProfilesLoad = window._gdProfilesLoad;
@@ -426,8 +446,9 @@
     const prof = (window.GD && GD.profile) ? GD.profile : '';
     const t = $('dbCurTenant'); if (t) { t.textContent = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
     const s = $('dbCurSaved'); if (s) s.textContent = prof ? 'Profile selected' : 'Never';
-    const run = aside.querySelector('.db-item[data-db="run"]'), btn = $('runBtn');
-    if (run && btn) { const busy = !!btn.disabled; run.classList.toggle('busy', busy); run.setAttribute('aria-busy', String(busy)); run.querySelector('.db-ico').textContent = busy ? '⏳' : '▶'; run.querySelector('.db-lbl').textContent = busy ? 'Running…' : 'Run assessment'; }
+    // The Scope assessment page's Run button follows the real run button.
+    const run = $('dbScopeRun'), btn = $('runBtn');
+    if (run && btn) { const busy = !!btn.disabled; run.disabled = busy; run.setAttribute('aria-busy', String(busy)); run.textContent = busy ? '⏳ Running…' : '▶ Run assessment'; }
     renderLastRunOrEmpty();
   }
   refreshCurrent(); setInterval(refreshCurrent, 2500);
