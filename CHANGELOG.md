@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-29
 
+### Container build behind TLS inspection: trust the company root certificate
+- **What you reported.** `docker compose up -d --build` on Windows stopped at `[6/8] pip install` with `CERTIFICATE_VERIFY_FAILED ... unable to get local issuer certificate` for `pypi.org`.
+- **Why.** TLS inspection (Zscaler) re-signs HTTPS with the company's root certificate, which the Python base image does not trust.
+- **Now** the build adds any Base-64 root certificate found in the new `certs/` folder to the image's trust store before pip runs, and pip, `requests` and Python's `ssl` use that store, so the running app trusts the same certificate on the Zscaler API. With `certs/` empty nothing changes. `INSTALL.md` has a one-line PowerShell export of the Zscaler Root CA into `certs\zscaler-root.crt` (and the Mac and Linux equivalents); certificate files there are git-ignored.
+- **Verified.** Built through a proxy with the certificate in `certs/`: "extra root certificates added: 1", every locked package installed, the container answered `/api/ping` and reached `https://pypi.org` from inside. A test pins the order (certificates before pip), the trust-store variables and the ignore rules.
+
 ### Install guide: build and run the container by hand
 - **What you asked for.** Instructions to run the container manually, mounting its storage, without Docker Compose.
 - **Now** `INSTALL.md` has *Build and run it by hand*: `docker build`, `docker volume create dlpcheck-data`, and a `docker run` with the same settings as `docker-compose.yml` (loopback-only port, the `/data` volume mount, read-only filesystem, no extra privileges, restart policy), for Mac/Linux and on one line for Windows, plus how to read the UI token, check health, update and remove it. A test keeps the commands in step with the compose file.
