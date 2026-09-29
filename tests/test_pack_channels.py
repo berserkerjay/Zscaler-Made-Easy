@@ -10,6 +10,7 @@ dependencies, and that missing ones block only the rules that need them.
 from __future__ import annotations
 
 import itertools
+import os
 
 import pytest
 
@@ -461,3 +462,30 @@ def test_every_rule_is_counted_under_its_own_channel_even_when_skipped(tmp_path)
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, settle_seconds=0, activate=False)
     assert res["channels"]["web"]["created"] == 1 and res["channels"]["web"]["skipped"] == 0
     assert res["channels"]["email"]["skipped"] == 1
+
+
+def test_the_connection_check_counts_rules_on_every_dlp_channel(monkeypatch):
+    # "Show how many SaaS, Email, Endpoint DLP and Web DLP rules exist" on
+    # the Connect step, not only Web.
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+
+    client = make_client(casb_tenants=[tenant("Box", "BOX", 11)],
+                         endpoint_rules=[Obj(id=1, name="E1", order=1), Obj(id=2, name="E2", order=2)],
+                         saas_rules=[Obj(id=3, name="S1", order=1, type="OFLCASB_DLP_FILE")],
+                         email_rules=[Obj(id=4, name="M1", order=1), Obj(id=5, name="M2", order=2), Obj(id=6, name="M3", order=3)])
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
+    r = TestClient(srv.app).post("/api/tenant/check", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["endpoint_rules"], body["saas_rules"], body["email_rules"]) == (2, 1, 3)
+    assert isinstance(body["web_rules"], int)
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "guide.js")).read()
+    for label in ("Web DLP rules", "Endpoint DLP rules", "SaaS DLP rules", "Email DLP rules"):
+        assert label in page, label
+
+
+def test_a_channel_the_check_cannot_read_is_reported_not_counted_as_zero():
+    client = make_client(email_fail=True)
+    n, err = pc.count_rules(client.zia, pc.EMAIL)
+    assert n is None and err

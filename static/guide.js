@@ -18,6 +18,15 @@ const GD_LS_CONN = 'zassess_guide_conn';
 const GD_LS_DEPLOY = 'zassess_last_deploy';
 
 const _gdE = s => (typeof escapeHtml === 'function' ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s));
+// DLP rules per channel as the connection check read them. A channel the
+// check could not read (null) says so instead of showing 0; a result
+// saved before the check counted Endpoint, SaaS and Email shows Web only.
+function _gdRuleCounts(c, sep = ', ') {
+  const n = v => (v === null ? 'unreadable' : String(v));
+  const parts = [`${n(c.web_rules)} Web DLP rules`];
+  if ('endpoint_rules' in c) parts.push(`${n(c.endpoint_rules)} Endpoint DLP rules`, `${n(c.saas_rules)} SaaS DLP rules`, `${n(c.email_rules)} Email DLP rules`);
+  return parts.join(sep);
+}
 const _gdVal = id => ((document.getElementById(id) || {}).value || '').trim();
 
 function _gdLoad() {
@@ -63,7 +72,7 @@ function _gdSteps() {
         ? 'The classic ZIA API: a ZIA admin allowed to use the API (username and password) and the tenant\'s API key from Administration > API Key Management. Covers ZIA only. For a tenant on ZIdentity, switch the sign-in method to OneAPI.'
         : 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values. A tenant without ZIdentity can use the classic ZIA API instead (sign-in method in Tenant details).',
       status: sameTenant && GD.conn.ok
-        ? `Connected to ${_gdE(GD.conn.label)}: ${GD.conn.dictionaries} dictionaries, ${GD.conn.engines} engines, ${GD.conn.web_rules} web DLP rules.`
+        ? `Connected to ${_gdE(GD.conn.label)}: ${GD.conn.dictionaries} dictionaries, ${GD.conn.engines} engines, ${_gdRuleCounts(GD.conn)}.`
         : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the tenant fields, then click Authenticate.'),
       tenant: true,
       actions: [
@@ -359,7 +368,7 @@ function _gdConnHtml() {
   const c = GD.conn;
   if (!c || c.vd !== _gdIdent()) return '';
   if (c.ok) {
-    return `<div class="gd-conn ok"><strong>Connected.</strong> ${_gdE(c.label)} · ${c.dictionaries} dictionaries (${c.custom_dictionaries} custom) · ${c.engines} engines · ${c.web_rules} web DLP rules${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
+    return `<div class="gd-conn ok"><strong>Connected.</strong> ${_gdE(c.label)} · ${c.dictionaries} dictionaries (${c.custom_dictionaries} custom) · ${c.engines} engines · ${_gdRuleCounts(c, ' · ')}${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
   }
   return `<div class="gd-conn bad"><strong>Could not connect.</strong> ${_gdE(c.cause || '')}<div class="gd-fix"><strong>What to do:</strong> ${_gdE(c.fix || '')}</div>${c.raw ? `<details><summary>Technical detail</summary><code>${_gdE(c.raw)}</code></details>` : ''}</div>`;
 }
@@ -431,7 +440,8 @@ async function _gdTest() {
       GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', vd: ident, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
     } else {
       GD.conn = { ok: true, vd: ident, label: data.tenant_label, dictionaries: data.dictionaries, custom_dictionaries: data.custom_dictionaries,
-                  engines: data.engines, web_rules: data.web_rules, problems: data.problems || [], at: new Date().toISOString() };
+                  engines: data.engines, web_rules: data.web_rules, endpoint_rules: data.endpoint_rules, saas_rules: data.saas_rules,
+                  email_rules: data.email_rules, problems: data.problems || [], at: new Date().toISOString() };
     }
   } catch (e) {
     const msg = String(e && e.message || e);
