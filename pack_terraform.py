@@ -22,16 +22,26 @@ Two modes:
 
 Files produced (a dict of path -> content; write them with write_workspace):
 
-    versions.tf        provider pin, required_version, optional S3 backend
-    provider.tf        provider "zia" from variables or ZSCALER_* env vars
-    variables.tf       credentials (sensitive), rule order, rank, activate
+    terraform.tf       required_version, provider pin, optional S3 backend
+    providers.tf       provider "zia" from variables or ZSCALER_* env vars
+    variables.tf       credentials (sensitive), rule order, rank, activate,
+                       tenant ids per channel (validated, non-nullable)
     dictionaries.tf    data lookups for predefined templates + resources
     engines.tf         resources with D${...}.S expressions
-    rules.tf           one resource per rule, per channel
+    rules.tf           one resource per rule, per channel, lifecycle last
     activation.tf      zia_activation_status (count = var.activate ? 1 : 0)
     imports.tf         (gap mode only) import blocks for existing objects
-    outputs.tf         names and IDs
+    locals.tf          the managed objects as lists, for the outputs
+    outputs.tf         names and IDs, each with a description
     terraform.tfvars.example, .gitignore, README.md
+
+The layout follows HashiCorp's Terraform style guide for a root module a
+tool hands to a platform team: `terraform fmt`-clean as written (hcl_fmt),
+file names per the guide, every variable typed and described (validated
+and non-nullable where the domain is known), every output described,
+meta-arguments first and lifecycle last, data sources for what lives on
+the tenant, import blocks for what already exists, and a README with the
+requirements, inputs, outputs, state and verification steps.
 """
 from __future__ import annotations
 
@@ -43,7 +53,7 @@ import zipfile
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
-from dlp_importer import (find_refs, DICT_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description,
+from dlp_importer import (find_refs, DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, _load_json, _resolve_configs, clone_settings, fit_description,
                           heal_predefined_names, load_pack_metadata)
 
 PROVIDER_SOURCE = "zscaler/zia"
@@ -269,6 +279,69 @@ def _attr(name: str, value: str, width: int = 28) -> str:
     return f"  {name.ljust(width)} = {value}\n"
 
 
+_ATTR_LINE_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_\-]*)\s*=\s*(.*\S)\s*$")
+
+
+def _balanced(value: str) -> bool:
+    """True when the attribute's value closes every bracket it opens on
+    this line (strings and their escapes ignored), i.e. the attribute is a
+    single line and takes part in `terraform fmt` alignment."""
+    depth = 0
+    quote = None
+    i = 0
+    while i < len(value):
+        c = value[i]
+        if quote:
+            if c == "\\":
+                i += 1
+            elif c == quote:
+                quote = None
+        elif c == '"':
+            quote = '"'
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        i += 1
+    return depth == 0 and quote is None
+
+
+def hcl_fmt(text: str) -> str:
+    """Lay the generated HCL out the way `terraform fmt` does, so a
+    workspace is fmt-clean as written (the platform team's pre-commit hook
+    and CI's `terraform fmt -check` pass without a second pass): within a
+    run of consecutive single-line `key = value` attributes at one indent,
+    the `=` signs line up on the longest key; a blank line, a comment, a
+    nested block or a multi-line value ends the run and stands as written
+    with single spaces around `=`. Trailing whitespace is dropped."""
+    out: List[str] = []
+    run: List[Tuple[str, str, str]] = []   # (indent, key, value)
+
+    def flush() -> None:
+        if not run:
+            return
+        width = max(len(k) for _, k, _ in run)
+        for indent, key, value in run:
+            out.append(f"{indent}{key.ljust(width)} = {value}")
+        run.clear()
+
+    for raw in text.split("\n"):
+        line = raw.rstrip()
+        m = _ATTR_LINE_RE.match(line)
+        if m and _balanced(m.group(3)) and (not run or run[0][0] == m.group(1)):
+            run.append((m.group(1), m.group(2), m.group(3)))
+            continue
+        flush()
+        if m and _balanced(m.group(3)):
+            run.append((m.group(1), m.group(2), m.group(3)))   # a new run at another indent
+            continue
+        if m:
+            line = f"{m.group(1)}{m.group(2)} = {m.group(3)}"   # a multi-line value: single spaces, no alignment
+        out.append(line)
+    flush()
+    return "\n".join(out)
+
+
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
@@ -326,13 +399,25 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
 
     # ---- dictionaries -----------------------------------------------------
     dict_names = {d["name"] for d in src["dictionaries"]}
-    templates: Dict[str, str] = {}          # template name -> data label
-    predefined_refs: Dict[str, str] = {}    # predefined dictionary referenced by engines -> data label
+    # Every predefined Zscaler dictionary the workspace looks up, keyed by the
+    # name its data block carries, so a clone template and an engine reference
+    # to the same dictionary share one block and two names never share a label.
+    data_dicts: Dict[str, Tuple[str, str]] = {}   # emitted name -> (label, note)
+
+    def data_dict_label(emitted_name: str, label_source: Optional[str] = None, note: str = "") -> str:
+        """The label of the data block that looks `emitted_name` up. The
+        label comes from the name the pack used (so a display name keeps a
+        readable label, and labels never move between regenerations); when
+        another block already carries that label, the emitted name names it."""
+        if emitted_name not in data_dicts:
+            label = S.get("datadict", label_source or emitted_name)
+            if any(lbl == label for lbl, _ in data_dicts.values()):
+                label = S.get("datadict", emitted_name)
+            data_dicts[emitted_name] = (label, note)
+        return data_dicts[emitted_name][0]
 
     def template_label(name: str) -> str:
-        if name not in templates:
-            templates[name] = S.get("tpl", name)
-        return templates[name]
+        return data_dict_label(name)
 
     out = ["# Dictionaries — generated from the pack; predefined Zscaler dictionaries are looked up by name.\n\n"]
     for d in src["dictionaries"]:
@@ -387,33 +472,30 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         for name in sorted(dict_names, key=len, reverse=True):
             if f"D:{name}" in expr:
                 expr = expr.replace(f"D:{name}", f"D${{zia_dlp_dictionaries.{S.get('dict', name)}.id}}.S")
+        from dlp_importer import PREDEFINED_TEMPLATE_ALIASES
         for name in sorted(set(find_refs(expr)), key=lambda n: (-len(n), n)):   # deterministic: equal lengths by name
-            if name not in predefined_refs:
-                predefined_refs[name] = S.get("pre", name)
-            expr = expr.replace(f"D:{name}", f"D${{data.zia_dlp_dictionaries.{predefined_refs[name]}.id}}.S")
+            # The provider looks a predefined dictionary up by its API code; a
+            # pack may reference it by the portal's display name.
+            code = PREDEFINED_TEMPLATE_ALIASES.get(name, name)
+            api_name = code if (code.isupper() and " " not in code) else name
+            dlabel = data_dict_label(api_name, label_source=name, note="" if api_name == name else name)
+            expr = expr.replace(f"D:{name}", f"D${{data.zia_dlp_dictionaries.{dlabel}.id}}.S")
         # ZIA compares every term to a count; a bare term means "at least one match".
         # A term inside a Sum (D1.S + D2.S) > n carries no comparison of its own.
         from dlp_importer import default_counts
         expr = default_counts(expr, re.compile(r"(D\$\{[^}]+\}\.S)(?!\s*[<>=+])"))
         eng.append(f'resource "zia_dlp_engines" "{label}" {{\n')
         eng.append(_attr("name", hcl_str(e["name"])))
-        eng.append(_attr("description", hcl_str(_provenance(meta, pack_id, e.get("description", "")))))
+        eng.append(_attr("description", hcl_str(_provenance(meta, pack_id, e.get("description", ""), limit=ENGINE_DESCRIPTION_MAX))))
         eng.append(_attr("custom_dlp_engine", "true"))
         eng.append(_attr("engine_expression", hcl_str(expr, interpolate=True)))
         eng.append("}\n\n")
 
     # Data sources go at the top of dictionaries.tf now that we know them all.
     data = []
-    for name, label in templates.items():
-        data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n  name = {hcl_str(name)}\n}}\n\n')
-    for name, label in predefined_refs.items():
-        # The provider looks a predefined dictionary up by its API code; a pack
-        # may reference it by the portal's display name.
-        from dlp_importer import PREDEFINED_TEMPLATE_ALIASES
-        code = PREDEFINED_TEMPLATE_ALIASES.get(name, name)
-        api_name = code if (code.isupper() and " " not in code) else name
-        note = "" if api_name == name else f"  # {name}\n"
-        data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n{note}  name = {hcl_str(api_name)}\n}}\n\n')
+    for emitted_name, (label, note) in data_dicts.items():
+        comment = f"  # {note}\n" if note else ""
+        data.append(f'data "zia_dlp_dictionaries" "{label}" {{\n{comment}  name = {hcl_str(emitted_name)}\n}}\n\n')
     files["dictionaries.tf"] = out[0] + "".join(data) + "".join(out[1:])
     files["engines.tf"] = "".join(eng)
 
@@ -431,6 +513,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                      + "}\n\n")
     lookups: List[str] = []
     variables_extra: List[str] = []
+    tenant_vars: Dict[str, bool] = {"saas": False, "email": False}   # which channels need the tenant-id variables
     rule_refs: List[str] = []
     app_classes: Dict[str, str] = {}
     per_channel_index: Dict[str, int] = {}
@@ -467,6 +550,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                 engine_ids.append(f"data.zia_dlp_engines.{lbl}.id")
 
         r = [f'resource "{res}" "{label}" {{\n']
+        lifecycle: List[str] = []   # the one lifecycle block, emitted last
         r.append(_attr("name", hcl_str(p["name"])))
         r.append(_attr("description", hcl_str(_provenance(meta, pack_id, p.get("description", "")))))
         if sub:
@@ -506,10 +590,10 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                         lookups.append(f'data "zia_cloud_applications" "{app_classes[cls]}" {{\n  policy_type = "cloud_application_policy"\n  app_class   = [{hcl_str(cls)}]\n}}\n\n')
                     refs.append(f"[for a in data.zia_cloud_applications.{app_classes[cls]}.applications : a.app]")
                 r.append(_attr("cloud_applications", "sort(distinct(concat(" + ", ".join(refs) + ")))"))
-                r.append("  lifecycle {\n    precondition {\n"
-                         f"      condition     = length(sort(distinct(concat({', '.join(refs)})))) > 0\n"
-                         f"      error_message = \"No cloud applications of class {', '.join(classes)} resolved on this tenant; set cloud_applications explicitly.\"\n"
-                         "    }\n  }\n")
+                lifecycle.append("    precondition {\n"
+                                 f"      condition     = length(sort(distinct(concat({', '.join(refs)})))) > 0\n"
+                                 f"      error_message = \"No cloud applications of class {', '.join(classes)} resolved on this tenant; set cloud_applications explicitly.\"\n"
+                                 "    }\n")
         elif channel == pc.ENDPOINT:
             r.append(_attr("device_trust_levels", hcl_list(p.get("device_trust_levels") or list(pc.ENDPOINT_TRUST_LEVELS))))
             # One transfer method per rule (ZIA: "Channel is mandatory").
@@ -532,7 +616,7 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                 if refs:
                     r.append(f"  end_point_application_groups {{\n    group_id = {hcl_list(refs, raw=True)}\n  }}\n")
                     # ZIA accepts the association but does not always return it on read (provider-documented).
-                    r.append("  lifecycle {\n    ignore_changes = [end_point_application_groups]\n  }\n")
+                    lifecycle.append("    ignore_changes = [end_point_application_groups]\n")
         elif channel == pc.SAAS:
             r.append(_attr("type", hcl_str(p["saas_type"])))
             r.append(_attr("collaboration_scope", hcl_list(p.get("collaboration_scope") or ["ANY"])))
@@ -566,12 +650,20 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                     ids.append(f"data.zia_casb_tenant.{lbl}.tenant_id")
                 r.append(f"  {block} {{\n    id = {hcl_list(ids, raw=True)}\n  }}\n")
             else:
-                var = f"saas_tenant_ids_{label}"
-                variables_extra.append(
-                    f'variable "{var}" {{\n  description = "IDs of the onboarded SaaS application tenants rule {hcl_str(p["name"])[1:-1]} applies to '
-                    f'(Administration > SaaS Application Tenants). Run a preflight in DLP-Check to have these resolved automatically."\n'
-                    f"  type        = list(number)\n}}\n\n")
-                r.append(f"  {block} {{\n    id = var.{var}\n  }}\n")
+                # One map variable per channel (rule name -> ids) with a default
+                # list for every rule not named, instead of one required scalar
+                # variable per rule: `plan -input=false` needs one value, not
+                # thirty, and a rule left without ids fails at plan with a
+                # sentence, not at apply with ZIA's answer.
+                kind = "saas" if channel == pc.SAAS else "email"
+                tenant_vars[kind] = True
+                expr = f"lookup(var.{kind}_tenant_ids, {hcl_str(p['name'])}, var.{kind}_tenant_ids_default)"
+                r.append(f"  {block} {{\n    id = {expr}\n  }}\n")
+                what = "SaaS application" if kind == "saas" else "email"
+                lifecycle.append("    precondition {\n"
+                                 f"      condition     = length({expr}) > 0\n"
+                                 f"      error_message = {hcl_str(f'Rule {p["name"]}: set {kind}_tenant_ids[\"{p["name"]}\"] or {kind}_tenant_ids_default to the ids of the onboarded {what} tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name.')}\n"
+                                 "    }\n")
 
         if p.get("notification_template"):
             lbl = S.get("tpl_notif", p["notification_template"])
@@ -584,6 +676,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                 lookups.append(f'data "zia_rule_labels" "{lbl}" {{\n  name = {hcl_str(lb)}\n}}\n\n')
                 ids.append(f"data.zia_rule_labels.{lbl}.id")
             r.append(f"  labels {{\n    id = {hcl_list(ids, raw=True)}\n  }}\n")
+        if lifecycle:
+            r.append("  lifecycle {\n" + "".join(lifecycle) + "  }\n")
         r.append("}\n\n")
         rules.append("".join(r))
     # De-duplicate lookups while keeping order.
@@ -597,26 +691,14 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         'resource "zia_activation_status" "this" {\n  count  = var.activate ? 1 : 0\n  status = "ACTIVE"\n\n'
         "  depends_on = [\n" + "".join(f"    {ref},\n" for ref in rule_refs) + "  ]\n}\n"
     )
-    files["versions.tf"] = _versions_tf(backend)
-    files["provider.tf"] = (
-        "# Credentials come from variables (see terraform.tfvars.example) or, when the\n"
-        "# variables are left null, from ZSCALER_CLIENT_ID / ZSCALER_CLIENT_SECRET /\n"
-        "# ZSCALER_VANITY_DOMAIN / ZSCALER_CLOUD in the environment.\n\n"
-        'provider "zia" {\n  client_id     = var.zscaler_client_id\n  client_secret = var.zscaler_client_secret\n'
-        "  vanity_domain = var.zscaler_vanity_domain\n  zscaler_cloud = var.zscaler_cloud\n}\n"
-    )
-    files["variables.tf"] = _variables_tf(meta, variables_extra)
-    files["outputs.tf"] = (
-        'output "dictionaries" {\n  value = { for k, r in {\n'
-        + "".join(f"    {S.get('dict', d['name'])} = zia_dlp_dictionaries.{S.get('dict', d['name'])}\n" for d in src["dictionaries"])
-        + "  } : r.name => r.id }\n}\n\n"
-        'output "engines" {\n  value = { for k, r in {\n'
-        + "".join(f"    {S.get('engine', e['name'])} = zia_dlp_engines.{S.get('engine', e['name'])}\n" for e in src["engines"])
-        + "  } : r.name => r.id }\n}\n\n"
-        'output "rules" {\n  value = [\n' + "".join(f"    {ref}.name,\n" for ref in rule_refs) + "  ]\n}\n"
-    )
-    files["terraform.tfvars.example"] = _tfvars_example(variables_extra)
-    files[".gitignore"] = ".terraform/\n*.tfstate\n*.tfstate.*\nterraform.tfvars\n*.auto.tfvars\ncrash.log\n"
+    files["terraform.tf"] = _versions_tf(backend)
+    files["providers.tf"] = PROVIDERS_TF
+    files["variables.tf"] = _variables_tf(meta, variables_extra, tenant_vars)
+    files["locals.tf"] = _locals_tf([f"zia_dlp_dictionaries.{S.get('dict', d['name'])}" for d in src["dictionaries"]],
+                                    [f"zia_dlp_engines.{S.get('engine', e['name'])}" for e in src["engines"]], rule_refs)
+    files["outputs.tf"] = OUTPUTS_TF
+    files["terraform.tfvars.example"] = _tfvars_example(variables_extra, tenant_vars=tenant_vars)
+    files[".gitignore"] = GITIGNORE
 
     # ---- gap mode: import blocks ---------------------------------------------
     gap_summary: Dict[str, Any] = {}
@@ -655,7 +737,14 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
             _gap_import(imports, counts, it, res, S.get("rule", p["name"]), import_id=import_id)
         files["imports.tf"] = "".join(imports)
         gap_summary = counts
-    files["README.md"] = _readme(meta, pack_id, src, bool(report), gap_summary, report)
+    files["README.md"] = _readme(meta, pack_id, src, bool(report), gap_summary, report, variables_extra=variables_extra, tenant_vars=tenant_vars)
+    # Every file says what generated it and from what (the style guide's
+    # provenance comment for generated configuration).
+    header = (f"# Generated by DLP-Check from {'policy pack' if meta.get('baseline') else 'pack'} {pack_id}"
+              + (f" v{meta.get('version')}" if meta.get("version") else "") + f" for {PROVIDER_SOURCE} {PROVIDER_VERSION}.\n\n")
+    for name in list(files):
+        if name.endswith(".tf"):
+            files[name] = hcl_fmt(header + files[name])
     return files
 
 
@@ -680,9 +769,9 @@ def _gap_import(imports: List[str], counts: Dict[str, int], item: Optional[Dict[
         imports.append(f"# {item['name']} — {status}: {item.get('reason', '')}\n\n")
 
 
-def _versions_tf(backend: Optional[Dict[str, str]]) -> str:
+def _versions_tf(backend: Optional[Dict[str, str]], *, provider_version: str = PROVIDER_VERSION) -> str:
     out = [f"terraform {{\n  required_version = {hcl_str(TERRAFORM_VERSION)}\n\n  required_providers {{\n"
-           f"    zia = {{\n      source  = {hcl_str(PROVIDER_SOURCE)}\n      version = {hcl_str(PROVIDER_VERSION)}\n    }}\n  }}\n"]
+           f"    zia = {{\n      source  = {hcl_str(PROVIDER_SOURCE)}\n      version = {hcl_str(provider_version)}\n    }}\n  }}\n"]
     if backend:
         out.append('\n  backend "s3" {\n' + "".join(f"    {k.ljust(14)} = {hcl_str(v)}\n" for k, v in backend.items()) + "  }\n")
     else:
@@ -694,33 +783,142 @@ def _versions_tf(backend: Optional[Dict[str, str]]) -> str:
     return "".join(out)
 
 
-def _variables_tf(meta: Dict[str, Any], extra: List[str]) -> str:
-    return (
-        'variable "zscaler_client_id" {\n  description = "OneAPI client ID. Leave null to use ZSCALER_CLIENT_ID."\n  type        = string\n  default     = null\n  sensitive   = true\n}\n\n'
-        'variable "zscaler_client_secret" {\n  description = "OneAPI client secret. Leave null to use ZSCALER_CLIENT_SECRET."\n  type        = string\n  default     = null\n  sensitive   = true\n}\n\n'
-        'variable "zscaler_vanity_domain" {\n  description = "ZIdentity vanity domain (acme for acme.zslogin.net). Leave null to use ZSCALER_VANITY_DOMAIN."\n  type        = string\n  default     = null\n}\n\n'
-        'variable "zscaler_cloud" {\n  description = "Leave null (or empty) for commercial production; beta, gov or govus otherwise. Env: ZSCALER_CLOUD."\n  type        = string\n  default     = null\n}\n\n'
-        'variable "rule_starting_order" {\n  description = "Order given to the first NEW rule of each channel; further new rules follow contiguously. Existing rules imported in gap mode keep their current order."\n  type        = number\n  default     = 1\n}\n\n'
-        'variable "policy_rank" {\n  description = "Admin rank for the rules (0-7). 0 takes precedence over rules made by lower-ranked admins."\n  type        = number\n  default     = 7\n}\n\n'
-        'variable "activate" {\n  description = "Activate pending ZIA changes after apply (zia_activation_status)."\n  type        = bool\n  default     = true\n}\n\n'
-        + "".join(extra)
-    )
+_CREDENTIAL_VARIABLES = (
+    'variable "zscaler_client_id" {\n  description = "OneAPI client ID. Leave null to use ZSCALER_CLIENT_ID."\n  type        = string\n  default     = null\n  sensitive   = true\n}\n\n'
+    'variable "zscaler_client_secret" {\n  description = "OneAPI client secret. Leave null to use ZSCALER_CLIENT_SECRET."\n  type        = string\n  default     = null\n  sensitive   = true\n}\n\n'
+    'variable "zscaler_vanity_domain" {\n  description = "ZIdentity vanity domain (acme for acme.zslogin.net). Leave null to use ZSCALER_VANITY_DOMAIN."\n  type        = string\n  default     = null\n}\n\n'
+    'variable "zscaler_cloud" {\n  description = "Leave null (or empty) for commercial production; beta, gov or govus otherwise. Env: ZSCALER_CLOUD."\n  type        = string\n  default     = null\n}\n\n'
+)
+
+# State, saved plans (they carry variable values, credentials included), local
+# tfvars, override files and CLI rc files stay out of git; the dependency lock
+# file (.terraform.lock.hcl) is committed on purpose.
+GITIGNORE = ("# Local Terraform state, saved plans, variable files and overrides. Commit .terraform.lock.hcl.\n"
+             ".terraform/\n*.tfstate\n*.tfstate.*\n*.tfplan\n*.tfplan.*\ncrash.log\ncrash.*.log\n"
+             "terraform.tfvars\n*.auto.tfvars\n*.tfvars.json\noverride.tf\noverride.tf.json\n*_override.tf\n*_override.tf.json\n.terraformrc\nterraform.rc\n")
+
+PROVIDERS_TF = (
+    "# Credentials come from variables (see terraform.tfvars.example) or, when the\n"
+    "# variables are left null, from ZSCALER_CLIENT_ID / ZSCALER_CLIENT_SECRET /\n"
+    "# ZSCALER_VANITY_DOMAIN / ZSCALER_CLOUD in the environment. Nothing secret is\n"
+    "# written into this workspace.\n\n"
+    'provider "zia" {\n  client_id     = var.zscaler_client_id\n  client_secret = var.zscaler_client_secret\n'
+    "  vanity_domain = var.zscaler_vanity_domain\n  zscaler_cloud = var.zscaler_cloud\n}\n"
+)
+
+OUTPUTS_TF = (
+    'output "dictionaries" {\n  description = "Dictionary name => ZIA id, for every dictionary this workspace manages."\n'
+    "  value       = { for r in local.dictionaries : r.name => r.id }\n}\n\n"
+    'output "engines" {\n  description = "Engine name => ZIA id, for every engine this workspace manages."\n'
+    "  value       = { for r in local.engines : r.name => r.id }\n}\n\n"
+    'output "rules" {\n  description = "The names of the rules this workspace manages, in pack order, on every channel."\n'
+    "  value       = [for r in local.rules : r.name]\n}\n"
+)
+
+# The variables every workspace carries, with their domain: the README's
+# inputs table and variables.tf are generated from the same rows.
+_BASE_VARIABLES: List[Dict[str, Any]] = [
+    {"name": "zscaler_client_id", "type": "string", "default": "null", "sensitive": True,
+     "description": "OneAPI client ID. Leave null to use ZSCALER_CLIENT_ID."},
+    {"name": "zscaler_client_secret", "type": "string", "default": "null", "sensitive": True,
+     "description": "OneAPI client secret. Leave null to use ZSCALER_CLIENT_SECRET."},
+    {"name": "zscaler_vanity_domain", "type": "string", "default": "null",
+     "description": "ZIdentity vanity domain (acme for acme.zslogin.net). Leave null to use ZSCALER_VANITY_DOMAIN."},
+    {"name": "zscaler_cloud", "type": "string", "default": "null",
+     "description": "Leave null (or empty) for commercial production; beta, gov or govus otherwise. Env: ZSCALER_CLOUD."},
+    {"name": "rule_starting_order", "type": "number", "default": "1", "nullable": False,
+     "description": "Order given to the first NEW rule of each channel; further new rules follow contiguously. Existing rules imported in gap mode keep their current order.",
+     "validation": ("var.rule_starting_order >= 1 && floor(var.rule_starting_order) == var.rule_starting_order",
+                    "rule_starting_order must be a whole number of 1 or more.")},
+    {"name": "policy_rank", "type": "number", "default": "7", "nullable": False,
+     "description": "Admin rank for the rules (0-7). 0 takes precedence over rules made by lower-ranked admins.",
+     "validation": ("var.policy_rank >= 0 && var.policy_rank <= 7 && floor(var.policy_rank) == var.policy_rank",
+                    "policy_rank must be a whole number from 0 to 7.")},
+    {"name": "activate", "type": "bool", "default": "true", "nullable": False,
+     "description": "Activate pending ZIA changes after apply (zia_activation_status)."},
+]
 
 
-def _tfvars_example(extra: List[str]) -> str:
+def _tenant_variables(tenant_vars: Optional[Dict[str, bool]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for kind, what in (("saas", "SaaS Security API"), ("email", "outbound email")):
+        if (tenant_vars or {}).get(kind):
+            rows.append({"name": f"{kind}_tenant_ids", "type": "map(list(number))", "default": "{}", "nullable": False,
+                         "description": f"Onboarded {what} tenant ids per rule name (Administration > SaaS Application Tenants) for the "
+                                        f"{what} rules whose tenants the pack does not name; a rule not listed here uses {kind}_tenant_ids_default. "
+                                        "Run a preflight in DLP-Check to have them resolved by name instead."})
+            rows.append({"name": f"{kind}_tenant_ids_default", "type": "list(number)", "default": "[]", "nullable": False,
+                         "description": f"Onboarded {what} tenant ids for every {what} rule not listed in {kind}_tenant_ids."})
+    return rows
+
+
+def _variable_block(v: Dict[str, Any]) -> str:
+    out = [f'variable "{v["name"]}" {{\n', f"  description = {hcl_str(v['description'])}\n", f"  type = {v['type']}\n"]
+    if "default" in v:
+        out.append(f"  default = {v['default']}\n")
+    if v.get("sensitive"):
+        out.append("  sensitive = true\n")
+    if v.get("nullable") is False:
+        out.append("  nullable = false\n")
+    if v.get("validation"):
+        cond, msg = v["validation"]
+        out.append(f"\n  validation {{\n    condition     = {cond}\n    error_message = {hcl_str(msg)}\n  }}\n")
+    out.append("}\n\n")
+    return "".join(out)
+
+
+_VAR_RE = re.compile(r'variable "([^"]+)"')
+
+
+def _extra_variable_rows(extra: List[str]) -> List[Dict[str, Any]]:
+    """The rows of the extra variable blocks a pack adds (raw HCL strings)."""
+    rows = []
+    for v in extra:
+        m = _VAR_RE.search(v)
+        if not m:
+            continue
+        t = re.search(r"\btype\s*=\s*(.+)", v)
+        d = re.search(r"\bdefault\s*=\s*(.+)", v)
+        desc = re.search(r'description\s*=\s*"((?:[^"\\]|\\.)*)"', v)
+        rows.append({"name": m.group(1), "type": t.group(1).strip() if t else "string", "default": d.group(1).strip() if d else None,
+                     "description": desc.group(1) if desc else ""})
+    return rows
+
+
+_CREDENTIAL_VARIABLES = "".join(_variable_block(v) for v in _BASE_VARIABLES[:4])
+
+
+def _variables_tf(meta: Dict[str, Any], extra: List[str], tenant_vars: Optional[Dict[str, bool]] = None) -> str:
+    return "".join(_variable_block(v) for v in _BASE_VARIABLES + _tenant_variables(tenant_vars)) + "".join(extra)
+
+
+def _locals_tf(dictionaries: List[str], engines: List[str], rules: List[str]) -> str:
+    def lst(refs: List[str]) -> str:
+        return "[]" if not refs else "[\n" + "".join(f"    {r},\n" for r in refs) + "  ]"
+    return ("# Everything this workspace manages, as lists: the outputs read them, and so can\n"
+            "# your own configuration (for example to attach a rule label to every rule).\n\n"
+            f"locals {{\n  dictionaries = {lst(dictionaries)}\n  engines = {lst(engines)}\n  rules = {lst(rules)}\n}}\n")
+
+
+def _tfvars_example(extra: List[str], *, base_values: bool = True, tenant_vars: Optional[Dict[str, bool]] = None) -> str:
     out = ["# Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:\n",
            '#   export ZSCALER_CLIENT_ID="..." ZSCALER_CLIENT_SECRET="..." ZSCALER_VANITY_DOMAIN="acme" ZSCALER_CLOUD=""\n\n',
-           '# zscaler_client_id     = "..."\n# zscaler_client_secret = "..."\n# zscaler_vanity_domain = "acme"\n# zscaler_cloud         = ""\n\n',
-           "rule_starting_order = 1\npolicy_rank         = 7\nactivate            = true\n"]
-    for v in extra:
-        m = re.search(r'variable "([^"]+)"', v)
-        if m:
-            out.append(f"# {m.group(1)} = [123456]\n")
+           '# zscaler_client_id     = "..."\n# zscaler_client_secret = "..."\n# zscaler_vanity_domain = "acme"\n# zscaler_cloud         = ""\n\n']
+    if base_values:
+        out.append("rule_starting_order = 1\npolicy_rank         = 7\nactivate            = true\n")
+    for kind, what in (("saas", "SaaS Security API"), ("email", "outbound email")):
+        if (tenant_vars or {}).get(kind):
+            out.append(f"\n# Onboarded {what} tenant ids (Administration > SaaS Application Tenants): one list for every {what} rule, or per rule name.\n"
+                       f"# {kind}_tenant_ids_default = [123456]\n# {kind}_tenant_ids = {{ \"Rule name\" = [123456] }}\n")
+    for v in _extra_variable_rows(extra):
+        example = '"..."' if v["type"] == "string" else "[123456]"
+        out.append(f"# {v['name']} = {example}\n")
     return "".join(out)
 
 
 def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, counts: Dict[str, Any],
-            report: Optional[Dict[str, Any]]) -> str:
+            report: Optional[Dict[str, Any]], *, variables_extra: Optional[List[str]] = None,
+            tenant_vars: Optional[Dict[str, bool]] = None) -> str:
     b = meta.get("baseline")
     lines = [f"# {meta.get('name', pack_id)} — Terraform\n\n",
              f"Generated by DLP-Check from pack `{pack_id}`"
@@ -742,20 +940,199 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
                      "change; customized objects import and would be updated in place (delete their import block to keep the "
                      "customer's version); missing objects are created; blocked objects are listed as comments with their reason. "
                      "The first `terraform plan` is the gap.\n\n")
-    lines.append("## Use\n\n```bash\nterraform init\nterraform plan      # review: creates, in-place updates, imports\nterraform apply\n```\n\n"
-                 "Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables. "
+    lines.append("## Use\n\n```bash\nterraform init\nterraform plan -out=tfplan   # review: creates, in-place updates, imports\nterraform apply tfplan\n```\n\n"
+                 "Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables; nothing secret is in these files. "
                  "The client needs a ZIA role with write access to DLP dictionaries, engines and the rule types in this pack.\n\n"
                  "Ordering: new rules are inserted starting at `rule_starting_order` and push existing rules down. "
                  "Run `terraform apply -parallelism=1` if the tenant reports ordering conflicts.\n\n"
-                 "`terraform destroy` removes exactly the objects in state, in dependency order.\n")
+                 "`terraform destroy` removes exactly the objects in state, in dependency order.\n\n")
+    lines.append(_readme_reference(variables_extra or [], tenant_vars))
     return "".join(lines)
+
+
+def _readme_reference(variables_extra: List[str], tenant_vars: Optional[Dict[str, bool]]) -> str:
+    """The Requirements / Inputs / Outputs / State / Verify sections a module
+    README carries, generated from the same rows as variables.tf so the two
+    cannot drift."""
+    rows = _BASE_VARIABLES + _tenant_variables(tenant_vars) + _extra_variable_rows(variables_extra)
+    inputs = "".join(f"| `{v['name']}` | `{v['type']}` | {('`' + str(v['default']) + '`') if v.get('default') is not None else 'required'} | "
+                     f"{v['description'].replace('|', '/')} |\n" for v in rows)
+    return (
+        "## Requirements\n\n| | |\n|---|---|\n"
+        f"| Terraform | `{TERRAFORM_VERSION}` (import blocks) |\n"
+        f"| Provider | `{PROVIDER_SOURCE}` `{PROVIDER_VERSION}`; `.terraform.lock.hcl` pins the exact build once you run `terraform init` |\n"
+        "| API client | a ZIA role with write access to DLP dictionaries, engines and the rule types in this workspace |\n\n"
+        "## Inputs\n\n| Name | Type | Default | Purpose |\n|---|---|---|---|\n" + inputs + "\n"
+        "## Outputs\n\n| Name | Value |\n|---|---|\n"
+        "| `dictionaries` | dictionary name => ZIA id |\n| `engines` | engine name => ZIA id |\n| `rules` | the rule names in state, in pack order, on every channel |\n\n"
+        "## State and the lock file\n\n"
+        "Use a remote backend with locking for anything shared (the commented `backend \"s3\"` block in `terraform.tf`, or pass "
+        "`-backend-config` on init). Commit `.terraform.lock.hcl` next to these files after the first `terraform init`; when the "
+        "team runs Terraform on more than one operating system, record every platform's checksums once with "
+        "`terraform providers lock -platform=linux_amd64 -platform=darwin_arm64 -platform=darwin_amd64 -platform=windows_amd64`. "
+        "State, saved plans and `terraform.tfvars` carry tenant ids and, if you put them there, credentials: `.gitignore` keeps them out of git.\n\n"
+        "## Verify and review\n\n```bash\nterraform fmt -check -recursive   # the files are written fmt-clean\nterraform validate\n"
+        "terraform plan -out=tfplan        # review the plan, then apply exactly that plan\nterraform apply tfplan\n```\n\n"
+        "## Renaming a resource\n\n"
+        "A regenerated workspace keeps its labels, so state carries over. If you rename a resource by hand, keep its state with a "
+        "`moved` block instead of destroying and recreating it:\n\n```hcl\nmoved {\n  from = zia_dlp_web_rules.old_label\n  to   = zia_dlp_web_rules.new_label\n}\n```\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# A Terraform JSON document (the vendor migration's output) as the same
+# HCL workspace layout the packs get
+# ---------------------------------------------------------------------------
+
+_RAW_EXPR_RE = re.compile(r"^\$\{(.*)\}$", re.S)
+
+JSON_FILE_OF_TYPE = {"zia_dlp_dictionaries": "dictionaries.tf", "zia_dlp_engines": "engines.tf"}
+
+
+def hcl_template_str(s: Any) -> str:
+    """Quote a string that is already a Terraform template (a value from a
+    JSON configuration, where every string is a template and `$${` / `%%{`
+    are the escapes): backslashes, quotes and newlines are escaped, the
+    template sequences are kept exactly as they are."""
+    s = "" if s is None else str(s)
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "") + '"'
+
+
+def _json_value_hcl(v: Any, indent: int = 1) -> str:
+    """One JSON-configuration value as an HCL expression: a string that is
+    exactly one interpolation becomes the bare reference, any other string
+    stays a template string, lists and scalars render as themselves."""
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, str):
+        m = _RAW_EXPR_RE.match(v)
+        if m and "${" not in m.group(1) and "}" not in m.group(1):
+            return m.group(1)
+        return hcl_template_str(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(_json_value_hcl(x, indent) for x in v) + "]"
+    if isinstance(v, dict):
+        if not v:
+            return "{}"
+        pad = "  " * indent
+        inner = "".join(f"{pad}  {k} = {_json_value_hcl(val, indent + 1)}\n" for k, val in v.items())
+        return "{\n" + inner + pad + "}"
+    return hcl_template_str(str(v))
+
+
+def _json_body_hcl(body: Dict[str, Any], indent: int = 1) -> str:
+    """The attributes and nested blocks of one JSON block body. A list of
+    objects is a repeated nested block (dlp_engines, patterns, phrases,
+    cloud_app_tenants ...); an object is a nested block; anything else an
+    attribute."""
+    pad = "  " * indent
+    out: List[str] = []
+    for k, v in body.items():
+        if k == "//":
+            continue   # a JSON comment property
+        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+            for item in v:
+                out.append(f"{pad}{k} {{\n{_json_body_hcl(item, indent + 1)}{pad}}}\n")
+        elif isinstance(v, dict):
+            out.append(f"{pad}{k} {{\n{_json_body_hcl(v, indent + 1)}{pad}}}\n")
+        else:
+            out.append(f"{pad}{k} = {_json_value_hcl(v, indent)}\n")
+    return "".join(out)
+
+
+def _json_variable_hcl(name: str, spec: Dict[str, Any]) -> str:
+    out = [f'variable "{name}" {{\n']
+    if spec.get("description") is not None:
+        out.append(f"  description = {hcl_template_str(spec['description'])}\n")
+    if spec.get("type") is not None:
+        out.append(f"  type = {spec['type']}\n")
+    if "default" in spec:
+        out.append(f"  default = {_json_value_hcl(spec['default'])}\n")
+    for flag in ("sensitive", "nullable"):
+        if spec.get(flag) is not None:
+            out.append(f"  {flag} = {'true' if spec[flag] else 'false'}\n")
+    for val in spec.get("validation") or []:
+        out.append(f"  validation {{\n    condition     = {_json_value_hcl(val.get('condition'))}\n    error_message = {hcl_template_str(val.get('error_message', ''))}\n  }}\n")
+    out.append("}\n\n")
+    return "".join(out)
+
+
+def render_json_workspace(tf: Dict[str, Any], *, title: str, source_note: str, provider_version: Optional[str] = None) -> Dict[str, str]:
+    """Turn a Terraform JSON document ({terraform, provider, variable, data,
+    resource}) into the workspace layout the packs get — versions.tf,
+    provider.tf, variables.tf, dictionaries.tf, engines.tf, rules.tf,
+    outputs.tf, terraform.tfvars.example, .gitignore, README.md — laid out
+    the way `terraform fmt` would, with the credentials from variables or
+    ZSCALER_* environment variables and every string kept as the template
+    the JSON carried. The JSON stays the machine-readable form; this is the
+    reviewable one a platform team commits."""
+    pv = provider_version or (((tf.get("terraform") or {}).get("required_providers") or {}).get("zia") or {}).get("version") or PROVIDER_VERSION
+    files: Dict[str, str] = {}
+    files["terraform.tf"] = _versions_tf(None, provider_version=pv)
+    files["providers.tf"] = PROVIDERS_TF
+    variables = [_CREDENTIAL_VARIABLES]
+    for name, spec in (tf.get("variable") or {}).items():
+        variables.append(_json_variable_hcl(name, spec if isinstance(spec, dict) else {"type": "string"}))
+    files["variables.tf"] = "".join(variables)
+
+    data_blocks = []
+    for dtype, entries in (tf.get("data") or {}).items():
+        for label, body in entries.items():
+            data_blocks.append(f'data "{dtype}" "{label}" {{\n{_json_body_hcl(body)}}}\n\n')
+    per_file: Dict[str, List[str]] = {"dictionaries.tf": ["# Dictionaries — generated from the reviewed decisions.\n\n"],
+                                      "engines.tf": ["# Engines — expressions reference dictionaries by resource.\n\n"],
+                                      "rules.tf": ["# Rules — one resource per reviewed policy and target channel; every rule ships DISABLED.\n\n"] + data_blocks}
+    refs: Dict[str, List[Tuple[str, str]]] = {"dictionaries": [], "engines": [], "rules": []}
+    for rtype, entries in (tf.get("resource") or {}).items():
+        fname = JSON_FILE_OF_TYPE.get(rtype, "rules.tf")
+        for label, body in entries.items():
+            per_file[fname].append(f'resource "{rtype}" "{label}" {{\n{_json_body_hcl(body)}}}\n\n')
+            refs[{"dictionaries.tf": "dictionaries", "engines.tf": "engines"}.get(fname, "rules")].append((rtype, label))
+    for fname, parts in per_file.items():
+        files[fname] = "".join(parts)
+
+    files["locals.tf"] = _locals_tf(*[[f"{t}.{l}" for t, l in refs[k]] for k in ("dictionaries", "engines", "rules")])
+    files["outputs.tf"] = OUTPUTS_TF
+    files["terraform.tfvars.example"] = _tfvars_example([_json_variable_hcl(n, sp if isinstance(sp, dict) else {"type": "string"}) for n, sp in (tf.get("variable") or {}).items()],
+                                                        base_values=False)
+    files[".gitignore"] = GITIGNORE
+    counts = {k: len(v) for k, v in refs.items()}
+    files["README.md"] = (
+        f"# {title} — Terraform\n\n{source_note}\n\n"
+        f"{counts['dictionaries']} dictionaries · {counts['engines']} engines · {counts['rules']} rules, every rule **DISABLED**, "
+        f"for the official [zscaler/zia]({REGISTRY_URL}) provider ({pv}).\n\n"
+        "## Use\n\n```bash\nterraform init      # then commit .terraform.lock.hcl beside these files\nterraform plan      # review: every object is a create on a tenant that has none of them\nterraform apply\n```\n\n"
+        "Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables; the client needs a ZIA role with write access "
+        "to DLP dictionaries, engines and the rule types here. Fill in the variables `terraform plan` asks for (SaaS or email tenant ids, "
+        "the endpoint user-confirmation template) from Administration > SaaS Application Tenants.\n\n"
+        "Apply in a test tenant first, compare source and target incidents in monitor mode, then enable the rules one by one in the ZIA "
+        "Admin Portal and order them with the tenant's existing policy. `terraform destroy` removes exactly the objects in state, in dependency order.\n"
+    )
+    header = str(tf.get("//") or "").strip()
+    for name in list(files):
+        if name.endswith(".tf"):
+            files[name] = hcl_fmt((("# " + header + "\n\n") if header else "") + files[name])
+    return files
 
 
 # ---------------------------------------------------------------------------
 # Packaging
 # ---------------------------------------------------------------------------
 
+GENERATED_SUFFIXES = (".tf", ".tfvars.example")
+GENERATED_NAMES = (".gitignore", "README.md")
+
+
 def write_workspace(files: Dict[str, str], out_dir: str) -> List[str]:
+    """Write the workspace, and remove any generated file (a .tf, the tfvars
+    example, .gitignore, README.md) the generator no longer emits, so a
+    renamed file cannot leave a stale twin behind (two terraform blocks
+    would fail validate). State, .terraform/ and the lock file are left
+    alone."""
     os.makedirs(out_dir, exist_ok=True)
     written = []
     for name, content in files.items():
@@ -763,7 +1140,13 @@ def write_workspace(files: Dict[str, str], out_dir: str) -> List[str]:
         with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(content)
         written.append(path)
+    for name in os.listdir(out_dir):
+        if name in files or name == ".terraform.lock.hcl":
+            continue
+        if name.endswith(GENERATED_SUFFIXES) or name in GENERATED_NAMES:
+            os.remove(os.path.join(out_dir, name))
     return written
+
 
 
 def zip_workspaces(workspaces: Dict[str, Dict[str, str]]) -> bytes:

@@ -32,6 +32,11 @@ def test_reference_regex_handles_parentheses_in_names():
         "Social Security Numbers (US)", "Alpha Dict", "Beta", "Gamma"]
 
 
+def _sp(text: str) -> str:
+    """Attribute lines with their fmt alignment collapsed to single spaces."""
+    return re.sub(r"[ \t]+", " ", text)
+
+
 def test_static_workspace_shapes(tmp_path):
     pack = write_pack(
         tmp_path, "tfpack",
@@ -45,10 +50,10 @@ def test_static_workspace_shapes(tmp_path):
         meta=BASELINE_META,
     )
     files = pt.generate(pack)
-    assert set(files) >= {"versions.tf", "provider.tf", "variables.tf", "dictionaries.tf", "engines.tf", "rules.tf",
-                          "activation.tf", "outputs.tf", "README.md", ".gitignore", "terraform.tfvars.example"}
-    assert "imports.tf" not in files
-    v = files["versions.tf"]
+    assert set(files) >= {"terraform.tf", "providers.tf", "variables.tf", "dictionaries.tf", "engines.tf", "rules.tf",
+                          "activation.tf", "locals.tf", "outputs.tf", "README.md", ".gitignore", "terraform.tfvars.example"}
+    assert "imports.tf" not in files and "versions.tf" not in files and "provider.tf" not in files, "the style guide's file names"
+    v = files["terraform.tf"]
     assert 'source  = "zscaler/zia"' in v and 'version = "~> 4.8"' in v and 'required_version = ">= 1.5.0"' in v
 
     d = files["dictionaries.tf"]
@@ -56,26 +61,45 @@ def test_static_workspace_shapes(tmp_path):
     assert 'data "zia_dlp_dictionaries" "medical_information"' in d            # predefined referenced only by the engine
     assert 'resource "zia_dlp_dictionaries" "alpha_dict"' in d
     assert 'pattern = "\\\\bA\\\\d{3}\\\\b"' in d                              # regex backslashes doubled
-    assert "proximity                    = 100" in d and "proximity_enabled_for_custom_dictionary = true" in d
-    assert 'dict_template_id             = data.zia_dlp_dictionaries.social_security_numbers_us.id' in d
+    assert "proximity = 100" in _sp(d) and "proximity_enabled_for_custom_dictionary = true" in d
+    assert 'dict_template_id = data.zia_dlp_dictionaries.social_security_numbers_us.id' in _sp(d)
     assert "[DLP-Check baseline tfpack v2.1] Terraform-managed." in d
 
     e = files["engines.tf"]
-    assert ('engine_expression            = "((D${zia_dlp_dictionaries.alpha_dict.id}.S > 0) OR '
-            '(D${zia_dlp_dictionaries.ssn_clone.id}.S > 2) OR (D${data.zia_dlp_dictionaries.medical_information.id}.S > 0))"') in e
+    assert ('engine_expression = "((D${zia_dlp_dictionaries.alpha_dict.id}.S > 0) OR '
+            '(D${zia_dlp_dictionaries.ssn_clone.id}.S > 2) OR (D${data.zia_dlp_dictionaries.medical_information.id}.S > 0))"') in _sp(e)
 
     r = files["rules.tf"]
     assert 'resource "zia_dlp_web_rules" "web_monitor"' in r
-    assert 'data "zia_cloud_applications" "apps_ai_ml"' in r and "app_class   = [\"AI_ML\"]" in r
-    assert "cloud_applications           = sort(distinct(concat([for a in data.zia_cloud_applications.apps_ai_ml.applications : a.app])))" in r
-    assert "# ocr_enabled = true" in r and "min_size                     = 10" in r   # OCR is not in the 4.8.x schema
+    assert 'data "zia_cloud_applications" "apps_ai_ml"' in r and "app_class = [\"AI_ML\"]" in _sp(r)
+    assert "cloud_applications = sort(distinct(concat([for a in data.zia_cloud_applications.apps_ai_ml.applications : a.app])))" in _sp(r)
+    assert "# ocr_enabled = true" in r and "min_size = 10" in _sp(r)   # OCR is not in the 4.8.x schema
     assert "id = [zia_dlp_engines.alpha_engine.id]" in r
     assert 'resource "zia_endpoint_dlp_rules" "ep_monitor"' in r and "device_trust_levels" in r
-    assert 'resource "zia_casb_dlp_rules" "saas_file"' in r and 'type                         = "OFLCASB_DLP_FILE"' in r
+    assert 'resource "zia_casb_dlp_rules" "saas_file"' in r and 'type = "OFLCASB_DLP_FILE"' in _sp(r)
     assert 'data "zia_casb_tenant" "acme_box"' in r and "id = [data.zia_casb_tenant.acme_box.tenant_id]" in r
-    assert 'resource "zia_outbound_email_dlp" "email_monitor"' in r and "id = var.saas_tenant_ids_email_monitor" in r
-    assert "rank" not in r.split('resource "zia_outbound_email_dlp"')[1]        # email rules have no rank
-    assert 'variable "saas_tenant_ids_email_monitor"' in files["variables.tf"]
+    assert 'resource "zia_outbound_email_dlp" "email_monitor"' in r
+    assert 'id = lookup(var.email_tenant_ids, "Email-Monitor", var.email_tenant_ids_default)' in r, "one map variable per channel, not one variable per rule"
+    email = r.split('resource "zia_outbound_email_dlp"')[1]
+    assert "rank" not in email.split("lifecycle")[0]        # email rules have no rank
+    assert email.count("lifecycle {") == 1 and email.rstrip().endswith("}\n  }\n}") and 'error_message = "Rule Email-Monitor: set email_tenant_ids' in email, "one lifecycle block, last, with the plan-time check"
+    vt = files["variables.tf"]
+    assert 'variable "email_tenant_ids"' in vt and "type        = map(list(number))" in vt and 'variable "email_tenant_ids_default"' in vt
+    assert 'variable "saas_tenant_ids"' not in vt, "the SaaS rule names its tenants, so no SaaS variable is needed"
+    assert "nullable    = false" in vt and "validation {" in vt and "var.policy_rank >= 0 && var.policy_rank <= 7" in vt
+    assert "saas_tenant_ids_email_monitor" not in vt and "saas_tenant_ids_email_monitor" not in files["terraform.tfvars.example"]
+    assert "# email_tenant_ids_default = [123456]" in files["terraform.tfvars.example"]
+    lc = files["locals.tf"]
+    assert "zia_dlp_dictionaries.alpha_dict," in lc and "zia_dlp_engines.alpha_engine," in lc and "zia_dlp_web_rules.web_monitor," in lc
+    o = files["outputs.tf"]
+    assert o.count("description = ") == 3 and "{ for r in local.dictionaries : r.name => r.id }" in o and "[for r in local.rules : r.name]" in o
+    readme = files["README.md"]
+    for heading in ("## Requirements", "## Inputs", "## Outputs", "## State and the lock file", "## Verify and review", "## Renaming a resource"):
+        assert heading in readme, heading
+    assert "| `email_tenant_ids` | `map(list(number))` | `{}` |" in readme and "| `policy_rank` | `number` | `7` |" in readme
+    assert "*.tfplan" in files[".gitignore"] and "override.tf" in files[".gitignore"] and ".terraform.lock.hcl" not in files[".gitignore"].replace("Commit .terraform.lock.hcl", "")
+    web = r.split('resource "zia_dlp_web_rules" "web_monitor"')[1].split("\nresource ")[0]
+    assert web.index("dlp_engines {") < web.index("lifecycle {") and web.rstrip().endswith("}\n  }\n}"), "the cloud-app precondition sits in the one lifecycle block, last"
 
     a = files["activation.tf"]
     assert 'resource "zia_activation_status" "this"' in a and "zia_dlp_web_rules.web_monitor," in a
@@ -101,7 +125,7 @@ def test_gap_mode_imports_existing_objects(tmp_path):
     assert "to = zia_dlp_web_rules.zbp_alpha_monitor" in imp and 'id = "7100"' in imp
     assert "zbp_new_dict" not in imp                                            # missing → created, not imported
     # An existing rule keeps its tenant order instead of the starting-order variable.
-    assert "order                        = 3" in files["rules.tf"]
+    assert "order = 3" in _sp(files["rules.tf"])
     assert "| 2 | 1 | 1 | 0 |" in files["README.md"]                            # in sync, customized, missing, blocked
 
 
@@ -128,7 +152,36 @@ def test_shipped_packs_generate_and_zip():
     data = pt.zip_workspaces(ws)
     import io, zipfile
     names = zipfile.ZipFile(io.BytesIO(data)).namelist()
-    assert "zbp_enterprise_baseline/rules.tf" in names and "cjis_policy_pack/versions.tf" in names
+    assert "zbp_enterprise_baseline/rules.tf" in names and "cjis_policy_pack/terraform.tf" in names and "cjis_policy_pack/locals.tf" in names
+
+
+def test_the_generator_lays_out_hcl_the_way_terraform_fmt_does():
+    """Runs of single-line attributes align their `=` on the longest key; a
+    comment, a blank line, a nested block or a multi-line value ends the
+    run and stands with single spaces, exactly as `terraform fmt` does
+    (checked against the CLI on the shipped packs whenever it is present)."""
+    src = ('resource "x" "a" {\n  name = "x"\n  description = "y"\n  # note\n  order = 1\n  without_content_inspection = false\n'
+           '  dlp_engines {\n    id = [zia_dlp_engines.e.id]\n  }\n  cloud_applications = sort(distinct(concat(x)))\n  lifecycle {\n'
+           '    precondition {\n      condition = length(x) > 0\n      error_message = "No apps ] ) }"\n    }\n  }\n\n  depends_on = [\n    zia_dlp_web_rules.a,\n  ]\n}\n')
+    want = ('resource "x" "a" {\n  name        = "x"\n  description = "y"\n  # note\n  order                      = 1\n  without_content_inspection = false\n'
+            '  dlp_engines {\n    id = [zia_dlp_engines.e.id]\n  }\n  cloud_applications = sort(distinct(concat(x)))\n  lifecycle {\n'
+            '    precondition {\n      condition     = length(x) > 0\n      error_message = "No apps ] ) }"\n    }\n  }\n\n  depends_on = [\n    zia_dlp_web_rules.a,\n  ]\n}\n')
+    assert pt.hcl_fmt(src) == want
+    assert pt.hcl_fmt('  pattern = "\\\\d{4}"\n  p = 1\n') == '  pattern = "\\\\d{4}"\n  p       = 1\n', "brackets inside strings do not open a multi-line value"
+    from dlp_importer import discover_packs
+    for p in discover_packs():
+        files = pt.generate({"id": p["id"], "dir": p["dir"]})
+        for name, text in files.items():
+            if name.endswith(".tf"):
+                assert pt.hcl_fmt(text) == text, f"{p['id']}/{name} is not fmt-stable"
+                assert not any(l != l.rstrip() for l in text.split("\n")), f"{p['id']}/{name} has trailing whitespace"
+
+
+@pytest.mark.skipif(shutil.which("terraform") is None, reason="terraform not installed")
+def test_shipped_workspaces_pass_terraform_fmt_check():
+    r = subprocess.run(["terraform", "fmt", "-check", "-recursive", "-list=true", "terraform"], cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       capture_output=True, text=True)
+    assert r.returncode == 0, f"terraform fmt would change: {r.stdout}{r.stderr}"
 
 
 @pytest.mark.skipif(shutil.which("terraform") is None, reason="terraform not installed")
@@ -142,3 +195,96 @@ def test_generated_workspaces_validate(tmp_path):
                     ["terraform", "validate", "-no-color"]):
             r = subprocess.run(cmd, cwd=out, capture_output=True, text=True)
             assert r.returncode == 0, f"{p['id']}: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}"
+
+
+def test_a_terraform_json_document_renders_as_the_same_workspace_layout_the_packs_get():
+    """The vendor migration compiles to Terraform JSON (the machine-readable
+    form its tests pin); the hand-off renders that JSON as the reviewable
+    HCL workspace: versions, provider from env, variables with
+    descriptions, resources by kind, outputs with descriptions, README,
+    .gitignore, tfvars example, fmt-clean, and readable back into a pack by
+    the library's Terraform reader."""
+    import pack_library as pl
+    tf = {"terraform": {"required_providers": {"zia": {"source": "zscaler/zia", "version": "4.8.8"}}}, "provider": {"zia": {}},
+          "resource": {"zia_dlp_dictionaries": {"ctx": {"name": "CTX $${literal}", "description": "d %%{x}", "dictionary_type": "PATTERNS_AND_PHRASES",
+                                                         "custom_phrase_match_type": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+                                                         "phrases": [{"phrase": "customer", "action": "PHRASE_COUNT_TYPE_ALL"}],
+                                                         "patterns": [{"pattern": "acct[ -]?\\d{6}", "action": "PATTERN_COUNT_TYPE_UNIQUE"}]}},
+                       "zia_dlp_engines": {"pci": {"name": "PCI", "description": "e", "engine_expression": "((D${zia_dlp_dictionaries.ctx.id}.S > 2))", "custom_dlp_engine": True}},
+                       "zia_dlp_web_rules": {"sym_1": {"name": "PCI upload", "action": "BLOCK", "order": 1, "state": "DISABLED", "without_content_inspection": False,
+                                                        "dlp_engines": [{"id": ["${zia_dlp_engines.pci.id}"]}], "protocols": ["HTTPS_RULE", "HTTP_RULE"]}},
+                       "zia_outbound_email_dlp": {"sym_1_email": {"name": "PCI [Email]", "action": "BLOCK", "order": 1, "state": "DISABLED", "without_content_inspection": False,
+                                                                   "dlp_engines": [{"id": ["${zia_dlp_engines.pci.id}"]}], "email_tenants": [{"id": "${var.email_tenant_ids_sym_1_email}"}]}}},
+          "data": {"zia_casb_tenant": {"tenant_box": {"tenant_name": "Box"}}},
+          "variable": {"email_tenant_ids_sym_1_email": {"type": "list(number)", "description": "IDs of the onboarded email tenants."},
+                       "endpoint_dlp_user_confirmation_template_name": {"type": "string", "default": None, "description": "Template; null uses the default."}}}
+    files = pt.render_json_workspace(tf, title="Symantec migration", source_note="Generated from a reviewed export.")
+    assert set(files) == {"terraform.tf", "providers.tf", "variables.tf", "dictionaries.tf", "engines.tf", "rules.tf", "locals.tf", "outputs.tf", "terraform.tfvars.example", ".gitignore", "README.md"}
+    assert 'version = "4.8.8"' in files["terraform.tf"] and 'required_version = ">= 1.5.0"' in files["terraform.tf"]
+    assert "var.zscaler_client_secret" in files["providers.tf"] and 'variable "zscaler_client_secret"' in files["variables.tf"] and "sensitive   = true" in files["variables.tf"]
+    v = files["variables.tf"]
+    assert 'variable "email_tenant_ids_sym_1_email"' in v and "type        = list(number)" in v and "description = \"IDs of the onboarded email tenants.\"" in v
+    assert 'variable "endpoint_dlp_user_confirmation_template_name"' in v and "default     = null" in v
+    d = files["dictionaries.tf"]
+    assert 'name                     = "CTX $${literal}"' in d and 'description              = "d %%{x}"' in d, "template escapes from the JSON are kept as they are"
+    assert 'pattern = "acct[ -]?\\\\d{6}"' in d, "backslashes are escaped for HCL"
+    assert "phrases {\n    phrase = \"customer\"" in d and "patterns {\n    pattern" in d
+    e = files["engines.tf"]
+    assert 'engine_expression = "((D${zia_dlp_dictionaries.ctx.id}.S > 2))"' in re.sub(r"[ \t]+", " ", e), "the interpolation stays live"
+    r = files["rules.tf"]
+    assert 'data "zia_casb_tenant" "tenant_box"' in r and r.index('data "zia_casb_tenant"') < r.index('resource "zia_dlp_web_rules"')
+    assert "dlp_engines {\n    id = [zia_dlp_engines.pci.id]\n  }" in r and "email_tenants {\n    id = var.email_tenant_ids_sym_1_email\n  }" in r
+    o = files["outputs.tf"]
+    assert 'output "dictionaries"' in o and o.count("description = ") == 3 and "local.dictionaries" in o
+    assert "zia_dlp_dictionaries.ctx," in files["locals.tf"] and "zia_outbound_email_dlp.sym_1_email," in files["locals.tf"]
+    assert "email_tenant_ids_sym_1_email" in files["terraform.tfvars.example"] and "rule_starting_order" not in files["terraform.tfvars.example"]
+    assert "*.tfstate" in files[".gitignore"] and "DISABLED" in files["README.md"] and ".terraform.lock.hcl" in files["README.md"]
+    for name, text in files.items():
+        if name.endswith(".tf"):
+            assert pt.hcl_fmt(text) == text, name
+    got, warnings = pl.pack_from_terraform({k: v for k, v in files.items() if k.endswith(".tf")})
+    # The reader resolves the template escapes, so the pack carries the literal text the JSON meant.
+    assert [x["name"] for x in got["dictionaries"]] == ["CTX ${literal}"] and got["engines"][0]["expression"] == "((D:CTX ${literal} > 2))"
+    assert {p["name"] for p in got["policies"]} == {"PCI upload", "PCI [Email]"} and all(p["engines"] == ["PCI"] for p in got["policies"])
+
+
+@pytest.mark.skipif(shutil.which("terraform") is None, reason="terraform not installed")
+def test_the_rendered_vendor_workspace_passes_terraform_fmt_check(tmp_path):
+    import json
+    import vendor_migrate as vm
+    from test_vendor_migrate import RICH, _multi_decisions
+    snap = vm.inventory_bytes(RICH)
+    tf, report = vm.compile_export(snap, _multi_decisions(snap), prefix="sym", vendor_id="symantec")
+    assert report["ready"]
+    pt.write_workspace(pt.render_json_workspace(tf, title="Symantec migration", source_note="test"), str(tmp_path))
+    (tmp_path / "main.tf.json.bak").write_text(json.dumps(tf))   # not read by terraform: .bak
+    r = subprocess.run(["terraform", "fmt", "-check", "-recursive", "-list=true", str(tmp_path)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_every_generated_file_says_what_generated_it_and_ci_enforces_fmt_and_staleness():
+    from dlp_importer import discover_packs
+    p = next(x for x in discover_packs() if x["id"] == "fed_policy_pack")
+    files = pt.generate({"id": p["id"], "dir": p["dir"]})
+    for name, text in files.items():
+        if name.endswith(".tf"):
+            assert text.startswith("# Generated by DLP-Check from pack fed_policy_pack v"), name
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ci = open(os.path.join(root, ".github", "workflows", "tests.yml"), encoding="utf-8").read()
+    assert 'git status --porcelain -- terraform' in ci, "a file the generator starts or stops emitting is caught"
+    assert "terraform fmt -check -recursive" in ci and "tools/terraform_samples.py" in ci
+    assert "/tmp/tf_samples/vendor_hcl/ /tmp/tf_samples/vendor_json/ /tmp/tf_samples/containment/ /tmp/tf_samples/endpoint/" in ci, "the vendor output and the containment rules are validated too"
+    mk = open(os.path.join(root, "Makefile"), encoding="utf-8").read()
+    assert "git status --porcelain -- terraform" in mk and "terraform fmt -check" in mk
+    # write_workspace removes a generated file the generator no longer emits, and leaves the lock file alone.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        for stale in ("versions.tf", "provider.tf", ".terraform.lock.hcl"):
+            open(os.path.join(d, stale), "w").write("x")
+        pt.write_workspace(files, d)
+        assert not os.path.exists(os.path.join(d, "versions.tf")) and not os.path.exists(os.path.join(d, "provider.tf"))
+        assert os.path.exists(os.path.join(d, ".terraform.lock.hcl"))
+    # Engine descriptions stay within ZIA's 255 characters, like dictionaries.
+    from dlp_importer import ENGINE_DESCRIPTION_MAX
+    for m in re.finditer(r'resource "zia_dlp_engines"[^{]*\{\n(?:.*\n)*?\s*description\s*=\s*"((?:[^"\\]|\\.)*)"', files["engines.tf"]):
+        assert len(m.group(1).encode().decode("unicode_escape")) <= ENGINE_DESCRIPTION_MAX

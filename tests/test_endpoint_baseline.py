@@ -170,13 +170,14 @@ def test_unlicensed_endpoint_groups_block_only_dependent_rules(tmp_path, monkeyp
 def test_terraform_emits_groups_and_sub_rules(tmp_path):
     pack = endpoint_pack(tmp_path, meta=dict(BASELINE_META, name="EP Baseline"))
     files = pt.generate(pack)
-    r = files["rules.tf"]
-    assert 'resource "zia_endpoint_dlp_application_group" "genai_apps"' in r and 'resources                    = ["500000603", "500000605"]' in r
+    import re as _re
+    r = _re.sub(r"(?m)^(\s*)(\S+)[ \t]+=[ \t]+", r"\1\2 = ", files["rules.tf"])   # terraform fmt alignment collapsed
+    assert 'resource "zia_endpoint_dlp_application_group" "genai_apps"' in r and 'resources = ["500000603", "500000605"]' in r
     assert 'resource "zia_endpoint_dlp_sub_rules" "ep_usb_high"' in r
-    assert 'parent_rule                  = zia_endpoint_dlp_rules.ep_usb.rule_id' in r
+    assert 'parent_rule = zia_endpoint_dlp_rules.ep_usb.rule_id' in r
     assert 'group_id = [tostring(zia_endpoint_dlp_application_group.genai_apps.group_id)]' in r
     assert "ignore_changes = [end_point_application_groups]" in r
-    assert 'data_transfer_method         = "APPLICATION_FILE_ACCESS"' in r
+    assert 'data_transfer_method = "APPLICATION_FILE_ACCESS"' in r
 
 
 def test_no_shipped_pack_is_endpoint_only():

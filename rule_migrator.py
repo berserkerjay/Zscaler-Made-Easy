@@ -1306,8 +1306,8 @@ def _delete_answering_403(client, path: str, activations: List[Dict[str, Any]]) 
             break
         try:
             _resp, acode = client.post("/zia/status/activate", {}) if hasattr(client, "post") else (None, 0)
-        except Exception as e:  # noqa: BLE001 - an activation that cannot run is recorded, the wait and the try still happen
-            acode, _resp = None, str(e)[:200]
+        except Exception:  # noqa: BLE001 - an activation that cannot run is recorded, the wait and the try still happen
+            acode = None
         activations.append({"after": f"403 on {path} (try {retry} of {FORBIDDEN_ATTEMPTS})", "requested": acode in (200, 201, 204), "http_status": acode})
         _sleep(FORBIDDEN_WAIT_SECONDS)
         data, code = client.delete(path)

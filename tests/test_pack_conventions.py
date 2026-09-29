@@ -7,6 +7,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import re
 
 import pack_channels as pc
 import pack_deploy as pd
@@ -65,7 +66,7 @@ def test_loaders_apply_the_convention_and_the_journey_names_the_target():
     assert "from monitor to an enforcing action (BLOCK)" in step
     files = pack_terraform.generate(pack)
     main = "\n".join(files.values())
-    assert 'action                       = "ALLOW"' in main or 'action = "ALLOW"' in main.replace("  ", " ")
+    assert 'action = "ALLOW"' in re.sub(r"[ \t]+=[ \t]+", " = ", main)
     assert "designed action once incidents are tuned" not in main, "no shipped rule carries a block target"
     assert '"BLOCK"' not in main.split("zia_dlp_web_rules")[1].split("zia_endpoint_dlp_rules")[0] if "zia_endpoint_dlp_rules" in main else True
 

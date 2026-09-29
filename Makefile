@@ -29,7 +29,8 @@ check:
 	$(PY) -m py_compile $$(git ls-files '*.py')
 	$(PY) -m pyflakes $$(git ls-files '*.py' | grep -v '^tests/') || true
 	$(PY) tools/fan_out_channels.py --check
-	$(PY) pack_terraform.py --out terraform && git diff --exit-code -- terraform
+	$(PY) pack_terraform.py --out terraform && git diff --exit-code -- terraform && test -z "$$(git status --porcelain -- terraform)"
+	@if command -v terraform >/dev/null 2>&1; then $(PY) tools/terraform_samples.py /tmp/dlp_check_tf_samples && terraform fmt -check -recursive terraform /tmp/dlp_check_tf_samples/vendor_hcl /tmp/dlp_check_tf_samples/containment /tmp/dlp_check_tf_samples/endpoint; else echo "terraform not installed: fmt check skipped here (CI runs it)"; fi
 	$(PY) upstream_check.py --offline --quiet
 
 # The daily upstream check (also .github/workflows/upstream_check.yml): the

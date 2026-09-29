@@ -85,12 +85,18 @@ jobs:
       - name: Committed Terraform workspaces are up to date
         run: |
           python pack_terraform.py --out terraform
-          git diff --exit-code -- terraform || { echo "::error::terraform/ is stale; run: python pack_terraform.py --out terraform"; exit 1; }
+          # New, changed or deleted files all count: `git diff` alone misses a file the generator starts or stops emitting.
+          if [ -n "$(git status --porcelain -- terraform)" ]; then git status --porcelain -- terraform; echo "::error::terraform/ is stale; run: python pack_terraform.py --out terraform and commit every change"; exit 1; fi
+
+      - name: Generated Terraform is terraform fmt-clean
+        run: |
+          python tools/terraform_samples.py /tmp/tf_samples
+          terraform fmt -check -recursive -diff terraform/ /tmp/tf_samples/vendor_hcl /tmp/tf_samples/containment /tmp/tf_samples/endpoint
 
       - name: Validate generated Terraform against the zscaler/zia provider
         run: |
           rc=0
-          for d in terraform/*/; do
+          for d in terraform/*/ /tmp/tf_samples/vendor_hcl/ /tmp/tf_samples/vendor_json/ /tmp/tf_samples/containment/ /tmp/tf_samples/endpoint/; do
             echo "== $d"
             terraform -chdir="$d" init -backend=false -input=false -no-color >/dev/null || { rc=1; continue; }
             terraform -chdir="$d" validate -no-color || rc=1

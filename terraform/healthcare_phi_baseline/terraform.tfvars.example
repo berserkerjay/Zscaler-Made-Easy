@@ -9,27 +9,11 @@
 rule_starting_order = 1
 policy_rank         = 7
 activate            = true
-# saas_tenant_ids_hc_hipaa_critical_saas = [123456]
-# saas_tenant_ids_hc_hipaa_critical_email = [123456]
-# saas_tenant_ids_hc_hipaa_narrative_low_saas = [123456]
-# saas_tenant_ids_hc_hipaa_narrative_low_volume_email = [123456]
-# saas_tenant_ids_hc_hipaa_identity_saas = [123456]
-# saas_tenant_ids_hc_hipaa_identity_trifecta_email = [123456]
-# saas_tenant_ids_hc_hipaa_sensitive_saas = [123456]
-# saas_tenant_ids_hc_hipaa_sensitive_subcategory_email = [123456]
-# saas_tenant_ids_hc_hipaa_pharmacy_saas = [123456]
-# saas_tenant_ids_hc_hipaa_pharmacy_claims_billing_email = [123456]
-# saas_tenant_ids_hc_hipaa_bulk_phi_major_saas = [123456]
-# saas_tenant_ids_hc_hipaa_bulk_phi_major_email = [123456]
-# saas_tenant_ids_hc_hipaa_bulk_phi_saas = [123456]
-# saas_tenant_ids_hc_hipaa_bulk_phi_significant_email = [123456]
-# saas_tenant_ids_hc_hipaa_bulk_phi_small_saas = [123456]
-# saas_tenant_ids_hc_hipaa_bulk_phi_small_email = [123456]
-# saas_tenant_ids_hc_us_pii_saas = [123456]
-# saas_tenant_ids_hc_us_pii_email = [123456]
-# saas_tenant_ids_hc_us_phi_medium_saas = [123456]
-# saas_tenant_ids_hc_us_phi_medium_confidence_email = [123456]
-# saas_tenant_ids_hc_us_phi_high_saas = [123456]
-# saas_tenant_ids_hc_us_phi_high_confidence_email = [123456]
-# saas_tenant_ids_hc_financial_information_saas = [123456]
-# saas_tenant_ids_hc_financial_information_email = [123456]
+
+# Onboarded SaaS Security API tenant ids (Administration > SaaS Application Tenants): one list for every SaaS Security API rule, or per rule name.
+# saas_tenant_ids_default = [123456]
+# saas_tenant_ids = { "Rule name" = [123456] }
+
+# Onboarded outbound email tenant ids (Administration > SaaS Application Tenants): one list for every outbound email rule, or per rule name.
+# email_tenant_ids_default = [123456]
+# email_tenant_ids = { "Rule name" = [123456] }
