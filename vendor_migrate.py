@@ -18,15 +18,17 @@ The contract, unchanged from the stand-alone tool this grew from:
   the export's SHA-256, plus the detection facets recognised from the
   export's element or key names. The vendor's semantics are not
   interpreted beyond that.
-* **Decisions** are a reviewed JSON mapping: every source policy needs an
-  approved translation (a web rule with named engines) or an approved
-  retirement / exclusion with a reason; dictionaries and engines are
-  spelled out and approved one by one. The decisions carry the export's
-  SHA-256, so a changed export invalidates them until reviewed.
+* **Decisions** are a reviewed JSON mapping: every source policy needs
+  approved translations (one target rule per channel it is carried to:
+  web, endpoint, SaaS Security API or email, each with named engines and
+  the channel's own fields) or an approved retirement / exclusion with a
+  reason; dictionaries and engines are spelled out and approved one by
+  one. The decisions carry the export's SHA-256, so a changed export
+  invalidates them until reviewed.
 * **Compile** is fail-closed: any unmapped or unapproved object blocks the
   run (a report with the questions, no Terraform); a ready run emits
-  native `.tf.json` for the zscaler/zia provider in which every web rule
-  is DISABLED. Enabling, ordering with the tenant's existing rules,
+  native `.tf.json` for the zscaler/zia provider in which every rule, on
+  every channel, is DISABLED. Enabling, ordering with the tenant's existing rules,
   applying and activating are separate change-control steps done
   elsewhere (the Terraform hand-off, Deploy policy packs).
 
@@ -1494,7 +1496,7 @@ def _tenants(p: Dict[str, Any], key: str, rule: Dict[str, Any], block: str, what
     Terraform variable filled in at plan time. Anything else blocks."""
     want = p.get("tenants")
     if isinstance(want, str) and want.strip().lower() == "variable":
-        var = f"{block.split('_')[0]}_tenant_ids_{key}"
+        var = f"{'saas' if block == 'cloud_app_tenants' else 'email'}_tenant_ids_{key}"   # the same names the pack Terraform uses
         variables[var] = {"type": "list(number)", "description": f"IDs of the onboarded {what} tenants rule '{rule['name']}' applies to (Administration > SaaS Application Tenants)."}
         rule[block] = [{"id": "${var." + var + "}"}]
         return None
