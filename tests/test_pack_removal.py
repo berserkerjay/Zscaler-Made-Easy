@@ -669,3 +669,65 @@ def test_the_removal_sheet_owns_its_title_and_footer_on_every_step():
     deploy = body("_dzRender")
     assert "document.getElementById('dzTitle').textContent = 'Deploy policy packs'" in deploy and "steps.setAttribute('aria-label', 'Deployment steps')" in deploy
     assert "Run preflight" not in body("_dzRemovalSelect") and "Run preflight" in body("_dzRenderSelect")
+
+
+def test_a_403_is_never_a_delete_that_a_later_pass_clears():
+    """"Resource Access Blocked" is a 403 about the client, answered by
+    ops.call's five activations; the removal's later passes are for
+    deletes ZIA refuses because the object is still in use. The letters
+    'lock' inside 'blocked' must not make it look like an edit lock."""
+    assert not pr._retryable("Resource Access Blocked") and not pr._retryable("HTTP 403: Resource Access Blocked", 403)
+    assert not pr._retryable("Forbidden") and not pr._retryable("anything", 403)
+    assert pr._retryable("EDIT_LOCK_NOT_AVAILABLE: Another admin session holds the edit lock") and pr._retryable("DLP engine is in use by a DLP rule")
+    assert pr._retryable("Rate limit exceeded", 429) and not pr._retryable("not attempted: You clicked Stop")
+
+
+def test_the_wizards_delete_all_rules_answers_a_403_with_activate_wait_and_retry(monkeypatch):
+    """The migration wizard's Delete all rules step goes through the raw
+    client, not the shared path; it follows the same 403 rule: activate,
+    wait 15 seconds, try again, up to five times, and a 403 still there
+    after that stops the rest."""
+    import security
+    import rule_migrator as rm
+    sleeps = []
+    monkeypatch.setattr(rm, "_sleep", lambda s: sleeps.append(s))
+    monkeypatch.setattr(rm, "ACTIVATION_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(security, "_write_override", True)
+
+    class Client:
+        def __init__(self, refusals):
+            self.calls = []
+            self.refusals = dict(refusals)   # rule id -> how many 403s before the delete goes through
+
+        def get(self, ep):
+            if ep == "/zia/status":
+                self.calls.append(("GET", ep)); return ({"status": "ACTIVE"}, 200)
+            return ([{"id": 1, "name": "A"}, {"id": 2, "name": "B"}], 200)
+
+        def delete(self, ep, body=None):
+            self.calls.append(("DELETE", ep))
+            rid = int(ep.rsplit("/", 1)[1])
+            if self.refusals.get(rid, 0) > 0:
+                self.refusals[rid] -= 1
+                return ({"status": 403, "message": "Resource Access Blocked"}, 403)
+            return (None, 204)
+
+        def post(self, ep, body=None):
+            self.calls.append(("POST", ep)); return ({"status": "ACTIVE"}, 200)
+
+    c = Client({1: 2})
+    out = rm.delete_all_rules(c, dry_run=False)
+    assert out["status"] == "completed" and out["deleted_count"] == 2 and out["stopped"] is None
+    assert sleeps == [15.0, 15.0] and len(out["activations_after_403"]) == 2 and all(a["requested"] for a in out["activations_after_403"])
+    assert c.calls[:5] == [("DELETE", "/zia/webDlpRules/1"), ("POST", "/zia/status/activate"), ("DELETE", "/zia/webDlpRules/1"),
+                           ("POST", "/zia/status/activate"), ("DELETE", "/zia/webDlpRules/1")]
+    assert c.calls[5:] == [("DELETE", "/zia/webDlpRules/2"), ("POST", "/zia/status/activate"), ("GET", "/zia/status")], "then the step's own activation"
+    # Never clears: six tries and five activations on the first rule, then the rest is not attempted.
+    sleeps.clear()
+    c = Client({1: 99, 2: 99})
+    out = rm.delete_all_rules(c, dry_run=False)
+    assert out["status"] == "partial" and out["deleted_count"] == 0 and out["failed_count"] == 2
+    assert sleeps == [15.0] * 5 and sum(1 for k in c.calls if k == ("DELETE", "/zia/webDlpRules/1")) == 6 and ("DELETE", "/zia/webDlpRules/2") not in c.calls
+    assert out["stopped"] and "kept refusing it after 5 activations" in out["stopped"]
+    assert out["failed"][0]["http_status"] == 403 and out["failed"][1]["reason"].startswith("not attempted: ZIA refused a write with a 403")
+    assert out["activation"]["requested"], "the rules were attempted, so the step's activation still runs"

@@ -1288,6 +1288,32 @@ def _wait_active_raw(client, seconds: float) -> Optional[str]:
             return status
         _t.sleep(3)
 
+def _sleep(seconds: float) -> None:   # tests replace this
+    import time as _t
+    if seconds > 0:
+        _t.sleep(seconds)
+
+
+def _delete_answering_403(client, path: str, activations: List[Dict[str, Any]]) -> Tuple[Any, Any]:
+    """DELETE `path` through the raw client, and answer a 403 the way the
+    shared path (`pack_ops.call`) does: activate the pending configuration,
+    wait 15 seconds, try again, up to five times. Each activation is
+    appended to `activations`. Returns the last (payload, http status)."""
+    from pack_ops import FORBIDDEN_ATTEMPTS, FORBIDDEN_WAIT_SECONDS
+    data, code = client.delete(path) if hasattr(client, "delete") else (None, 0)
+    for retry in range(1, FORBIDDEN_ATTEMPTS + 1):
+        if code != 403:
+            break
+        try:
+            _resp, acode = client.post("/zia/status/activate", {}) if hasattr(client, "post") else (None, 0)
+        except Exception as e:  # noqa: BLE001 - an activation that cannot run is recorded, the wait and the try still happen
+            acode, _resp = None, str(e)[:200]
+        activations.append({"after": f"403 on {path} (try {retry} of {FORBIDDEN_ATTEMPTS})", "requested": acode in (200, 201, 204), "http_status": acode})
+        _sleep(FORBIDDEN_WAIT_SECONDS)
+        data, code = client.delete(path)
+    return data, code
+
+
 def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     """
     Delete every Inline Web DLP rule in the tenant. Used when the
@@ -1329,17 +1355,27 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         }
 
     deleted, failed = [], []
+    activations_after_403: List[Dict[str, Any]] = []
+    stopped = None
     for r in rules:
         rid = r.get("id")
         if rid is None:
             failed.append({"rule_name": r.get("name"), "reason": "missing id"})
             continue
+        if stopped:
+            failed.append({"rule_id": rid, "rule_name": r.get("name"), "reason": f"not attempted: {stopped}"})
+            continue
         try:
-            _, code = client.delete(f"/zia/webDlpRules/{rid}") if hasattr(client, "delete") else (None, 0)
+            # A 403 is answered by an activation, a 15-second wait and another try, up to five times (the same rule as a pack deploy or removal).
+            _, code = _delete_answering_403(client, f"/zia/webDlpRules/{rid}", activations_after_403)
             if code in (200, 204):
                 deleted.append({"rule_id": rid, "rule_name": r.get("name")})
             else:
                 failed.append({"rule_id": rid, "rule_name": r.get("name"), "http_status": code})
+                if code == 403:
+                    # Still refused after five activations: the tenant refuses this client, so the rest is not tried.
+                    from pack_ops import FORBIDDEN_STOP_REASON
+                    stopped = FORBIDDEN_STOP_REASON
         except Exception as e:
             failed.append({"rule_id": rid, "rule_name": r.get("name"), "error": str(e)[:200]})
 
@@ -1365,6 +1401,8 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "deleted": deleted,
         "failed": failed,
         "activation": activation,
+        "activations_after_403": activations_after_403,
+        "stopped": stopped,
     }
 
 
