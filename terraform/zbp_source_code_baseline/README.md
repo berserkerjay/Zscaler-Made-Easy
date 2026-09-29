@@ -65,6 +65,10 @@ terraform plan -out=tfplan        # review the plan, then apply exactly that pla
 terraform apply tfplan
 ```
 
+## Upgrading a workspace generated before 2026-09-29
+
+Resource addresses are unchanged, so state carries over. Three things moved: `versions.tf` is now `terraform.tf` and `provider.tf` is `providers.tf` (delete the old two; the new ones replace them); the SaaS and email tenant ids that were one variable per rule (`saas_tenant_ids_<label>`) are now one map per channel, so move each value into `saas_tenant_ids = { "<rule name>" = [ids] }` (or `email_tenant_ids`), or set `saas_tenant_ids_default` for every rule at once; and `rule_starting_order` and `policy_rank` are validated (a whole number from 1, and from 0 to 7). An old per-rule value left in `terraform.tfvars` is only warned about, and the rule then stops `terraform plan` with a sentence naming it until the map holds its ids.
+
 ## Renaming a resource
 
 A regenerated workspace keeps its labels, so state carries over. If you rename a resource by hand, keep its state with a `moved` block instead of destroying and recreating it:

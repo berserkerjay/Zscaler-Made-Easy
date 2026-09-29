@@ -125,8 +125,9 @@ TARGETS: Dict[str, Dict[str, Any]] = {
                         "quarantine or remove sharing go in designed_action and are set in the portal once incidents are reviewed); target_name at most 31 characters")},
     "email": {"label": "Outbound Email DLP", "resource": "zia_outbound_email_dlp", "zia": "email_rule", "covers": ("email",),
               "actions": ("ALLOW", "BLOCK"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": None, "needs": ("tenants",),
-              "fields": ("tenants: the onboarded email tenant names or \"variable\"; the zscaler/zia provider accepts ALLOW or BLOCK here, so a custom header "
-                         "goes in designed_action (CUSTOMHEADERINSERTION) with custom_header, recorded in the report and set in the portal once incidents are reviewed")},
+              "fields": ("tenants: the onboarded email tenant names or \"variable\"; action ALLOW or BLOCK (the zscaler/zia provider accepts ALLOW, BLOCK or "
+                         "QUARANTINE on an email rule, not CUSTOMHEADERINSERTION), so a custom header goes in designed_action (CUSTOMHEADERINSERTION) with "
+                         "custom_header, recorded in the report and set in the portal once incidents are reviewed")},
 }
 _CHANNEL_KINDS = ("web", "email", "endpoint", "saas-api", "cloud-download", "ftp")
 
@@ -1319,23 +1320,22 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
 
 
 # ── Compile (vendor-agnostic) ──────────────────────────────────────────
-from dlp_importer import DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX  # noqa: E402
+from dlp_importer import DICT_DESCRIPTION_MAX, ENGINE_DESCRIPTION_MAX, fit_description  # noqa: E402
 
 
 def _fit(text: str, limit: int) -> str:
-    """A description within ZIA's limit for the object (it refuses longer)."""
-    text = str(text or "").strip()
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    """A description within ZIA's limit for the object, counted in UTF-8
+    bytes as ZIA and the provider count it (they refuse longer)."""
+    return fit_description(str(text or ""), "", limit)
 
 
 def rule_label(prefix: str, source_id: str, channel: str = "web") -> str:
-    """The Terraform label of a migrated rule: the vendor prefix once (a
-    Symantec id "sym-101" is sym_101, not sym_sym_101), then the channel
-    for every target but web. Snake case, unique per source and channel."""
-    base = slug(source_id)
-    if not base.startswith(f"{prefix}_"):
-        base = slug(f"{prefix}_{source_id}")
-    return slug(base + ("" if channel == "web" else f"_{channel}"))
+    """The Terraform label of a migrated rule: the vendor prefix, the source
+    id, then the channel for every target but web. Kept exactly as earlier
+    versions wrote it (a Symantec id "sym-101" is sym_sym_101), so a
+    migration someone already applied keeps its resource addresses; and
+    injective, since every label carries the prefix once in front."""
+    return slug(f"{prefix}_{source_id}" + ("" if channel == "web" else f"_{channel}"))
 
 
 def slug(s: str) -> str:
@@ -1467,8 +1467,8 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
             question(source_id, f"{spec['label']} rule needs approved: true, scope_acknowledged_any: true, an action from {', '.join(spec['actions'])}, "
                                 f"1-{spec['max_engines']} engines and a positive order"
                                 + ("; a SaaS remediation goes in designed_action" if channel == "saas" else "")
-                                + ("; a custom header goes in designed_action (CUSTOMHEADERINSERTION) with custom_header: the zscaler/zia provider accepts "
-                                   "ALLOW or BLOCK on an email rule" if channel == "email" else ""))
+                                + ("; a custom header goes in designed_action (CUSTOMHEADERINSERTION) with custom_header: the zscaler/zia provider "
+                                   "accepts ALLOW, BLOCK or QUARANTINE on an email rule, not CUSTOMHEADERINSERTION" if channel == "email" else ""))
             continue
         missing_engines = [x for x in engines if slug(x) not in res["zia_dlp_engines"]]
         if missing_engines:
@@ -1630,7 +1630,8 @@ def workspace_files(tf: Dict[str, Any], report: Dict[str, Any], vendor_name: str
             f"{counts.get('dispositions', 0)} retired or out of scope. `migration-report.json` beside these files is the review record "
             "(every conversion, question and efficacy figure).")
     files = pt.render_json_workspace(tf, title=f"{vendor_name} migration", source_note=note)
-    files["migration-report.json"] = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+    files["migration-report.json"] = json.dumps(dict({"//": "Written by DLP-Check: the review record of this migration."}, **report),
+                                                indent=2, ensure_ascii=False) + "\n"
     return files
 
 
@@ -1754,8 +1755,8 @@ def main(argv=None) -> int:
                   "review and run terraform init/validate/plan in one of them, not both.")
             return 0
         (args.out / "main.tf.json").unlink(missing_ok=True)
-        import shutil
-        shutil.rmtree(args.out / "terraform", ignore_errors=True)
+        import pack_terraform as pt
+        pt.remove_generated(str(args.out / "terraform"), names=("README.md", ".gitignore", "terraform.tfvars.example", "migration-report.json"))
         print("BLOCKED: see migration-report.json; no deployable Terraform emitted.", file=sys.stderr)
         return 2
     except (ValueError, OSError, json.JSONDecodeError) as exc:

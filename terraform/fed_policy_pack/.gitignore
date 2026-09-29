@@ -1,7 +1,8 @@
-# Local Terraform state, saved plans, variable files and overrides. Commit .terraform.lock.hcl.
+# Written by DLP-Check. Local Terraform state, saved plans, variable files and overrides. Commit .terraform.lock.hcl.
 .terraform/
 *.tfstate
 *.tfstate.*
+tfplan
 *.tfplan
 *.tfplan.*
 crash.log

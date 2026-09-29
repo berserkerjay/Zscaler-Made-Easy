@@ -15,11 +15,15 @@
 """
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Packs deploy detection only and carve Cloud App Control, File Type, URL and
+# SSL rules out unless this says otherwise; the containment sample needs them.
+os.environ["DLP_CHECK_CARVED_CHANNELS"] = "none"
 sys.path[:0] = [ROOT, os.path.join(ROOT, "tests")]
 
 import pack_terraform as pt  # noqa: E402
@@ -42,7 +46,13 @@ def main(out: str) -> int:
     pt.write_workspace(vm.workspace_files(tf, report, vm.VENDORS["symantec"]["name"], "sample.xml"), os.path.join(out, "vendor_hcl"))
     with tempfile.TemporaryDirectory() as d:
         pack = control_pack(Path(d), meta=dict(BASELINE_META, name="Containment sample"))
-        pt.write_workspace(pt.generate(pack), os.path.join(out, "containment"))
+        files = pt.generate(pack)
+        kinds = set(re.findall(r'(?m)^resource "(zia_[a-z_]+)"', files["rules.tf"]))
+        want = {"zia_cloud_app_control_rule", "zia_file_type_control_rules", "zia_url_filtering_rules", "zia_ssl_inspection_rules"}
+        if not want <= kinds:
+            print(f"the containment sample is missing {sorted(want - kinds)}", file=sys.stderr)
+            return 2
+        pt.write_workspace(files, os.path.join(out, "containment"))
     with tempfile.TemporaryDirectory() as d:
         pack = endpoint_pack(Path(d), meta=dict(BASELINE_META, name="Endpoint sample"))
         pt.write_workspace(pt.generate(pack), os.path.join(out, "endpoint"))

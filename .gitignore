@@ -11,6 +11,9 @@ build/
 *.env
 venv/
 .venv/
+# A venv that is a symlink (worktrees) is a file to git, so ignore that too.
+venv
+.venv
 
 # Credentials
 tenant_config.json

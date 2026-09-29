@@ -119,7 +119,7 @@
               <li><strong>web</strong> (Inline Web DLP): action BLOCK / CONFIRM / ALLOW.</li>
               <li><strong>endpoint</strong> (Endpoint DLP, Client Connector): action ALLOW / BLOCK / CONFIRM and <code>data_transfer_method</code>, one of REMOVABLE_DRIVE_TRANSFER, NETWORK_DRIVE_TRANSFER, APPLICATION_FILE_ACCESS, PRINTING (one per rule); <code>device_trust_levels</code> optional.</li>
               <li><strong>saas</strong> (SaaS Security API): action OFLCASB_DLP_REPORT_INCIDENT / OFLCASB_DLP_ALLOW, <code>saas_type</code> (OFLCASB_DLP_FILE, …), <code>tenants</code> (onboarded tenant names, or "variable"), a <code>target_name</code> of at most 31 characters; the remediation you intend (quarantine, remove sharing) goes in <code>designed_action</code> and is set in the portal once incidents are reviewed.</li>
-              <li><strong>email</strong> (Outbound Email DLP): action ALLOW / BLOCK / CUSTOMHEADERINSERTION (with <code>custom_header</code>), <code>tenants</code> as for saas.</li>
+              <li><strong>email</strong> (Outbound Email DLP): action ALLOW / BLOCK, <code>tenants</code> as for saas; a custom header goes in <code>designed_action</code> CUSTOMHEADERINSERTION with <code>custom_header</code> (the zscaler/zia provider does not accept it as an email rule's action), recorded in the report and set in the portal once incidents are reviewed.</li>
             </ul>
           </li>
           <li>Spell out the dictionaries (phrases, patterns) and engines (a ZIA expression; <code>{{dict:ID}}</code> references a dictionary in the same file) and approve each one.</li>
@@ -153,7 +153,7 @@
         <div id="vmEfficacy"></div>
         <details class="vm-xref"><summary>API cross-reference used for this vendor (also in migration-report.json)</summary><div id="vmReportXref"></div></details>
         <h3>What happens next</h3>
-        <p class="vm-dim">Every generated rule, on every channel, is <strong>DISABLED</strong> and applies to Any user and location. SaaS Security API rules ship as report-incident with the intended remediation recorded, and an email custom header is recorded the same way (the zscaler/zia provider accepts only ALLOW or BLOCK on an email rule); SaaS and email tenant ids are looked up by name or left to a Terraform variable; an endpoint CONFIRM rule binds the tenant's user-confirmation template through a variable. Hand the Terraform workspace (.zip: the same file layout as the pack hand-off, <code>terraform fmt</code>-clean, with a README, variables, outputs and the migration report) or <code>main.tf.json</code> (the same configuration as one JSON file; use one, not both) to the platform team, run <code>terraform init / validate / plan</code>, apply in a test tenant, compare source and target incidents in monitor mode, then enable the rules one by one and order them with the tenant's existing policy. This page never contacts a tenant.</p>
+        <p class="vm-dim">Every generated rule, on every channel, is <strong>DISABLED</strong> and applies to Any user and location. SaaS Security API rules ship as report-incident with the intended remediation recorded, and an email custom header is recorded the same way (the zscaler/zia provider does not accept it as an email rule's action); SaaS and email tenant ids are looked up by name or left to a Terraform variable; an endpoint CONFIRM rule binds the tenant's user-confirmation template through a variable. Hand the Terraform workspace (.zip: the same file layout as the pack hand-off, <code>terraform fmt</code>-clean, with a README, variables, outputs and the migration report) or <code>main.tf.json</code> (the same configuration as one JSON file; use one, not both) to the platform team, run <code>terraform init / validate / plan</code>, apply in a test tenant, compare source and target incidents in monitor mode, then enable the rules one by one and order them with the tenant's existing policy. This page never contacts a tenant.</p>
       </section>
     </main>
   </div>
@@ -165,7 +165,7 @@
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const $ = id => document.getElementById(id);
-    let vendors = [], vendorId = 'symantec', exportFile = null, decisionsFile = null, inventory = null, result = null;
+    let vendors = [], vendorId = 'symantec', exportFile = null, decisionsFile = null, inventory = null, result = null, compiledBody = null;
     let limitBytes = 7 * 1024 * 1024;
 
     function announce(t) { const r = $('liveRegion'); if (r) { r.textContent = ''; setTimeout(() => { r.textContent = t; }, 30); } }
@@ -295,6 +295,7 @@
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
         result = data;
+        compiledBody = { vendor: vendorId, export: exp, decisions: dec };   // the workspace download packages exactly this compile
         renderReport(data);
         status('vmStatus2', data.report.ready ? 'Ready: disabled Terraform generated.' : 'Blocked: answer the questions in the report and compile again.', !data.report.ready);
         announce(data.report.ready ? 'Compile complete, ready.' : 'Compile complete, blocked.');
@@ -318,7 +319,7 @@
       $('vmCounts').innerHTML = [['Source policies', c.source_policies], ['Converted rules', `${c.converted_rules} (${byChannel(c)})`], ['Blocked', c.blocked_policies_or_objects], ['Dictionaries', c.dictionaries], ['Engines', c.engines], ['Retired / out of scope', c.dispositions], ['Provider', `zscaler/zia ${rep.provider_version}`], ['Export SHA-256', rep.source_sha256]]
         .map(([k, v]) => `<div class="vm-fact"><div class="k">${E(k)}</div><div class="v ${k === 'Export SHA-256' ? 'vm-code' : ''}">${E(v)}</div></div>`).join('');
       $('vmQuestions').innerHTML = (rep.questions || []).length ? `<h3>Questions (each one blocks the run)</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">What is needed</th></tr></thead><tbody>${rep.questions.map(q => `<tr><td class="vm-code">${E(q.source_id)}</td><td><span class="vm-chip ${q.kind === 'UNSUPPORTED' ? 'bad' : 'on'}">${E(q.kind)}</span></td><td>${E(q.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
-      $('vmConverted').innerHTML = (rep.converted || []).length ? `<h3>Converted</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Channel</th><th scope="col">Target</th><th scope="col">Action</th><th scope="col">State</th></tr></thead><tbody>${rep.converted.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(CHANNEL_LABEL[x.channel] || x.channel)}</td><td class="vm-code">${E(x.target)}</td><td class="vm-code">${E(x.action)}${x.designed_action ? `<div class="vm-dim">designed_action ${E(x.designed_action)}: set in the portal once incidents are reviewed</div>` : ''}</td><td><span class="vm-chip">${E(x.state)}</span></td></tr>`).join('')}</tbody></table></div>` : '';
+      $('vmConverted').innerHTML = (rep.converted || []).length ? `<h3>Converted</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Channel</th><th scope="col">Target</th><th scope="col">Action</th><th scope="col">State</th></tr></thead><tbody>${rep.converted.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(CHANNEL_LABEL[x.channel] || x.channel)}</td><td class="vm-code">${E(x.target)}</td><td class="vm-code">${E(x.action)}${x.designed_action ? `<div class="vm-dim">designed_action ${E(x.designed_action)}${x.custom_header ? ` (header <span class="vm-code">${E(x.custom_header)}</span>)` : ''}: set in the portal once incidents are reviewed</div>` : ''}</td><td><span class="vm-chip">${E(x.state)}</span></td></tr>`).join('')}</tbody></table></div>` : '';
       $('vmDispositions').innerHTML = (rep.dispositions || []).length ? `<h3>Retired or out of scope</h3><div style="overflow-x:auto;"><table class="vm-t"><thead><tr><th scope="col">Source</th><th scope="col">Disposition</th><th scope="col">Reason</th></tr></thead><tbody>${rep.dispositions.map(x => `<tr><td class="vm-code">${E(x.source_id)}</td><td>${E(x.disposition)}</td><td>${E(x.reason)}</td></tr>`).join('')}</tbody></table></div>` : '';
       renderEfficacy(rep.efficacy);
       $('vmReportXref').innerHTML = renderCrossref(rep.crossref, true);
@@ -347,18 +348,17 @@
     $('vmDlTf').addEventListener('click', () => { if (result && result.terraform) download('main.tf.json', result.terraform); });
     // The reviewable workspace: the server renders the same compile as HCL files (fmt-clean) and zips them.
     $('vmDlWs').addEventListener('click', async () => {
-      if (!result || !result.terraform || !exportFile || !decisionsFile) return;
+      if (!result || !result.terraform || !compiledBody) return;
       setEnabled('vmDlWs', false);
       status('vmStatus2', 'Building the Terraform workspace…');
       try {
-        const [exp, dec] = await Promise.all([readFile(exportFile), readFile(decisionsFile)]);
-        const r = await fetch('/api/vendor-migrate/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vendor: vendorId, export: exp, decisions: dec }) });
+        const r = await fetch('/api/vendor-migrate/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(compiledBody) });
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
           throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
         }
         const blob = await r.blob();
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dlp-check-${vendorId}-migration-terraform.zip`; document.body.appendChild(a); a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dlp-check-${compiledBody.vendor}-migration-terraform.zip`; document.body.appendChild(a); a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
         status('vmStatus2', 'Terraform workspace downloaded.');
         announce('Terraform workspace downloaded.');

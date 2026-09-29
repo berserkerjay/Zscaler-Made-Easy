@@ -48,8 +48,8 @@ def test_success_is_disabled_and_references_resolve():
     tf, report = vm.compile_export(snapshot, _decisions(snapshot))
     assert report["ready"] and report["counts"] == {"source_policies": 1, "converted_rules": 1, "converted_by_channel": {"web": 1, "endpoint": 0, "saas": 0, "email": 0},
                                                     "blocked_policies_or_objects": 0, "dictionaries": 1, "engines": 1, "dispositions": 0}
-    assert report["converted"] == [{"source_id": "sym-101", "channel": "web", "target": "zia_dlp_web_rules.sym_101", "state": "DISABLED", "action": "BLOCK"}]
-    rule = tf["resource"]["zia_dlp_web_rules"]["sym_101"]
+    assert report["converted"] == [{"source_id": "sym-101", "channel": "web", "target": "zia_dlp_web_rules.sym_sym_101", "state": "DISABLED", "action": "BLOCK"}]
+    rule = tf["resource"]["zia_dlp_web_rules"]["sym_sym_101"]
     assert rule["state"] == "DISABLED" and rule["dlp_engines"][0]["id"] == ["${zia_dlp_engines.pci_context.id}"]
     assert "${zia_dlp_dictionaries.customer_context.id}" in tf["resource"]["zia_dlp_engines"]["pci_context"]["engine_expression"]
     assert tf["terraform"]["required_providers"]["zia"]["version"] == vm.PROVIDER_VERSION
@@ -78,6 +78,18 @@ def test_unknown_channel_blocks_all_output_and_the_cli_removes_stale_terraform()
         assert vm.main(["inventory", str(p / "export.xml"), "--out", str(p / "inv")]) == 0
         tpl = json.loads((p / "inv" / "decisions.template.json").read_text())
         assert tpl["source_sha256"] == snapshot["sha256"] and tpl["policies"][0]["source_id"] == "sym-101" and tpl["policies"][0]["approved"] is False
+        # A ready compile writes main.tf.json and the workspace in terraform/; a later blocked one removes only what it generated:
+        # the state, terraform.tfvars and the .terraform folder of a team that ran Terraform there stay.
+        (p / "ok.json").write_text(json.dumps(_decisions(snapshot)))
+        assert vm.main(["compile", str(p / "export.xml"), "--decisions", str(p / "ok.json"), "--out", str(p / "out")]) == 0
+        ws = p / "out" / "terraform"
+        assert (p / "out" / "main.tf.json").exists() and (ws / "rules.tf").exists() and (ws / "README.md").exists()
+        (ws / "terraform.tfstate").write_text("{}"); (ws / "terraform.tfvars").write_text("x = 1\n"); (ws / ".terraform").mkdir()
+        (ws / "team.tf").write_text("# our own\n")
+        assert vm.main(["compile", str(p / "export.xml"), "--decisions", str(p / "decisions.json"), "--out", str(p / "out")]) == 2
+        assert not (p / "out" / "main.tf.json").exists() and not (ws / "rules.tf").exists() and not (ws / "README.md").exists()
+        assert not (ws / "migration-report.json").exists() and not (ws / ".gitignore").exists()
+        assert {x.name for x in ws.iterdir()} == {"terraform.tfstate", "terraform.tfvars", ".terraform", "team.tf"}, "nothing the team made is removed"
 
 
 def test_unapproved_retirement_and_unlisted_policies_block():
@@ -140,7 +152,7 @@ def test_the_page_calls_inventory_then_compile_without_touching_a_tenant():
     d = _decisions(inv["snapshot"])
     r = c.post("/api/vendor-migrate/compile", json={"vendor": "symantec", "export": _upload("policies.xml", EXPORT), "decisions": _upload("decisions.json", json.dumps(d).encode())})
     assert r.status_code == 200 and r.json()["report"]["ready"] is True
-    assert r.json()["terraform"]["resource"]["zia_dlp_web_rules"]["sym_101"]["state"] == "DISABLED"
+    assert r.json()["terraform"]["resource"]["zia_dlp_web_rules"]["sym_sym_101"]["state"] == "DISABLED"
     # Refusals read as sentences.
     r = c.post("/api/vendor-migrate/inventory", json={"vendor": "netskope", "export": _upload("x.xml", EXPORT)})
     assert r.status_code == 400 and ".xml files are not an export this adapter reads" in r.json()["detail"]
@@ -403,7 +415,6 @@ def test_each_adapter_compiles_through_the_same_contract_with_its_own_prefix_and
         assert rep["ready"] and rep["vendor"] == vid and rep["crossref"]["vendor"] == vid and len(rep["crossref"]["rows"]) >= 12
         rules = out["terraform"]["resource"]["zia_dlp_web_rules"]
         assert set(rules) == {vm.rule_label(vm.VENDORS[vid]["prefix"], i) for i in ids} and all(v["state"] == "DISABLED" for v in rules.values())
-        assert all(not k.startswith(vm.VENDORS[vid]["prefix"] * 2) and f"{vm.VENDORS[vid]['prefix']}_{vm.VENDORS[vid]['prefix']}_" not in k for k in rules), "the prefix once"
         scored = [p for p in rep["efficacy"]["policies"] if p["fidelity"] is not None]
         assert scored and rep["efficacy"]["overall_fidelity"] is not None, vid
         main = next(p for p in scored if p["source_id"] == ids[-1])
@@ -486,7 +497,7 @@ def test_one_source_policy_can_land_on_all_four_channels_every_rule_disabled():
     assert rep["ready"], rep["questions"]
     assert rep["counts"]["converted_rules"] == 5 and rep["counts"]["converted_by_channel"] == {"web": 2, "endpoint": 1, "saas": 1, "email": 1}
     res = tf["resource"]
-    web, ep, saas, email = res["zia_dlp_web_rules"]["sym_101"], res["zia_endpoint_dlp_rules"]["sym_101_endpoint"], res["zia_casb_dlp_rules"]["sym_101_saas"], res["zia_outbound_email_dlp"]["sym_101_email"]
+    web, ep, saas, email = res["zia_dlp_web_rules"]["sym_sym_101"], res["zia_endpoint_dlp_rules"]["sym_sym_101_endpoint"], res["zia_casb_dlp_rules"]["sym_sym_101_saas"], res["zia_outbound_email_dlp"]["sym_sym_101_email"]
     assert all(r["state"] == "DISABLED" and r["order"] == 1 and r["without_content_inspection"] is False for r in (web, ep, saas, email))
     assert web["protocols"] == ["HTTPS_RULE", "HTTP_RULE"] and "rank" not in web
     # Endpoint: one transfer method, the four trust levels, CONFIRM bound to the tenant's template through a variable.
@@ -500,7 +511,7 @@ def test_one_source_policy_can_land_on_all_four_channels_every_rule_disabled():
     assert tf["data"]["zia_casb_tenant"] == {"tenant_box_corp": {"tenant_name": "Box Corp"}, "tenant_onedrive": {"tenant_name": "OneDrive"}}
     assert next(c for c in rep["converted"] if c["channel"] == "saas")["designed_action"] == "OFLCASB_DLP_QUARANTINE"
     # Email: no rank, tenant ids left to a variable. The zscaler/zia provider accepts ALLOW, BLOCK or QUARANTINE on an
-    # email rule, so the custom header is the recorded designed action (set in the portal), never the emitted one.
+    # email rule, not CUSTOMHEADERINSERTION, so the custom header is the recorded designed action (set in the portal).
     lookup = '${lookup(var.email_tenant_ids, "PCI upload block [Email]", var.email_tenant_ids_default)}'
     assert "rank" not in email and email["action"] == "ALLOW" and "custom_header" not in email and email["email_tenants"] == [{"id": lookup}]
     em = next(c for c in rep["converted"] if c["channel"] == "email")
@@ -552,7 +563,7 @@ def test_each_channel_fails_closed_on_its_own_required_fields():
     assert "custom_header" in rep["questions"][0]["reason"]
     d = json.loads(json.dumps(base)); pol(d, "email").update(action="BLOCK"); pol(d, "email").pop("custom_header"); pol(d, "email").pop("designed_action")
     tf_block, rep = vm.compile_export(snap, d)
-    assert rep["ready"] and "custom_header" not in tf_block["resource"]["zia_outbound_email_dlp"]["sym_101_email"], "BLOCK needs no header"
+    assert rep["ready"] and "custom_header" not in tf_block["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"], "BLOCK needs no header"
     rep = compile_with(lambda d: pol(d, "email").update(action="CUSTOMHEADERINSERTION"))
     assert "a custom header goes in designed_action" in rep["questions"][0]["reason"], "the provider refuses it as the rule's action"
     rep = compile_with(lambda d: d["policies"].append({"source_id": "sym-102", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "ALLOW", "order": 3, "engine_refs": ["pci_context"]}))
@@ -610,7 +621,7 @@ def test_review_findings_fail_closed_and_score_only_what_was_compiled():
     # Tenant names that slug alike keep their own data blocks; a repeated name is looked up once.
     tf, rep = run(lambda d: pol(d, "saas").update(tenants=["Box Corp", "Box-Corp", "Box Corp"]))
     assert rep["ready"] and tf["data"]["zia_casb_tenant"] == {"tenant_box_corp": {"tenant_name": "Box Corp"}, "tenant_box_corp_2": {"tenant_name": "Box-Corp"}}
-    assert tf["resource"]["zia_casb_dlp_rules"]["sym_101_saas"]["cloud_app_tenants"] == [{"id": ["${data.zia_casb_tenant.tenant_box_corp.tenant_id}", "${data.zia_casb_tenant.tenant_box_corp_2.tenant_id}"]}]
+    assert tf["resource"]["zia_casb_dlp_rules"]["sym_sym_101_saas"]["cloud_app_tenants"] == [{"id": ["${data.zia_casb_tenant.tenant_box_corp.tenant_id}", "${data.zia_casb_tenant.tenant_box_corp_2.tenant_id}"]}]
     # A blocked rule leaves an order gap on its channel: the question is reported, nothing raises.
     _tf, rep = run(lambda d: pol(d, "web").update(action="NOPE"))
     assert not rep["ready"] and rep["questions"][0]["source_id"] == "sym-101" and "Inline Web DLP rule needs approved: true" in rep["questions"][0]["reason"]
@@ -650,8 +661,8 @@ def test_review_findings_fail_closed_and_score_only_what_was_compiled():
     assert "other" not in sc["detail"].split("not recognised")[0]
     # Literal strings are Terraform-template safe.
     tf, rep = run(lambda d: (pol(d, "web").update(target_name="PCI ${oops} %{if}"), pol(d, "email").update(target_name="Mail ${h}"), d["dictionaries"][0]["phrases"].append("price ${1}")))
-    assert rep["ready"] and tf["resource"]["zia_dlp_web_rules"]["sym_101"]["name"] == "PCI $${oops} %%{if}"
-    assert tf["resource"]["zia_outbound_email_dlp"]["sym_101_email"]["name"] == "Mail $${h}"
+    assert rep["ready"] and tf["resource"]["zia_dlp_web_rules"]["sym_sym_101"]["name"] == "PCI $${oops} %%{if}"
+    assert tf["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"]["name"] == "Mail $${h}"
     assert {p["phrase"] for p in tf["resource"]["zia_dlp_dictionaries"]["customer_context"]["phrases"]} >= {"price $${1}"}
 
 
@@ -684,7 +695,15 @@ def test_the_migration_is_handed_over_as_a_terraform_workspace_following_terrafo
     for name, text in files.items():
         if name.endswith(".tf"):
             assert text.startswith("# Generated by DLP-Check from a reviewed Symantec DLP"), name
-            assert pt.hcl_fmt(text) == text, f"{name} is not laid out the way terraform fmt does"
+            assert pt.hcl_fmt(text) == text, f"{name}: hcl_fmt is not stable on its own output"
+    assert '"email_tenant_ids" = ' not in files["terraform.tfvars.example"] and '# email_tenant_ids = { "Rule name" = [123456] }' in files["terraform.tfvars.example"]
+    import shutil, subprocess, tempfile
+    if shutil.which("terraform"):   # the real check: terraform fmt itself (CI always has it)
+        with tempfile.TemporaryDirectory() as td:
+            for name, text in files.items():
+                open(os.path.join(td, name), "w", encoding="utf-8").write(text)
+            r = subprocess.run(["terraform", "fmt", "-check", "-list=true", td], capture_output=True, text=True)
+            assert r.returncode == 0, r.stdout + r.stderr
     assert "DISABLED" in files["README.md"] and "*.tfstate" in files[".gitignore"] and json.loads(files["migration-report.json"])["ready"] is True
     # The JSON form carries the same constraints and says what generated it.
     tf = c.post("/api/vendor-migrate/compile", json=body).json()["terraform"]
