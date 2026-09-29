@@ -81,7 +81,7 @@ const DZ_DLP_LABEL = { web: 'Inline Web DLP', endpoint: 'Endpoint DLP', saas: 'S
 // The channel choice lives for this page only. It used to be remembered
 // in the browser across sessions, and a choice made weeks ago (Web only)
 // silently dropped 51 Endpoint, SaaS and Email rules from a Fed pack
-// deploy. Every time Deploy Policy Packs opens, every channel the pack
+// deploy. Every time Deploy policy packs opens, every channel the pack
 // ships rules for is ticked; unticking is a per-deploy decision.
 const DZ_LS_CHANNELS = 'zassess_pack_channels';   // the old key, cleared so a stale choice can never come back
 function _dzLoadChannels() {
@@ -163,7 +163,7 @@ function _ensureDlpPacksModal() {
     <div class="dz-sheet">
       <div class="dz-head">
         <div>
-          <h2 id="dzTitle">Deploy Policy Packs</h2>
+          <h2 id="dzTitle">Deploy policy packs</h2>
           <p class="dz-sub" id="dzSub">Pick the packs to deploy. Everything is cross-checked against your tenant before anything is written.</p>
           <a class="dz-link dz-howto" id="dzHowTo" href="/report/deploy-flow" target="_blank" rel="noopener" title="Opens a step-by-step walk-through of what a deployment and a removal do, in a new tab.">How a deployment works</a>
         </div>
@@ -280,7 +280,7 @@ function _dzRender() {
 // ── Step 1: select ────────────────────────────────────────────────
 function _dzRenderSelect() {
   const body = document.getElementById('dzBody');
-  if (!body) return;   // Deploy Policy Packs is not open (the hand-off page and the pack cards call this on their own)
+  if (!body) return;   // Deploy policy packs is not open (the hand-off page and the pack cards call this on their own)
   if (DZ.error && !DZ.packs.length) {
     body.innerHTML = `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">Something went wrong</div><div class="d">${_dzE(DZ.error)}</div></div></div>`;
   } else if (!DZ.packs.length) {
@@ -1204,7 +1204,7 @@ function _dzRemovalPreview() {
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalClose()">Cancel</button>
       ${R.mode === 'pick' ? '<button type="button" class="dz-btn quiet" onclick="DZ.removal.step=0;_dzRemovalRender()">Back to the rules</button>' : ''}
-      <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()" ${remove.length ? '' : 'disabled'}>Print / Save as PDF</button>
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()" ${remove.length ? '' : 'disabled'}>Print or save as PDF</button>
       <button type="button" class="dz-btn primary" onclick="DZ.removal.step=2;_dzRemovalRender()" ${remove.length ? '' : 'disabled'}>Continue to approve</button>
     </div>`;
 }
@@ -1231,7 +1231,7 @@ function _dzRemovalApprove() {
     <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I have read the list above and I authorize the permanent removal of these ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
-      <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print / Save as PDF</button>
+      <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print or save as PDF</button>
       ${!writeOn && (DZ.write || {}).can_toggle ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(true)">Enable write mode</button>` : ''}
       <button type="button" class="dz-btn danger" ${writeOn && R.consent ? '' : 'disabled'} title="${writeOn ? '' : 'Enable write mode first'}" onclick="_dzRemovalApply()">Remove now</button>
     </div>
@@ -1364,7 +1364,7 @@ function _dzRemovalReport() {
       @media print{.noprint{display:none}}
       .btn{margin:0 .4rem 1rem 0;padding:.5rem .9rem;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:6px;cursor:pointer;font-size:.85rem}
     </style></head><body>
-    <div class="noprint"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div>
+    <div class="noprint"><button class="btn" onclick="window.print()">Print or save as PDF</button></div>
     <h1>Removal plan — ${esc(R.pack.name || R.id)}</h1>
     <p class="sub">Tenant ${esc(R.plan.tenant_label || '')} · generated ${new Date().toLocaleString()}</p>
     <div class="stat"><div><b>${remove}</b> to remove</div><div><b>${keep}</b> kept (still in use)</div></div>
@@ -1714,7 +1714,7 @@ function _dzFlowKey(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.prevent
 (function () {
   const btn = document.querySelector('button[onclick="openDlpPacksModal()"]');
   if (!btn) return;
-  btn.innerHTML = '<span aria-hidden="true">\u{1F4E6}</span> Deploy Policy Packs';
+  btn.innerHTML = '<span aria-hidden="true">\u{1F4E6}</span> Deploy policy packs';
   btn.setAttribute('aria-label', 'Deploy DLP policy packs with dependency checks, impact review, and approval');
 })();
 

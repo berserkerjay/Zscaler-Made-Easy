@@ -82,9 +82,9 @@ function _gdSteps() {
     {
       n: 3, title: 'Read the results',
       state: assessed ? 'ready' : 'todo',
-      what: 'The Summary card gives the score and what it counts. Detailed Findings lists every check, grouped by section and filterable by status, with what it means and what to do; a 🔧 button marks the findings that have a one-click recipe. Regulatory Alignment maps findings to frameworks the customer cares about.',
-      need: 'Nothing. Walk the customer through the Action Required findings first; they are the ones that expose data today.',
-      status: assessed ? 'Scroll down to Summary, Scores by Section and Detailed Findings.' : 'Available after the assessment runs.',
+      what: 'The Summary card gives the score and what it counts. Detailed findings lists every check, grouped by section and filterable by status, with what it means and what to do; a 🔧 button marks the findings that have a one-click recipe. Regulatory alignment maps findings to frameworks the customer cares about.',
+      need: 'Nothing. Walk the customer through the Action required findings first; they are the ones that expose data today.',
+      status: assessed ? 'Scroll down to Summary, Scores by section and Detailed findings.' : 'Available after the assessment runs.',
       actions: [{ label: 'Jump to results', fn: '_gdGoResults()', kind: 'quiet', disabled: !assessed }],
     },
     {
@@ -92,24 +92,24 @@ function _gdSteps() {
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
       what: 'A policy pack is a complete, layered policy design for one situation: Healthcare PHI, CUI markings, Zscaler\'s enterprise best practice, Endpoint DLP, and so on. Each card says who it is for and when to use it. Preflight reads the tenant and shows exactly what would be created, what already exists and is kept, and what the impact is. Nothing is written.',
       need: 'A connected tenant. Preflight works in read-only mode; it is the plan you show the customer.',
-      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy Policy Packs, tick a policy pack, click Run preflight, then read the Impact cards and the plan.',
-      actions: [{ label: 'Open Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
+      status: deployed ? `Last deployment ${_gdE(deployed.status)} on ${_gdE(deployed.at)}: ${deployed.created || 0} created.` : 'Open Deploy policy packs, tick a policy pack, click Run preflight, then read the Impact cards and the plan.',
+      actions: [{ label: 'Open Deploy policy packs', fn: 'openDlpPacksModal()', kind: 'primary' }],
     },
     {
       n: 5, title: 'Close the gap: deploy from here, or hand off as Terraform',
       state: deployed ? 'done' : (assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo'),
-      what: 'Two ways to create the missing objects. <strong>Deploy from here</strong>: enable write mode in Deploy Policy Packs, review, tick the consent box, deploy; every rule arrives disabled and nothing the customer already has is overwritten. <strong>Hand off as Terraform</strong>: for customers whose platform team manages Zscaler as code, download the same policy pack as a Terraform workspace; in gap mode it imports what exists so their first plan is exactly the gap.',
+      what: 'Two ways to create the missing objects. <strong>Deploy from here</strong>: enable write mode in Deploy policy packs, review, tick the consent box, deploy; every rule arrives disabled and nothing the customer already has is overwritten. <strong>Hand off as Terraform</strong>: for customers whose platform team manages Zscaler as code, download the same policy pack as a Terraform workspace; in gap mode it imports what exists so their first plan is exactly the gap.',
       need: 'Deploying from here needs write mode: a confirmation phrase, after which it stays on for this server (every browser using it) until the server restarts or you switch it back. The Terraform route needs nothing from this tool after the download; the platform team needs an API client with write access.',
       status: deployed ? 'Deployed. Activate in the ZIA portal, then enable rules one by one.' : 'Choose the route the customer prefers. Both start from the same preflight.',
-      actions: [{ label: 'Deploy Policy Packs', fn: 'openDlpPacksModal()', kind: 'primary' }, { label: 'Terraform hand-off', fn: "openToolTab('terraform')", kind: 'quiet' }],
+      actions: [{ label: 'Deploy policy packs', fn: 'openDlpPacksModal()', kind: 'primary' }, { label: 'Terraform hand-off', fn: "openToolTab('terraform')", kind: 'quiet' }],
     },
     {
       n: 6, title: 'Move the tenant to Evaluate All Rules',
       state: assessed || (sameTenant && GD.conn && GD.conn.ok) ? 'ready' : 'todo',
-      what: 'By default ZIA stops at the first matching DLP rule, so a broad monitor rule near the top silently shadows every block rule below it. Evaluate All Rules lets every matching rule fire and log its own incident, which is what a layered policy (monitor + block + caution) needs. The Inline DLP Rule Migration wizard reads the current mode, reorders the rules so the switch is safe, and shows you the plan before anything changes.',
+      what: 'By default ZIA stops at the first matching DLP rule, so a broad monitor rule near the top silently shadows every block rule below it. Evaluate All Rules lets every matching rule fire and log its own incident, which is what a layered policy (monitor + block + caution) needs. The Inline DLP Rule migration wizard reads the current mode, reorders the rules so the switch is safe, and shows you the plan before anything changes.',
       need: 'Check 5.20 in the assessment says whether the tenant is already in Evaluate All Rules mode and whether the current order is safe to switch. The switch itself is made in the ZIA Admin Portal under Policy > Data Loss Prevention > Advanced Settings.',
-      status: 'Open the Inline DLP Rule Migration card below the results and follow its five steps.',
-      actions: [{ label: 'Open Rule Migration', fn: '_gdGoMigration()', kind: 'primary' }],
+      status: 'Open the Inline DLP Rule migration card below the results and follow its five steps.',
+      actions: [{ label: 'Open Rule migration', fn: '_gdGoMigration()', kind: 'primary' }],
     },
     {
       n: 7, title: 'Come back and measure the journey',
@@ -117,7 +117,7 @@ function _gdSteps() {
       what: 'On the next visit, run the assessment again with the same tenant profile. The Data governance journey card places the tenant on the five-stage ladder (Foundation, Policies deployed, Visibility, Containment, Enforcement), names the exact rules to enable or harden next, and compares with the previous visit. Nothing the customer changed is reverted; an enabled rule or a hardened action is progress.',
       need: 'The tenant profile you saved in step 1, so the history lines up.',
       status: GD.profile ? 'Profile selected: the next assessment is recorded against it.' : 'Save a tenant profile in Tenant details (step 1) so history is kept.',
-      actions: [{ label: 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !creds }, { label: 'Journey card (Deploy Policy Packs)', fn: 'openDlpPacksModal()', kind: 'quiet' }],
+      actions: [{ label: 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !creds }, { label: 'Journey card (Deploy policy packs)', fn: 'openDlpPacksModal()', kind: 'quiet' }],
     },
   ];
 }
@@ -125,7 +125,7 @@ function _gdSteps() {
 // no longer an always-present section on the page.
 function _gdGoMigration() {
   const m = document.getElementById('migrateModal');
-  if (!m) { alert('The Inline DLP Rule Migration wizard is not available on this page.'); return; }
+  if (!m) { alert('The Inline DLP Rule migration wizard is not available on this page.'); return; }
   GD._migrateOpener = document.activeElement;   // focus goes back there on close
   m.style.display = 'block';
   document.body.style.overflow = 'hidden';
@@ -282,7 +282,7 @@ function _gdRender() {
         <div id="gdUpdate" class="gd-update" hidden></div>
       </div>
       <div class="gd-controls">
-        <label class="gd-switch" title="Guided mode keeps the seven steps in focus: it hides the Compliance Coverage card and the Reference tools (Best Practices, Zscaler Update Check). The gap-finding and deploy tools stay in the toolbar.">
+        <label class="gd-switch" title="Guided mode keeps the seven steps in focus: it hides the Compliance coverage card and the Reference tools (Best practices, Zscaler update check). The gap-finding and deploy tools stay in the toolbar.">
           <input type="checkbox" ${GD.mode === 'guided' ? 'checked' : ''} onchange="_gdSetMode(this.checked ? 'guided' : 'advanced')" aria-label="Guided mode">
           <span class="track"><span class="knob"></span></span><span class="lbl">Guided mode</span>
         </label>
@@ -460,18 +460,18 @@ function _gdAuthVerdict(conn) {
 function _gdAuthPopup(conn) { return _gdAuthVerdict(conn); }
 function _gdSetMode(mode) {
   GD.mode = mode; _gdSave(); _gdApplyMode(); _gdRender();
-  try { if (typeof announce === 'function') announce(mode === 'guided' ? 'Guided mode on: the Compliance Coverage card is folded away; every tool stays in the toolbar.' : 'Guided mode off: everything shown.'); } catch (e) { /* ignore */ }
+  try { if (typeof announce === 'function') announce(mode === 'guided' ? 'Guided mode on: the Compliance coverage card is folded away; every tool stays in the toolbar.' : 'Guided mode off: everything shown.'); } catch (e) { /* ignore */ }
   const panel = document.getElementById('gdPanel') || document.querySelector('.gd-panel');
   if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Guided mode hides the advanced tools. Cards are found by their heading
 // text so index.html needs no markup changes.
-const GD_ADVANCED_HEADINGS = ['Compliance Coverage'];
+const GD_ADVANCED_HEADINGS = ['Compliance coverage'];
 // Guided mode keeps the seven steps in focus by hiding the Compliance
 // Coverage card. Every tool stays in the toolbar in both modes: a tool a
 // first-week engineer cannot see is a tool they cannot click, and the
-// Reference group holds Advanced settings, Best Practices, Zscaler
+// Reference group holds Advanced settings, Best practices, Zscaler
 // Updates and the Evaluate All Rules reference.
 const GD_ADVANCED_TOOLGROUPS = [];
 function _gdApplyMode() {
@@ -508,15 +508,15 @@ function _gdHelp(open) {
       <dl>
         <dt>Assessment (Run Assessment)</dt><dd>300+ read-only checks against the tenant, a score, findings with fixes, and the Data governance journey card for every policy pack.</dd>
         <dt>Tenant profiles</dt><dd>One saved record per customer (details, scopes, applicable policy packs, optional remembered secret) with the history of every assessment.</dd>
-        <dt>Deploy Policy Packs</dt><dd>Pick a policy pack, choose which DLP channels its engines go into (Inline Web, Endpoint DLP, SaaS Security, Outbound Email: a ticked channel the pack has no rule for gets a monitor-only rule with the pack's engines, an unticked one is skipped), preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a policy pack card measures the journey. Every deployment is recorded under <em>Previous deployments</em>, where <em>Undo</em> deletes exactly what it created.</dd>
+        <dt>Deploy policy packs</dt><dd>Pick a policy pack, choose which DLP channels its engines go into (Inline Web, Endpoint DLP, SaaS Security, Outbound Email: a ticked channel the pack has no rule for gets a monitor-only rule with the pack's engines, an unticked one is skipped), preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a policy pack card measures the journey. Every deployment is recorded under <em>Previous deployments</em>, where <em>Undo</em> deletes exactly what it created.</dd>
         <dt>Terraform hand-off</dt><dd>The same policy pack as a Terraform workspace for the official zscaler/zia provider, for platform teams that manage Zscaler as code. Gap mode imports what already exists so the first plan is exactly the gap. The repository also carries a validated workspace per pack under terraform/.</dd>
-        <dt>Evaluate All Rules (Inline DLP Rule Migration)</dt><dd>Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely; check 5.20 in the assessment says whether it is needed.</dd>
-        <dt>Bypass / Non-Inspected</dt><dd>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection, with exports. Opens in its own tab.</dd>
-        <dt>SSL Inspection Flow</dt><dd>Live flow diagram: for each DLP-relevant traffic class (file sharing, webmail, AI, social, uncategorised sites…) which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps are highlighted with the fix. Refresh or auto-refresh from the tab.</dd>
-        <dt>DLP Efficacy</dt><dd>Scores every custom dictionary and engine for false-positive risk and lets you test sample text against them.</dd>
-        <dt>Best Practices</dt><dd>Curated Zscaler best-practice articles rated by source credibility. <em>Update library now</em> reads the sitemaps of help.zscaler.com, the Zscaler blog and the developer portal (and walks the partner sites), adds every new best-practice or leading-practice article, and shows per source whether it answered and why not. New finds are kept across restarts; a background refresh runs every 6 hours.</dd>
-        <dt>Zscaler Updates</dt><dd>A check of PyPI and help.zscaler.com for SDK and documentation changes since last time.</dd>
-        <dt>Log Analyzer</dt><dd>Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Tells you what happened, what it means for the user and what to do next.</dd>
+        <dt>Evaluate All Rules (Inline DLP Rule migration)</dt><dd>Reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely; check 5.20 in the assessment says whether it is needed.</dd>
+        <dt>Bypass / non-inspected</dt><dd>Every SSL bypass, allow rule and Client Connector exemption that lets traffic skip inspection, with exports. Opens in its own tab.</dd>
+        <dt>SSL inspection flow</dt><dd>Live flow diagram: for each DLP-relevant traffic class (file sharing, webmail, AI, social, uncategorised sites…) which SSL rule decides, whether it is decrypted, and whether inline Web DLP can see it. Gaps are highlighted with the fix. Refresh or auto-refresh from the tab.</dd>
+        <dt>DLP efficacy</dt><dd>Scores every custom dictionary and engine for false-positive risk and lets you test sample text against them.</dd>
+        <dt>Best practices</dt><dd>Curated Zscaler best-practice articles rated by source credibility. <em>Update library now</em> reads the sitemaps of help.zscaler.com, the Zscaler blog and the developer portal (and walks the partner sites), adds every new best-practice or leading-practice article, and shows per source whether it answered and why not. New finds are kept across restarts; a background refresh runs every 6 hours.</dd>
+        <dt>Zscaler updates</dt><dd>A check of PyPI and help.zscaler.com for SDK and documentation changes since last time.</dd>
+        <dt>Log analyzer</dt><dd>Drop in the ZIP from Client Connector's Export Logs, single .log files or a PAC file. Analysed on this computer, nothing stored. Tells you what happened, what it means for the user and what to do next.</dd>
         <dt>Packs from a design file (command line)</dt><dd><code>python tools/pack_from_design.py &lt;pack&gt;</code> turns a DLP engineer's dictionary/engine design into a pack, enforcing ZIA's documented limits.</dd>
       </dl>
       <h3>Glossary</h3>

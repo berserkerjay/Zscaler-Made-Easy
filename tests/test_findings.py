@@ -45,4 +45,4 @@ def test_dashboard_tile_and_guide_say_what_is_remediable():
     dash = c.get("/static/dashboard.js").text
     assert "with a one-click recipe" in dash and "_findRecipeForCheck(c.id)" in dash
     guide = c.get("/static/guide.js").text
-    assert "Detailed Findings lists every check, grouped by section" in guide and "Critical findings first" not in guide
+    assert "Detailed findings lists every check, grouped by section" in guide and "Critical findings first" not in guide

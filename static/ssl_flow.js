@@ -1,4 +1,4 @@
-// SSL Inspection Flow renderer: a live, three-column flow diagram
+// SSL inspection flow renderer: a live, three-column flow diagram
 // (traffic class → SSL inspection decision → inline Web DLP outcome) with
 // the gaps highlighted, plus the gap list and the rule tables. Used by
 // the standalone /report/sslflow tab. No dependencies.
@@ -113,7 +113,7 @@ function _sfZccDetail(z) {
 async function _sfOpenBypass(ev) {
   ev.preventDefault();
   const op = window.opener;
-  if (!op || op.closed || typeof op.__bypassGenerate !== 'function') { alert('Open the assessment tab and click Bypass / Non-Inspected there; this tab has no tenant credentials.'); return; }
+  if (!op || op.closed || typeof op.__bypassGenerate !== 'function') { alert('Open the assessment tab and click Bypass / non-inspected there; this tab has no tenant credentials.'); return; }
   const w = window.open('/report/bypass?pending=1', '_blank');
   if (!w) return;
   try { const id = await op.__bypassGenerate(); w.location = `/report/bypass?id=${encodeURIComponent(id)}`; }

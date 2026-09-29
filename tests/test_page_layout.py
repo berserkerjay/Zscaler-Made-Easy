@@ -16,7 +16,7 @@ def _page():
 def test_quick_start_is_a_top_button_that_opens_its_own_tab():
     c = _page()
     html = c.get("/").text
-    assert "Quick Start Assessment" in html and "openQuickStartTab()" in html
+    assert "Quick start assessment" in html and "openQuickStartTab()" in html
     assert '<h2>Quick Start</h2>' not in html, "the Quick Start card must be gone from the page body"
     assert html.index('aria-label="Start"') < html.index('aria-label="Find the gaps"'), "Start comes first in the toolbar"
     qs = c.get("/quickstart")

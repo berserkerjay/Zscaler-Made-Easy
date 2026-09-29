@@ -40,7 +40,7 @@ def _catalogue_keys():
 def test_every_toolbar_button_is_explained():
     html = _read("index.html")
     start = html.index('<div class="hero-toolbar"')
-    end = html.index("<!-- DLP Efficacy modal -->", start)
+    end = html.index("<!-- DLP efficacy modal -->", start)
     toolbar = html[start:end]
     clicks = re.findall(r'onclick="([^"]+)"', toolbar)
     assert clicks, "toolbar has buttons"
@@ -49,7 +49,7 @@ def test_every_toolbar_button_is_explained():
     keys = _catalogue_keys()
     missing = [k for k in TOOLBAR.values() if k not in keys]
     assert not missing, f"explain.js lacks: {missing}"
-    assert 'aria-label="Troubleshoot"' in toolbar and "Log Analyzer" in toolbar
+    assert 'aria-label="Troubleshoot"' in toolbar and "Log analyzer" in toolbar
     assert "What does everything do?" in toolbar
 
 
@@ -89,7 +89,7 @@ def test_help_page_and_guide_share_one_catalogue():
         assert needle in page.text, needle
     guide = _read("guide.js")
     assert "const GD_GLOSSARY = window.DLP_GLOSSARY" in guide and "window.DLP_TROUBLE" in guide
-    assert 'href="/help"' in guide and "<dt>Log Analyzer</dt>" in guide
+    assert 'href="/help"' in guide and "<dt>Log analyzer</dt>" in guide
     home = c.get("/").text
     assert home.index("/static/explain.js") < home.index("/static/guide.js")
     js = _read("explain.js")

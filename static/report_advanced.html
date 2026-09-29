@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Advanced</span> settings</h1>
-      <p>Add your own policy packs so they show up everywhere the app offers a pack: Deploy Policy Packs, the Data Flow Map, the Terraform hand-off and the detection validator. A pack is a set of dictionaries, engines and rules; you can bring one as JSON (including Zscaler's own API export), as Terraform for the Zscaler provider, or as a ZIP of either. Every pack you add is transcribed to Terraform on the spot, so the same policy exists in a vendor-neutral form you can export from the library.</p>
+      <p>Add your own policy packs so they show up everywhere the app offers a pack: Deploy policy packs, the Data flow map, the Terraform hand-off and the detection validator. A pack is a set of dictionaries, engines and rules; you can bring one as JSON (including Zscaler's own API export), as Terraform for the Zscaler provider, or as a ZIP of either. Every pack you add is transcribed to Terraform on the spot, so the same policy exists in a vendor-neutral form you can export from the library.</p>
       <span class="badge" id="rpMeta">Loading the library…</span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -33,7 +33,7 @@
 
         <section aria-labelledby="advLibH">
           <h2 class="df-h" id="advLibH">Policy pack library</h2>
-          <p class="adv-lead">Built-in packs ship with the app. Uploaded packs are yours: they live in the library folder on this machine and survive updates. Every pack here is offered by Deploy Policy Packs.</p>
+          <p class="adv-lead">Built-in packs ship with the app. Uploaded packs are yours: they live in the library folder on this machine and survive updates. Every pack here is offered by Deploy policy packs.</p>
           <div class="tw"><table class="bp-table adv-table" id="advPacks" aria-describedby="advLibH">
             <thead><tr><th scope="col">Pack</th><th scope="col">Source</th><th scope="col">Dictionaries</th><th scope="col">Engines</th><th scope="col">Rules</th><th scope="col">Channels</th><th scope="col">Actions</th></tr></thead>
             <tbody><tr><td colspan="7" class="dim">Loading…</td></tr></tbody>
@@ -42,7 +42,7 @@
 
         <section id="add" aria-labelledby="advAddH">
           <h2 class="df-h" id="advAddH">Add a policy pack</h2>
-          <p class="adv-lead">Pick the files, check them, then add. Nothing touches your Zscaler tenant here: adding a pack only stores it on this machine. Deploying it is a separate, reviewed step in Deploy Policy Packs.</p>
+          <p class="adv-lead">Pick the files, check them, then add. Nothing touches your Zscaler tenant here: adding a pack only stores it on this machine. Deploying it is a separate, reviewed step in Deploy policy packs.</p>
           <div class="adv-grid">
             <div class="adv-drop" id="advDrop" tabindex="0" role="group" aria-labelledby="advDropL">
               <label id="advDropL" for="advFiles" class="adv-drop-l">Drop files here or choose them</label>
@@ -101,7 +101,7 @@
 
         <section id="sbd" aria-labelledby="advSbdH">
           <h2 class="df-h" id="advSbdH">CISA Secure by Design score — for this app, not the tenant</h2>
-          <p class="adv-lead">How DLP-Check itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; Compliance Alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
+          <p class="adv-lead">How DLP-Check itself (the tool you are running) measures against CISA's <a href="https://www.cisa.gov/securebydesign" target="_blank" rel="noopener">Secure by Design</a> principles and the seven pledge goals, read live from this server and the app folder each time you open this page. It says nothing about the customer's Zscaler tenant; the assessment and the Regulatory &amp; compliance alignment report do that, and no framework there is a CISA one. Every control says what was found and, when it falls short, what to do. A pass counts 1, a warning 0.5, a failure 0; a control that does not apply to a local single-operator tool is shown but not scored.</p>
           <div id="advSbdBox" class="adv-sbd" role="status" aria-live="polite"><span class="dim">Measuring…</span></div>
           <div class="adv-actions"><button type="button" class="rp-btn" id="advSbdCheck">Re-check</button></div>
           <div class="tw"><table class="bp-table adv-table" id="advSbd" aria-describedby="advSbdH">

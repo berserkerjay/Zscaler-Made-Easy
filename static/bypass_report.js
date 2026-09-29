@@ -1,4 +1,4 @@
-// Bypass & Non-Inspected Traffic report renderer. Used by the dialog in
+// Bypass & non-inspected traffic report renderer. Used by the dialog in
 // index.html and by the standalone /report/bypass tab. No dependencies.
 function _bpE(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

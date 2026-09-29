@@ -1,5 +1,5 @@
 // ── Evaluate All Rules: how ZIA decides, and a simulator for ties ─────
-// Rendered into #evalAllFlow inside the Inline DLP Rule Migration modal.
+// Rendered into #evalAllFlow inside the Inline DLP Rule migration modal.
 // Pure DOM, no tenant call: the simulator runs on rules typed here, on
 // the presets, or on the rules Step 2 downloaded.
 //
@@ -149,7 +149,7 @@ function _eaRun() {
 }
 
 // The reference tab (/report/evalall) shows the decision only; the simulator
-// lives in the Inline DLP Rule Migration wizard, where the tenant's rules are.
+// lives in the Inline DLP Rule migration wizard, where the tenant's rules are.
 const EA_SIMULATOR = location.pathname !== '/report/evalall';
 
 function _eaRender() {
@@ -184,7 +184,7 @@ function _eaRender() {
         <div class="ea-box dim">DLP log → Incident Receiver → Workflow Automation</div>
       </div>
     </div>
-    <p class="ea-note">Source: Zscaler, <a href="${EA_SOURCE}" target="_blank" rel="noopener noreferrer">About First Match Wins and Evaluate All Rules for DLP</a>. <strong>Channels:</strong> Inline Web DLP (with the Advanced Settings switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the exception, walked in order per rule type with the first match deciding. Rule order still matters in Evaluate All Rules: it is the tie-breaker among rules that carry the same action, and the winning rule is the one whose notification and incident settings are used.${EA_SIMULATOR ? '' : ' To try it on the tenant\'s own rules, use the simulator in the Inline DLP Rule Migration wizard on the assessment page.'}</p>
+    <p class="ea-note">Source: Zscaler, <a href="${EA_SOURCE}" target="_blank" rel="noopener noreferrer">About First Match Wins and Evaluate All Rules for DLP</a>. <strong>Channels:</strong> Inline Web DLP (with the Advanced Settings switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the exception, walked in order per rule type with the first match deciding. Rule order still matters in Evaluate All Rules: it is the tie-breaker among rules that carry the same action, and the winning rule is the one whose notification and incident settings are used.${EA_SIMULATOR ? '' : ' To try it on the tenant\'s own rules, use the simulator in the Inline DLP Rule migration wizard on the assessment page.'}</p>
     ${simulator}
   </details>`;
   if (EA_SIMULATOR) _eaRun();

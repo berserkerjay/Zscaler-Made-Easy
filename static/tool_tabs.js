@@ -1,6 +1,6 @@
 // ── Tools open in their own tab ─────────────────────────────────────
-// Every report / tool dialog (Zscaler Updates, Best Practices, DLP
-// Efficacy, ZCC diagnostics, Required API Access, Terraform hand-off) and
+// Every report / tool dialog (Zscaler updates, Best practices, DLP
+// Efficacy, ZCC diagnostics, Required API access, Terraform hand-off) and
 // the assessment results open in a new browser tab with a link back to
 // the assessment, instead of a dialog that has to fight the page for
 // space. The tool itself still runs in this page: the dialog is kept
@@ -14,16 +14,16 @@
 // visible ones, and left visible on this page — the assessment results).
 
 const TOOL_TABS = {
-  updates:       { title: 'Zscaler Update Check',   open: 'openUpdateModal',        modal: 'updateModal' },
-  bestpractices: { title: 'Best Practices',         open: 'openBestPracticesModal', modal: 'bestPracticesModal' },
-  efficacy:      { title: 'DLP Efficacy',           open: 'openDlpEfficacyModal',   modal: 'dlpEffModal' },
-  zcc:           { title: 'ZCC Endpoint Diagnostics', open: 'diagnoseZcc',          modal: 'zccDiagModal' },
-  permissions:   { title: 'Required API Access',    open: 'openPermissionsModal',   modal: 'permissionsModal' },
+  updates:       { title: 'Zscaler update check',   open: 'openUpdateModal',        modal: 'updateModal' },
+  bestpractices: { title: 'Best practices',         open: 'openBestPracticesModal', modal: 'bestPracticesModal' },
+  efficacy:      { title: 'DLP efficacy',           open: 'openDlpEfficacyModal',   modal: 'dlpEffModal' },
+  zcc:           { title: 'ZCC endpoint diagnostics', open: 'diagnoseZcc',          modal: 'zccDiagModal' },
+  permissions:   { title: 'Required API access',    open: 'openPermissionsModal',   modal: 'permissionsModal' },
   terraform:     { title: 'Terraform hand-off',     open: 'openTerraformModal',     modal: 'terraformModal' },
   // dbHero (added by dashboard.js) is the score-hero card: moved out of
   // #results so it stays on screen before a run, so it has to be named
   // here explicitly or the mirrored tab loses the rings and pillars.
-  results:       { title: 'Assessment Results',     open: '_openResultsPanel',      panels: ['dbHero', 'progressCard', 'results'], keep: true },
+  results:       { title: 'Assessment results',     open: '_openResultsPanel',      panels: ['dbHero', 'progressCard', 'results'], keep: true },
 };
 const _TT = {};   // kind -> { win, observers, timer, poll }
 

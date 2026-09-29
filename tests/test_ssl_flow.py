@@ -171,7 +171,7 @@ def test_exports_and_endpoints():
     assert c.get(f"/api/report/ssl-flow/export/{rid}?format=pdf").status_code == 400
     assert c.get("/static/ssl_flow.js").status_code == 200
     html = c.get("/").text
-    assert "openSslFlowTab()" in html and "SSL Inspection Flow" in html and "__sslFlowGenerate" in html
+    assert "openSslFlowTab()" in html and "SSL inspection flow" in html and "__sslFlowGenerate" in html
 
 
 def test_client_connector_bypasses_are_a_gap_of_their_own():
