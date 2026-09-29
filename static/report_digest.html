@@ -39,7 +39,7 @@
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
-      <a class="rp-btn" href="/report/health" target="_blank" rel="noopener">FP/TP Detection Ratio</a>
+      <a class="rp-btn" href="/report/health" id="dgHealth" title="The FP/TP Detection Ratio report is generated from the assessment page (it reads the tenant); this opens it from there">FP/TP Detection Ratio</a>
       <span class="sep"></span>
       <button type="button" class="rp-btn primary" id="dgRun">Run the loop now</button>
       <a class="rp-btn" id="dgMd" href="#" aria-disabled="true">Download latest (Markdown)</a>
@@ -127,6 +127,15 @@
       } catch (e) { /* leave empty */ }
       $('dgPrev').querySelector('tbody').innerHTML = (data.digests || []).map(d => { const s = d.summary || {}; return `<tr><td>${E(fmt(d.at))}</td><td>${d.noteworthy ? '<span class="dg-chip warn">look</span>' : '<span class="dg-chip ok">quiet</span>'}</td><td>${E(s.proposals_new || 0)}</td><td>${E(s.guidance_new || 0)}</td><td>${E(s.drift_changed || 0)}</td><td>${E((d.notified || []).filter(x => x.sent).map(x => x.channel).join(', ') || '—')}</td><td><a class="rp-btn" href="/api/digests/${encodeURIComponent(d.id)}?format=markdown">Markdown</a></td></tr>`; }).join('') || '<tr><td colspan="7" class="dg-dim">None yet.</td></tr>';
     }
+    // The FP/TP report needs the assessment page to generate it (that page
+    // holds the tenant sign-in); a bare /report/health would open empty.
+    $('dgHealth').addEventListener('click', e => {
+      e.preventDefault();
+      const o = window.opener;
+      if (o && !o.closed && typeof o.openDetectionHealthTab === 'function') { try { o.openDetectionHealthTab(); return; } catch (err) { /* fall through */ } }
+      status('Open the FP/TP Detection Ratio from the assessment page (Find the gaps): it needs that page\'s tenant sign-in to read the incidents.');
+      if (typeof window.__dlpGoHome === 'function') window.__dlpGoHome(); else location.href = '/';
+    });
     $('dgRun').addEventListener('click', async () => {
       $('dgRun').disabled = true; status('Running the loop… FP/TP Detection Ratio and the journey are read for every tenant profile that remembers its secret; this takes a minute per tenant.'); announce('Running the loop');
       try {

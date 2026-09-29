@@ -154,7 +154,10 @@
     if (typeof _stepGo === 'function') _stepGo(k);
     setCurrent(k);
   }));
+  // Every other "Run assessment" (the step strip, the guide's steps 2 and
+  // 7) funnels into this same runner, so a run always behaves the same way.
   window.__dbRunFromSidebar = runFromSidebar;
+  window.__dbNote = note;
 
   // ── Scope: one combined page for everything that decides what the
   // assessment covers — which Zscaler data-security channels the
@@ -579,7 +582,7 @@
       ['📄', 'Generate report', 'Word document for the customer', () => typeof downloadDocx === 'function' && downloadDocx()],
       ['📦', 'Deploy a policy pack', 'close the gaps, preflight first', () => typeof openDlpPacksModal === 'function' && openDlpPacksModal()],
       ['🧭', 'Path Analyzer', 'what blocks one destination', () => typeof openPathAnalyzerTab === 'function' && openPathAnalyzerTab()],
-      ['🔁', 'Run another assessment', 'after the fixes', () => typeof resetForm === 'function' && resetForm()],
+      ['🔁', 'Start a new assessment', 'clears these results, then run again', () => typeof resetForm === 'function' && resetForm()],
     ];
     host.innerHTML = A.map(([ico, t, s], i) => `<button type="button" class="db-action" data-i="${i}"><span class="db-ico" aria-hidden="true">${ico}</span><strong>${E(t)}</strong><span class="s">${E(s)}</span></button>`).join('');
     host.querySelectorAll('.db-action').forEach(b => b.addEventListener('click', () => A[Number(b.dataset.i)][3]()));
@@ -632,7 +635,9 @@
       : `${sum.total} checks assessed${sum.errors ? ` · ${sum.errors} could not be checked` : ''}`;
     radar(data.sections); pillars(data.sections); insights(data); actions(data); footer(data); decorateChecks();
     const s = $('dbCurScore'); if (s) s.textContent = measured ? `${score}% · ${data.maturity || level(score)[0]}` : 'Not assessed';
-    setCurrent('dashboard');
+    // The results are on screen: Findings & report is the current item
+    // (set here, not left to the step-strip observer's timing).
+    setCurrent('review');
   }
   // While a run is in flight the tiles say so — the Completion tile follows
   // the same progress events as the progress card (index.html handleEvent),

@@ -88,6 +88,41 @@
   window.__dlpUnlock = unlock;
 })();
 
+// ── Overview first ────────────────────────────────────────────────────
+// A report page's hero paragraph is often the whole explanation. The
+// first sentence stays on screen; the rest folds behind a "More" button
+// (a real button: aria-expanded, keyboard, screen reader), so the useful
+// content is one line down instead of a paragraph down.
+(function () {
+  const MIN_CHARS = 240;
+  function fold() {
+    const p = document.querySelector('.rp-hero > p');
+    if (!p || p.dataset.folded || p.querySelector('*')) return;
+    const text = p.textContent.replace(/\s+/g, ' ').trim();
+    if (text.length < MIN_CHARS) return;
+    // Cut at the first sentence end; a one-sentence paragraph is cut at its
+    // first colon or semicolon, else at the first comma after ~90 characters.
+    const m = text.match(/^(.{40,}?[.!?])\s+(\S.*)$/) || text.match(/^(.{60,}?[:;])\s+(\S.*)$/) || text.match(/^(.{90,}?),\s+(\S.*)$/);
+    if (!m || m[2].length < 60) return;
+    const cutMid = !/[.!?]$/.test(m[1]);
+    p.dataset.folded = '1';
+    p.textContent = '';
+    const lead = document.createElement('span'); lead.textContent = m[1] + (cutMid ? ' … ' : ' ');
+    const more = document.createElement('span'); more.id = 'rpHeroMore'; more.textContent = m[2] + ' '; more.hidden = true;
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'rp-more'; btn.textContent = 'More'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'rpHeroMore');
+    btn.addEventListener('click', () => { const open = more.hidden; more.hidden = !open; btn.setAttribute('aria-expanded', String(open)); btn.textContent = open ? 'Less' : 'More'; });
+    p.append(lead, more, btn);
+    if (!document.getElementById('rpMoreStyle')) {
+      const st = document.createElement('style'); st.id = 'rpMoreStyle';
+      st.textContent = '.rp-more{background:none;border:1px solid var(--border,#334155);border-radius:6px;color:var(--accent,#60a5fa);cursor:pointer;font:inherit;font-size:0.85em;padding:0 0.45rem;line-height:1.5;vertical-align:baseline}.rp-more:focus-visible{outline:2px solid var(--accent,#60a5fa);outline-offset:2px}';
+      document.head.appendChild(st);
+    }
+  }
+  if (document.body) fold(); else document.addEventListener('DOMContentLoaded', fold);
+  window.__dlpFoldIntro = fold;
+})();
+
 // ── Back to the main page ─────────────────────────────────────────────
 // Every tab the app opens can return to the assessment page: a link with
 // href="/" (the report bars have one) goes back to the tab that opened
