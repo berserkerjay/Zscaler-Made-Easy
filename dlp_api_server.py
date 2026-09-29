@@ -169,7 +169,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -3267,6 +3267,62 @@ async def logs_analyze(req: LogAnalyzeRequest):
         return log_analyzer.analyze([f.model_dump() for f in req.files])
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Migrate from another DLP (vendor_migrate) ──────────────────────────
+class VendorMigrateInventoryRequest(BaseModel):
+    """The vendor and the uploaded policy export."""
+    vendor: str = "symantec"
+    export: PackUploadFile
+
+
+class VendorMigrateCompileRequest(BaseModel):
+    """The export again (the decisions are bound to its SHA-256) and the
+    reviewed decisions: either the JSON object or an uploaded file."""
+    vendor: str = "symantec"
+    export: PackUploadFile
+    decisions: Dict[str, Any]
+
+
+@app.get("/api/vendor-migrate/vendors")
+async def vendor_migrate_vendors():
+    """The source vendors the page offers, and the upload limit."""
+    import vendor_migrate
+    return {"vendors": vendor_migrate.vendors(), "max_body_mb": get_max_body_bytes() // (1024 * 1024),
+            "provider_version": vendor_migrate.PROVIDER_VERSION}
+
+
+@app.post("/api/vendor-migrate/inventory")
+async def vendor_migrate_inventory(req: VendorMigrateInventoryRequest):
+    """Inventory an export in memory: every policy with its id and name,
+    the export's SHA-256, and a decisions template to review. Read-only."""
+    import vendor_migrate
+    try:
+        return vendor_migrate.inventory_upload(req.vendor, req.export.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/vendor-migrate/compile")
+async def vendor_migrate_compile(req: VendorMigrateCompileRequest):
+    """Compile reviewed decisions against the export, fail-closed: the
+    report always, the Terraform (every rule DISABLED) only when nothing
+    is blocked. Nothing is written to the tenant or to disk."""
+    import vendor_migrate
+    try:
+        return vendor_migrate.compile_upload(req.vendor, req.export.model_dump(), req.decisions)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/report/vendor")
+async def report_vendor_page():
+    """Migrate from another DLP in its own tab (static/report_vendor.html)."""
+    page = os.path.join(STATIC_DIR, "report_vendor.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/report/compliance")

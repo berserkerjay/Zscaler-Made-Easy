@@ -634,6 +634,11 @@
                 title="Same policy pack as a Terraform workspace for teams that manage Zscaler as code. Opens in a new tab.">
           <span aria-hidden="true">🧱</span> Terraform hand-off
         </button>
+        <button class="btn btn-ghost" onclick="openVendorMigrateTab()"
+                aria-label="Open Migrate from another DLP: turn a Symantec DLP policy export into disabled ZIA rules through reviewed decisions; Forcepoint, Netskope and Skyhigh to follow (opens in a new tab)"
+                title="Upload another vendor's policy export, review every policy's translation, and get disabled ZIA dictionaries, engines and web rules as Terraform. Symantec now; Forcepoint, Netskope and Skyhigh next. Opens in a new tab.">
+          <span aria-hidden="true">🧩</span> Migrate from another DLP
+        </button>
         <button class="btn btn-ghost" onclick="_gdGoMigration()"
                 aria-label="Open the Inline DLP Rule migration wizard: move the tenant to Evaluate All Rules"
                 title="The migration wizard: reorders web DLP rules so the tenant can switch from first-match-wins to Evaluate All Rules safely. Opens on this page.">
@@ -4794,6 +4799,10 @@ function openHelpTab() {
 }
 function openDigestTab() {
   const w = window.open('/report/digest', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openVendorMigrateTab() {
+  const w = window.open('/report/vendor', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openLogAnalyzerTab() {

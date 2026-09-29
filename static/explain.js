@@ -249,6 +249,14 @@
     get: 'The app restarts on the same address; the browser reconnects.',
     next: 'If it fails, the message says whether it is TLS inspection, sign-in or connectivity, and what to do.',
   };
+  X.vendormigrate = {
+    group: 'Close the gaps', name: 'Migrate from another DLP', href: '/report/vendor',
+    what: 'Upload another vendor\'s DLP policy export, review every policy\'s translation in a decisions file, and get disabled ZIA dictionaries, engines and web rules as Terraform. Symantec DLP is the first adapter; Forcepoint, Netskope and Skyhigh are listed and follow the same contract once their export samples are mapped.',
+    why: 'A customer leaving Symantec, Forcepoint, Netskope or Skyhigh wants their policies on Zscaler without retyping them, and without a tool guessing what a policy meant. Every translation here is a reviewed decision bound to the exact export, so nothing is deployed that a person did not approve.',
+    when: 'At the start of a migration engagement, once the customer has exported their policies, and again whenever the export changes (a changed export invalidates the decisions until they are reviewed).',
+    get: 'An inventory of every source policy, a decisions template to fill in, then a migration report (converted, blocked with the question to answer, retired) and, only when nothing is blocked, main.tf.json with every rule DISABLED for the Terraform hand-off.',
+    next: 'Review the decisions with the customer, compile until the report says ready, then hand the Terraform to the platform team or run it against a test tenant; enabling rules and ordering them with the existing policy are separate change-control steps.',
+  };
   X.help = {
     group: 'Start', name: 'What does everything do?', href: '/help',
     what: 'This page: every function of the app explained in plain English, in the order you will need them on a first engagement.',
@@ -264,7 +272,7 @@
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
-      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
+      '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
@@ -315,7 +323,7 @@
 
   window.DLP_EXPLAIN = X;
   window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
-    'digest', 'packs', 'flow', 'remediate', 'terraform', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
+    'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
     ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],
