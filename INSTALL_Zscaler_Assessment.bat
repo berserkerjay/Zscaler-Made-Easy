@@ -39,16 +39,9 @@ REM into it and failing at start with a syntax error in server.log.
 set "PYTHON_VER=unknown version"
 for /f "delims=" %%v in ('""%PYTHON_EXE%" --version 2^>^&1"') do set "PYTHON_VER=%%v"
 "%PYTHON_EXE%" -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo  ERROR: this app needs Python 3.11 or newer; %PYTHON_EXE% is %PYTHON_VER%.
-    echo  An older Python installed by another tool comes first on PATH. Install
-    echo  the current version from https://www.python.org/downloads/ with
-    echo  "Add python.exe to PATH" ticked, or uninstall the old one, then run
-    echo  this installer again.
-    pause
-    exit /b 1
-)
+REM (a goto, not a parenthesised block: a Python path such as
+REM  "C:\Program Files (x86)\Python39\python.exe" would close the block early)
+if errorlevel 1 goto :oldpython
 
 echo.
 echo  [1/2] Installing Python dependencies...
@@ -82,12 +75,17 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $desk
 REM Also create Start Menu shortcut
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $start = [Environment]::GetFolderPath('Programs'); $lnk = $ws.CreateShortcut(\"$start\Zscaler Assessment.lnk\"); $lnk.TargetPath = 'wscript.exe'; $lnk.Arguments = '""%INSTALL_DIR%\START_Zscaler_Assessment.vbs""'; $lnk.WorkingDirectory = '%INSTALL_DIR%'; $lnk.IconLocation = 'shell32.dll,14'; $lnk.Description = 'Zscaler Platform Assessment (opens the browser; the server runs silently)'; $lnk.Save();" >nul 2>&1
 
+REM A locked-down PowerShell (Constrained Language Mode) refuses COM objects and makes no shortcut; say so.
+set "SHORTCUT_NOTE=Desktop shortcut: "Zscaler Assessment""
+powershell -NoProfile -Command "if (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Zscaler Assessment.lnk')) { exit 0 } else { exit 1 }" >nul 2>&1
+if errorlevel 1 set "SHORTCUT_NOTE=No desktop shortcut could be made on this computer. Double-click START_Zscaler_Assessment.bat in this folder to start the app instead."
+
 echo.
 echo  ════════════════════════════════════════════════════════════
 echo   Installation complete!
 echo  ════════════════════════════════════════════════════════════
 echo.
-echo   Desktop shortcut: "Zscaler Assessment"
+echo   %SHORTCUT_NOTE%
 echo.
 echo   Double-click the shortcut to launch. Your browser opens by itself.
 echo   The server runs in the background with no window; its output is
@@ -97,3 +95,13 @@ echo.
 echo  Closing in 5 seconds...
 timeout /t 5 >nul
 exit /b 0
+
+:oldpython
+echo.
+echo  ERROR: this app needs Python 3.11 or newer; %PYTHON_EXE% is %PYTHON_VER%.
+echo  An older Python installed by another tool comes first on PATH. Install
+echo  the current version from https://www.python.org/downloads/ with
+echo  "Add python.exe to PATH" ticked, or uninstall the old one, then run
+echo  this installer again.
+pause
+exit /b 1

@@ -19,13 +19,18 @@ Tick these off before you begin. Nothing here touches a Zscaler tenant:
 installing only puts the program on your computer.
 
 - [ ] **A computer to run it on.** Windows 10 or 11, macOS, or Linux, or a
-      server with Docker. No administrator rights are needed on Windows or
-      Mac (Python installs per user); on Linux you may need `sudo` to
-      install Python.
-- [ ] **Internet access** to `github.com` (the code) and `python.org` (the
-      installer). On a work laptop that goes through Zscaler or a proxy,
-      read the [work laptop box](#work-laptop-tls-inspection-or-a-proxy)
-      before you start; it changes one step.
+      server with Docker. No administrator rights are needed on Windows
+      (Python installs per user). On a Mac the python.org installer asks
+      for your Mac password and needs an administrator account; without
+      one, ask IT to install Python 3.11 or newer for you, or use the
+      container option. On Linux you may need `sudo` to install Python.
+- [ ] **Internet access** to `github.com` (the code), `python.org` (the
+      Python installer) and `pypi.org` (the libraries the installer
+      downloads); for the container also Docker Hub
+      (`registry-1.docker.io`) and `deb.debian.org`. On a work laptop that
+      goes through Zscaler or a proxy, read the
+      [work laptop box](#work-laptop-tls-inspection-or-a-proxy) before you
+      start; it changes one step.
 - [ ] **Access to the GitHub repository** `github.com/berserkerjay/DLP-Check`.
       It is **private**: someone on the team must add your GitHub account
       first. If the page says "404" or asks you to sign in and then still
@@ -41,8 +46,8 @@ methods; ask the customer's Zscaler admin for one of these sets:
 
 | Sign-in method | What to collect | Where the admin finds it |
 |---|---|---|
-| **OneAPI** (the usual one: the tenant has ZIdentity) | Cloud, vanity domain, Client ID, Client secret | ZIdentity → Integration → API Clients → Add API Client. The secret is shown once, when the client is created. |
-| **Classic ZIA API** (a tenant that has not enabled ZIdentity; ZIA only) | Cloud, admin username, admin password, API key | ZIA Administration → API Key Management for the key; a ZIA admin allowed to use the API for the username and password. |
+| **OneAPI** (the usual one: the tenant has ZIdentity) | Zscaler cloud, Vanity domain, API client ID, API client secret | ZIdentity → Integration → API Clients → Add API Client. The secret is shown once, when the client is created. |
+| **Classic ZIA API** (a tenant that has not enabled ZIdentity; ZIA only) | Zscaler cloud, Admin username, Admin password, API key | ZIA Administration → API Key Management for the key; a ZIA admin allowed to use the API for the username and password. |
 
 `GETTING_STARTED.md` section 2 explains both in detail and what role the
 API client needs. Keep going here; connecting comes after installing.
@@ -74,8 +79,9 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 3. On the very first screen, **tick the box "Add python.exe to PATH"**
    near the bottom, before clicking Install. (Older installers call it
    "Add Python 3.x to PATH".) This is the step almost everyone forgets;
-   skipping it makes every later step fail. Leave "Use admin privileges
-   when installing py.exe" unticked.
+   skipping it makes every later step fail. **Untick** "Use admin
+   privileges when installing py.exe" (it starts ticked; you do not need
+   it).
 4. Click **Install Now** and wait for "Setup was successful", then Close.
 
 **Step 2 — Get the program's files onto your computer.**
@@ -84,7 +90,13 @@ it installed once, the same way it needs a PDF reader to open a PDF.
 
 1. Go to `git-scm.com/download/win`, download **64-bit Git for Windows
    Setup**, open it and click **Next** through every screen with the
-   defaults, then **Install** and **Finish**.
+   defaults, with one exception on a work laptop: on the screen **Choose
+   HTTPS transport backend**, pick **Use the native Windows Secure Channel
+   library** (so Git trusts the same certificates Windows does; behind
+   Zscaler or a proxy the default backend fails with "SSL certificate
+   problem: unable to get local issuer certificate"). Then **Install** and
+   **Finish**. If Git is already installed, the same thing is one command
+   in a Command Prompt: `git config --global http.sslBackend schannel`.
 2. Open a Command Prompt: press the Windows key, type `cmd`, press Enter.
    A black window with a blinking cursor opens; you type commands into it.
 3. Type these two lines, pressing Enter after each:
@@ -133,11 +145,13 @@ describes. The installer reads it.
 3. **Success** looks like this: it prints "Installation complete!" and the
    window closes by itself after five seconds. A shortcut named
    **Zscaler Assessment** is now on your desktop and in the Start menu.
-4. **Failure** looks like this: the window prints **INSTALL FAILED** and
-   stays open. The lines above it say why; the usual causes are no access
-   to `pypi.org` (see the work laptop box) or an old Python found first
-   (see [If something goes wrong](#if-something-goes-wrong)). Fix the
-   cause and double-click the installer again; it is safe to rerun.
+4. **Failure** looks like one of two things, and either way the window
+   stays open with "Press any key to continue": a line starting
+   **ERROR:** (Python missing, or an old Python found first; see
+   [If something goes wrong](#if-something-goes-wrong)), or the banner
+   **INSTALL FAILED** (the dependency download; the usual cause is no
+   access to `pypi.org`, see the work laptop box). Fix the cause and
+   double-click the installer again; it is safe to rerun.
 
 **Step 4 — Open it.**
 Double-click the **Zscaler Assessment** desktop shortcut. Within about
@@ -147,11 +161,19 @@ prints goes into a file named `server.log` in the app folder. To stop it,
 double-click `STOP_Zscaler_Assessment.bat` in the app folder; closing the
 browser does not stop it.
 
+No shortcut on the desktop (some company laptops do not let the installer
+make one; it says so)? Double-click `START_Zscaler_Assessment` (a
+"Windows Batch File") in the app folder instead; it starts the same way.
+
 If nothing happens when you double-click the shortcut: in the app folder,
 click File Explorer's address bar, type `cmd`, press Enter, then type
 `START_Zscaler_Assessment.bat --console` and press Enter. The window that
-stays open shows the reason. `launcher.log` in the app folder records why
-a silent start failed.
+stays open shows the reason; if the app does start this way, the window
+prints a `UI token:` line and the browser asks for that token (copy it
+from the window, or open the `Open http://localhost:8000/?token=…`
+address it prints). Leave that window open while you use the app;
+closing it stops the app. `launcher.log` in the app folder records why a
+silent start failed.
 
 That's it. See **[How you know it worked](#how-you-know-it-worked)** below.
 
@@ -176,7 +198,8 @@ python3 --version
   look bigger.
 - Otherwise go to `python.org/downloads`, click the yellow **Download
   Python 3.x.y** button, open the downloaded `.pkg`, and click Continue,
-  Agree and Install through the installer.
+  Agree and Install through the installer. It asks for your Mac password
+  (an administrator account is needed; see the checklist).
 - **Then quit Terminal (`Cmd + Q`) and open it again.** The Terminal
   window that was already open cannot see the new Python. Run
   `python3 --version` once more; it must now print 3.11 or newer.
@@ -225,18 +248,21 @@ If Terminal says `Permission denied` on `./install.sh`, run
 ```
   Zscaler Platform Assessment
   UI token: …
+  (also in …/ui_token.txt; the launcher opens the browser with it, anyone else gets 401)
   Open http://localhost:8000/?token=… in your browser
 ```
 
 and then appears to stop, with no new prompt. That is normal: the app is
-running in that window. Your browser opens by itself within a few seconds;
-if it does not, copy the whole `http://localhost:8000/?token=…` line into
-Safari's address bar.
+running in that window. (Two notices above those lines that say
+`DeprecationWarning: on_event is deprecated` are harmless; ignore them.)
+Your browser opens by itself within a few seconds; if it does not, copy
+the whole `http://localhost:8000/?token=…` line into Safari's address bar.
 
 Leave that Terminal window open while you use the app. To stop it, press
 `Ctrl + C` in that window (or close it; when macOS asks "Do you want to
 terminate running processes?", click **Terminate**). `./stop.sh` is only
-for a server started with `./start.sh --background`.
+for a server started with `./start.sh --background`, or one that restarted
+itself after **Update app** (see the table below).
 
 That's it. See **[How you know it worked](#how-you-know-it-worked)** below.
 
@@ -268,8 +294,9 @@ It must print 3.11 or newer (3.12 on Ubuntu 24.04, for example). If it
 is older, your distribution is too old for the packaged Python; install a
 current one from `python.org` or a newer distribution release.
 
-**Step 2 — Get the code.** With `git` installed (Step 1 did that), this
-is the easiest way, and it lets the app update itself later. GitHub
+**Step 2 — Get the code.** With `git` installed (Step 1 of this section
+did that), this is the easiest way, and it lets the app update itself
+later. GitHub
 refuses account passwords over git, so first make a **personal access
 token** once: on `github.com`, click your avatar → **Settings** →
 **Developer settings** → **Personal access tokens** → **Tokens (classic)**
@@ -306,7 +333,8 @@ To run it without holding a terminal, use `./start.sh --background`: it
 starts the server detached, writes its output to `server.log` and its
 process id to `server.pid`, prints the address to open, and keeps the UI
 token in `ui_token.txt` in the same folder. `./stop.sh` stops a server
-started that way (and only that way).
+started that way, or one that restarted itself after **Update app**; a
+server running in a terminal window is stopped with `Ctrl + C` there.
 
 That's it. See **[How you know it worked](#how-you-know-it-worked)** below.
 
@@ -335,8 +363,15 @@ Docker is the program that runs containers.
   ```
 
   then **log out and back in** (or put `sudo` in front of every `docker`
-  command below). Check with `docker compose version`; it must print a
-  version, not "permission denied".
+  command below). Check with two commands: `docker ps` must print a
+  (possibly empty) table headed `CONTAINER ID`, not "permission denied
+  while trying to connect to the Docker daemon socket" (that means the
+  log-out has not happened yet); and `docker compose version` must print
+  **2.24 or newer** (the app's compose file uses a setting older Compose
+  does not understand). Ubuntu 22.04's packaged Compose is older: on it,
+  install Docker's own packages instead, following
+  `docs.docker.com/engine/install/ubuntu`. Add `git` to the install line
+  if you will clone the code on this machine (Ubuntu ships without it).
 
 **Step 2 — Get the code**, the same way as above: sign in to GitHub, go
 to the repository page, **Code → Download ZIP**, extract it somewhere you
@@ -358,20 +393,25 @@ last lines it prints are:
 
 ```
   UI token: …
+  (also in /data/ui_token.txt; the launcher opens the browser with it, anyone else gets 401)
   Open http://localhost:8000/?token=… in your browser
   (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:8000 of this machine only)
 ```
 
-Open that address in your browser on the same machine.
+(Under `docker compose up` each line starts with `dlp-check  | `.) Open
+that address in your browser on the same machine.
 
 **Finding the UI token again:** run `docker logs dlp-check` from another
 terminal in the same folder (same `cd` trick), or
 `docker compose exec dlp-check cat /data/ui_token.txt`.
 
 **On a shared server (no desktop on it):** get the code onto the server
-with `git clone` on the server itself (Linux section, Step 2) or copy the
-ZIP over with `scp` and `unzip` it; `cd DLP-Check` (no dragging). Run it
-detached so it does not hold your SSH session:
+with `git clone` on the server itself (`sudo apt install -y git` first if
+`git` is not there, then the personal-access-token steps of the Linux
+section, Step 2) or copy the ZIP over with `scp` and unpack it
+(`sudo apt install -y unzip`, then `unzip DLP-Check-main.zip`);
+`cd DLP-Check` (no dragging). Run it detached so it does not hold your
+SSH session:
 
 ```bash
 docker compose up --build -d
@@ -468,14 +508,15 @@ section).
 Once you are in, **Connect to the tenant** has a **Sign-in method**
 choice and the fields for it:
 
-- **OneAPI** (the default): Cloud, Vanity domain, Client ID, Client secret.
-- **Classic ZIA API**: Cloud, Admin username, Admin password, API key. For a
-  tenant that has not enabled ZIdentity; it covers ZIA only (no ZPA,
-  Client Connector or ZDX checks).
+- **OneAPI** (the default): Zscaler cloud, Vanity domain, API client ID,
+  API client secret.
+- **Classic ZIA API**: Zscaler cloud, Admin username, Admin password, API
+  key. For a tenant that has not enabled ZIdentity; it covers ZIA only (no
+  ZPA, Client Connector or ZDX checks).
 
 Type the values, click **Authenticate**, and read the line it answers
-with ("Connected: N dictionaries, N engines, N web DLP rules", or a plain
-reason why not). `GETTING_STARTED.md` section 2 says what to ask the
+with ("Connected to <tenant>: N dictionaries, N engines, N web DLP
+rules.", or "Could not connect:" with a plain reason). `GETTING_STARTED.md` section 2 says what to ask the
 customer's admin for and section 3 walks through the first connection;
 that is the next document to read.
 
@@ -531,10 +572,10 @@ shows the CA bundle in use, so you can check it took.
 | I want to… | Windows | Mac / Linux |
 |---|---|---|
 | Open the app | Double-click the **Zscaler Assessment** desktop shortcut | `./start.sh` in the app folder |
-| Close it | Double-click `STOP_Zscaler_Assessment.bat`. Closing the browser does not stop it; it keeps running in the background until you do | `Ctrl + C` in the terminal window running it; `./stop.sh` if you started it with `./start.sh --background` |
-| Get the latest version (Git install) | Click **Update app** on the Start here card (it reads **Update app now** when a newer build was found), or double-click `UPDATE_Zscaler_Assessment.bat` | Click **Update app** inside the app; or stop it, run `git pull`, then `./install.sh` and `./start.sh` |
+| Close it | Double-click `STOP_Zscaler_Assessment.bat`. Closing the browser does not stop it; it keeps running in the background until you do | `Ctrl + C` in the terminal window running it; `./stop.sh` if you started it with `./start.sh --background` or it restarted itself after **Update app** |
+| Get the latest version (Git install) | Click **Update app** on the Start here card (it reads **Update app now** when a newer build was found), or double-click `UPDATE_Zscaler_Assessment.bat` | Click **Update app** inside the app. Afterwards the Terminal window returns to a prompt and the app keeps running in the background (its output now goes to `server.log`); stop it with `./stop.sh`, not `Ctrl + C`. A second browser tab may open; close either. Or stop it, run `git pull`, then `./install.sh` and `./start.sh` |
 | Get the latest version (ZIP install) | Stop the app, download a fresh ZIP, replace the folder (keep your `local_settings.bat`), double-click the installer again | Stop the app, download a fresh ZIP, replace the folder (keep `local_settings.env`), run `./install.sh` and `./start.sh` |
-| Try a fix before it is released (Git install) | Pick **QA (qa)** or **Development (dev)** in the **Branch** dropdown next to the Update button, then click Update app; pick **Stable (main)** to go back | Same dropdown; or `.venv/bin/python app_update.py --branch dev` (`--branch main` to go back), then `./install.sh` and `./start.sh` |
+| Try a fix before it is released (Git install) | Pick **QA (qa)** or **Development (dev)** in the **Branch** dropdown next to the Update button, then click Update app; pick **Stable (main)** to go back | Same dropdown; or stop the app (`Ctrl + C`, or `./stop.sh`), run `.venv/bin/python app_update.py --branch dev` (`--branch main` to go back), then `./start.sh` |
 | Remove it completely | Double-click `STOP_Zscaler_Assessment.bat`, then `UNINSTALL_Zscaler_Assessment.bat` (removes the shortcuts), then delete the folder | Stop it, then delete the app's folder |
 
 (Container: to update, get the latest code and run `docker compose up
@@ -547,7 +588,7 @@ container and its saved data, then delete the folder.)
 
 | What you see | What it means | What to do |
 |---|---|---|
-| `ERROR: Python is not installed.` (installer) or `Python is not installed or only the Microsoft Store stub was found.` (Windows start) | Python is missing, or was installed without "Add python.exe to PATH" | Install it from `python.org` and tick **Add python.exe to PATH** this time |
+| `ERROR: Python is not installed.` (installer) or `Python is not installed or only the Microsoft Store stub was found.` (Windows start) | Python is missing, or was installed without "Add python.exe to PATH" | Not installed: install it from `python.org` and tick **Add python.exe to PATH**. Installed without the tick: run the python.org installer again, choose **Modify**, **Next**, tick **Add Python to environment variables**, **Install** |
 | `this app needs Python 3.11 or newer; … is Python 3.9.x` (installer) | An older Python installed by another tool comes first on PATH | Install the current version from `python.org` with the PATH box ticked, or uninstall the old one, then rerun the installer |
 | `INSTALL FAILED` with `CERTIFICATE_VERIFY_FAILED`, `ProxyError` or `Could not fetch URL` above it | The laptop cannot reach `pypi.org` directly | Follow the [work laptop box](#work-laptop-tls-inspection-or-a-proxy), then rerun the installer |
 | A window: "The python3 command requires the command line developer tools" (Mac) | The Mac has no usable Python yet | Click **Not Now**, install from `python.org`, quit and reopen Terminal |

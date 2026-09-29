@@ -86,7 +86,15 @@ def test_the_windows_installer_does_what_the_guide_says():
     assert 'call "%INSTALL_DIR%\\local_settings.bat"' in bat and "PIP_CERT" in bat, "the CA bundle and proxy apply to the install too"
     closing = bat[bat.index("Installation complete!"):]
     assert "console window" not in closing and "server.log" in closing and "STOP_Zscaler_Assessment.bat" in closing, "the closing text matches the silent launcher"
-    assert bat.rstrip().endswith("exit /b 0"), "a bare exit closes the Command Prompt that called it"
+    label = bat.index("\n:oldpython")
+    main_flow = bat[:label]
+    assert main_flow.rstrip().endswith("exit /b 0"), "a bare exit closes the Command Prompt that called it"
+    assert "goto :oldpython" in main_flow and bat[label:].rstrip().endswith("exit /b 1")
+    # No expanded Python path inside a parenthesised block: "C:\Program Files (x86)\..." would close the block early.
+    import re
+    for block in re.findall(r"if errorlevel 1 \((.*?)\n\)", bat, re.S):
+        assert "%PYTHON_EXE%" not in block and "%PYTHON_VER%" not in block, block[:80]
+    assert "No desktop shortcut could be made" in bat and "Test-Path" in bat, "a locked-down PowerShell that makes no shortcut is said"
     assert "Add python.exe to PATH" in bat
 
 
