@@ -20,9 +20,10 @@ ready-made **policy packs** (dictionaries, engines and rules for CJIS,
 Federal CUI, healthcare PHI, banking, enterprise best practice and source
 code) through a plan → review → approve → deploy → verify flow, removes
 them just as carefully, hands the same policy to a platform team as
-Terraform, and migrates policy from another DLP vendor. Every rule the
-app creates arrives **disabled and monitor-only**, so deploying never
-changes anything for the customer's users.
+Terraform, and migrates policy from another DLP vendor. Every rule a
+policy pack creates arrives **disabled and monitor-only**, and a rule
+migrated from another vendor arrives **disabled** with the action you
+approved, so deploying never changes anything for the customer's users.
 
 ## Who it is for, and the shape of an engagement
 
@@ -43,12 +44,13 @@ app's toolbar is laid out the same way:
 7. On return visits, measure the **data-governance journey** and tune
    with the FP/TP detection ratio.
 
-## Everything it can do, by toolbar group
+## Everything it can do, grouped as the in-app help page groups it
 
-The toolbar on the home page has five groups. Inside the app, **What
-does everything do?** (`/help`) gives each of these a full card: what it
-is, why the customer cares, when to use it, what you get, what to do
-next.
+The toolbar on the home page has the same five groups. Most items below
+are toolbar buttons with the same name; the few that are not say where
+they are. Inside the app, **What does everything do?** (`/help`) gives
+each one a full card: what it is, why the customer cares, when to use it,
+what you get, what to do next.
 
 ### Start
 
@@ -85,10 +87,10 @@ next.
   the whole traffic log, and says so.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
-  inspection, with exports.
+  inspection, with exports. Where: opened from Traffic flow & gaps.
 - **SSL inspection flow** — for each risky traffic class, which SSL rule
   decides, whether the traffic is decrypted, and whether inline DLP can
-  see it.
+  see it. Where: opened from Traffic flow & gaps.
 - **DLP efficacy** — scores every custom dictionary and engine for
   false-positive risk and tests sample text against them.
 - **FP/TP detection ratio** — what the DLP rules actually do in
@@ -103,6 +105,7 @@ next.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.
+  Where: the Dashboard, under the findings.
 
 ### Close the gaps
 
@@ -116,28 +119,32 @@ next.
   selectively, with a usage check before anything goes.
 - **Deploy flow diagram** — the plan a preflight produced as a picture:
   which dictionaries feed which engines, which engines feed which rules,
-  on which channels.
+  on which channels. Where: inside Deploy policy packs, on the review step.
 - **How a deployment works** — a step-by-step walk-through of the shared
   path every pack takes: plan, validate, approve, write in order,
   activate, read back; and the removal path: rules, activate, engines,
-  activate, dictionaries, activate.
+  activate, dictionaries, activate. Where: linked from Deploy policy packs.
 - **Review & remediate** — for each failed check with a known fix, a
   guided change with a before/after view, applied only in write mode
-  after approval.
+  after approval. Where: the Dashboard, beside each finding that has a
+  scripted fix.
 - **Terraform hand-off** — the same policy pack as a Terraform workspace
   for the official `zscaler/zia` provider. Static mode needs no
   credentials; gap mode reads the tenant and imports what exists so the
   platform team's first `terraform plan` is exactly the gap.
 - **Migrate from another DLP** — upload a Symantec, Forcepoint, Netskope
   or Skyhigh policy export, review every policy's translation in a
-  decisions file, and get disabled ZIA dictionaries, engines and rules on
-  any of the four channels as Terraform, with an API cross-reference and
-  an efficacy mapping that says what share of each policy's detection
-  the translation carries.
-- **Evaluate All Rules migration wizard** — moves a tenant from
-  first-match-wins to Evaluate All Rules safely: reads the rules,
-  reorders them so nothing changes behaviour, shows the plan, and posts
-  only in write mode.
+  decisions file, and get ZIA dictionaries, engines and rules on any of
+  the four channels as Terraform, every rule disabled and carrying the
+  action you approved, with an API cross-reference and an efficacy
+  mapping that says what share of each policy's detection the
+  translation carries.
+- **Evaluate All Rules migration wizard** (toolbar: Rule migration
+  wizard) — moves a tenant from first-match-wins to Evaluate All Rules:
+  reads the rules, reorders them so nothing changes behaviour, and shows
+  the plan. Its optional Step 3b deletes every existing Inline Web DLP
+  rule (back them up in Step 2 first; there is no undo) and Step 5
+  re-posts the tenant's own rules as they were; both only in write mode.
 
 ### Reference
 
@@ -150,11 +157,15 @@ next.
   native Zscaler API exports or a ZIP) to the library, and see how this
   server is configured (bind host, token gate, write mode, limits) with
   its Secure by Design score.
+- **Best practices benchmark and frameworks** — the grade, the DLP
+  programme stages and the framework coverage. Where: the Dashboard.
 - **Zscaler updates** — a check of PyPI and help.zscaler.com for SDK and
   documentation changes since last time.
 - **Update app** — fetches the latest build of this app from GitHub,
   installs the pinned dependencies and restarts; the Branch dropdown
   tries a fix on QA or Development before it is promoted to Stable.
+  Where: the Start here card, beside the build number (a Git install
+  only).
 - **Data Security Portfolio Framework**, **Public AI security framework**,
   **Public GenAI security framework**, **The framework machine** and
   **Data Security Architect** — reference pages served inside the tool,
@@ -170,18 +181,20 @@ next.
   (or single log files, or a PAC file); it is read on this computer and
   answers what happened, what it means for the user and what to do next.
 - **Diagnose ZCC access** — probes every Client Connector API endpoint
-  with the credentials you entered and shows which answer.
+  with the credentials you entered and shows which answer. Where: the
+  Connect to the tenant card.
 - **Required API access** — the exact API roles and scopes the app needs
-  per assessment scope, to send to the customer's admin.
+  per assessment scope, to send to the customer's admin. Where: the
+  Connect to the tenant card (`/permissions`).
 
 ## The policy packs it ships with
 
 | Pack | For |
 |---|---|
-| ZBP Enterprise Policy pack | Any commercial enterprise with no DLP policy yet (Zscaler's enterprise best practice) |
-| Source Code to AI | Source code going into AI tools (13 languages; can be rebuilt from the tenant's own dictionaries) |
-| Healthcare PHI | Healthcare providers and payers |
-| Global Banking Policy pack | Banks, card issuers, payment processors, wealth managers |
+| ZBP Enterprise Policy Pack | Any commercial enterprise with no DLP policy yet (Zscaler's enterprise best practice) |
+| Source Code to AI Policy Pack | Source code going into AI tools (13 languages; can be rebuilt from the tenant's own dictionaries) |
+| Healthcare PHI Policy Pack | Healthcare providers and payers |
+| Global Banking Policy Pack | Banks, card issuers, payment processors, wealth managers |
 | Fed Policy Pack | US federal agencies and contractors (contains the enterprise pack) |
 | CJIS Policy Pack | Law enforcement, courts, CJI handlers |
 
@@ -200,29 +213,46 @@ These rules hold on every page, and the tests enforce them:
   phrase (or starts the server with `ENABLE_WRITE_ACTIONS` set). Write
   mode lets the app create and delete DLP policy in the signed-in tenant,
   lasts until the server restarts, and is shown on the page while it is
-  on.
+  on. The switch works only when the server listens on this machine
+  (`127.0.0.1`, the laptop default); in the container, which listens on
+  every address inside its own network, the switch is refused: put
+  `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in the `.env` file next to
+  `docker-compose.yml` and restart.
 - **Nothing the customer has is overwritten.** A pack keeps what already
   exists and creates only what is missing; objects it does not define are
   never touched; a removal deletes only what the pack put in, and keeps
-  anything another rule still uses, saying so.
+  anything another rule still uses, saying so. Two exceptions, both behind
+  write mode and both explicit: the Rule migration wizard's optional
+  Step 3b deletes every existing Inline Web DLP rule (Step 5 re-posts the
+  tenant's own rules as they were), and the API-only converge option
+  (`restore_drift`, which no screen in the app uses) overwrites pack
+  objects the customer changed.
 - **You approve the exact plan.** The plan carries a fingerprint; if the
   tenant changes between approval and deploy, nothing is written until you
   review again.
-- **Every rule arrives disabled** and monitor-only. Enabling or hardening
-  a rule is the customer's decision in the portal; the journey card
-  records it as progress and never reverts it.
+- **Every rule arrives disabled.** A pack's rules are also monitor-only;
+  a migrated rule carries the action approved in its decisions file.
+  Enabling or hardening a rule is the customer's decision in the portal;
+  the journey card records it as progress and never reverts it.
 - **After a deploy or a removal it activates the pending configuration
   and reads the tenant back**, so what it reports is what the tenant
   says, not what it sent. A proposal applied from the FP/TP ratio is left
   pending for an admin to activate.
-- **It reaches nothing but the Zscaler APIs** for tenant work (and GitHub
-  for its own update, PyPI and help.zscaler.com for the update and
-  library checks). Reports, profiles, deployment records and the audit
-  log stay on the machine it runs on; the Log analyzer and DLP efficacy
-  read what you give them locally and store nothing.
+- **For tenant work it reaches only the Zscaler APIs.** Its own
+  housekeeping reaches GitHub (Update app), PyPI and Zscaler's help site,
+  blog and developer portal (the update and library checks), a fixed list
+  of integration-partner documentation sites (Microsoft Learn, AWS,
+  Splunk, CrowdStrike, Okta, Ping, Zscaler Community) for the library and
+  guidance checks, and, only if you configure the digest, your SMTP relay
+  or Teams/Slack webhook. Reports, profiles, deployment records and the
+  audit log stay on the machine it runs on; the Log analyzer and DLP
+  efficacy read what you give them locally and store nothing.
 - **It listens on this machine only** (`127.0.0.1`), behind a per-start
-  UI token; every write is recorded in `audit.log`. Details in
-  `SECURITY.md`.
+  UI token; every write is recorded in `audit.log`. For a shared server,
+  an OpenID Connect sign-in (SSO) can be required before the token is
+  issued; without it the app refuses to listen beyond this machine, and
+  the container is kept private by the `127.0.0.1:` in its ports line.
+  Details in `SECURITY.md`.
 
 ## Two ways to sign in to a tenant
 
@@ -240,11 +270,22 @@ profile.
 
 ## From the command line
 
-The same code runs without the browser: `dlp-check` starts the server,
-`dlp-check-assess --config tenant.json --output report.json` runs the
-assessment from a JSON file, and `dlp-check-evaluate` (or
-`RUN_Continuous_Evaluation.bat`, `python continuous_eval.py --once` in a
-container) runs the six-hour loop once, for a scheduler.
+The same code runs without the browser:
+
+- **Mac and Linux**, after `./install.sh`: `.venv/bin/dlp-check` (the
+  server), `.venv/bin/dlp-check-assess --config tenant.json --output
+  report.json` (the assessment from a JSON file), and
+  `.venv/bin/dlp-check-evaluate` (one run of the six-hour loop, for cron).
+- **Windows**: `python dlp_assessment_full_auto.py --config tenant.json
+  --output report.json`, and `RUN_Continuous_Evaluation.bat` for Task
+  Scheduler.
+- **Container**: `docker compose exec dlp-check python continuous_eval.py
+  --once`.
+
+`python dlp_mcp_server.py` runs a separate, optional MCP server (port
+8080, or `--transport stdio`) that lets an AI agent run the same
+assessment with credentials from `ZSCALER_*` variables; no launcher
+starts it.
 
 ## Limits, and what is still to come
 
@@ -264,6 +305,11 @@ Being honest about the edges:
   page shows every mapping).
 - **Update app** works for an install made with git; a ZIP copy and a
   container are updated by replacing the files (see `INSTALL.md`).
+- **In the container**, write mode comes from `ENABLE_WRITE_ACTIONS` in
+  `.env`, not from the in-app switch, and approving a guidance article as
+  a check reference cannot be saved (the shipped `checks_config.json` is
+  read-only there); profiles, deployments, the audit log, uploaded packs,
+  digests, proposals and the guidance state persist on the volume.
 - The **Digest** loop runs while the server runs; for a schedule that
   outlives it, use Task Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client

@@ -1,8 +1,8 @@
 @echo off
-REM ════════════════════════════════════════════════════════════════════
+REM ====================================================================
 REM  Zscaler Platform Assessment - UNINSTALL
 REM  Removes desktop/start menu shortcuts and stops the background service
-REM ════════════════════════════════════════════════════════════════════
+REM ====================================================================
 
 echo.
 echo  Uninstalling Zscaler Platform Assessment...

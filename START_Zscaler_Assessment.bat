@@ -12,7 +12,7 @@ if exist "%~dp0START_Zscaler_Assessment.vbs" (
 )
 :console
 
-REM ════════════════════════════════════════════════════════════════
+REM ================================================================
 REM Secure-by-design defaults:
 REM   - Bind to localhost only. Set ZSCALER_BIND_HOST=0.0.0.0 to expose
 REM     to the network (you almost never want this).
@@ -20,7 +20,7 @@ REM   - Write actions (rule create/delete) are blocked unless
 REM     ENABLE_WRITE_ACTIONS is set to YES_I_UNDERSTAND.
 REM   - Tracebacks are hidden in non-debug mode. Set ZSCALER_DEBUG=1
 REM     to surface them while developing.
-REM ════════════════════════════════════════════════════════════════
+REM ================================================================
 if not defined ZSCALER_BIND_HOST set ZSCALER_BIND_HOST=127.0.0.1
 if not defined ZSCALER_PORT      set ZSCALER_PORT=8000
 
@@ -29,13 +29,13 @@ REM root CA for TLS inspection, credentials) live in local_settings.bat
 REM next to this file. It is git-ignored; copy local_settings.bat.example.
 if exist "%~dp0local_settings.bat" call "%~dp0local_settings.bat"
 
-REM ──────────────────────────────────────────────────────────────
+REM --------------------------------------------------------------
 REM  If you're behind a corporate proxy, uncomment and edit one of:
 REM    set HTTPS_PROXY=http://user:pass@proxy.corp:8080
 REM    set ZSCALER_UPDATE_PROXY=http://proxy.corp:8080
 REM  If corporate TLS inspection breaks the update checker:
 REM    set ZSCALER_UPDATE_VERIFY_TLS=0
-REM ──────────────────────────────────────────────────────────────
+REM --------------------------------------------------------------
 
 REM Find real Python (skip Microsoft Store stub)
 set PYTHON_EXE=

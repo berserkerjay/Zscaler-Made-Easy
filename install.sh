@@ -29,9 +29,13 @@ done
 say "Using $("$PY" --version 2>&1) at $(command -v "$PY")"
 
 # 2. A private environment, so nothing touches the system Python.
+if [ -x .venv/bin/python ] && ! .venv/bin/python -m pip --version >/dev/null 2>&1; then
+  say "The private environment in .venv is incomplete (no pip); making it again…"
+  rm -rf .venv
+fi
 if [ ! -x .venv/bin/python ]; then
   say "Creating the private environment in .venv…"
-  "$PY" -m venv .venv || fail "Could not create the virtual environment (is the python3-venv package installed?)."
+  "$PY" -m venv .venv || { rm -rf .venv; fail "Could not create the virtual environment (is the python3-venv package installed? On Debian/Ubuntu: sudo apt install -y python3-venv)."; }
 fi
 VPY=".venv/bin/python"
 "$VPY" -m pip install --quiet --disable-pip-version-check --upgrade pip >/dev/null 2>&1 || true

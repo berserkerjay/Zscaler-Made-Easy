@@ -1,4 +1,4 @@
-' Zscaler Assessment — silent launcher.
+' Zscaler Assessment - silent launcher.
 ' Starts the server with no console window and opens the browser.
 ' The desktop and Start Menu shortcuts point here. Server output goes to
 ' server.log next to this file; STOP_Zscaler_Assessment.bat stops it.
@@ -82,7 +82,7 @@ If Not running Then
 End If
 
 If restart Then
-  If Not Pinging() Then Note "restart: the server did not answer on port " & port & " 4 s after the start; see server.log"
+  If Not Pinging() Then Note "restart: the server did not answer on port " & port & " within 30 s of the start; see server.log"
   WScript.Quit 0
 End If
 

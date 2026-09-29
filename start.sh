@@ -23,14 +23,21 @@ if [ "${1:-}" = "--background" ]; then
   if [ -f server.pid ] && kill -0 "$(cat server.pid)" 2>/dev/null; then
     printf '  Already running (pid %s). Stop it with ./stop.sh first.\n' "$(cat server.pid)"; exit 0
   fi
+  # The previous run's token must never be offered for this run.
+  rm -f ui_token.txt
   # -u: line-buffered output, so the address and the token land in server.log
   # at once instead of waiting in Python's buffer while the file looks empty.
   nohup .venv/bin/python -u dlp_api_server.py > server.log 2>&1 &
   echo $! > server.pid
-  sleep 2
+  # Wait for this run's address (a first start can take a while), at most 20 s.
+  for _ in $(seq 1 40); do
+    grep -q "Open http" server.log 2>/dev/null && break
+    kill -0 "$(cat server.pid)" 2>/dev/null || break
+    sleep 0.5
+  done
   if kill -0 "$(cat server.pid)" 2>/dev/null; then
     printf '  Started (pid %s). Output in server.log; the UI token is in ui_token.txt. Stop with ./stop.sh\n' "$(cat server.pid)"
-    grep -m1 "Open http" server.log || { [ -f ui_token.txt ] && printf '  Open http://localhost:%s/?token=%s in your browser\n' "$ZSCALER_PORT" "$(cat ui_token.txt)"; } || true
+    grep -m1 "Open http" server.log || printf '  Still starting: the address to open appears in server.log in a moment.\n'
   else
     printf '  The server stopped straight away; the reason is in server.log:\n' >&2; tail -5 server.log >&2; rm -f server.pid; exit 2
   fi

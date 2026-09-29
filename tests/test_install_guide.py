@@ -180,3 +180,54 @@ def test_the_container_prints_an_address_a_person_can_open():
     assert 'DLP_CHECK_IN_CONTAINER' in src and "in_container and host == '0.0.0.0'" in src
     assert "docker-compose.yml publishes it on 127.0.0.1:{port} of this machine only" in src
     assert "docker-compose.yml publishes it on 127.0.0.1:8000 of this machine only" in INSTALL, "the guide quotes the line the reader will see"
+
+
+def test_the_scripts_fixed_after_the_second_round_of_readers():
+    # An in-app update on Mac/Linux: only the server is the background job, so server.pid holds the server's pid
+    # (bash does not exec the last command of a backgrounded `cd && nohup` list; dash does).
+    import app_update as au
+    if os.name != "nt":
+        cmd = au.restart_command("/tmp/x")[2]
+        assert '|| exit 1; nohup' in cmd and '&& nohup' not in cmd and cmd.rstrip().endswith('echo $! > "/tmp/x/server.pid"')
+    # A venv left half-made by a missing python3-venv is rebuilt, not trusted.
+    sh = _read("install.sh")
+    assert "-m pip --version" in sh and "rm -rf .venv; fail" in sh
+    # --background never offers the previous run's token and waits for this run's address.
+    st = _read("start.sh")
+    assert st.index("rm -f ui_token.txt") < st.index("nohup .venv/bin/python") and 'grep -q "Open http" server.log' in st
+    # A ")" inside a for-block's echo is escaped.
+    assert "^(was listening on :%ZSCALER_PORT%^)" in _read("STOP_Zscaler_Assessment.bat")
+    assert "4 s after the start" not in _read("START_Zscaler_Assessment.vbs")
+    # cmd reads a .bat in the OEM code page: the Windows scripts are plain ASCII.
+    import glob
+    for path in glob.glob(os.path.join(ROOT, "*.bat")) + glob.glob(os.path.join(ROOT, "*.vbs")):
+        data = open(path, "rb").read()
+        assert all(b < 128 for b in data), os.path.basename(path)
+
+
+def test_the_container_keeps_what_the_guide_says_it_keeps():
+    df = _read("Dockerfile")
+    for var in ("DLP_CHECK_PROFILES=/data", "DLP_CHECK_DEPLOYMENTS=/data", "DLP_CHECK_AUDIT=/data", "DLP_CHECK_UI_TOKEN_DIR=/data",
+                "DLP_CHECK_DIGESTS=/data", "DLPCHECK_PROPOSALS_FILE=/data", "DLP_CHECK_GUIDANCE_STATE=/data", "DLP_CHECK_SAAS_MATRIX=/data"):
+        assert var in df, var
+    assert "DLP_CHECK_USER_PACKS: /data" in _read("docker-compose.yml")
+    assert "DLP_CHECK_CHECKS_CONFIG" not in df, "checks_config.json ships with the app; the overview says it is read-only in the container"
+    flat = re.sub(r"\s+", " ", INSTALL)
+    assert "digests, proposals, the guidance state and the token file" in flat and "ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND" in flat
+
+
+def test_the_overview_states_its_exceptions_and_uses_the_apps_names():
+    flat = re.sub(r"\s+", " ", OVERVIEW)
+    assert "Step 3b deletes every existing Inline Web DLP rule" in flat and "restore_drift" in flat, "the two ways something the customer has is overwritten"
+    assert "a migrated rule carries the action approved in its decisions file" in flat
+    assert "the switch is refused" in flat and "ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND" in flat, "write mode in the container"
+    assert "dlp_mcp_server.py" in flat and ".venv/bin/dlp-check-assess" in flat and "RUN_Continuous_Evaluation.bat" in flat
+    assert "SMTP relay or Teams/Slack webhook" in flat and "Microsoft Learn" in flat, "every host the app reaches"
+    import json
+    for pj in ("cjis_policy_pack", "fed_policy_pack", "global_banking_baseline", "healthcare_phi_baseline", "zbp_enterprise_baseline", "zbp_source_code_baseline"):
+        name = json.load(open(os.path.join(ROOT, pj, "pack.json"), encoding="utf-8"))["name"]
+        assert f"| {name} |" in OVERVIEW, name
+    # The app's own help no longer says an admin must activate after a deploy.
+    assert "an admin must click Activate" not in _read("static", "explain.js")
+    assert "Activate in the ZIA portal, then enable rules" not in _read("static", "guide.js")
+    assert "An admin must click **Activate**" not in STARTED

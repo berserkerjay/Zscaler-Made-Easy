@@ -618,7 +618,7 @@ def restart_command(app_dir: str) -> List[str]:
     # The same interpreter that runs this server (the .venv one when it was
     # started by start.sh), detached, with its pid recorded the way
     # `./start.sh --background` records it, so ./stop.sh can stop it.
-    return ["sh", "-c", f'sleep 3; cd "{app_dir}" && nohup "{sys.executable}" "{server}" >> "{log}" 2>&1 & echo $! > "{pid}"']
+    return ["sh", "-c", f'sleep 3; cd "{app_dir}" || exit 1; nohup "{sys.executable}" "{server}" >> "{log}" 2>&1 & echo $! > "{pid}"']
 
 
 def manual_restart_hint(app_dir: str) -> str:

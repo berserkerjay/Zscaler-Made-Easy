@@ -148,7 +148,8 @@ reported as not available, and policy packs deploy the same way.
    organisation and assessor name.
 2. Click **Authenticate** at the bottom of Tenant Configuration (or in the
    **Start here** panel, step 1). You should see
-   "Connected: N dictionaries, N engines, N web DLP rules".
+   "Connected to <tenant>: N dictionaries, N engines, N web DLP rules."
+   in the Start here panel.
 3. If it fails, the panel says why and what to do. The two common causes:
    - *Zscaler rejected the client ID or client secret* → regenerate the secret.
    - *Connection intercepted by TLS inspection* → your laptop is behind
@@ -533,7 +534,9 @@ the outset, for scripted use.)
 
 ## 7. After deploying
 
-1. An admin must click **Activate** in the ZIA Admin Portal.
+1. The deploy activated the change when it finished and read the tenant
+   back (the log says so). If the activation was refused, an admin clicks
+   **Activate** in the ZIA Admin Portal.
 2. Enable rules one at a time in **Policy → Data Loss Prevention**,
    monitor-only ones first, and raise severity once incidents look right.
 3. On the next visit, run the assessment again (or click **Where is this

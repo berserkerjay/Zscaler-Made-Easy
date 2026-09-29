@@ -53,9 +53,9 @@ if exist "%INSTALL_DIR%\requirements.lock" (
 )
 if errorlevel 1 (
     echo.
-    echo  ════════════════════════════════════════════════════════════
+    echo  ============================================================
     echo   INSTALL FAILED - the dependency install did not finish.
-    echo  ════════════════════════════════════════════════════════════
+    echo  ============================================================
     echo.
     echo   The lines above say why. The usual causes: no access to pypi.org
     echo   from this network, or a work laptop behind TLS inspection or a
@@ -81,9 +81,9 @@ powershell -NoProfile -Command "if (Test-Path (Join-Path ([Environment]::GetFold
 if errorlevel 1 set "SHORTCUT_NOTE=No desktop shortcut could be made on this computer. Double-click START_Zscaler_Assessment.bat in this folder to start the app instead."
 
 echo.
-echo  ════════════════════════════════════════════════════════════
+echo  ============================================================
 echo   Installation complete!
-echo  ════════════════════════════════════════════════════════════
+echo  ============================================================
 echo.
 echo   %SHORTCUT_NOTE%
 echo.

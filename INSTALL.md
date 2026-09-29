@@ -445,9 +445,13 @@ only thing keeping the app off the network.
   replace the folder) and run `docker compose up --build` again. The
   in-app **Update app** button does not apply inside a container.
 
-Everything the app saves (tenant profiles, the audit log, uploaded packs,
-the token file) lives outside the container in a Docker-managed storage
-area called `dlpcheck-data`, so it survives rebuilds and updates.
+What the app saves (tenant profiles, deployment records, the audit log,
+uploaded packs, digests, proposals, the guidance state and the token
+file) lives outside the container in a Docker-managed storage area
+called `dlpcheck-data`, so it survives rebuilds and updates. The
+container does not take the in-app **Enable write mode** switch: to
+deploy from it, put `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in a `.env`
+file next to `docker-compose.yml` and run `docker compose up -d` again.
 
 ---
 

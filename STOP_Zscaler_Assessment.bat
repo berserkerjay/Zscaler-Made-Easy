@@ -14,7 +14,7 @@ set FOUND=
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%ZSCALER_PORT% " ^| findstr "LISTENING"') do (
     set FOUND=1
     taskkill /f /pid %%a >nul 2>&1
-    echo   Stopped PID %%a (was listening on :%ZSCALER_PORT%)
+    echo   Stopped PID %%a ^(was listening on :%ZSCALER_PORT%^)
 )
 if not defined FOUND echo   No server was running on port %ZSCALER_PORT%.
 
