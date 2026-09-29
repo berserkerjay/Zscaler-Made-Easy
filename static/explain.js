@@ -187,11 +187,11 @@
   };
   X.evalall = {
     group: 'Reference', name: 'How Evaluate All Rules decides', href: '/report/evalall',
-    what: 'The decision flow with the tie-breaker (most restrictive action wins; a tie is broken by rule order) and which channels use it. Reference only: the simulator that runs on the tenant\'s own rules is in the migration wizard.',
+    what: 'The decision flow with the tie-breaker (most restrictive action wins; a tie is broken by rule order) and which channels use it, as a diagram you can put in front of the customer.',
     why: 'Engineers get this wrong constantly and then cannot explain an incident. Five minutes here saves an argument with the customer.',
     when: 'Before the migration wizard, or when an incident\'s winning rule surprises someone.',
     get: 'The diagram and which channels use it (Web, Endpoint, Email; SaaS is first-match, no tie-breaker).',
-    next: 'Open the migration wizard\'s simulator to show the customer which of their rules would win for a given match.',
+    next: 'Open the Inline DLP Rule migration wizard to see the tenant\'s own rules in order, then set the Advanced Settings switch in ZIA when the customer agrees.',
   };
   X.bestpractices = {
     group: 'Reference', name: 'Best practices library', href: '/report/view?tool=bestpractices',
