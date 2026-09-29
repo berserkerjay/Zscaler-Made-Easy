@@ -5,6 +5,8 @@
 //
 //   window.dlpDialog.unlock(message)  → Promise<string|null>   the UI token, or null on cancel
 //   window.dlpDialog.notice({title, body, detail, tone})  → Promise<void>  an accessible alert dialog
+//   window.dlpDialog.phrase({title, body, phrase, label})  → Promise<string|null>  a typed confirmation phrase (write mode), or null on cancel
+//   window.dlpDialog.ask({title, body, okLabel, cancelLabel, tone})  → Promise<boolean>  a yes / no question
 //   window.__dlpUnlockDialog           the unlock, for the fetch wrappers (index.html, report_theme.js)
 //
 // Both are native <dialog> elements: modal, labelled, Escape closes, focus
@@ -53,6 +55,8 @@
     return new Promise(resolve => {
       const done = value => { try { dlg.close(); } catch (e) {} dlg.remove(); if (opener && opener.focus) { try { opener.focus(); } catch (e) {} } resolve(value); };
       dlg.addEventListener('cancel', e => { e.preventDefault(); done(null); });
+      // Escape closes this dialog only: the page behind it (the Deploy Studio sheet, say) listens for Escape too.
+      dlg.addEventListener('keydown', e => { if (e.key === 'Escape') e.stopPropagation(); });
       onReady(dlg, done);
       try { dlg.showModal(); } catch (e) { done(null); return; }
       const first = dlg.querySelector('input, button.primary, button');
@@ -100,6 +104,53 @@
       }).then(() => undefined);
   }
 
-  window.dlpDialog = { unlock, notice };
+  // A typed confirmation phrase (Enable write mode): the phrase is shown,
+  // typed into a plain text field, and returned for the server to check;
+  // null on Cancel or Escape. The classic prompt() only when <dialog> is
+  // missing, guarded so an unsupported prompt() reads as cancelled.
+  function phrase({ title, body, phrase: expected, label, okLabel, tone } = {}) {
+    if (!supported()) {
+      try { return Promise.resolve(window.prompt(`${title || ''}\n\n${body || ''}\n\nType ${expected || ''} to continue:`, '') || null); }
+      catch (e) { return Promise.resolve(null); }
+    }
+    const paras = String(body || '').split(/\n\s*\n/).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join('');
+    return open(`
+      <h2 id="dlpDlgTitle"><span class="dlp-dlg-tone" aria-hidden="true"></span>${esc(title || 'Confirm')}</h2>
+      ${paras}
+      <form method="dialog" id="dlpPhraseForm">
+        <label for="dlpPhraseInput">${esc(label || `Type ${expected || 'the confirmation phrase'} to continue`)}</label>
+        <input id="dlpPhraseInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="dlpPhraseErr">
+        <div class="dlp-dlg-err" id="dlpPhraseErr" role="alert"></div>
+        <div class="dlp-dlg-actions"><button type="button" id="dlpPhraseCancel">Cancel</button><button type="submit" class="primary" id="dlpPhraseGo">${esc(okLabel || 'Continue')}</button></div>
+      </form>`, tone === 'bad' ? 'bad' : '', (dlg, done) => {
+      dlg.querySelector('#dlpPhraseCancel').addEventListener('click', () => done(null));
+      dlg.querySelector('#dlpPhraseForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const t = dlg.querySelector('#dlpPhraseInput').value.trim();
+        if (!t) { dlg.querySelector('#dlpPhraseErr').textContent = `Type ${expected || 'the phrase'} first.`; return; }
+        if (expected && t !== expected) { dlg.querySelector('#dlpPhraseErr').textContent = `That is not ${expected}. Type it exactly, in capitals with the underscores.`; return; }
+        done(t);
+      });
+    });
+  }
+
+  // A yes / no question (Back to read-only): true on the primary button,
+  // false on Cancel or Escape. window.confirm() only when <dialog> is
+  // missing, guarded the same way.
+  function ask({ title, body, okLabel, cancelLabel, tone } = {}) {
+    if (!supported()) {
+      try { return Promise.resolve(!!window.confirm(`${title || ''}\n\n${body || ''}`)); } catch (e) { return Promise.resolve(false); }
+    }
+    return open(`
+      <h2 id="dlpDlgTitle"><span class="dlp-dlg-tone" aria-hidden="true"></span>${esc(title || 'Are you sure?')}</h2>
+      ${body ? `<p>${esc(body)}</p>` : ''}
+      <div class="dlp-dlg-actions"><button type="button" id="dlpAskCancel">${esc(cancelLabel || 'Cancel')}</button><button type="button" class="primary" id="dlpAskGo">${esc(okLabel || 'OK')}</button></div>`,
+      tone === 'bad' ? 'bad' : '', (dlg, done) => {
+        dlg.querySelector('#dlpAskCancel').addEventListener('click', () => done(false));
+        dlg.querySelector('#dlpAskGo').addEventListener('click', () => done(true));
+      }).then(v => v === true);
+  }
+
+  window.dlpDialog = { unlock, notice, phrase, ask };
   window.__dlpUnlockDialog = unlock;
 })();
