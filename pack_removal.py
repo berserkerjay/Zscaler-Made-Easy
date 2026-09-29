@@ -734,6 +734,8 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     TIERS = ops.DELETE_TIERS
     TIER_LABEL = dict(enumerate(ops.TIER_LABELS))
     entries: Dict[Tuple[str, Optional[str], str], Dict[str, Any]] = {}
+    attempted_any = False          # some tier had objects to remove
+    activated_after_last = False   # the last attempted tier was followed by its activation
 
     def attempt(c: Dict[str, Any], entry: Dict[str, Any]) -> bool:
         """One delete of one object, after checking the id still carries the
@@ -791,6 +793,8 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
                 tier = [c for c in tier if c not in kept_now]
                 if not tier:
                     continue
+        attempted_any = True
+        activated_after_last = False
         deleted_here = 0
         pending = list(tier)
         # Up to three passes over the tier: the first straight through, the
@@ -824,7 +828,7 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
             # Give ZIA time to finish what it is doing before the next pass.
             _log(f"{len(retry)} {TIER_LABEL[ti]} refused for now; activating and waiting for ZIA to report ACTIVE, then trying again…")
             act = pc.activate(zia)
-            activations.append(act)
+            activations.append(dict(act, after=f"{TIER_LABEL[ti]} (retry pass {pass_no})"))
             _settle(zia, settle_seconds, _log)
             _sleep(RETRY_BASE_SECONDS * pass_no)
             names_cache.clear()
@@ -856,13 +860,16 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
             status = _settle(zia, settle_seconds, _log)
             _log(f"Activation status: {status or 'unknown'}.")
             names_cache.clear()   # re-read after activation
+            activated_after_last = True
 
-    # Final activation after the last tier (the dictionaries, or whichever
-    # tier came last) so every deletion is live, then wait for ZIA to
-    # report ACTIVE (an activation is not instantaneous).
+    # Final activation after the last tier that had something to remove
+    # (the dictionaries, or whichever tier came last), whatever its deletes
+    # returned, so every deletion is live; then wait for ZIA to report
+    # ACTIVE (an activation is not instantaneous). A tier already followed
+    # by its activation is not activated twice.
     final_activation = None
     settled_status = None
-    if any(r["status"] == "deleted" for r in results):
+    if attempted_any and not activated_after_last:
         _log("Activating pending ZIA changes…")
         final_activation = pc.activate(zia)
         activations.append(dict(final_activation, after="final"))

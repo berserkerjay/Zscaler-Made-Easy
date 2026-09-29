@@ -506,6 +506,30 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     assert res["status"] == "removed" and res["complete"]
     assert seq == ["delete:policy", "activate", "wait-active", "delete:engine", "activate", "wait-active", "delete:dictionary", "activate", "wait-active"]
     assert [a["after"] for a in res["activations"]] == ["rules", "engines", "final"] and all(a["activated"] for a in res["activations"])
+    # A tier whose deletes are refused and retried carries the retry activation with its tier name, and the shapes stay uniform.
+    client3 = _deletable(_tenant(with_survivors=False))
+    z3 = client3.zia
+    tries = {"n": 0}
+    real = z3.dlp_engine.delete_dlp_engine
+    def engine_delete(oid):
+        tries["n"] += 1
+        return (None, None, {"code": "RESOURCE_IN_USE", "message": "DLP engine is in use by a DLP rule"}) if tries["n"] == 1 else real(oid)
+    z3.dlp_engine.delete_dlp_engine = engine_delete
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
+    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: "ACTIVE")
+    monkeypatch.setattr(pr, "RETRY_BASE_SECONDS", 0.0)
+    plan3 = pr.plan_removal(client3, [pack])
+    res3 = pr.remove(client3, [pack], plan_hash=plan3["plan_hash"], writes_enabled=True)
+    assert res3["status"] == "removed" and [a["after"] for a in res3["activations"]] == ["rules", "engines (retry pass 1)", "engines", "final"]
+    # Only the last tier attempted, its delete refused: the activation after it is the final one, so the tenant is settled.
+    client4 = _deletable(_tenant(with_survivors=True))   # the engine and dictionary are kept: something else uses them
+    z4 = client4.zia
+    seq4 = []
+    z4.dlp_web_rules.delete_rule = lambda oid: (seq4.append("delete:policy") or (None, None, {"code": "INVALID_INPUT_ARGUMENT", "message": "Bad request: invalid rule"}))
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: (seq4.append("activate") or {"activated": True, "status": "ACTIVE", "error": None}))
+    plan4 = pr.plan_removal(client4, [pack])
+    res4 = pr.remove(client4, [pack], plan_hash=plan4["plan_hash"], writes_enabled=True)
+    assert seq4 == ["delete:policy", "activate"] and [a["after"] for a in res4["activations"]] == ["final"] and res4["status"] == "failed"
     # Every rule delete refused for good: the activation after the rules tier still runs; the engine and the
     # dictionary are then kept because the surviving rule still uses them, and nothing more is activated.
     client2 = _deletable(_tenant(with_survivors=False))
@@ -557,7 +581,11 @@ def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
     c2 = Client()
     c2.delete = lambda ep, body=None: (c2.calls.append(("DELETE", ep)) or (None, 400))
     out2 = rm.delete_all_rules(c2, dry_run=False)
-    assert out2["status"] == "partial" and out2["deleted_count"] == 0 and out2["activation"] is None and all(m == "DELETE" for m, _ in c2.calls)
+    # Every delete refused: the rules were still attempted, so the activation still runs (the same rule as a pack removal).
+    assert out2["status"] == "partial" and out2["deleted_count"] == 0 and out2["activation"] == {"requested": True, "http_status": 200} and c2.calls[-1] == ("POST", "/zia/status/activate")
+    c5 = Client()
+    c5.get = lambda ep: ([], 200)
+    assert rm.delete_all_rules(c5, dry_run=False)["activation"] is None and c5.calls == [], "nothing attempted, nothing activated"
     c3 = Client()
     c3.post = lambda ep, body=None: (c3.calls.append(("POST", ep)) or ({"error": "no"}, 500))
     assert rm.delete_all_rules(c3, dry_run=False)["activation"] == {"requested": False, "http_status": 500}

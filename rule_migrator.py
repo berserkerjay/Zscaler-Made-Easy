@@ -1309,7 +1309,7 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
     # until then. Same order as a pack removal (rules → activate → engines
     # → activate → dictionaries → activate); this step deletes rules only.
     activation = None
-    if deleted:
+    if deleted or failed:   # rules were attempted: activate whatever ZIA answered, so the tenant is settled
         try:
             _resp, acode = client.post("/zia/status/activate", {}) if hasattr(client, "post") else (None, 0)
             activation = {"requested": acode in (200, 201, 204), "http_status": acode}
