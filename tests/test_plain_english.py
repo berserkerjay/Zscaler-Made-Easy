@@ -18,8 +18,14 @@ def test_explain_gives_four_sentences_per_status():
     assert "Every incident reaches an analyst" in ok["outcome"]
     rev = pe.explain({"id": "2.5", "sec": "2 — Bypass Inventory", "label": "Bypass register", "status": "WARN", "detail": "14 bypasses; review each for a business justification."})
     assert rev["found"].startswith("Bypass register needs a person to confirm it.") and rev["do"] and "Every exception is known" in rev["outcome"]
+    # A refused read (permissions.is_denied) says so — never "not configured" — whatever its status.
     err = pe.explain({"id": "B.5", "sec": "Ch.B — Endpoint", "label": "Rule count", "status": "ERROR", "detail": "HTTP 403"})
-    assert "could not be checked" in err["found"] and "permissions" in err["do"] and "USB, print" in err["outcome"]
+    assert "could not be read: the API client is not permitted to" in err["found"] and "outside the score" in err["means"] and "role that can read" in err["do"] and "USB, print" in err["outcome"]
+    den = pe.explain({"id": "RBAC.10", "sec": "RBAC — ZIdentity", "label": "ZIdentity users", "status": "INFO", "detail": "Access denied: the API client's role does not include this feature"})
+    assert den["found"].startswith("ZIdentity users could not be read: the API client is not permitted to.") and "not configured" not in den["found"]
+    # A failed read that is not a refusal keeps its own words.
+    err2 = pe.explain({"id": "B.5", "sec": "Ch.B — Endpoint", "label": "Rule count", "status": "ERROR", "detail": "connection reset"})
+    assert "could not be checked" in err2["found"] and "permissions" in err2["do"]
 
 
 def test_every_registered_check_has_a_specific_outcome():

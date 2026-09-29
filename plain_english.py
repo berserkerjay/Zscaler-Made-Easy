@@ -66,6 +66,15 @@ def _status_word(status: str) -> str:
     return {"PASS": "configured", "FAIL": "action required", "WARN": "needs review", "REVIEW": "needs review", "INFO": "not configured", "ERROR": "could not be checked"}.get(s, s.lower())
 
 
+def _not_permitted(detail: str) -> bool:
+    """The same rule permissions.classify uses for a refused read."""
+    try:
+        from permissions import is_denied
+        return bool(is_denied(detail))
+    except Exception:  # noqa: BLE001 - never let the explanation break a result
+        return False
+
+
 def _first_sentence(text: str, limit: int = 220) -> str:
     t = re.sub(r"\s+", " ", (text or "")).strip()
     if not t:
@@ -106,6 +115,11 @@ def explain(check: Dict[str, Any]) -> Dict[str, str]:
         found = f"{label} needs a person to confirm it." + (f" {what}" if what else "")
         means = _generate_why_it_matters(check_id=cid, label=label, as_is=as_is, best_practice=bp_txt, section=section)
         do = _generate_recommendation(check_id=cid, label=label, as_is=as_is, best_practice=bp_txt)
+    elif _not_permitted(detail):
+        # The tenant refused the read: the row says so, never "not configured".
+        found = f"{label} could not be read: the API client is not permitted to." + (f" {what}" if what else "")
+        means = "The app cannot say whether this control is in place. It is outside the score (not a failure); the customer's coverage is unknown here until the permission is granted."
+        do = "Ask the customer's Zscaler admin to give the API client a role that can read this area (Required API Access lists it), then run the assessment again."
     elif status == "ERROR":
         found = f"{label} could not be checked." + (f" {what}" if what else "")
         means = "Without this reading the app cannot say whether the control is in place; the score treats it as unknown, not as a failure."
