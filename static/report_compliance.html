@@ -9,9 +9,9 @@
 <link rel="stylesheet" href="/static/reports.css">
 <style>
   .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.75rem; padding: 1rem; }
-  .cp-card { text-align: left; width: 100%; padding: 1rem; background: var(--well); border-radius: 10px; border: 1px solid var(--border); color: var(--text); cursor: pointer; font: inherit; transition: border-color 0.15s, transform 0.15s; }
+  .cp-card { text-align: left; width: 100%; padding: 1rem; background: var(--well); border-radius: var(--r-md); border: 1px solid var(--border); color: var(--text); cursor: pointer; font: inherit; transition: border-color 0.15s, transform 0.15s; }
   .cp-card:hover, .cp-card:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
-  .cp-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .cp-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); }
   .cp-card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.4rem; }
   .cp-card .name { font-weight: 600; font-size: 0.95rem; }
   .cp-card .desc { color: var(--dim); font-size: 0.76rem; line-height: 1.35; }
@@ -20,12 +20,12 @@
   .cp-status.partial { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
   .cp-status.gap { color: var(--fail); background: color-mix(in srgb, var(--fail) 10%, transparent); border-color: color-mix(in srgb, var(--fail) 35%, transparent); }
   .cp-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--dim) 25%, transparent); overflow: hidden; margin: 0.5rem 0 0.35rem; }
-  .cp-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); }
+  .cp-bar i { display: block; height: 100%; background: var(--accent); }
   .cp-counts { display: flex; gap: 0.6rem; font-size: 0.72rem; }
   .cp-drill { padding: 0 1rem 1rem; }
   .cp-drill-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; margin: 0.5rem 0 0.8rem; }
   .cp-filters { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-  .cp-control { padding: 0.9rem 1rem; background: var(--well); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 0.7rem; }
+  .cp-control { padding: 0.9rem 1rem; background: var(--well); border-radius: var(--r-md); border: 1px solid var(--border); margin-bottom: 0.7rem; }
   .cp-control .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
   .cp-control .sum { font-size: 0.74rem; color: var(--dim); margin-bottom: 0.5rem; }
   .cp-ev { padding: 0.45rem 0.7rem; background: var(--bg); border-radius: 6px; border-left: 3px solid var(--dim); margin: 0.25rem 0; font-size: 0.8rem; }
@@ -37,7 +37,7 @@
 <body class="report-page df-page">
   <div class="rp-page">
     <header class="hero rp-hero">
-      <h1><span class="accent">Regulatory</span> &amp; Compliance Alignment</h1>
+      <h1><span class="accent">Regulatory</span> &amp; compliance alignment</h1>
       <p>Every assessment check maps to controls in the regulatory frameworks below. Pick a framework to see which controls are met, partially met or not met, with the findings that back each one. The percentage on a card is the share of this assessment's mapped checks that are configured, not a share of the framework's controls met and not a certification.</p>
       <span class="badge" id="rpMeta"></span>
     </header>

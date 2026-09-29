@@ -11,16 +11,16 @@
   .df-wrap { max-width: 980px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
   .df-head h1 { font-size: 1.6rem; margin: 0 0 0.35rem; }
   .df-head p { color: var(--dim); max-width: 74ch; margin: 0; line-height: 1.55; }
-  .df-toggle { display: inline-flex; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--border); border-radius: 12px; margin: 1.25rem 0 1.5rem; background: var(--card, transparent); }
+  .df-toggle { display: inline-flex; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--border); border-radius: var(--r-lg); margin: 1.25rem 0 1.5rem; background: var(--card, transparent); }
   .df-toggle button { border: 0; background: transparent; color: var(--dim); font: inherit; font-weight: 600; font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 9px; cursor: pointer; transition: background 0.2s, color 0.2s; }
   .df-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
   .df-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .df-flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; counter-reset: step; }
-  .df-step { border: 1px solid var(--border); border-radius: 14px; background: var(--card, rgba(127,127,127,0.06)); overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
-  .df-step:has(> button[aria-expanded="true"]) { border-color: var(--accent); box-shadow: 0 6px 24px rgba(59,130,246,0.12); }
+  .df-step { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card, rgba(127,127,127,0.06)); overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
+  .df-step:has(> button[aria-expanded="true"]) { border-color: var(--accent);  }
   .df-step > button { width: 100%; display: grid; grid-template-columns: 2.4rem 1fr auto; align-items: center; gap: 0.9rem; padding: 0.95rem 1.1rem; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-  .df-step > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 14px; }
-  .df-step .n { width: 2.1rem; height: 2.1rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; background: rgba(59,130,246,0.12); color: var(--accent); }
+  .df-step > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--r-lg); }
+  .df-step .n { width: 2.1rem; height: 2.1rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; background: var(--accent-tint); color: var(--accent); }
   .df-step .t { font-weight: 650; font-size: 1rem; }
   .df-step .s { display: block; color: var(--dim); font-size: 0.84rem; margin-top: 0.15rem; font-weight: 400; }
   .df-step .chev { color: var(--dim); transition: transform 0.25s; font-size: 1.1rem; }
@@ -32,8 +32,8 @@
   .df-kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 0.9rem; font-size: 0.88rem; }
   .df-kv dt { color: var(--dim); font-weight: 600; }
   .df-kv dd { margin: 0; }
-  .df-note { border-left: 3px solid var(--warn); padding: 0.55rem 0.8rem; border-radius: 6px; background: rgba(245,158,11,0.08); font-size: 0.88rem; }
-  .df-ok { border-left-color: var(--pass); background: rgba(16,185,129,0.08); }
+  .df-note { border-left: 3px solid var(--warn); padding: 0.55rem 0.8rem; border-radius: 6px; background: color-mix(in srgb, var(--warn) 16%, transparent); font-size: 0.88rem; }
+  .df-ok { border-left-color: var(--pass); background: color-mix(in srgb, var(--pass) 16%, transparent); }
   .df-arrow { text-align: center; color: var(--dim); font-size: 1.1rem; line-height: 1; margin: -0.15rem 0; }
   .df-legend { margin-top: 2rem; display: grid; gap: 0.6rem; font-size: 0.88rem; color: var(--dim); }
   .df-legend strong { color: inherit; }

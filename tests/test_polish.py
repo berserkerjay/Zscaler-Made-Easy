@@ -72,4 +72,4 @@ def test_contrast_tokens_landmarks_and_headings():
     css = c.get("/static/dashboard.css").text
     assert ".db-chip.risk-warn-strong { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }" in css
     theme = c.get("/static/report_theme.js").text
-    assert "background:var(--card-solid, rgba(15,23,42,0.85))" in theme
+    assert "background:var(--card-solid, var(--well))" in theme and "backdrop-filter" not in theme
