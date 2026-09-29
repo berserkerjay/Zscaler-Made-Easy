@@ -24,7 +24,7 @@ def _read(name):
 TOOLBAR = {
     "openHelpTab()": "help", "openDataFlowTab()": "dataflow", "openPathAnalyzerTab()": "path",
     "openToolTab('efficacy')": "efficacy", "openDetectionHealthTab()": "health", "openDlpPacksModal()": "packs",
-    "openToolTab('terraform')": "terraform", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
+    "openToolTab('terraform')": "terraform", "openVendorMigrateTab()": "vendormigrate", "_gdGoMigration()": "migration", "openEvalAllTab()": "evalall",
     "openToolTab('bestpractices')": "bestpractices", "openAdvancedTab()": "advanced", "openToolTab('updates')": "updates",
     "openLogAnalyzerTab()": "logs", "openDigestTab()": "digest", "openLiveFeedTab()": "live",
     "openReferenceTab('data-security-portfolio-framework')": "refportfolio", "openReferenceTab('ai-security-framework')": "refai",
