@@ -124,7 +124,7 @@ TARGETS: Dict[str, Dict[str, Any]] = {
               "actions": ("ALLOW", "BLOCK", "CUSTOMHEADERINSERTION"), "monitor": "ALLOW", "max_engines": 4, "name_max": None, "rank": None, "needs": ("tenants",),
               "fields": "tenants: the onboarded email tenant names or \"variable\"; custom_header when the action is CUSTOMHEADERINSERTION"},
 }
-_CHANNEL_KINDS = ("web", "email", "endpoint", "saas-api", "cloud-download")
+_CHANNEL_KINDS = ("web", "email", "endpoint", "saas-api", "cloud-download", "ftp")
 
 
 def _channel_kind(text: str) -> str:
@@ -228,7 +228,7 @@ VENDORS: Dict[str, Dict[str, Any]] = {
             _row("idm", "Document fingerprint classifier (unstructured)", "fingerprint (document)", "idm", "IDM profile + dictionary", "attested", ""),
             _row("ml", "ML classifier (résumés, source code, tax forms, …)", "ml classifier name", "predefined", "ML predefined dictionary where one exists", "attested", ""),
             _row("match_thresholds", "DLP rule count / percentage thresholds and AND / OR", "count, threshold, percentage, operator", "engine", "engineExpression ((D<dict>.S > n)); AND / OR", "reviewed", "percentage thresholds have no ZIA equivalent: choose a count"),
-            _row("channel", "Activities and destination", "activities (Upload, Post, Share, Download, …), destination apps / categories; API-enabled Protection policies", "channels", "upload / post / share → web (protocols HTTP/HTTPS, cloudApplications, urlCategories); API-enabled Protection → saas (casbDlpRules type by app family, cloud_app_tenants); webmail → email", "generated", "downloads are not inspected by ZIA web DLP unless dlpDownloadScanEnabled; one decision per target channel"),
+            _row("channel", "Activities and destination", "activities (Upload, Post, Share, Download, …), destination apps / categories; API-enabled Protection policies", "channels", "upload / post / share (webmail included: it is browser traffic) → web (protocols HTTP/HTTPS, cloudApplications, urlCategories); API-enabled Protection → saas (casbDlpRules type by app family, cloud_app_tenants); the organisation's outbound mail → email", "generated", "downloads are not inspected by ZIA web DLP unless dlpDownloadScanEnabled; one decision per target channel"),
             _row("identity_scope", "Source", "source: users, user groups, OUs, locations", "identity", "users, groups, departments, locations", "manual", "the generated rule applies to Any"),
             _row("file_conditions", "DLP profile file filters", "file_filters: file types, size", "rule", "fileTypes, minSize", "manual", ""),
             _row("exceptions", "Policy exclusions", "exclude users / apps / activities", "rule", "excludedUsers / excludedGroups / excludedDepartments; sub-rules", "dropped", ""),
@@ -691,12 +691,16 @@ def _thresholds_of(obj: Dict[str, Any]) -> List[str]:
     return out
 
 
+# Order matters: the specific families first, so an endpoint "Network
+# share" is endpoint, not web, and webmail is web, not email.
 _CHANNEL_WORDS = (
-    (("http", "https", "web", "browser", "upload", "post", "share", "ftp", "form", "webmail", "proxy"), "web"),
+    (("endpoint", "removable", "usb", "print", "clipboard", "network share", "network drive", "local drive", "device", "screen", "lan"), "endpoint"),
+    (("webmail",), "web"),
     (("smtp", "email", "e-mail", "mail", "exchange", "outlook", "gmail"), "email"),
-    (("endpoint", "removable", "usb", "print", "clipboard", "lan", "local", "device", "screen"), "endpoint"),
     (("api", "saas", "cloud storage", "casb", "at rest", "api-enabled", "api enabled"), "saas-api"),
     (("download", "view", "preview"), "cloud-download"),
+    (("ftp",), "ftp"),
+    (("http", "https", "web", "browser", "upload", "post", "share", "form", "proxy"), "web"),
 )
 
 
@@ -1201,10 +1205,16 @@ def _facet_score(key: str, src: Dict[str, Any], pol: Dict[str, Any], dict_items:
         kinds = [_channel_kind(t) for t in texts]
         hit = sum(1 for k in kinds if k in covered)
         val = hit / len(texts)
-        missed = sorted({k for k in kinds if k not in covered})
+        missed = sorted({k for k in kinds if k not in covered and k != "other"})
+        unknown = [t for t, k in zip(texts, kinds) if k == "other"]
         note = ""
         if missed:
-            note = "; not covered: " + ", ".join(missed) + (" (downloads are never inspected by DLP)" if "cloud-download" in missed else " (approve a target rule on that channel)")
+            hints = {"cloud-download": "downloads are never inspected by DLP", "ftp": "add FTP_RULE to the web rule's protocols by hand"}
+            note = "; not covered: " + ", ".join(k + (f" ({hints[k]})" if k in hints else "") for k in missed)
+            if any(k not in hints for k in missed):
+                note += " (approve a target rule on that channel)"
+        if unknown:
+            note += f"; {len(unknown)} mention{'s' if len(unknown) != 1 else ''} not recognised as a channel: " + ", ".join(unknown[:5])
         return {"score": val, "basis": "computed", "detail": f"{hit} of {len(texts)} channel mentions are covered by the approved target rules ({', '.join(targets) or 'none'}) = {val:.0%}{note}"}
     if key == "response_action":
         ok = bool(pol.get("action_ok"))
@@ -1214,7 +1224,7 @@ def _facet_score(key: str, src: Dict[str, Any], pol: Dict[str, Any], dict_items:
     return {"score": 0.0, "basis": "fixed", "detail": spec["how"] + " (nothing attested)"}
 
 
-def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str, Dict[str, Any]], emitted: Optional[set] = None) -> Dict[str, Any]:
     """How much of each source policy's detection the ZIA translation
     carries, as a weighted percentage over the facets the export exposes,
     with the arithmetic per facet. Retired and out-of-scope policies are
@@ -1244,18 +1254,35 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
             rows.append({"source_id": sid, "name": src["name"], "status": "not_computable", "fidelity": None, "facets": [], "targets": [],
                          "note": "the export carries no recognisable detection element for this policy (only id, name and status), so no percentage is claimed"})
             continue
-        refs = list(dict.fromkeys(slug(x) for p in plist for x in (p.get("engine_refs") or [])))
+        # A decision counts only when the compile produced its rule (emitted);
+        # without that list (a stand-alone call) an approved, well-formed
+        # decision counts.
+        def carried(p: Dict[str, Any]) -> bool:
+            if emitted is not None:
+                return (sid, str(p.get("channel"))) in emitted
+            return p.get("approved") is True and p.get("channel") in TARGETS and p.get("action") in TARGETS[p["channel"]]["actions"]
+        ok = [p for p in plist if carried(p)]
+        refs = list(dict.fromkeys(slug(x) for p in ok for x in (p.get("engine_refs") or []) if isinstance(x, str)))
         exprs = [engines[r] for r in refs if r in engines]
         dict_items = 0
         for e in exprs:
             for m in re.finditer(r"zia_dlp_dictionaries\.([a-z0-9_]+)\.id|\{\{dict:([A-Za-z0-9_-]+)\}\}", e):
                 dict_items += dict_sizes.get(slug(m.group(1) or m.group(2)), 0)
-        approved_targets = [str(p.get("channel")) for p in plist
-                            if p.get("approved") and p.get("channel") in TARGETS and p.get("action") in TARGETS[p["channel"]]["actions"]]
+        approved_targets = [str(p.get("channel")) for p in ok]
         pol = {"targets": list(dict.fromkeys(approved_targets)),
-               "action_ok": bool(approved_targets) and len(approved_targets) == len(plist),
-               "action_text": ", ".join(f"{p.get('channel')}: {p.get('action')}" for p in plist)}
-        attest = next((p["attest"] for p in plist if isinstance(p.get("attest"), dict) and p["attest"]), {})
+               "action_ok": bool(ok) and len(ok) == len(plist),
+               "action_text": ", ".join(f"{p.get('channel')}: {p.get('action')}" + ("" if carried(p) else " (blocked)") for p in plist)}
+        # Attestations are merged across a policy's decisions: the template
+        # pre-fills every copy with carried false, so a value a reviewer set
+        # on any copy (true or a fraction, with its note) wins over that.
+        attest: Dict[str, Any] = {}
+        for p in plist:
+            for k, v in (p.get("attest") or {}).items() if isinstance(p.get("attest"), dict) else ():
+                if not isinstance(v, dict):
+                    continue
+                informative = v.get("carried") not in (None, "", False)
+                if k not in attest or (informative and attest[k].get("carried") in (None, "", False)):
+                    attest[k] = v
         frows = []
         w_sum = s_sum = 0.0
         for key in FACETS:
@@ -1269,7 +1296,7 @@ def efficacy(snapshot: Dict[str, Any], decisions: Dict[str, Any], res: Dict[str,
                           "zia": FACETS[key]["zia"], "score": round(sc["score"], 4), "points": round(w * sc["score"], 2), "basis": sc["basis"], "detail": sc["detail"]})
         fid = round(s_sum / w_sum * 100, 1) if w_sum else None
         tot_w += w_sum; tot_s += s_sum
-        rows.append({"source_id": sid, "name": src["name"], "status": "translated" if all(p.get("approved") for p in plist) else "not_approved", "fidelity": fid,
+        rows.append({"source_id": sid, "name": src["name"], "status": "translated" if ok and len(ok) == len(plist) else "not_approved", "fidelity": fid,
                      "points": round(s_sum, 2), "weight": round(w_sum, 2), "facets": frows, "unrecognised": src.get("unrecognised") or [], "targets": pol["targets"],
                      "note": f"{s_sum:.1f} of {w_sum:.0f} weighted points carried = {fid}%" if fid is not None else ""})
     overall = round(tot_s / tot_w * 100, 1) if tot_w else None
@@ -1295,6 +1322,13 @@ def slug(s: str) -> str:
     return x[:60]
 
 
+def _lit(s: Any) -> str:
+    """A literal string for Terraform JSON, where every string is a
+    template: `${` and `%{` from a reviewed name or phrase are escaped so
+    they are text, never an interpolation."""
+    return str(s).replace("${", "$${").replace("%{", "%%{")
+
+
 def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: str = "sym", vendor_id: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """(terraform, report). The report's `ready` is True only when every
     source policy has an approved disposition or translation and every
@@ -1314,6 +1348,11 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     per_source: Dict[str, int] = {}
     for s, _c in pairs:
         per_source[s] = per_source.get(s, 0) + 1
+    # A disposition and target rules for the same source: the whole source
+    # is questioned once and none of its entries is compiled.
+    mixed = {s for s, c in pairs if c == "disposition" and per_source[s] > 1}
+    asked_mixed: set = set()
+    emitted: set = set()   # (source_id, channel) pairs that produced a rule; the efficacy mapping credits only these
     res: Dict[str, Dict[str, Any]] = {"zia_dlp_dictionaries": {}, "zia_dlp_engines": {}, "zia_dlp_web_rules": {}}
     for spec in TARGETS.values():
         res.setdefault(spec["resource"], {})
@@ -1333,22 +1372,23 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if key in res["zia_dlp_dictionaries"]:
             raise ValueError("Duplicate dictionary slug: " + key)
         phrases, patterns = d.get("phrases", []) or [], d.get("patterns", []) or []
-        if not d.get("approved") or not d.get("name") or not (phrases or patterns) or len(phrases) > 256 or len(patterns) > 8:
-            question(d.get("id", "?"), "Dictionary requires approval, name, content and valid item limits")
+        if (d.get("approved") is not True or not isinstance(d.get("name"), str) or not d["name"].strip() or not isinstance(phrases, list) or not isinstance(patterns, list)
+                or not (phrases or patterns) or len(phrases) > 256 or len(patterns) > 8):
+            question(d.get("id", "?"), "Dictionary requires approval (true), name, content and valid item limits")
             continue
         if any(not isinstance(x, str) or not 0 < len(x) <= 128 for x in phrases) or any(not isinstance(x, str) or not 0 < len(x) <= 256 for x in patterns):
             question(d.get("id", "?"), "Dictionary phrase/pattern length invalid")
             continue
-        obj: Dict[str, Any] = {"name": d["name"], "description": d.get("description", "Migrated from the source DLP"),
+        obj: Dict[str, Any] = {"name": _lit(d["name"]), "description": _lit(d.get("description", "Migrated from the source DLP")),
                                "dictionary_type": "PATTERNS_AND_PHRASES",
                                "custom_phrase_match_type": d.get("match_type", "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY")}
         if obj["custom_phrase_match_type"] not in MATCH_TYPES:
             question(d.get("id", "?"), "Unknown ZIA custom phrase match type")
             continue
         if phrases:
-            obj["phrases"] = [{"phrase": x, "action": "PHRASE_COUNT_TYPE_ALL"} for x in phrases]
+            obj["phrases"] = [{"phrase": _lit(x), "action": "PHRASE_COUNT_TYPE_ALL"} for x in phrases]
         if patterns:
-            obj["patterns"] = [{"pattern": x, "action": "PATTERN_COUNT_TYPE_UNIQUE"} for x in patterns]
+            obj["patterns"] = [{"pattern": _lit(x), "action": "PATTERN_COUNT_TYPE_UNIQUE"} for x in patterns]
         res["zia_dlp_dictionaries"][key] = obj
 
     for e in decisions.get("engines", []) or []:
@@ -1356,8 +1396,8 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if key in res["zia_dlp_engines"]:
             raise ValueError("Duplicate engine slug: " + key)
         expr = e.get("zia_expression", "") or ""
-        if not e.get("approved") or not e.get("name") or not expr:
-            question(e.get("id", "?"), "Engine name, approved expression and approval required")
+        if e.get("approved") is not True or not isinstance(e.get("name"), str) or not e["name"].strip() or not isinstance(expr, str) or not expr:
+            question(e.get("id", "?"), "Engine name, approved expression and approval (true) required")
             continue
         missing: List[str] = []
 
@@ -1370,18 +1410,21 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if missing or "{{" in expr2 or "${" in expr:
             question(e.get("id", "?"), "Unresolved dictionary reference or unsafe interpolation: " + ", ".join(missing))
             continue
-        res["zia_dlp_engines"][key] = {"name": e["name"], "description": e.get("description", "Migrated from the source DLP"),
+        res["zia_dlp_engines"][key] = {"name": _lit(e["name"]), "description": _lit(e.get("description", "Migrated from the source DLP")),
                                        "engine_expression": expr2, "custom_dlp_engine": True}
 
     for p in selected:
         source_id = str(p.get("source_id", ""))
         if source_id not in by_id:
             raise ValueError("Decision references absent source policy: " + source_id)
-        if p.get("disposition") in ("retired", "out_of_scope"):
-            if per_source.get(source_id, 0) > 1:
+        if source_id in mixed:
+            if source_id not in asked_mixed:
                 question(source_id, "A retired or out-of-scope policy cannot also have target rules; keep one decision for it")
-            elif not p.get("approved") or not p.get("reason"):
-                question(source_id, "Retirement or exclusion needs approval and a reason")
+                asked_mixed.add(source_id)
+            continue
+        if p.get("disposition") in ("retired", "out_of_scope"):
+            if p.get("approved") is not True or not isinstance(p.get("reason"), str) or not p["reason"].strip():
+                question(source_id, "Retirement or exclusion needs approval (true) and a reason")
             else:
                 report["dispositions"].append({"source_id": source_id, "disposition": p["disposition"], "reason": p["reason"]})
             continue
@@ -1390,10 +1433,13 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
         if not spec:
             question(source_id, f"Channel must be one of {', '.join(TARGETS)}: {channel!r}", "UNSUPPORTED")
             continue
-        engines = p.get("engine_refs", []) or []
-        if (not p.get("approved") or not p.get("scope_acknowledged_any") or p.get("action") not in spec["actions"]
+        engines = p.get("engine_refs") or []
+        if not isinstance(engines, list) or any(not isinstance(x, str) or not x.strip() for x in engines):
+            question(source_id, "engine_refs must be a list of engine ids from this file")
+            continue
+        if (p.get("approved") is not True or p.get("scope_acknowledged_any") is not True or p.get("action") not in spec["actions"]
                 or not 1 <= len(engines) <= spec["max_engines"] or not isinstance(p.get("order"), int) or isinstance(p.get("order"), bool) or p["order"] < 1):
-            question(source_id, f"{spec['label']} rule needs approval, explicit Any-scope acknowledgement, an action from {', '.join(spec['actions'])}, "
+            question(source_id, f"{spec['label']} rule needs approved: true, scope_acknowledged_any: true, an action from {', '.join(spec['actions'])}, "
                                 f"1-{spec['max_engines']} engines and a positive order"
                                 + ("; a SaaS remediation goes in designed_action" if channel == "saas" else ""))
             continue
@@ -1402,13 +1448,17 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
             question(source_id, "Engine not generated: " + ", ".join(missing_engines))
             continue
         name = p.get("target_name") or by_id[source_id]["name"]
+        if not isinstance(name, str) or not name.strip():
+            question(source_id, "target_name must be the rule's name as text")
+            continue
+        name = name.strip()
         if spec["name_max"] and len(name) > spec["name_max"]:
             question(source_id, f"{spec['label']} rule name '{name}' is {len(name)} characters; ZIA allows {spec['name_max']}. Set a shorter target_name")
             continue
         key = slug(f"{prefix}_{source_id}" + ("" if channel == "web" else f"_{channel}"))
         if key in res[spec["resource"]]:
             raise ValueError(f"Duplicate {channel} rule slug: " + key)
-        rule: Dict[str, Any] = {"name": name, "action": p["action"], "order": p["order"], "state": "DISABLED", "without_content_inspection": False,
+        rule: Dict[str, Any] = {"name": _lit(name), "action": p["action"], "order": p["order"], "state": "DISABLED", "without_content_inspection": False,
                                 "dlp_engines": [{"id": ["${zia_dlp_engines." + slug(x) + ".id}" for x in engines]}]}
         if spec["rank"] is not None:
             rule["rank"] = spec["rank"]
@@ -1417,6 +1467,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
             question(source_id, problem)
             continue
         res[spec["resource"]][key] = rule
+        emitted.add((source_id, channel))
         entry = {"source_id": source_id, "channel": channel, "target": f"{spec['resource']}.{key}", "state": "DISABLED", "action": p["action"]}
         if p.get("designed_action"):
             entry["designed_action"] = str(p["designed_action"])
@@ -1425,12 +1476,15 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     for source_id in by_id:
         if source_id not in selected_ids:
             question(source_id, "No reviewed disposition or translation")
-    for channel, spec in TARGETS.items():
-        orders = [v["order"] for v in res[spec["resource"]].values()]
-        if len(set(orders)) != len(orders) or sorted(orders) != list(range(1, len(orders) + 1)):
-            raise ValueError(f"Generated {channel} rule orders must be unique and contiguous starting at 1")
-        if channel == "web" and len(orders) > WEB_RULE_LIMIT:
-            raise ValueError(f"ZIA API web-rule limit exceeded ({WEB_RULE_LIMIT})")
+    # Orders are checked on a run with nothing blocked: a blocked rule leaves
+    # a gap that the questions already explain, and the ready run rechecks.
+    if not report["blocked"]:
+        for channel, spec in TARGETS.items():
+            orders = [v["order"] for v in res[spec["resource"]].values()]
+            if len(set(orders)) != len(orders) or sorted(orders) != list(range(1, len(orders) + 1)):
+                raise ValueError(f"Generated {channel} rule orders must be unique and contiguous starting at 1")
+            if channel == "web" and len(orders) > WEB_RULE_LIMIT:
+                raise ValueError(f"ZIA API web-rule limit exceeded ({WEB_RULE_LIMIT})")
     tf = {"terraform": {"required_providers": {"zia": {"source": "zscaler/zia", "version": PROVIDER_VERSION}}},
           "provider": {"zia": {}}, "resource": {k: v for k, v in res.items() if v}}
     if data_blocks:
@@ -1438,7 +1492,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     if variables:
         tf["variable"] = variables
     report["ready"] = not report["blocked"]
-    report["efficacy"] = efficacy(snapshot, decisions, res)
+    report["efficacy"] = efficacy(snapshot, decisions, res, emitted=emitted)
     if vendor_id in VENDORS:
         xr = crossref(vendor_id)
         report["crossref"] = {"vendor": vendor_id, "source_api": xr["source_api"], "rows": xr["rows"], "carried": xr["carried"]}
@@ -1485,7 +1539,7 @@ def _channel_fields(channel: str, p: Dict[str, Any], key: str, rule: Dict[str, A
             header = p.get("custom_header")
             if not isinstance(header, str) or not header.strip() or len(header) > 128:
                 return "CUSTOMHEADERINSERTION needs custom_header (the header text, up to 128 characters)"
-            rule["custom_header"] = header.strip()
+            rule["custom_header"] = _lit(header.strip())
         return _tenants(p, key, rule, "email_tenants", "email", data_blocks, variables)
     return f"Channel {channel!r} has no target adapter"
 
@@ -1502,9 +1556,15 @@ def _tenants(p: Dict[str, Any], key: str, rule: Dict[str, Any], block: str, what
         return None
     if isinstance(want, list) and want and all(isinstance(x, str) and x.strip() for x in want):
         ids = []
-        for n in want:
-            lbl = slug("tenant_" + n)
-            data_blocks.setdefault("zia_casb_tenant", {})[lbl] = {"tenant_name": n.strip()}
+        lookups = data_blocks.setdefault("zia_casb_tenant", {})
+        for n in dict.fromkeys(x.strip() for x in want):
+            # One data block per distinct tenant name: two names that slug alike get their own labels.
+            base = lbl = slug("tenant_" + n)
+            i = 2
+            while lbl in lookups and lookups[lbl]["tenant_name"] != _lit(n):
+                lbl = f"{base}_{i}"
+                i += 1
+            lookups[lbl] = {"tenant_name": _lit(n)}
             ids.append("${data.zia_casb_tenant." + lbl + ".tenant_id}")
         rule[block] = [{"id": ids}]
         return None

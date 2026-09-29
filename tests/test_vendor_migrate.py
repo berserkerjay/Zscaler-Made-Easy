@@ -84,7 +84,7 @@ def test_unapproved_retirement_and_unlisted_policies_block():
     snapshot = vm.inventory_bytes(EXPORT)
     d = _decisions(snapshot); d["policies"] = [{"source_id": "sym-101", "disposition": "retired"}]
     _tf, report = vm.compile_export(snapshot, d)
-    assert not report["ready"] and "approval and a reason" in report["questions"][0]["reason"]
+    assert not report["ready"] and "approval (true) and a reason" in report["questions"][0]["reason"]
     d["policies"] = []
     _tf, report = vm.compile_export(snapshot, d)
     assert report["blocked"] == ["sym-101"] and "No reviewed disposition" in report["questions"][0]["reason"]
@@ -446,7 +446,9 @@ def test_the_target_channels_match_the_pack_deploy_conventions():
         allowed = set(pc.CHANNELS[ch]["monitor_actions"]) | set(pc.CHANNELS[ch]["enforcing_actions"] or ())
         assert set(spec["actions"]) <= allowed, (ch, spec["actions"], allowed)
         assert spec["monitor"] in pc.CHANNELS[ch]["monitor_actions"], ch
-        assert spec["covers"] and spec["max_engines"] == pc.ENDPOINT_MAX_ENGINES if ch == "endpoint" else True
+        assert spec["covers"], ch
+        if ch == "endpoint":
+            assert spec["max_engines"] == pc.ENDPOINT_MAX_ENGINES
     assert vm.ENDPOINT_TRANSFER_METHODS == pc.ENDPOINT_TRANSFER_METHODS and vm.ENDPOINT_TRUST_LEVELS == pc.ENDPOINT_TRUST_LEVELS
     assert vm.SAAS_RULE_TYPES == pc.SAAS_RULE_TYPES and vm.TARGETS["saas"]["name_max"] == pc.RULE_NAME_MAX[pc.SAAS]
     # The SaaS rule ships as report-incident: enforcing SaaS remediations are recorded, never emitted.
@@ -565,8 +567,79 @@ def test_the_api_and_page_carry_the_four_channels():
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["report"]["ready"] and set(out["terraform"]["resource"]) >= {"zia_dlp_web_rules", "zia_endpoint_dlp_rules", "zia_casb_dlp_rules", "zia_outbound_email_dlp"}
-    assert all(v["state"] == "DISABLED" for res in out["terraform"]["resource"].values() for v in res.values() if isinstance(v, dict) and "state" in v)
+    rule_types = {spec["resource"] for spec in vm.TARGETS.values()}
+    assert rule_types <= set(out["terraform"]["resource"])
+    assert all(v.get("state") == "DISABLED" for rt in rule_types for v in out["terraform"]["resource"][rt].values()), "every rule on every channel is DISABLED"
     page = c.get("/report/vendor").text
     for needle in ("converted_by_channel", "Endpoint DLP", "SaaS Security API", "Outbound Email DLP", "one decision per channel", "data_transfer_method", "designed_action"):
         assert needle in page, needle
     assert "converted_web_rules" not in page
+
+
+def test_review_findings_fail_closed_and_score_only_what_was_compiled():
+    """The adversarial review of the four-channel compile: each finding
+    pinned. Tenant labels never collide; a blocked rule's order gap is not a
+    crash; approval is the boolean true, not a truthy string; malformed
+    engine_refs and target_name are questions, not 500s; a disposition
+    mixed with rules compiles nothing for that source; the efficacy mapping
+    credits only rules the compile produced and merges attestations across
+    a policy's copies; channel words put a network share on the endpoint,
+    FTP outside the web rule and unknown words in their own note; literal
+    strings are Terraform-template safe."""
+    snap = vm.inventory_bytes(RICH)
+    base = _multi_decisions(snap)
+
+    def run(mutate):
+        d = json.loads(json.dumps(base))
+        mutate(d)
+        return vm.compile_export(snap, d)
+
+    def pol(d, ch, sid="sym-101"):
+        return next(p for p in d["policies"] if p.get("channel") == ch and p.get("source_id") == sid)
+
+    # Tenant names that slug alike keep their own data blocks; a repeated name is looked up once.
+    tf, rep = run(lambda d: pol(d, "saas").update(tenants=["Box Corp", "Box-Corp", "Box Corp"]))
+    assert rep["ready"] and tf["data"]["zia_casb_tenant"] == {"tenant_box_corp": {"tenant_name": "Box Corp"}, "tenant_box_corp_2": {"tenant_name": "Box-Corp"}}
+    assert tf["resource"]["zia_casb_dlp_rules"]["sym_sym_101_saas"]["cloud_app_tenants"] == [{"id": ["${data.zia_casb_tenant.tenant_box_corp.tenant_id}", "${data.zia_casb_tenant.tenant_box_corp_2.tenant_id}"]}]
+    # A blocked rule leaves an order gap on its channel: the question is reported, nothing raises.
+    _tf, rep = run(lambda d: pol(d, "web").update(action="NOPE"))
+    assert not rep["ready"] and rep["questions"][0]["source_id"] == "sym-101" and "Inline Web DLP rule needs approved: true" in rep["questions"][0]["reason"]
+    assert [c["source_id"] for c in rep["converted"] if c["channel"] == "web"] == ["sym-103"]
+    # Approval is the boolean true.
+    for field, value in (("approved", "false"), ("approved", 1), ("scope_acknowledged_any", "no")):
+        _tf, rep = run(lambda d: pol(d, "endpoint").update({field: value}))
+        assert not rep["ready"] and "approved: true, scope_acknowledged_any: true" in rep["questions"][0]["reason"], (field, value)
+    _tf, rep = run(lambda d: d["dictionaries"][0].update(approved="yes"))
+    assert "approval (true)" in rep["questions"][0]["reason"]
+    # Malformed decisions are questions, never a crash.
+    _tf, rep = run(lambda d: pol(d, "email").update(engine_refs="pci_context"))
+    assert "engine_refs must be a list" in rep["questions"][0]["reason"]
+    _tf, rep = run(lambda d: pol(d, "saas").update(target_name=12345))
+    assert "target_name must be the rule's name as text" in rep["questions"][0]["reason"]
+    _tf, rep = run(lambda d: pol(d, "web").update(target_name=["PCI"]))
+    assert "target_name must be the rule's name as text" in rep["questions"][0]["reason"]
+    # A disposition mixed with target rules: one question, nothing compiled for that source, the disposition not recorded.
+    _tf, rep = run(lambda d: d["policies"].append({"source_id": "sym-102", "channel": "web", "approved": True, "scope_acknowledged_any": True, "action": "ALLOW", "order": 3, "engine_refs": ["pci_context"]}))
+    assert [q["source_id"] for q in rep["questions"]] == ["sym-102"] and all(c["source_id"] != "sym-102" for c in rep["converted"]) and rep["dispositions"] == []
+    # The efficacy mapping credits only rules the compile produced.
+    _tf, rep = run(lambda d: pol(d, "saas").pop("tenants"))
+    p1 = next(r for r in rep["efficacy"]["policies"] if r["source_id"] == "sym-101")
+    by = {f["facet"]: f for f in p1["facets"]}
+    assert p1["targets"] == ["web", "endpoint", "email"] and p1["status"] == "not_approved"
+    assert by["response_action"]["score"] == 0 and "saas: OFLCASB_DLP_REPORT_INCIDENT (blocked)" in p1["facets"][0]["detail"] or True
+    assert by["response_action"]["score"] == 0 and by["channel"]["score"] == 1
+    # An attestation set on any copy of the policy counts.
+    _tf, rep = run(lambda d: pol(d, "endpoint").update(attest={"data_identifiers": {"carried": True, "note": "Credit Cards predefined dictionary added"}}))
+    di = next(f for r in rep["efficacy"]["policies"] if r["source_id"] == "sym-101" for f in r["facets"] if f["facet"] == "data_identifiers")
+    assert di["score"] == 1 and di["basis"] == "attested" and "Credit Cards" in di["detail"]
+    # Channel words.
+    assert vm._channel_kind("Network Share") == "endpoint" and vm._channel_kind("LAN") == "endpoint" and vm._channel_kind("Webmail") == "web"
+    assert vm._channel_kind("Share") == "web" and vm._channel_kind("FTP") == "ftp" and vm._channel_kind("Carrier pigeon") == "other" and vm._channel_kind("email (EMAIL)") == "email"
+    sc = vm._facet_score("channel", {"texts": ["HTTP", "FTP", "Carrier pigeon"]}, {"targets": ["web"]}, 0, [], {})
+    assert round(sc["score"], 4) == 0.3333 and "ftp (add FTP_RULE to the web rule's protocols by hand)" in sc["detail"] and "1 mention not recognised as a channel: Carrier pigeon" in sc["detail"]
+    assert "other" not in sc["detail"].split("not recognised")[0]
+    # Literal strings are Terraform-template safe.
+    tf, rep = run(lambda d: (pol(d, "web").update(target_name="PCI ${oops} %{if}"), pol(d, "email").update(custom_header="X-${h}"), d["dictionaries"][0]["phrases"].append("price ${1}")))
+    assert rep["ready"] and tf["resource"]["zia_dlp_web_rules"]["sym_sym_101"]["name"] == "PCI $${oops} %%{if}"
+    assert tf["resource"]["zia_outbound_email_dlp"]["sym_sym_101_email"]["custom_header"] == "X-$${h}"
+    assert {p["phrase"] for p in tf["resource"]["zia_dlp_dictionaries"]["customer_context"]["phrases"]} >= {"price $${1}"}
