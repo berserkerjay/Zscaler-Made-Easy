@@ -583,11 +583,6 @@
     <div class="hero-toolbar" aria-label="Tools">
       <div class="tool-group" role="group" aria-label="Start">
         <div class="tool-group-l">Start</div>
-        <button class="btn btn-ghost" onclick="openQuickStartTab()"
-                aria-label="Open Quick start assessment: the four steps from credentials to a scored report (opens in a new tab)"
-                title="The four steps from API credentials to a scored maturity report, and how to get the credentials. Opens in a new tab.">
-          <span aria-hidden="true">🚀</span> Quick start assessment
-        </button>
         <button class="btn btn-ghost" onclick="openHelpTab()"
                 aria-label="Open What does everything do: every function of this app explained in plain English (opens in a new tab)"
                 title="Every function of this app explained in plain English: what it is, why the customer cares, when to use it, what you get. Opens in a new tab.">
@@ -814,23 +809,23 @@
   <nav id="stepBar" aria-label="Assessment workflow steps: each one is a button"
        style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;margin:0 auto 1.25rem;max-width:1100px;padding:0.6rem 0.8rem;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:0.8rem;">
     <button type="button" class="step-item" data-step="configure" aria-current="step" onclick="_stepGo('configure')"
-            title="Open the tenant details (organisation, cloud, vanity domain, API client)" style="color:var(--accent);font-weight:700;">① Configure</button>
+            title="Open the sign-in details (cloud, vanity domain, API client)" style="color:var(--accent);font-weight:700;">① Connect</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <button type="button" class="step-item" data-step="scope" onclick="_stepGo('scope')" title="Choose what to assess (DLP, ZIA, ZPA, ZCC, GenAI, Automation, Compliance)" style="color:var(--dim);">② Select scope</button>
+    <button type="button" class="step-item" data-step="scope" onclick="_stepGo('scope')" title="Channels, what to assess, frameworks, organisation and assessor; run the assessment on this page from there" style="color:var(--dim);">② Scope assessment</button>
     <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <button type="button" class="step-item" data-step="run" onclick="_stepGo('run')" title="Run the assessment on this page" style="color:var(--dim);">③ Run assessment</button>
-    <span style="color:var(--dim);" aria-hidden="true">→</span>
-    <button type="button" class="step-item" data-step="review" onclick="_stepGo('review')" title="Jump to the results and the exports" style="color:var(--dim);">④ Review + export</button>
+    <button type="button" class="step-item" data-step="review" onclick="_stepGo('review')" title="Jump to the results and the exports" style="color:var(--dim);">③ Review + export</button>
     <span class="step-hint" style="color:var(--dim);margin-left:auto;font-size:0.72rem;">Click a step to go there</span>
   </nav>
 
-  <!-- Quick start assessment lives in its own tab (/quickstart), opened from the toolbar. -->
   <!-- The tenant configuration card is shown inside the guide's "Connect to the tenant" step; this is where it waits while the guide re-renders. -->
   <div id="configPark" hidden></div>
 
-  <!-- Config Form -->
+  <!-- Config Form: sign-in details only. The organisation and assessor
+       fields below are moved by dashboard.js into the Scope assessment
+       page (with the channels, the scope and the frameworks). -->
   <div class="card" id="configCard">
     <h2>Tenant configuration</h2>
+    <p class="helper" style="margin-top:-0.4rem;margin-bottom:0.9rem;">Sign-in details only: what the app needs to read the tenant. Who the report is for and what it covers live under <strong>Scope assessment</strong>.</p>
     <div class="form-grid">
       <div class="field">
         <label>Organization name <span class="required">*</span></label>
@@ -1485,9 +1480,9 @@ function _stepGo(step) {
     if (r && getComputedStyle(r).display !== 'none') { if (typeof _gdGoResults === 'function') _gdGoResults(); else r.scrollIntoView({ behavior: 'smooth' }); return; }
     // No results in this tab: say so where the operator is looking and put
     // the focus on Run assessment — nothing starts by itself.
-    const msg = 'No results in this tab yet. Click Run assessment; the results appear on this page.';
+    const msg = 'No results in this tab yet. Open Scope assessment and click Run assessment; the results appear on this page.';
     announce(msg);
-    if (typeof window.__dbNote === 'function') { window.__dbNote(msg, 'warn'); const run = document.querySelector('.db-item[data-db="run"]'); if (run) run.focus(); }
+    if (typeof window.__dbNote === 'function') { window.__dbNote(msg, 'warn'); const sc = document.querySelector('.db-item[data-db="scope"]'); if (sc) sc.focus(); }
     else setStatus(msg, 'error');
   }
 }
@@ -1600,8 +1595,12 @@ function popMissingCredsAlert(missing) {
     const el = document.getElementById(id);
     if (el && el.closest('.field')) el.closest('.field').classList.add('has-error');
   });
-  // Scroll to + focus first missing
+  // Scroll to + focus first missing. The organisation and assessor live on
+  // the Scope assessment page (dashboard.js), so open it first when one of
+  // those is the first blank; the sign-in fields live under Connect.
   const firstEl = document.getElementById(missing[0][0]);
+  if (firstEl && (missing[0][0] === 'org' || missing[0][0] === 'assessor') && typeof window.__dbShowScope === 'function') window.__dbShowScope();
+  else if (firstEl && typeof _gdGoConfig === 'function') _gdGoConfig();
   if (firstEl) {
     firstEl.scrollIntoView({behavior: 'smooth', block: 'center'});
     setTimeout(() => firstEl.focus(), 250);
@@ -2532,7 +2531,7 @@ async function runAssessment() {
   document.getElementById('results').style.display = 'none';
   if (window.__dbRunStarted) { try { window.__dbRunStarted(); } catch (e) {} }   // the tiles say "assessing", never a stale number
   setStatus('Connecting to Zscaler...', '');
-  setStep('run', 'Assessment started — connecting to Zscaler');
+  setStep('scope', 'Assessment started — connecting to Zscaler');
 
   // Reset run state
   partialResults = [];
@@ -4787,10 +4786,6 @@ async function openSslFlowTab() {
 }
 function openEvalAllTab() {
   const w = window.open('/report/evalall', '_blank');
-  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
-}
-function openQuickStartTab() {
-  const w = window.open('/quickstart', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openHelpTab() {

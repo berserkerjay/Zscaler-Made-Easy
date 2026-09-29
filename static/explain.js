@@ -9,29 +9,21 @@
   const X = {};
   // group: where the button lives on the assessment page's toolbar.
   // href: where the function opens (blank when it is a dialog on the page).
-  X.quickstart = {
-    group: 'Start', name: 'Quick start assessment', href: '/quickstart',
-    what: 'A one-page walkthrough of the four steps: get API credentials from the customer, enter the tenant details, choose what to assess, run it and download the report.',
-    why: 'The customer is paying for an answer to "how well is our Zscaler set up, and what should we fix first?". This page gets you from nothing to that answer in about ten minutes without knowing the product.',
-    when: 'Your very first engagement, or any time you need to explain to a customer admin what credentials to create.',
-    get: 'Exact portal paths for the API client, the vanity domain and the ZPA customer ID, and a link to what access each scope needs.',
-    next: 'Go back to the assessment page, open Connect to the tenant, fill in the four fields and click Authenticate.',
-  };
   X.assessment = {
     group: 'Start', name: 'The assessment page (home)', href: '/',
-    what: 'The home page. The numbered Start here panel walks you through: connect to the tenant, run the assessment, read the results, pick a policy pack, close the gap, and measure the journey on the next visit.',
+    what: 'The home page. The sidebar walks you through: Connect to the tenant (sign in), Scope assessment (which channels the customer owns, what to check, which frameworks to map to, then Run assessment), Findings & report; then pick a policy pack, close the gap, and measure the journey on the next visit.',
     why: 'Everything else in the app either feeds this page (the assessment) or acts on what it found (the packs, the hand-off). If you only learn one page, learn this one.',
     when: 'Every engagement starts and ends here; come back to it between the other tabs.',
     get: 'A score out of 100, a maturity level, the findings that matter with the fix for each, the compliance mapping and the data-governance journey per policy pack.',
     next: 'Follow the Start here steps in order; each step tells you when it is ready and what it needs.',
   };
   X.connect = {
-    group: 'Start', name: 'Connect to the tenant (Tenant details, profiles, Authenticate)', href: '/',
-    what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret, then click Authenticate. Tenant profiles save those details (and the history) per customer.',
+    group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
+    what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
     why: 'Nothing works until the app can read the tenant. Authenticate proves the credentials work and shows what the app can see, so a "no results" later is never a mystery.',
     when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
     get: 'Connected: N dictionaries, N engines, N rules, or a plain reason why not (wrong secret, TLS inspection, missing role).',
-    next: 'Choose the scope in Tenant configuration and run the assessment.',
+    next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {
     group: 'Start', name: 'Assessment results', href: '/report/view',
@@ -263,7 +255,7 @@
     why: 'You should never have to guess what a button does or why the customer would care.',
     when: 'Day one, and whenever a page has a box at the top you have not read yet.',
     get: 'One card per function: what it is, why it matters, when to use it, what you get, what to do next.',
-    next: 'Start with Quick start assessment, then follow the numbered first-engagement list.',
+    next: 'Follow the numbered first-engagement list; each page explains itself at the top.',
   };
 
   // Which entry a page belongs to, by its path (and ?tool= on the results tab).
@@ -271,7 +263,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/quickstart': 'quickstart', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall',
       '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -322,13 +314,12 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['quickstart', 'assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
-    ['Read Quick start assessment', 'quickstart', 'Ten minutes. You will know what to ask the customer for.'],
-    ['Connect to the tenant and Authenticate', 'connect', 'Save a tenant profile so history is kept.'],
-    ['Run the assessment', 'assessment', 'About 90 seconds. Read-only.'],
+    ['Connect to the tenant and Authenticate', 'connect', 'Sign-in details only. Save a tenant profile so history is kept.'],
+    ['Scope and run the assessment', 'assessment', 'Channels the customer owns, what to check, frameworks; then Run assessment. About 90 seconds, read-only.'],
     ['Read the results, critical findings first', 'results', 'Each one says what it means and how to fix it.'],
     ['Show the customer where inspection is lost', 'dataflow', 'Traffic flow & gaps and SSL inspection flow are the "show me" pages.'],
     ['Map it to their framework', 'compliance', 'Only the frameworks for their industry are shown.'],

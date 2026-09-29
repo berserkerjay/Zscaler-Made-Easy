@@ -152,7 +152,8 @@ body.theme-light .db-band span.now { color: #fff; }
 .db-scope-tally { font-size: 0.78rem; font-weight: 400; color: var(--dim); }
 .db-scope-tally strong { color: var(--text); }
 .db-scope-p { font-size: 0.86rem; color: var(--dim); margin: 0 0 0.8rem; max-width: 70ch; }
-.db-scope-foot { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
+.db-scope-foot { display: flex; align-items: center; justify-content: flex-start; gap: 0.9rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.db-scope-foot .db-scope-p { margin: 0; }
 .db-ch-bar { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 .db-ch-bar .sep { flex: 1; }
 .db-ch-list { display: grid; gap: 0.7rem; }

@@ -23,7 +23,6 @@ Every page a user can reach in a browser:
 | Digest | `/report/digest` | latest digest shown |
 | What does everything do? | `/help` | page |
 | Evaluate All Rules reference | `/report/evalall` | page |
-| Quick Start Assessment | `/quickstart` | page |
 
 Each state is audited twice, in the dark theme and in the light theme.
 

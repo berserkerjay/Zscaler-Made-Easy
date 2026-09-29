@@ -43,7 +43,7 @@ def test_report_pages_have_landmarks_and_headings():
         assert "<h1>" in html or "<h1 " in html, name
     df = _read("report_dataflow.html") + _read("data_flow.js")
     assert "<h3" not in df, "data flow tab uses h2 under the page h1"
-    for name in ("report_logs.html", "help.html", "report_evalall.html", "quickstart.html", "report_digest.html", "report_path.html", "report_live.html"):
+    for name in ("report_logs.html", "help.html", "report_evalall.html", "report_digest.html", "report_path.html", "report_live.html"):
         html = _read(name)
         assert '<header class="hero rp-hero">' in html and '<nav class="rp-bar" aria-label="Page actions">' in html, name
         assert "<main" in html and ("<h1>" in html or "<h1 " in html), name

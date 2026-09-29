@@ -75,8 +75,8 @@ function _gdSteps() {
       n: 2, title: 'Assess the tenant',
       state: assessed ? 'done' : (connected ? 'ready' : 'todo'),
       what: 'Runs 300+ automated checks against the tenant and produces a maturity score with a list of findings. Takes about 90 seconds. Read-only.',
-      need: 'A successful Authenticate in step 1, your organisation and assessor names, and a scope. For a DLP engagement keep the default scopes ticked.',
-      status: running ? 'Running… the progress card below shows each check as it completes.' : (assessed ? 'Assessment complete. Results are below.' : (connected ? 'Check the scope under Scope in the sidebar if you want to narrow it, then click Run assessment. The results appear on this page.' : 'Authenticate in step 1 first.')),
+      need: 'A successful Authenticate in step 1, then Scope assessment in the sidebar: the channels the customer owns, what to check (keep the default scopes for a DLP engagement), the frameworks, and the organisation and assessor names.',
+      status: running ? 'Running… the progress card below shows each check as it completes.' : (assessed ? 'Assessment complete. Results are below.' : (connected ? 'Open Scope assessment in the sidebar, check what it covers, then click Run assessment there. The results appear on this page.' : 'Authenticate in step 1 first.')),
       actions: [{ label: running ? 'Running…' : 'Run assessment', fn: '_gdRun()', kind: 'primary', disabled: !connected || running }],
     },
     {
@@ -301,7 +301,7 @@ function _gdRender() {
           <div class="gd-status">${s.status}</div>
           ${s.n === 1 ? _gdConnHtml() : ''}
           <div class="gd-actions">${s.actions.map(a => `<button type="button" class="gd-btn ${a.kind}" ${a.disabled ? 'disabled' : ''} onclick="${a.fn}">${_gdE(a.label)}</button>`).join('')}</div>
-          ${s.tenant ? `<details class="gd-tenant" id="gdTenantDetails" ${GD.tenantOpen ? 'open' : ''}><summary>Tenant details <span class="gd-dim">${creds1 ? '· entered; expand to change or to save a profile' : '· organisation, cloud, vanity domain, API client, scope'}</span></summary><div id="gdTenantSlot"></div></details>` : ''}
+          ${s.tenant ? `<details class="gd-tenant" id="gdTenantDetails" ${GD.tenantOpen ? 'open' : ''}><summary>Tenant details <span class="gd-dim">${creds1 ? '· entered; expand to change or to save a profile' : '· cloud, vanity domain, API client (sign-in only)'}</span></summary><div id="gdTenantSlot"></div></details>` : ''}
         </div>
       </li>`).join('')}
     </ol>`;

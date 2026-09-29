@@ -30,7 +30,7 @@ def test_the_symbol_set_is_served_bundled_and_loaded_first():
     html = c.get("/").text
     srcs = re.findall(r'<script src="/static/([a-z_]+\.js)\?v=\d+"></script>', html)
     assert srcs[0] == "icons.js", srcs
-    for page in ("/report/digest", "/report/advanced", "/report/compliance", "/help", "/quickstart"):
+    for page in ("/report/digest", "/report/advanced", "/report/compliance", "/help", "/report/logs"):
         assert '<script src="/static/icons.js"></script>' in c.get(page).text, page
 
 

@@ -56,6 +56,6 @@ def test_every_tab_can_return_to_the_assessment_page():
     assert "backHomeBtn" in theme and "← Back to the assessment" in theme and "window.opener" in theme and "location.href = '/'" in theme
     assert "document.querySelector('link[href=\"/app.css\"]')" in theme, "the theme toggle stays off self-contained pages"
     for name in os.listdir(os.path.join(ROOT, "static")):
-        if name.startswith("report_") and name.endswith(".html") or name in ("help.html", "quickstart.html"):
+        if name.startswith("report_") and name.endswith(".html") or name == "help.html":
             html = open(os.path.join(ROOT, "static", name), encoding="utf-8").read()
             assert 'href="/"' in html and "report_theme.js" in html, f"{name} has a way back"
