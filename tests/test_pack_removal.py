@@ -482,3 +482,85 @@ def test_the_page_removes_only_through_the_rule_picker_and_shows_no_inline_diagr
         assert m, fn
         assert "_dzFlowHtml(" not in m.group(1) and "_dzViewToggle()" not in m.group(1), f"{fn} still draws the inline diagram"
     assert "function _dzFlowHtml(items, results, opts)" in js, "the standalone flow page keeps its renderer"
+
+
+def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(tmp_path, monkeypatch):
+    """The order a removal always runs in: rules deleted, activate and wait
+    for ACTIVE; engines deleted, activate and wait; dictionaries deleted,
+    activate and wait. The activation after a tier runs even when the tier
+    deleted nothing, so the next tier starts from a settled tenant."""
+    pack = _pack_dir(tmp_path)
+    client = _deletable(_tenant(with_survivors=False))
+    z = client.zia
+    seq = []
+
+    def wrap(kind, fn):
+        return lambda oid, *a, **k: (seq.append(f"delete:{kind}") or fn(oid, *a, **k))
+    z.dlp_web_rules.delete_rule = wrap("policy", z.dlp_web_rules.delete_rule)
+    z.dlp_engine.delete_dlp_engine = wrap("engine", z.dlp_engine.delete_dlp_engine)
+    z.dlp_dictionary.delete_dict = wrap("dictionary", z.dlp_dictionary.delete_dict)
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: (seq.append("activate") or {"activated": True, "status": "ACTIVE", "error": None}))
+    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: (seq.append("wait-active") or "ACTIVE"))
+    plan = pr.plan_removal(client, [pack])
+    res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
+    assert res["status"] == "removed" and res["complete"]
+    assert seq == ["delete:policy", "activate", "wait-active", "delete:engine", "activate", "wait-active", "delete:dictionary", "activate", "wait-active"]
+    assert [a["after"] for a in res["activations"]] == ["rules", "engines", "final"] and all(a["activated"] for a in res["activations"])
+    # Every rule delete refused for good: the activation after the rules tier still runs; the engine and the
+    # dictionary are then kept because the surviving rule still uses them, and nothing more is activated.
+    client2 = _deletable(_tenant(with_survivors=False))
+    z2 = client2.zia
+    seq2 = []
+    z2.dlp_web_rules.delete_rule = lambda oid: (seq2.append("delete:policy") or (None, None, {"code": "INVALID_INPUT_ARGUMENT", "message": "Bad request: invalid rule"}))
+    z2.dlp_engine.delete_dlp_engine = lambda oid: (seq2.append("delete:engine") or (_pop(z2.dlp_engine, oid), None, None))
+    monkeypatch.setattr(pr.pc, "activate", lambda zia: (seq2.append("activate") or {"activated": True, "status": "ACTIVE", "error": None}))
+    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: (seq2.append("wait-active") or "ACTIVE"))
+    plan2 = pr.plan_removal(client2, [pack])
+    logs = []
+    res2 = pr.remove(client2, [pack], plan_hash=plan2["plan_hash"], writes_enabled=True, log=logs.append)
+    assert seq2 == ["delete:policy", "activate", "wait-active"], seq2
+    by = {r["kind"]: r for r in res2["results"]}
+    assert by["policy"]["status"] == "failed" and by["engine"]["status"] == "skipped" and by["dictionary"]["status"] == "skipped"
+    assert res2["status"] == "failed" and not res2["complete"] and res2["activation"] is None
+    assert any(l.startswith("Activating after the rules (0 deleted)") for l in logs)
+
+
+def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
+    """Step 4 of the Inline DLP Rule migration wizard deletes web rules
+    through the assessment's raw client; it now activates once the rules
+    are gone (rules → activate), reports whether the activation ran, sends
+    nothing when write mode is off and activates nothing when nothing was
+    deleted."""
+    import rule_migrator as rm
+    import security
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, ep):
+            return ([{"id": 1, "name": "A", "action": "BLOCK", "state": "ENABLED"}, {"id": 2, "name": "B"}], 200)
+
+        def delete(self, ep, body=None):
+            self.calls.append(("DELETE", ep)); return (None, 204)
+
+        def post(self, ep, body=None):
+            self.calls.append(("POST", ep)); return ({"status": "ACTIVE"}, 200)
+
+    c = Client()
+    assert rm.delete_all_rules(c, dry_run=True)["status"] == "dry_run" and c.calls == []
+    monkeypatch.setattr(security, "_write_override", True)
+    out = rm.delete_all_rules(c, dry_run=False)
+    assert out["status"] == "completed" and out["deleted_count"] == 2
+    assert c.calls == [("DELETE", "/zia/webDlpRules/1"), ("DELETE", "/zia/webDlpRules/2"), ("POST", "/zia/status/activate")]
+    assert out["activation"] == {"requested": True, "http_status": 200}
+    c2 = Client()
+    c2.delete = lambda ep, body=None: (c2.calls.append(("DELETE", ep)) or (None, 400))
+    out2 = rm.delete_all_rules(c2, dry_run=False)
+    assert out2["status"] == "partial" and out2["deleted_count"] == 0 and out2["activation"] is None and all(m == "DELETE" for m, _ in c2.calls)
+    c3 = Client()
+    c3.post = lambda ep, body=None: (c3.calls.append(("POST", ep)) or ({"error": "no"}, 500))
+    assert rm.delete_all_rules(c3, dry_run=False)["activation"] == {"requested": False, "http_status": 500}
+    monkeypatch.setattr(security, "_write_override", False)
+    c4 = Client()
+    assert rm.delete_all_rules(c4, dry_run=False)["status"] == "blocked" and c4.calls == []

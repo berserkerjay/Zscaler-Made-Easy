@@ -1982,6 +1982,7 @@ async function step3bDeleteAll(dryRun) {
       clearPendingAction('step3b');
       el.innerHTML = `
         <div style="color:${r.failed_count ? 'var(--warn)' : 'var(--pass)'};font-weight:600;">✓ ${r.status}: deleted ${r.deleted_count}, failed ${r.failed_count}</div>
+        ${r.activation ? `<div style="color:${r.activation.requested ? 'var(--pass)' : 'var(--warn)'};font-size:0.82rem;">${r.activation.requested ? 'Activated in ZIA: the deletions are live.' : `Activation did not run (${r.activation.error || 'HTTP ' + r.activation.http_status}); activate in the ZIA portal so the deletions take effect.`}</div>` : ''}
         ${r.failed_count ? `<details style="margin-top:0.4rem;"><summary style="color:var(--accent);cursor:pointer;font-size:0.8rem;">View failures</summary><pre style="white-space:pre-wrap;font-size:0.75rem;color:var(--dim);">${escapeHtml(JSON.stringify(r.failed, null, 2))}</pre></details>` : ''}`;
     }
   } catch(e) {

@@ -829,9 +829,14 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
             _sleep(RETRY_BASE_SECONDS * pass_no)
             names_cache.clear()
             pending = retry
-        # Activate before the next tier so its objects are no longer
-        # referenced, and WAIT for the activation to complete: an engine
-        # whose rules are only pending-deleted is still "in use" to ZIA.
+        # Activate after EVERY tier that had something to remove, before the
+        # next tier starts, and WAIT for the activation to complete: rules
+        # first, activate, then engines, activate, then dictionaries,
+        # activate. ZIA validates a delete against the saved configuration,
+        # so an engine whose rules are only pending-deleted is still "in
+        # use"; the activation runs even when this tier deleted nothing
+        # (a refused delete, an object already gone), so the next tier
+        # always starts from a settled tenant.
         more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
         if ops.stop_reason():
             # Say what was never tried, then finish the bookkeeping below.
@@ -843,23 +848,24 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
                     recorder.record(c["kind"], c["name"], "skipped", op="delete", channel=c.get("channel"), entry=entry,
                                     reason=f"not attempted: {ops.stop_reason()}")
             break
-        if deleted_here and more:
-            _log(f"Activating the deleted {TIER_LABEL[ti]} and waiting for ZIA to report ACTIVE before removing the {TIER_LABEL.get(ti + 1, 'rest')}…")
+        if tier and more:
+            _log(f"Activating after the {TIER_LABEL[ti]} ({deleted_here} deleted) and waiting for ZIA to report ACTIVE before removing the {TIER_LABEL.get(ti + 1, 'rest')}…")
             act = pc.activate(zia)
-            activations.append(act)
+            activations.append(dict(act, after=TIER_LABEL[ti]))
             _log("Activation " + ("requested." if act.get("activated") else f"could not run: {act.get('error')}"))
             status = _settle(zia, settle_seconds, _log)
             _log(f"Activation status: {status or 'unknown'}.")
             names_cache.clear()   # re-read after activation
 
-    # Final activation so every deletion is live, then wait for ZIA to
+    # Final activation after the last tier (the dictionaries, or whichever
+    # tier came last) so every deletion is live, then wait for ZIA to
     # report ACTIVE (an activation is not instantaneous).
     final_activation = None
     settled_status = None
     if any(r["status"] == "deleted" for r in results):
         _log("Activating pending ZIA changes…")
         final_activation = pc.activate(zia)
-        activations.append(final_activation)
+        activations.append(dict(final_activation, after="final"))
         _log("Activation " + ("done." if final_activation.get("activated") else f"could not run: {final_activation.get('error')}"))
         settled_status = _settle(zia, settle_seconds, _log)
 

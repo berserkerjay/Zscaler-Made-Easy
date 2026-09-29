@@ -1304,12 +1304,25 @@ def delete_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         except Exception as e:
             failed.append({"rule_id": rid, "rule_name": r.get("name"), "error": str(e)[:200]})
 
+    # Rules deleted, then activate: ZIA keeps the deletes pending until an
+    # activation runs, and anything the rules referenced stays "in use"
+    # until then. Same order as a pack removal (rules → activate → engines
+    # → activate → dictionaries → activate); this step deletes rules only.
+    activation = None
+    if deleted:
+        try:
+            _resp, acode = client.post("/zia/status/activate", {}) if hasattr(client, "post") else (None, 0)
+            activation = {"requested": acode in (200, 201, 204), "http_status": acode}
+        except Exception as e:
+            activation = {"requested": False, "error": str(e)[:200]}
+
     return {
         "status": "completed" if not failed else "partial",
         "deleted_count": len(deleted),
         "failed_count": len(failed),
         "deleted": deleted,
         "failed": failed,
+        "activation": activation,
     }
 
 
