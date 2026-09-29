@@ -11,7 +11,7 @@
   // href: where the function opens (blank when it is a dialog on the page).
   X.assessment = {
     group: 'Start', name: 'The assessment page (home)', href: '/',
-    what: 'The home page. The sidebar walks you through: Connect to the tenant (sign in), Scope assessment (which channels the customer owns, what to check, which frameworks to map to, then Run assessment), Findings & report; then pick a policy pack, close the gap, and measure the journey on the next visit.',
+    what: 'The home page. The sidebar walks you through: Connect to the tenant (sign in), Scope assessment (which channels the customer owns, what to check, which frameworks to map to, then Run assessment), and the Dashboard, which holds the score tiles, every finding and the exports; then pick a policy pack, close the gap, and measure the journey on the next visit.',
     why: 'Everything else in the app either feeds this page (the assessment) or acts on what it found (the packs, the hand-off). If you only learn one page, learn this one.',
     when: 'Every engagement starts and ends here; come back to it between the other tabs.',
     get: 'A score out of 100, a maturity level, the findings that matter with the fix for each, the compliance mapping and the data-governance journey per policy pack.',

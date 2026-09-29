@@ -41,7 +41,7 @@ def test_the_sidebar_moves_the_toolbar_buttons_instead_of_copying_them():
     js = _read("dashboard.js")
     assert "tools.appendChild(g)" in js and "toolbar.hidden = true" in js, "the buttons move; no duplicate onclick targets"
     assert "'.tool-group'" in js and "'aria-label', 'Navigation'" in js and 'aria-label="Workflow"' in js
-    for step in ("configure", "scope", "review"):
+    for step in ("dashboard", "configure", "scope"):
         assert f'data-db="{step}"' in js, step
     assert 'data-db="run"' not in js, "Run assessment is a button on the Scope assessment page, not a nav item"
     assert "_stepGo(k)" in js and "Current implementation" in js
@@ -167,9 +167,11 @@ def test_tenant_configuration_is_hidden_until_its_own_sidebar_link_is_used():
 def test_connect_to_the_tenant_sits_directly_below_dashboard_in_the_sidebar():
     js = _read("dashboard.js")
     keys = ("dashboard", "configure", "scope", "review")
-    nav = [k for k in re.findall(r'data-db="([a-z]+)"', js) if k in keys][:len(keys)]
-    assert nav == ["dashboard", "configure", "scope", "review"], nav
+    nav = [k for k in re.findall(r'class="db-item" data-db="([a-z]+)"', js) if k in keys]
+    assert nav == ["dashboard", "configure", "scope"], nav
     assert 'data-db="channels"' not in js, "Channels is folded into Scope, not its own nav item"
+    assert 'data-db="review"' not in js, "Findings & report is the Dashboard, not its own nav item"
+    assert "if (k === 'review') k = 'dashboard';" in js, "the step strip's review step lands on the Dashboard"
 
 
 def test_the_score_tiles_are_always_on_screen_even_before_a_run():

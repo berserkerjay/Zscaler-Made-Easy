@@ -54,7 +54,7 @@ def test_labels_say_what_they_open_and_no_icon_is_used_twice():
     assert "New assessment (clears results)" in html and "Run Another Assessment" not in html
     dash = c.get("/static/dashboard.js").text
     assert "'Start a new assessment', 'clears these results, then run again'" in dash
-    assert "setCurrent('review');" in dash.split("function renderDashboard(data)")[1].split("window.__dbRunStarted")[0]
+    assert "setCurrent('dashboard');" in dash.split("function renderDashboard(data)")[1].split("window.__dbRunStarted")[0]
     guide = c.get("/static/guide.js").text
     assert "Choose a scope in Tenant Configuration" not in guide and "Journey card (Deploy policy packs)" in guide
     toolbar = html.split('<div class="hero-toolbar"')[1].split("</div>\n  </div>")[0]
