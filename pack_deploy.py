@@ -51,6 +51,7 @@ plan the user saw.
 """
 from __future__ import annotations
 
+import re
 import hashlib
 import json
 import threading
@@ -919,6 +920,40 @@ def _policy_drift(p: Dict[str, Any], channel: str, existing: Dict[str, Any],
         if sorted(str(x) for x in p.get("protocols", ["ANY_RULE"])) != existing["protocols"]:
             drift.append("protocols")
     return drift
+
+
+_CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def dictionary_update_body(existing: Any, **changes: Any) -> Dict[str, Any]:
+    """The whole dictionary as the tenant has it, with `changes` applied,
+    for PUT /dlpDictionaries/{id}. A PUT replaces the object, so a body with
+    only the changed field would reset what it leaves out (proximity,
+    identifiers, the match type). Keys are snake_case like every other
+    payload here; phrases and patterns go as (action, text) pairs, the
+    form the SDK's update_dict turns back into API objects."""
+    if hasattr(existing, "request_format"):
+        raw = existing.request_format()
+    elif hasattr(existing, "as_dict"):
+        raw = existing.as_dict()
+    else:
+        raw = dict(existing or {})
+    body: Dict[str, Any] = {}
+    for k, v in raw.items():
+        key = _CAMEL_RE.sub("_", str(k)).lower()
+        if key == "id" or v is None:
+            continue
+        body[key] = v
+    for key, field in (("phrases", "phrase"), ("patterns", "pattern")):
+        items = body.get(key)
+        if items:
+            body[key] = [(_field(x, "action"), _field(x, field)) if not isinstance(x, (tuple, list)) else tuple(x) for x in items]
+        elif key in body:
+            del body[key]
+    body.setdefault("dictionary_type", "PATTERNS_AND_PHRASES")
+    body.setdefault("custom_phrase_match_type", "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY")
+    body.update(changes)
+    return body
 
 
 def _plan_tweaks(sources: Sequence[Dict[str, Any]], tenant: Dict[str, Any], apply_tweaks: bool) -> List[Dict[str, Any]]:
@@ -1857,6 +1892,11 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
 
     def record(item: Dict[str, Any], status: str, *, outcome: Optional[ops.Outcome] = None, **extra: Any) -> None:
         channel = extra.pop("channel", None)
+        if channel is None and item["kind"] == "policy":
+            # A rule is counted under its own channel whatever happened to it:
+            # a reused or skipped SaaS or Email rule used to land under Web in
+            # the per-channel summary.
+            channel = item.get("channel") or pc.channel_of(item.get("definition") or {})
         recorder.record(item["kind"], item["name"], status, op=extra.pop("op", None) or _OPS.get(status, status), channel=channel,
                         outcome=outcome, **extra)
 
@@ -2107,13 +2147,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 continue  # no-ops were already explained in the plan; nothing to report
             t = item["tenant"]
             existing = tenant["dictionaries"][t["name"]]
-            out = ops.update(zia, "dictionary", t["id"], {
-                "name": t["name"],
-                "dictionary_type": _field(existing, "dictionary_type", "dictionaryType", default="PATTERNS_AND_PHRASES"),
-                "custom_phrase_match_type": _field(existing, "custom_phrase_match_type", "customPhraseMatchType",
-                                                   default="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY"),
-                "confidence_threshold": item["definition"]["target_confidence"],
-            }, log=_log)
+            out = ops.update(zia, "dictionary", t["id"],
+                             dictionary_update_body(existing, confidence_threshold=item["definition"]["target_confidence"]), log=_log)
             if not out.ok:
                 record(item, "failed", outcome=out)
             else:

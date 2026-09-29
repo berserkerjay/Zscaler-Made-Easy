@@ -363,7 +363,8 @@ def test_confidence_tweak_is_explicit_modification(tmp_path):
                       meta={"confidence_tweaks": [{"name": "MEDICAL", "target_confidence": "CONFIDENCE_LEVEL_LOW",
                                                    "label": "Medical → Low"}]})
     medical = Obj(id=3, name="MEDICAL", custom=False, confidence_threshold="CONFIDENCE_LEVEL_HIGH",
-                  dictionary_type="PATTERNS_AND_PHRASES", custom_phrase_match_type="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY")
+                  dictionary_type="PATTERNS_AND_PHRASES", custom_phrase_match_type="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+                  proximity=50, hierarchical_identifiers=["MED_TERMS"])
     client = FakeClient(dicts=[medical])
     rep = pd.preflight(client, [pack], writes_enabled=True)
     tw = items_by(rep, "tweak")["Medical → Low"]
@@ -377,7 +378,21 @@ def test_confidence_tweak_is_explicit_modification(tmp_path):
 
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
     assert res["summary"].get("modified") == 1
-    assert client.zia.dlp_dictionary.updated[0]["confidence_threshold"] == "CONFIDENCE_LEVEL_LOW"
+    sent = client.zia.dlp_dictionary.updated[0]
+    assert sent["confidence_threshold"] == "CONFIDENCE_LEVEL_LOW"
+    # PUT replaces the dictionary: everything else goes back as the tenant has it.
+    assert sent["proximity"] == 50 and sent["hierarchical_identifiers"] == ["MED_TERMS"] and sent["name"] == "MEDICAL"
+
+
+def test_the_dictionary_update_body_keeps_the_whole_object_in_the_sdk_form():
+    from zscaler.zia.models.dlp_dictionary import DLPDictionary
+    d = DLPDictionary({"id": 9, "name": "Codes", "custom": True, "proximity": 20, "customPhraseMatchType": "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+                       "phrases": [{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "secret"}],
+                       "patterns": [{"action": "PATTERN_COUNT_TYPE_UNIQUE", "pattern": "[A-Z]{3}"}]})
+    body = pd.dictionary_update_body(d, description="new")
+    assert body["phrases"] == [("PHRASE_COUNT_TYPE_ALL", "secret")] and body["patterns"] == [("PATTERN_COUNT_TYPE_UNIQUE", "[A-Z]{3}")]
+    assert body["custom_phrase_match_type"] == "MATCH_ALL_CUSTOM_PHRASE_PATTERN_DICTIONARY" and body["proximity"] == 20
+    assert body["description"] == "new" and "id" not in body and all(k == k.lower() for k in body)
 
 
 def test_writes_disabled_blocks_deploy_but_not_the_plan(base_pack):

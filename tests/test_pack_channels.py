@@ -449,3 +449,15 @@ def test_every_saas_mirror_is_created_with_its_own_order(tmp_path):
     assert [a["order"] for a in added] == [2, 3, 4]
     assert res["channels"]["saas"] == {"created": 3, "reused": 0, "failed": 0, "skipped": 0, "restored": 0, "errors": []}
     assert res["channels"]["web"]["created"] == 1 and res["status"] == "applied"
+
+
+def test_every_rule_is_counted_under_its_own_channel_even_when_skipped(tmp_path):
+    # A tenant with no email tenant onboarded: the Email rule is skipped, and
+    # the per-channel summary has to say Email, not Web.
+    pack = write_pack(tmp_path, "cnt", dicts=[_dict("TD")], engines=[_engine("TE", "(D:TD > 0)")],
+                      policies=[_policy("W", ["TE"]), dict(_policy("M", ["TE"]), channel="email", tenants="any")])
+    client = make_client(casb_tenants=[tenant("Box", "BOX", 11)])
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, settle_seconds=0, activate=False)
+    assert res["channels"]["web"]["created"] == 1 and res["channels"]["web"]["skipped"] == 0
+    assert res["channels"]["email"]["skipped"] == 1
