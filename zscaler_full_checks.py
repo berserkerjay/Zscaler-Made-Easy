@@ -23,7 +23,7 @@ from dlp_assessment_full_auto import R, _ls
 
 def fw_1(cl):
     """Cloud Firewall rules exist"""
-    d, c = cl.get("/zia/firewallRules")
+    d, c = cl.get("/zia/firewallFilteringRules")
     r = _ls(d) if c in (200, 204) else []
     if not r:
         return R(R.WARN, "No cloud firewall rules configured. Best Practice: Zscaler recommends implementing cloud firewall rules with a default deny-all policy for regulated environments. Rules should control non-web traffic (SSH, RDP, FTP) that bypasses URL filtering. Ref: Firewall Deployment and Operations Guide.")
@@ -32,7 +32,7 @@ def fw_1(cl):
 
 def fw_2(cl):
     """Firewall default rule action"""
-    d, c = cl.get("/zia/firewallRules")
+    d, c = cl.get("/zia/firewallFilteringRules")
     r = _ls(d) if c in (200, 204) else []
     default = [x for x in r if "default" in (x.get("name") or "").lower()]
     if default:
@@ -44,13 +44,13 @@ def fw_2(cl):
 
 def fw_3(cl):
     """DNS control rules"""
-    d, c = cl.get("/zia/dnsRules")
+    d, c = cl.get("/zia/firewallDnsRules")
     r = _ls(d) if c in (200, 204) else []
     return R(R.PASS, f"{len(r)} DNS control rule(s).") if r else R(R.WARN, "No DNS control rules. Best Practice: Configure DNS control rules to prevent DNS-based data exfiltration and enforce DNS resolution through Zscaler. DNS tunneling is a common exfiltration vector.")
 
 def fw_4(cl):
     """IPS rules configured"""
-    d, c = cl.get("/zia/ipsRules")
+    d, c = cl.get("/zia/firewallIpsRules")
     r = _ls(d) if c in (200, 204) else []
     return R(R.PASS, f"{len(r)} IPS rule(s).") if r else R(R.WARN, "No IPS rules. Best Practice: Enable IPS (Intrusion Prevention System) to detect and block exploits, C2 callbacks, and lateral movement. IPS requires SSL inspection to be effective on encrypted traffic. Ref: IPS Control Deployment and Operations Guide.")
 
@@ -74,7 +74,7 @@ def fw_7(cl):
 
 def fw_8(cl):
     """Firewall rule ordering"""
-    d, c = cl.get("/zia/firewallRules")
+    d, c = cl.get("/zia/firewallFilteringRules")
     r = _ls(d) if c in (200, 204) else []
     if len(r) < 2:
         return R(R.PASS, "Single or no rules — no ordering issues.")
@@ -127,9 +127,7 @@ def url_4(cl):
 def sec_1(cl):
     """Security blacklist/whitelist"""
     bl, c1 = cl.get("/zia/security/advanced")
-    if c1 not in (200, 204):
-        bl, c1 = cl.get("/zia/security/advanced/blacklistUrls")
-    urls = _ls(bl) if c1 in (200, 204) else (bl.get("blacklistUrls", []) if isinstance(bl, dict) else [])
+    urls = (bl.get("blacklistUrls") or []) if c1 in (200, 204) and isinstance(bl, dict) else []
     return R(R.PASS, f"{len(urls)} URL(s) on security blacklist.") if urls else R(R.WARN, "Security blacklist empty. Best Practice: Maintain a curated blacklist of known-malicious URLs from threat intelligence feeds. Complement with Zscaler's built-in threat categories for defense-in-depth.")
 
 def sec_2(cl):
@@ -140,26 +138,26 @@ def sec_2(cl):
 
 def sec_3(cl):
     """Malware protection check"""
-    d, c = cl.get("/zia/malwareProtection")
+    d, c = cl.get("/zia/cyberThreatProtection/malwareSettings")
     if c in (200, 204):
         if isinstance(d, dict):
             en = d.get("enabled", d.get("malwareProtectionEnabled"))
+            if en is None:
+                en = any(v is True for k, v in d.items() if k.endswith("Blocked"))
             return R(R.PASS, "Malware protection enabled. Aligns with Zscaler's Single Scan Multi-Action architecture.") if en else R(R.WARN, "Malware protection disabled. Best Practice: Enable inline malware protection — it runs as part of Zscaler's Single Scan Multi-Action engine with zero additional latency. Covers ransomware, spyware, and antivirus.")
         return R(R.PASS, "Malware protection settings accessible.")
     return R(R.WARN, "Cannot access malware protection settings. Best Practice: Ensure malware protection is enabled. It is a core component of Zscaler's threat protection stack alongside ATP and Sandbox.")
 
 def sec_4(cl):
     """ATP settings"""
-    d, c = cl.get("/zia/atpSettings")
-    if c == 404:
-        d, c = cl.get("/zia/advancedThreatProtection")
+    d, c = cl.get("/zia/cyberThreatProtection/advancedThreatSettings")
     if c in (200, 204):
         return R(R.PASS, "ATP settings configured. Advanced Threat Protection provides IPS-level inspection for web traffic.")
     return R(R.WARN, "ATP settings not accessible. Best Practice: Enable Advanced Threat Protection (ATP) for real-time detection of botnets, C2 callbacks, cross-site scripting, and known exploits. ATP is most effective when combined with SSL inspection for encrypted traffic visibility.")
 
 def sec_5(cl):
     """File type control"""
-    d, c = cl.get("/zia/fileTypeControlRules")
+    d, c = cl.get("/zia/fileTypeRules")
     r = _ls(d) if c in (200, 204) else []
     return R(R.PASS, f"{len(r)} file type control rule(s).") if r else R(R.WARN, "No file type control rules. Best Practice: Block high-risk file types (EXE, SCR, BAT, PS1, VBS, DLL) from untrusted categories. Allow specific file types only for sanctioned download sources.")
 
@@ -206,9 +204,7 @@ def loc_3(cl):
 
 def loc_4(cl):
     """Static IPs"""
-    d, c = cl.get("/zia/staticIPs")
-    if c == 404:
-        d, c = cl.get("/zia/trafficForwarding/staticIP")
+    d, c = cl.get("/zia/staticIP")
     r = _ls(d) if c in (200, 204) else []
     return R(R.PASS, f"{len(r)} static IP(s).") if r else R(R.WARN, "No static IPs configured. Note: Static IPs are used for location-based traffic forwarding. Not needed for ZCC-only deployments.")
 
@@ -244,8 +240,6 @@ def usr_3(cl):
 def usr_4(cl):
     """Admin roles segregation"""
     d, c = cl.get("/zia/adminRoles")
-    if c == 404:
-        d, c = cl.get("/zia/adminAndRoleManagement")
     r = _ls(d) if c in (200, 204) else []
     ro = [x for x in r if x.get("isReadOnly") or "read" in (x.get("name") or "").lower()]
     if len(r) >= 3:
@@ -259,6 +253,8 @@ def usr_5(cl):
     d, c = cl.get("/zia/auditlogEntryReport")
     if c in (200, 204):
         return R(R.PASS, "Audit logging accessible. Admin changes are tracked for compliance.")
+    if c == 404:
+        return R(R.INFO, "No audit log report has been requested: the API only returns the status of a report someone started. Admin changes are still logged; review them in the ZIA Admin Portal (Audit Logs).")
     return R(R.WARN, "Audit log not accessible via API. Best Practice: Regularly review admin audit logs for unauthorized configuration changes. Export to SIEM for retention beyond 30 days.")
 
 def usr_6(cl):
@@ -286,7 +282,7 @@ def capp_2(cl):
 
 def capp_3(cl):
     """Cloud app SSL policy"""
-    d, c = cl.get("/zia/cloudApplicationSslPolicy")
+    d, c = cl.get("/zia/cloudApplications/sslPolicy")
     if c == 404:
         d, c = cl.get("/zia/cloudApplicationRules")
     r = _ls(d) if c in (200, 204) else []

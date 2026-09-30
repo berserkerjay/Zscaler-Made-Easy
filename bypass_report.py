@@ -218,10 +218,7 @@ def _fetch_ssl_exemptions(client) -> Dict[str, Any]:
     """Exempted URL categories / hosts from SSL inspection."""
     out = {"items": [], "endpoints_probed": []}
     candidates = [
-        ("/zia/sslInspectionSettings", "global"),
         ("/zia/advancedSettings", "advanced"),
-        ("/zia/exemptedUrls", "exempted_urls"),
-        ("/zia/sslInspectionExemptedUrls", "exempted_urls_ssl"),
     ]
     for ep, label in candidates:
         try:
@@ -266,14 +263,14 @@ def _fetch_urlfilter_bypass(client) -> Dict[str, Any]:
 
 
 def _fetch_firewall_bypass(client) -> Dict[str, Any]:
-    data, code = client.get("/zia/firewallRules")
+    data, code = client.get("/zia/firewallFilteringRules")
     rules = _rules_to_list(data) if code == 200 else []
     allow = [_normalize_rule(r, "firewall_rule")
              for r in rules if _action_of(r) in BYPASS_ACTIONS]
     return {
         "count": len(allow),
         "total_rules": len(rules),
-        "endpoint": "/zia/firewallRules",
+        "endpoint": "/zia/firewallFilteringRules",
         "http_status": code,
         "items": allow,
     }

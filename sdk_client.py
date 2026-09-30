@@ -73,6 +73,20 @@ def _sdk_call(method, *args, **kwargs) -> Tuple[Any, int]:
         return {"error": str(e)}, 0
 
 
+def _cloud_app_rules(zs) -> Tuple[Any, int]:
+    """Cloud App Control rules of every rule type as one list, each tagged
+    with its type: the API lists them per type (/webApplicationRules/{type})."""
+    from dlp_assessment_full_auto import _CAC_TYPES
+    out, answered, first = [], False, None
+    for t in _CAC_TYPES:
+        data, code = _sdk_call(zs.zia.cloudappcontrol.list_rules, t)
+        first = first if first is not None else (data, code)
+        if code in (200, 204):
+            answered = True
+            out.extend(dict(r, type=r.get("type") or t) if isinstance(r, dict) else r for r in (data or []))
+    return (out, 200) if answered else first
+
+
 class SdkClient:
     """
     Drop-in replacement for the raw-HTTP Client class.
@@ -136,12 +150,8 @@ class SdkClient:
             "/zia/dlpDictionaries":          lambda: _sdk_call(zs.zia.dlp_dictionary.list_dicts),
             "/zia/dlpEngines":              lambda: _sdk_call(zs.zia.dlp_engine.list_dlp_engines),
             "/zia/dlpNotificationTemplates": lambda: _sdk_call(zs.zia.dlp_templates.list_dlp_templates),
-            "/zia/notificationTemplates":    lambda: _sdk_call(zs.zia.dlp_templates.list_dlp_templates),
-            "/zia/endpointDlpResources":     lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_icap_servers),
-            "/zia/endpointDlp/resources":    lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_icap_servers),
-            "/zia/dlpEdm":                  lambda: _sdk_call(zs.zia.dlp_resources.list_edm_schemas),
-            "/zia/dlpIdm":                  lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_idm_profiles),
-            "/zia/dlpIdmProfiles":          lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_idm_profiles),
+            "/zia/dlpExactDataMatchSchemas": lambda: _sdk_call(zs.zia.dlp_resources.list_edm_schemas),
+            "/zia/idmprofile":              lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_idm_profiles),
 
             # --- ZIA: SSL ---
             "/zia/sslInspectionRules":       lambda: _sdk_call(zs.zia.ssl_inspection_rules.list_rules),
@@ -149,40 +159,36 @@ class SdkClient:
             # --- ZIA: URL / Cloud App ---
             "/zia/urlFilteringRules":        lambda: _sdk_call(zs.zia.url_filtering.list_rules),
             "/zia/urlCategories":            lambda: _sdk_call(zs.zia.url_categories.list_categories),
-            "/zia/cloudApplicationRules":    lambda: _sdk_call(zs.zia.cloudappcontrol.list_rules, "STREAMING_MEDIA"),
+            "/zia/cloudApplicationRules":    lambda: _cloud_app_rules(zs),
 
             # --- ZIA: Isolation ---
-            "/zia/isolationProfile":         lambda: _sdk_call(zs.zia.cloud_browser_isolation.list_isolation_profiles),
+            "/zia/browserIsolation/profiles": lambda: _sdk_call(zs.zia.cloud_browser_isolation.list_isolation_profiles),
 
             # --- ZIA: PAC ---
             "/zia/pacFiles":                lambda: _sdk_call(zs.zia.pac_files.list_pac_files),
 
             # --- ZIA: CASB ---
-            "/zia/casbDlpRules":            lambda: _sdk_call(zs.zia.casb_dlp_rules.list_all_rules),
+            "/zia/casbDlpRules/all":        lambda: _sdk_call(zs.zia.casb_dlp_rules.list_all_rules),
 
             # --- ZIA: Advanced Settings ---
             "/zia/advancedSettings":         lambda: _sdk_call(zs.zia.advanced_settings.get_advanced_settings),
-            "/zia/dlpAdvancedSettings":      lambda: _sdk_call(zs.zia.advanced_settings.get_advanced_settings),
 
             # --- ZIA: NSS ---
             "/zia/nssFeeds":                lambda: _sdk_call(zs.zia.cloud_nss.list_nss_feed),
-            "/zia/nssFeed":                 lambda: _sdk_call(zs.zia.cloud_nss.list_nss_feed),
             "/zia/nssServers":              lambda: _sdk_call(zs.zia.nss_servers.list_nss_servers),
 
             # --- ZIA: ICAP / Incident Receivers ---
             "/zia/icapServers":              lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_icap_servers),
-            "/zia/incidentReceivers":        lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_incident_receiver),
             "/zia/incidentReceiverServers":  lambda: _sdk_call(zs.zia.dlp_resources.list_dlp_incident_receiver),
 
             # --- ZIA: Admin ---
             "/zia/adminRoles":              lambda: _sdk_call(zs.zia.admin_roles.list_roles),
-            "/zia/adminAndRoleManagement":  lambda: _sdk_call(zs.zia.admin_roles.list_roles),
 
             # --- ZIA: Tenancy ---
             "/zia/tenancyRestrictionProfile": lambda: _sdk_call(zs.zia.tenancy_restriction_profile.list_restriction_profile),
 
             # --- ZIA: Device Management ---
-            "/zia/devicePostureProfiles":    lambda: _sdk_call(zs.zia.device_management.list_device_groups),
+            "/zia/deviceGroups":            lambda: _sdk_call(zs.zia.device_management.list_device_groups),
 
             # --- ZCC: Client Connector ---
             "/zcc/devices":                 lambda: _sdk_call(zs.zcc.devices.list_devices),

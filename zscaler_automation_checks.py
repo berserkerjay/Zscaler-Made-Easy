@@ -95,7 +95,7 @@ def auto_tf_1(cl):
     rules_missing_id = 0
     total = 0
     for ep in ("/zia/webDlpRules", "/zia/urlFilteringRules",
-               "/zia/firewallRules", "/zia/sslInspectionRules"):
+               "/zia/firewallFilteringRules", "/zia/sslInspectionRules"):
         d, c = cl.get(ep)
         if c != 200:
             continue
@@ -122,7 +122,7 @@ def auto_tf_2(cl):
     problematic = []
     total = 0
     for ep in ("/zia/webDlpRules", "/zia/urlFilteringRules",
-               "/zia/firewallRules"):
+               "/zia/firewallFilteringRules"):
         d, c = cl.get(ep)
         if c != 200:
             continue
@@ -154,7 +154,7 @@ def auto_tf_3(cl):
     missing_order = 0
     total = 0
     for ep in ("/zia/webDlpRules", "/zia/urlFilteringRules",
-               "/zia/firewallRules"):
+               "/zia/firewallFilteringRules"):
         d, c = cl.get(ep)
         if c != 200:
             continue
@@ -183,7 +183,7 @@ def auto_tf_4(cl):
     no_desc = 0
     total = 0
     for ep in ("/zia/webDlpRules", "/zia/urlFilteringRules",
-               "/zia/firewallRules"):
+               "/zia/firewallFilteringRules"):
         d, c = cl.get(ep)
         if c != 200:
             continue
@@ -212,7 +212,7 @@ def auto_tf_5(cl):
     total = 0
     for ep, label in (("/zia/webDlpRules", "web_dlp"),
                       ("/zia/urlFilteringRules", "url"),
-                      ("/zia/firewallRules", "fw")):
+                      ("/zia/firewallFilteringRules", "fw")):
         d, c = cl.get(ep)
         if c != 200:
             continue
