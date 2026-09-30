@@ -835,12 +835,12 @@
   <!-- The tenant configuration card is shown inside the guide's "Connect to the tenant" step; this is where it waits while the guide re-renders. -->
   <div id="configPark" hidden></div>
 
-  <!-- Config Form: sign-in details only. The organisation and assessor
-       fields below are moved by dashboard.js into the Scope assessment
-       page (with the channels, the scope and the frameworks). -->
+  <!-- Config Form: sign-in details and the report details. dashboard.js
+       gathers the organisation and assessor fields into a Report details
+       block above Authenticate. -->
   <div class="card" id="configCard">
     <h2>Tenant configuration</h2>
-    <p class="helper" style="margin-top:-0.4rem;margin-bottom:0.9rem;">Sign-in details only: what the app needs to read the tenant. Who the report is for and what it covers live under <strong>Scope assessment</strong>.</p>
+    <p class="helper" style="margin-top:-0.4rem;margin-bottom:0.9rem;">What the app needs to read the tenant, and the report details: who the report is for and who ran it. What the assessment covers lives under <strong>Scope assessment</strong>.</p>
     <div class="form-grid">
       <div class="field">
         <label>Organization name <span class="required">*</span></label>
