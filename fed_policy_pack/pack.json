@@ -2,6 +2,7 @@
   "name": "Fed Policy Pack",
   "version": "2.1",
   "description": "Zscaler's Fed Policy Pack V1.1 plus the CUI Marking design: dictionaries, engines and monitor rules for FOUO markings, Atomic Energy Act RD/FRD, Standard Forms, US PII, US PHI, financial information, ITAR, Traffic Light Protocol and private keys, and Controlled Unclassified Information by its markings (31 dictionaries in seven tiers: structural banners and portion marks, category tokens, malformed-marking proximity, legacy FOUO/LES/SBU/distribution statements, designation blocks, a decontrol exclusion and contextual vocabulary) behind block, caution and monitor rules. Every rule is mirrored to Endpoint, SaaS and Email DLP. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "deploy_note": "INSTALL ONE CHANNEL AT A TIME. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).",
   "references": [
     "Zscaler Fed Policy Pack V1.1",
     "32 CFR Part 2002 (Controlled Unclassified Information)",

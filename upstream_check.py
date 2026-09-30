@@ -293,20 +293,37 @@ def pypi_releases(fetch: Fetch) -> Tuple[Optional[Dict[str, Any]], str]:
             "newest_on_index": versions[-1] if versions else None}, ""
 
 
-def download_sdk(version: str, dest: str) -> Tuple[Optional[str], str]:
-    """Download one release's wheel with pip (no dependencies) and unpack
-    it under dest/<version>. Returns (directory, error)."""
-    out_dir = os.path.join(dest, version)
-    dl = os.path.join(dest, "dl")
-    os.makedirs(dl, exist_ok=True)
-    cp = subprocess.run([sys.executable, "-m", "pip", "download", "--no-deps", "-q", "-d", dl, f"{SDK_PACKAGE}=={version}"],
-                        capture_output=True, text=True, timeout=300)
-    if cp.returncode != 0:
-        return None, (cp.stderr or cp.stdout or "pip download failed")[-400:]
-    wheels = [f for f in os.listdir(dl) if f.endswith(".whl") and f"-{version}-" in f]
+def download_sdk(version: str, dest: str, get: Optional[Callable[[str], Tuple[Optional[bytes], int, str]]] = None
+                 ) -> Tuple[Optional[str], str]:
+    """Download one release's wheel from PyPI and unpack it under
+    dest/<version>. Returns (directory, error). It asks PyPI's JSON API
+    for the wheel and its SHA-256, fetches it through the allowlisted
+    getter (pypi.org, files.pythonhosted.org) and checks the hash, so it
+    needs no pip: the container image ships without one, and the check
+    must work there as it does on a local install."""
+    import hashlib
+    import io
+    if get is None:
+        from zscaler_update_check import _safe_get as get
+    body, status, err = get(f"https://pypi.org/pypi/{SDK_PACKAGE}/{version}/json")
+    if err or status != 200 or not body:
+        return None, err or f"PyPI answered HTTP {status} for {SDK_PACKAGE} {version}"
+    try:
+        files = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body).get("urls") or []
+    except ValueError as e:
+        return None, f"PyPI answered something that is not JSON: {e}"
+    wheels = [f for f in files if f.get("packagetype") == "bdist_wheel" and str(f.get("filename", "")).endswith(".whl")]
     if not wheels:
-        return None, f"no wheel for {version} in {dl}"
-    with zipfile.ZipFile(os.path.join(dl, wheels[0])) as z:
+        return None, f"PyPI lists no wheel for {SDK_PACKAGE} {version}"
+    whl = wheels[0]
+    data, status, err = get(whl.get("url") or "")
+    if err or status != 200 or not data:
+        return None, err or f"the wheel download answered HTTP {status}"
+    want = (whl.get("digests") or {}).get("sha256")
+    if not want or hashlib.sha256(data).hexdigest() != want:
+        return None, f"{whl.get('filename')}: SHA-256 does not match what PyPI publishes; not unpacked"
+    out_dir = os.path.join(dest, version)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
         z.extractall(out_dir)
     return out_dir, ""
 
