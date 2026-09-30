@@ -7,6 +7,11 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### SaaS Security and Email DLP are scored in the assessment
+- **What you reported.** "In the assessment I don't see scores for SaaS and Email."
+- **Why.** Inline Web, Endpoint and GenAI were sections of their own with a score; SaaS and Email only had one presence check each inside Multi-Channel.
+- **Now** two new sections, **Ch.C — SaaS Security** and **Ch.D — Email DLP**, eight checks each, read from the tenant (read-only): SaaS applications onboarded, rules present, every onboarded application covered, files at rest scanned, rules carry engines, rules enabled, remediation beyond reporting, external and public sharing covered; Email tenant (Exchange, Gmail or secure email gateway) onboarded, rules present, rules carry engines, rules enabled, enforcement beyond monitoring, rules scoped to the mail tenant, incidents reach an auditor, recipient scoping. They appear in Score by section and the report, count toward the overall score, and follow the Scope page's channel ownership (a channel marked covered by another product is left out). A channel the tenant has not licensed says so instead of failing.
+
 ### Whatever works on a local install works in the container
 - **What you asked for.** "Whatever works on the local install should work in the container without fault", then "please check".
 - **How it was checked.** Every place the app writes a file, every external program it runs and every localhost-only rule was listed from the code. The running container was then asked whether each location is writable: `/app` is read-only there, and `/data` is the only place it can write.

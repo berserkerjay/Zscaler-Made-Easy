@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Tuple
 # against the check's section and id prefix; the first hit wins, so the
 # more specific entries come first.
 OUTCOMES: List[Tuple[Tuple[str, ...], str]] = [
+    (("ch.c", "c.", "saas security"), "Sensitive files stored and shared in SaaS applications are found, and exposure is removed before it becomes a breach."),
+    (("ch.d", "d.", "email dlp"), "Sensitive data cannot leave by email without being seen, and the right mail is stopped before it reaches the wrong recipient."),
     (("incident mgmt", "12."), "Every incident reaches an analyst with the evidence, in time to act, and an auditor can see it was handled."),
     (("pilot tests", "8."), "The controls are proven to work on real traffic before the customer relies on them."),
     (("troubleshooting", "9."), "Problems are found and fixed before users notice them."),
