@@ -79,6 +79,7 @@ ENV ZSCALER_BIND_HOST=0.0.0.0 \
     DLPCHECK_PROPOSALS_FILE=/data/proposals.json \
     DLP_CHECK_GUIDANCE_STATE=/data/guidance_state.json \
     DLP_CHECK_SAAS_MATRIX=/data/saas_apps.local.json \
+    DLP_CHECK_BEACON_STATE=/data/beacon_state.json \
     DLP_CHECK_IN_CONTAINER=1
 
 USER dlpcheck

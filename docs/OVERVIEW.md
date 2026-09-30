@@ -161,6 +161,14 @@ what you get, what to do next.
   programme stages and the framework coverage. Where: the Dashboard.
 - **Zscaler updates** — a check of PyPI and help.zscaler.com for SDK and
   documentation changes since last time.
+- **Beacon: SDK, API & Terraform changes** — the upstream check's online
+  half run on this server: the Zscaler Python SDK, the ZIA API (the SDK's
+  service definition, the API reference, the help-center pages) and the
+  zscaler/zia Terraform provider, on a timer (every 24 hours by default,
+  `DLP_CHECK_BEACON_HOURS`) and on demand, with what changed since the
+  last run and the last 30 runs. Optionally a read-only (GET) watch of
+  every tenant endpoint the app uses, which says which ones now answer
+  differently.
 - **Update app** — fetches the latest build of this app from GitHub,
   installs the pinned dependencies and restarts; the Branch dropdown
   tries a fix on QA or Development before it is promoted to Stable.
