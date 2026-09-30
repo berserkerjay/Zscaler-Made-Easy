@@ -118,14 +118,13 @@
     const btn = $('runBtn');
     if (btn && btn.disabled) { say('The assessment is already running.'); return; }
     const missing = missingFields();
-    // The organisation and assessor live on the Scope assessment page
-    // (report details); everything else is a sign-in detail on Connect.
+    // The organisation and assessor are the Report details block of the
+    // tenant configuration on Connect, beside the sign-in details.
     const report = missing.filter(id => id === 'org' || id === 'assessor');
     if (report.length) {
-      note(`Fill in ${report.map(id => FIELD_LABELS[id] || id).join(' and ')} under Report details, then click Run assessment.`, 'warn');
+      note(`Fill in ${report.map(id => FIELD_LABELS[id] || id).join(' and ')} under Report details in Connect to the tenant, then click Run assessment.`, 'warn');
       say('Fill in the report details first.');
-      showScopeView(); setCurrent('scope');
-      setTimeout(() => { const el = $(report[0]); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } }, 350);
+      goConnect(report[0]);
       return;
     }
     if (missing.length) {
@@ -163,6 +162,20 @@
   function showTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = false; const cc = $('configCard'); if (cc) cc.hidden = false; }
   function hideTenantConfig() { const gp = $('gdPanel'); if (gp) gp.hidden = true; const cc = $('configCard'); if (cc) cc.hidden = true; }
   hideTenantConfig();
+  // Report details (who the report is for, who ran it) are part of the
+  // tenant configuration: their own block in the configuration card, above
+  // Authenticate. The same live #org / #assessor fields, moved, not copied.
+  (function reportDetailsInTenantConfig() {
+    const card = $('configCard');
+    const org = $('org'), who = $('assessor');
+    if (!card || !org || !who || $('dbConnectReport')) return;
+    const box = document.createElement('div');
+    box.id = 'dbConnectReport'; box.className = 'db-connect-report';
+    box.innerHTML = '<h3>Report details</h3><p class="helper">Who the report is for and who ran it; both print on the report cover.</p><div class="form-grid" id="dbConnectReportBody"></div>';
+    [org, who].forEach(el => { const f = el.closest('.field'); if (f) box.querySelector('#dbConnectReportBody').appendChild(f); });
+    const actions = card.querySelector('.actions');
+    if (actions) actions.insertAdjacentElement('beforebegin', box); else card.appendChild(box);
+  })();
   const origGoConfig = window._gdGoConfig;
   if (typeof origGoConfig === 'function') window._gdGoConfig = function () { showTenantConfig(); return origGoConfig.apply(this, arguments); };
 
@@ -248,11 +261,6 @@
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
       <div class="card db-scope-section" id="dbScopeFwCard"><div id="dbScopeFwBody"></div></div>
-      <div class="card db-scope-section" id="dbScopeReportCard">
-        <div class="db-scope-section-h"><h2>Report details</h2></div>
-        <p class="db-scope-p">Who the report is for and who ran it; both print on the cover.</p>
-        <div class="form-grid" id="dbScopeReportBody"></div>
-      </div>
       <div class="db-scope-foot">
         <button type="button" class="rp-btn primary" id="dbScopeRun">▶ Run assessment</button>
         <span class="db-scope-p">Signs in first when needed. The assessment runs on this page; the results open on the Dashboard.</span>
@@ -271,13 +279,12 @@
       saveExtra(); renderChannelsList(); say(`${name.trim()} added.`);
     });
     sec.querySelector('#dbScopeRun').addEventListener('click', () => { runFromSidebar(); });
-    // Assessment scope, Compliance frameworks and the report details
-    // (organisation, assessor) are moved in, not copied: the same live
-    // fields runAssessment() already reads. The tenant configuration card
-    // keeps the sign-in details only.
+    // Assessment scope and Compliance frameworks are moved in, not copied:
+    // the same live fields runAssessment() already reads. The report
+    // details (organisation, assessor) stay with the tenant configuration
+    // (reportDetailsInTenantConfig), saved with the tenant profile.
     const sf = $('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf);
     const fw = $('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw);
-    ['org', 'assessor'].forEach(id => { const el = $(id); const field = el && el.closest('.field'); if (field) sec.querySelector('#dbScopeReportBody').appendChild(field); });
     return sec;
   }
   function channelRowHtml(c) {

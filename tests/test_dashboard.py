@@ -112,7 +112,8 @@ def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
     js = _read("dashboard.js")
     assert "function runFromSidebar()" in js and "sec.querySelector('#dbScopeRun').addEventListener('click', () => { runFromSidebar(); });" in js
     assert "if (k === 'run')" not in js
-    assert "const report = missing.filter(id => id === 'org' || id === 'assessor');" in js and "under Report details, then click Run assessment" in js
+    assert "const report = missing.filter(id => id === 'org' || id === 'assessor');" in js and "under Report details in Connect to the tenant, then click Run assessment" in js
+    assert "goConnect(report[0]);" in js, "a missing organisation or assessor opens Connect on that field"
     assert "hideScopeView(); setCurrent('dashboard');" in js, "the Scope assessment page steps aside when the run starts"
     assert "function missingFields()" in js and "['org', 'assessor'].concat(legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec'])" in js
     assert "remembered && (id === 'csec' || id === 'zpass' || id === 'zkey')" in js, "a profile's remembered secret counts"
@@ -222,8 +223,20 @@ def test_scope_combines_channels_assessment_scope_and_compliance_frameworks():
     assert "Scope assessment</h1>" in js and 'data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope assessment</button>' in js
     assert "$('scopeField'); if (sf) sec.querySelector('#dbScopeAssessBody').appendChild(sf)" in js
     assert "$('complianceFwField'); if (fw) sec.querySelector('#dbScopeFwBody').appendChild(fw)" in js
-    assert "['org', 'assessor'].forEach(id => { const el = $(id); const field = el && el.closest('.field'); if (field) sec.querySelector('#dbScopeReportBody').appendChild(field); });" in js
+    assert "dbScopeReportBody" not in js, "Report details are part of the tenant configuration, not Scope assessment"
     html = _read("index.html")
-    assert "Sign-in details only: what the app needs to read the tenant." in html
+    assert "What the app needs to read the tenant, and the report details" in html
     for cls in (".db-ch-row", ".db-ch-choice", ".db-pill", ".db-scope-section", ".db-scope-tally", ".db-scope-foot", ".db-chip.risk-fail", ".db-chip.risk-ok"):
         assert cls in css, cls
+
+
+def test_report_details_are_part_of_the_tenant_configuration():
+    # "Make the report details section part of the tenant config": the
+    # organisation and assessor fields sit in their own Report details block
+    # inside the tenant configuration card, above Authenticate.
+    js = _read("dashboard.js")
+    assert "(function reportDetailsInTenantConfig()" in js
+    assert "box.id = 'dbConnectReport'" in js and "<h3>Report details</h3>" in js
+    assert "[org, who].forEach(el => { const f = el.closest('.field'); if (f) box.querySelector('#dbConnectReportBody').appendChild(f); });" in js
+    assert "actions.insertAdjacentElement('beforebegin', box)" in js, "above Authenticate"
+    assert ".db-connect-report" in _read("dashboard.css")
