@@ -31,9 +31,9 @@
     <div class="db-brand"><span class="db-mark" aria-hidden="true">Z</span><div><div class="db-brand-t">Zscaler Assessment</div><div class="db-brand-s">DLP-Check</div></div></div>
     <nav class="db-nav" aria-label="Workflow">
       <div class="db-nav-l">Workflow</div>
-      <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope assessment</button>
+      <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
     </nav>
     <div id="dbTools" role="navigation" aria-label="Tools"></div>
     <div class="db-current" id="dbCurrent" aria-label="Current implementation">

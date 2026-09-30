@@ -164,11 +164,14 @@ def test_tenant_configuration_is_hidden_until_its_own_sidebar_link_is_used():
     assert "const origGoConfig = window._gdGoConfig;" in js and "showTenantConfig(); return origGoConfig.apply(this, arguments);" in js, "the legacy step strip's Configure/Scope buttons call _gdGoConfig directly, bypassing the sidebar handler"
 
 
-def test_connect_to_the_tenant_sits_directly_below_dashboard_in_the_sidebar():
+def test_the_workflow_sidebar_follows_the_steps_connect_scope_then_dashboard():
+    # "Move connect to the tenant above the dashboard": the Workflow group
+    # reads in the order the work is done, like the step strip.
     js = _read("dashboard.js")
     keys = ("dashboard", "configure", "scope", "review")
     nav = [k for k in re.findall(r'class="db-item" data-db="([a-z]+)"', js) if k in keys]
-    assert nav == ["dashboard", "configure", "scope"], nav
+    assert nav == ["configure", "scope", "dashboard"], nav
+    assert 'data-db="dashboard" aria-current="page"' in js, "the Dashboard is still the page that opens first"
     assert 'data-db="channels"' not in js, "Channels is folded into Scope, not its own nav item"
     assert 'data-db="review"' not in js, "Findings & report is the Dashboard, not its own nav item"
     assert "if (k === 'review') k = 'dashboard';" in js, "the step strip's review step lands on the Dashboard"
