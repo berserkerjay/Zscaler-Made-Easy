@@ -96,3 +96,46 @@ def test_rejected_tokens_are_written_to_the_audit_log(monkeypatch, tmp_path):
         ("/", "the UI token in the address was not valid")], denied
     assert all(e.get("client") for e in denied)
     assert "guess-one" not in text and "guess-two" not in text and "test-token-abc123" not in text
+
+
+def test_without_sso_the_audit_actor_is_the_local_ui_token(monkeypatch, tmp_path):
+    """SSO off: every audit line says the call came through the local UI
+    token (or no token at all when the gate is off); a proposal's "by" is
+    set the same way, whatever name the page sends."""
+    import json
+    import proposals as pr
+    from test_proposals import REPORT
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    monkeypatch.setenv("DLPCHECK_PROPOSALS_FILE", str(tmp_path / "proposals.json"))
+    c = _on(monkeypatch)
+    pr.refresh_from_report(REPORT, "acme")
+    pid = next(p["id"] for p in pr.list_queue("acme") if p["kind"] == "retire_rule")
+    r = c.post(f"/api/proposals/acme/{pid}/decide", json={"decision": "dismiss", "by": "Mallory"},
+               headers={"X-DLP-Check-Token": "test-token-abc123"})
+    assert r.status_code == 200 and r.json()["decided_by"] == "local UI token"
+    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    assert {e["actor"] for e in events if e["event"] in ("api", "proposal_decision")} == {"local UI token"}
+    assert "Mallory" not in json.dumps([e for e in events if e["event"] == "proposal_decision"])
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
+    TestClient(srv.app).post("/api/tenant/check", json={})
+    assert json.loads(log.read_text(encoding="utf-8").splitlines()[-1])["actor"] == "local, no UI token"
+
+
+def test_a_failed_audit_write_is_reported_loudly(monkeypatch, tmp_path, capsys):
+    import audit
+    import proposals as pr
+    from test_proposals import REPORT
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "no-such-dir" / "audit.log"))
+    assert audit.record("test_event", x=1) is None
+    assert "AUDIT LOG WRITE FAILED" in capsys.readouterr().err
+    # A crash inside the audit call of a decision is reported, not swallowed.
+    monkeypatch.setenv("DLPCHECK_PROPOSALS_FILE", str(tmp_path / "proposals.json"))
+    pr.refresh_from_report(REPORT, "acme")
+    pid = next(p["id"] for p in pr.list_queue("acme") if p["kind"] == "retire_rule")
+    def boom(*a, **k):
+        raise RuntimeError("disk on fire")
+    monkeypatch.setattr(audit, "record", boom)
+    assert pr.decide("acme", pid, "dismiss", by="x")["status"] == "dismissed"
+    err = capsys.readouterr().err
+    assert "AUDIT LOG WRITE FAILED" in err and "disk on fire" in err

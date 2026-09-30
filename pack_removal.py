@@ -739,10 +739,12 @@ def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: st
 def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
              cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Run one removal under pack_ops run control (see pack_deploy.apply),
-    on the client's own tenant's ZIA rate limits."""
+    on the client's own tenant's ZIA rate limits. Every delete and the
+    run's summary go to the audit log (pack_ops.audited_run)."""
     import zia_rate
-    with zia_rate.using_client(client), ops.run_scope(cancel):
-        return _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+    with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
+        run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+        return run["result"]
 
 
 def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float) -> Dict[str, Any]:

@@ -216,8 +216,9 @@ def _execute_keyed(client, tenant: str, pid: str, *, direction: str, writes_enab
         import audit
         audit.record(f"proposal_{direction}", tenant=proposals.tenant_key(tenant), proposal=pid, kind=p.get("kind"), target=p.get("target"),
                      by=by, status=status, changed=changed, failed=failed)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001 - the change is made; the lost audit line is reported loudly
+        import audit
+        audit.report_failure(f"the {direction} of proposal {pid}", e)
     return {"ok": not failed, "status": status, "field": field, "results": results, "changed": changed, "proposal": rec,
             "activation": "Pending in ZIA until an admin clicks Activate in the ZIA Admin Portal."}
 

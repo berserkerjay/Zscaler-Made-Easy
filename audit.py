@@ -2,19 +2,23 @@
 
 Every non-GET request to /api/* is appended to audit.log (JSON lines,
 owner-only, git-ignored; path in DLP_CHECK_AUDIT) with the time, method,
-path, status, duration, caller address, whether write mode was on, and a
-redacted view of the request body (keys that look like secrets or tokens
+path, status, duration, caller address, who made the call (`actor`: the
+signed-in email under SSO, otherwise "local UI token"), whether write
+mode was on, and a redacted view of the request body (keys that look like secrets or tokens
 are dropped, long values truncated). Write-mode toggles and updates go
 through the same log. Nothing here is ever sent anywhere; the file is
 evidence for the operator and the customer.
 
 The log is capped by size: past DLP_CHECK_AUDIT_MAX_MB (default 20) the
-oldest half is rolled to audit.log.1."""
+oldest half is rolled to audit.log.1. A line that cannot be written is
+reported on stderr (logger.error), never silently dropped."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import sys
 import threading
 import time
 from typing import Any, Dict, Optional
@@ -24,6 +28,7 @@ _LOCK = threading.Lock()
 _SECRET_KEY = re.compile(r"secret|token|password|passwd|credential|authorization|cookie|api_?key|private_?key", re.I)
 _MAX_VALUE = 200
 _MAX_KEYS = 40
+logger = logging.getLogger("dlp_check.audit")
 
 
 def path() -> str:
@@ -52,10 +57,33 @@ def redact(value: Any, depth: int = 0) -> Any:
     return value
 
 
+def _actor() -> str:
+    """Who the request being handled is from (security.current_actor)."""
+    try:
+        import security
+        return security.current_actor()
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+def report_failure(what: str, error: Any) -> None:
+    """Say loudly that an audit line was lost: always on stderr, and
+    through logger.error too when logging is set up."""
+    msg = f"AUDIT LOG WRITE FAILED: {what} was not recorded in {path()} ({error})."
+    if logger.hasHandlers():
+        logger.error(msg)
+    try:
+        print(msg, file=sys.stderr, flush=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def record(event: str, **fields: Any) -> Optional[str]:
-    """Append one event. Returns the path written, or None when the log
-    could not be written (never raises; auditing must not break a call)."""
-    entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event}
+    """Append one event, with the actor (who made the call) unless the
+    caller names one. Returns the path written, or None when the log
+    could not be written (never raises; auditing must not break a call,
+    but the failure is reported on stderr)."""
+    entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, "actor": fields.pop("actor", None) or _actor()}
     entry.update({k: redact(v) for k, v in fields.items()})
     line = json.dumps(entry, default=str, separators=(",", ":")) + "\n"
     p = path()
@@ -66,7 +94,8 @@ def record(event: str, **fields: Any) -> Optional[str]:
             with os.fdopen(fd, "a", encoding="utf-8") as f:
                 f.write(line)
         return p
-    except OSError:
+    except OSError as e:
+        report_failure(f"the '{event}' event", e)
         return None
 
 

@@ -98,7 +98,8 @@ def test_endpoints(tmp_path, monkeypatch):
     bad = c.post(f"/api/proposals/acme/{pid}/decide", json={"decision": "approve"})
     assert bad.status_code == 400 and "I UNDERSTAND" in bad.json()["detail"]
     ok = c.post(f"/api/proposals/acme/{pid}/decide", json={"decision": "approve", "confirm": "I UNDERSTAND", "by": "Jane"})
-    assert ok.status_code == 200 and ok.json()["status"] == "approved" and ok.json()["decided_by"] == "Jane"
+    # Who decided is set by the server (the signed-in person, or the local token), never the "by" a page sends.
+    assert ok.status_code == 200 and ok.json()["status"] == "approved" and ok.json()["decided_by"] == "local, no UI token"
     assert c.post(f"/api/proposals/acme/nope/decide", json={"decision": "dismiss"}).status_code == 400
     assert c.get("/api/proposals?tenant=").status_code == 400
     md = c.get("/api/proposals/export?tenant=acme")
