@@ -264,7 +264,7 @@ def test_undo_leaves_renamed_or_shared_objects_alone(store, tmp_path, monkeypatc
     out2 = pd.undo(client, rec, writes_enabled=True)
     by2 = {r["kind"]: r for r in out2["results"]}
     assert by2["policy"]["status"] == "gone" and by2["engine"]["status"] == "failed" and "referenced" in by2["engine"]["error"]
-    assert by2["engine"]["attempts"] == 3
+    assert by2["engine"].get("attempts", 1) == 1, "an in-use refusal is not retried before the run's one activation"
     assert by2["dictionary"]["status"] == "skipped" and by2["dictionary"]["reason"].startswith("checked again just before removal: still used by engine")
     assert out2["status"] in ("partial", "failed") and not out2["complete"]
 
