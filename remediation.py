@@ -405,7 +405,7 @@ def execute(client, check_id: str, criteria: Dict[str, Any], dry_run: bool = Tru
 
     if p.get("destructive") and not __import__("security").writes_enabled():
         return {"status": "blocked", **p,
-                "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. Relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat."}
+                "reason": "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. To turn them on, " + __import__("security").write_enable_hint() + "."}
 
     method = p["method"].upper()
     endpoint = p["endpoint"]
