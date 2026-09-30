@@ -680,6 +680,16 @@ const DZ_DEP = {
   error:   { cls: 'st-fail',    icon: '!', label: 'Unavailable' },
   info:    { cls: 'st-reuse',   icon: 'i', label: 'Note' },
 };
+// Preflight check: will this run succeed at ZIA's rate limits, from ZIA's recent answers.
+function _dzRateCheck(f, blocked) {
+  if (!f || blocked) return '';
+  const sev = { ok: 'ok', warn: 'warning', fail: 'error' }[f.severity] || 'info';
+  const local = f.run_after ? ` (${new Date(f.run_after * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} your time)` : '';
+  return `<div class="dz-card sev-${sev}" style="margin-top:0.9rem;" role="status"><div class="bar"></div><div>
+    <div class="t">Rate-limit check: ${_dzE(f.title || '')}</div><div class="d">${_dzE(f.verdict)}${_dzE(local)}</div>
+    ${f.detail ? `<div class="d" style="margin-top:0.3rem;color:var(--dim);">${_dzE(f.detail)}</div>` : ''}</div></div>`;
+}
+
 function _dzDepsHtml(deps) {
   if (!deps || !deps.length) return '';
   const missing = deps.filter(d => d.status === 'missing' || d.status === 'error').length;
@@ -755,6 +765,7 @@ function _dzRenderReview() {
       <div><div class="k">Tenant rules</div><div class="v">${t.rules ?? '–'}<span style="font-size:0.75rem;color:var(--dim);font-weight:500;"> / ${t.rule_cap || 127}</span></div></div>
     </div>
     ${(R.blockers || []).map(b => `<div class="dz-card sev-error" style="margin-top:0.9rem;"><div class="bar"></div><div><div class="t">Blocked</div><div class="d">${_dzE(b)}</div></div></div>`).join('')}
+    ${_dzRateCheck(R.rate_forecast, R.status === 'blocked')}
     <details class="dz-fold dz-howto"><summary><div class="dz-h">How to read this plan</div></summary>
       <ul class="dz-note">
         <li><strong>Nothing has been written.</strong> This is a dry run against the live tenant.</li>
@@ -1284,7 +1295,7 @@ function _dzRemovalPreview() {
       ${R.plan.read ? `<div class="d" style="margin-top:0.4rem;">What the preview read from ${_dzE(R.plan.tenant_label || 'the tenant')}: ${_dzE(_dzReadSummary(R.plan.read))}</div>` : ''}
       ${(R.plan.warnings || []).length ? `<div class="d" style="margin-top:0.4rem;">${(R.plan.warnings || []).map(w => `⚠ ${_dzE(w)}`).join('<br>')}</div>` : ''}</div></div>` : `
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What was checked</div><div class="d">Every DLP rule on every channel of ${_dzE(R.plan.tenant_label || 'the tenant')} and every engine were read. An engine goes only when no rule outside this selection uses it; a dictionary goes only when no engine that stays uses it; predefined Zscaler objects are never touched. ${_dzN(remove.filter(i => i.kind === 'policy').length, 'rule')}, ${_dzN(remove.filter(i => i.kind === 'engine').length, 'engine')} and ${_dzN(remove.filter(i => i.kind === 'dictionary').length, 'dictionary', 'dictionaries')} will be removed; ${_dzN(keep.length, 'object')} kept. The same usage check runs again right before each engine and dictionary is deleted.</div></div></div>
-    ${R.plan.rate_forecast ? `<div class="dz-card sev-${R.plan.rate_forecast.severity === 'warn' ? 'warning' : 'ok'}"><div class="bar"></div><div><div class="t">ZIA rate limits</div><div class="d">${_dzE(R.plan.rate_forecast.verdict)} Counted from the requests DLP-Check sent in the last hour; another tool using the same API client is not visible here.</div></div></div>` : ''}
+    ${_dzRateCheck(R.plan.rate_forecast, R.plan.status === 'blocked')}
     <div class="dz-h" style="margin-top:1rem;">Will remove<span class="count">${remove.length}</span></div>
     <div class="dz-rows">${removeSorted.map(row).join('')}</div>
     ${keep.length ? `<div class="dz-h" style="margin-top:1rem;">Kept (still used elsewhere)<span class="count">${keep.length}</span></div><div class="dz-rows">${keep.map(row).join('')}</div>` : ''}`}`;
