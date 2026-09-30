@@ -29,6 +29,7 @@ import json
 import os
 import re
 import smtplib
+import ssl
 import sys
 import time
 from datetime import datetime, timezone
@@ -430,9 +431,16 @@ def _send_email(subject: str, body: str, e: Dict[str, Any]) -> Dict[str, Any]:
         msg.set_content(body)
         user = os.environ.get("DLP_CHECK_SMTP_USER", "")
         password = os.environ.get("DLP_CHECK_SMTP_PASSWORD", "")
+        if user and not e["tls"]:
+            # Never send the mail password in clear text. Without TLS only an
+            # unauthenticated relay (no DLP_CHECK_SMTP_USER) is used.
+            return {"channel": "email", "sent": False,
+                    "why": "not sent: DLP_CHECK_SMTP_TLS=0 would send the SMTP password unencrypted; turn TLS back on, or use a relay that needs no sign-in"}
         with smtplib.SMTP(e["host"], int(e["port"]), timeout=20) as smtp:
             if e["tls"]:
-                smtp.starttls()
+                # Verify the mail server's certificate and name. A private CA
+                # is trusted through SSL_CERT_FILE, not by switching checks off.
+                smtp.starttls(context=ssl.create_default_context())
             if user:
                 smtp.login(user, password)
             smtp.send_message(msg)
