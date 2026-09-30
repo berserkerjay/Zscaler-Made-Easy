@@ -83,7 +83,10 @@ def test_static_workspace_shapes(tmp_path):
     assert 'id = lookup(var.email_tenant_ids, "Email-Monitor", var.email_tenant_ids_default)' in r, "one map variable per channel, not one variable per rule"
     email = r.split('resource "zia_outbound_email_dlp"')[1]
     assert "rank" not in email.split("lifecycle")[0]        # email rules have no rank
-    assert email.count("lifecycle {") == 1 and email.rstrip().endswith("}\n  }\n}") and 'error_message = "Rule Email-Monitor: set email_tenant_ids' in email, "one lifecycle block, last, with the plan-time check"
+    # Email tenants are optional on an Email DLP rule: the block is dynamic
+    # (written only when ids are set) and nothing fails at plan without them.
+    assert 'dynamic "email_tenants"' in email and "for_each = length(lookup(var.email_tenant_ids" in _sp(email)
+    assert "error_message" not in email, "no plan-time requirement for email tenants"
     vt = files["variables.tf"]
     assert 'variable "email_tenant_ids"' in vt and "type        = map(list(number))" in vt and 'variable "email_tenant_ids_default"' in vt
     assert 'variable "saas_tenant_ids"' not in vt, "the SaaS rule names its tenants, so no SaaS variable is needed"

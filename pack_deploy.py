@@ -845,6 +845,9 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             scope = " scoped to " + ", ".join(t["name"] for t in item["resolved"]["tenants"])
         elif item["resolved"].get("cloud_applications"):
             scope = f" scoped to {len(item['resolved']['cloud_applications'])} cloud application(s)"
+        elif item["resolved"].get("unscoped_note"):
+            scope = f"; {item['resolved']['unscoped_note']}"
+            item["warnings"].append("no email tenant filter")
         shown_action = pack_action if len(pack_action) <= 80 else f"{len(item['resolved'].get('actions') or [])} per-application actions"
         item["reason"] = f"Will be created as a new {pc.label(channel)} rule at the top of that policy (action {shown_action}){scope}."
         if pc.is_enforcing(channel, pack_action):

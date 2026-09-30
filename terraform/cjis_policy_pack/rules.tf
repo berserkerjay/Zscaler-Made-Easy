@@ -266,13 +266,10 @@ resource "zia_outbound_email_dlp" "z_cjis_markings_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_markings_high_confidence.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Markings [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Markings [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Markings [Email]: set email_tenant_ids[\"Z-CJIS Markings [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Markings [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Markings [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -331,13 +328,10 @@ resource "zia_outbound_email_dlp" "z_cjis_identifier_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_identifier_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Identifier [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Identifier [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Identifier [Email]: set email_tenant_ids[\"Z-CJIS Identifier [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Identifier [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Identifier [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -396,13 +390,10 @@ resource "zia_outbound_email_dlp" "z_cjis_criminal_history_email" {
   dlp_engines {
     id = [zia_dlp_engines.criminal_history_rap_sheet_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Criminal History [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Criminal History [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Criminal History [Email]: set email_tenant_ids[\"Z-CJIS Criminal History [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Criminal History [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Criminal History [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -461,13 +452,10 @@ resource "zia_outbound_email_dlp" "z_cjis_ncic_iii_data_email" {
   dlp_engines {
     id = [zia_dlp_engines.ncic_iii_data_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS NCIC III Data [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS NCIC III Data [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS NCIC III Data [Email]: set email_tenant_ids[\"Z-CJIS NCIC III Data [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS NCIC III Data [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS NCIC III Data [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -526,13 +514,10 @@ resource "zia_outbound_email_dlp" "z_cjis_warrants_email" {
   dlp_engines {
     id = [zia_dlp_engines.warrant_wanted_person_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Warrants [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Warrants [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Warrants [Email]: set email_tenant_ids[\"Z-CJIS Warrants [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Warrants [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Warrants [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -591,13 +576,10 @@ resource "zia_outbound_email_dlp" "z_cjis_biometric_email" {
   dlp_engines {
     id = [zia_dlp_engines.biometric_cji_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Biometric [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Biometric [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Biometric [Email]: set email_tenant_ids[\"Z-CJIS Biometric [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Biometric [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Biometric [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -656,13 +638,10 @@ resource "zia_outbound_email_dlp" "z_cjis_nics_firearms_email" {
   dlp_engines {
     id = [zia_dlp_engines.nics_firearms_background_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS NICS Firearms [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS NICS Firearms [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS NICS Firearms [Email]: set email_tenant_ids[\"Z-CJIS NICS Firearms [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS NICS Firearms [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS NICS Firearms [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -721,13 +700,10 @@ resource "zia_outbound_email_dlp" "z_cjis_info_sharing_email" {
   dlp_engines {
     id = [zia_dlp_engines.info_sharing_portal_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Info-Sharing [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Info-Sharing [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Info-Sharing [Email]: set email_tenant_ids[\"Z-CJIS Info-Sharing [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Info-Sharing [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Info-Sharing [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -786,13 +762,10 @@ resource "zia_outbound_email_dlp" "z_cjis_any_signal_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_any_signal_engine.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Any-Signal [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Any-Signal [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Any-Signal [Email]: set email_tenant_ids[\"Z-CJIS Any-Signal [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Any-Signal [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Any-Signal [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -851,13 +824,10 @@ resource "zia_outbound_email_dlp" "z_cjis_markings_medium_confidence_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_markings_medium_confidence.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS Markings Medium Confidence [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS Markings Medium Confidence [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS Markings Medium Confidence [Email]: set email_tenant_ids[\"Z-CJIS Markings Medium Confidence [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS Markings Medium Confidence [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS Markings Medium Confidence [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -916,13 +886,10 @@ resource "zia_outbound_email_dlp" "z_cjis_us_pii_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_us_pii.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS US PII [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS US PII [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS US PII [Email]: set email_tenant_ids[\"Z-CJIS US PII [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS US PII [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS US PII [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -981,13 +948,10 @@ resource "zia_outbound_email_dlp" "z_cjis_tlp_red_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_tlp_red.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS TLP Red [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS TLP Red [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS TLP Red [Email]: set email_tenant_ids[\"Z-CJIS TLP Red [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS TLP Red [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS TLP Red [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1046,13 +1010,10 @@ resource "zia_outbound_email_dlp" "z_cjis_tlp_amber_strict_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_tlp_amber_strict.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS TLP Amber Strict [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS TLP Amber Strict [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS TLP Amber Strict [Email]: set email_tenant_ids[\"Z-CJIS TLP Amber Strict [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS TLP Amber Strict [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS TLP Amber Strict [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1111,13 +1072,10 @@ resource "zia_outbound_email_dlp" "z_cjis_tlp_amber_email" {
   dlp_engines {
     id = [zia_dlp_engines.cjis_tlp_amber.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Z-CJIS TLP Amber [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Z-CJIS TLP Amber [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Z-CJIS TLP Amber [Email]: set email_tenant_ids[\"Z-CJIS TLP Amber [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Z-CJIS TLP Amber [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Z-CJIS TLP Amber [Email]", var.email_tenant_ids_default)
     }
   }
 }

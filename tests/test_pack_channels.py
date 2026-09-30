@@ -88,6 +88,9 @@ class FakeSaaS:
     def list_casb_tenant_lite(self, query_params=None):
         if self.fail:
             return None, None, {"message": "boom"}
+        if (query_params or {}).get("app_type") == "EMAIL":
+            # Like ZIA: the tenants whose application type is email.
+            return [t for t in self.tenants if getattr(t, "email", False)], None, None
         return list(self.tenants), None, None
 
 
@@ -276,7 +279,7 @@ def test_dependencies_are_listed_per_channel(tmp_path):
     assert all("rules" in d and d["rules"] for d in deps)
 
 
-def test_no_saas_tenants_blocks_only_saas_and_email(tmp_path):
+def test_no_saas_tenants_blocks_only_saas_email_goes_unscoped(tmp_path):
     client = make_client(casb_tenants=[])
     rep = pd.preflight(client, [multi_pack(tmp_path)], writes_enabled=True)
     pol = items_by(rep, "policy")
@@ -284,7 +287,10 @@ def test_no_saas_tenants_blocks_only_saas_and_email(tmp_path):
     assert pol["EP-Monitor"]["status"] == pd.CREATE
     assert pol["SaaS-File-Monitor"]["status"] == pd.BLOCKED_DEPENDENCY
     assert "SaaS Application Tenants" in pol["SaaS-File-Monitor"]["reason"]
-    assert pol["Email-Monitor"]["status"] == pd.BLOCKED_DEPENDENCY
+    # Email tenants are optional on an Email DLP rule (API, SDK example,
+    # provider): with none onboarded the rule is created unscoped and says so.
+    assert pol["Email-Monitor"]["status"] == pd.CREATE
+    assert "without an email tenant filter" in pol["Email-Monitor"]["reason"] and "no email tenant filter" in pol["Email-Monitor"]["warnings"]
     assert rep["status"] == "warnings"  # still deployable for the other channels
     dep = next(d for d in rep["dependencies"] if d["channel"] == "saas" and "tenant" in d["requirement"])
     assert dep["status"] == "missing"
@@ -408,8 +414,10 @@ def test_apply_skips_blocked_channel_rules_and_reports_them(tmp_path):
     assert res["status"] == "applied"
     by = {(r["kind"], r["name"]): r for r in res["results"]}
     assert by[("policy", "SaaS-File-Monitor")]["status"] == "skipped"
-    assert by[("policy", "Email-Monitor")]["status"] == "skipped"
-    assert client.zia.casb_dlp_rules.added == [] and client.zia.outbound_email_dlp_rules.added == []
+    assert by[("policy", "Email-Monitor")]["status"] == "created"
+    assert client.zia.casb_dlp_rules.added == []
+    sent = client.zia.outbound_email_dlp_rules.added[0]
+    assert sent["name"] == "Email-Monitor" and not sent.get("email_tenants"), "created without an email tenant filter"
     assert client.zia.endpoint_dlp_rules.added[0]["name"] == "EP-Monitor"
     assert "saas" not in res["verification"]["multi"]["rules"]
 
@@ -453,15 +461,16 @@ def test_every_saas_mirror_is_created_with_its_own_order(tmp_path):
 
 
 def test_every_rule_is_counted_under_its_own_channel_even_when_skipped(tmp_path):
-    # A tenant with no email tenant onboarded: the Email rule is skipped, and
-    # the per-channel summary has to say Email, not Web.
+    # No SaaS tenant onboarded: the SaaS rule is skipped, and the
+    # per-channel summary has to say SaaS, not Web.
     pack = write_pack(tmp_path, "cnt", dicts=[_dict("TD")], engines=[_engine("TE", "(D:TD > 0)")],
-                      policies=[_policy("W", ["TE"]), dict(_policy("M", ["TE"]), channel="email", tenants="any")])
-    client = make_client(casb_tenants=[tenant("Box", "BOX", 11)])
+                      policies=[_policy("W", ["TE"]), dict(_policy("M", ["TE"], action="OFLCASB_DLP_REPORT_INCIDENT"), channel="saas",
+                                                            saas_type="OFLCASB_DLP_FILE", tenants="any")])
+    client = make_client(casb_tenants=[])
     rep = pd.preflight(client, [pack], writes_enabled=True)
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, settle_seconds=0, activate=False)
     assert res["channels"]["web"]["created"] == 1 and res["channels"]["web"]["skipped"] == 0
-    assert res["channels"]["email"]["skipped"] == 1
+    assert res["channels"]["saas"]["skipped"] == 1
 
 
 def test_the_connection_check_counts_rules_on_every_dlp_channel(monkeypatch):
@@ -489,3 +498,59 @@ def test_a_channel_the_check_cannot_read_is_reported_not_counted_as_zero():
     client = make_client(email_fail=True)
     n, err = pc.count_rules(client.zia, pc.EMAIL)
     assert n is None and err
+
+
+def test_email_rules_deploy_on_a_tenant_with_only_sharepoint_onboarded_in_every_pack():
+    # A tenant with SharePoint as its only SaaS tenant: every pack's Email
+    # DLP rules are created (unscoped), exactly like the Fed pack's, and its
+    # SaaS rules are scoped to SharePoint.
+    from dlp_importer import discover_packs
+    for p in discover_packs():
+        client = make_client(casb_tenants=[tenant("SMOES", "SHAREPOINT", 11)])
+        rep = pd.preflight(client, [p], writes_enabled=None, channel_targets={p["id"]: ["web", "endpoint", "saas", "email"]})
+        email = [i for i in rep["items"] if i["kind"] == "policy" and (i.get("detail") or {}).get("channel") == "email"]
+        saas = [i for i in rep["items"] if i["kind"] == "policy" and (i.get("detail") or {}).get("channel") == "saas"]
+        assert email and all(i["status"] == pd.CREATE for i in email), (p["id"], [(i["name"], i["reason"]) for i in email if i["status"] != pd.CREATE][:2])
+        assert saas and all(i["status"] == pd.CREATE and "SMOES" in i["reason"] for i in saas), p["id"]
+
+
+def test_every_pack_ships_its_saas_and_email_rules_in_the_fed_pack_shape():
+    # "Whatever is in the process for deploying the Fed pack needs to be the
+    # model for the others": every pack's channel mirrors carry the same
+    # fields and values as the Fed pack's.
+    import json
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    from dlp_importer import discover_packs
+
+    def shape(pid, ch):
+        ps = json.load(open(os.path.join(root, pid, "configs", "dlp_policies.json")))
+        rows = [p for p in ps if p.get("channel") == ch]
+        return rows, {k: v for k, v in rows[0].items() if k not in ("name", "description", "engines")} if rows else None
+
+    for ch in ("saas", "email", "endpoint"):
+        _, fed = shape("fed_policy_pack", ch)
+        for p in discover_packs():
+            rows, got = shape(p["id"], ch)
+            if not rows:
+                continue
+            assert got == fed, (p["id"], ch, got, fed)
+            assert all({k: v for k, v in r.items() if k not in ("name", "description", "engines")} == fed for r in rows), (p["id"], ch)
+
+
+@pytest.mark.parametrize("app, email_flag, expect", [
+    ("MSEXCHANGE", False, True),                # Exchange Online
+    ("GMAIL", False, True),                     # Gmail
+    ("SECURE_EMAIL_GATEWAY", False, True),      # a secure email gateway
+    ("PROOFPOINT_SEG", False, True),            # a SEG named by vendor
+    ("VENDOR_X", True, True),                   # any name, listed by ZIA as an email tenant
+    ("SHAREPOINT", False, False),               # file storage, not email
+])
+def test_email_rules_scope_to_exchange_gmail_or_a_secure_email_gateway(tmp_path, app, email_flag, expect):
+    t = tenant("Mail tenant", app, 77)
+    t.email = email_flag
+    client = make_client(casb_tenants=[tenant("SMOES", "SHAREPOINT", 11), t])
+    rep = pd.preflight(client, [multi_pack(tmp_path)], writes_enabled=True)
+    em = items_by(rep, "policy")["Email-Monitor"]
+    assert em["status"] == pd.CREATE
+    assert ("scoped to Mail tenant" in em["reason"]) is expect, em["reason"]
+    assert "SMOES" not in em["reason"].split("scoped to")[-1] if expect else "without an email tenant filter" in em["reason"]

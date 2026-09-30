@@ -191,13 +191,10 @@ resource "zia_outbound_email_dlp" "zbp_financial_information_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_financial_information.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-Financial Information [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-Financial Information [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-Financial Information [Email]: set email_tenant_ids[\"ZBP-Financial Information [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-Financial Information [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-Financial Information [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -256,13 +253,10 @@ resource "zia_outbound_email_dlp" "zbp_itar_international_traffic_in_arms_regula
   dlp_engines {
     id = [zia_dlp_engines.zbp_itar_phrases.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-ITAR International Traffic in Arms Regulations [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-ITAR International Traffic in Arms Regulations [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-ITAR International Traffic in Arms Regulations [Email]: set email_tenant_ids[\"ZBP-ITAR International Traffic in Arms Regulations [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-ITAR International Traffic in Arms Regulations [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-ITAR International Traffic in Arms Regulations [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -321,13 +315,10 @@ resource "zia_outbound_email_dlp" "zbp_tlp_red_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_tlp_red.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-TLP Red [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-TLP Red [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-TLP Red [Email]: set email_tenant_ids[\"ZBP-TLP Red [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-TLP Red [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-TLP Red [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -386,13 +377,10 @@ resource "zia_outbound_email_dlp" "zbp_tlp_amber_strict_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_tlp_amber_strict.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-TLP Amber Strict [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-TLP Amber Strict [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-TLP Amber Strict [Email]: set email_tenant_ids[\"ZBP-TLP Amber Strict [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-TLP Amber Strict [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-TLP Amber Strict [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -451,13 +439,10 @@ resource "zia_outbound_email_dlp" "zbp_tlp_amber_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_tlp_amber.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-TLP Amber [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-TLP Amber [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-TLP Amber [Email]: set email_tenant_ids[\"ZBP-TLP Amber [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-TLP Amber [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-TLP Amber [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -516,13 +501,10 @@ resource "zia_outbound_email_dlp" "zbp_us_pii_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_us_pii.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-US PII [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-US PII [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-US PII [Email]: set email_tenant_ids[\"ZBP-US PII [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-US PII [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-US PII [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -581,13 +563,10 @@ resource "zia_outbound_email_dlp" "zbp_us_phi_medium_confidence_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_us_phi_medium_confidence.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-US PHI - Medium Confidence [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-US PHI - Medium Confidence [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-US PHI - Medium Confidence [Email]: set email_tenant_ids[\"ZBP-US PHI - Medium Confidence [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-US PHI - Medium Confidence [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-US PHI - Medium Confidence [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -646,13 +625,10 @@ resource "zia_outbound_email_dlp" "zbp_us_phi_high_confidence_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_us_phi_high_confidence.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-US PHI - High Confidence [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-US PHI - High Confidence [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-US PHI - High Confidence [Email]: set email_tenant_ids[\"ZBP-US PHI - High Confidence [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-US PHI - High Confidence [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-US PHI - High Confidence [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -711,13 +687,10 @@ resource "zia_outbound_email_dlp" "zbp_private_keys_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_private_keys.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "ZBP-Private Keys [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "ZBP-Private Keys [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule ZBP-Private Keys [Email]: set email_tenant_ids[\"ZBP-Private Keys [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "ZBP-Private Keys [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "ZBP-Private Keys [Email]", var.email_tenant_ids_default)
     }
   }
 }

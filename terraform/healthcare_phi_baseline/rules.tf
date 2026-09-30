@@ -236,13 +236,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_critical_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_critical_strong_signature_and_clinical_document.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Critical [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Critical [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Critical [Email]: set email_tenant_ids[\"HC-HIPAA Critical [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Critical [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Critical [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -301,13 +298,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_narrative_low_volume_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_narrative_low_volume.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Narrative Low Volume [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Narrative Low Volume [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Narrative Low Volume [Email]: set email_tenant_ids[\"HC-HIPAA Narrative Low Volume [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Narrative Low Volume [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Narrative Low Volume [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -366,13 +360,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_identity_trifecta_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_identity_trifecta.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Identity Trifecta [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Identity Trifecta [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Identity Trifecta [Email]: set email_tenant_ids[\"HC-HIPAA Identity Trifecta [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Identity Trifecta [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Identity Trifecta [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -431,13 +422,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_sensitive_subcategory_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_sensitive_subcategory.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Sensitive Subcategory [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Sensitive Subcategory [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Sensitive Subcategory [Email]: set email_tenant_ids[\"HC-HIPAA Sensitive Subcategory [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Sensitive Subcategory [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Sensitive Subcategory [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -496,13 +484,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_pharmacy_claims_billing_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_pharmacy_claims_billing.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Pharmacy Claims Billing [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Pharmacy Claims Billing [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Pharmacy Claims Billing [Email]: set email_tenant_ids[\"HC-HIPAA Pharmacy Claims Billing [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Pharmacy Claims Billing [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Pharmacy Claims Billing [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -561,13 +546,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_bulk_phi_major_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_bulk_phi_major.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Major [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Major [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Bulk PHI Major [Email]: set email_tenant_ids[\"HC-HIPAA Bulk PHI Major [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Major [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Major [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -626,13 +608,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_bulk_phi_significant_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_bulk_phi_significant.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Significant [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Significant [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Bulk PHI Significant [Email]: set email_tenant_ids[\"HC-HIPAA Bulk PHI Significant [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Significant [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Significant [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -691,13 +670,10 @@ resource "zia_outbound_email_dlp" "hc_hipaa_bulk_phi_small_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_bulk_phi_small.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Small [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Small [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-HIPAA Bulk PHI Small [Email]: set email_tenant_ids[\"HC-HIPAA Bulk PHI Small [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Small [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-HIPAA Bulk PHI Small [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -756,13 +732,10 @@ resource "zia_outbound_email_dlp" "hc_us_pii_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_us_pii.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-US PII [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-US PII [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-US PII [Email]: set email_tenant_ids[\"HC-US PII [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-US PII [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-US PII [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -821,13 +794,10 @@ resource "zia_outbound_email_dlp" "hc_us_phi_medium_confidence_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_us_phi_medium_confidence.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-US PHI Medium Confidence [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-US PHI Medium Confidence [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-US PHI Medium Confidence [Email]: set email_tenant_ids[\"HC-US PHI Medium Confidence [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-US PHI Medium Confidence [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-US PHI Medium Confidence [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -886,13 +856,10 @@ resource "zia_outbound_email_dlp" "hc_us_phi_high_confidence_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_us_phi_high_confidence.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-US PHI High Confidence [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-US PHI High Confidence [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-US PHI High Confidence [Email]: set email_tenant_ids[\"HC-US PHI High Confidence [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-US PHI High Confidence [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-US PHI High Confidence [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -951,13 +918,10 @@ resource "zia_outbound_email_dlp" "hc_financial_information_email" {
   dlp_engines {
     id = [zia_dlp_engines.hipaa_financial_information.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "HC-Financial Information [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "HC-Financial Information [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule HC-Financial Information [Email]: set email_tenant_ids[\"HC-Financial Information [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "HC-Financial Information [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "HC-Financial Information [Email]", var.email_tenant_ids_default)
     }
   }
 }
