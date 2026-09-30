@@ -7,6 +7,11 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Email DLP rules deploy like the Fed pack's in every pack; Exchange, Gmail and secure email gateway tenants recognised
+- **What you reported.** ZBP's Email rules were skipped with "none of the onboarded SaaS tenants match email (onboarded: SMOES (SHAREPOINT))", and every pack should follow the Fed pack's methodology.
+- **Why.** Every pack goes through the same deploy path, and it required a Microsoft 365 or Gmail tenant before creating any Email DLP rule. The Fed pack is skipped the same way on this tenant. The API does not need one: email tenants are optional on an Email DLP rule (the SDK's own example and the zscaler/zia provider create one without them).
+- **Now** an Email DLP rule is scoped to the tenant's Exchange, Gmail or secure email gateway tenants when there are some, found through ZIA's own email-tenant filter (`app_type=EMAIL`) and by name. With none, it is created without an email tenant filter and the preview says so, instead of being skipped. SaaS rules still need a matching SaaS tenant (SharePoint scopes the file rules). The Terraform hand-off writes the email tenant block only when ids are set. A test checks that every pack's SaaS, Email and Endpoint rules have exactly the Fed pack's shape, and that every pack's Email rules deploy on a SharePoint-only tenant.
+
 ### Sidebar: Connect to the tenant above the Dashboard
 - **What you asked for.** "Move connect to the tenant above the dashboard."
 - **Now** the Workflow group reads in the order the work is done, like the step strip: Connect to the tenant, Scope assessment, Dashboard. The Dashboard is still the page that opens first.

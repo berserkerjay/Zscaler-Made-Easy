@@ -31,6 +31,7 @@ itself; the others do not).
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
@@ -546,8 +547,8 @@ SAAS_TYPE_APPS: Dict[str, Tuple[str, ...]] = {
     # carries.
     "OFLCASB_DLP_FILE": ("BOX", "DROPBOX", "GDRIVE", "GOOGLE_DRIVE", "GOOGLEDRIVE", "GOOGLE_WORKSPACE", "ONEDRIVE", "ONE_DRIVE",
                          "SHAREPOINT", "MICROSOFT_365", "M365", "EGNYTE", "SHAREFILE", "CITRIX", "SMARTSHEET"),
-    "OFLCASB_DLP_EMAIL": ("GMAIL", "GOOGLE_MAIL", "GOOGLE_WORKSPACE", "OFFICE365", "OFFICE_365", "O365", "EXCHANGE", "EXCHANGE_ONLINE",
-                          "OUTLOOK", "MICROSOFT_365", "M365"),
+    "OFLCASB_DLP_EMAIL": ("GMAIL", "GOOGLE_MAIL", "GOOGLE_WORKSPACE", "GSUITE", "G_SUITE", "OFFICE365", "OFFICE_365", "O365", "EXCHANGE",
+                          "EXCHANGE_ONLINE", "OUTLOOK", "MICROSOFT_365", "M365", "EMAIL", "MAIL", "SMTP"),
     "OFLCASB_DLP_COLLAB": ("SLACK", "TEAMS", "MICROSOFT_365", "M365", "WEBEX", "WEBEX_TEAMS", "ZOOM", "GOOGLE_CHAT", "GCHAT", "CONFLUENCE"),
     "OFLCASB_DLP_CRM": ("SALESFORCE", "HUBSPOT", "DYNAMICS"),
     "OFLCASB_DLP_ITSM": ("SERVICENOW", "SERVICE_NOW", "JIRA", "ATLASSIAN", "CONFLUENCE", "ZENDESK", "FRESHDESK", "FRESHSERVICE"),
@@ -556,6 +557,15 @@ SAAS_TYPE_APPS: Dict[str, Tuple[str, ...]] = {
     "OFLCASB_DLP_GENAI": ("CHATGPT", "OPENAI", "GEMINI", "COPILOT", "CLAUDE", "ANTHROPIC", "GENAI", "PERPLEXITY"),
 }
 EMAIL_APPS = SAAS_TYPE_APPS["OFLCASB_DLP_EMAIL"]
+# Email DLP tenants are Exchange, Gmail or a secure email gateway (SEG).
+# "SEG" and "GATEWAY" are matched as whole name parts, not substrings.
+EMAIL_APP_TOKENS = ("SEG", "GATEWAY", "EMAIL_GATEWAY", "SECURE_EMAIL_GATEWAY")
+
+
+def _is_email_tenant(t: Dict[str, Any]) -> bool:
+    app = str(t.get("app") or "")
+    parts = set(re.split(r"[^A-Z0-9]+", app))
+    return any(k in app for k in EMAIL_APPS) or any(tok in parts or tok == app for tok in EMAIL_APP_TOKENS)
 
 # The SaaS Security API caps a rule name at 31 characters ("Name exceeds
 # the max length 31 characters" from a real tenant); Web, Endpoint and
@@ -974,6 +984,24 @@ def fetch_channel_state(zia, need: Dict[str, Any], log: Optional[Callable[[str],
                     "status": _field(t, "status", default=[]),
                 })
             state["casb_tenants"] = tenants
+            # Zscaler's own answer to "which of these are email tenants"
+            # (Exchange, Gmail, secure email gateway), whatever the
+            # application is called; the name match is the fallback.
+            try:
+                edata, eerr = _nx(svc.list_casb_tenant_lite(query_params={"active_only": True, "app_type": "EMAIL"}))
+                if not eerr:
+                    ids = {_field(t, "tenant_id", "tenantId", "id") for t in (edata or [])}
+                    state["email_tenant_ids"] = sorted(str(i) for i in ids if i is not None)
+                    known = {str(t["id"]) for t in tenants}
+                    for t in edata or []:
+                        tid = _field(t, "tenant_id", "tenantId", "id")
+                        name = str(_field(t, "tenant_name", "tenantName", "name", default="") or "").strip()
+                        if tid is not None and name and str(tid) not in known:
+                            tenants.append({"id": tid, "name": name,
+                                            "app": str(_field(t, "saas_application", "saasApplication", default="") or "").upper(),
+                                            "status": _field(t, "status", default=[])})
+            except Exception:  # noqa: BLE001 — the name match still applies
+                pass
         except Exception as e:  # noqa: BLE001
             state["casb_tenants"] = []
             state["casb_error"] = str(e)[:200]
@@ -1015,6 +1043,14 @@ def _match_tenants(tenants: Sequence[Dict[str, Any]], keywords: Tuple[str, ...])
     return [t for t in tenants if any(k in t["app"] for k in keywords)]
 
 
+def email_tenants(state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The onboarded email tenants (Exchange, Gmail, secure email gateway):
+    the ones Zscaler lists as EMAIL, plus any whose application name says so."""
+    tenants = state.get("casb_tenants") or []
+    by_type = set(state.get("email_tenant_ids") or [])
+    return [t for t in tenants if str(t["id"]) in by_type or _is_email_tenant(t)]
+
+
 def _tenant_list(tenants: Sequence[Dict[str, Any]]) -> str:
     return ", ".join(f"{t['name']} ({t['app'] or 'app unknown'})" for t in tenants) or "none"
 
@@ -1051,8 +1087,21 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
             if absent:
                 missing.append(f"SaaS application tenant(s) not onboarded: {', '.join(absent)} (available: {_tenant_list(tenants)})")
             resolved["tenants"] = chosen
+        elif channel == EMAIL:
+            # An Email DLP rule's email tenants are optional (the API, the
+            # SDK's own example and the zscaler/zia provider all create one
+            # without them). With "any", scope it to the onboarded Microsoft
+            # 365 / Gmail tenants when there are some; otherwise create it
+            # unscoped and say so, rather than skipping the rule.
+            chosen = email_tenants(state)
+            if not chosen:
+                resolved["unscoped_note"] = (
+                    "no Exchange, Gmail or secure email gateway tenant is in the SaaS tenant list"
+                    + (f" (listed: {_tenant_list(tenants)})" if tenants else "")
+                    + ", so the rule is created without an email tenant filter")
+            resolved["tenants"] = chosen
         else:
-            keywords = SAAS_TYPE_APPS.get(policy_def.get("saas_type", ""), ()) if channel == SAAS else EMAIL_APPS
+            keywords = SAAS_TYPE_APPS.get(policy_def.get("saas_type", ""), ())
             chosen = _match_tenants(tenants, keywords) if keywords else list(tenants)
             if not tenants:
                 what = "an email tenant (Microsoft 365 or Gmail)" if channel == EMAIL else "a SaaS application tenant"
@@ -1223,15 +1272,17 @@ def dependency_report(policy_items: Sequence[Dict[str, Any]], state: Dict[str, A
             if state.get("casb_error"):
                 st, detail = "error", state["casb_error"]
             elif ch == EMAIL:
-                em = _match_tenants(tenants, EMAIL_APPS)
-                st = "ok" if em else "missing"
-                detail = f"Email tenant(s): {_tenant_list(em)}." if em else f"No Microsoft 365 / Gmail tenant onboarded (onboarded: {_tenant_list(tenants)})."
+                em = email_tenants(state)
+                st = "ok" if em else "info"
+                detail = (f"Email tenant(s): {_tenant_list(em)}." if em else
+                          f"No Exchange, Gmail or secure email gateway tenant in the SaaS tenant list (listed: {_tenant_list(tenants)}); Email DLP rules are created "
+                          "without an email tenant filter, which the API allows.")
             else:
                 st = "ok" if tenants else "missing"
                 detail = f"Onboarded: {_tenant_list(tenants)}." if tenants else "No SaaS application tenant onboarded."
             rows.append({
                 "channel": ch, "label": spec["label"], "status": st,
-                "requirement": ("Email tenant onboarded under SaaS Security (Administration > SaaS Application Tenants)"
+                "requirement": ("Email tenant for scoping (optional; Administration > SaaS Application Tenants)"
                                 if ch == EMAIL else "SaaS application tenant(s) onboarded (Administration > SaaS Application Tenants)"),
                 "detail": detail, "rules": names(items),
             })

@@ -251,13 +251,10 @@ resource "zia_outbound_email_dlp" "bank_payment_card_data_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_payment_card_data.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Payment Card Data [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Payment Card Data [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Payment Card Data [Email]: set email_tenant_ids[\"Bank-Payment Card Data [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Payment Card Data [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Payment Card Data [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -316,13 +313,10 @@ resource "zia_outbound_email_dlp" "bank_payment_card_data_bulk_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_payment_card_data_bulk.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Payment Card Data-Bulk [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Payment Card Data-Bulk [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Payment Card Data-Bulk [Email]: set email_tenant_ids[\"Bank-Payment Card Data-Bulk [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Payment Card Data-Bulk [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Payment Card Data-Bulk [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -381,13 +375,10 @@ resource "zia_outbound_email_dlp" "bank_payment_instructions_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_account_and_payment_instructions.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Payment Instructions [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Payment Instructions [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Payment Instructions [Email]: set email_tenant_ids[\"Bank-Payment Instructions [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Payment Instructions [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Payment Instructions [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -446,13 +437,10 @@ resource "zia_outbound_email_dlp" "bank_customer_pii_global_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_customer_pii_global.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Customer PII (Global) [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Customer PII (Global) [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Customer PII (Global) [Email]: set email_tenant_ids[\"Bank-Customer PII (Global) [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Customer PII (Global) [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Customer PII (Global) [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -511,13 +499,10 @@ resource "zia_outbound_email_dlp" "bank_us_pii_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_us_pii.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-US PII [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-US PII [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-US PII [Email]: set email_tenant_ids[\"Bank-US PII [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-US PII [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-US PII [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -576,13 +561,10 @@ resource "zia_outbound_email_dlp" "bank_customer_pii_bulk_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_customer_pii_bulk.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Customer PII-Bulk [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Customer PII-Bulk [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Customer PII-Bulk [Email]: set email_tenant_ids[\"Bank-Customer PII-Bulk [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Customer PII-Bulk [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Customer PII-Bulk [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -641,13 +623,10 @@ resource "zia_outbound_email_dlp" "bank_customer_financial_records_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_customer_financial_records.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Customer Financial Records [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Customer Financial Records [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Customer Financial Records [Email]: set email_tenant_ids[\"Bank-Customer Financial Records [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Customer Financial Records [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Customer Financial Records [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -706,13 +685,10 @@ resource "zia_outbound_email_dlp" "bank_kyc_and_aml_files_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_kyc_and_aml_files.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-KYC and AML Files [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-KYC and AML Files [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-KYC and AML Files [Email]: set email_tenant_ids[\"Bank-KYC and AML Files [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-KYC and AML Files [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-KYC and AML Files [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -771,13 +747,10 @@ resource "zia_outbound_email_dlp" "bank_credit_and_loan_applications_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_credit_and_loan_applications.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Credit and Loan Applications [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Credit and Loan Applications [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Credit and Loan Applications [Email]: set email_tenant_ids[\"Bank-Credit and Loan Applications [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Credit and Loan Applications [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Credit and Loan Applications [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -836,13 +809,10 @@ resource "zia_outbound_email_dlp" "bank_mnpi_and_deal_information_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_mnpi_and_deal_information.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-MNPI and Deal Information [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-MNPI and Deal Information [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-MNPI and Deal Information [Email]: set email_tenant_ids[\"Bank-MNPI and Deal Information [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-MNPI and Deal Information [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-MNPI and Deal Information [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -901,13 +871,10 @@ resource "zia_outbound_email_dlp" "bank_financial_information_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_financial_information.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Financial Information [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Financial Information [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Financial Information [Email]: set email_tenant_ids[\"Bank-Financial Information [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Financial Information [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Financial Information [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -966,13 +933,10 @@ resource "zia_outbound_email_dlp" "bank_confidential_markings_email" {
   dlp_engines {
     id = [zia_dlp_engines.bank_confidential_markings.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Confidential Markings [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Confidential Markings [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Confidential Markings [Email]: set email_tenant_ids[\"Bank-Confidential Markings [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Confidential Markings [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Confidential Markings [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1031,13 +995,10 @@ resource "zia_outbound_email_dlp" "bank_credentials_email" {
   dlp_engines {
     id = [zia_dlp_engines.zbp_private_keys.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "Bank-Credentials [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "Bank-Credentials [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule Bank-Credentials [Email]: set email_tenant_ids[\"Bank-Credentials [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "Bank-Credentials [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "Bank-Credentials [Email]", var.email_tenant_ids_default)
     }
   }
 }

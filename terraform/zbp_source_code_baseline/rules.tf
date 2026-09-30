@@ -369,13 +369,10 @@ resource "zia_outbound_email_dlp" "src_csharp_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_csharp.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-CSharp Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-CSharp Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-CSharp Code to AI [Email]: set email_tenant_ids[\"SRC-CSharp Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-CSharp Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-CSharp Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -434,13 +431,10 @@ resource "zia_outbound_email_dlp" "src_cplusplus_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_cplusplus.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-CPlusPlus Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-CPlusPlus Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-CPlusPlus Code to AI [Email]: set email_tenant_ids[\"SRC-CPlusPlus Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-CPlusPlus Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-CPlusPlus Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -499,13 +493,10 @@ resource "zia_outbound_email_dlp" "src_go_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_go.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Go Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Go Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Go Code to AI [Email]: set email_tenant_ids[\"SRC-Go Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Go Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Go Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -564,13 +555,10 @@ resource "zia_outbound_email_dlp" "src_html_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_html.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-HTML Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-HTML Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-HTML Code to AI [Email]: set email_tenant_ids[\"SRC-HTML Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-HTML Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-HTML Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -629,13 +617,10 @@ resource "zia_outbound_email_dlp" "src_java_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_java.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Java Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Java Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Java Code to AI [Email]: set email_tenant_ids[\"SRC-Java Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Java Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Java Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -694,13 +679,10 @@ resource "zia_outbound_email_dlp" "src_javascript_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_javascript.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-JavaScript Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-JavaScript Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-JavaScript Code to AI [Email]: set email_tenant_ids[\"SRC-JavaScript Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-JavaScript Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-JavaScript Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -759,13 +741,10 @@ resource "zia_outbound_email_dlp" "src_kotlin_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_kotlin.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Kotlin Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Kotlin Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Kotlin Code to AI [Email]: set email_tenant_ids[\"SRC-Kotlin Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Kotlin Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Kotlin Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -824,13 +803,10 @@ resource "zia_outbound_email_dlp" "src_python_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_python.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Python Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Python Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Python Code to AI [Email]: set email_tenant_ids[\"SRC-Python Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Python Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Python Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -889,13 +865,10 @@ resource "zia_outbound_email_dlp" "src_rust_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_rust.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Rust Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Rust Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Rust Code to AI [Email]: set email_tenant_ids[\"SRC-Rust Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Rust Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Rust Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -954,13 +927,10 @@ resource "zia_outbound_email_dlp" "src_sql_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_sql.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-SQL Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-SQL Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-SQL Code to AI [Email]: set email_tenant_ids[\"SRC-SQL Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-SQL Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-SQL Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1019,13 +989,10 @@ resource "zia_outbound_email_dlp" "src_swift_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_swift.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Swift Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Swift Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Swift Code to AI [Email]: set email_tenant_ids[\"SRC-Swift Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Swift Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Swift Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1084,13 +1051,10 @@ resource "zia_outbound_email_dlp" "src_typescript_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_typescript.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-TypeScript Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-TypeScript Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-TypeScript Code to AI [Email]: set email_tenant_ids[\"SRC-TypeScript Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-TypeScript Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-TypeScript Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1149,13 +1113,10 @@ resource "zia_outbound_email_dlp" "src_vbnet_code_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_vbnet.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-VBNet Code to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-VBNet Code to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-VBNet Code to AI [Email]: set email_tenant_ids[\"SRC-VBNet Code to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-VBNet Code to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-VBNet Code to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
@@ -1214,13 +1175,10 @@ resource "zia_outbound_email_dlp" "src_private_keys_to_ai_email" {
   dlp_engines {
     id = [zia_dlp_engines.src_private_keys.id]
   }
-  email_tenants {
-    id = lookup(var.email_tenant_ids, "SRC-Private Keys to AI [Email]", var.email_tenant_ids_default)
-  }
-  lifecycle {
-    precondition {
-      condition     = length(lookup(var.email_tenant_ids, "SRC-Private Keys to AI [Email]", var.email_tenant_ids_default)) > 0
-      error_message = "Rule SRC-Private Keys to AI [Email]: set email_tenant_ids[\"SRC-Private Keys to AI [Email]\"] or email_tenant_ids_default to the ids of the onboarded email tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name."
+  dynamic "email_tenants" {
+    for_each = length(lookup(var.email_tenant_ids, "SRC-Private Keys to AI [Email]", var.email_tenant_ids_default)) > 0 ? [1] : []
+    content {
+      id = lookup(var.email_tenant_ids, "SRC-Private Keys to AI [Email]", var.email_tenant_ids_default)
     }
   }
 }
