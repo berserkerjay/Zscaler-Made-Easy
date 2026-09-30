@@ -1285,9 +1285,9 @@ def _sleep(seconds: float) -> None:   # tests replace this
 def _delete_answering_403(client, path: str, activations: List[Dict[str, Any]]) -> Tuple[Any, Any]:
     """DELETE `path` through the raw client, and answer a 403 the way the
     shared path (`pack_ops.call`) does: activate the pending configuration,
-    wait 15 seconds, try again, up to five times. Each activation is
+    wait (15 seconds, or longer for Resource Access Blocked), try again, up to five times. Each activation is
     appended to `activations`. Returns the last (payload, http status)."""
-    from pack_ops import FORBIDDEN_ATTEMPTS, FORBIDDEN_WAIT_SECONDS
+    from pack_ops import FORBIDDEN_ATTEMPTS, forbidden_wait
     data, code = client.delete(path) if hasattr(client, "delete") else (None, 0)
     for retry in range(1, FORBIDDEN_ATTEMPTS + 1):
         if code != 403:
@@ -1297,7 +1297,7 @@ def _delete_answering_403(client, path: str, activations: List[Dict[str, Any]]) 
         except Exception:  # noqa: BLE001 - an activation that cannot run is recorded, the wait and the try still happen
             acode = None
         activations.append({"after": f"403 on {path} (try {retry} of {FORBIDDEN_ATTEMPTS})", "requested": acode in (200, 201, 204), "http_status": acode})
-        _sleep(FORBIDDEN_WAIT_SECONDS)
+        _sleep(forbidden_wait(retry, (data or {}).get("message") if isinstance(data, dict) else data))
         data, code = client.delete(path)
     return data, code
 

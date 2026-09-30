@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### "Resource Access Blocked" is waited out, not rushed
+- **What you asked for.** Keep activating on a 403, but wait longer.
+- **Why.** On a 403 the app activated, waited 15 seconds and tried again, five times: 75 seconds in all. The "Resource Access Blocked" block on this tenant lasted about five minutes, so the run gave up while the block was still on.
+- **Now**, when ZIA answers "Resource Access Blocked", the app still activates before each retry but waits 30 seconds, then 1, 1.5, 2 and 2 minutes: about 7 minutes in all before it stops. This applies to deploys, removals and the rule-migration wizard's deletes. Any other 403 keeps the 15-second waits. The run's progress line and the stop message say so.
+- **Verified.** The 403 tests now expect the longer schedule for "Resource Access Blocked" and 15 seconds for other 403s. The all-pack regression test passes.
+
 ### Deploys and removals pace their writes
 - **What you asked for.** "Why am I getting the resource block when I try to deploy or remove too much?"
 - **Why.** A deploy or removal sent its 80–160 writes back to back, as fast as ZIA answered. Seen on this tenant: after a burst of requests, especially refused ones, ZIA's API gateway answers every request with 403 "Resource Access Blocked" for several minutes (about five), then lets the client back in. Zscaler does not publish the threshold.
