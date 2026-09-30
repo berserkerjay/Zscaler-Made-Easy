@@ -208,6 +208,8 @@ def activate(zia) -> Dict[str, Any]:
     every create/delete as pending until this runs, so a deploy or removal
     is not live for users until it does. Returns {activated, status, error}."""
     before, _ = activation_status(zia)
+    import zia_rate
+    zia_rate.wait("POST", "/status/activate")   # 10 a minute, 40 an hour
     data, err = raw_request(zia, "POST", "/status/activate")
     if err:
         return {"activated": False, "status": before, "error": err}

@@ -403,6 +403,9 @@ class Client:
             kwargs = {"timeout": 30}
             if body is not None:
                 kwargs["json"] = body
+            if ep.startswith("/zia/"):
+                import zia_rate
+                zia_rate.wait(method, ep)   # ZIA's per-endpoint write limits
             s._limiter.wait()
             r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
             s.requests_made += 1

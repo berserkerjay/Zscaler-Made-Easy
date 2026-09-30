@@ -20,7 +20,11 @@ def _no_backoff_sleep(monkeypatch):
     refusal; tests never wait for that."""
     import pack_ops
     monkeypatch.setattr(pack_ops, "_sleep", lambda s: None)
-    monkeypatch.setattr(pack_ops, "_pace_sleep", lambda s: None)   # write pacing (DLP_CHECK_WRITE_GAP)
+    import zia_rate
+    for bucket in zia_rate.DEFAULTS:   # ZIA's rate limits are off in tests (test_run_control turns them on with a fake clock)
+        monkeypatch.setenv(f"DLP_CHECK_ZIA_LIMIT_{bucket.upper()}", "off")
+    monkeypatch.setattr(zia_rate, "_sleep", lambda s: None)
+    zia_rate.reset()
 
 
 @pytest.fixture(autouse=True)

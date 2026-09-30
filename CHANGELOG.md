@@ -7,6 +7,28 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Policy packs activate once, and every write waits for ZIA's rate limits
+- **What you asked for.**
+  - "For the policy packs, don't activate until the entire deployment is complete or completely deleted."
+  - Then: "these 403 errors are because there is a 10 POST per minute limit, and the activate equals a POST, and there is a 40 call limit per hour."
+  - Then: "make sure there isn't a rate limit for dictionaries, as that is where I see common errors."
+- **Why the errors happened.** ZIA's API Rate Limit Summary (https://help.zscaler.com/legacy-apis/api-rate-limit-summary) gives every endpoint its own limit:
+  - DLP dictionaries, engines, Web DLP, SaaS and Email DLP rules, File Type, URL and SSL rules, and endpoint application groups: 1 write a second, 400 an hour.
+  - **Endpoint DLP rules, Cloud App Control rules and activations: 10 a minute, 40 an hour.**
+
+  The app sent a pack's writes back to back and activated on every 403 retry and between removal tiers, each activation being one more of the 40 an hour. On this tenant's container, one run's dictionary create answered "Resource Access Blocked" and the next 26 dictionaries were never attempted: the dictionaries are the first and biggest burst of a deploy. The earlier "one write a second" pacing is replaced by these limits.
+- **Now**
+  - **Activate once.** A deploy activates once, when every object is written. A removal deletes rules, engines and dictionaries, then activates once. The 403 retry and the refused-delete retry only wait; they never activate.
+  - **In-use deletes.** An engine or dictionary ZIA refuses as still "in use" by a rule this removal deleted is not retried before that activation (a retry cannot succeed, and refused requests get the client blocked). It is reported with *run the removal again*, and the second run removes it.
+  - **Rate limits.** Every create, update, delete and activation waits for its endpoint's limit (`zia_rate.py`). Dictionaries go at most one a second. Endpoint DLP rules and Cloud App Control rules go at most 10 a minute and 40 an hour. When a limit is reached the log says so, for example *ZIA allows 10 Endpoint DLP rule writes a minute; waiting 42s (next at 21:47)*, instead of the request being refused.
+  - **Settings.** Each limit is a setting: `DLP_CHECK_ZIA_LIMIT_WRITE`, `_DELETE`, `_ENDPOINT_RULES`, `_CLOUD_APP`, `_ACTIVATE`.
+- **Verified.** Tests cover:
+  - one activation per deploy and per removal, and none inside a retry;
+  - an in-use engine left for a second run, which removes it;
+  - dictionaries held to one a second, and the 11th Endpoint DLP rule in a minute waiting for the minute to pass.
+
+  The all-pack regression test passes. The limits were read from the rendered Zscaler page.
+
 ### "Resource Access Blocked" is waited out, not rushed
 - **What you asked for.** Keep activating on a 403, but wait longer.
 - **Why.** On a 403 the app activated, waited 15 seconds and tried again, five times: 75 seconds in all. The "Resource Access Blocked" block on this tenant lasted about five minutes, so the run gave up while the block was still on.
