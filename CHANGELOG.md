@@ -5,6 +5,14 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-09-30
+
+### Container updates itself on a schedule; an update notice in the app
+- **What you asked for.** "The container needs an auto update" (Update app showed the ZIP message inside the container) and "there should be a beacon that looks for updates and notifies the user".
+- **Now** `update_container.ps1` (Windows) and `update_container.sh` (Mac, Linux), run on the computer that runs Docker, pull the latest code from GitHub and rebuild the container only when there is something new; `-Schedule` / `--schedule` once makes it run every day at 03:17 (Windows Task Scheduler, cron). They stop without changing anything if a file was edited by hand, and log to `update_container.log`. The image records the commit it was built from.
+- **Update notice.** A minute after the page opens and every 6 hours after, the app checks GitHub and shows a notice at the top when a newer build is out, with **Update app** (local install) or **Show how** (container); **Later** hides it until the next build. Inside the container, Update app now explains the host update instead of the ZIP message. Without git (the container, a ZIP copy) the check uses GitHub's API; the repository is private, so the container needs a read-only `DLP_CHECK_GITHUB_TOKEN` in `.env` for the notice (never logged or shown).
+- **Verified.** The shell script against a scratch GitHub-like remote: behind (pulled, rebuilt with the new commit), up to date (nothing done), hand edit (stopped). Tests pin the scripts, the build stamp, the container status, the beacon and the token handling. Full suite green. The PowerShell script was not run here (no PowerShell in the test environment).
+
 ## 2026-09-29
 
 ### The container publishes on port 8001 by default

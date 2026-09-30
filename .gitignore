@@ -65,3 +65,4 @@ server.pid
 certs/*.crt
 certs/*.pem
 certs/*.cer
+update_container.log

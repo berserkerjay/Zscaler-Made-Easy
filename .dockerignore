@@ -24,3 +24,4 @@ terraform/**/.terraform
 terraform/**/*.tfstate*
 terraform/**/terraform.tfvars
 user_packs/
+update_container.log

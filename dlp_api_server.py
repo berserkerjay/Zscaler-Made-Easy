@@ -268,6 +268,7 @@ GUI_ADDONS = [
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
     ("guide.js", "script"),
+    ("update_beacon.js", "script"),  # checks for updates in the background and shows a notice when one is out
     ("eval_all.js", "script"),
     ("bypass_report.js", "script"),
     ("tool_tabs.js", "script"),
@@ -2824,6 +2825,10 @@ async def health():
         ).decode().strip()
     except Exception:
         pass
+    in_container = os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
+    if commit == "unknown" and in_container:
+        # No .git in the image: the build records its commit instead.
+        commit = os.environ.get("DLP_CHECK_BUILD_COMMIT", "").strip() or "unknown"
     hb = _health_branch()
     return {
         "status": "ok",
@@ -2842,6 +2847,7 @@ async def health():
         # for the update / install / stop scripts without guessing.
         "app_dir": _APP_DIR,
         "is_git_checkout": _is_git_checkout(),
+        "in_container": in_container,
         "tls": _tls_status(),
         # The branch this install is on (main unless it was switched from the
         # Update app card) and what it can be switched to; latest_commit is
@@ -2911,6 +2917,13 @@ def _latest_remote_commit(branch: str = "main") -> Optional[str]:
         return entry["sha"]
     entry["at"] = _t.time()
     sha, err = None, None
+    if app_update.in_container() or not os.path.exists(os.path.join(_APP_DIR, ".git")):
+        # No git checkout here (the container image, or a ZIP copy): ask
+        # GitHub's REST API instead, with a read-only token when one is set
+        # (the repository is private, so without one GitHub answers 404).
+        sha, err = app_update.github_branch_head(branch)
+        entry["sha"], entry["error"] = sha, err
+        return sha
     try:
         cp = subprocess.run(["git", "ls-remote", "origin", "-h", f"refs/heads/{branch}"], cwd=_APP_DIR,
                             capture_output=True, text=True, timeout=8, env=app_update.git_env())
@@ -2981,6 +2994,8 @@ async def app_update_run(req: Optional[AppUpdateRequest] = None):
     overwritten."""
     _update_allowed()
     import app_update
+    if app_update.in_container():
+        raise HTTPException(status_code=409, detail=app_update.CONTAINER_UPDATE_HELP)
     target = _update_branch(req.branch if req else None)
     result = await asyncio.to_thread(app_update.update, _APP_DIR, branch=target)
     _LATEST.pop(target, None)

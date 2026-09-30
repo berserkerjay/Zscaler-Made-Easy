@@ -47,7 +47,7 @@ def test_installer_and_container_install_the_same_pinned_file_and_run_the_same_e
     assert "requirements.lock" in _read("INSTALL_Zscaler_Assessment.bat") and "--require-hashes" in _read("INSTALL_Zscaler_Assessment.bat")
     assert "dlp_api_server.py" in _read("start.sh") and "dlp_api_server.py" in _read("START_Zscaler_Assessment.bat")
     compose = _read("docker-compose.yml")
-    assert "build: ." in compose and "127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "read_only: true" in compose
+    assert "context: ." in compose and "127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "read_only: true" in compose
 
 
 def test_shell_scripts_parse_and_are_executable():
@@ -82,3 +82,82 @@ def test_the_container_build_trusts_a_corporate_root_certificate_from_certs():
     assert "certs/*.crt" in gi and "certs/*.pem" in gi and "certs/*.cer" in gi, "organisation certificates stay local"
     guide = _read("INSTALL.md")
     assert 'Zscaler Root CA' in guide and "certs\\zscaler-root.crt" in guide and "extra root certificates added" in guide
+
+
+def test_the_container_is_updated_from_the_docker_host_with_a_schedulable_script():
+    # "The container needs an auto update": it has no git and a read-only
+    # filesystem, so the computer that runs Docker pulls and rebuilds it.
+    sh, ps = _read("update_container.sh"), _read("update_container.ps1")
+    import subprocess
+    assert subprocess.run(["bash", "-n", os.path.join(ROOT, "update_container.sh")]).returncode == 0
+    assert os.access(os.path.join(ROOT, "update_container.sh"), os.X_OK) or sys.platform.startswith("win")
+    for src in (sh, ps):
+        assert "git pull --ff-only" in src and "docker compose up -d --build" in src
+        assert "DLP_CHECK_BUILD_COMMIT" in src and "Up to date" in src, "rebuilds only when GitHub is ahead"
+        assert "git status --porcelain --untracked-files=no" in src, "never overwrites hand edits"
+    assert "--schedule" in sh and "crontab" in sh and "--unschedule" in sh
+    assert "Register-ScheduledTask" in ps and "-Daily" in ps and "Unregister-ScheduledTask" in ps
+    df, dc = _read("Dockerfile"), _read("docker-compose.yml")
+    assert "ARG DLP_CHECK_BUILD_COMMIT" in df and 'DLP_CHECK_BUILD_COMMIT: "${DLP_CHECK_BUILD_COMMIT:-unknown}"' in dc
+
+
+def test_update_app_in_a_container_explains_the_host_update_instead_of_the_zip_message(monkeypatch):
+    import app_update
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    monkeypatch.setenv("DLP_CHECK_IN_CONTAINER", "1")
+    monkeypatch.setenv("DLP_CHECK_BUILD_COMMIT", "abc1234")
+    monkeypatch.setenv("DLP_CHECK_BUILD_BRANCH", "main")
+    st = app_update.status(ROOT, remote_sha="def5678")
+    assert st["in_container"] and st["local_commit"] == "abc1234" and st["update_available"] is True and not st["can_update"]
+    assert "update_container.ps1" in st["reason"] and "update_container.sh" in st["reason"]
+    assert app_update.status(ROOT, remote_sha="abc1234ffff")["update_available"] is False
+    c = TestClient(srv.app)
+    h = c.get("/api/health").json()
+    assert h["in_container"] is True
+    r = c.post("/api/app/update", json={})
+    assert r.status_code in (403, 409)
+    page = _read(os.path.join("static", "guide.js"))
+    assert "GD.about.in_container" in page and "_gdContainerUpdateHelp" in page and "update_container.ps1" in page
+
+
+def test_an_update_beacon_checks_github_in_the_background_and_shows_a_notice():
+    import dlp_api_server as srv
+    assert ("update_beacon.js", "script") in srv.GUI_ADDONS, "injected into every served page"
+    js = _read(os.path.join("static", "update_beacon.js"))
+    assert "/api/app/update/status" in js and "setInterval(check" in js and "setTimeout(check" in js
+    assert "update_available" in js and "localStorage" in js and "Later" in js, "dismiss hides that build only"
+    assert "update_container.ps1" in js and "role', 'status'" in js
+
+
+def test_the_container_asks_the_github_api_with_an_optional_token_and_never_leaks_it(monkeypatch):
+    import app_update
+
+    class Resp:
+        def __init__(self, code, body=None):
+            self.status_code, self._body = code, body or {}
+
+        def json(self):
+            return self._body
+
+    seen = {}
+
+    def fake_get(url, headers=None, timeout=None):
+        seen["url"], seen["auth"] = url, (headers or {}).get("Authorization")
+        return Resp(200, {"sha": "abcdef1234567"}) if seen["auth"] else Resp(404)
+
+    import requests
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.delenv("DLP_CHECK_GITHUB_TOKEN", raising=False)
+    sha, err = app_update.github_branch_head("main")
+    assert sha is None and "DLP_CHECK_GITHUB_TOKEN" in err and "private" in err
+    assert seen["url"] == "https://api.github.com/repos/berserkerjay/DLP-Check/commits/main"
+    monkeypatch.setenv("DLP_CHECK_GITHUB_TOKEN", "ghp_secret_value")
+    sha, err = app_update.github_branch_head("main")
+    assert sha == "abcdef1" and err is None and seen["auth"] == "Bearer ghp_secret_value"
+
+    def boom(url, headers=None, timeout=None):
+        raise RuntimeError("proxy said no to ghp_secret_value")
+    monkeypatch.setattr(requests, "get", boom)
+    sha, err = app_update.github_branch_head("main")
+    assert sha is None and "ghp_secret_value" not in err
