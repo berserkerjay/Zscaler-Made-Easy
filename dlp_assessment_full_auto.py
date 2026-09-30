@@ -512,27 +512,56 @@ def c_1_5(cl):
     if e: return e
     b=[1 for p in d for k in ["predefinedBypasses","customBypasses","processBypasses","appBypassPredefined","appBypassCustom","appBypassProcess"] for _ in (p.get(k) or [])]
     return R(R.PASS,"No app bypasses.") if not b else R(R.WARN,f"{len(b)} app bypass(es) — process-based are highest risk.")
+def _app_profiles_flat(cl):
+    """App profiles with policyExtension and the per-platform policies folded
+    in (zcc_evaluation.flatten_profile): most Client Connector settings
+    (enableZdpService, prioritizeDnsExclusions, installCerts …) live there,
+    not at the top level (zscaler-sdk-python zcc/models/webpolicy.py)."""
+    d,e=_g(cl,"/zcc/appProfiles","AppProfiles")
+    if e: return None, e
+    try:
+        from zcc_evaluation import flatten_profile
+    except Exception:  # noqa: BLE001
+        flatten_profile = lambda p: p
+    return [flatten_profile(p) for p in d if isinstance(p, dict)], None
+
+def _zt2(p):
+    """True when a forwarding profile sends some network through Z-Tunnel 2.0.
+    The mode sits in forwardingProfileActions[].actionType, not a top-level field."""
+    try:
+        from data_flow import forwarding_actions
+        if any(a.get("mode_label")=="Z-Tunnel 2.0" for a in forwarding_actions(p).values()): return True
+    except Exception:  # noqa: BLE001
+        pass
+    t=str(p.get("tunnelType",p.get("tunnelDriverType","")))
+    return "2.0" in t or "PACKET" in t.upper()
+
 def c_1_6(cl):
     """Check 1.6 (1 — CC Portal): Forwarding Profile listener."""
     d,e=_g(cl,"/zcc/forwardingProfiles","FwdProfiles"); 
     if e: return e
-    zt=[p for p in d if "2.0" in str(p.get("tunnelType",p.get("tunnelDriverType",""))) or "PACKET" in str(p.get("tunnelType",p.get("tunnelDriverType",""))).upper()]
-    return R(R.PASS,f"{len(zt)} of {len(d)} profile(s) use Z-Tunnel 2.0.") if zt else R(R.WARN,"No Z-Tunnel 2.0 detected.")
+    zt=[p for p in d if isinstance(p, dict) and _zt2(p)]
+    return R(R.PASS,f"{len(zt)} of {len(d)} profile(s) use Z-Tunnel 2.0.") if zt else R(R.WARN,"No forwarding profile uses Z-Tunnel 2.0. Best Practice: forward with Z-Tunnel 2.0 (DTLS, TLS fallback) so every port and protocol reaches ZIA, not only proxied web traffic. Ref: https://help.zscaler.com/zscaler-client-connector/best-practices-deploying-z-tunnel-2.0")
 def c_1_7(cl):
     """Check 1.7 (1 — CC Portal): DNS exclusion priority."""
     d,e=_g(cl,"/zcc/forwardingProfiles","FwdProfiles"); 
     if e: return e
-    dns=[p for p in d if p.get("prioritizeDnsExclusions") or p.get("dnsExclusionPriority")]
+    # prioritizeDnsExclusions is an app-profile setting (policyExtension); older
+    # forwarding-profile exports carried it too, so both are read.
+    aps,_e2=_app_profiles_flat(cl)
+    dns=[p for p in list(d)+list(aps or []) if isinstance(p, dict) and (p.get("prioritizeDnsExclusions") in (True,1,"1","true") or p.get("dnsExclusionPriority"))]
     return R(R.WARN,f"{len(dns)} profile(s) prioritize DNS exclusions over tunnel.") if dns else R(R.PASS,"DNS exclusions not prioritized.")
 def c_1_8(cl):
     """Check 1.8 (1 — CC Portal): Strict Enforcement."""
-    d,e=_g(cl,"/zcc/appProfiles","AppProfiles"); 
+    d,e=_app_profiles_flat(cl)
     if e: return e
-    off=[p.get("name","?") for p in d if not (p.get("strictEnforcement") or p.get("strictMode"))]
+    if d and not any(k in p for p in d for k in ("strictEnforcement","strictMode")):
+        return R(R.WARN,"The app profiles do not report Strict Enforcement; check it in the Client Connector portal (App Profiles). Check 6.8 reads it from the enrolled devices.")
+    off=[p.get("name","?") for p in d if not (p.get("strictEnforcement") in _ON or p.get("strictMode") in _ON)]
     return R(R.FAIL,f"Strict mode OFF on: {', '.join(off[:5])}") if off else R(R.PASS,"Strict Enforcement on all profiles.")
 def c_1_9(cl):
     """Check 1.9 (1 — CC Portal): Pre-enrollment gap."""
-    d,e=_g(cl,"/zcc/appProfiles","AppProfiles"); 
+    d,e=_app_profiles_flat(cl)
     if e: return e
     strict=all(p.get("strictEnforcement") or p.get("strictMode") for p in d)
     tamper=all(p.get("disablePassword") or p.get("passwordToDisable") for p in d)
@@ -540,7 +569,7 @@ def c_1_9(cl):
     return R(R.WARN,f"Gap elevated: {'strict off' if not strict else ''} {'tamper missing' if not tamper else ''}")
 def c_1_10(cl):
     """Check 1.10 (1 — CC Portal): Tamper passwords."""
-    d,e=_g(cl,"/zcc/appProfiles","AppProfiles"); 
+    d,e=_app_profiles_flat(cl)
     if e: return e
     m=[p.get("name","?") for p in d if not((p.get("disablePassword") or p.get("passwordToDisable")) and (p.get("uninstallPassword") or p.get("passwordToUninstall")))]
     return R(R.FAIL,f"Missing tamper passwords: {', '.join(m[:5])}") if m else R(R.PASS,"Tamper passwords set.")
@@ -619,18 +648,26 @@ def c_2_8(cl):
 def c_3_1(cl):
     """Check 3.1 (3 — App Profile): Z-Tunnel 2.0/DTLS."""
     return c_1_6(cl)
+_ON = (True, 1, "1", "true", "True", "TRUE")
+
 def c_3_2(cl):
     """Check 3.2 (3 — App Profile): Install Endpoint DLP."""
-    d,e=_g(cl,"/zcc/appProfiles","AP"); 
+    d,e=_app_profiles_flat(cl)
     if e: return e
-    z=[p for p in d if p.get("installEndpointDlp") or p.get("endpointDlpEnabled") or p.get("zdpEnabled")]
-    return R(R.PASS,f"ZDP enabled on {len(z)}/{len(d)}.") if z else R(R.FAIL,"ZDP not enabled — endpoint DLP dead.")
+    # The app-profile switch is enableZdpService (policyExtension); the older names are kept for old exports.
+    keys=("enableZdpService","installEndpointDlp","endpointDlpEnabled","zdpEnabled")
+    z=[p for p in d if any(p.get(k) in _ON for k in keys)]
+    if z: return R(R.PASS,f"Endpoint DLP (Install Endpoint DLP / enableZdpService) on {len(z)}/{len(d)} app profile(s).")
+    if any(k in p for p in d for k in keys):
+        return R(R.FAIL,"Install Endpoint DLP (enableZdpService) is off on every app profile — the Endpoint DLP module is never installed, so no Endpoint DLP rule can fire. Best Practice: turn it on in the app profiles of the users in scope for Endpoint DLP. Ref: https://help.zscaler.com/zia/about-endpoint-dlp")
+    return R(R.WARN,"The app profiles do not report the Install Endpoint DLP switch (enableZdpService); check it in the Client Connector portal (App Profiles).")
 def c_3_3(cl):
     """Check 3.3 (3 — App Profile): SSL cert toggle."""
-    d,e=_g(cl,"/zcc/appProfiles","AP"); 
+    d,e=_app_profiles_flat(cl)
     if e: return e
-    s=[p for p in d if p.get("sslCertInstall") or p.get("installSslCert") or p.get("sslCertificateEnabled")]
-    return R(R.PASS,f"SSL cert on {len(s)}/{len(d)}.") if s else R(R.WARN,"SSL cert toggle not detected.")
+    # installCerts sits in the per-platform policy (windowsPolicy, macPolicy …).
+    s=[p for p in d if any(p.get(k) in _ON for k in ("installCerts","sslCertInstall","installSslCert","sslCertificateEnabled"))]
+    return R(R.PASS,f"SSL cert on {len(s)}/{len(d)}.") if s else R(R.WARN,"Install Zscaler SSL Certificate (installCerts) not on in any app profile. Without the root certificate on the device, SSL inspection breaks HTTPS unless the certificate is pushed another way (MDM, GPO).")
 def c_3_4(cl):
     """Check 3.4 (3 — App Profile): EUNs enabled."""
     d,e=_g(cl,"/zcc/appProfiles","AP"); 
@@ -703,8 +740,8 @@ def c_3_7(cl):
     profiles, code = _cbi_profiles(cl)
     if not profiles:
         if code in (403, 404):
-            return R(R.INFO, "Browser Isolation is not licensed or not enabled on this tenant (API returned no profiles). Without it, unsanctioned SaaS and AI tools can only be allowed or blocked; isolation is the middle ground that permits viewing while stopping upload, download and clipboard.")
-        return R(R.WARN, "No Browser Isolation profiles configured. Best practice: create a profile with upload, download and clipboard disabled and route unsanctioned file-sharing, webmail and AI categories through it (URL Filtering action ISOLATE, or Cloud App Control ISOLATE_ actions).")
+            return R(R.INFO, "Browser Isolation (now Zscaler Zero Trust Browser) is not licensed or not enabled on this tenant (API returned no profiles). Without it, unsanctioned SaaS and AI tools can only be allowed or blocked; isolation is the middle ground that permits viewing while stopping upload, download and clipboard.")
+        return R(R.WARN, "No Browser Isolation profiles configured. Best practice: create a profile with upload, download and clipboard disabled and route unsanctioned file-sharing, webmail and AI categories through it (URL Filtering action ISOLATE, or Cloud App Control ISOLATE_ actions). Ref: https://help.zscaler.com/zero-trust-browser/configuring-zia-for-zero-trust-browser")
     url_iso, cac_iso = _isolate_rules(cl)
     names = [r.get("name","?") for r in url_iso[:4]] + [f"{r.get('name','?')} (CAC {r.get('type','')})" for r in cac_iso[:4]]
     if url_iso or cac_iso:
@@ -734,13 +771,30 @@ def c_3_8(cl):
     return R(R.PASS,f"{len(ctrl)} profile(s) with content controls.") if ctrl else R(R.WARN,"Isolation without content controls.")
 
 # === Section 4 ===
+# An SSL Inspection rule's action is an object in the ZIA API
+# ({"type": "DECRYPT" | "DO_NOT_DECRYPT" | "BLOCK", ...sub-actions}, as in
+# zscaler-sdk-python and terraform zia_ssl_inspection_rules); older exports
+# carried a plain string. Reading it with .upper() crashed every SSL check.
+_SSL_INSPECT = {"DECRYPT", "INSPECT", "SSL_INSPECT"}
+_SSL_DNI = {"DO_NOT_DECRYPT", "DO_NOT_INSPECT", "SSL_DO_NOT_INSPECT", "EXEMPT"}
+
+def _ssl_action(r):
+    """The action type of an SSL Inspection rule, upper case, whatever its shape."""
+    a = r.get("action") if isinstance(r, dict) else None
+    if isinstance(a, dict):
+        a = a.get("type") or a.get("name") or ""
+    return str(a or "").upper()
+
+def _ssl_enabled(r):
+    return str(r.get("state") or "ENABLED").upper() != "DISABLED"
+
 def c_4_1(cl):
     """Check 4.1 (4 — SSL Policy): Inspection scope."""
-    d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
+    d,e=_g(cl,"/zia/sslInspectionRules","SSL");
     if e: return e
-    i=[r for r in d if r.get("action","").upper() in ("INSPECT","SSL_INSPECT")]
-    dn=[r for r in d if r.get("action","").upper() in ("DO_NOT_INSPECT","SSL_DO_NOT_INSPECT","EXEMPT")]
-    return R(R.FAIL,"No SSL Inspect rules — zero HTTPS visibility.") if not i else R(R.PASS,f"{len(i)} Inspect, {len(dn)} DNI.")
+    i=[r for r in d if _ssl_enabled(r) and _ssl_action(r) in _SSL_INSPECT]
+    dn=[r for r in d if _ssl_enabled(r) and _ssl_action(r) in _SSL_DNI]
+    return R(R.FAIL,"No enabled SSL Inspection rule decrypts traffic — zero HTTPS visibility for DLP, Cloud App Control and threat scanning. Best Practice: decrypt everything except the documented exemptions (Zscaler Recommended Exemptions, privacy categories) with a catch-all DECRYPT rule. Ref: https://help.zscaler.com/zscaler-deployments-operations/zia-ssl-inspection-leading-practices-guide") if not i else R(R.PASS,f"{len(i)} enabled Decrypt rule(s), {len(dn)} Do Not Decrypt.")
 def c_4_2(cl):
     """Check 4.2 (4 — SSL Policy): Cert deployment."""
     d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
@@ -755,9 +809,10 @@ def c_4_3(cl):
     if e: return e
     fd=fi=None
     for i,r in enumerate(d):
-        a=r.get("action","").upper(); broad=not r.get("urlCategories") and not r.get("departments") and not r.get("groups")
-        if a in("DO_NOT_INSPECT","SSL_DO_NOT_INSPECT","EXEMPT") and broad and fd is None: fd=i
-        if a in("INSPECT","SSL_INSPECT") and fi is None: fi=i
+        if not _ssl_enabled(r): continue
+        a=_ssl_action(r); broad=not r.get("urlCategories") and not r.get("cloudApplications") and not r.get("departments") and not r.get("groups") and not r.get("users")
+        if a in _SSL_DNI and broad and fd is None: fd=i
+        if a in _SSL_INSPECT and fi is None: fi=i
     if fd is not None and fi is not None and fd<fi: return R(R.FAIL,f"Broad DNI at {fd+1} shadows Inspect at {fi+1}.")
     return R(R.PASS,"SSL rule order valid.")
 def c_4_4(cl):
@@ -770,7 +825,7 @@ def c_4_5(cl):
     """Check 4.5 (4 — SSL Policy): DNI entries."""
     d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
     if e: return e
-    dn=[r.get("name","?") for r in d if r.get("action","").upper() in("DO_NOT_INSPECT","SSL_DO_NOT_INSPECT","EXEMPT")]
+    dn=[r.get("name","?") for r in d if _ssl_enabled(r) and _ssl_action(r) in _SSL_DNI]
     return R(R.WARN,f"{len(dn)} DNI rule(s): {', '.join(dn[:5])}") if dn else R(R.PASS,"No DNI rules.")
 def c_4_6(cl):
     """Check 4.6 (4 — SSL Policy): Duplicate rules."""
@@ -786,8 +841,9 @@ def c_4_8(cl):
     """Check 4.8 (4 — SSL Policy): Prompt/Confirm actions."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
     if e: return e
-    cf=[r for r in d if r.get("action","").upper() in("CONFIRM","PROMPT","ALLOW_WITH_CONFIRM")]
-    return R(R.PASS,f"{len(cf)} Prompt/Confirm rule(s).") if cf else R(R.WARN,"No Prompt/Confirm actions.")
+    # CONFIRM is the web DLP action (terraform zia_dlp_web_rules 4.1.1+); the other names are kept for old exports.
+    cf=[r for r in d if str((r.get("action") or {}).get("type") if isinstance(r.get("action"), dict) else r.get("action") or "").upper() in("CONFIRM","PROMPT","ALLOW_WITH_CONFIRM")]
+    return R(R.PASS,f"{len(cf)} Prompt/Confirm rule(s).") if cf else R(R.WARN,"No web DLP rule uses the Confirm action. Confirm lets the user justify the transaction or cancel it (a timeout cancels it), with the wording from a User Confirmation Notification template; it suits data that may leave for a business reason, while Block stays for data that must never leave. Ref: https://help.zscaler.com/zia/about-user-confirmation-notification-templates")
 def c_4_9(cl):
     """Check 4.9 (4 — SSL Policy): EUN templates."""
     d,c=cl.get("/zia/dlpNotificationTemplates")
@@ -806,17 +862,65 @@ def c_4_11(cl):
     pl=[r for r in d if r.get("devicePostureProfiles") or r.get("deviceTrustLevels")]
     return R(R.PASS,f"{len(pl)} SSL rule(s) linked to posture.") if pl else R(R.WARN,"No SSL rules tied to device posture.")
 def c_4_12(cl):
-    """Check 4.12 (4 — SSL Policy): ECH handling."""
-    d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
+    """Check 4.12 (4 — SSL Policy): ECH handling.
+
+    Zscaler's guidance handles Encrypted Client Hello in DNS Control, not in
+    SSL Inspection rules: block the HTTPS and SVCB DNS record types so the
+    browser never learns the ECH config (and does not try HTTP/3 over QUIC).
+    Ref: https://help.zscaler.com/zia/best-practices-dns-control-rules"""
+    d,e=_g(cl,"/zia/firewallDnsRules","DNS Control")
     if e: return e
-    ech=[r for r in d if "ech" in str(r).lower()]
-    return R(R.PASS,f"ECH handling in {len(ech)} rule(s).") if ech else R(R.WARN,"No ECH-specific rules.")
+    def types(r): return {str(t).upper() for t in (r.get("dnsRuleRequestTypes") or r.get("dns_rule_request_types") or [])}
+    blk=[r for r in d if isinstance(r, dict) and str(r.get("state") or "ENABLED").upper()=="ENABLED"
+         and str(r.get("action") or "").upper().startswith("BLOCK") and {"HTTPS","SVCB"} & types(r)]
+    both=[r for r in blk if {"HTTPS","SVCB"} <= types(r)] or ([r for r in blk if "HTTPS" in types(r)] and [r for r in blk if "SVCB" in types(r)])
+    names=", ".join(str(r.get("name","?")) for r in blk[:3])
+    if both: return R(R.PASS,f"DNS Control blocks the HTTPS and SVCB record types ({names}), which suppresses ECH and HTTP/3 over QUIC.")
+    if blk: return R(R.WARN,f"DNS Control blocks only one of the HTTPS / SVCB record types ({names}). Best Practice: block both so the browser cannot learn an ECH config. Ref: https://help.zscaler.com/zia/best-practices-dns-control-rules")
+    return R(R.WARN,"No DNS Control rule blocks the HTTPS and SVCB record types, so browsers can use Encrypted Client Hello (and HTTP/3 over QUIC) and hide the real destination from SSL inspection. Best Practice: a DNS Control rule with request types HTTPS and SVCB, action Block with response code Server Failure. Ref: https://help.zscaler.com/zia/best-practices-dns-control-rules")
 def c_4_13(cl):
     """Check 4.13 (4 — SSL Policy): TLS 1.3."""
     d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
     if e: return e
-    i=[r for r in d if r.get("action","").upper() in("INSPECT","SSL_INSPECT")]
+    i=[r for r in d if _ssl_enabled(r) and _ssl_action(r) in _SSL_INSPECT]
     return R(R.PASS,"SSL active — ZIA supports TLS 1.3 natively.") if i else R(R.FAIL,"No SSL inspection.")
+
+def c_4_14(cl):
+    """Check 4.14 (4 — SSL Policy): Decrypt rule hardening.
+
+    The sub-actions of every enabled DECRYPT rule against the Internet & SaaS
+    TLS and SSL Inspection Leading Practices Guide: block untrusted server
+    certificates, OCSP revocation check on, block undecryptable traffic, and
+    no TLS version below 1.2. Fields are action.decryptSubActions
+    (serverCertificates, ocspCheck, blockUndecrypt, minClientTLSVersion,
+    minServerTLSVersion — zscaler-sdk-python / terraform zia_ssl_inspection_rules).
+    A sub-action the API does not return is not counted against the rule."""
+    d,e=_g(cl,"/zia/sslInspectionRules","SSL")
+    if e: return e
+    dec=[r for r in d if isinstance(r, dict) and _ssl_enabled(r) and _ssl_action(r) in _SSL_INSPECT]
+    if not dec: return R(R.INFO,"No enabled Decrypt rule to review (see 4.1).")
+    def sub(r):
+        a=r.get("action") if isinstance(r.get("action"), dict) else {}
+        return a.get("decryptSubActions") or a.get("decrypt_sub_actions") or {}
+    def tls_below_12(v):
+        import re as _re
+        m=_re.search(r"(\d)[_.](\d)$", str(v or ""))
+        return bool(m) and (int(m.group(1)), int(m.group(2))) < (1, 2)
+    issues=[]
+    for r in dec:
+        s_=sub(r); n=str(r.get("name","?")); bad=[]
+        if "serverCertificates" in s_ and str(s_.get("serverCertificates")).upper()!="BLOCK": bad.append(f"untrusted server certificates {str(s_.get('serverCertificates')).upper()}")
+        if "ocspCheck" in s_ and s_.get("ocspCheck") is not True: bad.append("OCSP revocation check off")
+        if "blockUndecrypt" in s_ and s_.get("blockUndecrypt") is not True: bad.append("undecryptable traffic allowed")
+        for k,lbl in (("minClientTLSVersion","client"),("minServerTLSVersion","server")):
+            if tls_below_12(s_.get(k)): bad.append(f"minimum {lbl} TLS {s_.get(k)}")
+        if bad: issues.append(f"{n}: {', '.join(bad)}")
+    ref=" Ref: https://help.zscaler.com/zscaler-deployments-operations/zia-ssl-inspection-leading-practices-guide"
+    if issues:
+        return R(R.WARN,f"{len(issues)} of {len(dec)} Decrypt rule(s) are weaker than Zscaler's leading practice: {'; '.join(issues[:4])}. Best Practice: Untrusted Server Certificates Block, OCSP Revocation Check on, Block Undecryptable Traffic on, and minimum client and server TLS 1.2 (review the TLS versions in use first and add narrow exceptions for legacy services)."+ref,
+                 data={"rules": len(dec), "weak": len(issues)})
+    return R(R.PASS,f"All {len(dec)} Decrypt rule(s) block untrusted certificates and undecryptable traffic, check OCSP and require TLS 1.2 or later (where the API reports these settings)."+ref,
+             data={"rules": len(dec), "weak": 0})
 
 # === Section 5 ===
 def c_5_1(cl):
@@ -868,10 +972,19 @@ def c_5_10(cl):
 def c_5_11(cl):
     """Check 5.11 (5 — Endpoint DLP): Custom dict FP."""
     return c_5_10(cl)
+# A DLP dictionary says what it is in dictionaryType (PATTERNS_AND_PHRASES,
+# EXACT_DATA_MATCH, INDEXED_DATA_MATCH, MIP_TAG — terraform zia_dlp_dictionaries);
+# EDM carries exactDataMatchDetails and IDM idmProfileMatchAccuracy(Details).
+def _is_edm(x):
+    return str(x.get("dictionaryType") or "").upper()=="EXACT_DATA_MATCH" or bool(x.get("exactDataMatchDetails")) or "EDM" in (x.get("name") or "").upper()
+def _is_idm(x):
+    return (str(x.get("dictionaryType") or "").upper()=="INDEXED_DATA_MATCH" or bool(x.get("idmProfileMatchAccuracyDetails") or x.get("idmProfileMatchAccuracy") or x.get("idmProfile"))
+            or "IDM" in (x.get("name") or "").upper())
+
 def c_5_12(cl):
     """Check 5.12 (5 — Endpoint DLP): Detection methods."""
     d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
-    m=[n for n,t in [("regex",any(x.get("patterns") for x in dicts)),("phrase",any(x.get("phrases") for x in dicts)),("EDM",any(x.get("exactDataMatchDetails") or "EDM" in (x.get("name") or "").upper() for x in dicts))] if t]
+    m=[n for n,t in [("regex",any(x.get("patterns") for x in dicts)),("phrase",any(x.get("phrases") for x in dicts)),("EDM",any(_is_edm(x) for x in dicts)),("IDM",any(_is_idm(x) for x in dicts))] if t]
     return R(R.PASS,f"Methods: {', '.join(m)}.") if len(m)>=2 else R(R.WARN,f"Only {', '.join(m) or 'none'} — add more.")
 def c_5_13(cl):
     """Check 5.13 (5 — Endpoint DLP): Content types."""
@@ -883,13 +996,13 @@ def c_5_13(cl):
 def c_5_14(cl):
     """Check 5.14 (5 — Endpoint DLP): EDM."""
     d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
-    edm=[x for x in dicts if x.get("exactDataMatchDetails") or "EDM" in (x.get("name") or "").upper()]
-    return R(R.PASS,f"{len(edm)} EDM dict(s).") if edm else R(R.WARN,"No EDM.")
+    edm=[x for x in dicts if _is_edm(x)]
+    return R(R.PASS,f"{len(edm)} EDM dict(s).") if edm else R(R.WARN,"No Exact Data Match dictionary. EDM matches your own records (customer, patient or employee data indexed with the Index Tool) instead of patterns, which cuts false positives on regulated data. Ref: https://help.zscaler.com/zia/about-exact-data-match")
 def c_5_15(cl):
     """Check 5.15 (5 — Endpoint DLP): IDM."""
     d,c=cl.get("/zia/dlpDictionaries"); dicts=_ls(d) if c in(200,204) else []
-    idm=[x for x in dicts if x.get("idmProfile") or "IDM" in (x.get("name") or "").upper()]
-    return R(R.PASS,f"{len(idm)} IDM profile(s).") if idm else R(R.WARN,"No IDM.")
+    idm=[x for x in dicts if _is_idm(x)]
+    return R(R.PASS,f"{len(idm)} IDM profile(s).") if idm else R(R.WARN,"No Indexed Document Match dictionary. IDM fingerprints your sensitive documents and forms (indexed with the Index Tool) so copies and fragments are detected. Ref: https://help.zscaler.com/zia/about-indexed-document-match")
 def c_5_16(cl):
     """Check 5.16 (5 — Endpoint DLP): Confirm/Prompt."""
     return c_4_8(cl)
@@ -899,13 +1012,30 @@ def c_5_17(cl):
 def c_5_18(cl):
     """Check 5.18 (5 — Endpoint DLP): Tenancy."""
     return c_4_7(cl)
+_OCR_REF="Ref: https://help.zscaler.com/zia/configuring-dlp-advanced-settings"
+
 def c_5_19(cl):
-    """Check 5.19 (5 — Endpoint DLP): OCR."""
-    d,e=_g(cl,"/zia/webDlpRules","DLP"); 
+    """Check 5.19 (5 — Endpoint DLP): OCR.
+
+    OCR is an organisation-wide switch in DLP Advanced Settings (Inline DLP,
+    SaaS Security API, Outbound Email DLP), read from /webDlpGlobalOptions
+    (zscaler-sdk-python 1.11.0 zia/web_dlp_global_options.py). The per-rule
+    ocrEnabled flag is deprecated upstream (terraform-provider-zia 2.9.0) and
+    only read as a fallback for older tenants."""
+    g,gc=cl.get("/zia/webDlpGlobalOptions")
+    if gc==200 and isinstance(g, dict) and "enableInlineDlpOcr" in g:
+        on=lambda k: g.get(k) in (True,1,"1","true","True")
+        off=[n for k,n in (("enableCasbOcr","SaaS Security API"),("enableEmailDlpOcr","Outbound Email DLP")) if k in g and not on(k)]
+        tail=(f" Also off for: {', '.join(off)}." if off else "")
+        if on("enableInlineDlpOcr"):
+            return R(R.PASS,"OCR is on for inline DLP: text in PNG, JPEG, TIFF and BMP images is scanned."+tail,data={"inline_ocr":True})
+        return R(R.WARN,"OCR is off for inline DLP (DLP Advanced Settings): DLP rules do not apply to image files, so a screenshot or scan of a record passes unscanned."+tail+" Best Practice: enable Optical Character Recognition for Inline DLP (and for SaaS Security API and Outbound Email DLP where licensed). "+_OCR_REF,data={"inline_ocr":False})
+    d,e=_g(cl,"/zia/webDlpRules","DLP");
     if e: return e
     a=[r for r in d if r.get("state","").upper()=="ENABLED"]; ocr=[r for r in a if r.get("ocrEnabled")]
     if not a: return R(R.WARN,"No active DLP rules — OCR check not applicable.")
-    return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.") if ocr else R(R.WARN,"OCR not enabled on any active rules.")
+    if ocr: return R(R.PASS,f"OCR on {len(ocr)}/{len(a)}.")
+    return R(R.INFO,"OCR is set once for the organisation in DLP Advanced Settings (Optical Character Recognition), not per rule, and that setting was not readable here. Check that OCR is on for Inline DLP. "+_OCR_REF)
 def c_5_20(cl):
     """Inline DLP rule evaluation mode: Evaluate All Rules (every matching
     rule fires) or By Rule Order (first match wins). Uses the same probe as
@@ -920,18 +1050,18 @@ def c_5_20(cl):
     order_ok = st.get("order_already_safe_for_eval_all")
     n_rules = st.get("rule_count", 0); n_on = st.get("enabled_rules", 0)
     if on is True:
-        return R(R.PASS, f"Evaluate All Rules is ON (seen at {via}). Every matching DLP rule fires and logs its own incident, so a broad monitor rule and a narrow block rule can coexist. {n_on}/{n_rules} web DLP rules enabled.",
+        return R(R.PASS, f"Evaluate All Rules is ON (seen at {via}). Every rule is evaluated and the matching rule with the most restrictive action is enforced, so a broad monitor rule and a narrow block rule can coexist. {n_on}/{n_rules} web DLP rules enabled.",
                  data={"evaluate_all": True, "found_via": via})
     if on is False:
         tail = ("Current rule order is already safe to switch: the strictest rules sit above broader ones." if order_ok
                 else "Rule order is NOT yet safe to switch: a broad ALLOW/monitor rule above a BLOCK rule would keep firing first. Use Inline DLP Rule Migration (Step 3, Optimize) to reorder, then enable.")
-        return R(R.WARN, f"Evaluate All Rules is OFF: the tenant is in By Rule Order mode (seen at {via}). Only the first matching rule fires, so a monitor rule near the top silently shadows every block rule below it. Best practice for a layered DLP policy is Evaluate All Rules. {tail} {n_on}/{n_rules} web DLP rules enabled.",
+        return R(R.WARN, f"Evaluate All Rules is OFF: the tenant is in By Rule Order mode (seen at {via}). Only the first matching rule fires, so a monitor rule near the top silently shadows every block rule below it. With Evaluate All Rules the most restrictive matching action wins, which suits a layered DLP policy. {tail} Zscaler applies the mode to all inline DLP rules and requires the existing inline DLP rules to be deleted before it changes (the Rule Migration wizard exports and re-creates them); the account team enables the mode. {n_on}/{n_rules} web DLP rules enabled. Ref: https://help.zscaler.com/zia/configuring-dlp-advanced-settings",
                  data={"evaluate_all": False, "found_via": via, "order_safe": bool(order_ok)})
     feat = st.get("feature_available")
     feat_note = (" The capability flag says the feature is available on this tenant." if feat is True
-                 else " The capability flag says the feature is not enabled on this tenant; Zscaler support enables it." if feat is False else "")
+                 else " The capability flag says the feature is not enabled on this tenant; the Zscaler account team enables it." if feat is False else "")
     return R(R.INFO, "The API does not expose the DLP rule evaluation mode on this tenant." + feat_note
-             + " Read it in the portal under Policy > Data Loss Prevention > Advanced Settings (Inline DLP Rule Evaluation), or declare it in the Rule Migration wizard.",
+             + " Read it in the portal under Data Security > Common Resources > DLP Advanced Settings (Inline DLP Rule Evaluation), or declare it in the Rule Migration wizard. Ref: https://help.zscaler.com/zia/configuring-dlp-advanced-settings",
              data={"evaluate_all": None, "feature_available": feat})
 def c_5_21(cl):
     """Check 5.21 (5 — Endpoint DLP): AI classification."""
@@ -940,7 +1070,7 @@ def c_5_21(cl):
     return R(R.PASS,f"AI dicts: {', '.join(x.get('name','?') for x in ai[:3])}") if ai else R(R.WARN,"No AI classification.")
 def c_5_22(cl):
     """Check 5.22 (5 — Endpoint DLP): AI discovery."""
-    return R(R.WARN,"Discovery scan status needs GraphQL — verify in portal.")
+    return R(R.WARN,"Endpoint Data Scan (discovery of sensitive files at rest on endpoints) is not in the ZIA API — verify its scans and results in the portal. Ref: https://help.zscaler.com/zia/about-endpoint-data-scan")
 
 # === Multi-Channel ===
 def c_mc1(cl):
@@ -982,7 +1112,7 @@ def c_mc10(cl):
     return R(R.WARN,"CASB Report needs GraphQL.")
 def c_mc11(cl):
     """Check MC.11 (Multi-Channel): DSPM."""
-    return R(R.WARN,"DSPM needs separate license + portal.")
+    return R(R.WARN,"Zscaler DSPM (Data Security Posture Management) is a separate license and console; not assessed through the ZIA API.")
 def c_mc12(cl):
     """Check MC.12 (Multi-Channel): Executive summary."""
     d1,_=cl.get("/zia/webDlpRules"); d2,_=cl.get("/zia/sslInspectionRules")
@@ -990,10 +1120,18 @@ def c_mc12(cl):
 
 # === Section 6 ===
 def c_6_1(cl):
-    """Check 6.1 (6 — Versions): ZCC versions."""
+    """Check 6.1 (6 — Versions): ZCC versions.
+
+    The device list reports the client version as agentVersion
+    (zscaler-sdk-python zcc/models/devices.py). Zscaler supports the latest
+    release, the two before it and the current LTS; on Windows and macOS
+    every 3.x and older release is out of support (Linux 3.7.2 is still an
+    LTS). Ref: https://help.zscaler.com/product-usage-terms/supported-versions"""
     d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
-    old=[x for x in devs[:500] if (x.get("zccVersion") or x.get("clientConnectorVersion") or "99").startswith(("1.","2.","3."))]
-    return R(R.FAIL,f"{len(old)} deprecated ZCC versions.") if old else R(R.PASS,f"{len(devs)} device(s) OK.")
+    def ver(x): return str(x.get("agentVersion") or x.get("zccVersion") or x.get("clientConnectorVersion") or x.get("zappVersion") or "99")
+    def linux(x): return "linux" in str(x.get("osType") or x.get("platform") or x.get("type") or "").lower() or str(x.get("type") or "")=="5"
+    old=[x for x in devs[:500] if isinstance(x, dict) and ver(x).startswith(("1.","2.","3.")) and not linux(x)]
+    return R(R.FAIL,f"{len(old)} device(s) run Client Connector 3.x or older, which Zscaler no longer supports on Windows or macOS (supported: the latest release, the two before it and the current LTS; unsupported releases can be refused enrollment). Ref: https://help.zscaler.com/product-usage-terms/supported-versions") if old else R(R.PASS,f"{len(devs)} device(s) OK.")
 def c_6_2(cl):
     """Check 6.2 (6 — Versions): Phased rollout."""
     d,e=_g(cl,"/zcc/appProfiles","AP"); 
@@ -1014,11 +1152,24 @@ def c_6_5(cl):
 def c_6_6(cl):
     """Check 6.6 (6 — Versions): Registers."""
     return c_2_5(cl)
+def _is_win10(x):
+    """Windows 10, not 11. Both report version 10.0; Windows 11 is build
+    22000 and later, so "10" in the version string is not enough."""
+    os_=str(x.get("osType") or x.get("platform") or x.get("type") or "").lower()
+    ver=str(x.get("osVersion") or "")
+    if "windows" not in os_ and "windows" not in ver.lower() and os_ not in ("3",): return False
+    low=ver.lower()
+    if "windows 11" in low: return False
+    if "windows 10" in low: return True
+    import re as _re
+    m=_re.search(r"10\.0\.(\d{5})", ver)
+    return bool(m) and int(m.group(1)) < 22000
+
 def c_6_7(cl):
     """Check 6.7 (6 — Versions): Win10 count."""
     d,c=cl.get("/zcc/devices"); devs=_ls(d) if c in(200,204) else []
-    w10=[x for x in devs if "10" in str(x.get("osVersion","")) and "windows" in str(x.get("osType") or x.get("platform") or "").lower()]
-    return R(R.WARN,f"{len(w10)} Win10 devices — support ends Oct 2026.") if w10 else R(R.PASS,"No Win10.")
+    w10=[x for x in devs if isinstance(x, dict) and _is_win10(x)]
+    return R(R.WARN,f"{len(w10)} Windows 10 device(s). Microsoft ended Windows 10 support on 14 October 2025; only devices enrolled in Extended Security Updates still get security fixes, and Zscaler supports Client Connector on Windows 10 for a limited time only. Plan the move to Windows 11. Ref: https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro ; https://help.zscaler.com/product-usage-terms/supported-versions") if w10 else R(R.PASS,"No Win10.")
 
 # === Section 7 ===
 def c_7_1(cl):
@@ -1031,7 +1182,7 @@ def c_7_3(cl):
     """Check 7.3 (7 — SSL Alignment): Cert expiration."""
     d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
     if e: return e
-    i=[r for r in d if r.get("action","").upper() in("INSPECT","SSL_INSPECT") and r.get("state","").upper()=="ENABLED"]
+    i=[r for r in d if _ssl_action(r) in _SSL_INSPECT and _ssl_enabled(r)]
     return R(R.PASS,f"SSL active ({len(i)} rules) — valid certs implied.") if i else R(R.WARN,"No enabled SSL rules.")
 
 # === Section 8 — Pilot Tests via log/rule inference ===
@@ -1044,18 +1195,40 @@ def _pilot(cl, kw, ch):
     if not a: return R(R.WARN,f"No active DLP rules to cover {ch}. Configure Web DLP rules first.")
     return R(R.WARN,f"No rules specifically target {ch} — may still be covered by generic rules.")
 
+def _values_text(o):
+    """Every value in a rule, lower case, without the keys: a key such as
+    cloudApplications must not count as a match for "cloud"."""
+    if isinstance(o, dict): return " ".join(_values_text(v) for v in o.values())
+    if isinstance(o, (list, tuple)): return " ".join(_values_text(v) for v in o)
+    return str(o).lower() if o is not None else ""
+
+# Endpoint DLP channels (Printing, Removable Storage Devices, Network Share,
+# Personal Cloud Storage — https://help.zscaler.com/zia/about-endpoint-dlp)
+# are Endpoint DLP rules (/endPointDlpRules), not web DLP rules: a web rule
+# can never see a USB copy or a print job.
+def _pilot_endpoint(cl, kws, ch):
+    d,c=cl.get("/zia/endPointDlpRules")
+    if c not in (200,204):
+        return R(R.INFO,f"Endpoint DLP rules are not readable (HTTP {c}); check the {ch} channel in the portal (Data Security > Endpoint DLP). Ref: https://help.zscaler.com/zia/about-endpoint-dlp")
+    rules=[r for r in _ls(d) if isinstance(r, dict)]
+    a=[r for r in rules if str(r.get("state") or "ENABLED").upper()=="ENABLED"]
+    m=[r for r in a if any(k in _values_text(r) for k in kws)]
+    if m: return R(R.PASS,f"{len(m)} enabled Endpoint DLP rule(s) cover {ch}: {', '.join(str(r.get('name','?')) for r in m[:4])}. Verify with a pilot device.")
+    if not a: return R(R.WARN,f"No enabled Endpoint DLP rules, so {ch} is not covered. Best Practice: add an Endpoint DLP rule for the {ch} channel (monitor first, then Block or Confirm). Ref: https://help.zscaler.com/zia/about-endpoint-dlp")
+    return R(R.WARN,f"None of the {len(a)} enabled Endpoint DLP rule(s) covers {ch}. Add a rule for that channel. Ref: https://help.zscaler.com/zia/about-endpoint-dlp")
+
 def c_8_1(cl):
     """Check 8.1 (8 — Pilot Tests): USB/Removable."""
-    return _pilot(cl,"removable","USB/Removable")
+    return _pilot_endpoint(cl,("removable","usb"),"USB/Removable")
 def c_8_2(cl):
     """Check 8.2 (8 — Pilot Tests): Printer."""
-    return _pilot(cl,"printer","Printer")
+    return _pilot_endpoint(cl,("print",),"Printer")
 def c_8_3(cl):
     """Check 8.3 (8 — Pilot Tests): Network Share."""
-    return _pilot(cl,"share","Network Share")
+    return _pilot_endpoint(cl,("network_share","network share","network_drive","network drive"),"Network Share")
 def c_8_4(cl):
     """Check 8.4 (8 — Pilot Tests): Personal Cloud."""
-    return _pilot(cl,"cloud","Personal Cloud")
+    return _pilot_endpoint(cl,("personal_cloud","personal cloud","cloud storage","cloud_storage","dropbox","onedrive","icloud","google drive"),"Personal Cloud")
 def c_8_5(cl):
     """Check 8.5 (8 — Pilot Tests): Inline Web DLP."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
@@ -1166,11 +1339,17 @@ def c_12_8(cl):
 def c_12_9(cl):
     """Check 12.9 (12 — Incident Mgmt): NSS DLP fields."""
     d,c=cl.get("/zia/nssFeeds"); feeds=_ls(d) if c in(200,204) else []
-    dlp_flds=["dlpeng","dlpdict","dlprulename","dlpmd5"]
+    # Web log fields (NSS Feed Output Format: Web Logs). %s{dlprulename} only
+    # names Allow rules; %s{trig_dlprulename} names the rule that triggered,
+    # allowed or blocked, so either satisfies the rule-name requirement.
+    dlp_flds=["dlpeng","dlpdict","dlpmd5"]
     for f in feeds:
-        fmt=(f.get("formatString") or f.get("format") or "").lower()
-        miss=[x for x in dlp_flds if x not in fmt]
-        if miss: return R(R.WARN,f"Feed '{f.get('name','?')}' missing: {', '.join(miss)}")
+        fmt=(f.get("formatString") or f.get("format") or f.get("feedOutputFormat") or "").lower()
+        miss=[x for x in dlp_flds if "{"+x+"}" not in fmt and x not in fmt]
+        if "trig_dlprulename" not in fmt and "dlprulename" not in fmt: miss.append("trig_dlprulename")
+        if miss: return R(R.WARN,f"Feed '{f.get('name','?')}' missing: {', '.join(miss)}. Use %s{{trig_dlprulename}} for the rule name: %s{{dlprulename}} only names Allow rules. Ref: https://help.zscaler.com/zia/nss-feed-output-format-web-logs")
+        if "trig_dlprulename" not in fmt:
+            return R(R.WARN,f"Feed '{f.get('name','?')}' names the DLP rule with %s{{dlprulename}}, which is filled only for Allow rules; add %s{{trig_dlprulename}} so blocked transactions carry their rule too. Ref: https://help.zscaler.com/zia/nss-feed-output-format-web-logs")
     return R(R.PASS,"All feeds include DLP fields.") if feeds else R(R.INFO,"No NSS feed to check (see 12.8; a feed is a recommendation, not a requirement).")
 def c_12_10(cl):
     """Check 12.10 (12 — Incident Mgmt): SIEM correlation."""
@@ -1178,7 +1357,7 @@ def c_12_10(cl):
 def c_12_11(cl):
     """Check 12.11 (12 — Incident Mgmt): 30-day retention."""
     d,c=cl.get("/zia/nssFeeds"); f=_ls(d) if c in(200,204) else []
-    return R(R.PASS,"NSS active — SIEM retention.") if f else R(R.WARN,"No NSS feed: ZIA keeps logs for its retention window only (typically 30 days unless extended). Recommended, not required: stream logs out for longer retention and evidence. Best Practice: Send web and DLP logs to a SIEM through Cloud NSS or an NSS VM and retain them for at least 12 months. Ref: https://help.zscaler.com/zia/about-nss-feeds")
+    return R(R.PASS,"NSS active — SIEM retention.") if f else R(R.WARN,"No NSS feed: ZIA keeps transaction logs for a rolling six months (180 days in the Nanolog) and nothing longer. Recommended, not required: stream logs out for longer retention and evidence. Best Practice: Send web and DLP logs to a SIEM through Cloud NSS or an NSS VM and retain them for at least 12 months. Ref: https://help.zscaler.com/zia/about-insights-logs ; https://help.zscaler.com/zia/about-nss-feeds")
 def c_12_12(cl):
     """Check 12.12 (12 — Incident Mgmt): Evidence storage."""
     return c_12_1(cl)
@@ -1290,7 +1469,7 @@ def c_b13(cl):
     return R(R.WARN,"Endpoint Report needs Analytics.")
 def c_b14(cl):
     """Check B.14 (Ch.B — Endpoint): Discovery scan."""
-    return R(R.WARN,"Discovery scan needs Analytics.")
+    return R(R.WARN,"Endpoint Data Scan results are not in the ZIA API — review them in the portal. Ref: https://help.zscaler.com/zia/about-endpoint-data-scan")
 def c_b15(cl):
     """Check B.15 (Ch.B — Endpoint): Workflow Automation."""
     return c_12_4(cl)
@@ -1308,7 +1487,7 @@ def c_e2(cl):
     """Check E.2 (Ch.E — GenAI): SSL for GenAI."""
     d,e=_g(cl,"/zia/sslInspectionRules","SSL"); 
     if e: return e
-    i=[r for r in d if r.get("action","").upper() in("INSPECT","SSL_INSPECT")]
+    i=[r for r in d if _ssl_enabled(r) and _ssl_action(r) in _SSL_INSPECT]
     return R(R.PASS,"SSL on — covers GenAI.") if i else R(R.FAIL,"No SSL — GenAI invisible.")
 def c_e3(cl):
     """Check E.3 (Ch.E — GenAI): CAC actions."""
@@ -1364,14 +1543,14 @@ def c_e14(cl):
 def c_e15(cl):
     """Check E.15 (Ch.E — GenAI): GenAI logging."""
     d,c=cl.get("/zia/nssFeeds"); f=_ls(d) if c in(200,204) else []
-    return R(R.PASS,"NSS streaming — GenAI logs captured.") if f else R(R.WARN,"No NSS — GenAI events 30-day only.")
+    return R(R.PASS,"NSS streaming — GenAI logs captured.") if f else R(R.WARN,"No NSS — GenAI events stay in ZIA only for its six-month log window (180 days). Ref: https://help.zscaler.com/zia/about-insights-logs")
 
 # === FULL REGISTRY ===
 REG = [
     ("1.1","1 — CC Portal","ZCC Portal accessible",c_1_1),("1.2","1 — CC Portal","VPN GW Bypasses",c_1_2),("1.3","1 — CC Portal","IP Inclusions",c_1_3),("1.4","1 — CC Portal","IP Exclusions",c_1_4),("1.5","1 — CC Portal","App Bypasses",c_1_5),("1.6","1 — CC Portal","Forwarding Profile listener",c_1_6),("1.7","1 — CC Portal","DNS exclusion priority",c_1_7),("1.8","1 — CC Portal","Strict Enforcement",c_1_8),("1.9","1 — CC Portal","Pre-enrollment gap",c_1_9),("1.10","1 — CC Portal","Tamper passwords",c_1_10),("1.11","1 — CC Portal","Machine Tunnel",c_1_11),("1.12","1 — CC Portal","ZCC Telemetry",c_1_12),("1.13","1 — CC Portal","Posture Profiles",c_1_13),("1.14","1 — CC Portal","Posture-linked policies",c_1_14),
     ("2.1","2 — Bypass Inventory","App Profile inventory",c_2_1),("2.2","2 — Bypass Inventory","Forwarding listeners",c_2_2),("2.3","2 — Bypass Inventory","PAC statements",c_2_3),("2.4","2 — Bypass Inventory","DNS handling",c_2_4),("2.5","2 — Bypass Inventory","Bypass register",c_2_5),("2.6","2 — Bypass Inventory","Bypass risk scoring",c_2_6),("2.7","2 — Bypass Inventory","Sensitive domain cross-ref",c_2_7),("2.8","2 — Bypass Inventory","Review cadence",c_2_8),
     ("3.1","3 — App Profile","Z-Tunnel 2.0/DTLS",c_3_1),("3.2","3 — App Profile","Install Endpoint DLP",c_3_2),("3.3","3 — App Profile","SSL cert toggle",c_3_3),("3.4","3 — App Profile","EUNs enabled",c_3_4),("3.5","3 — App Profile","Pilot targeting",c_3_5),("3.6","3 — App Profile","Split tunneling",c_3_6),("3.7","3 — App Profile","BYOD Browser Isolation",c_3_7),("3.8","3 — App Profile","Isolation controls",c_3_8),
-    ("4.1","4 — SSL Policy","Inspection scope",c_4_1),("4.2","4 — SSL Policy","Cert deployment",c_4_2),("4.3","4 — SSL Policy","Rule order",c_4_3),("4.4","4 — SSL Policy","Recommended Exemptions",c_4_4),("4.5","4 — SSL Policy","DNI entries",c_4_5),("4.6","4 — SSL Policy","Duplicate rules",c_4_6),("4.7","4 — SSL Policy","Cloud App Control",c_4_7),("4.8","4 — SSL Policy","Prompt/Confirm actions",c_4_8),("4.9","4 — SSL Policy","EUN templates",c_4_9),("4.10","4 — SSL Policy","Handshake errors",c_4_10),("4.11","4 — SSL Policy","SSL + device trust",c_4_11),("4.12","4 — SSL Policy","ECH handling",c_4_12),("4.13","4 — SSL Policy","TLS 1.3",c_4_13),
+    ("4.1","4 — SSL Policy","Inspection scope",c_4_1),("4.2","4 — SSL Policy","Cert deployment",c_4_2),("4.3","4 — SSL Policy","Rule order",c_4_3),("4.4","4 — SSL Policy","Recommended Exemptions",c_4_4),("4.5","4 — SSL Policy","DNI entries",c_4_5),("4.6","4 — SSL Policy","Duplicate rules",c_4_6),("4.7","4 — SSL Policy","Cloud App Control",c_4_7),("4.8","4 — SSL Policy","Prompt/Confirm actions",c_4_8),("4.9","4 — SSL Policy","EUN templates",c_4_9),("4.10","4 — SSL Policy","Handshake errors",c_4_10),("4.11","4 — SSL Policy","SSL + device trust",c_4_11),("4.12","4 — SSL Policy","ECH handling",c_4_12),("4.13","4 — SSL Policy","TLS 1.3",c_4_13),("4.14","4 — SSL Policy","Decrypt rule hardening",c_4_14),
     ("5.1","5 — Endpoint DLP","ZDP install",c_5_1),("5.2","5 — Endpoint DLP","DLP Resources",c_5_2),("5.3","5 — Endpoint DLP","Web DLP rules",c_5_3),("5.4","5 — Endpoint DLP","Scan allowlists",c_5_4),("5.5","5 — Endpoint DLP","SSL DNI cats",c_5_5),("5.6","5 — Endpoint DLP","URL filter bypasses",c_5_6),("5.7","5 — Endpoint DLP","Rule exceptions",c_5_7),("5.9","5 — Endpoint DLP","Rule scope",c_5_9),("5.10","5 — Endpoint DLP","Dictionaries",c_5_10),("5.11","5 — Endpoint DLP","Custom dict FP",c_5_11),("5.12","5 — Endpoint DLP","Detection methods",c_5_12),("5.13","5 — Endpoint DLP","Content types",c_5_13),("5.14","5 — Endpoint DLP","EDM",c_5_14),("5.15","5 — Endpoint DLP","IDM",c_5_15),("5.16","5 — Endpoint DLP","Confirm/Prompt",c_5_16),("5.17","5 — Endpoint DLP","Exemptions",c_5_17),("5.18","5 — Endpoint DLP","Tenancy",c_5_18),("5.19","5 — Endpoint DLP","OCR",c_5_19),("5.20","5 — Endpoint DLP","Evaluate all rules",c_5_20),("5.21","5 — Endpoint DLP","AI classification",c_5_21),("5.22","5 — Endpoint DLP","AI discovery",c_5_22),
     ("MC.1","Multi-Channel","Inline Web DLP",c_mc1),("MC.2","Multi-Channel","Endpoint DLP",c_mc2),("MC.3","Multi-Channel","CASB",c_mc3),("MC.4","Multi-Channel","Email DLP",c_mc4),("MC.5","Multi-Channel","Browser Isolation",c_mc5),("MC.6","Multi-Channel","Data Discovery",c_mc6),("MC.7","Multi-Channel","GenAI Report",c_mc7),("MC.8","Multi-Channel","Endpoint Report",c_mc8),("MC.9","Multi-Channel","Email Report",c_mc9),("MC.10","Multi-Channel","CASB Report",c_mc10),("MC.11","Multi-Channel","DSPM",c_mc11),("MC.12","Multi-Channel","Executive summary",c_mc12),
     ("6.1","6 — Versions","ZCC versions",c_6_1),("6.2","6 — Versions","Phased rollout",c_6_2),("6.3","6 — Versions","Device hygiene",c_6_3),("6.4","6 — Versions","Inspect list",c_6_4),("6.5","6 — Versions","DNI list",c_6_5),("6.6","6 — Versions","Registers",c_6_6),("6.7","6 — Versions","Win10 count",c_6_7),

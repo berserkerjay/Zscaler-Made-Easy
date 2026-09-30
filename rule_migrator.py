@@ -432,6 +432,10 @@ def assess_current_status(client) -> Dict[str, Any]:
     # can try alternative OneAPI path conventions verbatim.
     candidate_endpoints = [
         # Mode-bearing endpoints — standard resolution (/zia/api/v1/...)
+        # DLP Advanced Settings as the API serves them: enableEvaluateAllDlpRules
+        # (zscaler-sdk-python 1.11.0 zia/web_dlp_global_options.py; terraform
+        # zia_dlp_global_options enable_evaluate_all_dlp_rules).
+        "/zia/webDlpGlobalOptions",
         "/zia/dlpAdvancedSettings",
         "/zia/advancedSettings",
         "/zia/security/advanced",
@@ -878,6 +882,7 @@ def _probe_eval_all_field(client) -> Dict[str, Any]:
         "/zia/entitlement/features",
     }
     candidate_endpoints = [
+        "/zia/webDlpGlobalOptions",
         "/zia/dlpAdvancedSettings", "/zia/advancedSettings",
         "/zia/security/advanced", "/zia/dlpEvaluateAllRulesSetting",
         "/zia/advancedSettings/dlp", "/zia/dlpSettings",

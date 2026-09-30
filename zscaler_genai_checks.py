@@ -13,7 +13,7 @@ Based on Zscaler best practices for securing GenAI:
   - Zscaler AI/ML Applications URL category
 """
 
-from dlp_assessment_full_auto import R, _ls
+from dlp_assessment_full_auto import R, _ls, _ssl_action, _ssl_enabled, _SSL_INSPECT, _SSL_DNI
 
 # Known GenAI/LLM/AI vendor indicators (expand as new tools emerge)
 GENAI_KEYWORDS = [
@@ -82,7 +82,7 @@ def ai_1(cl):
     if ai_cats:
         names = ", ".join(c.get("configuredName", c.get("val", "?")) for c in ai_cats[:5])
         return R(R.PASS, f"Found {len(ai_cats)} AI/ML URL categor(ies): {names}. Best Practice: Zscaler's 'AI and ML Applications' URL category provides a foundation for GenAI governance. Periodically review which AI apps you allow/block — this list grew 3,464% YoY per ThreatLabz 2025.")
-    return R(R.FAIL, "No AI/ML URL categories configured. Best Practice: Zscaler provides the 'AI and ML Applications' URL category covering ChatGPT, Claude, Gemini, Copilot, and 500+ other AI tools. Enable this category as your first line of defense for GenAI governance. Ref: Zscaler Securing Generative AI guide.")
+    return R(R.FAIL, "No AI/ML URL categories configured. Best Practice: Zscaler provides the 'Generative AI and ML Applications' URL category (formerly 'AI and ML Applications') covering ChatGPT, Claude, Gemini, Copilot and other AI tools. Use it in URL Filtering and DLP rules as your first line of defense for GenAI governance. Ref: https://www.zscaler.com/url-categorization/Generative-AI-and-ML-Applications")
 
 
 def ai_2(cl):
@@ -103,7 +103,7 @@ def ai_3(cl):
     ai_rules = _genai_rules(rules)
     if ai_rules:
         return R(R.PASS, f"{len(ai_rules)} Cloud App Control rule(s) target AI apps. This enables granular actions (prompt/upload/download control) on sanctioned vs unsanctioned AI tools.")
-    return R(R.WARN, "No Cloud App Control rules for AI apps. Best Practice: Cloud App Control enables granular inspection of GenAI activities (prompt submission, file upload, download, share). Without CAC, you can only block the URL, not the specific activity. Create CAC rules using rule_type='AI_ML' to govern each AI tool individually.")
+    return R(R.WARN, "No Cloud App Control rules for AI apps. Best Practice: Cloud App Control enables granular inspection of GenAI activities (prompt submission, file upload, download, share). Without CAC, you can only block the URL, not the specific activity. Create CAC rules using rule_type='AI_ML' to govern each AI tool individually. Ref: https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control")
 
 
 def ai_4(cl):
@@ -123,7 +123,7 @@ def ai_5(cl):
     """SSL inspection enabled for AI traffic"""
     d, c = cl.get("/zia/sslInspectionRules")
     rules = _ls(d) if c in (200, 204) else []
-    inspect_rules = [r for r in rules if (r.get("action") or "").upper() in ("INSPECT", "SSL_INSPECT")]
+    inspect_rules = [r for r in rules if _ssl_enabled(r) and _ssl_action(r) in _SSL_INSPECT]
     if not inspect_rules:
         return R(R.FAIL, "No SSL inspection rules. Best Practice: SSL inspection is MANDATORY for GenAI governance. Without it, Zscaler sees only the domain (chat.openai.com) but cannot inspect prompts, uploads, or DLP content. All AI traffic is HTTPS — you need SSL inspection to see inside.")
     return R(R.PASS, f"{len(inspect_rules)} SSL inspect rule(s) enabled. GenAI prompts and uploads can be inspected for DLP violations.")
@@ -133,7 +133,7 @@ def ai_6(cl):
     """AI domains are NOT in SSL Do-Not-Inspect lists"""
     d, c = cl.get("/zia/sslInspectionRules")
     rules = _ls(d) if c in (200, 204) else []
-    dni = [r for r in rules if (r.get("action") or "").upper() in ("DO_NOT_INSPECT", "SSL_DO_NOT_INSPECT", "EXEMPT")]
+    dni = [r for r in rules if _ssl_enabled(r) and _ssl_action(r) in _SSL_DNI]
     risky = []
     for r in dni:
         text = str(r).lower()
@@ -155,7 +155,7 @@ def ai_7(cl):
     ai_rules = _genai_rules(rules)
     enabled = [r for r in ai_rules if (r.get("state") or "").upper() == "ENABLED"]
     if not ai_rules:
-        return R(R.FAIL, "No DLP rules target GenAI by name. Best Practice: Create dedicated DLP rules with URL category 'AI and ML Applications' as the destination. Scan prompts and file uploads for PII, source code, credentials, and confidential data before they reach LLMs.")
+        return R(R.FAIL, "No DLP rules target GenAI by name. Best Practice: Create dedicated DLP rules with URL category 'Generative AI and ML Applications' as the destination. Scan prompts and file uploads for PII, source code, credentials, and confidential data before they reach LLMs.")
     return R(R.PASS, f"{len(enabled)} active DLP rule(s) target GenAI destinations.")
 
 
@@ -287,12 +287,12 @@ def ai_15(cl):
 # ═══════════════════════════════════════════════════════════════════════
 
 def ai_16(cl):
-    """NSS streaming captures GenAI events beyond 30 days"""
+    """NSS streaming captures GenAI events beyond ZIA's six-month log window"""
     d, c = cl.get("/zia/nssFeeds")
     feeds = _ls(d) if c in (200, 204) else []
     if feeds:
-        return R(R.PASS, f"{len(feeds)} NSS feed(s) streaming. GenAI events retained in SIEM beyond the 30-day ZIA default.")
-    return R(R.FAIL, "No NSS feeds. Best Practice: Zscaler retains web logs for only 30 days by default. Given GenAI usage is a top data loss vector, stream logs to SIEM (Splunk/Sentinel/QRadar) for longer retention and threat hunting. Critical for incident investigations weeks/months later.")
+        return R(R.PASS, f"{len(feeds)} NSS feed(s) streaming. GenAI events retained in SIEM beyond ZIA's six-month log window.")
+    return R(R.FAIL, "No NSS feeds. Best Practice: ZIA keeps web logs for a rolling six months (180 days) and no longer (https://help.zscaler.com/zia/about-insights-logs). Given GenAI usage is a top data loss vector, stream logs to SIEM (Splunk/Sentinel/QRadar) for longer retention and threat hunting. Critical for incident investigations weeks/months later.")
 
 
 def ai_17(cl):

@@ -94,6 +94,71 @@ lists what each batch of changes did, newest first.
   For all six packs, every channel deploys in full with as many rules as the pack has Web rules (cjis 14, fed 17, banking 13, healthcare 12, ZBP Enterprise 9, ZBP Source Code 14). No rule fails, and every Email rule is scoped to the Exchange tenant.
 - **One refused request per run, not one per SaaS rule.** Every SaaS rule used to try rank 0 first, get refused, and then retry at rank 7: 9 refusals for ZBP and 17 for the Fed pack, exactly the kind of burst that gets the client blocked. Once ZIA refuses rank 0 in a run, the rest of that run's SaaS rules now start at the rank it accepted, and the log says so. The test fails without this change.
 - **Verified live, read-only.** The preflight of every pack against the real tenant: every channel of every pack is create or reuse, none blocked, and the email tenant was found on DLP_Rule_1. ZBP Enterprise shows Web and Endpoint already in place, 3 SaaS and 9 Email rules to go.
+### The assessment checks follow current Zscaler guidance and read the fields the APIs return
+- **What you asked for.** Review the assessment checks against current Zscaler best practice and update the ones that are out of date.
+- **Why.** Each check was compared with Zscaler's help pages, deployment guides and the official SDK and Terraform provider. Three kinds of problem came up. Some checks read field names the APIs do not return, so they reported a gap that did not exist or crashed. Some texts had wrong numbers: 30-day log retention, a 15-minute ZPA idle timeout, and "Windows 10 support ends Oct 2026". Some pointed at the wrong control, for example ECH in SSL rules or OCR per rule. No API path the app already reads was changed.
+- **Now**
+  - **SSL checks read the action object.**
+    - **What changed:** 4.1, 4.3, 4.5, 4.13, 7.3 and E.2, plus AI.5 and AI.6, now read `action.type` (`DECRYPT` / `DO_NOT_DECRYPT` / `BLOCK`). They count enabled rules only, and 4.3 treats a rule scoped to cloud apps or users as not broad.
+    - **Why:** an SSL Inspection rule's action is an object in the ZIA API, and reading it as a string crashed these checks ("Could not complete check").
+    - **Source:** zscaler-sdk-python 1.11.0 `zia/models/ssl_inspection_rules.py`; https://github.com/zscaler/terraform-provider-zia/blob/master/docs/resources/zia_ssl_inspection_rules.md
+  - **New check 4.14, Decrypt rule hardening.** Every enabled Decrypt rule should:
+    - block untrusted server certificates;
+    - run the OCSP revocation check;
+    - block undecryptable traffic;
+    - require at least TLS 1.2 for client and server.
+    - A sub-action the API does not return is not held against the rule.
+    - **Source:** https://help.zscaler.com/zscaler-deployments-operations/zia-ssl-inspection-leading-practices-guide ("Zscaler recommends blocking undecryptable traffic …", "… blocking all TLS versions earlier than 1.2").
+  - **4.12, ECH handling.**
+    - **What changed:** it now reads DNS Control rules and passes when a Block rule covers the HTTPS and SVCB record types. The old check passed any SSL rule containing the letters "ech".
+    - **Source:** https://help.zscaler.com/zia/best-practices-dns-control-rules
+  - **Client Connector app profiles are read with their policyExtension and platform policies folded in.** This is the same reading the strict Client Connector checks already use.
+    - **What changed:** 3.2 (Install Endpoint DLP, also 5.1 and B.1) reads `enableZdpService`, and 3.3 reads `installCerts`. 1.7 reads `prioritizeDnsExclusions` from the app profile. 1.8, 1.9 and 1.10 read the folded profile. A setting the profiles do not report is now a review item, not a failure.
+    - **Source:** zscaler-sdk-python 1.11.0 `zcc/models/webpolicy.py`
+  - **1.6 (and 3.1, 3.6) finds Z-Tunnel 2.0.**
+    - **What changed:** it reads the forwarding profile's `forwardingProfileActions`, where the mode actually is.
+    - **Source:** zscaler-sdk-python 1.11.0 `zcc/models/forwardingprofile.py`; https://help.zscaler.com/zscaler-client-connector/best-practices-deploying-z-tunnel-2.0
+  - **6.1 reads the device's `agentVersion`.**
+    - **Why:** the old check read a field the device list does not have, so it always passed.
+    - **Now:** it flags 3.x and older on Windows and macOS, while Linux 3.7.2 is still an LTS.
+    - **Source:** zscaler-sdk-python 1.11.0 `zcc/models/devices.py`; https://help.zscaler.com/product-usage-terms/supported-versions
+  - **6.7 no longer counts Windows 11 as Windows 10.**
+    - **Why:** both report version 10.0, and Windows 11 is build 22000 or later.
+    - **Now:** the text gives the real end of support, 14 October 2025, and Zscaler's limited Windows 10 support.
+    - **Source:** https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro; https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
+  - **5.19, OCR.**
+    - **What changed:** it reads the organisation-wide OCR switch in DLP Advanced Settings (`/webDlpGlobalOptions`, `enableInlineDlpOcr`, plus the SaaS Security API and Email switches).
+    - **Why:** Zscaler deprecated the per-rule `ocrEnabled` flag. "If OCR options are not enabled, DLP rules don't apply to image files."
+    - **Now:** when the setting is not readable, the check is informational rather than a per-rule finding.
+    - **Source:** https://help.zscaler.com/zia/configuring-dlp-advanced-settings; terraform-provider-zia CHANGELOG 2.9.0; zscaler-sdk-python 1.11.0 `zia/web_dlp_global_options.py`
+  - **5.20, Evaluate All Rules.**
+    - **What changed:** the probe first reads `/webDlpGlobalOptions` (`enableEvaluateAllDlpRules`).
+    - **Now:** the text says what Zscaler says. The most restrictive matching action wins. Changing the mode requires deleting the existing inline DLP rules. The account team enables it. The setting is at Data Security > Common Resources > DLP Advanced Settings.
+    - **Source:** https://help.zscaler.com/zia/configuring-dlp-advanced-settings; https://help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled
+  - **5.12, 5.14 and 5.15 recognise EDM and IDM dictionaries.**
+    - **What changed:** they read `dictionaryType` (`EXACT_DATA_MATCH`, `INDEXED_DATA_MATCH`) and `idmProfileMatchAccuracyDetails`. The IDM check read a field that does not exist. 5.12 now also lists IDM as a detection method.
+    - **Source:** https://github.com/zscaler/terraform-provider-zia/blob/master/docs/resources/zia_dlp_dictionaries.md; https://help.zscaler.com/zia/about-exact-data-match; https://help.zscaler.com/zia/about-indexed-document-match
+  - **8.1–8.4 (and B.6–B.9) read Endpoint DLP rules.**
+    - **Why:** the Printing, Removable Storage, Network Share and Personal Cloud Storage channels are Endpoint DLP rules, which web DLP rules cannot cover. 8.4 also passed on any web rule, because the key `cloudApplications` contains "cloud".
+    - **Now:** rule values are matched, not keys.
+    - **Source:** https://help.zscaler.com/zia/about-endpoint-dlp
+  - **12.9 accepts `%s{trig_dlprulename}` for the DLP rule name and asks for it.**
+    - **Why:** `%s{dlprulename}` is filled only for Allow rules.
+    - **Source:** https://help.zscaler.com/zia/nss-feed-output-format-web-logs
+  - **Log retention texts.**
+    - **What changed:** 12.11, E.15, AI.16 and USR.5 now say ZIA keeps transaction and audit logs for six months (180 days), not 30 days. ZPA.14 says ZPA keeps activity logs for 14 days without the Log Streaming Service.
+    - **Source:** https://help.zscaler.com/zia/about-insights-logs; https://help.zscaler.com/zia/about-audit-logs; https://help.zscaler.com/zpa/about-log-streaming-service
+  - **ZPA.7:** the default timeout rule is re-authenticate every 7 days with no idle timeout, not 15 minutes. **Source:** https://help.zscaler.com/zpa/about-timeout-policy
+  - **Texts and names.**
+    - 4.8 names the web DLP Confirm action and its User Confirmation Notification templates (https://help.zscaler.com/zia/about-user-confirmation-notification-templates).
+    - FW.2 and FW.8 follow Zscaler's firewall guidance: Default Firewall Filtering Rule on Block at the lowest order, and Allow rules built from three or more conditions (https://help.zscaler.com/zia/best-practices-firewall-control-policy).
+    - ZCC.18 recommends static trusted-network criteria (https://help.zscaler.com/zscaler-client-connector/configuring-trusted-networks-zscaler-client-connector).
+    - AI.1 and AI.7 use the category's current name, "Generative AI and ML Applications" (https://www.zscaler.com/url-categorization/Generative-AI-and-ML-Applications).
+    - 3.7 names Zero Trust Browser, formerly Browser Isolation (https://help.zscaler.com/zero-trust-browser/configuring-zia-for-zero-trust-browser).
+    - 5.22 and B.14 name Endpoint Data Scan (https://help.zscaler.com/zia/about-endpoint-data-scan), and MC.11 names Zscaler DSPM.
+  - **The NSS best-practice link** in the library, `best-practices-deploying-nss-servers`, answers "page not found". It now points to https://help.zscaler.com/zia/deploying-nss-virtual-appliances.
+  - **4.14 is registered in section 4.** It is listed in `DLP_Checks_Export.csv` and `.md`, and the SSL guidance topic and compliance mapping pick it up by prefix. No existing check id changed.
+- **Verified.** `tests/test_best_practice_review.py` builds each case from the SDK field names. It checks both action shapes and every sub-action, the folded app profiles, the Windows 10 and 11 builds, the OCR and Evaluate All settings, EDM and IDM, the endpoint channels, the NSS rule-name field, the version check, and the retention and timeout texts. The full suite has no new failures against `dev`.
 
 ### The one-channel note is emphasised, not shouted
 - **What you asked for.** "Make the bold note less bold; it's abrasively bold and large."
