@@ -7,6 +7,11 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### SaaS Security and Email DLP are scored in the assessment
+- **What you reported.** "In the assessment I don't see scores for SaaS and Email."
+- **Why.** Inline Web, Endpoint and GenAI were sections of their own with a score; SaaS and Email only had one presence check each inside Multi-Channel.
+- **Now** two new sections, **Ch.C — SaaS Security** and **Ch.D — Email DLP**, eight checks each, read from the tenant (read-only): SaaS applications onboarded, rules present, every onboarded application covered, files at rest scanned, rules carry engines, rules enabled, remediation beyond reporting, external and public sharing covered; Email tenant (Exchange, Gmail or secure email gateway) onboarded, which ZIA requires for every Email DLP rule, rules present, rules carry engines, rules enabled, enforcement beyond monitoring, rules scoped to the mail tenant, incidents reach an auditor, recipient scoping. They appear in Score by section and the report, count toward the overall score, and follow the Scope page's channel ownership (a channel marked covered by another product is left out). A channel the tenant has not licensed says so instead of failing.
+
 ### Every pack says: install one channel at a time
 - **What you asked for.** "Make a note for each pack to only install one channel at a time … in large bold letters … this applies for every pack."
 - **Now** every pack card in Deploy policy packs opens with, in large bold type: **INSTALL ONE CHANNEL AT A TIME.** Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify, and it avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).

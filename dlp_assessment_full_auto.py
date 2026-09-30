@@ -1383,6 +1383,14 @@ REG = [
     ("E.1","Ch.E — GenAI","GenAI categories",c_e1),("E.2","Ch.E — GenAI","SSL for GenAI",c_e2),("E.3","Ch.E — GenAI","CAC actions",c_e3),("E.4","Ch.E — GenAI","Prompt/upload/download",c_e4),("E.5","Ch.E — GenAI","Source code rule",c_e5),("E.6","Ch.E — GenAI","PII/PAN/PHI rule",c_e6),("E.7","Ch.E — GenAI","Prompt/Confirm EUN",c_e7),("E.8","Ch.E — GenAI","Shadow GenAI",c_e8),("E.9","Ch.E — GenAI","AUP enforcement",c_e9),("E.10","Ch.E — GenAI","GenAI Report",c_e10),("E.11","Ch.E — GenAI","FP review",c_e11),("E.12","Ch.E — GenAI","Adversarial patterns",c_e12),("E.13","Ch.E — GenAI","Browser Isolation",c_e13),("E.14","Ch.E — GenAI","Copilot oversharing",c_e14),("E.15","Ch.E — GenAI","GenAI logging",c_e15),
 ]
 
+# SaaS Security (Ch.C) and Email DLP (Ch.D) as scored channel sections,
+# beside Inline Web, Endpoint and GenAI.
+try:
+    import saas_email_checks as _saas_email
+    REG = _saas_email.splice(REG)
+except Exception as _e:  # noqa: BLE001
+    print(f"[warn] SaaS / Email checks not loaded: {_e}")
+
 # Strict Client Connector evaluation (app profiles, forwarding profiles,
 # trusted networks, fail-open, privacy, company, devices, notification
 # templates), spliced into sections 1, 6 and 12.

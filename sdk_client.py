@@ -169,6 +169,7 @@ class SdkClient:
 
             # --- ZIA: CASB ---
             "/zia/casbDlpRules/all":        lambda: _sdk_call(zs.zia.casb_dlp_rules.list_all_rules),
+            "/zia/emailDlpRules":           lambda: _sdk_call(zs.zia.outbound_email_dlp_rules.list_rules),
 
             # --- ZIA: Advanced Settings ---
             "/zia/advancedSettings":         lambda: _sdk_call(zs.zia.advanced_settings.get_advanced_settings),
@@ -214,6 +215,16 @@ class SdkClient:
             a = self.auth()
             if a is not True:
                 return {"error": str(a)}, 0
+
+        # SaaS application tenants: the filters (active only, email tenants
+        # only) are query parameters, so this route takes them.
+        if endpoint == "/zia/casbTenant/lite":
+            qp = {"active_only": str((params or {}).get("activeOnly", "")).lower() == "true"}
+            if (params or {}).get("appType"):
+                qp["app_type"] = str(params["appType"])
+            result = _sdk_call(self._zs.zia.saas_security_api.list_casb_tenant_lite, query_params=qp)
+            self._cache[cache_key] = result
+            return result
 
         # Try SDK route
         if self._route_map and endpoint in self._route_map:
