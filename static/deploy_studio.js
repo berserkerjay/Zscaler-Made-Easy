@@ -874,7 +874,7 @@ function _dzJobPhase(J) {
     [/^Activating/, 'Step 4 of 5 — activating in ZIA and waiting for ACTIVE (up to 45 s)'], [/^Activation still/, 'Step 4 of 5 — still waiting for ZIA to report ACTIVE'],
     [/^Reading the tenant back|^Re-reading the tenant/, 'Step 5 of 5 — reading the tenant back to verify'], [/^Phase 5/, 'Step 5 of 5 — verifying'],
     [/refused for now; activating/, 'Waiting for ZIA to settle, then trying the refused deletes again'],
-    [/\); activating, waiting 15s and trying again/, 'ZIA refused with a 403 — activating, waiting 15 s and trying again (up to 5 times)'],
+    [/\); activating, waiting \d+s and trying again/, 'ZIA refused with a 403 — activating, waiting and trying again (up to 5 times; about 7 minutes when ZIA answers Resource Access Blocked)'],
   ];
   for (let i = lines.length - 1; i >= 0; i--) {
     for (const [re, text] of steps) if (re.test(lines[i])) return text;
