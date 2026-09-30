@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Sidebar: Connect to the tenant above the Dashboard
+- **What you asked for.** "Move connect to the tenant above the dashboard."
+- **Now** the Workflow group reads in the order the work is done, like the step strip: Connect to the tenant, Scope assessment, Dashboard. The Dashboard is still the page that opens first.
+
 ### Container updates itself on a schedule; an update notice in the app
 - **What you asked for.** "The container needs an auto update" (Update app showed the ZIP message inside the container) and "there should be a beacon that looks for updates and notifies the user".
 - **Now** `update_container.ps1` (Windows) and `update_container.sh` (Mac, Linux), run on the computer that runs Docker, pull the latest code from GitHub and rebuild the container only when there is something new; `-Schedule` / `--schedule` once makes it run every day at 03:17 (Windows Task Scheduler, cron). They stop without changing anything if a file was edited by hand, and log to `update_container.log`. The image records the commit it was built from.
