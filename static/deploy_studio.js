@@ -59,6 +59,10 @@ const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
 // Containment channels a pack never deploys: they are carved out and
 // managed separately (kept in step with pack_channels.CARVED_CHANNELS).
 const DZ_CARVED = ['cloud_app', 'file_type', 'url', 'ssl'];
+// Shown in large bold type on every pack card; a pack.json deploy_note
+// replaces it. One channel per run keeps each deploy small and checkable.
+const DZ_ONE_CHANNEL_NOTE = "INSTALL ONE CHANNEL AT A TIME. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).";
+
 function _dzChannelChips(channels) {
   if (!channels) return '';
   const chips = Object.keys(DZ_CHANNEL).filter(c => c !== 'web' && !DZ_CARVED.includes(c) && channels[c])
@@ -373,6 +377,7 @@ function _dzRenderSelect() {
             <span class="track"><span class="knob"></span></span>
           </label>
         </div>
+        <div class="dz-deploy-note" role="note">${_dzE(p.deploy_note || DZ_ONE_CHANNEL_NOTE)}</div>
         ${p.baseline ? `<div class="dz-baseline" title="Policy pack: the reference this tenant is measured against. Deploy it into an empty (greenfield) tenant or on top of an existing (brownfield) one; whatever already exists is kept exactly as the customer has it. Afterwards, Where is this tenant? shows the stage reached and the next steps.">
           <span class="dz-chip kind-baseline">Policy pack</span>${p.baseline.prefix ? `<span class="dz-chip">prefix ${_dzE(p.baseline.prefix)}</span>` : ''}
           <span class="d">Greenfield or brownfield: creates what is missing, never overwrites. Then measures the journey.</span></div>` : ''}
