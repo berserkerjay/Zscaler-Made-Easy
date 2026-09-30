@@ -39,6 +39,7 @@ import contextlib
 import json
 import logging
 import re
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -94,6 +95,35 @@ def _activate(zia: Any) -> Dict[str, Any]:
 
 
 _sleep: Callable[[float], None] = time.sleep   # tests replace this
+
+
+# Writes are paced. A deploy or removal is 80-160 objects, and sending them
+# back to back is the burst after which ZIA's API gateway answers every
+# request with 403 "Resource Access Blocked" for several minutes (seen on a
+# live tenant). DLP_CHECK_WRITE_GAP seconds between writes (default 1.0;
+# 0 turns pacing off). Reads are not paced.
+def _write_gap() -> float:
+    try:
+        return max(0.0, float(os.environ.get("DLP_CHECK_WRITE_GAP", "1.0") or 0))
+    except ValueError:
+        return 1.0
+
+
+_pace_sleep: Callable[[float], None] = time.sleep   # tests replace this
+_pace_lock = threading.Lock()
+_last_write = [0.0]
+
+
+def _pace() -> None:
+    """Wait until DLP_CHECK_WRITE_GAP seconds have passed since the last write."""
+    gap = _write_gap()
+    if gap <= 0:
+        return
+    with _pace_lock:
+        wait = _last_write[0] + gap - time.monotonic()
+        if wait > 0:
+            _pace_sleep(wait)
+        _last_write[0] = time.monotonic()
 
 # Outcome.code of a write that was never sent because the run had stopped.
 STOPPED = "STOPPED"
@@ -393,6 +423,8 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
     def once() -> Outcome:
         nonlocal attempts
         attempts += 1
+        if op != "read":
+            _pace()
         try:
             out = normalize(fn(*args, **kwargs))
         except Exception as e:  # noqa: BLE001 — one object never stops the run
