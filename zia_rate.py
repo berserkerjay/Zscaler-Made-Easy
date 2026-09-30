@@ -42,6 +42,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -96,6 +97,10 @@ class _Tenant:
 _lock = threading.Lock()
 _tenants: Dict[str, _Tenant] = {"": _Tenant()}
 _loaded = [False]
+_seen: List[Optional[Tuple[int, int]]] = [None]   # the state file as last read or written (_stamp)
+_saved_at = [0.0]            # when this process last saved (ZIA's counts are saved at most every SAVE_EVERY)
+_save_failed = [False]       # logged once
+SAVE_EVERY = 5.0
 _ctx = threading.local()
 # The unkeyed tenant's state under its old names (tests read them).
 _sent = _tenants[""].sent
@@ -136,6 +141,19 @@ def using(key: Optional[str]) -> Iterator[None]:
         _ctx.key = before
 
 
+@contextlib.contextmanager
+def using_client(client: Any) -> Iterator[None]:
+    """using() with the key stamped on `client`: a deploy, removal, undo or
+    proposal change draws on its own tenant's state, whichever thread runs
+    it. A client with no key leaves the thread's key as it is."""
+    key = key_of(client)
+    if not key:
+        yield
+        return
+    with using(key):
+        yield
+
+
 def _t(key: Optional[str]) -> _Tenant:
     """A tenant's state. Called with _lock held."""
     k = current_key() if key is None else key
@@ -172,20 +190,15 @@ def _windows(sent: Dict[str, Any], t: float) -> Dict[str, int]:
 
 def _tenants_from(data: Dict[str, Any], now: float) -> Dict[str, Dict[str, Any]]:
     """The file's tenants as plain dicts; a file written before tenants were
-    told apart (version 1) becomes tenant "", its refusal read from its hold."""
+    told apart (version 1) becomes tenant "". Its hold is kept only while it
+    runs: version 1 set one after any refusal (a short 429 too) and never
+    cleared it, so it says neither what ZIA answered nor when."""
     if "tenants" in data:
         return {str(k): v for k, v in (data.get("tenants") or {}).items() if isinstance(v, dict)}
     sent = {k: [float(t) for t in ts] for k, ts in (data.get("sent") or {}).items() if k in DEFAULTS}
     hold = float(data.get("hold_until") or 0)
     refused = [r for r in (data.get("refused") or []) if isinstance(r, dict)]
-    if "refused" not in data and hold and now - hold < HISTORY_SECONDS:
-        # A hold is only ever set after ZIA refused a request, at the last one
-        # sent. Its traffic is counted from the file's full record.
-        last = max((t for q in sent.values() for t in q), default=None)
-        if last is not None:
-            refused.append({"at": last, "bucket": "write", "kind": "blocked", "reset": None,
-                            "message": "Resource Access Blocked", **_windows(sent, last)})
-    return {"": {"sent": sent, "hold_until": hold, "refused": refused, "server": data.get("server") or {}}}
+    return {"": {"sent": sent, "hold_until": hold if hold > now else 0.0, "refused": refused, "server": data.get("server") or {}}}
 
 
 def _merge_into(t: _Tenant, d: Dict[str, Any], now: float) -> None:
@@ -211,28 +224,63 @@ def _merge_into(t: _Tenant, d: Dict[str, Any], now: float) -> None:
             t.server[k] = dict(v)
 
 
+def _stamp() -> Optional[Tuple[int, int]]:
+    """The state file's modification time and size, None when it is missing."""
+    try:
+        st = os.stat(state_path())
+        return st.st_mtime_ns, st.st_size
+    except OSError:
+        return None
+
+
 def _load() -> None:
     """Read the state file once. Called with _lock held."""
     if _loaded[0]:
         return
     _loaded[0] = True
     now = _now()
+    _seen[0] = _stamp()
     for k, d in _tenants_from(_read_file(), now).items():
         _merge_into(_t(k), d, now)
+
+
+def _refresh() -> None:
+    """Read the state file again when another process has written it since
+    (a CLI assessment, another server), so a preflight sees its refusals.
+    Called with _lock held."""
+    _load()
+    stamp = _stamp()
+    if stamp is not None and stamp != _seen[0]:
+        _seen[0] = stamp
+        now = _now()
+        for k, d in _tenants_from(_read_file(), now).items():
+            _merge_into(_t(k), d, now)
+
+
+# How long a save waits for another process's lock file before removing it
+# as stale (tests shorten it).
+_LOCK_WAIT = 2.0
 
 
 @contextlib.contextmanager
 def _file_lock(path: str) -> Iterator[None]:
     """A lock file beside the state, so two processes merge instead of
-    overwriting each other. Gives up after two seconds (a stale lock)."""
+    overwriting each other. After _LOCK_WAIT seconds the lock is taken as
+    stale and removed once; one that is still there after that (it cannot
+    be removed, or another process holds it open) is not waited for again:
+    this save goes ahead without it."""
     lock = path + ".lock"
     fd = None
-    deadline = time.monotonic() + 2.0
+    deadline = time.monotonic() + _LOCK_WAIT
+    removed = False
     while fd is None:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             if time.monotonic() > deadline:
+                if removed:
+                    break
+                removed = True
                 with contextlib.suppress(OSError):
                     os.remove(lock)
                 continue
@@ -267,19 +315,27 @@ def _save() -> None:
                 if rec["sent"] or rec["hold_until"] or rec["refused"] or rec["server"]:
                     out[k] = rec
             fd, tmp = tempfile.mkstemp(prefix=".zia_rate-", dir=os.path.dirname(p) or ".")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump({"version": 2, "tenants": out}, f)
-            for attempt in range(5):
-                try:
-                    os.replace(tmp, p)
-                    break
-                except PermissionError:   # Windows: a reader has the file open
-                    time.sleep(0.05 * (attempt + 1))
-            else:
-                with contextlib.suppress(OSError):
-                    os.remove(tmp)
-    except Exception:  # noqa: BLE001
-        pass
+            replaced = False
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump({"version": 2, "tenants": out}, f)
+                for attempt in range(5):
+                    try:
+                        os.replace(tmp, p)
+                        replaced = True
+                        break
+                    except PermissionError:   # Windows: a reader has the file open
+                        time.sleep(0.05 * (attempt + 1))
+            finally:
+                if not replaced:   # a full disk, say: no temp file is left behind
+                    with contextlib.suppress(OSError):
+                        os.remove(tmp)
+            _seen[0] = _stamp()
+            _saved_at[0] = now
+    except Exception as e:  # noqa: BLE001
+        if not _save_failed[0]:
+            _save_failed[0] = True
+            logging.getLogger(__name__).warning("The ZIA rate-limit state could not be saved to %s: %s", state_path(), e)
 
 
 # ── limits and pacing ────────────────────────────────────────────────────
@@ -318,6 +374,29 @@ def _sim_rules(bucket: str) -> List[Tuple[int, float]]:
     """The limits a forecast applies: the app paces at its setting (with the
     per-second margin), ZIA refuses at its own, so both, the stricter binding."""
     return sorted(set(_paced(limits(bucket))) | set(limits_default(bucket)), key=lambda r: r[1])
+
+
+def _covers(bucket: str) -> bool:
+    """Does the bucket's setting pace at least as strictly as each of ZIA's
+    limits for it? A setting window as long as ZIA's or longer covers it
+    with no larger a count; a shorter one with its count times the
+    windows that fit."""
+    rules = limits(bucket)
+    return all(any((n2 <= n) if w2 >= w else (n2 * -(-w // w2) <= n) for n2, w2 in rules) for n, w in limits_default(bucket))
+
+
+def _breaks(bucket: str, prior: List[float], times: List[float]) -> Optional[Tuple[int, float]]:
+    """ZIA's limit for `bucket` that requests sent at `times` (after `prior`)
+    go over, or None."""
+    for n, w in limits_default(bucket):
+        seen = sorted(prior + times)
+        j = 0
+        for i, x in enumerate(seen):
+            while x - seen[j] >= w:
+                j += 1
+            if times and x >= times[0] and i - j + 1 > n:
+                return n, w
+    return None
 
 
 def _longest(bucket: str) -> float:
@@ -368,15 +447,17 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
     bucket = bucket_of(method, path, channel=channel, kind=kind)
     total = 0.0
     told_hold = False
-    waited_hold = False
+    slept_until = 0.0
     while True:
         with _lock:
             _load()
             t = _t(key)
             now = _now()
-            # A hold is slept through once: it ends at a fixed moment. Reads
-            # do not wait for it: a preview must still be able to read.
-            held = 0.0 if (waited_hold or bucket == "read") else t.hold[0] - now
+            # A hold is slept through once: it ends at a fixed moment, unless
+            # another run set or extended it meanwhile. Reads do not wait
+            # for it: a preview must still be able to read.
+            held = 0.0 if (bucket == "read" or t.hold[0] <= slept_until) else t.hold[0] - now
+            hold_end = t.hold[0]
             d, binding = (0.0, None) if held > 0 else _delay(t, bucket, now)
             if held <= 0 and d <= 0:
                 t.sent[bucket].append(now)
@@ -388,7 +469,7 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
             if log and not told_hold:
                 log(f"{what + ': ' if what else ''}ZIA's rate limit is still resetting; waiting {_human(held)} more before sending anything.")
                 told_hold = True
-            waited_hold = True
+            slept_until = hold_end
             step = held
         else:
             if log and d >= 5 and binding:
@@ -402,14 +483,15 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
 
 
 def full_reset(bucket: str, key: Optional[str] = None) -> float:
-    """Seconds until the limit's timer has completely elapsed for `bucket`:
-    every request of it this app counted has aged out of the bucket's
-    longest window. When none is counted (the limit was reached by other
-    traffic), a whole longest window."""
-    rules = limits(bucket) or limits_default(bucket)
-    longest = max((w for _, w in rules), default=60.0)
+    """Seconds until the oldest request of `bucket` this app counted has
+    aged out of the bucket's longest window, its setting's or ZIA's own,
+    whichever is longer: from then on the limit has room again. When none
+    is counted (the limit was reached by other traffic), a whole longest
+    window."""
+    longest = _longest(bucket)
     now = _now()
     with _lock:
+        _load()
         sent = _t(key).sent[bucket]
         inside = [x for x in sent if now - x < longest]
         return (inside[0] + longest - now) if inside else longest
@@ -460,16 +542,19 @@ def note_refusal(bucket: str, message: str, *, key: Optional[str] = None, reset:
         _load()
         t = _t(key)
         now = _now()
-        if t.refused and t.refused[-1]["bucket"] == bucket and now - t.refused[-1]["at"] < 2:
-            return   # the same refusal seen twice
         kind = "blocked" if "blocked" in (message or "").lower() and status != 429 else "429"
+        last = t.refused[-1] if t.refused else None
+        if last and last["bucket"] == bucket and last.get("kind") == kind and now - last["at"] < 2:
+            return   # the same refusal seen twice (a 403 block right after a 429 is not the same)
         t.refused.append({"at": now, "bucket": bucket, "message": str(message or "")[:160], "kind": kind,
                           "reset": reset, **_windows({k: list(q) for k, q in t.sent.items()}, now)})
         _save()
 
 
 def note_headers(bucket: str, headers: Any, key: Optional[str] = None) -> None:
-    """Keep ZIA's own count for `bucket` from an answer's x-ratelimit headers."""
+    """Keep ZIA's own count for `bucket` from an answer's x-ratelimit headers.
+    Kept in memory and saved at most every SAVE_EVERY seconds: nearly every
+    answer carries them, and a save rewrites the whole state file."""
     try:
         low = {str(k).lower(): v for k, v in dict(headers or {}).items()}
     except Exception:  # noqa: BLE001
@@ -479,8 +564,10 @@ def note_headers(bucket: str, headers: Any, key: Optional[str] = None) -> None:
         return
     with _lock:
         _load()
-        _t(key).server[bucket] = {"at": _now(), "limit": int(lim), "remaining": int(rem), "reset": rst}
-        _save()
+        now = _now()
+        _t(key).server[bucket] = {"at": now, "limit": int(lim), "remaining": int(rem), "reset": rst}
+        if not 0 <= now - _saved_at[0] < SAVE_EVERY:
+            _save()
 
 
 def _zia_path(url: str) -> Optional[str]:
@@ -634,26 +721,25 @@ def _prior(bucket: str, mine: List[float], server: Dict[str, Any], now: float) -
     return out
 
 
-def _view(key: Optional[str], use_recent: bool, now: float) -> Tuple[Dict[str, List[float]], float, List[Dict[str, Any]], Dict[str, Any]]:
+def _view(key: Optional[str], use_recent: bool, now: float) -> Tuple[Dict[str, List[float]], float, List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     """The requests of the last hour, the hold, the refusals and ZIA's counts
-    that apply to `key`: its own, plus the unkeyed record ("")."""
+    of tenant `key`, the same record its runs are paced by (wait); and,
+    apart, the refusals and hold of the record that names no tenant (""):
+    one written before tenants were told apart, or by a run that did not
+    say which tenant it wrote to. That one may be another tenant's."""
     if not use_recent:
-        return {k: [] for k in DEFAULTS}, 0.0, [], {}
+        return {k: [] for k in DEFAULTS}, 0.0, [], {}, {"refused": [], "hold": 0.0}
     with _lock:
-        _load()
-        keys = {current_key() if key is None else key, ""}
-        sent: Dict[str, List[float]] = {k: [] for k in DEFAULTS}
-        held, refused, server = 0.0, [], {}
-        for k in keys:
-            t = _t(k)
-            for b, q in t.sent.items():
-                sent[b] += [x for x in q if now - x < HOUR]
-            held = max(held, t.hold[0] - now)
-            refused += [dict(r, unrecorded_tenant=(k == "" and bool(key))) for r in t.refused]
-            for b, v in t.server.items():
-                if float(v.get("at") or 0) > float((server.get(b) or {}).get("at") or 0):
-                    server[b] = v
-    return {b: sorted(v) for b, v in sent.items()}, max(0.0, held), sorted(refused, key=lambda r: r["at"]), server
+        _refresh()
+        k = current_key() if key is None else key
+        t = _t(k)
+        sent = {b: sorted(x for x in q if now - x < HOUR) for b, q in t.sent.items()}
+        held = max(0.0, t.hold[0] - now)
+        refused = sorted((dict(r) for r in t.refused), key=lambda r: r["at"])
+        server = {b: dict(v) for b, v in t.server.items()}
+        u = _t("")
+        unkeyed = {"refused": [dict(r) for r in u.refused] if k else [], "hold": max(0.0, u.hold[0] - now) if k else 0.0}
+    return sent, held, refused, server, unkeyed
 
 
 def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[float, str]]:
@@ -724,15 +810,23 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     this client in the last hour, or blocked it before at fewer writes in
     5 minutes than this run sends."""
     now = _now()
-    sent, held, refused, server = _view(key, use_recent, now)
+    sent, held, refused, server, unkeyed = _view(key, use_recent, now)
     rows = []
     planned: List[float] = []
     start = fresh_start = now + held
     fresh_end = now
+    too_fast: List[Tuple[str, Tuple[int, float]]] = []   # (bucket, ZIA's limit the app's own pacing would break)
     for bucket in sorted((b for b, n in counts.items() if n > 0 and b in DEFAULTS), key=_ORDER.index):
         n = counts[bucket]
         rules = _sim_rules(bucket)
-        times = _simulate(rules, _prior(bucket, sent[bucket], server, now), start, n)
+        prior = _prior(bucket, sent[bucket], server, now)
+        times = _simulate(rules, prior, start, n)
+        if not _covers(bucket):
+            # The setting paces looser than ZIA's limits (or not at all): the
+            # run sends at the setting's pace, and ZIA refuses what is over.
+            broken = _breaks(bucket, prior, _simulate(_paced(limits(bucket)), prior, start, n))
+            if broken:
+                too_fast.append((bucket, broken))
         # The same run from a quiet hour: the time its own pacing takes.
         fresh = _simulate(rules, [], fresh_start, n)
         planned += times
@@ -763,6 +857,8 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     tolerated = [r for r in blocked if (r.get("writes_5m") or 0) > 0]
     ceiling = min(tolerated, key=lambda r: r["writes_5m"]) if tolerated else None
     history = _deployment_refusals(now, tenant_label) if use_recent else []
+    # A run of deletes only is a removal: its advice is about removing, not deploying.
+    removing = bool(counts.get("delete")) and not any(counts.get(b) for b in ("write", "endpoint_rules", "cloud_app"))
     run_after = None
     if not rows:
         verdict, severity = "Nothing to send.", "ok"
@@ -776,11 +872,25 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     elif ceiling and peak5 >= ceiling["writes_5m"]:
         verdict, severity = (f"Likely to fail: on {_day_clock(ceiling['at'])} ZIA blocked this API client after {ceiling['writes_5m']} writes "
                              f"in 5 minutes, below its documented limits, and this run sends up to {peak5} in its busiest 5 minutes. "
-                             f"Deploy one channel at a time, and do not run an assessment meanwhile."), "fail"
-    elif held > 0 or limited:
-        run_after = now + held if held > 0 else max(r["at"] + float(r.get("reset") or _longest(r["bucket"])) for r in limited)
+                             + ("Remove fewer objects at a time, and do not run an assessment meanwhile." if removing else
+                                "Deploy one channel at a time, and do not run an assessment meanwhile.")), "fail"
+    elif too_fast:
+        what = "; ".join(f"{BUCKET_LABELS[b]} is set to \"{(os.environ.get(_ENV[b]) or '').strip() or 'off'}\" ({_ENV[b]}), "
+                         f"and this run would send more than ZIA's {n} {_PER.get(w, f'per {w:.0f}s')}" for b, (n, w) in too_fast)
+        verdict, severity = (f"Likely to fail: DLP-Check's own pacing is looser than ZIA's rate limits ({what}), so ZIA will refuse "
+                             f"part of this run. Remove the setting to pace at ZIA's documented limits."), "fail"
+    elif held > 0:
+        run_after = now + held
         verdict, severity = (f"Will succeed, with a pause: ZIA's rate limit is still resetting from an earlier refusal, so this run "
                              f"starts sending at {_clock(run_after)} and takes about {_human(total)} in all."), "warn"
+    elif limited:
+        # ZIA's own reset timer: the run does not wait for it (no hold was
+        # set), so a request sent before it ends may be refused and waited out.
+        r = max(limited, key=lambda r: r["at"] + float(r.get("reset") or _longest(r["bucket"])))
+        ends = r["at"] + float(r.get("reset") or _longest(r["bucket"]))
+        verdict, severity = (f"Will succeed, with a pause: ZIA refused {BUCKET_LABELS[r['bucket']]} for its rate {_ago(now - r['at'])}, and its "
+                             f"limit may still be resetting until {_clock(ends)}. The run starts now; if ZIA refuses a request again, it pauses "
+                             f"until the limit has reset and carries on by itself. About {_human(total)} without a pause."), "warn"
     elif ceiling and peak5 >= 0.8 * ceiling["writes_5m"]:
         verdict, severity = (f"Will probably succeed, close to what ZIA tolerates: it blocked this client on {_day_clock(ceiling['at'])} "
                              f"after {ceiling['writes_5m']} writes in 5 minutes, and this run sends up to {peak5}. About {_human(total)}."), "warn"
@@ -795,12 +905,31 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     else:
         verdict, severity = f"Will succeed: goes straight through within ZIA's rate limits, about {_human(total)}.", "ok"
     if rows and severity != "ok":
-        case = ("blocked" if blocked_hour else "ceiling") if severity == "fail" else (
+        case = ("blocked" if blocked_hour else ("ceiling" if ceiling and peak5 >= ceiling["writes_5m"] else "too_fast")) if severity == "fail" else (
             "resetting" if (held > 0 or limited) else ("close" if ceiling and peak5 >= 0.8 * ceiling["writes_5m"] else "pauses"))
-        tol = ceiling["writes_5m"] if ceiling else (blocked_hour[-1].get("writes_5m") if blocked_hour else None)
+        # The number a quip names is the one its verdict names: this hour's block, else the fewest writes ZIA blocked at.
+        tol = (blocked_hour[-1].get("writes_5m") or None) if case == "blocked" else (ceiling["writes_5m"] if ceiling else None)
         quip = _quip(case, now, writes=tol, hourly=next((r["hourly_limit"] for r in rows if r["over_hourly"] or r["used_last_hour"]), None))
         if quip:
             verdict = f"{quip} {verdict}"
+    # A block or hold in the record that names no tenant may be this tenant's
+    # or another's: said as such, a warning at most, never a quip or a ceiling.
+    ublocked = [r for r in unkeyed["refused"] if r.get("kind") == "blocked" and now - float(r.get("at") or 0) < HOUR]
+    only_unkeyed = False
+    if rows and severity != "fail" and (ublocked or unkeyed["hold"] > 0):
+        if ublocked:
+            u = ublocked[-1]
+            note = (f"A DLP-Check record that names no tenant (written before tenants were kept apart, or by a run that did not say "
+                    f"which tenant it wrote to) shows ZIA blocked an API client {_ago(now - u['at'])} ('{u['message']}'). If that was "
+                    f"this tenant's, run this after {_clock(u['at'] + HOUR)}.")
+        else:
+            note = (f"A DLP-Check record that names no tenant (written before tenants were kept apart) holds writes until "
+                    f"{_clock(now + unkeyed['hold'])} after ZIA refused a request for its rate. If that was this tenant's, run this after then.")
+        if severity == "ok":
+            verdict, severity = f"Will probably succeed: goes straight through within ZIA's rate limits, about {_human(total)}. {note}", "warn"
+            only_unkeyed = True
+        else:
+            verdict = f"{verdict} {note}"
     # The API plan, one line per kind of request, and the success outlook with this tenant's track record.
     first = min((r["seconds"] - r["duration"] for r in rows), default=0.0)
     plan = ([f"Starts at {_clock(now + first)}, once ZIA's limit has reset ({_human(first)} from now)"] if first >= 60 else []) + [
@@ -809,13 +938,13 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         + (f" (ZIA counts {r['zia_reports_used']})" if (r['zia_reports_used'] or 0) > r['used_last_hour'] else "")
         + f"; takes about {_human(max(1.0, r['duration']))}" for r in rows]
     record = _track_record(now, tenant_label) if use_recent else {"runs": 0, "clean": 0, "percent": None}
-    outlook = {"ok": "good", "warn": "good, but slow", "fail": "poor"}[severity]
+    outlook = "good, unless that refusal was this tenant's" if only_unkeyed else {"ok": "good", "warn": "good, but slow", "fail": "poor"}[severity]
     success = {"outlook": outlook, "track_record": record,
                "text": f"Outlook: {outlook}. " + (f"Track record: {record['clean']} of {record['runs']} of this tenant's runs in the last week "
                                                  f"finished without ZIA refusing them for its rate ({record['percent']}%)."
                                                  if record["runs"] else "Track record: no deploys or removals of this tenant in the last week.")}
     return {"buckets": rows, "plan": plan, "success": success, "seconds": total, "pause_seconds": pause, "verdict": verdict, "severity": severity,
-            "title": {"ok": "Will succeed", "warn": "Will succeed, with pauses", "fail": "Likely to fail"}[severity],
+            "title": "Will probably succeed" if only_unkeyed else {"ok": "Will succeed", "warn": "Will succeed, with pauses", "fail": "Likely to fail"}[severity],
             "run_after": run_after, "refused_last_hour": len(blocked_hour) + len(limited), "peak_5min_writes": peak5,
             "tolerated": {"at": ceiling["at"], "writes_5m": ceiling["writes_5m"], "writes_1m": ceiling.get("writes_1m"),
                           "reads_5m": ceiling.get("reads_5m"), "message": ceiling["message"]} if ceiling else None,
@@ -939,4 +1068,6 @@ def reset() -> None:
         for k in [k for k in _tenants if k]:
             del _tenants[k]
         _loaded[0] = True   # a reset is a fresh start: do not read the file back
+        _seen[0] = _stamp()
+        _saved_at[0] = 0.0
     _ctx.prepaced = None
