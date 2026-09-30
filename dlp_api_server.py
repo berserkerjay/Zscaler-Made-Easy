@@ -2362,7 +2362,7 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
     import pack_jobs
     try:
         selection = pack_export.normalize_selection(req.rules or None)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
@@ -2647,7 +2647,7 @@ async def pack_library_preview(req: PackLibraryUploadRequest):
     except ValueError as e:
         return {"ok": False, "problems": [str(e)], "warnings": [], "counts": {}, "channels": []}
     v = pl.validate_pack(pack)
-    slug = pl.slugify(req.pack_id or pack["meta"].get("name") or "")
+    slug = pl.pack_slug(req.pack_id or pack["meta"].get("name") or "")
     if slug and pl._pack_id_taken(slug, PACKS_ROOT):
         v["ok"] = False
         v["problems"].append(f"a pack with id '{slug}' already exists; choose another id or remove that pack first")
