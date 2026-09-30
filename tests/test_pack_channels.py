@@ -556,3 +556,44 @@ def test_email_rules_scope_to_exchange_gmail_or_a_secure_email_gateway(tmp_path,
         assert "SMOES" not in em["reason"].split("scoped to")[-1]
     else:
         assert em["status"] == pd.BLOCKED_DEPENDENCY and "requires at least one email tenant" in em["reason"], em["reason"]
+
+
+# The tenant that had Exchange integrated for Email DLP: the SaaS tenant
+# list returned only SharePoint ("SMOES"), while an existing Email DLP rule
+# was scoped to the Exchange email tenant, also named "SMOES" (another id).
+EXCHANGE_RULE = {"id": 4242, "name": "DLP_Rule_1", "order": 1, "action": "ALLOW", "state": "ENABLED",
+                 "email_tenants": [{"id": 171656574, "name": "SMOES"}]}
+
+
+def test_email_tenants_are_learned_from_existing_email_dlp_rules(tmp_path):
+    client = make_client(casb_tenants=[tenant("SMOES", "SHAREPOINT", 177648211)], email_rules=[EXCHANGE_RULE])
+    pack = multi_pack(tmp_path)
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    em = items_by(rep, "policy")["Email-Monitor"]
+    assert em["status"] == pd.CREATE and "SMOES" in em["reason"], em["reason"]
+    dep = next(d for d in rep["dependencies"] if d["channel"] == "email" and "email tenant" in d["requirement"])
+    assert dep["status"] == "ok" and "DLP_Rule_1" in dep["detail"] and "required by ZIA" in dep["requirement"]
+    res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    sent = client.zia.outbound_email_dlp_rules.added[0]
+    ids = [t.get("id") if isinstance(t, dict) else t for t in sent["email_tenants"]]
+    assert ids == [171656574], "scoped to the Exchange email tenant, not the SharePoint tenant of the same name"
+    assert next(r for r in res["results"] if r["name"] == "Email-Monitor")["status"] == "created"
+
+
+def test_a_pinned_email_tenant_name_prefers_the_email_tenant(tmp_path):
+    client = make_client(casb_tenants=[tenant("SMOES", "SHAREPOINT", 177648211)], email_rules=[EXCHANGE_RULE])
+    pack = multi_pack(tmp_path, email={"tenants": ["SMOES"]})
+    rep = pd.preflight(client, [pack], writes_enabled=True)
+    assert items_by(rep, "policy")["Email-Monitor"]["status"] == pd.CREATE
+    pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True)
+    sent = client.zia.outbound_email_dlp_rules.added[0]
+    assert [t.get("id") if isinstance(t, dict) else t for t in sent["email_tenants"]] == [171656574]
+
+
+def test_with_no_email_tenant_anywhere_the_dependency_says_it_is_required(tmp_path):
+    client = make_client(casb_tenants=[tenant("SMOES", "SHAREPOINT", 177648211)])
+    rep = pd.preflight(client, [multi_pack(tmp_path)], writes_enabled=True)
+    dep = next(d for d in rep["dependencies"] if d["channel"] == "email" and "email tenant" in d["requirement"])
+    assert dep["status"] == "missing" and "ZIA requires at least one email tenant" in dep["detail"]
+    import json
+    assert "which the API allows" not in json.dumps(rep, default=str), "the old 'optional' wording is gone"
