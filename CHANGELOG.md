@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Email DLP rules wait for an email tenant instead of being refused
+- **What you reported.** A ZBP Enterprise deploy ran into five failed Email DLP rules ("One or more Email tenants is required", HTTP 400), then "Resource Access Blocked" (HTTP 403). It stopped with 10 rules never attempted and the tenant unreadable for the read-back.
+- **Why.** The 2026-09-30 change *Email DLP rules deploy in every pack* created an Email rule without an email tenant when none was onboarded, trusting the SDK's example. ZIA refuses such a rule. Five refused writes in a row then made ZIA block the API client for several minutes, longer than the five 15-second retries, so everything after them was lost.
+- **Now** the preflight checks for an email tenant. With none onboarded (this tenant has only SharePoint), every Email rule is a gap with what to do: *ZIA requires at least one email tenant on an Email DLP rule … onboard one under Administration > SaaS Application Tenants, then deploy the Email channel.* No request ZIA would refuse is sent, so the other channels deploy in full. With an Exchange, Gmail or secure email gateway tenant onboarded, Email rules are scoped to it as before.
+- **Verified.** The pack tests now expect the gap, with no Email request sent, on a tenant without an email tenant and on a SharePoint-only tenant, in every pack. Scoping to Exchange, Gmail and a SEG is unchanged.
+
 ### Whatever works on a local install works in the container
 - **What you asked for.** "Whatever works on the local install should work in the container without fault", then "please check".
 - **How it was checked.** Every place the app writes a file, every external program it runs and every localhost-only rule was listed from the code. The running container was then asked whether each location is writable: `/app` is read-only there, and `/data` is the only place it can write.
