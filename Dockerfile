@@ -4,6 +4,13 @@
 #   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
 # The UI token is printed on the container's console (docker logs) and
 # written to /data/ui_token.txt; open http://localhost:8001/?token=<it>.
+# Extra root certificates for TLS inspection (see below): the certs/ folder
+# of the build context. A build straight from the GitHub URL has no local
+# certs/ folder, so it hands one in instead:
+#   docker build --build-context certs=<folder with the .crt> ...
+FROM scratch AS certs
+COPY certs/ /
+
 FROM python:3.11-slim-bookworm AS base
 
 # The floating 3.11 tag picks up the current Debian and Python security
@@ -29,8 +36,9 @@ WORKDIR /app
 # app fails the same way on the Zscaler API. Put that root certificate in
 # certs/ as a Base-64 (PEM) file before building (INSTALL.md says how);
 # it is added to the image's trust store, and pip, requests and Python's
-# own ssl all use that store. With certs/ empty nothing changes.
-COPY certs/ /tmp/extra-ca/
+# own ssl all use that store. With certs/ empty nothing changes. A build
+# from the GitHub URL passes the folder as --build-context certs=<folder>.
+COPY --from=certs / /tmp/extra-ca/
 RUN set -e; n=0; \
     for f in /tmp/extra-ca/*.crt /tmp/extra-ca/*.pem /tmp/extra-ca/*.cer; do \
       [ -f "$f" ] || continue; \
