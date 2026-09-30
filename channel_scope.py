@@ -46,8 +46,8 @@ CHANNELS: Dict[str, str] = {
 CHANNEL_CHECKS: Dict[str, Dict[str, Sequence[str]]] = {
     "web_dlp": {"sections": ("Ch.A — Inline Web",), "ids": ("MC.1", "8.5")},
     "endpoint_dlp": {"sections": ("Ch.B — Endpoint",), "ids": ("5.1", "MC.2", "MC.8", "8.1", "8.2", "8.3")},
-    "email_dlp": {"sections": (), "ids": ("MC.4", "MC.9", "8.9")},
-    "saas_casb": {"sections": (), "ids": ("MC.3", "MC.10", "8.10")},
+    "email_dlp": {"sections": ("Ch.D — Email DLP",), "ids": ("MC.4", "MC.9", "8.9")},
+    "saas_casb": {"sections": ("Ch.C — SaaS Security",), "ids": ("MC.3", "MC.10", "8.10")},
     "genai_security": {"sections": ("Ch.E — GenAI", "GenAI —"), "ids": ("MC.7", "8.8")},
     "shadow_it": {"sections": (), "ids": ()},
     "endpoint_scan": {"sections": (), "ids": ("MC.6", "MC.11")},
