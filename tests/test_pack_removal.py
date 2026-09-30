@@ -91,18 +91,18 @@ def test_remove_deletes_in_order_and_reports(tmp_path):
     assert [it.id for it in client.zia.dlp_dictionary.items] == []
 
 
-def test_remove_activates_between_tiers_and_at_the_end(tmp_path, monkeypatch):
+def test_remove_activates_once_when_everything_is_deleted(tmp_path, monkeypatch):
+    """"Don't activate until the entire deployment is complete or completely
+    deleted": rules, engine and dictionary are deleted, then one activation."""
     pack = _pack_dir(tmp_path)
     client = _deletable(_tenant(with_survivors=False))
     calls = []
     monkeypatch.setattr(pr.pc, "activate", lambda zia: (calls.append(1) or {"activated": True, "status": "ACTIVE", "error": None}))
     plan = pr.plan_removal(client, [pack])
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
-    # Rules, then engine, then dictionary all deleted; activation ran between
-    # tiers (so the engine/dictionary are no longer referenced) and at the end.
     assert res["summary"].get("deleted") == 3
-    assert len(calls) >= 2 and res["activation"]["activated"] and res["activation_required"] is False
-    assert not client.zia.dlp_engine.items and not client.zia.dlp_dictionary.items
+    assert len(calls) == 1 and res["activation"]["activated"] and res["activation_required"] is False
+    assert not client.zia.dlp_engine.items and not client.zia.dlp_dictionary.items and res["run_again"] is False
 
 
 SAAS_POL = {"name": "RM-Web-Monitor [SaaS]", "channel": "saas", "engines": ["RM-Engine"], "action": "OFLCASB_DLP_REPORT_INCIDENT",
@@ -336,12 +336,14 @@ def test_plan_says_what_it_read_and_never_calls_a_partial_read_nothing(tmp_path)
     assert rep["status"] == "blocked" and "could not be fully read" in rep["blockers"][0] and "dictionaries" in rep["blockers"][0]
 
 
-def test_remove_waits_for_activation_and_retries_refused_deletes(tmp_path, monkeypatch):
-    """The customer's tenant: rules deleted, then every engine delete
-    refused as still in use because the rules were only pending-deleted,
-    and a SaaS delete refused with a rate limit. The removal now activates
-    and WAITS for ACTIVE between tiers and tries refused deletes again, so
-    engines and dictionaries go too."""
+def test_an_engine_still_in_use_is_left_for_a_second_run_after_the_one_activation(tmp_path, monkeypatch):
+    """ZIA the way it behaves: an engine is "in use" until the activation
+    that removes its rules has run. With one activation at the end, the
+    first run deletes the rules, reports the engine as still in use (not
+    retried: a retry cannot succeed before the activation, and refused
+    requests get the client blocked), activates once and says to run the
+    removal again; the second run removes the engine and the dictionary.
+    A rate-limited SaaS delete is still retried inside the same pass."""
     from test_pack_channels import make_client
     d = write_pack(tmp_path, "removeme", dicts=[_dict("RM-Dict")], engines=[_engine("RM-Engine", "(D:RM-Dict > 0)")],
                    policies=[_policy("RM-Web-Monitor", ["RM-Engine"]), SAAS_POL], meta=META)
@@ -355,7 +357,6 @@ def test_remove_waits_for_activation_and_retries_refused_deletes(tmp_path, monke
     _deletable(client)
     z = client.zia
     state = {"activated": 0, "saas_tries": 0, "engine_tries": 0}
-    # ZIA the way it behaves: an engine is "in use" until the activation that removes its rules has run.
     real_engine_delete = z.dlp_engine.delete_dlp_engine
     def engine_delete(oid):
         state["engine_tries"] += 1
@@ -376,17 +377,20 @@ def test_remove_waits_for_activation_and_retries_refused_deletes(tmp_path, monke
     logs = []
     plan = pr.plan_removal(client, [pack])
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True, log=logs.append)
-    assert res["status"] == "removed" and res["complete"], [(r["name"], r["status"], r.get("error")) for r in res["results"]]
-    assert res["summary"] == {"deleted": 4}
-    assert not z.dlp_engine.items and not z.dlp_dictionary.items and not z.casb_dlp_rules.items and not z.dlp_web_rules.items
     by = {r["name"]: r for r in res["results"]}
-    # The rate limit is transient: the shared path retried it inside the same pass (two attempts, one pass).
-    assert by["RM-Web-Monitor [SaaS]"]["status"] == "deleted" and by["RM-Web-Monitor [SaaS]"]["attempts"] == 2 and state["saas_tries"] == 2
-    assert by["RM-Engine"]["status"] == "deleted" and state["engine_tries"] >= 1
-    # The activation between tiers is what let the engine go; the rate limit was retried inside the same pass.
-    assert any("waiting for ZIA to report ACTIVE" in l for l in logs) and any("trying again" in l and "Rate limit" in l for l in logs)
-    # A refusal that time cannot clear fails once and stays failed.
-    assert not pr._retryable("not found") and pr._retryable("DLP engine is in use by a DLP rule") and pr._retryable("Rate limit exceeded")
+    assert by["RM-Web-Monitor"]["status"] == "deleted" and by["RM-Web-Monitor [SaaS]"]["status"] == "deleted"
+    assert by["RM-Web-Monitor [SaaS]"]["attempts"] == 2 and state["saas_tries"] == 2, "the rate limit is retried inside the pass"
+    assert by["RM-Engine"]["status"] == "failed" and state["engine_tries"] == 1, "an in-use refusal is not retried before the activation"
+    assert by["RM-Engine"]["reason"] == pr.RUN_AGAIN and res["run_again"] is True and not res["complete"]
+    assert state["activated"] == 1 and len(res["activations"]) == 1, "one activation, at the end"
+    assert any("run the removal again" in l for l in logs)
+    # The second run, after that activation, finishes the job.
+    plan2 = pr.plan_removal(client, [pack])
+    res2 = pr.remove(client, [pack], plan_hash=plan2["plan_hash"], writes_enabled=True)
+    assert res2["complete"] and not z.dlp_engine.items and not z.dlp_dictionary.items and state["activated"] == 2
+    # What each refusal means for a retry.
+    assert not pr._retryable("not found") and not pr._retryable("DLP engine is in use by a DLP rule") and pr._retryable("Rate limit exceeded")
+    assert pr._in_use("DLP engine is in use by a DLP rule") and not pr._in_use("Rate limit exceeded")
 
 
 def test_pick_mode_lists_and_removes_orphan_engines_and_dictionaries(tmp_path, monkeypatch):
@@ -484,11 +488,10 @@ def test_the_page_removes_only_through_the_rule_picker_and_shows_no_inline_diagr
     assert "function _dzFlowHtml(items, results, opts)" in js, "the standalone flow page keeps its renderer"
 
 
-def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(tmp_path, monkeypatch):
-    """The order a removal always runs in: rules deleted, activate and wait
-    for ACTIVE; engines deleted, activate and wait; dictionaries deleted,
-    activate and wait. The activation after a tier runs even when the tier
-    deleted nothing, so the next tier starts from a settled tenant."""
+def test_removal_deletes_rules_engines_dictionaries_then_activates_once(tmp_path, monkeypatch):
+    """The order a removal runs in: rules, engines and dictionaries deleted,
+    then ONE activation and a wait for ACTIVE. Nothing is activated between
+    tiers or on a retry."""
     pack = _pack_dir(tmp_path)
     client = _deletable(_tenant(with_survivors=False))
     z = client.zia
@@ -504,25 +507,10 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     plan = pr.plan_removal(client, [pack])
     res = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
     assert res["status"] == "removed" and res["complete"]
-    assert seq == ["delete:policy", "activate", "wait-active", "delete:engine", "activate", "wait-active", "delete:dictionary", "activate", "wait-active"]
-    assert [a["after"] for a in res["activations"]] == ["rules", "engines", "dictionaries"] and all(a["activated"] for a in res["activations"])
+    assert seq == ["delete:policy", "delete:engine", "delete:dictionary", "activate", "wait-active"]
+    assert [a["after"] for a in res["activations"]] == ["dictionaries"] and all(a["activated"] for a in res["activations"])
     assert res["activation"]["after"] == "dictionaries" and res["activation_required"] is False and res["verification"]["activation_status"] == "ACTIVE"
-    # A tier whose deletes are refused and retried carries the retry activation with its tier name, and the shapes stay uniform.
-    client3 = _deletable(_tenant(with_survivors=False))
-    z3 = client3.zia
-    tries = {"n": 0}
-    real = z3.dlp_engine.delete_dlp_engine
-    def engine_delete(oid):
-        tries["n"] += 1
-        return (None, None, {"code": "RESOURCE_IN_USE", "message": "DLP engine is in use by a DLP rule"}) if tries["n"] == 1 else real(oid)
-    z3.dlp_engine.delete_dlp_engine = engine_delete
-    monkeypatch.setattr(pr.pc, "activate", lambda zia: {"activated": True, "status": "ACTIVE", "error": None})
-    monkeypatch.setattr(pr, "_settle", lambda zia, s, log: "ACTIVE")
-    monkeypatch.setattr(pr, "RETRY_BASE_SECONDS", 0.0)
-    plan3 = pr.plan_removal(client3, [pack])
-    res3 = pr.remove(client3, [pack], plan_hash=plan3["plan_hash"], writes_enabled=True)
-    assert res3["status"] == "removed" and [a["after"] for a in res3["activations"]] == ["rules", "engines (retry pass 1)", "engines", "dictionaries"]
-    # Only the last tier attempted, its delete refused: the activation after it is the final one, so the tenant is settled.
+    # Only the rules tier attempted, its delete refused: the one activation follows it.
     client4 = _deletable(_tenant(with_survivors=True))   # the engine and dictionary are kept: something else uses them
     z4 = client4.zia
     seq4 = []
@@ -540,8 +528,8 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     cancel = __import__("threading").Event(); cancel.set()
     res5 = pr.remove(client5, [pack], plan_hash=plan5["plan_hash"], writes_enabled=True, cancel=cancel)
     assert seq5 == [] and res5["activations"] == [] and res5["activation"] is None and res5["stopped"] and all(r["status"] == "skipped" for r in res5["results"])
-    # Every rule delete refused for good: the activation after the rules tier still runs; the engine and the
-    # dictionary are then kept because the surviving rule still uses them, and nothing more is activated.
+    # Every rule delete refused for good: the engine and the dictionary are kept because the
+    # surviving rule still uses them, and the one activation still runs at the end.
     client2 = _deletable(_tenant(with_survivors=False))
     z2 = client2.zia
     seq2 = []
@@ -556,7 +544,7 @@ def test_removal_order_is_rules_activate_engines_activate_dictionaries_activate(
     by = {r["kind"]: r for r in res2["results"]}
     assert by["policy"]["status"] == "failed" and by["engine"]["status"] == "skipped" and by["dictionary"]["status"] == "skipped"
     assert res2["status"] == "failed" and not res2["complete"] and res2["activation"]["after"] == "rules" and res2["activation_required"] is False
-    assert any(l.startswith("Activating after the rules (0 deleted)") for l in logs)
+    assert any(l.startswith("Every tier done; activating once") for l in logs)
 
 
 def test_the_wizards_rule_deletion_activates_after_the_rules_go(monkeypatch):
@@ -678,7 +666,8 @@ def test_a_403_is_never_a_delete_that_a_later_pass_clears():
     'lock' inside 'blocked' must not make it look like an edit lock."""
     assert not pr._retryable("Resource Access Blocked") and not pr._retryable("HTTP 403: Resource Access Blocked", 403)
     assert not pr._retryable("Forbidden") and not pr._retryable("anything", 403)
-    assert pr._retryable("EDIT_LOCK_NOT_AVAILABLE: Another admin session holds the edit lock") and pr._retryable("DLP engine is in use by a DLP rule")
+    assert pr._retryable("EDIT_LOCK_NOT_AVAILABLE: Another admin session holds the edit lock")
+    assert not pr._retryable("DLP engine is in use by a DLP rule"), "in use clears only with the end-of-run activation; run the removal again"
     assert pr._retryable("Rate limit exceeded", 429) and not pr._retryable("not attempted: You clicked Stop")
 
 
@@ -728,6 +717,6 @@ def test_the_wizards_delete_all_rules_answers_a_403_with_activate_wait_and_retry
     out = rm.delete_all_rules(c, dry_run=False)
     assert out["status"] == "partial" and out["deleted_count"] == 0 and out["failed_count"] == 2
     assert sleeps == [30.0, 60.0, 90.0, 120.0, 120.0] and sum(1 for k in c.calls if k == ("DELETE", "/zia/webDlpRules/1")) == 6 and ("DELETE", "/zia/webDlpRules/2") not in c.calls
-    assert out["stopped"] and "kept refusing it after 5 activations" in out["stopped"]
+    assert out["stopped"] and "kept refusing it after 5 waits" in out["stopped"]
     assert out["failed"][0]["http_status"] == 403 and out["failed"][1]["reason"].startswith("not attempted: ZIA refused a write with a 403")
     assert out["activation"]["requested"], "the rules were attempted, so the step's activation still runs"
