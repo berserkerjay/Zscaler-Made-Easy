@@ -7,6 +7,32 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### "Resource Access Blocked" is waited out, not rushed
+- **What you asked for.** Keep activating on a 403, but wait longer.
+- **Why.** On a 403 the app activated, waited 15 seconds and tried again, five times: 75 seconds in all. The "Resource Access Blocked" block on this tenant lasted about five minutes, so the run gave up while the block was still on.
+- **Now**, when ZIA answers "Resource Access Blocked", the app still activates before each retry but waits 30 seconds, then 1, 1.5, 2 and 2 minutes: about 7 minutes in all before it stops. This applies to deploys, removals and the rule-migration wizard's deletes. Any other 403 keeps the 15-second waits. The run's progress line and the stop message say so.
+- **Verified.** The 403 tests now expect the longer schedule for "Resource Access Blocked" and 15 seconds for other 403s. The all-pack regression test passes.
+
+### Deploys and removals pace their writes
+- **What you asked for.** "Why am I getting the resource block when I try to deploy or remove too much?"
+- **Why.** A deploy or removal sent its 80–160 writes back to back, as fast as ZIA answered. Seen on this tenant: after a burst of requests, especially refused ones, ZIA's API gateway answers every request with 403 "Resource Access Blocked" for several minutes (about five), then lets the client back in. Zscaler does not publish the threshold.
+- **Now**
+  - Every create, update and delete waits until about a second has passed since the previous write (`DLP_CHECK_WRITE_GAP`, default 1.0; 0 turns pacing off). Reads are not paced. A whole pack takes one to three minutes longer; one channel, well under a minute.
+  - Together with sending no request ZIA would refuse (the email-tenant gap, and a single rank-0 attempt per run) and the one-channel-at-a-time note, a run stays well below the burst that gets the client blocked.
+- **Verified.** A test checks that writes are spaced a second apart, that reads are not, and that the setting turns pacing off. The rank test now expects one refused rank-0 attempt per run instead of one per SaaS rule. The all-pack regression test passes.
+
+### Every pack deploys the way ZBP Enterprise did, and a regression test holds them to it
+- **What you asked for.** "This finally worked; every pack needs to deploy like that", and regression testing for all packs.
+- **Now** `tests/test_pack_regression.py` deploys every shipped pack one channel at a time (Web, Endpoint, SaaS, Email) against a fake tenant that answers the way the real one did:
+  - its SaaS tenant list holds only SharePoint;
+  - the Exchange email tenant is known only from DLP_Rule_1;
+  - it refuses SaaS rules at rank 0;
+  - it refuses Email rules without an email tenant.
+
+  For all six packs, every channel deploys in full with as many rules as the pack has Web rules (cjis 14, fed 17, banking 13, healthcare 12, ZBP Enterprise 9, ZBP Source Code 14). No rule fails, and every Email rule is scoped to the Exchange tenant.
+- **One refused request per run, not one per SaaS rule.** Every SaaS rule used to try rank 0 first, get refused, and then retry at rank 7: 9 refusals for ZBP and 17 for the Fed pack, exactly the kind of burst that gets the client blocked. Once ZIA refuses rank 0 in a run, the rest of that run's SaaS rules now start at the rank it accepted, and the log says so. The test fails without this change.
+- **Verified live, read-only.** The preflight of every pack against the real tenant: every channel of every pack is create or reuse, none blocked, and the email tenant was found on DLP_Rule_1. ZBP Enterprise shows Web and Endpoint already in place, 3 SaaS and 9 Email rules to go.
+
 ### The one-channel note is emphasised, not shouted
 - **What you asked for.** "Make the bold note less bold; it's abrasively bold and large."
 - **Now** the note on every pack card is in sentence case ("Install one channel at a time. …"), at body size (1rem, was 1.15rem) and semi-bold (600, was 800). It keeps its highlighted box, so it still stands out.

@@ -574,8 +574,12 @@ def test_a_saas_rule_refused_on_admin_rank_is_created_at_the_other_rank_not_cycl
     assert res["status"] == "applied", res["summary"]
     assert len(saas) == 9 and all(r["rank"] == 7 for r in saas), [(r["name"], r["rank"]) for r in saas]
     assert res["summary"].get("failed", 0) == 0
+    # One refused rank-0 attempt per run, not one per SaaS rule: the later
+    # rules start at the rank ZIA accepted (a burst of refusals gets the
+    # client blocked).
     retried = [l for l in logs if "refused rank 0" in l and "trying rank 7" in l]
-    assert len(retried) == 9, logs
+    assert len(retried) == 1, logs
+    assert len([l for l in logs if "starting at rank 7; ZIA refused rank 0 earlier in this run" in l]) == 8, logs
     assert len([l for l in logs if "created at rank 7 instead of 0" in l]) == 9, logs
     assert not any("refused every order tried" in l for l in logs)
     created_saas = [r for r in res["results"] if r.get("channel") == "saas" and r["status"] == "created"]
@@ -606,8 +610,8 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
         out = ops.call(clears_on_the_fourth, op="create", kind="policy", name="R", log=logs.append, zia="ZIA")
         assert ops.stop_reason() is None
     assert out.ok and out.id == 9 and out.attempts == 4 and calls["n"] == 4
-    assert acts == ["ZIA"] * 3 and sleeps == [ops.FORBIDDEN_WAIT_SECONDS] * 3 == [15.0] * 3
-    assert any("(HTTP 403); activating, waiting 15s and trying again (1 of 5)" in l for l in logs) and any("succeeded after the 403 (attempt 4)" in l for l in logs)
+    assert acts == ["ZIA"] * 3 and sleeps == list(ops.BLOCKED_WAIT_SECONDS[:3]) == [30.0, 60.0, 90.0], "Resource Access Blocked waits longer"
+    assert any("(HTTP 403); activating, waiting 30s and trying again (1 of 5)" in l for l in logs) and any("succeeded after the 403 (attempt 4)" in l for l in logs)
     assert sum(1 for l in logs if "activation requested (ZIA reports ACTIVE)" in l) == 3, "each of the tenant-wide activations is visible in the log"
     # Never clears, plain Forbidden: five more tries, then failed, and a forbidden client still stops the run as before.
     acts.clear(); sleeps.clear(); logs.clear()
@@ -623,10 +627,10 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     blocked = lambda: (None, None, {"status": 403, "code": None, "message": "Resource Access Blocked"})
     with ops.run_scope():
         out = ops.call(blocked, op="create", kind="dictionary", name="D1", log=logs.append, zia="ZIA")
-        assert not out.ok and out.attempts == 6 and len(acts) == 5 and sleeps == [15.0] * 5
+        assert not out.ok and out.attempts == 6 and len(acts) == 5 and sleeps == list(ops.BLOCKED_WAIT_SECONDS)
         assert ops.stop_reason() == ops.FORBIDDEN_STOP_REASON and "kept refusing it after 5 activations" in ops.stop_reason()
         nxt = ops.call(blocked, op="create", kind="dictionary", name="D2", log=logs.append, zia="ZIA")
-        assert nxt.code == ops.STOPPED and len(acts) == 5 and sleeps == [15.0] * 5, "nothing more is sent or activated"
+        assert nxt.code == ops.STOPPED and len(acts) == 5 and sleeps == list(ops.BLOCKED_WAIT_SECONDS), "nothing more is sent or activated"
     assert any(l.startswith("STOPPED — nothing more is written. ZIA refused a write with a 403") for l in logs)
     # A 403 followed by a rate limit on the retry: the 429 is waited out like any other write, then it succeeds.
     acts.clear(); sleeps.clear(); logs.clear(); calls["n"] = 0
@@ -641,7 +645,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     with ops.run_scope():
         out = ops.call(blocked_then_busy, op="create", kind="engine", name="E", log=logs.append, zia="ZIA")
         assert ops.stop_reason() is None
-    assert out.ok and out.id == 3 and out.attempts == 3 and acts == ["ZIA"] and sleeps == [15.0, ops.BACKOFF_SECONDS]
+    assert out.ok and out.id == 3 and out.attempts == 3 and acts == ["ZIA"] and sleeps == [30.0, ops.BACKOFF_SECONDS]
     # A 401 is refused credentials, not a 403: no activation, no wait.
     acts.clear(); sleeps.clear()
     unauthorized = lambda: (None, None, {"status": 401, "code": None, "message": "Not authorized"})
@@ -662,7 +666,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     monkeypatch.setattr(ops, "_activate", lambda zia: {"activated": False, "status": None, "error": "no activation permission"})
     with ops.run_scope():
         out = ops.call(clears_on_the_fourth, op="update", kind="dictionary", name="D", log=logs.append, zia="ZIA")
-    assert out.ok and any("activation could not run (no activation permission); waiting anyway" in l for l in logs) and sleeps == [15.0] * 3
+    assert out.ok and any("activation could not run (no activation permission); waiting anyway" in l for l in logs) and sleeps == list(ops.BLOCKED_WAIT_SECONDS[:3])
     # A rank refusal is not retried; a read is not; a call without the client is not; a call outside a run is not.
     monkeypatch.setattr(ops, "_activate", lambda zia: (acts.append(zia) or {"activated": True, "status": "ACTIVE", "error": None}))
     acts.clear(); sleeps.clear()
@@ -693,7 +697,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     with ops.run_scope(cancel):
         out = ops.call(lambda: (sent.append(1), blocked())[1], op="delete", kind="engine", name="E", zia="ZIA")
         assert ops.stop_reason() == ops.CANCELLED_REASON
-    assert sent == [1] and out.attempts == 1 and len(acts) == 1 and sleeps == [15.0], "the write in flight was the last one sent"
+    assert sent == [1] and out.attempts == 1 and len(acts) == 1 and sleeps == [ops.BLOCKED_WAIT_SECONDS[0]], "the write in flight was the last one sent"
     # The repository's convention — patching pc.activate — sees the activations call() performs.
     monkeypatch.setattr(ops, "_sleep", lambda s: sleeps.append(s))
     monkeypatch.setattr(ops, "_activate", original_activate)
@@ -740,7 +744,7 @@ def test_a_403_that_clears_is_retried_inside_a_deploy_and_a_removal_end_to_end(m
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
     assert time.monotonic() - started < 15, "the waits are the patched sleep, not real time"
     assert res["stopped"] is None and res["summary"].get("failed", 0) == 0 and res["status"] == "applied", res["summary"]
-    assert sleeps == [15.0] * 3, "three 15-second waits, one per refused try"
+    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS[:3]), "three waits, one per refused try (the longer schedule for Resource Access Blocked)"
     in_call = sum(1 for l in logs if "activation requested (ZIA reports ACTIVE)" in l)
     assert in_call == 3 and len(acts) == 3 + 1, "three activations inside the retries, then the deploy's own final activation"
     assert res["activation"] and res["activation"].get("activated")
@@ -753,7 +757,7 @@ def test_a_403_that_clears_is_retried_inside_a_deploy_and_a_removal_end_to_end(m
     plan = pr.plan_removal(client, [pack])
     out = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True, log=logs.append)
     assert out["stopped"] is None and out["summary"].get("failed", 0) == 0 and out["summary"]["deleted"] == plan["remove_count"], out["summary"]
-    assert sleeps == [15.0] * 2 and sum(1 for l in logs if "activation requested (ZIA reports ACTIVE)" in l) == 2
+    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS[:2]) and sum(1 for l in logs if "activation requested (ZIA reports ACTIVE)" in l) == 2
     assert not any("will retry after the tenant settles" in l for l in logs), "a 403 is not a delete that a later pass clears"
     assert out["verification"]["clean"]
 
@@ -778,7 +782,7 @@ def test_a_403_that_never_clears_stops_a_deploy_after_one_object_and_seventy_fiv
     logs = []
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
     assert len(set(attempts)) == 1 and len(attempts) == 6, "one object, six tries"
-    assert sleeps == [15.0] * 5 and len(acts) == 5, "five activations and waits in all, not per object"
+    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS) and len(acts) == 5, "five activations and waits in all, not per object"
     assert res["status"] == "failed" and res["stopped"] == ops.FORBIDDEN_STOP_REASON
     assert res["summary"]["failed"] == 1 and res["summary"]["skipped"] >= 60, res["summary"]
     assert all(r["reason"].startswith("not attempted: ZIA refused a write with a 403") or r["reason"].startswith("dependency failed")
@@ -802,7 +806,26 @@ def test_a_403_that_never_clears_stops_a_deploy_after_one_object_and_seventy_fiv
     plan = pr.plan_removal(client, [pack])
     out = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
     assert len(deletes) == 6 and len(set(deletes)) == 1, "one rule, six tries"
-    assert sleeps == [15.0] * 5 and out["stopped"] == ops.FORBIDDEN_STOP_REASON
+    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS) and out["stopped"] == ops.FORBIDDEN_STOP_REASON
     assert out["summary"].get("deleted", 0) == 0 and out["summary"]["failed"] == 1 and out["summary"]["skipped"] == plan["remove_count"] - 1, out["summary"]
     assert z.dlp_engine.items and z.dlp_dictionary.items, "engines and dictionaries were never touched"
     assert len(acts) == 5 + 1, "five activations inside the retries, and the activation after the rules tier that sent a delete"
+
+
+def test_writes_are_paced_so_a_big_run_is_not_a_burst(monkeypatch):
+    # A deploy or removal sends 80-160 writes; back to back they are the
+    # burst after which ZIA answers "Resource Access Blocked" for minutes.
+    paced, t = [], [100.0]
+    monkeypatch.setattr(ops, "_pace_sleep", lambda s: (paced.append(round(s, 3)), t.__setitem__(0, t[0] + s)))
+    monkeypatch.setattr(ops.time, "monotonic", lambda: t[0])
+    monkeypatch.setattr(ops, "_last_write", [0.0])
+    monkeypatch.delenv("DLP_CHECK_WRITE_GAP", raising=False)
+    ok = lambda: ({"id": 1}, None, None)
+    for _ in range(3):
+        ops.call(ok, op="create", kind="dictionary", name="D")
+    assert paced == [1.0, 1.0], "about one write a second by default"
+    ops.call(ok, op="read", kind="dictionary", name="D")
+    assert paced == [1.0, 1.0], "reads are not paced"
+    monkeypatch.setenv("DLP_CHECK_WRITE_GAP", "0")
+    ops.call(ok, op="delete", kind="dictionary", name="D")
+    assert paced == [1.0, 1.0], "DLP_CHECK_WRITE_GAP=0 turns pacing off"

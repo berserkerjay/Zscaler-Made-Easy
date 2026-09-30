@@ -718,7 +718,7 @@ def test_the_wizards_delete_all_rules_answers_a_403_with_activate_wait_and_retry
     c = Client({1: 2})
     out = rm.delete_all_rules(c, dry_run=False)
     assert out["status"] == "completed" and out["deleted_count"] == 2 and out["stopped"] is None
-    assert sleeps == [15.0, 15.0] and len(out["activations_after_403"]) == 2 and all(a["requested"] for a in out["activations_after_403"])
+    assert sleeps == [30.0, 60.0] and len(out["activations_after_403"]) == 2 and all(a["requested"] for a in out["activations_after_403"])
     assert c.calls[:5] == [("DELETE", "/zia/webDlpRules/1"), ("POST", "/zia/status/activate"), ("DELETE", "/zia/webDlpRules/1"),
                            ("POST", "/zia/status/activate"), ("DELETE", "/zia/webDlpRules/1")]
     assert c.calls[5:] == [("DELETE", "/zia/webDlpRules/2"), ("POST", "/zia/status/activate"), ("GET", "/zia/status")], "then the step's own activation"
@@ -727,7 +727,7 @@ def test_the_wizards_delete_all_rules_answers_a_403_with_activate_wait_and_retry
     c = Client({1: 99, 2: 99})
     out = rm.delete_all_rules(c, dry_run=False)
     assert out["status"] == "partial" and out["deleted_count"] == 0 and out["failed_count"] == 2
-    assert sleeps == [15.0] * 5 and sum(1 for k in c.calls if k == ("DELETE", "/zia/webDlpRules/1")) == 6 and ("DELETE", "/zia/webDlpRules/2") not in c.calls
+    assert sleeps == [30.0, 60.0, 90.0, 120.0, 120.0] and sum(1 for k in c.calls if k == ("DELETE", "/zia/webDlpRules/1")) == 6 and ("DELETE", "/zia/webDlpRules/2") not in c.calls
     assert out["stopped"] and "kept refusing it after 5 activations" in out["stopped"]
     assert out["failed"][0]["http_status"] == 403 and out["failed"][1]["reason"].startswith("not attempted: ZIA refused a write with a 403")
     assert out["activation"]["requested"], "the rules were attempted, so the step's activation still runs"

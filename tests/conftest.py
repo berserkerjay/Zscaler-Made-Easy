@@ -20,6 +20,7 @@ def _no_backoff_sleep(monkeypatch):
     refusal; tests never wait for that."""
     import pack_ops
     monkeypatch.setattr(pack_ops, "_sleep", lambda s: None)
+    monkeypatch.setattr(pack_ops, "_pace_sleep", lambda s: None)   # write pacing (DLP_CHECK_WRITE_GAP)
 
 
 @pytest.fixture(autouse=True)
