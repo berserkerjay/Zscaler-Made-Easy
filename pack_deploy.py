@@ -1893,8 +1893,11 @@ def apply(
     credentials) or a set `cancel` event stops the remaining writes at
     once; the result's `stopped` says why, in words, and the objects that
     were never sent are reported as skipped, not failed. Activation and
-    the read-back still run, so what was written is live and recorded."""
-    with ops.run_scope(cancel):
+    the read-back still run, so what was written is live and recorded. Its
+    waits, holds and refusals draw on the client's own tenant's ZIA rate
+    limits, whichever thread runs it."""
+    import zia_rate
+    with zia_rate.using_client(client), ops.run_scope(cancel):
         return _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
                       writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
                       activate=activate, log=log, settle_seconds=settle_seconds)

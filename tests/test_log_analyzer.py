@@ -3,6 +3,7 @@ plain English, analysed in memory with archive caps and redaction."""
 from __future__ import annotations
 
 import base64
+import os
 import io
 import tarfile
 import zipfile
@@ -228,3 +229,47 @@ def test_endpoint_and_pages(monkeypatch):
     page = anon.get("/report/logs")
     assert page.status_code == 200 and "Log analyzer" in page.text and 'for="laFiles"' in page.text and "/api/logs/analyze" in page.text
     assert anon.get("/help").status_code == 200 and "What does everything do" in anon.get("/help").text
+
+
+def test_a_gzip_bomb_is_never_inflated_past_the_member_cap():
+    """A few hundred KB of .gz can hold hundreds of MB of zeros: it is read in a
+    stream that stops at the per-member cap, so memory stays near the cap."""
+    import gzip
+    import tracemalloc
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=9) as g:
+        chunk = b"\0" * (1024 * 1024)
+        for _ in range(200):
+            g.write(chunk)
+    bomb = buf.getvalue()
+    del chunk
+    assert len(bomb) < 1024 * 1024
+    upload = [{"name": "ZSATunnel.log.gz", "content": _b64(bomb), "encoding": "base64"}]
+    tracemalloc.start()
+    try:
+        members, notes = la.expand(upload)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert members == [] and any("larger than" in n for n in notes)
+    assert peak < 3 * la.MAX_MEMBER_BYTES, f"peak {peak // (1024 * 1024)} MB"
+
+
+def test_gzip_members_count_against_the_budget_and_nest_one_level_only(monkeypatch):
+    import gzip
+    line = b"2026-09-01 08:00:01 INF x\n"
+    once = gzip.compress(line)
+    thrice = gzip.compress(gzip.compress(once))
+    members, notes = la.expand([{"name": "deep.log.gz.gz.gz", "content": _b64(thrice), "encoding": "base64"}])
+    assert members == [] and any("nested archive not opened" in n for n in notes)
+    monkeypatch.setattr(la, "MAX_MEMBERS", 1)
+    files = [{"name": f"f{i}.log.gz", "content": _b64(once), "encoding": "base64"} for i in range(3)]
+    members, notes = la.expand(files)
+    assert [m[0] for m in members] == ["f0.log"] and any("stopped after 1 files" in n for n in notes)
+
+
+def test_the_analyze_endpoint_runs_off_the_event_loop():
+    """A large upload is read on a worker thread, so it does not hold up every other request."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dlp_api_server.py"), encoding="utf-8").read()
+    body = src[src.index("async def logs_analyze("):src.index("# ── Migrate from another DLP")]
+    assert "await asyncio.to_thread(log_analyzer.analyze," in body

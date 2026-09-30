@@ -44,7 +44,10 @@ def test_the_method_is_stated_or_inferred_and_completeness_follows_it():
 def test_secrets_are_masked_in_text_and_the_environment_and_profiles_fill_blanks():
     text = "refused Pa55word! and aBcDeFgHiJkL and secret-secret-secret"
     masked = ta.mask_secrets(text, dict(LEGACY, client_secret="secret-secret-secret"))
-    assert "Pa55word!" not in masked and "aBcDeFgHiJkL" not in masked and "secret-secret-secret" not in masked and "len=" in masked
+    assert "Pa55word!" not in masked and "aBcDeFgHiJkL" not in masked and "secret-secret-secret" not in masked
+    assert masked == "refused [redacted password] and [redacted api_key] and [redacted client_secret]", masked
+    # Nothing of a secret survives: no leading or trailing characters, no length.
+    assert "Pa5" not in masked and "rd!" not in masked and "aBc" not in masked and "jkL" not in masked and "len=" not in masked
     env = {"ZSCALER_AUTH_METHOD": "legacy", "ZSCALER_CLOUD": "zscalerten", "ZSCALER_USERNAME": "u@acme.com", "ZSCALER_PASSWORD": "p", "ZSCALER_API_KEY": "k"}
     e = ta.from_env(env)
     assert e["auth_method"] == "legacy" and e["username"] == "u@acme.com" and e["cloud"] == "zscalerten" and ta.complete(e)
@@ -157,7 +160,8 @@ def test_a_refused_classic_sign_in_is_reported_without_the_password(monkeypatch)
     c, sess = _client(monkeypatch, password="wrong-password")
     ok = c.auth()
     assert ok is not True and ok[0] is False and "HTTP 401" in ok[1] and "AUTHENTICATION_FAILED" in ok[1]
-    assert "wrong-password" not in ok[1] and "len=14" in ok[1], "the password is masked in the reason"
+    assert "wrong-password" not in ok[1] and "[redacted password]" in ok[1], "the password is redacted in the reason"
+    assert "wro" not in ok[1] and "len=" not in ok[1], "no characters and no length of the password are shown"
     assert not sess.cookies
 
 
@@ -342,7 +346,7 @@ def test_sdk_client_and_mcp_take_the_classic_sign_in_from_the_environment(monkey
     built = {}
     monkeypatch.setattr(ta, "build_legacy_sdk_client", lambda creds, **kw: built.update(creds) or type("Z", (), {"zia": object()})())
     assert cl.auth() is True and built["api_key"] == "k"
-    mcp = pytest.importorskip("dlp_mcp_server", reason="the installed mcp package is not the one the MCP server was written for")
+    import dlp_mcp_server as mcp  # a hard import: an mcp release that breaks the server must fail here, not skip
     m = mcp._create_client()
     assert m._creds["auth_method"] == "legacy" and m._creds["cloud"] == "zscalerten"
 

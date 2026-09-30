@@ -23,7 +23,11 @@ def _no_backoff_sleep(monkeypatch, tmp_path_factory):
     import zia_rate
     for bucket in zia_rate.DEFAULTS:   # ZIA's rate limits are off in tests (test_run_control turns them on with a fake clock)
         monkeypatch.setenv(f"DLP_CHECK_ZIA_LIMIT_{bucket.upper()}", "off")
+    # Turned off to run fast, not as a setting under test: the forecast does not
+    # flag it as pacing looser than ZIA's (test_rate_forecast checks that itself).
+    monkeypatch.setattr(zia_rate, "_covers", lambda bucket: True)
     monkeypatch.setattr(zia_rate, "_sleep", lambda s: None)
+    monkeypatch.delenv("DLP_CHECK_RATE_TONE", raising=False)   # the verdict's tone as shipped, whatever the shell says
     monkeypatch.setenv("DLP_CHECK_ZIA_RATE_STATE", str(tmp_path_factory.mktemp("zia_rate") / "zia_rate.json"))
     zia_rate.reset()
 

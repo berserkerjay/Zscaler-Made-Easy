@@ -126,14 +126,14 @@
       ${v.problems && v.problems.length ? `<div class="bp-card risk"><div class="t">Fix these before adding</div><ul class="adv-list">${v.problems.map(p => `<li>${E(p)}</li>`).join('')}</ul></div>` : ''}
       ${v.warnings && v.warnings.length ? `<div class="bp-card warn"><div class="t">Worth knowing (does not block)</div><ul class="adv-list">${v.warnings.map(p => `<li>${E(p)}</li>`).join('')}</ul></div>` : ''}
       <div class="df-stats">
-        <div class="df-stat"><div class="n">${c.dictionaries || 0}</div><div class="l">dictionaries${c.clones ? ` (${c.clones} clone predefined)` : ''}</div></div>
-        <div class="df-stat"><div class="n">${c.engines || 0}</div><div class="l">engines</div></div>
-        <div class="df-stat"><div class="n">${c.policies || 0}</div><div class="l">rules</div></div>
+        <div class="df-stat"><div class="n">${E(String(c.dictionaries || 0))}</div><div class="l">dictionaries${c.clones ? ` (${E(String(c.clones))} clone predefined)` : ''}</div></div>
+        <div class="df-stat"><div class="n">${E(String(c.engines || 0))}</div><div class="l">engines</div></div>
+        <div class="df-stat"><div class="n">${E(String(c.policies || 0))}</div><div class="l">rules</div></div>
         <div class="df-stat"><div class="n">${(v.channels || []).length}</div><div class="l">channels: ${E((v.channels || []).map(k => CH[k] || k).join(', ') || 'none')}</div></div>
       </div>
-      <details class="adv-details"><summary>Dictionaries (${(v.dictionaries || []).length})</summary>${list(v.dictionaries, d => `<li><strong>${E(d.name)}</strong> <span class="dim">${d.clone ? 'clone of ' + E(d.template || 'predefined') : `${d.patterns} pattern${d.patterns === 1 ? '' : 's'}, ${d.phrases} phrase${d.phrases === 1 ? '' : 's'}`}${d.proximity ? ', proximity ' + d.proximity : ''}</span></li>`)}</details>
+      <details class="adv-details"><summary>Dictionaries (${(v.dictionaries || []).length})</summary>${list(v.dictionaries, d => `<li><strong>${E(d.name)}</strong> <span class="dim">${d.clone ? 'clone of ' + E(d.template || 'predefined') : `${E(String(d.patterns))} pattern${d.patterns === 1 ? '' : 's'}, ${E(String(d.phrases))} phrase${d.phrases === 1 ? '' : 's'}`}${d.proximity ? ', proximity ' + E(String(d.proximity)) : ''}</span></li>`)}</details>
       <details class="adv-details"><summary>Engines (${(v.engines || []).length})</summary>${list(v.engines, e => `<li><strong>${E(e.name)}</strong> <code class="adv-expr">${E(e.expression)}</code></li>`)}</details>
-      <details class="adv-details"><summary>Rules (${(v.policies || []).length})</summary>${list(v.policies, p => `<li><strong>${E(p.name)}</strong> <span class="chip">${E(CH[p.channel] || p.channel)}</span> <span class="dim">${E(p.action || '')} · ${E(p.state || '')}${p.engines && p.engines.length ? ' · ' + E(p.engines.join(', ')) : ''}${p.sub_rules ? ` · ${p.sub_rules} sub-rule${p.sub_rules === 1 ? '' : 's'}` : ''}</span></li>`)}</details>`;
+      <details class="adv-details"><summary>Rules (${(v.policies || []).length})</summary>${list(v.policies, p => `<li><strong>${E(p.name)}</strong> <span class="chip">${E(CH[p.channel] || p.channel)}</span> <span class="dim">${E(p.action || '')} · ${E(p.state || '')}${p.engines && p.engines.length ? ' · ' + E(p.engines.join(', ')) : ''}${p.sub_rules ? ` · ${E(String(p.sub_rules))} sub-rule${p.sub_rules === 1 ? '' : 's'}` : ''}</span></li>`)}</details>`;
   }
 
   async function addPack() {

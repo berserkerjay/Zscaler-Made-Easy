@@ -14,7 +14,11 @@ What an update does
 4. When origin is github.com, cross-check the commit just pulled against
    GitHub's REST API for main — a channel separate from the git pull
    itself. A mismatch rolls the pull back and refuses the update rather
-   than running an unverified tree; see verify_against_github_api(). This
+   than running an unverified tree; see verify_against_github_api(). The
+   repository is private, so this needs DLP_CHECK_GITHUB_TOKEN; without
+   it (or offline, or with a non-GitHub origin) the cross-check cannot
+   run, and the update says so in a "Verify against GitHub: skipped"
+   step and reports verified=False — it is never shown as verified. This
    does not verify commit/tag signatures (see SECURITY.md).
 5. Install requirements (optional step; a pip problem never stops the
    update).
@@ -229,22 +233,38 @@ def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout
     different tree than GitHub itself has. This does not verify commit
     or tag signatures (main carries no signed tags); see SECURITY.md.
 
-    Best-effort and skipped, not failed, when origin is not github.com
-    or the API cannot be reached (offline, blocked outbound, a private
-    repository) — {"checked": False, "reason": ...}. Otherwise
+    The repository is private, so the read-only token in
+    DLP_CHECK_GITHUB_TOKEN is sent (only to api.github.com, never logged),
+    as github_branch_head() does.
+
+    Skipped, not failed, when origin is not github.com, no token is set
+    for the private repository, or the API cannot be reached (offline,
+    blocked outbound) — {"checked": False, "reason": ...}; update() then
+    records the skip as a visible step. Otherwise
     {"checked": True, "match": bool, "api_sha": str, "local_sha": str}."""
     owner_repo = _github_owner_repo(app_dir)
     if not owner_repo:
         return {"checked": False, "reason": "origin is not a github.com remote"}
     owner, repo = owner_repo
+    token = os.environ.get("DLP_CHECK_GITHUB_TOKEN", "").strip()
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
         import requests
-        r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/commits/{branch}",
-                         headers={"Accept": "application/vnd.github+json"}, timeout=timeout)
+        r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/commits/{branch}", headers=headers, timeout=timeout)
+        if getattr(r, "status_code", 200) in (401, 403, 404):
+            if not token:
+                return {"checked": False, "reason": (f"the repository is private and DLP_CHECK_GITHUB_TOKEN is not set, so GitHub's API "
+                                                     f"would not show {owner}/{repo} (HTTP {r.status_code}). Set a read-only token "
+                                                     "(fine-grained, Contents: read) to have updates cross-checked")}
+            return {"checked": False, "reason": f"GitHub refused DLP_CHECK_GITHUB_TOKEN (HTTP {r.status_code}): it must be able to read "
+                                                f"{owner}/{repo} (Contents: read) and not be expired"}
         r.raise_for_status()
         api_sha = (r.json() or {}).get("sha") or ""
     except Exception as e:  # noqa: BLE001
-        return {"checked": False, "reason": f"could not reach the GitHub API: {type(e).__name__}: {str(e)[:200]}"}
+        msg = str(e).replace(token, "[token]") if token else str(e)
+        return {"checked": False, "reason": f"could not reach the GitHub API: {type(e).__name__}: {msg[:200]}"}
     if not api_sha:
         return {"checked": False, "reason": "the GitHub API response had no commit sha"}
     return {"checked": True, "match": api_sha.startswith(local_sha) or local_sha.startswith(api_sha),
@@ -473,7 +493,7 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
     steps: List[Dict[str, Any]] = []
     result: Dict[str, Any] = {"ok": False, "updated": False, "before": None, "after": None, "steps": steps, "error": None,
                               "deps_ok": None, "restart_required": False, "preserved": [], "migrated": [], "recovered": None,
-                              "branch": None}
+                              "branch": None, "verified": None, "verify_skipped": None}
     try:
         target = resolve_branch(app_dir, branch)
     except ValueError as e:
@@ -609,8 +629,17 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
             _restore(app_dir, stashed, step, result)
             return result
         elif verify.get("checked"):
+            result["verified"] = True
             step("Verify against GitHub", True,
                  f"Matches GitHub's REST API for {verify.get('owner')}/{verify.get('repo')}@{target} ({verify['api_sha'][:7]}).")
+        else:
+            # Not a failure (the pull itself ran over HTTPS), but never
+            # reported as verified: the operator must see it did not run.
+            result["verified"] = False
+            result["verify_skipped"] = verify.get("reason") or "unknown reason"
+            step("Verify against GitHub: skipped", False,
+                 f"The commit just pulled ({after_full[:7]}) was NOT cross-checked against GitHub: {result['verify_skipped']}. "
+                 "The update continues on the strength of the HTTPS pull alone.", soft=True)
 
     _restore(app_dir, stashed, step, result)
 
@@ -758,6 +787,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("\nUpdate failed: " + (res["error"] or "see above"))
         return 1
     print("\nNow on build " + str(res["after"]) + ("" if res["updated"] else " (already current)"))
+    if res.get("verified") is False:
+        print("WARNING: this update was NOT cross-checked against GitHub's API: " + str(res.get("verify_skipped")))
     return 0
 
 

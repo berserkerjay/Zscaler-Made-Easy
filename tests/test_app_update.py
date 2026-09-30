@@ -52,11 +52,62 @@ def test_status_and_fast_forward_update(repos):
     res = au.update(app, install_deps=False)
     assert res["ok"] and res["updated"] and res["before"] == v1 and res["after"] == v2 and res["restart_required"]
     names = [s["name"] for s in res["steps"]]
-    assert names == ["Check this folder", "Fetch from GitHub", "Pull latest code"] and all(s["ok"] for s in res["steps"])
+    assert names == ["Check this folder", "Fetch from GitHub", "Pull latest code", "Verify against GitHub: skipped"]
+    assert all(s["ok"] for s in res["steps"][:-1])
+    # The origin here is not GitHub, so the cross-check could not run: said so, never reported as verified.
+    skip = res["steps"][-1]
+    assert skip["ok"] is False and skip["soft"] and "NOT cross-checked" in skip["detail"] and "not a github.com remote" in skip["detail"]
+    assert res["verified"] is False and res["verify_skipped"] == "origin is not a github.com remote"
     assert (repos["app"] / "dlp_api_server.py").read_text() == "print('v2')\n"
     # Second run: nothing to do, no restart needed.
     res2 = au.update(app, install_deps=False)
     assert res2["ok"] and not res2["updated"] and not res2["restart_required"] and "already on build" in res2["steps"][-1]["detail"]
+
+
+def test_the_private_repository_is_cross_checked_with_the_token_and_a_skip_is_loud(tmp_path, monkeypatch, repos, capsys):
+    repo = tmp_path / "repo"
+    _git(tmp_path, "init", "-q", "-b", "main", str(repo))
+    _git(repo, "remote", "add", "origin", "https://github.com/berserkerjay/DLP-Check.git")
+    local_sha = "a" * 40
+    seen = []
+
+    class _Resp:
+        def __init__(self, code, sha=""):
+            self.status_code, self._sha = code, sha
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(f"HTTP {self.status_code}")
+
+        def json(self):
+            return {"sha": self._sha}
+
+    def private(url, headers=None, timeout=None):
+        seen.append(dict(headers or {}))
+        ok = (headers or {}).get("Authorization") == "Bearer tok-123"
+        return _Resp(200, local_sha) if ok else _Resp(404)
+
+    import requests
+    monkeypatch.setattr(requests, "get", private)
+    monkeypatch.delenv("DLP_CHECK_GITHUB_TOKEN", raising=False)
+    v = au.verify_against_github_api(str(repo), "main", local_sha)
+    assert not v["checked"] and "private" in v["reason"] and "DLP_CHECK_GITHUB_TOKEN" in v["reason"]
+    monkeypatch.setenv("DLP_CHECK_GITHUB_TOKEN", "tok-123")
+    v = au.verify_against_github_api(str(repo), "main", local_sha)
+    assert v["checked"] and v["match"], "the token github_branch_head uses is sent here too"
+    assert "tok-123" not in str(v)
+
+    # A skipped check during a real update is a visible step, and the CLI warns.
+    _push_v2(repos["work"])
+    monkeypatch.setattr(au, "verify_against_github_api", lambda *a, **k: {"checked": False, "reason": "no token"})
+    assert au.main(["--dir", str(repos["app"]), "--no-deps"]) == 0
+    out = capsys.readouterr().out
+    assert "[!! ] Verify against GitHub: skipped" in out and "WARNING: this update was NOT cross-checked" in out
+
+
+def test_the_page_does_not_reload_over_an_unverified_update():
+    js = open(os.path.join(ROOT, "static", "guide.js"), encoding="utf-8").read()
+    assert "res.verified === false" in js and "not verified against GitHub" in js
 
 
 def test_verify_against_github_api_matches_mismatches_and_skips(tmp_path, monkeypatch):
@@ -143,7 +194,7 @@ def test_update_switches_back_to_main_and_installs_deps(repos, monkeypatch):
     monkeypatch.setattr(au.subprocess, "run", lambda cmd, **kw: fake_run(cmd, **kw) if cmd[1:3] == ["-m", "pip"] else real_run(cmd, **kw))
     res = au.update(app, python="/fake/python")
     assert res["ok"] and res["updated"] and res["after"] == v2 and res["deps_ok"] is True
-    assert [s["name"] for s in res["steps"]] == ["Check this folder", "Fetch from GitHub", "Switch to main", "Pull latest code", "Install Python dependencies"]
+    assert [s["name"] for s in res["steps"]] == ["Check this folder", "Fetch from GitHub", "Switch to main", "Pull latest code", "Verify against GitHub: skipped", "Install Python dependencies"]
     assert calls and calls[0][:4] == ["/fake/python", "-m", "pip", "install"] and calls[0][-1].endswith("requirements.txt")
     assert _git(app, "rev-parse", "--abbrev-ref", "HEAD") == "main"
 
@@ -164,7 +215,7 @@ def test_hand_edited_files_are_preserved_and_settings_move_to_local_settings(rep
     assert res["ok"] and res["updated"] and res["after"] == v2, res
     names = [s["name"] for s in res["steps"]]
     assert names == ["Check this folder", "Move settings to local_settings.bat", "Set aside hand-edited files", "Fetch from GitHub",
-                     "Pull latest code", "Re-apply hand-edited files"] and all(s["ok"] for s in res["steps"])
+                     "Pull latest code", "Verify against GitHub: skipped", "Re-apply hand-edited files"] and all(s["ok"] for s in res["steps"] if s["name"] != "Verify against GitHub: skipped")
     assert res["migrated"] == ["START_Zscaler_Assessment.bat: REQUESTS_CA_BUNDLE", "START_Zscaler_Assessment.bat: HTTPS_PROXY"]
     ls = (repos["app"] / "local_settings.bat").read_text()
     assert "set REQUESTS_CA_BUNDLE=C:\\certs\\corp-root.pem" in ls and "set HTTPS_PROXY=http://proxy.corp:8080" in ls and ls.startswith("@echo off")
@@ -220,7 +271,7 @@ def test_half_applied_update_with_unmerged_paths_is_recovered(repos):
     res = au.update(app, install_deps=False)
     assert res["ok"] and res["updated"] and res["after"] == v3, res
     names = [s["name"] for s in res["steps"]]
-    assert names == ["Check this folder", "Recover a half-applied earlier update", "Fetch from GitHub", "Pull latest code"]
+    assert names == ["Check this folder", "Recover a half-applied earlier update", "Fetch from GitHub", "Pull latest code", "Verify against GitHub: skipped"]
     rec = res["recovered"]
     assert rec["files"] == ["dlp_api_server.py"] and os.path.isfile(os.path.join(rec["backup"], "dlp_api_server.py"))
     assert "<<<<<<<" in open(os.path.join(rec["backup"], "dlp_api_server.py")).read()    # the conflicted copy is kept
@@ -411,7 +462,7 @@ def test_update_can_switch_to_another_allowed_branch_and_then_stays_on_it(repos)
     assert [b["name"] for b in st["branches"]] == list(au.BRANCHES) and [b["current"] for b in st["branches"]] == [True, False, False]
     res = au.update(app, install_deps=False, branch="dev")
     assert res["ok"] and res["updated"] and res["after"] == dev_sha and res["branch"] == "dev", res
-    assert [s["name"] for s in res["steps"]] == ["Check this folder", "Fetch from GitHub", "Switch to dev", "Pull latest code"]
+    assert [s["name"] for s in res["steps"]] == ["Check this folder", "Fetch from GitHub", "Switch to dev", "Pull latest code", "Verify against GitHub: skipped"]
     assert (repos["app"] / "dlp_api_server.py").read_text() == "print('dev')\n" and au.current_branch(app) == "dev"
     assert au.resolve_branch(app) == "dev", "no branch asked for: the one the install is on"
     res2 = au.update(app, install_deps=False)
