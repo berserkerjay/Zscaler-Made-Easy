@@ -147,7 +147,12 @@ def _with_rate(plan: Dict[str, Any]) -> Dict[str, Any]:
     app sent in the last hour: its deletes plus the one activation."""
     import zia_rate
     n = int(plan.get("remove_count") or 0)
-    plan["rate_forecast"] = zia_rate.forecast({"delete": n, "activate": 1}) if n else None
+    f = zia_rate.forecast({"delete": n, "activate": 1}) if n else None
+    if f:
+        f["detail"] = zia_rate.history_text(f)
+        if f["severity"] != "ok":
+            plan.setdefault("warnings", []).insert(0, f"ZIA rate limits: {f['verdict']}")
+    plan["rate_forecast"] = f
     return plan
 
 

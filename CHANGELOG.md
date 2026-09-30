@@ -7,6 +7,33 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### The preflight checks whether a run will succeed at ZIA's rate limits, from what the app actually executed
+- **What you asked for.** "Preflight checks should be where I get the warning, based on previous API calls and the limits: you succeed or epically fail, based on Zscaler's weak infra." Then: "look at the app here and based on what was executed as well."
+- **What the app executed tonight.** The container's own record for the deploy started at 04:40 UTC:
+  - 110 writes in about 3 minutes, at about one a second, then ZIA answered "Resource Access Blocked" and the run went into a one-hour hold;
+  - that is far below the documented 400 an hour;
+  - an assessment and benchmarks were reading through the same API client at the same time.
+
+  ZIA's real tolerance on this tenant is lower than its documentation.
+- **Now** every preflight and removal preview opens with a **Rate-limit check**, right under the headline:
+  - **Will succeed**: the run goes straight through, with how long it takes;
+  - **Will succeed, with pauses**: the limit is still resetting, or the hourly limit is nearly used, with how long and why;
+  - **Likely to fail**, in two cases:
+    - ZIA refused this API client in the last hour: the check says when, what ZIA answered, how much traffic led to it, and when to run instead (an hour after the refusal);
+    - ZIA once blocked this client at less traffic than this run sends in its busiest 5 minutes.
+
+  When it is not *Will succeed*, the verdict is also the first warning.
+- **What the check is based on.**
+  - **Every ZIA request the app sends, reads included.** One tap on the HTTP layer sees the SDK and the assessment's session alike: deploys, removals, preflights, assessments, benchmarks and continuous evaluation.
+  - **ZIA's own answers.** Its `x-ratelimit-*` headers include other tools on the same client. Its rate refusals are kept for a week, each with the requests of the minute, 5 minutes and hour before it.
+  - **Earlier records.** The deployment log's refused runs, and a hold recorded before refusal details were kept. Tonight's run counts, too.
+- **Verified.**
+  - Your container's state file, read without changing it, gives **Likely to fail** for every pack until 05:43 UTC, an hour after the refusal. Its detail reads: "In the last hour DLP-Check sent ZIA 110 writes (POST/PUT). Most traffic ZIA refused at: 110 requests in 5 minutes."
+  - Tests cover that state, with the ceiling remembered after the hour. They also cover:
+    - the tap, and observing reads, headers and refusals (a permission 403 is not a rate refusal);
+    - the deployment-log history;
+    - the preflight warning, with the forecast kept out of the plan hash.
+
 ### Each pack shows how it measures against ZIA's rate limits, and every preview says whether the run will go straight through
 - **What you asked for.** "Make a note on each pack how it measures against the rate limit for a deployment or delete, and give a notice to the user based on all recent transactions if it will succeed."
 - **On each pack card**, a *Rate limits* line says, for a fresh hour, how many requests a full deploy sends and how long it takes at ZIA's limits, the same for a full removal, and whether any channel has more rules than ZIA allows in an hour. For example, ZBP Enterprise: *Full deploy: 77 requests, about 66s at ZIA's limits (Endpoint DLP rules go at 10/min and 40/hr). Removal: 76 deletes, about 75s.*

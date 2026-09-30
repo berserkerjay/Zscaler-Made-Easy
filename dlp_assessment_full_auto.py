@@ -229,6 +229,7 @@ class Client:
         s.base = zscaler_clouds.legacy_api_base(cloud) if s.legacy else _base_url(cloud)
         s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
+        import zia_rate; zia_rate.install_tap()   # every ZIA request counts toward the next preflight's rate check
         # Use OrderedDict for O(1) LRU eviction
         from collections import OrderedDict
         s._c = OrderedDict()

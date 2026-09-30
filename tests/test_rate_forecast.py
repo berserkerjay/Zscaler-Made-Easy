@@ -33,7 +33,7 @@ def test_every_pack_card_has_a_rate_note():
 
 def test_a_fresh_hour_goes_straight_through(clock):
     f = zia_rate.forecast({"write": 30, "endpoint_rules": 14, "activate": 1})
-    assert f["severity"] == "ok" and f["verdict"].startswith("Goes straight through")
+    assert f["severity"] == "ok" and f["title"] == "Will succeed" and "goes straight through" in f["verdict"]
     ep = next(r for r in f["buckets"] if r["bucket"] == "endpoint_rules")
     assert 60 <= ep["seconds"] < 120, "the 11th Endpoint rule waits for the minute"
 
@@ -77,21 +77,82 @@ def test_requests_survive_a_restart(clock, tmp_path, monkeypatch):
     assert zia_rate.forecast({"endpoint_rules": 1})["recent"]["endpoint_rules"] == 0
 
 
-def test_preflight_shows_the_rate_forecast_as_an_impact(clock):
+def test_the_preflight_check_says_will_succeed_or_likely_to_fail(clock):
     pack = next(p for p in PACKS if p["id"] == "zbp_enterprise_baseline")
     rep = pd.preflight(the_tenant(), [pack], writes_enabled=True, channel_targets={pack["id"]: ["endpoint"]})
     f = rep["rate_forecast"]
     ep = next(r for r in f["buckets"] if r["bucket"] == "endpoint_rules")
     assert ep["requests"] == pack["channels"]["endpoint"]
-    card = next(i for i in rep["impacts"] if i["type"] == "rate_limits")
-    assert card["severity"] == "ok" and "Endpoint DLP rules" in card["detail"]
-    # The same preview after 38 Endpoint rule writes in the last hour warns.
-    for i in range(38):
-        zia_rate._sent["endpoint_rules"].append(clock[0] - 300 + i)
+    assert f["title"] == "Will succeed" and "This run sends" in f["detail"]
+    assert not any(w.startswith("ZIA rate limits") for w in rep["warnings"])
+    # ZIA refused this client ten minutes ago: the check says it is likely to fail, first among the warnings.
+    zia_rate.note_refusal("write", "Resource Access Blocked")
+    clock[0] += 600
     rep2 = pd.preflight(the_tenant(), [pack], writes_enabled=True, channel_targets={pack["id"]: ["endpoint"]})
-    card2 = next(i for i in rep2["impacts"] if i["type"] == "rate_limits")
-    assert card2["severity"] == "warning" and "38 of 40/hr" in card2["detail"]
+    assert rep2["rate_forecast"]["severity"] == "fail" and rep2["warnings"][0].startswith("ZIA rate limits: Likely to fail")
     assert rep2["plan_hash"] == rep["plan_hash"], "the forecast is not part of the plan"
+
+
+def test_the_container_state_of_the_refused_run_reads_as_likely_to_fail(clock, tmp_path, monkeypatch):
+    """The container's own record after tonight's run: 110 writes in about
+    3 minutes, then a one-hour hold. ZIA blocked the client far below its
+    documented 400 an hour; that record predates refusal details, so the
+    refusal is read from the hold."""
+    start = clock[0] - 300
+    writes = [start + i * 1.72 for i in range(110)]
+    state = tmp_path / "zia_rate.json"
+    state.write_text(json.dumps({"sent": {"write": writes}, "hold_until": start + 3600}))
+    monkeypatch.setenv("DLP_CHECK_ZIA_RATE_STATE", str(state))
+    for q in zia_rate._sent.values():
+        q.clear()
+    zia_rate._loaded[0] = False
+    f = zia_rate.forecast({"write": 40, "activate": 1})
+    assert f["severity"] == "fail" and f["verdict"].startswith("Likely to fail") and "110 requests" in f["verdict"]
+    # Two hours later the hour has passed, but ZIA's tolerance is remembered: a
+    # run as busy as that one is still called out, a small one is not.
+    clock[0] += 7200
+    big = zia_rate.forecast({"write": 158, "activate": 1})
+    assert big["severity"] == "fail" and "blocked this API client after 110 requests in 5 minutes" in big["verdict"]
+    small = zia_rate.forecast({"write": 20, "activate": 1})
+    assert small["severity"] == "ok"
+
+
+def test_every_zia_request_the_app_sends_is_observed(clock):
+    zia_rate.observe("GET", "https://api.zsapi.net/zia/api/v1/dlpDictionaries", 200)
+    zia_rate.observe("GET", "https://api.zsapi.net/zpa/mgmtconfig/v1/admin/customers/1/segment", 200)   # not ZIA
+    zia_rate.observe("GET", "https://zsapi.zscaler.net/api/v1/webDlpRules", 200, {"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "900", "x-ratelimit-reset": "1200"})
+    assert zia_rate.forecast({"write": 1})["sent_last_hour"] == {"read": 2}
+    assert zia_rate._server["read"]["remaining"] == 900
+    zia_rate.observe("POST", "https://api.zsapi.net/zia/api/v1/dlpDictionaries", 403, None, '{"code":"FORBIDDEN","message":"Resource Access Blocked"}')
+    r = zia_rate._refused[-1]
+    assert r[1] == "write" and "Resource Access Blocked" in r[2] and r[5] == 2
+    zia_rate.observe("POST", "https://api.zsapi.net/zia/api/v1/dlpDictionaries", 403, None, '{"message":"Forbidden: role"}')
+    assert len(zia_rate._refused) == 1, "a permission 403 is not a rate refusal"
+
+
+def test_the_tap_sees_requests_sent_through_requests(clock, monkeypatch):
+    from requests.adapters import HTTPAdapter
+    import requests
+
+    class Resp:
+        status_code, headers, text = 429, {"x-ratelimit-limit": "10", "x-ratelimit-remaining": "0", "x-ratelimit-reset": "30"}, "Too Many Requests"
+    monkeypatch.setattr(HTTPAdapter, "send", lambda self, request, *a, **k: Resp())
+    monkeypatch.setattr(zia_rate, "_tapped", [False])
+    zia_rate.install_tap()
+    requests.Request("POST", "https://api.zsapi.net/zia/api/v1/status/activate").prepare()
+    HTTPAdapter().send(requests.Request("POST", "https://api.zsapi.net/zia/api/v1/status/activate").prepare())
+    assert zia_rate._refused[-1][1] == "activate" and zia_rate._server["activate"]["remaining"] == 0
+
+
+def test_refused_runs_in_the_deployment_log_are_part_of_the_history(clock, tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    log = tmp_path / "deployments.json"
+    at = datetime.fromtimestamp(clock[0] - 86400, timezone.utc).isoformat(timespec="seconds")
+    log.write_text(json.dumps({"version": 1, "deployments": [{"id": "d1", "at": at, "created": [
+        {"kind": "dictionary", "name": "X", "status": "failed", "error": "Resource Access Blocked"}]}]}))
+    monkeypatch.setenv("DLP_CHECK_DEPLOYMENTS", str(log))
+    f = zia_rate.forecast({"write": 5})
+    assert len(f["refused_runs"]) == 1 and "1 run(s) in the deployment log" in zia_rate.history_text(f)
 
 
 def test_removal_preview_forecasts_its_deletes(clock, tmp_path):
@@ -99,4 +160,4 @@ def test_removal_preview_forecasts_its_deletes(clock, tmp_path):
     plan = pr.plan_removal(_deletable(_tenant(with_survivors=False)), [_pack_dir(tmp_path)])
     f = plan["rate_forecast"]
     assert {r["bucket"]: r["requests"] for r in f["buckets"]} == {"delete": plan["remove_count"], "activate": 1}
-    assert f["severity"] == "ok"
+    assert f["severity"] == "ok" and f["detail"]

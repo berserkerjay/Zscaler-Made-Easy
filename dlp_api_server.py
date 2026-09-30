@@ -1023,6 +1023,8 @@ def _build_sdk_client(creds: Dict[str, str]):
     for a ZIdentity API client, the SDK's legacy ZIA client for the classic
     sign-in (tenant_auth). Validates every input and never echoes a secret
     in an error."""
+    import zia_rate
+    zia_rate.install_tap()   # every ZIA request counts toward the next preflight's rate check
     c = _validate_creds(creds)
     cloud, vd, cid, sec = c["cloud"], c["vanity_domain"], c["client_id"], c["client_secret"]
     if c["auth_method"] == tenant_auth.LEGACY:
