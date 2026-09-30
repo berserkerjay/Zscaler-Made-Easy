@@ -86,7 +86,9 @@ WATCHED_SDK_FILES = (
     "zia/ssl_inspection_rules.py", "zia/rule_labels.py", "zia/dlp_templates.py",
     "zia/models/dlp_dictionary.py", "zia/models/dlp_engine.py", "zia/models/dlp_web_rules.py", "zia/models/endpoint_dlp_rules.py",
     "zia/models/casb_dlp_rules.py", "zia/models/outbound_email_dlp_rules.py",
-    "request_executor.py", "utils.py", "oneapi_client.py", "zscaler_client.py", "legacy.py",
+    # ZscalerClient lives in oneapi_client.py; the classic ZIA API client
+    # (tenant_auth.build_legacy_sdk_client) in zia/legacy.py.
+    "request_executor.py", "utils.py", "oneapi_client.py", "zia/legacy.py",
 )
 # Wire fields ZIA accepts on a create that the 1.x SDK neither documents
 # nor models, proven by real deploys (a clone of a predefined dictionary

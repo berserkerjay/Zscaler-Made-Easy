@@ -41,9 +41,9 @@ DLP = [{"id": 50, "name": "Bank-Customer PII (Global)-Monitor", "order": 1, "sta
 ROUTES = {
     "/zcc/webPolicies": APP_PROFILES, "/zcc/forwardingProfiles": FWD, "/zcc/trustedNetworks": [{"id": 1, "name": "HQ", "dnsServers": ["10.1.1.1"]}],
     "/zia/pacFiles": PAC, "/zia/sslInspectionRules": SSL, "/zia/urlFilteringRules": URL, "/zia/cloudApplicationRules": CAC,
-    "/zia/fileTypeControlRules": FTC, "/zia/webDlpRules": DLP,
-    "/zia/endpointDlpRules": [{"id": 60, "name": "Bank-Endpoint-Monitor", "state": "ENABLED", "action": "ALLOW"}],
-    "/zia/casbDlpRules": [], "/zia/emailDlpRules": [{"id": 70, "name": "Bank-Customer PII (Global) [Email]", "state": "DISABLED", "action": "ALLOW"}],
+    "/zia/fileTypeRules": FTC, "/zia/webDlpRules": DLP,
+    "/zia/endPointDlpRules": [{"id": 60, "name": "Bank-Endpoint-Monitor", "state": "ENABLED", "action": "ALLOW"}],
+    "/zia/casbDlpRules/all": [], "/zia/emailDlpRules": [{"id": 70, "name": "Bank-Customer PII (Global) [Email]", "state": "DISABLED", "action": "ALLOW"}],
     "/zia/urlCategories": [{"id": "FILE_HOST", "configuredName": "File Sharing", "urls": [], "dbCategorizedUrls": []},
                            {"id": "CUSTOM_01", "configuredName": "Partner portals", "customCategory": True, "urls": ["portal.partner.com"], "dbCategorizedUrls": []}],
 }

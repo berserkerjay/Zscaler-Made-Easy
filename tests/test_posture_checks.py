@@ -67,7 +67,7 @@ PROFILES = [{"id": 1, "name": "Restricted", "defaultProfile": True}]
 
 
 def test_isolation_profiles_without_rules_is_a_warning():
-    cl = FakeCl({"/zia/isolationProfile": PROFILES, "/zia/urlFilteringRules": [
+    cl = FakeCl({"/zia/browserIsolation/profiles": PROFILES, "/zia/urlFilteringRules": [
         {"name": "Block gambling", "action": "BLOCK", "state": "ENABLED", "urlCategories": ["GAMBLING"]}]}, cac={})
     r = chk.c_3_7(cl)
     assert r.status == chk.R.WARN and "nothing is actually isolated" in r.detail
@@ -75,7 +75,7 @@ def test_isolation_profiles_without_rules_is_a_warning():
 
 
 def test_isolation_in_policy_counts_url_and_cac_rules_across_types():
-    cl = FakeCl({"/zia/isolationProfile": PROFILES, "/zia/urlFilteringRules": [
+    cl = FakeCl({"/zia/browserIsolation/profiles": PROFILES, "/zia/urlFilteringRules": [
         {"name": "Isolate unknown", "action": "ISOLATE", "state": "ENABLED", "urlCategories": ["OTHER_MISCELLANEOUS"]},
         {"name": "Old isolate", "action": "ISOLATE", "state": "DISABLED", "urlCategories": ["GAMBLING"]}]},
         cac={"AI_ML": [{"name": "Isolate AI", "state": "ENABLED", "actions": ["ISOLATE_AI_ML_WEB_USE"]}],

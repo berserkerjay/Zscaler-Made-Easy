@@ -108,7 +108,7 @@ def ai_3(cl):
 
 def ai_4(cl):
     """Browser Isolation available for risky AI tools"""
-    d, c = cl.get("/zia/isolationProfile")
+    d, c = cl.get("/zia/browserIsolation/profiles")
     profiles = _ls(d) if c in (200, 204) else []
     if profiles:
         return R(R.PASS, f"{len(profiles)} Browser Isolation profile(s) available. Best Practice: Route unsanctioned AI tools through Browser Isolation with upload/download/clipboard disabled — users can still use the tools but can't exfiltrate sensitive data. This is Zscaler's recommended 'coach, don't block' approach.")
@@ -330,7 +330,7 @@ def ai_18(cl):
 
 def ai_19(cl):
     """Browser Isolation with restricted controls for AI"""
-    d, c = cl.get("/zia/isolationProfile")
+    d, c = cl.get("/zia/browserIsolation/profiles")
     profiles = _ls(d) if c in (200, 204) else []
     restricted = []
     for p in profiles:

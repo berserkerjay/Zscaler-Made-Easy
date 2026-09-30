@@ -161,6 +161,14 @@ what you get, what to do next.
   programme stages and the framework coverage. Where: the Dashboard.
 - **Zscaler updates** — a check of PyPI and help.zscaler.com for SDK and
   documentation changes since last time.
+- **Beacon: SDK, API & Terraform changes** — the upstream check's online
+  half run on this server: the Zscaler Python SDK, the ZIA API (the SDK's
+  service definition, the API reference, the help-center pages) and the
+  zscaler/zia Terraform provider, on a timer (every 24 hours by default,
+  `DLP_CHECK_BEACON_HOURS`) and on demand, with what changed since the
+  last run and the last 30 runs. Optionally a read-only (GET) watch of
+  every tenant endpoint the app uses, which says which ones now answer
+  differently.
 - **Update app** — fetches the latest build of this app from GitHub,
   installs the pinned dependencies and restarts; the Branch dropdown
   tries a fix on QA or Development before it is promoted to Stable.
@@ -213,9 +221,11 @@ These rules hold on every page, and the tests enforce them:
   phrase (or starts the server with `ENABLE_WRITE_ACTIONS` set). Write
   mode lets the app create and delete DLP policy in the signed-in tenant,
   lasts until the server restarts, and is shown on the page while it is
-  on. The switch works only when the server listens on this machine
-  (`127.0.0.1`, the laptop default); in the container, which listens on
-  every address inside its own network, the switch is refused: put
+  on. The switch works only when nobody but this machine can reach the
+  server: it listens on `127.0.0.1` (the laptop default), or it is the
+  container published on this machine's loopback (the default,
+  `DLP_CHECK_HOST_BIND`). For a server reachable from elsewhere,
+  including a container published beyond loopback, the switch is refused: put
   `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in the `.env` file next to
   `docker-compose.yml` and restart.
 - **Nothing the customer has is overwritten.** A pack keeps what already
@@ -305,8 +315,10 @@ Being honest about the edges:
   page shows every mapping).
 - **Update app** works for an install made with git; a ZIP copy and a
   container are updated by replacing the files (see `INSTALL.md`).
-- **In the container**, write mode comes from `ENABLE_WRITE_ACTIONS` in
-  `.env`, not from the in-app switch, and approving a guidance article as
+- **In the container**, write mode is switched on in the app as on a
+  laptop while the container is published on loopback (the default);
+  published beyond it, it comes from `ENABLE_WRITE_ACTIONS` in `.env`.
+  Approving a guidance article as
   a check reference cannot be saved (the shipped `checks_config.json` is
   read-only there); profiles, deployments, the audit log, uploaded packs,
   digests, proposals and the guidance state persist on the volume.

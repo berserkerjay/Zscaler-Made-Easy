@@ -83,6 +83,14 @@ prerelease (whose ZIA service definition is machine-readable), the
 Zscaler's API reference. Drift opens or updates one issue labelled
 `upstream-drift` with the report; a clean day closes it.
 
+The same watchers also run inside the app as **Beacon** (`beacon.py`, the
+Beacon tab, `/report/beacon`): the SDK, the ZIA API (service definition,
+API reference, help-center pages) and the Terraform provider, on a timer
+while the server runs (`DLP_CHECK_BEACON_HOURS`, default 24, 0 turns it
+off) and on demand, each run compared with the last (the last 30 are
+kept). The tab can also read every endpoint the app uses from a tenant,
+GET only, and say which ones now answer differently.
+
 The suite (380 tests) covers the checks, the policy-pack planner and
 executor against a fake tenant that refuses what a real ZIA tenant refuses,
 the API endpoints, the background jobs, the entry points' error paths and
@@ -132,7 +140,7 @@ pack; generated Terraform per pack in `terraform/`; tests in `tests/`.
 | Policy packs | `pack_ops.py` (the shared execution path every pack goes through: validation, ordering, retries, run control, structured events), `pack_deploy.py` (plan, apply, journey, verify), `pack_removal.py` (remove, undo), `pack_jobs.py` (deploys and removals as background jobs the GUI follows live), `pack_channels.py` (per-channel payloads), `pack_library.py` (uploads), `pack_terraform.py`, `dlp_importer.py` (pack data and ZIA limits); pack data in `cjis_policy_pack/`, `fed_policy_pack/`, `global_banking_baseline/`, `healthcare_phi_baseline/`, `zbp_enterprise_baseline/`, `zbp_source_code_baseline/` |
 | Reports and analysis | `bypass_report.py`, `ssl_flow.py`, `data_flow.py`, `detection_health.py`, `dlp_efficacy.py`, `log_analyzer.py`, `secure_by_design.py` |
 | Continuous evaluation | `continuous_eval.py` (the `dlp-check-evaluate` command), `proposals.py`, `proposal_apply.py`, `deployments.py`, `tenant_profiles.py` |
-| Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button), `upstream_check.py` (the SDK, the Terraform provider and Zscaler's API reference cross-checked against what the app sends; offline in `make check`, online daily in `.github/workflows/upstream_check.yml`) |
+| Tools | `tools/fan_out_channels.py` (channel mirrors), `tools/validate_detection.py` (offline detection validation), `app_update.py` (the Update app button), `upstream_check.py` (the SDK, the Terraform provider and Zscaler's API reference cross-checked against what the app sends; offline in `make check`, online daily in `.github/workflows/upstream_check.yml`), `beacon.py` (the same watchers in the app on a timer, what changed since the last run, and the GET-only tenant API watch) |
 
 Documentation: `docs/OVERVIEW.md` (what the app does, in five minutes),
 `INSTALL.md` (installing, click by click), `GETTING_STARTED.md` (first

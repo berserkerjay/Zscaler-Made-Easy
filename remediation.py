@@ -83,7 +83,7 @@ REMEDIATIONS: List[Dict[str, Any]] = [
              "type": "number",     "required": False, "default": 7, "min": 0, "max": 7,
              "hint": "Zscaler admin-rank field; 7 = lowest priority. Keep at 7 unless you know why."},
         ],
-        "endpoint":    "/zia/firewallRules",
+        "endpoint":    "/zia/firewallFilteringRules",
         "method":      "POST",
         "body_template": {
             "name":        "{name}",

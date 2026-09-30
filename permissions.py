@@ -24,7 +24,7 @@ ENDPOINT_PERMISSIONS: Dict[str, Dict[str, str]] = {
     "/zia/dlpDictionaries": {"product": "ZIA", "permission": "DLP Dictionaries"},
     "/zia/dlpEngines": {"product": "ZIA", "permission": "DLP Engines"},
     "/zia/webDlpRules": {"product": "ZIA", "permission": "Web DLP Rules"},
-    "/zia/endpointDlpRules": {"product": "ZIA", "permission": "Endpoint DLP Rules"},
+    "/zia/endPointDlpRules": {"product": "ZIA", "permission": "Endpoint DLP Rules"},
     "/zia/casbDlpRules": {"product": "ZIA", "permission": "SaaS Security API DLP Rules"},
     "/zia/emailDlpRules": {"product": "ZIA", "permission": "Email DLP Rules"},
     "/zia/dlpNotificationTemplates": {"product": "ZIA", "permission": "DLP Notification Templates"},
@@ -35,8 +35,11 @@ ENDPOINT_PERMISSIONS: Dict[str, Dict[str, str]] = {
     "/zia/urlCategories": {"product": "ZIA", "permission": "URL Categories"},
     "/zia/cloudApplicationRules": {"product": "ZIA", "permission": "Cloud App Control Policy"},
     "/zia/cloudApplications": {"product": "ZIA", "permission": "Cloud Applications"},
-    "/zia/fileTypeControlRules": {"product": "ZIA", "permission": "File Type Control Policy"},
-    "/zia/firewallRules": {"product": "ZIA", "permission": "Firewall Control Policy"},
+    "/zia/webApplicationRules": {"product": "ZIA", "permission": "Cloud App Control Policy"},
+    "/zia/firewall": {"product": "ZIA", "permission": "Firewall Control Policy"},
+    "/zia/adminUsers": {"product": "ZIA", "permission": "Administrator Management"},
+    "/zia/fileTypeRules": {"product": "ZIA", "permission": "File Type Control Policy"},
+    "/zia/firewallFilteringRules": {"product": "ZIA", "permission": "Firewall Control Policy"},
     "/zia/locations": {"product": "ZIA", "permission": "Locations"},
     "/zia/users": {"product": "ZIA", "permission": "User Management"},
     "/zia/groups": {"product": "ZIA", "permission": "User Management"},
@@ -50,7 +53,7 @@ ENDPOINT_PERMISSIONS: Dict[str, Dict[str, str]] = {
     "/zcc/": {"product": "Client Connector", "permission": "Client Connector portal (read)"},
     "/zpa/": {"product": "ZPA", "permission": "ZPA read-only role"},
     "/zdx/": {"product": "ZDX", "permission": "ZDX read-only role"},
-    "/zidentity/": {"product": "ZIdentity", "permission": "ZIdentity read-only role"},
+    "/zid/": {"product": "ZIdentity", "permission": "ZIdentity read-only role"},
 }
 
 # What a configuration change needs, per object kind the tool writes.

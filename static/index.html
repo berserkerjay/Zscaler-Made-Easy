@@ -667,6 +667,11 @@
                 title="Checks PyPI and help.zscaler.com for SDK and documentation changes since last time. This is about Zscaler's SDK and docs, not this app's own update (see the Update app card in Connect to the tenant). Opens in a new tab.">
           <span aria-hidden="true">🔄</span> Zscaler SDK &amp; docs updates
         </button>
+        <button class="btn btn-ghost" onclick="openBeaconTab()"
+                aria-label="Open Beacon: what changed in the Zscaler SDK, the Zscaler API and the Terraform provider since the last run, on a timer and on demand, with an optional read-only watch of the tenant's API endpoints (opens in a new tab)"
+                title="Watches the Zscaler Python SDK, the ZIA API (service definition, API reference, help-center pages) and the zscaler/zia Terraform provider, runs on a timer while this server runs, and says what changed since the last run. Optionally reads every endpoint the app uses from a tenant, GET only. Opens in a new tab.">
+          <span aria-hidden="true">🛰️</span> Beacon: SDK, API &amp; Terraform changes
+        </button>
         <button class="btn btn-ghost" onclick="openReferenceTab('data-security-portfolio-framework')"
                 aria-label="Open the Data Security Portfolio Framework: Zscaler's data-security portfolio as an operating program with coverage selector, story builder and proof-of-value plan (opens in a new tab)"
                 title="Zscaler's data-security portfolio as an operating program: pick the coverage a customer needs, build the customer-ready story, and turn it into a testable proof-of-value plan. Works offline inside the tool. Opens in a new tab.">
@@ -4818,6 +4823,12 @@ function openLogAnalyzerTab() {
 }
 function openAdvancedTab() {
   const w = window.open('/report/advanced', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openBeaconTab() {
+  // The tab reads the credentials from this page through window.opener
+  // only when the tenant API watch is started there.
+  const w = window.open('/report/beacon', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 async function openDetectionHealthTab() {

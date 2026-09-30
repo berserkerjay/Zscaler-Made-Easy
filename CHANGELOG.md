@@ -7,6 +7,80 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### ZPA and ZDX checks read the paths the tenant serves
+- **What you asked for.** "Try ZPA and ZDX again", once the API client had its ZPA and ZDX roles.
+- **What the probe found.** The 401s were gone, but 16 of the 25 ZPA reads and 4 of the 8 ZDX reads still failed:
+  - ZPA IdPs, trusted networks, posture profiles, SAML attributes and log streaming live on the `v2` customer base, not `v1`.
+  - ZPA policy rules are listed per policy type (`/policySet/rules/policyType/ACCESS_POLICY`), and there is no `GLOBAL_POLICY` type.
+  - ZDX calls its applications `/apps` and its device list `/devices`.
+  - The ZDX API has no list of alert rules and no reports.
+- **Now**
+  - The resolver maps those short paths to the real ones, as it already did for ZCC. The access-policy check reads the access policy type, and dead fallbacks are gone.
+  - ZDX alert rules and reports report INFO and point at the ZDX Admin Portal, without spending a request.
+- **Verified.** On the tenant, every ZPA and ZDX check ran through the app's own client: all 22 endpoints answered 200 and every check gave a real result. `tests/test_api_paths.py` pins the mappings, the access-policy read and the no-API checks. Full suite: no new failures.
+
+### The container updates from main, qa or dev
+- **What you asked for.** "The container should also have the option to update from dev, qa or main branch."
+- **Before.** `update_container.ps1` and `update_container.sh` only pulled the branch the folder already had checked out. The Branch list in Update app changed only which branch the container was compared with.
+- **Now** both scripts take a branch: `-Branch main|qa|dev` on Windows, `--branch main|qa|dev` on Mac and Linux.
+  - The script switches the folder to that branch and rebuilds. Later runs and the daily schedule keep updating from it.
+  - Any other name is refused. `DLP-CHECK-QA`, the QA branch's old name, is taken as `qa`.
+  - In the container, Update app shows both commands for the branch picked in its Branch list, and so does the update notice's **Show how**.
+  - `INSTALL.md` explains the choice: main is what customers run; qa and dev carry changes before they are promoted.
+- **Verified.** A new test runs `update_container.sh` against a scratch git remote that has main, qa and dev, with `docker` replaced by a stub. It covers switching to qa, staying on qa on the next run, `--branch=dev`, the old QA name, and refusing `prod`; each switch rebuilds and an up-to-date run does not. The PowerShell script was run the same way by hand (-Branch qa, a plain run, DEV, DLP-CHECK-QA, main), with the same results.
+
+### Enable write mode in the container, when only this computer can reach it
+- **What you asked for.** "No option to enable write mode in the container", then: yes to a switch there.
+- **Why it was missing.** The switch is refused unless the server listens on loopback. Inside the container it listens on 0.0.0.0, even though `docker-compose.yml` publishes it on the host's 127.0.0.1 only. The container could not see that, so it refused.
+- **Now** `docker-compose.yml` takes the host address from one setting, `DLP_CHECK_HOST_BIND` (default `127.0.0.1`), for both its `ports:` line and the app itself.
+  - Published on loopback (the default), Deploy policy packs offers **Enable write mode** as on a laptop: you type `YES_I_UNDERSTAND`, it lasts until the container restarts, and the UI token still guards it.
+  - Published beyond loopback, the switch is refused and the message points at `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in `.env`.
+  - A container that does not pass the setting (an older compose file, or a `docker run` without `-e DLP_CHECK_HOST_BIND=127.0.0.1`) stays refused, as before.
+  - `INSTALL.md` (the compose and by-hand runs) and `docs/OVERVIEW.md` say so.
+- **Verified.** A new test covers the switch in the container on loopback: offered, the phrase still required, and turning writes off always allowed. The same test covers publishing on 0.0.0.0, on a LAN address or unset (refused), and the compose file passing the same address its `ports:` line uses. The tests that pinned the `ports:` line now pin the variable with its `127.0.0.1` default.
+
+### Beacon: SDK, API and Terraform changes, on a timer, with what changed since the last run
+
+- **What you asked for.** A Beacon that watches for SDK changes, Zscaler API changes and Terraform changes, on demand and on a timer, and shows what changed since the last run.
+
+- **Before.** The upstream contract check ran online only in GitHub Actions (06:23 UTC daily), whose result this server cannot read; the app itself ran the offline half (the installed SDK and the committed Terraform) on the Advanced page, and the *Zscaler SDK & docs updates* tab hashed the help-center pages without the SDK diff, the service definition or the provider. Nothing kept a history, and nothing said whether a tenant still answered the endpoints the checks read.
+
+- **Now** **Beacon** (Reference → *Beacon: SDK, API & Terraform changes*, `/report/beacon`, `beacon.py`) runs the upstream check's watchers on this server and keeps the last 30 runs (`beacon_state.json` beside the update-check cache, `%LOCALAPPDATA%\ZscalerAssessment` on Windows; `DLP_CHECK_BEACON_STATE` moves it, the container keeps it on `/data`). **SDK:** the installed `zscaler-sdk-python` against PyPI's latest release and prerelease, whether the latest changes a module the app calls, the SDK's newest changelog entry, the SDK findings. **API:** the 2.x SDK's ZIA service definition against every endpoint the app writes to, whether Zscaler's API reference answers, and the help-center and OneAPI pages, hashed as the updates tab hashes them but kept separately, so running Beacon never changes what that tab reports. **Terraform:** the `zscaler/zia` pin against the registry's latest, attribute drift against the provider's schema and docs, the provider's newest changelog entry. *Changed since last run* lists, in words, versions that moved, drift that is new or cleared, pages whose content changed and tenant endpoints whose answer changed; an online run is compared with the last online run and an offline one with the last offline one, so a run without a network never reports facts as "cleared". A timer runs the online watchers every `DLP_CHECK_BEACON_HOURS` (default 24; 0 turns it off; documented in both `local_settings` examples) while the server runs; the first run waits until the newest online run is that old, so a restart does not re-fetch everything, and a failed run is recorded, never raised. **Tenant API watch** (optional, from the tab only, never the timer): the tenant chosen as on the Live DLP feed (the assessment tab, a saved profile, or this computer's settings) is signed in, then every endpoint the app's checks and features read (found in their code; not `discover_endpoints.py`'s guesses or the `scope_permissions` catalogue) is read with GET, about one a second, recording OK / 403 / 404 / 429 / timeout / error and the item count; the next watch of the same tenant names each endpoint that answers differently, with the permission a 403 needs. The watch's client refuses every method but GET before a request is built. `GET /api/beacon` (latest run, what changed, history, timer), `GET /api/beacon/status` (the current drift and a key that changes with it, for a notice; `?refresh=1` starts an online run at most once an hour), `POST /api/beacon/run` (`online`, `tenant_watch`, the usual tenant fields; one run at a time, 409 otherwise; credentials validated and never echoed). The Advanced page's upstream card and the README link to it.
+
+- **In the update notice.** Beside the existing *Update available* bar, a second bar in the same stack at the top of every page shows Beacon's current upstream drift (for example *Upstream change: api. zscaler-sdk-python 2.0.0b2: no POST operation for /endPointDlpRules… (and 1 more)*) with **Details** (the Beacon tab) and its own **Later**, which hides that set of findings until it changes. It reads `/api/beacon/status` on the notice's schedule and never starts a fetch itself.
+- **Tidy-up.** `upstream_check.WATCHED_SDK_FILES` listed `zscaler_client.py` and `legacy.py` at the package root, which no 1.x release has (the diff skipped them, so they did nothing); they are replaced by `zia/legacy.py`, where the classic ZIA API client the app signs in with lives. `ZscalerClient` is in `oneapi_client.py`, already watched.
+
+- **Verified.** `tests/test_beacon.py` (25 tests: the snapshot, the diff, history and its cap, offline and online kept apart, the GET-only guard, the timer loop with a fake sleep, the endpoints, the page and the notice). The existing notice tests still pass; full suite has no new failures. Not verified here: a real browser pass of the tab and the stacked bars, a live online run, a live tenant watch, and the timer under a running server.
+
+### Every API the checks read is one the tenant serves
+- **What you asked for.** An inventory of every Zscaler API the app uses, called read-only against the tenant, then "update all the APIs".
+- **What the probe found.** With zscaler-sdk-python 1.11.0, many reads went to paths Zscaler does not serve (404, 400 or 405), and some checks turned that refusal into a finding. The affected reads were:
+  - firewall, DNS and IPS rules, and static IPs;
+  - ZIA admin users;
+  - ATP and malware settings;
+  - Cloud App Control rules (the API lists them per rule type);
+  - File Type Control, and Endpoint DLP rules (`endPointDlpRules`);
+  - Browser Isolation profiles, incident receivers and NSS feeds;
+  - SaaS Security API rules (they need `/all`);
+  - the security blacklist (a field of `/security/advanced`);
+  - ZIdentity (served at `/ziam/admin/api/v1`, not `/zidentity/v1`);
+  - ZCC admin users (they need `userType`) and ZCC device cleanup.
+- **Now** every one of those reads the real path, checked on a live tenant, where every fixed path answered 200.
+  - Cloud App Control rules and ZCC admin users are read in parts and returned as one list, each item tagged with its rule type or user type. The SDK client now reads Cloud App Control for every type, not only STREAMING_MEDIA.
+  - Some things no public API lists: endpoint DLP resources, ZCC posture profiles, Workflow Automation (its own ZWA API) and ZIdentity entitlements (listed per user only). Their checks now report INFO saying so, instead of reporting a gap.
+  - "Group-only entitlement binding is in force" is no longer reported when the list could not be read.
+  - Malware protection is read from the per-category `Blocked` flags.
+  - Dead fallbacks are gone, and so are four evaluate-all-rules probes that could never answer (two duplicates, two with no product prefix).
+  - The SdkClient no longer maps endpoint DLP resources to the ICAP server list, or posture profiles to device groups.
+- **Not changed.**
+  - ZPA and ZDX answered 401 to this tenant's API client. That is a role to grant in ZIdentity, not a path.
+  - Cloud Sandbox's quota 403 is a license.
+  - rule_migrator's remaining probes for the evaluate-all setting stay, since one tenant exposed it through a feature flag.
+- **Verified.**
+  - `tests/test_api_paths.py` covers the resolver, the per-type and per-userType reads, the corrected checks, and that no check reads a path the API does not serve.
+  - Test fakes keyed on the old paths now use the real ones.
+  - Full suite: the same failures as `dev` had before this change, none new.
+
 ### Read-only in the container: the message says how to turn writes on there
 - **What you reported.** In the container, Deploy policy packs showed no Enable write mode switch and told you to start `START_Zscaler_Assessment_WRITES_ENABLED.bat`, which does not exist there.
 - **Why.** Inside the container the server listens on 0.0.0.0, and the in-browser switch is refused beyond loopback. That safeguard is unchanged.

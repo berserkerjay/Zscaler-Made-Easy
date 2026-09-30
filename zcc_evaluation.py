@@ -522,8 +522,6 @@ _PLACEHOLDERS = ("${RULENAME}", "${ENGINES}", "${DICTIONARIES}", "${USER}", "${U
 def z_notification_templates(cl):
     R, _, _ls = _rt()
     d, c = cl.get("/zia/dlpNotificationTemplates")
-    if c == 404:
-        d, c = cl.get("/zia/notificationTemplates")
     if c not in (200, 204):
         return R(R.INFO, f"DLP notification templates: not readable (HTTP {c}).")
     tpls = [t for t in _ls(d) if isinstance(t, dict)]

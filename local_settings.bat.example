@@ -26,6 +26,14 @@ REM set ZSCALER_API_KEY=
 REM Start in write mode without the in-app switch.
 REM set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
 
+REM Beacon: how often (in hours) the server re-checks the Zscaler SDK, the
+REM ZIA API and the Terraform provider for changes while it runs. Default 24;
+REM 0 turns the timer off (Run now on the Beacon tab still works). The timer
+REM never reads a tenant. The history is kept in
+REM %LOCALAPPDATA%\ZscalerAssessment\beacon_state.json unless this moves it.
+REM set DLP_CHECK_BEACON_HOURS=24
+REM set DLP_CHECK_BEACON_STATE=C:\DLP-Check-data\beacon_state.json
+
 REM Continuous evaluation digest (every 6 hours while the app runs, or from
 REM RUN_Continuous_Evaluation.bat in Task Scheduler). E-mail needs an SMTP
 REM relay; the webhook is a Teams or Slack incoming webhook (https only).

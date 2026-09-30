@@ -60,7 +60,7 @@ def rbac_zia_admin_count(cl):
                      for r in (u.get("adminUser") and [u.get("role", {})] or []))]
     # Different shape: some tenants expose /zia/admins separately
     if not admins:
-        dd, cc = cl.get("/zia/admins")
+        dd, cc = cl.get("/zia/adminUsers")
         admins = _ls(dd) if cc == 200 else []
     if not admins:
         return R(R.INFO, "Admin count endpoint shape not recognized on this tenant.")
@@ -74,8 +74,6 @@ def rbac_zia_admin_count(cl):
 def rbac_zia_sso_federated(cl):
     """Admin login federated to IdP (SAML/SSO), not local accounts"""
     d, c = cl.get("/zia/authSettings")
-    if c != 200:
-        d, c = cl.get("/zia/authenticationSettings")
     if c != 200 or not isinstance(d, dict):
         return R(R.INFO, "Authentication settings endpoint not exposed on this tenant.")
     auth_type = str(d.get("authType") or d.get("authenticationType") or "").upper()
@@ -89,8 +87,6 @@ def rbac_zia_sso_federated(cl):
 def rbac_zia_mfa_required(cl):
     """MFA required for admin logins"""
     d, c = cl.get("/zia/authSettings")
-    if c != 200:
-        d, c = cl.get("/zia/authenticationSettings")
     if c != 200 or not isinstance(d, dict):
         return R(R.INFO, "MFA status not inspectable via this endpoint.")
     for key in ("mfaEnabled", "mfaRequired", "requireMfa", "twoFactorAuthEnabled", "tfaEnabled"):
@@ -150,9 +146,6 @@ def rbac_zcc_idp_sync(cl):
 def rbac_zpa_policies_group_bound(cl):
     """ZPA access policies bound to SCIM/groups, not individuals"""
     d, c = cl.get("/zpa/policySet/rules/ACCESS_POLICY")
-    if c not in (200, 204):
-        # Some tenants use a different path
-        d, c = cl.get("/zpa/policySet/rules")
     rules = _ls(d) if c == 200 else []
     if c not in (200, 204):
         return R(R.INFO, f"ZPA access policy endpoint returned HTTP {c}.")
@@ -203,13 +196,8 @@ def rbac_zid_admin_redundancy(cl):
 
 def rbac_zid_group_based(cl):
     """ZIdentity entitlements are group-based, not per-user"""
-    d, c = cl.get("/zid/userEntitlement")
-    items = _ls(d) if c == 200 else []
-    if c in (401, 403):
-        return R(R.INFO, "User entitlements not accessible.")
-    if not items:
-        return R(R.PASS, "No individual-user entitlements returned — best practice of group-only binding is in force.")
-    return R(R.WARN, f"{len(items)} individual-user entitlement(s) found. Best Practice: Prefer group-based role assignments — per-user entitlements don't survive offboarding cleanly.")
+    return R(R.INFO, "ZIdentity lists entitlements per user (/users/{id}/service-entitlements), not for the whole tenant, so group-only binding is not assessed here. "
+                     "Best Practice: Prefer group-based role assignments — per-user entitlements don't survive offboarding cleanly. Review them in the ZIdentity admin portal.")
 
 
 def rbac_zid_stale_admins(cl):
