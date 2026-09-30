@@ -24,10 +24,10 @@ def zid_users(cl):
     d, c = cl.get("/zid/users")
     items = _ls(d) if c in (200, 204) else []
     if c in (401, 403):
-        return R(R.INFO, "ZIdentity users endpoint not accessible — API role may not include ZIdentity scope.")
+        return R(R.INFO, "Authentication Service (formerly ZIdentity) users endpoint not accessible — API role may not include that scope.")
     if not items:
-        return R(R.WARN, "No ZIdentity users. If you use federated SSO to IdP (Azure AD / Okta), users should sync here. Empty means the IdP connector isn't running.")
-    return R(R.PASS, f"{len(items)} user(s) in ZIdentity directory.")
+        return R(R.WARN, "No users in Authentication Service (formerly ZIdentity). If you use federated SSO to IdP (Azure AD / Okta), users should sync here. Empty means the IdP connector isn't running.")
+    return R(R.PASS, f"{len(items)} user(s) in the Authentication Service (formerly ZIdentity) directory.")
 
 
 def zid_groups(cl):
@@ -35,10 +35,10 @@ def zid_groups(cl):
     d, c = cl.get("/zid/groups")
     items = _ls(d) if c in (200, 204) else []
     if c in (401, 403):
-        return R(R.INFO, "ZIdentity groups endpoint not accessible.")
+        return R(R.INFO, "Authentication Service (formerly ZIdentity) groups endpoint not accessible.")
     if not items:
-        return R(R.WARN, "No ZIdentity groups. Best Practice: Bind roles to groups (not individual users) so role changes follow IdP group membership — no drift, no leftover access when someone leaves a team.")
-    return R(R.PASS, f"{len(items)} group(s) defined in ZIdentity.")
+        return R(R.WARN, "No groups in Authentication Service (formerly ZIdentity). Best Practice: Bind roles to groups (not individual users) so role changes follow IdP group membership — no drift, no leftover access when someone leaves a team.")
+    return R(R.PASS, f"{len(items)} group(s) defined in Authentication Service (formerly ZIdentity).")
 
 
 def zid_resource_servers(cl):
@@ -48,7 +48,7 @@ def zid_resource_servers(cl):
     if c in (401, 403):
         return R(R.INFO, "Resource servers endpoint not accessible.")
     if not items:
-        return R(R.WARN, "No resource servers configured in ZIdentity. OneAPI clients need a resource server mapping to reach ZIA/ZPA/ZDX/ZCC — this should NOT be empty on a working tenant.")
+        return R(R.WARN, "No resource servers configured in Authentication Service (formerly ZIdentity). OneAPI clients need a resource server mapping to reach ZIA/ZPA/ZDX/ZCC — this should NOT be empty on a working tenant.")
     services = [
         str(r.get("serviceName") or r.get("resourceType") or r.get("name") or "?")
         for r in items
@@ -58,23 +58,25 @@ def zid_resource_servers(cl):
 
 def zid_user_entitlements(cl):
     """ZIdentity user entitlements (role assignments per user)"""
-    return R(R.INFO, "ZIdentity lists entitlements per user (/users/{id}/service-entitlements), not for the whole tenant. "
-                     "Best Practice: Prefer group-based role assignments — per-user entitlements don't survive offboarding cleanly. Review them in the ZIdentity admin portal.")
+    return R(R.INFO, "Authentication Service (formerly ZIdentity) lists entitlements per user (/users/{id}/service-entitlements), not for the whole tenant. "
+                     "Best Practice: Prefer group-based role assignments — per-user entitlements don't survive offboarding cleanly. Review them under Administration > Authentication in the Zscaler Admin Console.")
 
 
 def zid_admin_coverage(cl):
     """ZIdentity admin role coverage — at least 2 admins for BCP"""
     d, c = cl.get("/zid/users")
     users = _ls(d) if c in (200, 204) else []
+    # UserRecord carries adminEntitlementEnabled; it has no roles or groups
+    # field (zscaler-sdk-python 1.11.0 zid/models/users.py).
     admin_users = [
         u for u in users
-        if any("admin" in str(r).lower() for r in (u.get("roles") or u.get("groups") or []))
+        if isinstance(u, dict) and u.get("adminEntitlementEnabled") and str(u.get("status", "")).lower() not in ("false", "disabled", "inactive")
     ]
     if c in (401, 403) or not users:
         return R(R.INFO, "Cannot enumerate users for admin coverage check.")
     if len(admin_users) < 2:
-        return R(R.WARN, f"Only {len(admin_users)} admin-tagged user(s). Best Practice: Maintain at least 2 admins for business continuity — single-admin tenants lock out when that admin leaves or loses MFA.")
-    return R(R.PASS, f"{len(admin_users)} admin-tagged user(s) — BCP redundancy in place.")
+        return R(R.WARN, f"Only {len(admin_users)} active admin user(s) in Authentication Service (formerly ZIdentity). Best Practice: Maintain at least 2 admins for business continuity — single-admin tenants lock out when that admin leaves or loses MFA.")
+    return R(R.PASS, f"{len(admin_users)} active admin user(s) — BCP redundancy in place.")
 
 
 ZID_REG = [
