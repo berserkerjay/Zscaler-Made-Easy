@@ -7,6 +7,13 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### The container image: from 70 vulnerabilities to 16, none critical
+- **What you asked for.** "Docker is showing a lot of vulnerabilities in the container; scan and fix."
+- **What the scan found.** Docker Scout on the image built from main: 70 vulnerabilities in 18 packages, including 2 critical and several high in perl, util-linux, openssl and zlib. Every one was in a Debian 12 (bookworm) package Debian has not fixed; none were in the app's own Python libraries.
+- **The fix.** The image is built on Debian 13 (`python:3.11-slim-trixie`) and removes every operating-system package the app never uses: apt, perl, tar, diffutils, util-linux and mount, the login and password tools, the systemd libraries, sqlite and the openssl command. The app runs Python only, so nothing it does changes; the build stops if one of those packages is still there, and checks that Python, TLS and compression still load. Nothing can install packages into the running image any more.
+- **What is left.** 16: one high in zlib (Python needs it; Debian has no fix yet), one medium and 14 low in glibc, dash, coreutils and OpenSSL's library. No fixable critical or high. Checked in the rebuilt container: healthy, the pages and API answer, the Log Analyzer reads a gzip log, and HTTPS through the Zscaler certificate works.
+- **To get it.** Rebuild: `update_container.ps1 -Force` / `./update_container.sh --force`, or the Docker-only build line in INSTALL.md.
+
 ### The review of the rate-limit check and the CISA Secure by Design assessment: what they confirmed, fixed
 - **What you asked for.** Finish last night's review of the rate-limit check and the assessment against CISA's *Secure by Design*, then fix what they confirm. 100 reviewers found 76 distinct issues; the top 30 were checked by someone trying to refute them, and 17 held up. Twenty assessors judged the app against 33 CISA practices; of the top 30 gaps, 18 held up. All 17 review findings and 12 of the 18 gaps are fixed here; the other 6 change how sign-in and roles work and wait for a decision.
 
