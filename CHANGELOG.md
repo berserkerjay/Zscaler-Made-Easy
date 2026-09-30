@@ -7,6 +7,32 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### The review of the rate-limit check and the CISA Secure by Design assessment: what they confirmed, fixed
+- **What you asked for.** Finish last night's review of the rate-limit check and the assessment against CISA's *Secure by Design*, then fix what they confirm. 100 reviewers found 76 distinct issues; the top 30 were checked by someone trying to refute them, and 17 held up. Twenty assessors judged the app against 33 CISA practices; of the top 30 gaps, 18 held up. All 17 review findings and 12 of the 18 gaps are fixed here; the other 6 change how sign-in and roles work and wait for a decision.
+
+**The rate-limit check**
+- Every deploy, removal, import, undo and proposal change counts against its own tenant's ZIA limits, also when started straight from the API. One tenant's block no longer turns another tenant's check into "Likely to fail".
+- A block in an old record that names no tenant (from before tenants were kept apart) is a warning that says so, never a failure, and no longer delays other tenants. An old state file's pause is no longer reported as "Resource Access Blocked".
+- The check says "Likely to fail" when a `DLP_CHECK_ZIA_LIMIT_*` setting paces more loosely than ZIA allows. After a 429 it no longer promises a start time the run will not keep. A removal preview gives removal advice, and the sarcastic opener quotes the same block as the verdict.
+- Blocks are recorded more reliably: a block right after a 429 is kept, every refusal during a write's retries is kept, and blocks saved by another process (the command-line assessment, say) show up in the next check without a restart.
+- A pause set by another run while a write waits is also waited out, and the pause after a refusal covers ZIA's own window when the setting is shorter.
+- The state file is written far less often (at most every 5 seconds for ZIA's rate headers, at once for a block), so busy assessments are no longer slowed by it. A stuck lock file can no longer hang the app, and a failed save leaves no temp files behind.
+
+**Secure by Design**
+- The pack library preview escapes everything it shows, and an uploaded pack whose proximity is not a whole number is refused: a shared pack file can no longer run script in the app.
+- The Log Analyzer reads `.gz` files as a stream and stops at the size limit, so a small compressed file can no longer use gigabytes of memory; gzip counts toward the file limits like ZIP and tar. Analysis runs off the server's main loop, so a large upload no longer holds up other requests.
+- Rejected UI tokens and failed SSO sign-ins go to the audit log (`auth_denied`, `sso_login_failed`); the token itself is never recorded.
+- The Terraform hand-off creates every rule DISABLED, as Deploy Policy Packs does, even when an uploaded pack says ENABLED or gives no state.
+- Error text no longer shows any part of a password, client secret or API key, nor its length: `[redacted <field>]`.
+- Digest e-mail checks the mail server's certificate and refuses to send the SMTP password with TLS turned off; the Secure by Design page warns when it is off.
+- The launcher, the env example and the TLS error text say to trust the proxy's root certificate (`REQUESTS_CA_BUNDLE`, or `certs/` for the container); switching verification off is a last resort, with its risk spelled out.
+- The optional MCP server works again with the pinned mcp 2.x (an incompatible release now fails the tests instead of being skipped), and no longer accepts a client ID or secret as a tool argument: credentials come only from the `ZSCALER_*` environment variables, so a secret never passes through the AI conversation.
+- In-place updates cross-check the private repository with `DLP_CHECK_GITHUB_TOKEN`. When that cannot run, the update says "Verify against GitHub: skipped" and why, and the page no longer reloads over the warning.
+- The Secure by Design score is truthful: it names the fix recipes and the rule migrator, which write to the tenant directly (still only in write mode), shows a control it cannot inspect as not scored, and counts plain-text SMTP against the TLS control.
+- A check that crashed, returned nothing usable or timed out is "Could not be checked", not "Not configured", in the app and the command line; the command line also says how many checks were assessed and warns on partial coverage.
+
+**Waiting for a decision** (they change sign-in and roles): the UI token still works beside SSO; the container's non-loopback override; the audit log's identity and self-typed approver; viewers and writers under SSO; durable logging of background job outcomes; an app-wide banner when auth is off, write mode is on or the app is exposed.
+
 ### Fresh container install: one set of steps for Windows, Mac and Linux
 - **What you asked for.** "What do I type to pull down the docker image and load it for a fresh install like I have never done it before", and "the instructions should account for a fresh install of a container on mac windows or linux".
 - **INSTALL.md, *Run it in a container instead*.** Opens with a short copy-paste version for each system and says plainly that there is no image to pull: Docker builds it from the code. Step 2 now clones with git on each system (with the GitHub sign-in each one asks for) instead of a ZIP, because the update script only works in a git clone. Step 3 builds with the update script (`-Force` / `--force`), which stamps the build commit so the update notice works from day one, and then `docker logs dlp-check` gives the token. Stop, start and *start over from scratch* (`docker compose down -v`, with the warning that it deletes saved data) are spelled out.

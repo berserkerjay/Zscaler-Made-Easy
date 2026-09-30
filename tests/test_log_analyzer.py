@@ -3,6 +3,7 @@ plain English, analysed in memory with archive caps and redaction."""
 from __future__ import annotations
 
 import base64
+import os
 import io
 import tarfile
 import zipfile
@@ -265,3 +266,10 @@ def test_gzip_members_count_against_the_budget_and_nest_one_level_only(monkeypat
     files = [{"name": f"f{i}.log.gz", "content": _b64(once), "encoding": "base64"} for i in range(3)]
     members, notes = la.expand(files)
     assert [m[0] for m in members] == ["f0.log"] and any("stopped after 1 files" in n for n in notes)
+
+
+def test_the_analyze_endpoint_runs_off_the_event_loop():
+    """A large upload is read on a worker thread, so it does not hold up every other request."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dlp_api_server.py"), encoding="utf-8").read()
+    body = src[src.index("async def logs_analyze("):src.index("# ── Migrate from another DLP")]
+    assert "await asyncio.to_thread(log_analyzer.analyze," in body
