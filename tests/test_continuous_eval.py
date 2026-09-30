@@ -94,7 +94,7 @@ def test_quiet_run_is_not_noteworthy_and_notifies_only_when_told(tmp_path, monke
         def __init__(self, host, port, timeout=0): sent["host"] = (host, port)
         def __enter__(self): return self
         def __exit__(self, *a): return False
-        def starttls(self): sent["tls"] = True
+        def starttls(self, context=None): sent["tls"] = context
         def login(self, u, p): sent["login"] = u
         def send_message(self, msg): sent["subject"] = msg["Subject"]; sent["to"] = msg["To"]
     monkeypatch.setattr(ce.smtplib, "SMTP", _SMTP)
@@ -106,6 +106,17 @@ def test_quiet_run_is_not_noteworthy_and_notifies_only_when_told(tmp_path, monke
     d = ce.run_once(build_client=None, notify=True)
     chans = {n["channel"]: n for n in d["notified"]}
     assert chans["email"]["sent"] and sent["to"] == "soc@example.test" and sent["tls"] and sent["login"] == "bot" and "DLP-Check digest" in sent["subject"]
+    # STARTTLS checks the mail server's certificate and name before the password is sent.
+    import ssl
+    assert sent["tls"].verify_mode == ssl.CERT_REQUIRED and sent["tls"].check_hostname
+    # With TLS switched off the password is never sent in clear text.
+    sent.clear()
+    monkeypatch.setenv("DLP_CHECK_SMTP_TLS", "0")
+    r = ce._send_email("s", "b", ce.notification_settings()["email"])
+    assert not r["sent"] and "unencrypted" in r["why"] and "login" not in sent
+    monkeypatch.delenv("DLP_CHECK_SMTP_USER")
+    assert ce._send_email("s", "b", ce.notification_settings()["email"])["sent"] and "login" not in sent, "an open relay without sign-in still works"
+    monkeypatch.delenv("DLP_CHECK_SMTP_TLS")
     assert chans["webhook"]["sent"] and posted["url"].startswith("https://") and "DLP-Check digest" in posted["text"]
     cfg = ce.notification_settings()
     assert cfg["email"]["configured"] and cfg["webhook"]["kind"] == "teams" and cfg["mode"] == "always"

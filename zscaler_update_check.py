@@ -247,7 +247,9 @@ def _safe_get(url: str, verify_tls: Optional[bool] = None) -> Tuple[Optional[byt
         return r.content, r.status_code, ""
     except requests.exceptions.SSLError as e:
         return None, 0, (f"TLS error (corporate TLS inspection?): {str(e)[:200]}. "
-                         f"If a corporate proxy intercepts TLS, set ZSCALER_UPDATE_VERIFY_TLS=0.")
+                         f"If a corporate proxy intercepts TLS, point REQUESTS_CA_BUNDLE at its root "
+                         f"certificate (.pem), or put it in certs/ for the container. "
+                         f"ZSCALER_UPDATE_VERIFY_TLS=0 is a last resort: it accepts any certificate.")
     except requests.exceptions.ProxyError as e:
         return None, 0, (f"Proxy rejected the request: {str(e)[:200]}. "
                          f"Set HTTPS_PROXY=http://user:pass@proxy:port or "

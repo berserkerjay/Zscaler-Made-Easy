@@ -9,7 +9,8 @@ the evidence lines shown back are redacted of anything that looks like a
 secret.
 
 Limits (a hostile archive must not exhaust the server): a bounded number of
-members, a bounded size per member and in total, one level of nesting,
+members, a bounded size per member and in total (a .gz is streamed and
+never inflated past the per-member cap), one level of nesting,
 binary members skipped, member names never used as paths.
 """
 from __future__ import annotations
@@ -161,13 +162,21 @@ def _expand_one(name: str, data: bytes, out: List[Tuple[str, bytes]], budget: _B
             budget.notes.append(f"{name}: not a valid tar archive ({e})")
         return
     if low.endswith(".gz"):
+        if depth > 1:
+            budget.notes.append(f"{name}: nested archive not opened (one level only)")
+            return
+        # Stream the output and stop one byte past the cap: a small .gz can
+        # inflate to gigabytes, so the whole member is never unpacked first.
         try:
-            inner = gzip.decompress(data[: MAX_MEMBER_BYTES + 1])
+            with gzip.GzipFile(fileobj=io.BytesIO(data)) as g:
+                inner = g.read(MAX_MEMBER_BYTES + 1)
         except (OSError, EOFError) as e:
             budget.notes.append(f"{name}: could not gunzip ({e})")
             return
         if len(inner) > MAX_MEMBER_BYTES:
             budget.notes.append(f"{name}: skipped, larger than {MAX_MEMBER_BYTES // (1024 * 1024)} MB once unpacked")
+            return
+        if not budget.take(name[:-3], len(inner)):
             return
         _expand_one(name[:-3], inner, out, budget, depth + 1)
         return
