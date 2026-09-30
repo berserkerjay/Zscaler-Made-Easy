@@ -29,6 +29,10 @@ proposals all end here. The contract (docs/SHARED_EXECUTION_PATH.md):
                                hourly request limit, refused credentials)
                                stops the run at once, in words; a cancel
                                event from the operator does the same
+  audited_run() / audit_scope()   the audit log: one `object_write`
+                               entry per create / update / delete, one
+                               summary per run (`run_finished`, or the
+                               job's `job_finished` in pack_jobs)
 
 A test (tests/test_shared_path.py) fails the build if any other module
 calls an SDK write method directly.
@@ -36,6 +40,7 @@ calls an SDK write method directly.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import logging
 import re
@@ -761,6 +766,28 @@ class Recorder:
 # Writes — the only place SDK write methods are named
 # ---------------------------------------------------------------------------
 
+def _audited(action: str) -> Callable[[Callable[..., Outcome]], Callable[..., Outcome]]:
+    """create / update / delete leave one `object_write` audit entry each,
+    whatever the answer (see Audit, below)."""
+    def wrap(fn: Callable[..., Outcome]) -> Callable[..., Outcome]:
+        @functools.wraps(fn)
+        def audited(zia, *args: Any, **kw: Any) -> Outcome:
+            out = fn(zia, *args, **kw)
+            if action == "delete":
+                item = args[0] if args else kw.get("item") or {}
+                kind, oid, name, channel = item.get("kind") or "", item.get("id"), str(item.get("name") or ""), item.get("channel")
+            else:
+                kind = args[0] if args else kw.get("kind", "")
+                oid = (out.id if out.ok else None) if action == "create" else (args[1] if len(args) > 1 else kw.get("oid"))
+                payload = (args[1] if action == "create" else args[2]) if len(args) > (1 if action == "create" else 2) else kw.get("payload") or {}
+                name, channel = kw.get("name") or str((payload or {}).get("name") or ""), kw.get("channel")
+            _audit_write(action, kind, oid, name, channel, out)
+            return out
+        return audited
+    return wrap
+
+
+@_audited("create")
 def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = None, parent_id: Any = None,
            name: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
     """Create one object of `kind` from its API payload."""
@@ -780,6 +807,7 @@ def create(zia, kind: str, payload: Dict[str, Any], *, channel: Optional[str] = 
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
+@_audited("update")
 def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Optional[str] = None, parent_id: Any = None,
            name: str = "", log: Optional[Callable[[str], None]] = None) -> Outcome:
     """Overwrite one existing object of `kind` with its API payload."""
@@ -797,6 +825,7 @@ def update(zia, kind: str, oid: Any, payload: Dict[str, Any], *, channel: Option
     return Outcome(False, error=f"unknown object kind '{kind}'")
 
 
+@_audited("delete")
 def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = None) -> Outcome:
     """Delete one object described by {kind, id, channel, parent_id, type}."""
     kind, channel, oid = item["kind"], item.get("channel"), item["id"]
@@ -823,6 +852,124 @@ def delete(zia, item: Dict[str, Any], *, log: Optional[Callable[[str], None]] = 
         if rtype:
             return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia, kw={"rule_type": rtype})
     return call(svc.delete_rule, oid, op="delete", kind=kind, name=name, channel=channel, log=log, zia=zia)
+
+
+# ---------------------------------------------------------------------------
+# Audit — one entry per object written, one summary per run
+# ---------------------------------------------------------------------------
+#
+# Every create / update / delete above (@_audited) leaves one
+# `object_write` entry in
+# the audit log (audit.record: owner-only, rotated, secret-looking keys
+# redacted): the job id (in a job), the tenant, the action, the object
+# type, id and name, the result (ok / failed / skipped: never sent because
+# the run had stopped), ZIA's HTTP status and a short error. Never the
+# request body. A deploy or removal run (audited_run) ends with one
+# summary: in a background job it goes into the job's `job_finished`
+# entry (pack_jobs), otherwise it is a `run_finished` entry of its own, so
+# the log reads the same whichever way the run was started. A failure to
+# write an entry is logged as an error and never fails the run.
+
+_audit_ctx = threading.local()
+
+
+@contextlib.contextmanager
+def audit_scope(**fields: Any) -> Iterator[None]:
+    """Fields (tenant, actor, run...) every audit entry written on this
+    thread carries until the scope closes; nested scopes add to the outer."""
+    before = getattr(_audit_ctx, "fields", None)
+    _audit_ctx.fields = {**(before or {}), **{k: v for k, v in fields.items() if v is not None}}
+    try:
+        yield
+    finally:
+        _audit_ctx.fields = before
+
+
+def audit_context() -> Dict[str, Any]:
+    """What an audit entry written now says about its run: the job (id,
+    and who started it) when this thread runs one, then the scope's fields."""
+    import pack_jobs
+    out: Dict[str, Any] = {}
+    job = pack_jobs.current()
+    if job is not None:
+        out["job_id"] = job.id
+        if job.actor:
+            out["actor"] = job.actor
+    out.update({k: v for k, v in (getattr(_audit_ctx, "fields", None) or {}).items() if not k.startswith("_")})
+    return out
+
+
+def _audit_write(action: str, kind: str, oid: Any, name: str, channel: Optional[str], out: Outcome) -> None:
+    try:
+        import pack_jobs
+        result = "ok" if out.ok else ("skipped" if out.code == STOPPED else "failed")
+        tally = (getattr(_audit_ctx, "fields", None) or {}).get("_tally")
+        if tally is not None:   # the last answer per object (a SaaS rule retried at another order is one object)
+            tally[(kind, channel, name, str(oid) if action != "create" else "")] = (action, result)
+        ctx = audit_context()
+        pack_jobs.write_audit("object_write", job_id=ctx.pop("job_id", None), tenant=ctx.pop("tenant", None), action=action,
+                              object_type=kind, channel=channel, id=oid, name=name, result=result, http_status=out.http_status,
+                              error=None if out.ok else str(out.error or "Unknown error")[:200], **ctx)
+    except Exception as e:  # noqa: BLE001 — the write happened; only its audit entry failed
+        logger.error("AUDIT WRITE FAILED: object_write for [%s] %s: %s", kind, name, f"{type(e).__name__}: {str(e)[:200]}")
+
+
+def run_summary(result: Optional[Dict[str, Any]], tally: Optional[Dict[Tuple[Any, ...], Tuple[str, str]]] = None) -> Dict[str, Any]:
+    """The summary fields of a deploy / removal / undo result: counts
+    (created, updated, deleted, skipped, failed, unchanged), the activation
+    and why the run stopped. Without a result (the run raised), the counts
+    are those of the writes the run sent before it did."""
+    if result is None:
+        last = list((tally or {}).values())
+        counts = {"created": last.count(("create", "ok")), "updated": last.count(("update", "ok")), "deleted": last.count(("delete", "ok")),
+                  "skipped": sum(1 for _a, r in last if r == "skipped"), "failed": sum(1 for _a, r in last if r == "failed"), "unchanged": 0}
+        return {"counts": counts}
+    s = result.get("summary") or {}
+    n = lambda *keys: sum(int(s.get(k) or 0) for k in keys)  # noqa: E731
+    counts = {"created": n("created"), "updated": n("restored", "modified"), "deleted": n("deleted"), "skipped": n("skipped"),
+              "failed": n("failed", "still_present"), "unchanged": n("reused", "gone")}
+    act = result.get("activation")
+    settled = (result.get("read_check") or {}).get("activation_status") or (result.get("verification") or {}).get("activation_status")
+    activation = ({"attempted": False} if not act else
+                  {"attempted": True, "activated": bool(act.get("activated")), "status": settled or act.get("status"),
+                   "error": str(act.get("error"))[:200] if act.get("error") else None})
+    stopped = result.get("stopped")
+    return {"result_status": result.get("status"), "counts": counts, "activation": activation,
+            "stopped": str(stopped)[:200] if stopped else None, "plan_hash": result.get("plan_hash")}
+
+
+@contextlib.contextmanager
+def audited_run(run: str, client: Any, *, plan_hash: str = "", cancel: Optional[threading.Event] = None) -> Iterator[Dict[str, Any]]:
+    """Audit one deploy / removal run: the writes inside carry the tenant
+    (the label stamped on the client) and, at the end, the summary goes to
+    the job's `job_finished` entry, or is written as `run_finished` when no
+    job runs it. The caller puts the run's result in the yielded dict."""
+    import pack_jobs
+    import zia_rate
+    box: Dict[str, Any] = {}
+    tally: Dict[Tuple[Any, ...], Tuple[str, str]] = {}
+    started = time.time()
+    tenant = zia_rate.label_of(client)
+    with audit_scope(run=run, tenant=tenant, _tally=tally):
+        error = None
+        try:
+            yield box
+        except Exception as e:
+            error = f"{type(e).__name__}: {str(e)[:200]}"
+            raise
+        finally:
+            try:
+                ctx = audit_context()
+                summary = run_summary(box.get("result") if error is None else None, tally)
+                summary["plan_hash"] = summary.get("plan_hash") or plan_hash or None
+                summary["cancelled"] = bool(cancel is not None and cancel.is_set()) or summary.get("stopped") == CANCELLED_REASON
+                fields = dict(summary, tenant=tenant, error=error)
+                if not pack_jobs.note(**fields):
+                    pack_jobs.write_audit("run_finished", run=run, tenant=tenant, actor=ctx.get("actor"),
+                                          duration_seconds=round(time.time() - started, 1),
+                                          **{k: v for k, v in fields.items() if k != "tenant"})
+            except Exception as ex:  # noqa: BLE001 — never let the audit entry break the run's ending
+                logger.error("AUDIT WRITE FAILED: run_finished for %s: %s", run, f"{type(ex).__name__}: {str(ex)[:200]}")
 
 
 # ---------------------------------------------------------------------------

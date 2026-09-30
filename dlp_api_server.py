@@ -1112,6 +1112,28 @@ def _keyed(client, fn, *args):
         return fn(*args)
 
 
+def _actor(request: Request) -> Optional[str]:
+    """Who asked for a deploy / removal / hand-off, for its audit entries:
+    security.current_actor(request) once per-user identity provides it,
+    None until then. Never fails the request."""
+    fn = getattr(_security, "current_actor", None)
+    if fn is None:
+        return None
+    try:
+        who = fn(request)
+    except Exception:  # noqa: BLE001
+        return None
+    return str(who)[:200] if who else None
+
+
+def _as_actor(actor: Optional[str], fn, *args):
+    """Run a synchronous deploy or removal with `actor` on its audit entries
+    (a job carries its actor itself)."""
+    import pack_ops
+    with pack_ops.audit_scope(actor=actor):
+        return fn(*args)
+
+
 def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
     """Map requested ids onto discovered packs. Ids are only ever matched
     against the discovery list, so a request can't name an arbitrary path."""
@@ -1711,7 +1733,7 @@ async def dlp_pack_removal_inventory(req: TenantCredsRequest):
 
 
 @app.post("/api/dlp-packs/removal/apply")
-async def dlp_pack_removal_apply(req: PackRemovalRequest):
+async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
     """Remove what the preflight found, in reverse dependency order. Needs
     write mode, confirm=true and the plan_hash from a matching preflight;
     if the tenant changed since the preview the removal is refused as
@@ -1733,7 +1755,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    result = await asyncio.to_thread(_run_removal, client, req, rec, packs, None, None)
+    result = await asyncio.to_thread(_as_actor, _actor(request), _run_removal, client, req, rec, packs, None, None)
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
     if result.get("status") == "stale":
@@ -1771,7 +1793,7 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
 
 
 @app.post("/api/dlp-packs/removal/apply/start")
-async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
+async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request):
     """Start the same removal as /removal/apply as a background job and
     return its id at once. Poll GET /api/dlp-packs/jobs/{job_id} for the
     log as it is written and the result when it finishes; POST
@@ -1789,7 +1811,8 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
-    job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label)
+    job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label,
+                           actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2276,7 +2299,7 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
 
 
 @app.post("/api/dlp-packs/terraform/start")
-async def dlp_packs_terraform_start(req: DLPPackDeployRequest):
+async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request):
     """Start the same Terraform hand-off as /terraform as a background job
     and return its id at once; poll GET /api/dlp-packs/jobs/{job_id} for
     the log (in gap mode the tenant read, step by step) and, once it is
@@ -2286,7 +2309,8 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest):
         raise HTTPException(status_code=400, detail="Select at least one pack.")
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
-    job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
+                           actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2305,7 +2329,7 @@ async def dlp_pack_job_download(job_id: str):
 
 
 @app.post("/api/dlp-packs/apply")
-async def dlp_packs_apply(req: DLPPackDeployRequest):
+async def dlp_packs_apply(req: DLPPackDeployRequest, request: Request):
     """Execute an approved plan. Requires confirm=true and the plan_hash
     returned by /preflight. If the tenant or selection changed since
     approval the response is 409 with status 'plan_changed' and nothing
@@ -2324,7 +2348,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    result = await asyncio.to_thread(_run_apply, client, creds, req, packs, None, None)
+    result = await asyncio.to_thread(_as_actor, _actor(request), _run_apply, client, creds, req, packs, None, None)
     if result.get("status") in ("plan_changed", "blocked"):
         return JSONResponse(result, status_code=409)
     return result
@@ -2367,7 +2391,7 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
 
 
 @app.post("/api/dlp-packs/apply/start")
-async def dlp_packs_apply_start(req: DLPPackDeployRequest):
+async def dlp_packs_apply_start(req: DLPPackDeployRequest, request: Request):
     """Start the same deployment as /apply as a background job and return
     its id at once, so the browser can show the log while the tenant is
     written to (a pack is minutes of API calls, activation and read-back).
@@ -2385,7 +2409,8 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
+                           actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2398,7 +2423,7 @@ async def dlp_deployments_list(tenant_label: Optional[str] = None):
 
 
 @app.post("/api/deployments/{dep_id}/undo")
-async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
+async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: Request):
     """Delete what a recorded deployment created (rules, endpoint
     application groups, engines, dictionaries, in that order). Only
     objects this tool created are removed, and only while the tenant still
@@ -2420,7 +2445,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
         raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
-    result = await asyncio.to_thread(pack_deploy.undo, client, rec, writes_enabled=True, log=logs.append)
+    result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.undo(client, rec, writes_enabled=True, log=logs.append))
     result["logs"] = logs
     updated = deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
     result["deployment"] = deployments.summary(updated) if updated else None
@@ -2428,7 +2453,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
 
 
 @app.post("/api/dlp-packs/{pack_id}/import")
-async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
+async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Request):
     """Single-pack deploy for scripts, through the same shared path as Deploy
     Policy Packs (pack_deploy.preflight + apply → pack_ops). Without a
     `plan_hash` the endpoint only plans and returns the plan to review;
@@ -2448,7 +2473,7 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     logs: list = []
-    result = await asyncio.to_thread(lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
+    result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
                                                                log=logs.append))
     result["logs"] = logs
