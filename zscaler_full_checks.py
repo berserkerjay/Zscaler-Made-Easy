@@ -296,8 +296,7 @@ def capp_3(cl):
 
 def zpa_1(cl):
     """ZPA application segments"""
-    d, c = cl.get("/zpa/applicationSegments")
-    if c == 404: d, c = cl.get("/zpa/application")
+    d, c = cl.get("/zpa/application")
     r = _ls(d) if c in (200, 204) else []
     if not r and isinstance(d, dict): r = _ls(d.get("list", []))
     en = [x for x in r if x.get("enabled")]
@@ -320,7 +319,6 @@ def zpa_3(cl):
 def zpa_4(cl):
     """App connectors health"""
     d, c = cl.get("/zpa/connector")
-    if c == 404: d, c = cl.get("/zpa/appConnectors")
     r = _ls(d) if c in (200, 204) else []
     if not r and isinstance(d, dict): r = _ls(d.get("list", []))
     healthy = [x for x in r if (x.get("runtimeStatus") or x.get("status") or "").upper() == "ONLINE"]
@@ -341,8 +339,7 @@ def zpa_5(cl):
 
 def zpa_6(cl):
     """ZPA access policies"""
-    d, c = cl.get("/zpa/policySet/rules/GLOBAL_POLICY")
-    if c == 404: d, c = cl.get("/zpa/policySet/rules")
+    d, c = cl.get("/zpa/policySet/rules/ACCESS_POLICY")   # the access policy set (there is no GLOBAL_POLICY type)
     r = _ls(d) if c in (200, 204) else []
     if not r and isinstance(d, dict): r = _ls(d.get("list", d.get("rules", [])))
     return R(R.PASS, f"{len(r)} access policy rule(s).") if r else R(R.WARN, "No ZPA access policies. Best Practice: Define access policies based on user identity, group, device posture, and network context. Follow least-privilege: deny by default and explicitly allow only required app segments per user group. ZPA evaluates rules top-to-bottom. Ref: Access Policy Deployment and Operations Guide.")

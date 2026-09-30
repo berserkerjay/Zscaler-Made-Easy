@@ -7,6 +7,18 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### ZPA and ZDX checks read the paths the tenant serves
+- **What you asked for.** "Try ZPA and ZDX again", once the API client had its ZPA and ZDX roles.
+- **What the probe found.** The 401s were gone, but 16 of the 25 ZPA reads and 4 of the 8 ZDX reads still failed:
+  - ZPA IdPs, trusted networks, posture profiles, SAML attributes and log streaming live on the `v2` customer base, not `v1`.
+  - ZPA policy rules are listed per policy type (`/policySet/rules/policyType/ACCESS_POLICY`), and there is no `GLOBAL_POLICY` type.
+  - ZDX calls its applications `/apps` and its device list `/devices`.
+  - The ZDX API has no list of alert rules and no reports.
+- **Now**
+  - The resolver maps those short paths to the real ones, as it already did for ZCC. The access-policy check reads the access policy type, and dead fallbacks are gone.
+  - ZDX alert rules and reports report INFO and point at the ZDX Admin Portal, without spending a request.
+- **Verified.** On the tenant, every ZPA and ZDX check ran through the app's own client: all 22 endpoints answered 200 and every check gave a real result. `tests/test_api_paths.py` pins the mappings, the access-policy read and the no-API checks. Full suite: no new failures.
+
 ### The container updates from main, qa or dev
 - **What you asked for.** "The container should also have the option to update from dev, qa or main branch."
 - **Before.** `update_container.ps1` and `update_container.sh` only pulled the branch the folder already had checked out. The Branch list in Update app changed only which branch the container was compared with.
