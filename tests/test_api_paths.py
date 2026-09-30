@@ -185,3 +185,44 @@ def test_the_sdk_route_map_has_no_aliases_to_the_wrong_list():
     assert '"STREAMING_MEDIA")' not in text, "Cloud App Control rules of one type only"
     keys = re.findall(r'^\s+"(/z[a-z]+/[^"]+)":', text, re.M)
     assert len(keys) == len(set(keys)), "a duplicate key silently wins"
+
+
+# ---------------------------------------------------------------------------
+# ZPA and ZDX (verified on a tenant once its API client had both roles)
+# ---------------------------------------------------------------------------
+
+def test_zpa_paths_use_the_base_and_policy_type_the_api_serves():
+    base = "/zpa/mgmtconfig/{}/admin/customers/42/"
+    assert fa._resolve_ep("/zpa/application", "42") == base.format("v1") + "application"
+    for short, real in (("/zpa/idp", "idp"), ("/zpa/trustedNetwork", "network"), ("/zpa/postureProfile", "posture"),
+                        ("/zpa/samlAttribute", "samlAttribute"), ("/zpa/lssConfig", "lssConfig")):
+        assert fa._resolve_ep(short, "42") == base.format("v2") + real, short
+    assert fa._resolve_ep("/zpa/policySet/rules/ACCESS_POLICY", "42") == base.format("v1") + "policySet/rules/policyType/ACCESS_POLICY"
+    assert fa._resolve_ep("/zpa/policySet/rules/TIMEOUT_POLICY", "42") == base.format("v1") + "policySet/rules/policyType/TIMEOUT_POLICY"
+    assert fa._resolve_ep("/zpa/applicationSegments", "42") == base.format("v1") + "application"
+
+
+def test_zdx_paths_use_the_names_the_api_serves():
+    assert fa._resolve_ep("/zdx/administration/apps") == "/zdx/v1/apps"
+    assert fa._resolve_ep("/zdx/troubleshooting/devices") == "/zdx/v1/devices"
+    assert fa._resolve_ep("/zdx/alerts/ongoing") == "/zdx/v1/alerts/ongoing"
+
+
+def test_zpa_policy_checks_read_the_access_policy_type():
+    import zscaler_full_checks as fc
+    import zscaler_rbac_checks as rb
+    rules = [{"id": 1, "name": "allow finance", "conditions": [{"operands": [{"objectType": "SCIM_GROUP"}]}]}]
+    cl = _Fixed({"/zpa/policySet/rules/ACCESS_POLICY": ({"list": rules}, 200)})
+    assert fc.zpa_6(cl).status == "PASS"
+    assert "/zpa/policySet/rules/GLOBAL_POLICY" not in cl.asked and "/zpa/policySet/rules" not in cl.asked, "no GLOBAL_POLICY type exists"
+    cl = _Fixed({"/zpa/policySet/rules/ACCESS_POLICY": ({"list": rules}, 200)})
+    rb.rbac_zpa_policies_group_bound(cl)
+    assert cl.asked == ["/zpa/policySet/rules/ACCESS_POLICY"]
+
+
+def test_zdx_checks_without_an_api_say_so_without_a_call():
+    import zscaler_zdx_checks as zc
+    for fn in (zc.zdx_alert_rules, zc.zdx_reports_available):
+        cl = _Fixed({})
+        r = fn(cl)
+        assert r.status == "INFO" and "ZDX Admin Portal" in r.detail and not cl.asked, fn.__name__

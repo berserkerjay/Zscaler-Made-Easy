@@ -146,9 +146,6 @@ def rbac_zcc_idp_sync(cl):
 def rbac_zpa_policies_group_bound(cl):
     """ZPA access policies bound to SCIM/groups, not individuals"""
     d, c = cl.get("/zpa/policySet/rules/ACCESS_POLICY")
-    if c not in (200, 204):
-        # Some tenants use a different path
-        d, c = cl.get("/zpa/policySet/rules")
     rules = _ls(d) if c == 200 else []
     if c not in (200, 204):
         return R(R.INFO, f"ZPA access policy endpoint returned HTTP {c}.")

@@ -90,13 +90,27 @@ _ZCC_MAP = {
     "getDeviceCleanupInfo":   "getDeviceCleanupInfo",
 }
 
-# ZDX endpoints — authoritative from zscaler-sdk-go/zdx/services
+# ZDX endpoints — zscaler-sdk-python zdx/, verified on a tenant: the
+# configured applications are /apps and the device list is /devices.
 _ZDX_MAP = {
-    "administration": "administration",
-    "alerts":         "alerts",
-    "inventory":      "inventory",
-    "reports":        "reports",
-    "troubleshooting":"troubleshooting",
+    "administration/apps":     "apps",
+    "troubleshooting/devices": "devices",
+}
+
+# ZPA endpoints — zscaler-sdk-python zpa/, verified on a tenant. Most live
+# on the v1 customer base; IdPs, trusted networks, posture profiles, SAML
+# attributes and log streaming are on v2, and policy rules are listed per
+# policy type (/policySet/rules/policyType/{type}).
+_ZPA_MAP = {
+    "idp":                            ("v2", "idp"),
+    "trustedNetwork":                 ("v2", "network"),
+    "postureProfile":                 ("v2", "posture"),
+    "samlAttribute":                  ("v2", "samlAttribute"),
+    "lssConfig":                      ("v2", "lssConfig"),
+    "applicationSegments":            ("v1", "application"),
+    "appConnectors":                  ("v1", "connector"),
+    "policySet/rules/ACCESS_POLICY":  ("v1", "policySet/rules/policyType/ACCESS_POLICY"),
+    "policySet/rules/TIMEOUT_POLICY": ("v1", "policySet/rules/policyType/TIMEOUT_POLICY"),
 }
 
 # ZIdentity endpoints — from zscaler-sdk-python/zid/, served at
@@ -151,9 +165,10 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         mapped = _ZID_MAP.get(suffix, suffix)
         return "/ziam/admin/api/v1/" + mapped
     if ep.startswith("/zpa/"):
+        version, suffix = _ZPA_MAP.get(ep[5:], ("v1", ep[5:]))
         if customer_id:
-            return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]
-        return "/zpa/mgmtconfig/v1/" + ep[5:]
+            return f"/zpa/mgmtconfig/{version}/admin/customers/{customer_id}/" + suffix
+        return f"/zpa/mgmtconfig/{version}/" + suffix
     return ep
 
 class _RateLimiter:

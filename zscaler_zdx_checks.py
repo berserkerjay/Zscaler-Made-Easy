@@ -63,14 +63,9 @@ def zdx_admin_departments(cl):
 
 def zdx_alert_rules(cl):
     """Configured ZDX alert rules"""
-    d, c = cl.get("/zdx/alerts/rules")
-    items = _ls(d) if c in (200, 204) else []
-    if c in (401, 403):
-        return R(R.INFO, "ZDX alert rules endpoint not accessible.")
-    if not items:
-        return R(R.WARN, "No ZDX alert rules configured. Best Practice: Create rules for every critical app (alert when app score < 70), so the SOC is notified before users start opening tickets.")
-    return R(R.PASS, f"{len(items)} ZDX alert rule(s) configured.")
-
+    # The ZDX API lists alerts (ongoing, historical), not the rules that raise them.
+    return R(R.INFO, "ZDX alert rules are not listed by the ZDX API; check them in the ZDX Admin Portal (Alerts > Rules). "
+                     "Best Practice: alert on every critical app (app score < 70) so the SOC hears before users open tickets.")
 
 def zdx_alert_triggered(cl):
     """ZDX triggered alerts (ongoing + historical)"""
@@ -104,12 +99,8 @@ def zdx_inventory_software(cl):
 
 def zdx_reports_available(cl):
     """ZDX reports endpoint reachable"""
-    d, c = cl.get("/zdx/reports")
-    if c in (401, 403):
-        return R(R.INFO, "ZDX reports endpoint not accessible.")
-    if c in (200, 204):
-        return R(R.PASS, "ZDX reports endpoint reachable. Schedule weekly app-score reports to executives for visibility.")
-    return R(R.INFO, f"ZDX reports endpoint returned HTTP {c}.")
+    return R(R.INFO, "ZDX reports are not part of the ZDX API; schedule them in the ZDX Admin Portal. "
+                     "Best Practice: weekly app-score reports to executives for visibility.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
