@@ -659,15 +659,26 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
                 kind = "saas" if channel == pc.SAAS else "email"
                 tenant_vars[kind] = True
                 expr = f"lookup(var.{kind}_tenant_ids, {hcl_str(p['name'])}, var.{kind}_tenant_ids_default)"
-                r.append(f"  {block} {{\n    id = {expr}\n  }}\n")
+                if kind == "email":
+                    # Email tenants are optional on an Email DLP rule (API,
+                    # SDK, provider): the block is written only when ids are
+                    # given, the same as a DLP-Check deploy without an email
+                    # tenant creates the rule unscoped.
+                    r.append(f"  dynamic \"{block}\" {{\n    for_each = length({expr}) > 0 ? [1] : []\n"
+                             f"    content {{\n      id = {expr}\n    }}\n  }}\n")
+                    continue_precondition = False
+                else:
+                    r.append(f"  {block} {{\n    id = {expr}\n  }}\n")
+                    continue_precondition = True
                 what = "SaaS application" if kind == "saas" else "email"
                 rule_name = str(p["name"])
                 message = (f"Rule {rule_name}: set {kind}_tenant_ids[\"{rule_name}\"] or {kind}_tenant_ids_default to the ids of the onboarded "
                            f"{what} tenants (Administration > SaaS Application Tenants), or run a preflight in DLP-Check to have them resolved by name.")
-                lifecycle.append("    precondition {\n"
-                                 f"      condition     = length({expr}) > 0\n"
-                                 f"      error_message = {hcl_str(message)}\n"
-                                 "    }\n")
+                if continue_precondition:
+                    lifecycle.append("    precondition {\n"
+                                     f"      condition     = length({expr}) > 0\n"
+                                     f"      error_message = {hcl_str(message)}\n"
+                                     "    }\n")
 
         if p.get("notification_template"):
             lbl = S.get("tpl_notif", p["notification_template"])
