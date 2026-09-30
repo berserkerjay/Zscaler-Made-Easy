@@ -1,7 +1,10 @@
 # DLP-Check in a container: pinned base, hash-pinned dependencies, no root,
 # read-only filesystem, loopback publish. Build:  docker build -t dlp-check .
 # Run (see docker-compose.yml for the full set of flags):
-#   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
+#   docker run --rm -p 127.0.0.1:8001:8000 -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -v dlpcheck-data:/data --read-only --tmpfs /tmp dlp-check
+# DLP_CHECK_IN_CONTAINER=1 (set below) makes the app judge exposure by
+# DLP_CHECK_HOST_BIND, the host address in -p: loopback starts; anything
+# else needs SSO (ZSCALER_SSO_ENABLED=1 plus the ZSCALER_SSO_* settings).
 # The UI token is printed on the container's console (docker logs) and
 # written to /data/ui_token.txt; open http://localhost:8001/?token=<it>.
 # Extra root certificates for TLS inspection (see below): the certs/ folder

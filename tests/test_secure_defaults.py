@@ -93,6 +93,8 @@ def test_require_safe_bind_allows_loopback_and_refuses_otherwise(monkeypatch):
     import security
     import sso as _sso
     monkeypatch.delenv("ZSCALER_ALLOW_NONLOCAL_BIND", raising=False)
+    monkeypatch.delenv("DLP_CHECK_IN_CONTAINER", raising=False)
+    monkeypatch.delenv("DLP_CHECK_HOST_BIND", raising=False)
     monkeypatch.setattr(security, "get_bind_host", lambda: "127.0.0.1")
     security.require_safe_bind()   # loopback: never refused, whatever else is set
 
@@ -102,21 +104,90 @@ def test_require_safe_bind_allows_loopback_and_refuses_otherwise(monkeypatch):
     with pytest.raises(RuntimeError, match="no identity-provider sign-in is configured"):
         security.require_safe_bind()
 
-    # UI auth itself off, bound beyond loopback: refused with its own reason.
-    monkeypatch.setattr(security, "ui_auth_enabled", lambda: False)
-    with pytest.raises(RuntimeError, match="ZSCALER_UI_AUTH=0"):
-        security.require_safe_bind()
-
-    # The operator's explicit override lets it start either way.
+    # The operator's explicit override (they have their own authenticating proxy) starts it, with the UI token gate on.
     monkeypatch.setenv("ZSCALER_ALLOW_NONLOCAL_BIND", "YES_I_UNDERSTAND")
     security.require_safe_bind()
 
-    # SSO fully configured (and no override needed) also starts it.
+    # UI auth itself off, bound beyond loopback: always refused, the override no longer skips it.
+    monkeypatch.setattr(security, "ui_auth_enabled", lambda: False)
+    with pytest.raises(RuntimeError, match="ZSCALER_UI_AUTH=0"):
+        security.require_safe_bind()
     monkeypatch.delenv("ZSCALER_ALLOW_NONLOCAL_BIND", raising=False)
+    with pytest.raises(RuntimeError, match="ZSCALER_UI_AUTH=0"):
+        security.require_safe_bind()
+
+    # SSO fully configured (and no override needed) also starts it.
     monkeypatch.setattr(security, "ui_auth_enabled", lambda: True)
     monkeypatch.setattr(_sso, "sso_enabled", lambda: True)
     monkeypatch.setattr(_sso, "config_errors", lambda: [])
     security.require_safe_bind()
+
+
+def test_in_the_container_the_host_publish_address_decides(monkeypatch):
+    """Inside the container the server listens on 0.0.0.0; what matters is
+    DLP_CHECK_HOST_BIND, the host address docker-compose.yml publishes on."""
+    import security
+    import sso as _sso
+    monkeypatch.setenv("DLP_CHECK_IN_CONTAINER", "1")
+    monkeypatch.delenv("ZSCALER_ALLOW_NONLOCAL_BIND", raising=False)
+    monkeypatch.setattr(security, "get_bind_host", lambda: "0.0.0.0")
+    monkeypatch.setattr(security, "ui_auth_enabled", lambda: True)
+    monkeypatch.setattr(_sso, "sso_enabled", lambda: False)
+    for published in ("", "127.0.0.1", "::1", "localhost"):   # unset is the compose default, 127.0.0.1
+        monkeypatch.setenv("DLP_CHECK_HOST_BIND", published)
+        security.require_safe_bind()
+    monkeypatch.setenv("DLP_CHECK_HOST_BIND", "0.0.0.0")
+    with pytest.raises(RuntimeError) as e:
+        security.require_safe_bind()
+    assert "ZSCALER_SSO_ENABLED=1" in str(e.value) and "DLP_CHECK_HOST_BIND=127.0.0.1" in str(e.value)
+    # The old override is not an escape hatch in the container.
+    monkeypatch.setenv("ZSCALER_ALLOW_NONLOCAL_BIND", "YES_I_UNDERSTAND")
+    with pytest.raises(RuntimeError, match="DLP_CHECK_HOST_BIND"):
+        security.require_safe_bind()
+    # SSO fully configured: published beyond loopback starts.
+    monkeypatch.setattr(_sso, "sso_enabled", lambda: True)
+    monkeypatch.setattr(_sso, "config_errors", lambda: [])
+    security.require_safe_bind()
+
+
+def test_compose_and_the_manual_run_no_longer_set_the_nonlocal_override():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("docker-compose.yml", "Dockerfile", "INSTALL.md", os.path.join(".github", "workflows", "tests.yml")):
+        assert "ZSCALER_ALLOW_NONLOCAL_BIND=YES" not in open(os.path.join(root, name), encoding="utf-8").read().replace(": ", "="), name
+    assert "DLP_CHECK_IN_CONTAINER=1" in open(os.path.join(root, "Dockerfile"), encoding="utf-8").read()
+
+
+def test_a_default_install_starts_accepts_the_ui_token_and_never_offers_sso(monkeypatch):
+    """SSO is off by default: with no ZSCALER_SSO_* settings the server
+    starts (loopback, or the container on its default loopback publish),
+    the UI token works exactly as before and no sign-in is offered."""
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    import security
+    import sso as _sso
+    for name in [k for k in os.environ if k.startswith("ZSCALER_SSO_")] + ["ZSCALER_BIND_HOST", "ZSCALER_ALLOW_NONLOCAL_BIND",
+                                                                           "DLP_CHECK_IN_CONTAINER", "DLP_CHECK_HOST_BIND"]:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
+    monkeypatch.setenv("ZSCALER_UI_TOKEN", "default-token-xyz")
+    monkeypatch.setattr(security, "_ui_token", None)
+    assert _sso.sso_enabled() is False
+    _sso.require_configured()
+    security.require_safe_bind()
+    monkeypatch.setenv("DLP_CHECK_IN_CONTAINER", "1")          # the container as shipped: 0.0.0.0 inside, loopback publish
+    monkeypatch.setenv("ZSCALER_BIND_HOST", "0.0.0.0")
+    security.require_safe_bind()
+    monkeypatch.delenv("DLP_CHECK_IN_CONTAINER")
+    monkeypatch.delenv("ZSCALER_BIND_HOST")
+    c = TestClient(srv.app)
+    status = c.get("/api/auth/status").json()
+    assert status == {"required": True, "unlocked": False, "token_file": "ui_token.txt", "sso": False}
+    assert c.get("/api/health").json().get("sso_required") is None
+    assert c.get("/api/auth/sso/login", follow_redirects=False).status_code == 404
+    assert c.post("/api/auth/logout").status_code == 404
+    assert c.get("/api/health", headers={"X-DLP-Check-Token": "default-token-xyz"}).status_code == 200
+    assert c.post("/api/auth/unlock", json={"token": "default-token-xyz"}).status_code == 200
+    assert c.get("/api/health").status_code == 200
 
 
 def test_server_calls_require_safe_bind_at_startup():
