@@ -1,11 +1,7 @@
 """Optional SSO (OpenID Connect, Authorization Code + PKCE) — off by
-default, an opt-in front door onto the UI token cookie security.py
-already gates every request with. Enabling it does not add a second
-enforcement mechanism: security.ui_request_ok() is unchanged, and every
-request is still checked against the same cookie. All this module
-changes is how that cookie gets minted — instead of a static token
-pasted in or carried on a URL, the operator must complete a login at
-the configured identity provider first.
+default, an opt-in front door that replaces the static UI token with a
+sign-in per person. security.UIAuthMiddleware still gates every request;
+with SSO on it asks for a signed-in session instead of the UI token.
 
 Off (ZSCALER_SSO_ENABLED unset): none of this runs, nothing changes.
 On but incompletely configured: the server refuses to start rather
@@ -22,6 +18,20 @@ Google Workspace, Auth0, Keycloak, ...) — no vendor-specific code.
     ZSCALER_SSO_REDIRECT_URL  must exactly match what's registered there,
                               e.g. http://localhost:8000/api/auth/sso/callback
     ZSCALER_SSO_SCOPES        optional, default "openid email profile"
+    ZSCALER_SSO_IDLE_MINUTES  optional, default 30: a session unused this
+                              long ends (every session ends after 12 hours)
+    ZSCALER_SSO_GROUPS_CLAIM  optional, default "groups": the ID token
+                              claim that lists the person's groups
+    ZSCALER_SSO_ALLOWED_GROUPS optional, comma-separated: only people in
+                              one of these groups may sign in
+    ZSCALER_SSO_WRITERS       optional, comma-separated groups or email
+                              addresses: only they may change the tenant
+                              (write mode, deploy, removal, import, undo,
+                              proposal apply and rollback)
+
+Each sign-in gets its own random session id, kept in memory on the
+server with who signed in (sub, email, groups); the browser's cookie
+carries only that id. A restart of the server signs everyone out.
 
 This is meant for the container / server deployment, run by more than
 one person behind a shared URL. The desktop launcher's `?token=...`
@@ -35,8 +45,9 @@ import base64
 import hashlib
 import os
 import secrets
+import threading
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import jwt
@@ -50,6 +61,9 @@ _CACHE_TTL_SECONDS = 3600
 _PENDING_LOGINS: Dict[str, Dict[str, Any]] = {}   # state -> {nonce, verifier, at}
 _PENDING_TTL_SECONDS = 600
 _HTTP_TIMEOUT = 10
+_SESSIONS: Dict[str, Dict[str, Any]] = {}          # session id -> {sub, email, groups, created, last_seen, expires}
+_SESSIONS_LOCK = threading.Lock()
+SESSION_MAX_SECONDS = 12 * 3600
 
 
 def sso_enabled() -> bool:
@@ -192,3 +206,105 @@ def complete_login(state: str, code: str) -> Dict[str, Any]:
     if claims.get("nonce") != pending["nonce"]:
         raise RuntimeError("The ID token's nonce does not match this sign-in attempt.")
     return claims
+
+
+# ── Per-person sessions ───────────────────────────────────────────────
+
+def idle_seconds() -> int:
+    """How long a session may sit unused: ZSCALER_SSO_IDLE_MINUTES (default 30)."""
+    try:
+        minutes = float(os.environ.get("ZSCALER_SSO_IDLE_MINUTES", "30") or 30)
+    except ValueError:
+        minutes = 30
+    return int(max(1.0, minutes) * 60)
+
+
+def _csv_env(name: str) -> List[str]:
+    return [x.strip() for x in os.environ.get(name, "").split(",") if x.strip()]
+
+
+def groups_claim() -> str:
+    return os.environ.get("ZSCALER_SSO_GROUPS_CLAIM", "groups").strip() or "groups"
+
+
+def claim_groups(claims: Dict[str, Any]) -> List[str]:
+    """The groups the ID token lists (the ZSCALER_SSO_GROUPS_CLAIM claim); [] when it has none."""
+    value = claims.get(groups_claim())
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [str(g).strip() for g in value if str(g).strip()]
+
+
+def allowed_groups() -> List[str]:
+    return _csv_env("ZSCALER_SSO_ALLOWED_GROUPS")
+
+
+def writers() -> List[str]:
+    return _csv_env("ZSCALER_SSO_WRITERS")
+
+
+def sign_in_allowed(claims: Dict[str, Any]) -> bool:
+    """With ZSCALER_SSO_ALLOWED_GROUPS set, the person must be in at least
+    one of those groups. Unset: everyone the identity provider signs in."""
+    allowed = {g.lower() for g in allowed_groups()}
+    if not allowed:
+        return True
+    return any(g.lower() in allowed for g in claim_groups(claims))
+
+
+def is_writer(session: Optional[Dict[str, Any]]) -> bool:
+    """With ZSCALER_SSO_WRITERS set, only a session whose email or one of
+    whose groups is listed may change the tenant. Unset: everyone."""
+    wanted = {w.lower() for w in writers()}
+    if not wanted:
+        return True
+    if not session:
+        return False
+    mine = {str(g).lower() for g in session.get("groups") or []}
+    if session.get("email"):
+        mine.add(str(session["email"]).lower())
+    return bool(wanted & mine)
+
+
+def _sweep_sessions(now: float) -> None:
+    idle = idle_seconds()
+    for sid in [k for k, v in _SESSIONS.items() if now >= v["expires"] or now - v["last_seen"] > idle]:
+        _SESSIONS.pop(sid, None)
+
+
+def create_session(claims: Dict[str, Any]) -> str:
+    """Start a session for a verified sign-in. Returns its random id (the cookie's only content)."""
+    now = time.time()
+    sid = secrets.token_urlsafe(32)
+    with _SESSIONS_LOCK:
+        _sweep_sessions(now)
+        _SESSIONS[sid] = {"sub": claims.get("sub"), "email": claims.get("email"), "groups": claim_groups(claims),
+                          "created": now, "last_seen": now, "expires": now + SESSION_MAX_SECONDS}
+    return sid
+
+
+def get_session(sid: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The live session for this id, its last-seen time refreshed; None
+    when unknown, past 12 hours, or idle longer than the idle timeout."""
+    if not sid:
+        return None
+    now = time.time()
+    with _SESSIONS_LOCK:
+        s = _SESSIONS.get(sid)
+        if s is None:
+            return None
+        if now >= s["expires"] or now - s["last_seen"] > idle_seconds():
+            _SESSIONS.pop(sid, None)
+            return None
+        s["last_seen"] = now
+        return dict(s)
+
+
+def end_session(sid: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Sign out: forget the session. Returns what it was, or None."""
+    if not sid:
+        return None
+    with _SESSIONS_LOCK:
+        return _SESSIONS.pop(sid, None)

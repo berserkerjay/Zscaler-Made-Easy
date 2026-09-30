@@ -629,10 +629,13 @@ ssh -L 8001:127.0.0.1:8001 you@server
 
 For a team, keep the `127.0.0.1:` at the start of the `ports:` line in
 `docker-compose.yml` exactly as it is and put a reverse proxy with
-sign-in in front (`SECURITY.md` says how). **Do not** change that line to
-`0.0.0.0`: inside the container the "must not listen on the network
-without SSO" check is switched off by design, so that `127.0.0.1:` is the
-only thing keeping the app off the network.
+sign-in in front (`SECURITY.md` says how). To publish it beyond the
+server's loopback instead, set `DLP_CHECK_HOST_BIND` in `.env` (the
+`ports:` line reads it): the app then refuses to start unless SSO is
+configured, and says so in `docker compose logs`. SSO is off by default;
+turn it on with ZSCALER_SSO_ENABLED=1 plus the ZSCALER_SSO_* settings
+(`SECURITY.md`). Do not edit the `127.0.0.1:` out of the `ports:` line by
+hand: the app only knows where it is published from `DLP_CHECK_HOST_BIND`.
 
 **Everyday use:**
 - Stop it: `docker compose down` in the app folder.
@@ -810,7 +813,6 @@ docker volume create dlpcheck-data
 docker run -d --name dlp-check \
   -p 127.0.0.1:8001:8000 \
   -v dlpcheck-data:/data \
-  -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND \
   -e DLP_CHECK_HOST_PORT=8001   -e DLP_CHECK_HOST_BIND=127.0.0.1 \
   -e DLP_CHECK_USER_PACKS=/data/user_packs \
   --read-only --tmpfs /tmp:size=256m \
@@ -823,7 +825,7 @@ docker run -d --name dlp-check \
 Windows (PowerShell or Command Prompt), the same command on one line:
 
 ```
-docker run -d --name dlp-check -p 127.0.0.1:8001:8000 -v dlpcheck-data:/data -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
+docker run -d --name dlp-check -p 127.0.0.1:8001:8000 -v dlpcheck-data:/data -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
 ```
 
 What each part does:
@@ -832,8 +834,7 @@ What each part does:
 |---|---|
 | `-p 127.0.0.1:8001:8000` | Publishes the app on port 8001 of this machine only (the local install uses 8000). Keep the `127.0.0.1:`; see the warning above about `0.0.0.0`. |
 | `-v dlpcheck-data:/data` | Mounts the storage volume, so profiles, deployment records, the audit log, uploaded packs and the token survive rebuilds. |
-| `-e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND` | Lets the server listen inside the container. Without it the app refuses to start. |
-| `-e DLP_CHECK_HOST_BIND=127.0.0.1` | Tells the app it is published on this machine's loopback only (match the `-p 127.0.0.1:` part), so **Enable write mode** is offered in the browser. Leave it out, or publish beyond loopback, and the switch is refused. |
+| `-e DLP_CHECK_HOST_BIND=127.0.0.1` | Tells the app it is published on this machine's loopback only (match the `-p 127.0.0.1:` part), so **Enable write mode** is offered in the browser. Leave it out and the switch is refused. Set it to anything other than loopback and the app refuses to start unless SSO is configured. |
 | `--read-only --tmpfs /tmp` | The app folder stays read-only; only `/data` and a small `/tmp` are writable. |
 | `--cap-drop ALL --security-opt no-new-privileges:true` | The container gets no extra Linux privileges. |
 | `--restart unless-stopped` | Starts again after a reboot until you stop it. |
@@ -899,10 +900,16 @@ The token is this machine's own sign-in, not your Zscaler credentials and
 not multi-factor authentication: treat it like a password. On your own
 computer the app refuses to start on a network address unless sign-in
 through an identity provider is set up (`SECURITY.md`); a token alone is
-not considered enough once the app is reachable beyond your machine. In
-the container that check is off by design, and the `127.0.0.1:` in
-`docker-compose.yml` is what keeps it off the network (see the container
-section).
+not considered enough once the app is reachable beyond your machine. The
+container makes the same check on the host address it is published on
+(`DLP_CHECK_HOST_BIND`, `127.0.0.1` by default), so as shipped it starts
+without SSO.
+
+SSO is off by default; turn it on with ZSCALER_SSO_ENABLED=1 plus the
+ZSCALER_SSO_* settings. With SSO on there is no UI token: each person
+signs in at your identity provider, the page shows **Signed in as … ·
+Sign out**, and the token is neither printed nor written to
+`ui_token.txt` (scripts that sent it must sign in instead).
 
 ---
 
