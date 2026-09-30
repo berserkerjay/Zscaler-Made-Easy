@@ -318,10 +318,13 @@ Being honest about the edges:
 - **In the container**, write mode is switched on in the app as on a
   laptop while the container is published on loopback (the default);
   published beyond it, it comes from `ENABLE_WRITE_ACTIONS` in `.env`.
-  Approving a guidance article as
-  a check reference cannot be saved (the shipped `checks_config.json` is
-  read-only there); profiles, deployments, the audit log, uploaded packs,
-  digests, proposals and the guidance state persist on the volume.
+  Everything else works as on a laptop, and what it saves lives on the
+  volume: profiles, deployments, the audit log, uploaded packs, digests,
+  proposals, the guidance state, the check references you approve (added
+  to the shipped `checks_config.json`), the update and best-practice
+  caches, and a built-in pack rebuilt from the tenant, which is kept in
+  the pack library under its own id (remove it there to go back to the
+  shipped pack).
 - The **Digest** loop runs while the server runs; for a schedule that
   outlives it, use Task Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client

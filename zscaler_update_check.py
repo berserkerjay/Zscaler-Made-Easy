@@ -132,6 +132,9 @@ ALLOWED_HOSTS = {
     "www.zscaler.com",
     "trust.zscaler.com",
     "community.zscaler.com",
+    # SDK wheels for the upstream check (upstream_check.download_sdk,
+    # SHA-256 checked against PyPI's JSON before anything is unpacked)
+    "files.pythonhosted.org",
     # Zscaler GitHub org (read-only public repos)
     "github.com",
     "raw.githubusercontent.com",

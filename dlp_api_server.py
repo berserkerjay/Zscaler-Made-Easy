@@ -1080,14 +1080,35 @@ class PackFromTenantRequest(TenantCredsRequest):
 
 
 def _regenerate_terraform(pack_id: str, pack_dir: str) -> str:
-    """Keep the committed Terraform workspace in step with the rewritten pack."""
+    """Keep the Terraform workspace in step with the rewritten pack: the
+    committed terraform/<pack> for a shipped pack on a local install, or
+    beside the pack (as for uploads) for a copy rebuilt in the library."""
     try:
         import pack_terraform
         files = pack_terraform.generate({"id": pack_id, "dir": pack_dir})
-        pack_terraform.write_workspace(files, os.path.join(_APP_DIR, "terraform", pack_id))
+        shipped = os.path.realpath(os.path.dirname(pack_dir)) == os.path.realpath(_APP_DIR)
+        out_dir = os.path.join(_APP_DIR, "terraform", pack_id) if shipped else os.path.join(pack_dir, "terraform")
+        pack_terraform.write_workspace(files, out_dir)
         return "regenerated"
     except Exception as ex:  # noqa: BLE001
         return f"not regenerated ({str(ex)[:120]}); run: python pack_terraform.py {pack_id} --out terraform"
+
+
+def _writable_pack_dir(pack_id: str, pack_dir: str) -> str:
+    """The folder a rebuild may write: the pack's own, or, where that is
+    read-only (the container's app folder), a copy of it in the pack
+    library under the same id, made once."""
+    configs = os.path.join(pack_dir, "configs")
+    if os.access(configs if os.path.isdir(configs) else pack_dir, os.W_OK):
+        return pack_dir
+    import shutil
+    from pack_library import user_packs_dir
+    lib = user_packs_dir()
+    dst = os.path.join(lib, pack_id)
+    if not os.path.isdir(dst):
+        os.makedirs(lib, exist_ok=True)
+        shutil.copytree(pack_dir, dst, ignore=shutil.ignore_patterns("terraform", "__pycache__", "*.pyc"))
+    return dst
 
 
 @app.post("/api/dlp-packs/{pack_id}/from-tenant")
@@ -1098,12 +1119,19 @@ async def dlp_pack_from_tenant(pack_id: str, req: PackFromTenantRequest):
     ((Signal > N) AND (Anchor > 0)), the pack's rules reference the new
     engines and the old pack dictionaries/engines are dropped. Read-only
     against the tenant. Preview unless `confirm` is true; writing the pack
-    on disk is allowed only from a localhost-bound server."""
+    on disk is allowed only while nobody but this computer can reach the
+    server (a localhost bind, or the container published on loopback).
+    Where the shipped pack's folder is read-only (the container), the
+    rebuilt pack is written to the pack library under the same id and
+    replaces the shipped one; removing it there restores the shipped pack."""
     if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", pack_id or ""):
         raise HTTPException(status_code=400, detail="Invalid pack id.")
-    if req.confirm and get_bind_host() not in ("127.0.0.1", "localhost", "::1"):
-        raise HTTPException(status_code=403, detail="Rewriting a pack from the web UI is only allowed when the server is bound to localhost.")
+    if req.confirm and not _security.only_this_computer_can_reach():
+        raise HTTPException(status_code=403, detail="Rewriting a pack from the web UI is only allowed while nobody but this computer can reach the server "
+                                                    "(bound to localhost, or the container published on this computer's loopback).")
     pack = _resolve_pack_ids([pack_id])[0]
+    if req.confirm:
+        pack = dict(pack, dir=await asyncio.to_thread(_writable_pack_dir, pack_id, pack["dir"]))
     import pack_from_tenant
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)

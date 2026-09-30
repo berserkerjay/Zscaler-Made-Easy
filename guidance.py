@@ -159,8 +159,36 @@ def state_path() -> str:
     return os.environ.get("DLP_CHECK_GUIDANCE_STATE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), STATE_FILE)
 
 
+def shipped_config_path() -> str:
+    """checks_config.json as it ships with the app."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), CONFIG_FILE)
+
+
 def config_path() -> str:
-    return os.environ.get("DLP_CHECK_CHECKS_CONFIG") or os.path.join(os.path.dirname(os.path.abspath(__file__)), CONFIG_FILE)
+    """Where approvals are written: the shipped file on a local install, or
+    DLP_CHECK_CHECKS_CONFIG where the app folder is read-only (the
+    container keeps it on /data). Reads combine it with the shipped file
+    (load_config), so both sets of references count."""
+    return os.environ.get("DLP_CHECK_CHECKS_CONFIG") or shipped_config_path()
+
+
+def load_config() -> Dict[str, Any]:
+    """The shipped checks_config.json with the references approved on this
+    install added: the same answer on a local install (one file) and in
+    the container (the shipped file plus /data)."""
+    cfg = _read_json(shipped_config_path(), {"version": 1, "checks": {}})
+    if os.path.abspath(config_path()) == os.path.abspath(shipped_config_path()):
+        return cfg
+    local = _read_json(config_path(), {"checks": {}})
+    for section in ("checks", "packs"):
+        for key, entry in ((local.get(section) or {}).items()):
+            refs = cfg.setdefault(section, {}).setdefault(key, {}).setdefault("references", [])
+            for r in (entry or {}).get("references") or []:
+                if not any(x.get("url") == r.get("url") for x in refs):
+                    refs.append(r)
+    if local.get("updated_at"):
+        cfg["updated_at"] = local["updated_at"]
+    return cfg
 
 
 def _now() -> str:
@@ -300,12 +328,12 @@ def outcome_for_checks(check_ids: Sequence[str]) -> str:
 
 
 def references_for(check_id: str) -> List[Dict[str, Any]]:
-    cfg = _read_json(config_path(), {"checks": {}})
+    cfg = load_config()
     return list(((cfg.get("checks") or {}).get(check_id) or {}).get("references") or [])
 
 
 def config_summary() -> Dict[str, Any]:
-    cfg = _read_json(config_path(), {"checks": {}, "packs": {}})
+    cfg = load_config()
     return {"path": config_path(), "updated_at": cfg.get("updated_at"),
             "checks_with_references": sum(1 for v in (cfg.get("checks") or {}).values() if v.get("references")),
             "references": sum(len(v.get("references") or []) for v in (cfg.get("checks") or {}).values())}

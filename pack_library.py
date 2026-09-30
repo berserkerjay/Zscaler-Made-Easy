@@ -48,8 +48,13 @@ MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 def user_packs_dir(root: Optional[str] = None) -> str:
     """Where uploaded packs live. `DLP_CHECK_USER_PACKS` overrides the
-    default `<app>/user_packs` (a mounted volume in the container)."""
-    if root is None and os.environ.get("DLP_CHECK_USER_PACKS"):
+    default `<app>/user_packs` (a mounted volume in the container) for the
+    app's own root, however it is passed: the server and pack discovery
+    pass PACKS_ROOT explicitly, and in the container that folder is
+    read-only, so ignoring the setting there hid and refused every upload.
+    Another root (a test's scratch folder) keeps its own user_packs."""
+    own_root = root is None or os.path.realpath(root) == os.path.realpath(PACKS_ROOT)
+    if own_root and os.environ.get("DLP_CHECK_USER_PACKS"):
         return os.path.abspath(os.environ["DLP_CHECK_USER_PACKS"])
     return os.path.join(root or PACKS_ROOT, USER_PACKS_DIRNAME)
 

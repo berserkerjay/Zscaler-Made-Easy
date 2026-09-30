@@ -143,12 +143,12 @@ def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
     packs: List[Dict[str, Any]] = []
     seen: set = set()
 
-    def scan(base: str, source: str) -> None:
+    def scan(base: str, source: str, *, override: bool = False) -> None:
         if not os.path.isdir(base):
             return
         for entry in sorted(os.listdir(base)):
             d = os.path.join(base, entry)
-            if not os.path.isdir(d) or entry in seen:
+            if not os.path.isdir(d) or (entry in seen and not override):
                 continue
             configs = _resolve_configs(d)
             has_json = any(
@@ -160,6 +160,13 @@ def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
                 meta["dir"] = d
                 meta["id"] = entry
                 meta["source"] = source
+                if entry in seen:
+                    # A built-in pack rebuilt where the app folder is read-only
+                    # (the container) lives in the library under the same id
+                    # and replaces the shipped copy; uploads cannot take a
+                    # built-in id, so nothing else lands here.
+                    meta["source"] = "rebuilt"
+                    packs[:] = [p for p in packs if p["id"] != entry]
                 packs.append(meta)
                 seen.add(entry)
 
@@ -171,7 +178,7 @@ def discover_packs(root: Optional[str] = None) -> List[Dict[str, Any]]:
     except Exception:  # noqa: BLE001
         lib = os.path.join(root, "user_packs")
     if os.path.realpath(lib) != os.path.realpath(root):
-        scan(lib, "uploaded")
+        scan(lib, "uploaded", override=True)
     return packs
 
 
