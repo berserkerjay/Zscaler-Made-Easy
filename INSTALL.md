@@ -589,6 +589,18 @@ only thing keeping the app off the network.
   ./update_container.sh                                                # Mac, Linux
   ```
 
+- **Choose the branch it updates from:** `main` (what customers run),
+  `qa` or `dev` (changes before they are promoted: dev → qa → main).
+  Add the branch once; the folder stays on it, so later runs and the
+  daily schedule keep updating from it:
+
+  ```
+  powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Branch qa   # Windows
+  ./update_container.sh --branch qa                                     # Mac, Linux
+  ```
+
+  In the app, Home > Update app shows these commands for the branch
+  picked in its Branch list.
 - **Automatic updates:** run the same script once with `-Schedule`
   (Windows) or `--schedule` (Mac, Linux). The computer then runs it every
   day at 03:17 (Windows also runs it at the next start if it was off).

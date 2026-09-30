@@ -337,7 +337,9 @@ def branch_choices(app_dir: str) -> List[Dict[str, Any]]:
 CONTAINER_UPDATE_HELP = (
     "This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker, in the "
     "DLP-Check folder: Windows  powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 ; Mac or Linux  ./update_container.sh . "
-    "Add -Schedule (Windows) or --schedule (Mac, Linux) once to update automatically every day. Saved data survives; "
+    "Add -Branch main|qa|dev (Windows) or --branch main|qa|dev (Mac, Linux) to switch the branch it updates from; "
+    "later runs keep it. Add -Schedule (Windows) or --schedule (Mac, Linux) once to update automatically every day. "
+    "Saved data survives; "
     "the app restarts with a new UI token.")
 
 

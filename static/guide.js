@@ -251,12 +251,16 @@ function _gdUpdateHelp() {
 // the computer that runs Docker pulls the code and rebuilds it. Both
 // commands are shown because the page cannot tell which system that is.
 function _gdContainerUpdateHelp() {
-  const win = 'powershell -ExecutionPolicy Bypass -File .\\update_container.ps1';
-  const nix = './update_container.sh';
+  // The Branch chosen above (main, qa or dev) goes into the commands; the
+  // script switches the checkout to it and keeps updating from it.
+  const branch = _gdUpdBranch() || GD.updBranch || 'main';
+  const win = `powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 -Branch ${branch}`;
+  const nix = `./update_container.sh --branch ${branch}`;
   const copy = id => `<button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('${id}').textContent).then(() => announce('Command copied'))">Copy command</button>`;
   _gdUpdateBox(`<div class="gd-upd-line">This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker: open a terminal in the DLP-Check folder (the one with <code>docker-compose.yml</code>) and run the command for that computer. It pulls the latest code from GitHub and rebuilds the container only when there is something new; saved data stays, and the app restarts with a new UI token (<code>docker logs dlp-check</code>).</div>
     <div class="gd-upd-line soft">Windows (PowerShell):</div><pre class="gd-upd-cmd" id="gdUpdCmdWin">${_gdE(win)}</pre>${copy('gdUpdCmdWin')}
     <div class="gd-upd-line soft">Mac or Linux (Terminal):</div><pre class="gd-upd-cmd" id="gdUpdCmdNix">${_gdE(nix)}</pre>${copy('gdUpdCmdNix')}
+    <div class="gd-upd-line soft">These update from <strong>${_gdE(branch)}</strong>; choose another Branch above to switch (main is what customers run; qa and dev carry changes before they are promoted). Later runs keep the branch chosen.</div>
     <div class="gd-upd-line soft">Automatic updates: run it once with <code>-Schedule</code> (Windows) or <code>--schedule</code> (Mac, Linux) and it updates every day at 03:17.</div>`);
 }
 async function _gdUpdateApp() {

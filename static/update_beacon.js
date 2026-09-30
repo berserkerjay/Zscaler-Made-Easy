@@ -75,7 +75,7 @@
       // Anywhere else: say it right here.
       const txt = bar.querySelector('span');
       txt.innerHTML = st.in_container
-        ? 'On the computer that runs Docker, in the DLP-Check folder: Windows <code>powershell -ExecutionPolicy Bypass -File .\\update_container.ps1</code>, Mac or Linux <code>./update_container.sh</code>. Add <code>-Schedule</code> / <code>--schedule</code> once to update every day.'
+        ? `On the computer that runs Docker, in the DLP-Check folder: Windows <code>powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 -Branch ${esc(target)}</code>, Mac or Linux <code>./update_container.sh --branch ${esc(target)}</code>. Add <code>-Schedule</code> / <code>--schedule</code> once to update every day.`
         : 'Open the Home page and click <strong>Update app</strong>.';
     };
   }
