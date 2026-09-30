@@ -166,6 +166,13 @@ def _toggle_allowed() -> bool:
     return get_bind_host() in _LOCAL_HOSTS or _published_on_loopback()
 
 
+def only_this_computer_can_reach() -> bool:
+    """True when the server listens on loopback, or is the container
+    published on the host's loopback: the same rule for every change the
+    browser may make on this machine (write mode, rewriting a pack)."""
+    return _toggle_allowed()
+
+
 def write_mode_status() -> dict:
     """What the GUI shows: whether writes are on, where that comes from,
     and whether the operator may toggle it from the browser."""

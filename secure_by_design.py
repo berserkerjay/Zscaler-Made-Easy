@@ -109,7 +109,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     w = security.write_mode_status()
     if not w.get("enabled"):
         checks.append(_check("writes", "Changes to the Zscaler tenant are refused until write mode is enabled on purpose", P_OWN, "secure_defaults", "pass",
-                             "Read-only now. Write mode needs the confirmation phrase typed in this window (localhost only) or ENABLE_WRITE_ACTIONS in the start script; every deploy also needs an approved plan hash, and every rule ships DISABLED and monitor-only.",
+                             "Read-only now. Write mode needs the confirmation phrase typed in this window (only while nobody but this computer can reach the server) or ENABLE_WRITE_ACTIONS in the start script; every deploy also needs an approved plan hash, and every rule ships DISABLED and monitor-only.",
                              "Leave it read-only between engagements."))
     else:
         checks.append(_check("writes", "Changes to the Zscaler tenant are refused until write mode is enabled on purpose", P_OWN, "secure_defaults", "warn",
@@ -120,6 +120,13 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     if host in _LOCAL_HOSTS:
         checks.append(_check("loopback", "The server answers this machine only", P_OWN, "secure_defaults", "pass",
                              f"Bound to {host}. Uploads, updates and pack rewrites are refused on any other bind.", "Keep ZSCALER_BIND_HOST unset."))
+    elif security.only_this_computer_can_reach():
+        # The container listens on 0.0.0.0 inside its own network; what reaches
+        # it from outside is the host address docker-compose.yml publishes on.
+        checks.append(_check("loopback", "The server answers this machine only", P_OWN, "secure_defaults", "pass",
+                             f"A container published on this computer's loopback only (DLP_CHECK_HOST_BIND={os.environ.get('DLP_CHECK_HOST_BIND', '').strip()}); "
+                             f"inside the container it listens on {host}, which nothing outside this computer can reach.",
+                             "Keep DLP_CHECK_HOST_BIND at 127.0.0.1; publishing beyond it needs SSO or an authenticating reverse proxy (SECURITY.md)."))
     else:
         checks.append(_check("loopback", "The server answers this machine only", P_OWN, "secure_defaults", "fail",
                              f"Bound to {host}: reachable from the network with a bearer token as the only guard.",

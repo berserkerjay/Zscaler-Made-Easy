@@ -211,7 +211,9 @@ def test_the_container_keeps_what_the_guide_says_it_keeps():
                 "DLP_CHECK_DIGESTS=/data", "DLPCHECK_PROPOSALS_FILE=/data", "DLP_CHECK_GUIDANCE_STATE=/data", "DLP_CHECK_SAAS_MATRIX=/data"):
         assert var in df, var
     assert "DLP_CHECK_USER_PACKS: /data" in _read("docker-compose.yml")
-    assert "DLP_CHECK_CHECKS_CONFIG" not in df, "checks_config.json ships with the app; the overview says it is read-only in the container"
+    # Whatever works on a local install works in the container: approved
+    # check references and the update / best-practice caches land on /data.
+    assert "DLP_CHECK_CHECKS_CONFIG=/data/checks_config.json" in df and "XDG_CACHE_HOME=/data/cache" in df
     flat = re.sub(r"\s+", " ", INSTALL)
     assert "digests, proposals, the guidance state and the token file" in flat and "ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND" in flat
 
