@@ -283,3 +283,14 @@ def test_the_shell_update_script_switches_branches_against_a_scratch_remote(tmp_
     assert code == 2 and branch == "qa" and "choose main, qa or dev" in out
     calls = (fake / "calls").read_text()
     assert calls.count("compose up -d --build") == 3, "every switch rebuilds; staying up to date does not"
+
+
+def test_the_windows_update_script_survives_docker_progress_on_stderr():
+    # docker compose writes its build progress to stderr; under Windows
+    # PowerShell 5.1 with ErrorActionPreference Stop, the first such line
+    # ended the script mid-build. The build is judged by docker's exit code.
+    ps = _read("update_container.ps1")
+    i = ps.index("docker compose up -d --build")
+    before, after = ps[max(0, i - 400):i], ps[i:i + 400]
+    assert "$ErrorActionPreference = 'Continue'" in before
+    assert "$buildExit = $LASTEXITCODE" in after and "$ErrorActionPreference = 'Stop'" in after and "if ($buildExit -ne 0)" in after
