@@ -257,6 +257,26 @@ def test_callback_with_an_idp_error_is_html_escaped_not_executed(monkeypatch):
     assert "<script>" not in r.text and "&lt;script&gt;" in r.text
 
 
+def test_a_failed_sso_sign_in_is_audited(monkeypatch, idp, tmp_path):
+    """The callback is a GET, which the audit middleware skips; a failed
+    sign-in is still recorded, both an IdP error and a forged token."""
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    _env(monkeypatch)
+    c = TestClient(srv.app)
+    assert c.get("/api/auth/sso/callback?error=access_denied").status_code == 401
+    _mock_http(monkeypatch, idp)
+    login = c.get("/api/auth/sso/login", follow_redirects=False)
+    q = parse_qs(urlparse(login.headers["location"]).query)
+    forged = idp.make_id_token(nonce=q["nonce"][0], sign_key=rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    _mock_http(monkeypatch, idp, token_response={"id_token": forged})
+    assert c.get(f"/api/auth/sso/callback?code=abc&state={q['state'][0]}", follow_redirects=False).status_code == 401
+    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    failed = [e for e in events if e["event"] == "sso_login_failed"]
+    assert len(failed) == 2 and all(e["path"] == "/api/auth/sso/callback" for e in failed), events
+    assert not any(e["event"] == "sso_login" for e in events)
+
+
 def test_sso_routes_404_when_sso_is_not_enabled():
     c = TestClient(srv.app)
     assert c.get("/api/auth/sso/login", follow_redirects=False).status_code == 404

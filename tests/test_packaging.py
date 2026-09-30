@@ -294,3 +294,19 @@ def test_the_windows_update_script_survives_docker_progress_on_stderr():
     before, after = ps[max(0, i - 400):i], ps[i:i + 400]
     assert "$ErrorActionPreference = 'Continue'" in before
     assert "$buildExit = $LASTEXITCODE" in after and "$ErrorActionPreference = 'Stop'" in after and "if ($buildExit -ne 0)" in after
+
+
+def test_the_image_is_debian_13_and_carries_only_what_python_needs():
+    """"Docker is showing a lot of vulnerabilities in the container": all 70
+    were in Debian 12 packages with no fix (perl, util-linux, openssl, zlib,
+    systemd, sqlite, tar ...). The image is Debian 13 and removes every OS
+    package the app never uses, and the build fails if one survives."""
+    df = _read("Dockerfile").replace("\r\n", "\n")
+    assert "FROM python:3.11-slim-trixie AS base" in df and "bookworm AS base" not in df
+    purge = df[df.index("dpkg --purge"):df.index("still load')")]
+    for pkg in ("apt", "perl-base", "tar", "util-linux", "mount", "login", "passwd", "libsystemd0", "libudev1", "libsqlite3-0", "openssl "):
+        assert pkg in purge, pkg
+    for keep in ("libssl3t64", "zlib1g", "libc6", "dash", "coreutils"):
+        assert keep not in purge, f"{keep} is needed at runtime"
+    assert "is still installed" in purge and "import ssl, zlib" in purge
+    assert df.index("dpkg --purge") > df.index("pip install --require-hashes") and df.index("dpkg --purge") < df.index("USER dlpcheck")

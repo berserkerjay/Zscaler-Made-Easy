@@ -157,6 +157,13 @@ def _set_field(client, channel: str, rule: Any, field: str, value: Any) -> Tuple
 
 
 def _execute(client, tenant: str, pid: str, *, direction: str, writes_enabled: Optional[bool], by: str, log=None) -> Dict[str, Any]:
+    # The change's writes draw on the client's own tenant's ZIA rate limits.
+    import zia_rate
+    with zia_rate.using_client(client):
+        return _execute_keyed(client, tenant, pid, direction=direction, writes_enabled=writes_enabled, by=by, log=log)
+
+
+def _execute_keyed(client, tenant: str, pid: str, *, direction: str, writes_enabled: Optional[bool], by: str, log=None) -> Dict[str, Any]:
     if writes_enabled is False:
         raise PermissionError("write mode is off: enable it in Deploy Policy Packs or start the server with writes enabled")
     pv = preview(client, tenant, pid, direction=direction)

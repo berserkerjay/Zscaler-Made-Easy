@@ -611,7 +611,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
         assert ops.stop_reason() is None
     assert out.ok and out.id == 9 and out.attempts == 4 and calls["n"] == 4
     assert acts == [] and _windows(sleeps) == 3 and max(sleeps) <= 5, "each refusal waits out the limit's whole window (an hour), in Stop-able steps; nothing is activated"
-    assert any("pausing the whole run until the limit has completely reset" in l for l in logs)
+    assert any("pausing the whole run until the oldest write DLP-Check counted has left the limit's longest window" in l for l in logs)
     assert any("then trying again (1 of 3)" in l for l in logs) and any("succeeded after ZIA's rate limit reset (attempt 4)" in l for l in logs)
     assert not any("activation requested" in l for l in logs) and any("Nothing is sent meanwhile" in l for l in logs)
     # Never clears, plain Forbidden: five more tries, then failed, and a forbidden client still stops the run as before.

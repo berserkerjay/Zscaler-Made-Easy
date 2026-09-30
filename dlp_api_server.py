@@ -3581,7 +3581,8 @@ async def logs_analyze(req: LogAnalyzeRequest):
     Nothing is written to disk; evidence lines are redacted of secrets."""
     import log_analyzer
     try:
-        return log_analyzer.analyze([f.model_dump() for f in req.files])
+        # Off the event loop: a large (or hostile) upload must not hold up every other request.
+        return await asyncio.to_thread(log_analyzer.analyze, [f.model_dump() for f in req.files])
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -4183,7 +4184,7 @@ async def assess_stream(req: AssessRequest):
                 try:
                     r = fn(client)
                 except Exception as ex:  # noqa: BLE001
-                    r = R(R.INFO, f"{label}: Could not complete check. {str(ex)[:120]}")
+                    r = R(R.ERROR, f"{label}: Could not complete check. {str(ex)[:120]}")  # "Could not be checked", never "Not configured"
                 loop.call_soon_threadsafe(inbox.put_nowait, (idx, r))
 
             pool = ThreadPoolExecutor(max_workers=ASSESS_WORKERS, thread_name_prefix="assess")
@@ -4196,7 +4197,7 @@ async def assess_stream(req: AssessRequest):
             def _finish(idx, r):
                 check_id, section, label, _fn = checks[idx]
                 if not hasattr(r, "status") or not hasattr(r, "detail"):
-                    r = R(R.INFO, f"{label}: Invalid check result.")
+                    r = R(R.ERROR, f"{label}: Invalid check result.")
                 result = {"id": check_id, "section": section, "label": label,
                           "status": str(r.status), "detail": str(r.detail)[:500]}
                 try:
@@ -4219,7 +4220,7 @@ async def assess_stream(req: AssessRequest):
                 fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
                 for idx, t0 in list(started.items()):
                     if idx not in done and now - t0 > CHECK_TIMEOUT:
-                        fresh.append(_finish(idx, R(R.INFO, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
+                        fresh.append(_finish(idx, R(R.ERROR, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
                 try:
                     for result in fresh:
                         yield _sse("check", result)

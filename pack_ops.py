@@ -87,7 +87,7 @@ FORBIDDEN_WAIT_SECONDS = 15.0
 BLOCKED_WAIT_SECONDS = (30.0, 60.0, 90.0, 120.0, 120.0)
 _FORBIDDEN_WORDS = ("forbidden", "resource access blocked", "not authorized", "access denied")
 RATE_STOP_REASON = (
-    "ZIA kept refusing writes for its rate limit after the limit's window had completely reset, three times. Another tool or "
+    "ZIA kept refusing writes for its rate limit after three waits for the limit to have room again. Another tool or "
     "session is probably using the same API client. Wait an hour and run this again; what was already written is kept.")
 
 
@@ -105,10 +105,10 @@ FORBIDDEN_STOP_REASON = (
 
 
 # A rate refusal inside a deploy or removal (429, or 403 "Resource Access
-# Blocked") pauses the whole run until the limit's window has completely
-# reset (ZIA's reset header when the answer has one, otherwise the full
-# window of the bucket the write draws on), then tries the same write
-# again. Up to RATE_WINDOWS such waits; still refused after that, the run
+# Blocked") pauses the whole run until the limit has room again (ZIA's
+# reset header when the answer has one, otherwise until the oldest write
+# counted leaves the longest window of the bucket the write draws on),
+# then tries the same write again. Up to RATE_WINDOWS such waits; still refused after that, the run
 # stops. Nothing is activated, and no other write goes out meanwhile.
 RATE_WINDOWS = 3
 _RATE_WORDS = ("resource access blocked", "rate limit", "too many requests", "ratelimit")
@@ -510,20 +510,26 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
 
     outcome = with_backoff()
     # A rate refusal on a write inside a run: pause the whole run until the
-    # limit's window has completely reset, then try the same write again.
+    # limit has room again, then try the same write again.
     if not outcome.ok and op != "read" and in_run() and is_rate_refusal(outcome):
         import zia_rate
         bucket = zia_rate.bucket_of(_METHOD.get(op, "POST"), channel=channel, kind=kind)
-        zia_rate.note_refusal(bucket, outcome.error or "", reset=getattr(outcome, "reset_seconds", None), status=outcome.http_status)
+        def refused_for_rate() -> float:
+            """Keep ZIA's refusal for the next preflight and hold this
+            tenant's writes until the limit has room again: seconds held."""
+            zia_rate.note_refusal(bucket, outcome.error or "", reset=getattr(outcome, "reset_seconds", None), status=outcome.http_status)
+            secs = getattr(outcome, "reset_seconds", None) or zia_rate.full_reset(bucket)
+            zia_rate.hold(secs)
+            return secs
+        secs = refused_for_rate()
         for window in range(1, RATE_WINDOWS + 1):
             if _stopped_now():
                 break
-            secs = getattr(outcome, "reset_seconds", None) or zia_rate.full_reset(bucket)
-            zia_rate.hold(secs)
-            src = "ZIA's reset timer" if getattr(outcome, "reset_seconds", None) else "the limit's full window"
+            until = ("the limit has completely reset (ZIA's reset timer)" if getattr(outcome, "reset_seconds", None) else
+                     "the oldest write DLP-Check counted has left the limit's longest window")
             quip = zia_rate._quip("blocked" if "blocked" in str(outcome.error or "").lower() else "resetting", zia_rate._now())
-            _log(f"[{kind or op}] {name}: {quip + ' ' if quip else ''}ZIA refused it for its rate ('{outcome.error}'); pausing the whole run until the limit "
-                 f"has completely reset ({src}): {_human_secs(secs)}, then trying again ({window} of {RATE_WINDOWS}). Nothing is sent meanwhile.")
+            _log(f"[{kind or op}] {name}: {quip + ' ' if quip else ''}ZIA refused it for its rate ('{outcome.error}'); pausing the whole run until "
+                 f"{until}: {_human_secs(secs)}, then trying again ({window} of {RATE_WINDOWS}). Nothing is sent meanwhile.")
             logger.info("rate-wait", extra={"op": op, "kind": kind, "name": name, "channel": channel, "window": window, "seconds": secs})
             _wait_out(secs)
             if _stopped_now():
@@ -531,6 +537,8 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             outcome = with_backoff()
             if outcome.ok or not is_rate_refusal(outcome):
                 break
+            # Refused again: kept and held like the first, the last one too (it stops the run).
+            secs = refused_for_rate()
         if outcome.ok:
             _log(f"[{kind or op}] {name}: succeeded after ZIA's rate limit reset (attempt {attempts})")
         elif is_rate_refusal(outcome) and not _stopped_now():
