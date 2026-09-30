@@ -1096,6 +1096,7 @@
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="step2Download()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Download rules</button>
           <button class="btn btn-ghost" id="step2SaveBtn" onclick="step2SaveLocal()" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save JSON backup</button>
+          <button class="btn btn-ghost" id="step2PackBtn" onclick="step2DownloadPack()" title="A zip in the policy pack layout: the Inline Web DLP rules with every engine they use and every dictionary those engines use. Deploy Policy Packs can put it back into this tenant or another one; the pack library accepts it as an upload. Read-only." style="padding:0.55rem 1.1rem;font-size:0.85rem;">📦 Download as a pack (rules, engines and dictionaries)</button>
           <label class="btn btn-ghost" style="padding:0.55rem 1.1rem;font-size:0.85rem;cursor:pointer;">
             📂 Upload rules JSON
             <input type="file" id="step2UploadFile" accept=".json,application/json" onchange="step2UploadJson(event)" style="display:none;">
@@ -1103,6 +1104,7 @@
         </div>
       </div>
       <div id="step2Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
+      <div id="step2PackResult" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
     <!-- Step 3 -->
@@ -1734,6 +1736,45 @@ async function step2Download() {
     document.getElementById('step2SaveBtn').style.display = 'inline-flex';
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+// The same rules as a policy pack: the server reads the Inline Web DLP
+// rules with every engine and dictionary they use (a background job, the
+// same one Deploy Policy Packs' "Export from tenant as a pack" runs) and
+// the zip comes from the finished job. The JSON backup above is unchanged.
+async function step2DownloadPack() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const el = document.getElementById('step2PackResult'); el.style.display = 'block';
+  const btn = document.getElementById('step2PackBtn'); btn.disabled = true;
+  el.innerHTML = '<span style="color:var(--dim);">Reading the rules, engines and dictionaries… (read-only)</span>';
+  try {
+    const jobId = await _dzStartJob('/api/dlp-packs/export/start', Object.assign(body, { rules: { web: 'all' } }));
+    const snap = await _dzFollowJob(jobId, s => {
+      const last = (s.logs || []).slice(-1)[0];
+      if (last) el.innerHTML = '<span style="color:var(--dim);">' + escapeHtml(last) + '</span>';
+    });
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The export ended without a result.');
+    if (snap.result.status !== 'ready' || !snap.download) throw new Error(snap.result.error || snap.result.stopped || 'The export did not produce a pack.');
+    const r = await fetch(snap.download, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`The pack could not be fetched (HTTP ${r.status}).`);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = snap.filename || 'exported_pack.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const c = snap.result.counts || {};
+    const left = snap.result.not_exported || [];
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Downloaded ${escapeHtml(snap.filename || 'the pack')}: ${c.rules || 0} rule(s), ${c.engines || 0} custom engine(s), ${c.dictionaries || 0} dictionar${c.dictionaries === 1 ? 'y' : 'ies'}</div>
+      <div style="color:var(--dim);margin-top:0.25rem;">Add it to the library under Advanced settings → Add a pack, then deploy it with Deploy Policy Packs. Every rule arrives DISABLED there; the pack keeps each rule's action and state as they are now.</div>
+      ${left.length ? `<details style="margin-top:0.4rem;"><summary style="cursor:pointer;color:var(--warn);">${left.length} item(s) could not go into the pack (also listed in pack.json)</summary><ul style="margin:0.3rem 0 0 1.1rem;color:var(--dim);">${left.map(d => `<li><strong>${escapeHtml(d.name)}</strong>${d.field ? ' (' + escapeHtml(d.field) + ')' : ''}: ${escapeHtml(d.reason)}</li>`).join('')}</ul></details>` : ''}
+      ${snap.result.validation && !snap.result.validation.ok ? `<div style="color:var(--fail);margin-top:0.3rem;">The pack library would refuse this pack as it is: ${escapeHtml((snap.result.validation.problems || []).slice(0, 3).join('; '))}</div>` : ''}
+    `;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Pack download failed: ' + escapeHtml(e.message) + '</span>';
+  } finally {
+    btn.disabled = false;
   }
 }
 
