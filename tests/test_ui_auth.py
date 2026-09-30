@@ -75,3 +75,24 @@ def test_pages_and_launcher_carry_the_unlock_flow():
     assert "/api/auth/unlock" in theme and "token_required" in theme
     assert "ui_token.txt" in vbs and "/api/ping" in vbs and "?token=" in vbs
     assert "ui_token.txt" in open(os.path.join(root, ".gitignore")).read()
+
+
+def test_rejected_tokens_are_written_to_the_audit_log(monkeypatch, tmp_path):
+    """The token gate sits outside the audit middleware, so it records its own
+    401s; the token that was offered is never written."""
+    import json
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    c = _on(monkeypatch)
+    assert c.get("/api/health", headers={"X-DLP-Check-Token": "guess-one"}).status_code == 401
+    assert c.get("/api/health").status_code == 401
+    assert c.get("/?token=guess-two", follow_redirects=False).status_code == 401
+    assert c.get("/api/health", headers={"X-DLP-Check-Token": "test-token-abc123"}).status_code == 200
+    text = log.read_text(encoding="utf-8")
+    events = [json.loads(ln) for ln in text.splitlines()]
+    denied = [e for e in events if e["event"] == "auth_denied"]
+    assert [(e["path"], e["reason"]) for e in denied] == [
+        ("/api/health", "invalid UI token"), ("/api/health", "no UI token or sign-in"),
+        ("/", "the UI token in the address was not valid")], denied
+    assert all(e.get("client") for e in denied)
+    assert "guess-one" not in text and "guess-two" not in text and "test-token-abc123" not in text

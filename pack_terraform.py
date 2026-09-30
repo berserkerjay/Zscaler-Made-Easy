@@ -152,7 +152,8 @@ def _control_rule_hcl(channel: str, res: str, label: str, p: Dict[str, Any], met
     r.append(_attr("description", hcl_str(_provenance(meta, pack_id, p.get("description", "")))))
     r.append(_attr("order", order_expr))
     r.append(_attr("rank", "var.policy_rank"))
-    r.append(_attr("state", hcl_str(p.get("state", "ENABLED"))))
+    # Every rule is created DISABLED, whatever the pack says, as Deploy Policy Packs does.
+    r.append(_attr("state", hcl_str("DISABLED")))
     if channel == pc.CLOUD_APP:
         apps = _apps_expr(p, lookups, app_classes, default_classes=[str(p["type"]).upper()])
         r.append(_attr("type", hcl_str(str(p["type"]).upper())))
@@ -560,7 +561,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
         r.append(_attr("order", str(int(existing_order)) if existing_order else f"var.rule_starting_order + {idx}"))
         if channel != pc.EMAIL:
             r.append(_attr("rank", "var.policy_rank"))
-        r.append(_attr("state", hcl_str(p.get("state", "ENABLED"))))
+        # Every rule is created DISABLED, whatever the pack says, as Deploy Policy Packs does.
+        r.append(_attr("state", hcl_str("DISABLED")))
         r.append(_attr("action", hcl_str(p.get("action", pc.default_action(channel)))))
         if p.get("target_action"):
             r.append(f"  # Ships monitor-only; the designed action once incidents are tuned is {p['target_action']}.\n")

@@ -538,6 +538,15 @@ def set_ui_cookie(response, request: Request) -> None:
     response.set_cookie(UI_TOKEN_COOKIE, ui_token(), httponly=True, samesite="strict", secure=secure, path="/", max_age=12 * 3600)
 
 
+def _audit_denied(request: Request, event: str, reason: str) -> None:
+    """Write a rejected sign-in to the audit log. This middleware sits
+    outside AuditMiddleware, so its own 401s would otherwise go unrecorded.
+    The token that was offered is never written."""
+    import audit as _audit
+    _audit.record(event, method=request.method, path=request.url.path,
+                  client=request.client.host if request.client else "?", reason=reason)
+
+
 class UIAuthMiddleware(BaseHTTPMiddleware):
     """Require the UI token on every request except the ones a browser
     needs to obtain it. `/?token=...` (what the launcher opens) sets the
@@ -557,12 +566,18 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
                 resp = RedirectResponse("/", status_code=303)
                 set_ui_cookie(resp, request)
                 return resp
+            _audit_denied(request, "auth_denied", "the UI token in the address was not valid")
             return JSONResponse({"detail": "That UI token is not valid for this server. Read ui_token.txt next to the app (or the console) and try again.",
                                  "token_required": True}, status_code=401)
         if path in _UI_AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _UI_AUTH_EXEMPT_PREFIXES):
-            return await call_next(request)
+            resp = await call_next(request)
+            if path == "/api/auth/sso/callback" and resp.status_code == 401:
+                # A GET, so AuditMiddleware skips it; a failed sign-in is still a security event.
+                _audit_denied(request, "sso_login_failed", "the identity provider sign-in was not completed or could not be verified")
+            return resp
         if ui_request_ok(request):
             return await call_next(request)
+        _audit_denied(request, "auth_denied", "invalid UI token" if _token_from_request(request) else "no UI token or sign-in")
         if _sso.sso_enabled():
             return JSONResponse({"detail": "Sign in required.", "token_required": True, "sso_required": True,
                                  "sso_login_url": "/api/auth/sso/login"}, status_code=401)

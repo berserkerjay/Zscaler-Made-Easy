@@ -58,7 +58,7 @@
       <section class="dg-sec" aria-labelledby="dgSchedH">
         <h2 id="dgSchedH">Schedule and notifications</h2>
         <div id="dgSched" class="dg-grid"></div>
-        <p class="dg-dim">Settings live in <code>local_settings.bat</code> (or the environment): <code>DLP_CHECK_SMTP_HOST</code>, <code>DLP_CHECK_SMTP_PORT</code>, <code>DLP_CHECK_SMTP_USER</code>, <code>DLP_CHECK_SMTP_PASSWORD</code>, <code>DLP_CHECK_DIGEST_FROM</code>, <code>DLP_CHECK_DIGEST_TO</code> for e-mail; <code>DLP_CHECK_DIGEST_WEBHOOK</code> (an https Teams or Slack incoming webhook) for chat; <code>DLP_CHECK_NOTIFY</code> = <code>noteworthy</code> (default), <code>always</code> or <code>never</code>. Without the browser: <code>RUN_Continuous_Evaluation.bat</code> from Task Scheduler, or <code>python continuous_eval.py --once</code> from cron or the container.</p>
+        <p class="dg-dim">Settings live in <code>local_settings.bat</code> (or the environment): <code>DLP_CHECK_SMTP_HOST</code>, <code>DLP_CHECK_SMTP_PORT</code>, <code>DLP_CHECK_SMTP_USER</code>, <code>DLP_CHECK_SMTP_PASSWORD</code>, <code>DLP_CHECK_DIGEST_FROM</code>, <code>DLP_CHECK_DIGEST_TO</code> for e-mail (sent over STARTTLS with the mail server's certificate verified; trust a private CA with <code>SSL_CERT_FILE</code>, and the password is never sent without TLS); <code>DLP_CHECK_DIGEST_WEBHOOK</code> (an https Teams or Slack incoming webhook) for chat; <code>DLP_CHECK_NOTIFY</code> = <code>noteworthy</code> (default), <code>always</code> or <code>never</code>. Without the browser: <code>RUN_Continuous_Evaluation.bat</code> from Task Scheduler, or <code>python continuous_eval.py --once</code> from cron or the container.</p>
       </section>
 
       <section class="dg-sec" aria-labelledby="dgSrcH">

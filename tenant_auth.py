@@ -153,13 +153,15 @@ def _mask(value: str, keep: int = 3) -> str:
 
 
 def mask_secrets(text: str, creds: Dict[str, Any]) -> str:
-    """`text` with every secret value of `creds` replaced by its mask, so
-    an error can be shown without leaking a password or a key."""
+    """`text` with every secret value of `creds` replaced by a fixed
+    '[redacted <field>]', so an error can be shown without leaking a
+    password or a key. No character and no length of a secret is kept;
+    partial masking (_mask) is only for identifiers such as client_id."""
     out = str(text or "")
     for k in SECRET_KEYS:
         v = str((creds or {}).get(k) or "")
         if v and v in out:
-            out = out.replace(v, _mask(v))
+            out = out.replace(v, f"[redacted {k}]")
     return out
 
 

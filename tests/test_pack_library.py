@@ -118,6 +118,22 @@ def test_one_json_bundle():
     assert v["channels"] == ["web"]
 
 
+def test_a_hostile_proximity_never_reaches_the_preview_page(lib_client):
+    """Uploaded packs are shared files: a proximity that is not a number is
+    refused on the server, and the preview page escapes every value it shows."""
+    b = _bundle()
+    b["dictionaries"][0]["proximity"] = "<img src=x onerror=alert(1)>"
+    with pytest.raises(ValueError, match="proximity must be a whole number"):
+        pl.assemble_pack([{"name": "acme.json", "content": json.dumps(b)}])
+    r = lib_client.post("/api/pack-library/preview", json={"files": [{"name": "acme.json", "content": json.dumps(b)}]})
+    assert r.status_code == 200 and not r.json()["ok"] and "onerror" not in r.text and "<img" not in r.text
+    b["dictionaries"][0]["proximity"] = "150"
+    pack = pl.assemble_pack([{"name": "acme.json", "content": json.dumps(b)}])
+    assert pack["dictionaries"][0]["proximity"] == 150, "a numeric string is kept as a number"
+    js = lib_client.get("/static/advanced.js").text
+    assert "E(String(d.proximity))" in js and "' + d.proximity" not in js
+
+
 def test_three_files_named_or_recognised_by_content():
     b = _bundle()
     pack = pl.assemble_pack([
