@@ -7,6 +7,18 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Every pack deploys the way ZBP Enterprise did, and a regression test holds them to it
+- **What you asked for.** "This finally worked; every pack needs to deploy like that", and regression testing for all packs.
+- **Now** `tests/test_pack_regression.py` deploys every shipped pack one channel at a time (Web, Endpoint, SaaS, Email) against a fake tenant that answers the way the real one did:
+  - its SaaS tenant list holds only SharePoint;
+  - the Exchange email tenant is known only from DLP_Rule_1;
+  - it refuses SaaS rules at rank 0;
+  - it refuses Email rules without an email tenant.
+
+  For all six packs, every channel deploys in full with as many rules as the pack has Web rules (cjis 14, fed 17, banking 13, healthcare 12, ZBP Enterprise 9, ZBP Source Code 14). No rule fails, and every Email rule is scoped to the Exchange tenant.
+- **One refused request per run, not one per SaaS rule.** Every SaaS rule used to try rank 0 first, get refused, and then retry at rank 7: 9 refusals for ZBP and 17 for the Fed pack, exactly the kind of burst that gets the client blocked. Once ZIA refuses rank 0 in a run, the rest of that run's SaaS rules now start at the rank it accepted, and the log says so. The test fails without this change.
+- **Verified live, read-only.** The preflight of every pack against the real tenant: every channel of every pack is create or reuse, none blocked, and the email tenant was found on DLP_Rule_1. ZBP Enterprise shows Web and Endpoint already in place, 3 SaaS and 9 Email rules to go.
+
 ### The one-channel note is emphasised, not shouted
 - **What you asked for.** "Make the bold note less bold; it's abrasively bold and large."
 - **Now** the note on every pack card is in sentence case ("Install one channel at a time. …"), at body size (1rem, was 1.15rem) and semi-bold (600, was 800). It keeps its highlighted box, so it still stands out.
