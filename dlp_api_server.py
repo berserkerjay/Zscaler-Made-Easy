@@ -1023,11 +1023,15 @@ def _build_sdk_client(creds: Dict[str, str]):
     for a ZIdentity API client, the SDK's legacy ZIA client for the classic
     sign-in (tenant_auth). Validates every input and never echoes a secret
     in an error."""
+    import zia_rate
     c = _validate_creds(creds)
     cloud, vd, cid, sec = c["cloud"], c["vanity_domain"], c["client_id"], c["client_secret"]
+    # The tenant's API client, for ZIA's rate limits: its requests, holds and
+    # refusals are counted apart from any other tenant's.
+    rate_key = zia_rate.key_for(cloud, vd or c.get("username"), cid or c.get("username"))
     if c["auth_method"] == tenant_auth.LEGACY:
         try:
-            return tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT)
+            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key)
         except ImportError:
             raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
         except Exception as e:  # noqa: BLE001 — the helper signs in as it is built
@@ -1056,7 +1060,16 @@ def _build_sdk_client(creds: Dict[str, str]):
     except Exception as e:
         reason = str(e).replace(sec, mask_secret(sec))[:200]
         raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
-    return client
+    # Every ZIA answer on this client's session feeds the next preflight's rate-limit check.
+    return zia_rate.attach_client(client, rate_key)
+
+
+def _keyed(client, fn, *args):
+    """Run `fn` with the client's tenant key, so its waits and holds draw on
+    that tenant's ZIA rate limits (a deploy or removal job thread)."""
+    import zia_rate
+    with zia_rate.using(zia_rate.key_of(client)):
+        return fn(*args)
 
 
 def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
@@ -1700,7 +1713,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
-    job = pack_jobs.start("removal", lambda log, cancel: _run_removal(client, req, rec, packs, log, cancel), label=label)
+    job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label)
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2292,7 +2305,7 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    job = pack_jobs.start("deploy", lambda log, cancel: _run_apply(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 

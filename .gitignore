@@ -42,7 +42,8 @@ launcher.log
 local_settings.bat
 local_settings.env
 deployments.json
-zia_rate_state.json
+zia_rate_state.json*
+.zia_rate-*
 ui_token.txt
 audit.log*
 
