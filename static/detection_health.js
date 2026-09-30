@@ -129,6 +129,10 @@ async function _dhApplyFlow(tenant, p, direction, box, host) {
   if (cb && go) cb.addEventListener('change', () => { go.disabled = !cb.checked; });
   box.querySelector('[data-cancel]').addEventListener('click', () => { box.innerHTML = ''; });
   if (go) go.addEventListener('click', async () => {
+    // The rate-limit check: one write per rule that changes (Endpoint DLP rules have their own limit), then one activation.
+    const steps = (pv.steps || []).filter(s => s.ok && !s.noop);
+    const counts = { write: steps.filter(s => s.channel !== 'endpoint').length, endpoint_rules: steps.filter(s => s.channel === 'endpoint').length, activate: 1 };
+    if (window.zdRateGate && !(await window.zdRateGate(counts, creds, `${verb} ${steps.length} rule change(s).`))) return;
     go.disabled = true;
     box.querySelector('.df-hint').textContent = `${verb === 'Apply' ? 'Applying' : 'Rolling back'}… each rule is updated and read back.`;
     try {

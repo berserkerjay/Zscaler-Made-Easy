@@ -265,6 +265,7 @@ GUI_ADDONS = [
     ("dashboard.css", "style"),
     ("icons.js", "script"),         # first: the symbol set every page and add-on draws its icons from
     ("ui_auth.js", "script"),       # the in-app unlock and notice dialogs the fetch wrapper and the guide use
+    ("rate_gate.js", "script"),     # the rate-limit check every deploy and delete confirms with
     ("deploy_studio.js", "script"),
     ("explain.js", "script"),
     ("guide.js", "script"),
@@ -1029,9 +1030,10 @@ def _build_sdk_client(creds: Dict[str, str]):
     # The tenant's API client, for ZIA's rate limits: its requests, holds and
     # refusals are counted apart from any other tenant's.
     rate_key = zia_rate.key_for(cloud, vd or c.get("username"), cid or c.get("username"))
+    rate_label = f"{vd or '?'} ({cloud or 'production'})"   # as the deployment log names the tenant
     if c["auth_method"] == tenant_auth.LEGACY:
         try:
-            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key)
+            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key, rate_label)
         except ImportError:
             raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
         except Exception as e:  # noqa: BLE001 — the helper signs in as it is built
@@ -1061,7 +1063,7 @@ def _build_sdk_client(creds: Dict[str, str]):
         reason = str(e).replace(sec, mask_secret(sec))[:200]
         raise HTTPException(status_code=401, detail=f"Authentication failed for client_id={mask_secret(cid)}: {reason}")
     # Every ZIA answer on this client's session feeds the next preflight's rate-limit check.
-    return zia_rate.attach_client(client, rate_key)
+    return zia_rate.attach_client(client, rate_key, rate_label)
 
 
 def _keyed(client, fn, *args):
@@ -1588,6 +1590,33 @@ def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) ->
     if rec.get("tenant_label") and rec["tenant_label"] != label:
         raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
     return rec
+
+
+class RateCheckRequest(TenantCredsRequest):
+    """A write about to be sent: how many requests of each ZIA rate-limit
+    bucket (write, delete, endpoint_rules, cloud_app, activate)."""
+    counts: Dict[str, int] = {}
+    profile_id: str = ""
+
+
+@app.post("/api/rate-check")
+async def rate_check(req: RateCheckRequest):
+    """Will these requests succeed at ZIA's rate limits for this tenant?
+    The same check as the preflight's, for any deploy or delete: the
+    verdict, the API plan and the tenant's track record. Reads only the
+    app's own record; nothing is sent to ZIA."""
+    import zia_rate
+    key, label = "", None
+    try:
+        c = _validate_creds(_tenant_creds(req))
+        key = zia_rate.key_for(c["cloud"], c["vanity_domain"] or c.get("username"), c["client_id"] or c.get("username"))
+        label = f"{c['vanity_domain'] or '?'} ({c['cloud'] or 'production'})"
+    except HTTPException:
+        pass   # no tenant to tell apart: the unkeyed record still applies
+    counts = {k: max(0, min(int(v or 0), 5000)) for k, v in (req.counts or {}).items() if k in zia_rate.DEFAULTS and k != "read"}
+    f = await asyncio.to_thread(zia_rate.forecast, counts, key=key, tenant_label=label)
+    f["detail"] = zia_rate.history_text(f)
+    return f
 
 
 @app.post("/api/dlp-packs/removal/preflight")

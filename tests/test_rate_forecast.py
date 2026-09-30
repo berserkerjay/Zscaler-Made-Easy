@@ -59,7 +59,7 @@ def test_every_pack_card_has_a_rate_note():
 def test_a_quiet_hour_goes_straight_through_at_the_documented_limits(clock):
     f = zia_rate.forecast({"write": 90, "endpoint_rules": 14, "activate": 1}, key=A)
     assert f["severity"] == "ok" and f["title"] == "Will succeed", f["verdict"]
-    assert f["seconds"] == pytest.approx(149), "90 writes at 1/s, then 14 Endpoint rules (the 11th waits for the minute), in that order"
+    assert f["seconds"] == pytest.approx(89 * 1.25 + 60), "90 writes (with the per-second margin) at 1/s, then 14 Endpoint rules (the 11th waits for the minute), in that order"
 
 
 def test_recent_requests_make_the_forecast_pause_and_say_why(clock):
@@ -177,11 +177,11 @@ def test_the_container_state_of_the_refused_run(clock, tmp_path, monkeypatch):
 
 
 def test_every_zia_answer_on_a_tenants_session_is_observed(clock):
-    zia_rate.observe("GET", "https://api.zsapi.net/zia/api/v1/dlpDictionaries", 200, key=A)
-    zia_rate.observe("GET", "https://api.zsapi.net/zpa/mgmtconfig/v1/admin/customers/1/segment", 200, key=A)   # not ZIA
+    zia_rate.observe("GET", "https://api.zsapi.net/zpa/mgmtconfig/v1/admin/customers/1/segment", 200,
+                     {"x-ratelimit-limit": "10", "x-ratelimit-remaining": "0", "x-ratelimit-reset": "5"}, key=A)   # not ZIA
+    assert "read" not in zia_rate._t(A).server
     zia_rate.observe("GET", "https://zsapi.zscaler.net/api/v1/webDlpRules", 200,
                      {"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "900", "x-ratelimit-reset": "1200"}, key=A)
-    assert zia_rate.forecast({"write": 1}, key=A)["sent_last_hour"] == {"read": 2}
     assert zia_rate._t(A).server["read"]["remaining"] == 900
     zia_rate.observe("PUT", "https://api.zsapi.net/zia/api/v1/endpointDlpRules/5", 403, None, '{"message":"Forbidden: role"}', key=A)
     assert not zia_rate._t(A).refused, "a permission 403 is not a rate refusal"
@@ -281,3 +281,92 @@ def test_crushing_zscalers_limits_gets_the_sarcasm_it_deserves(clock, monkeypatc
     assert zia_rate.forecast({"write": 10}, key=B)["verdict"].startswith("Will succeed: goes straight"), "no sarcasm when nothing is crushed"
     monkeypatch.setenv("DLP_CHECK_RATE_TONE", "plain")
     assert zia_rate.forecast({"write": 10}, key=A)["verdict"].startswith("Likely to fail")
+
+
+def test_the_check_carries_the_api_plan_and_the_tenants_track_record(clock, tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    at = datetime.fromtimestamp(clock[0] - 3 * 86400, timezone.utc).isoformat(timespec="seconds")
+    log = tmp_path / "deployments.json"
+    log.write_text(json.dumps({"version": 1, "deployments": [
+        {"id": "d1", "at": at, "tenant_label": "acme (zscaler)", "created": [{"status": "created"}]},
+        {"id": "d2", "at": at, "tenant_label": "acme (zscaler)", "created": [{"status": "failed", "error": "Resource Access Blocked"}],
+         "undo": {"at": at, "results": [{"status": "deleted"}]}},
+        {"id": "d3", "at": at, "tenant_label": "other (zscaler)", "created": [{"status": "failed", "error": "Resource Access Blocked"}]}]}))
+    monkeypatch.setenv("DLP_CHECK_DEPLOYMENTS", str(log))
+    zia_rate._t(A).sent["endpoint_rules"].extend(clock[0] - 600 + i for i in range(4))
+    f = zia_rate.forecast({"write": 30, "endpoint_rules": 12, "activate": 1}, key=A, tenant_label="acme (zscaler)")
+    assert len(f["plan"]) == 3 and f["plan"][1].startswith("12 Endpoint DLP rules: ZIA allows 10/min and 40/hr; 4 already sent this hour")
+    assert f["plan"][2].startswith("1 activation: "), "one activation, singular"
+    assert f["success"]["track_record"] == {"runs": 3, "clean": 2, "percent": 67}, "d1, d2 and d2's removal; the other tenant's run is not counted"
+    assert f["success"]["text"].startswith("Outlook: good. Track record: 2 of 3")
+
+
+def test_the_popups_show_the_check():
+    import pathlib
+    js = (pathlib.Path(__file__).resolve().parents[1] / "static" / "deploy_studio.js").read_text(encoding="utf-8")
+    assert "function _dzRateText(f)" in js and "Deploy anyway?" in js
+    assert "_dzRateText(R.plan.rate_forecast)" in js, "the removal's final confirmation carries the check"
+    assert js.count("_dzRateCheck(R.rate_forecast") == 2, "the preflight and the approve screen"
+
+
+def test_every_deploy_and_delete_asks_the_rate_check_first(clock):
+    """Pack deploy and removal have it in their popups; the migration's post,
+    delete-all and enable, the remediations and the proposals ask
+    /api/rate-check before they send anything."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / "static"
+    index = (root / "index.html").read_text(encoding="utf-8")
+    assert index.count("window.zdRateGate(") == 5, "delete-all, enable, post, and both remediation paths"
+    assert "window.zdRateGate(" in (root / "detection_health.js").read_text(encoding="utf-8")
+    assert "/static/rate_gate.js" in (root / "report_health.html").read_text(encoding="utf-8")
+    gate = (root / "rate_gate.js").read_text(encoding="utf-8")
+    assert "/api/rate-check" in gate and "window.confirm" in gate
+
+
+def test_the_rate_check_endpoint(clock, monkeypatch):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    monkeypatch.setattr(srv, "_tenant_creds", lambda req: {"cloud": "zscaler", "vanity_domain": "acme", "client_id": "abcdef123456",
+                                                             "client_secret": "s" * 20, "auth_method": "oneapi", "username": "", "password": "", "api_key": ""})
+    monkeypatch.setattr(srv, "_validate_creds", lambda c: c)
+    key = zia_rate.key_for("zscaler", "acme", "abcdef123456")
+    zia_rate._t(key).sent["write"].extend(clock[0] - 200 + i for i in range(90))
+    zia_rate.note_refusal("write", "Resource Access Blocked", key=key, status=403)
+    c = TestClient(srv.app)
+    token = __import__("security").ui_token()
+    r = c.post("/api/rate-check", json={"counts": {"delete": 40, "activate": 1, "bogus": 3}}, headers={"X-UI-Token": token})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f["severity"] == "fail" and {b["bucket"] for b in f["buckets"]} == {"delete", "activate"} and f["plan"] and f["success"]["text"]
+
+
+def test_every_zia_request_on_a_tenants_session_is_paced(clock, monkeypatch):
+    """Reads at 2 a second (the app sent 6-7 and ZIA blocked the client), with
+    the per-second margin; a write its caller already paced is not paced twice;
+    reads do not wait for a hold on writes."""
+    import requests
+    sleeps = []
+    monkeypatch.setattr(zia_rate, "_sleep", lambda s: (sleeps.append(round(s, 3)), clock.__setitem__(0, clock[0] + s)))
+    sent = []
+    s = requests.Session()
+    s.send = lambda request, **kw: sent.append((request.method, clock[0]))
+    zia_rate.attach(s, A)
+    zia_rate.attach(s, A)   # idempotent
+    for _ in range(5):
+        s.send(requests.Request("GET", "https://api.zsapi.net/zia/api/v1/dlpDictionaries").prepare())
+    times = [t for _, t in sent]
+    gaps = [round(b - a, 3) for a, b in zip(times, times[2:])]
+    assert all(g >= 1.25 for g in gaps), ("never more than 2 reads in 1.25 s", times)
+    assert len(zia_rate._t(A).sent["read"]) == 5
+    zia_rate.wait("POST", "/dlpDictionaries", key=A)          # the caller paces its write
+    before = len(zia_rate._t(A).sent["write"])
+    s.send(requests.Request("POST", "https://api.zsapi.net/zia/api/v1/dlpDictionaries").prepare())
+    assert len(zia_rate._t(A).sent["write"]) == before, "not counted or paced twice"
+    s.send(requests.Request("POST", "https://api.zsapi.net/zia/api/v1/dlpEngines").prepare())
+    assert len(zia_rate._t(A).sent["write"]) == before + 1, "an unpaced write is paced at the session"
+    zia_rate.hold(3600, key=A)
+    t0 = clock[0]
+    s.send(requests.Request("GET", "https://api.zsapi.net/zia/api/v1/dlpEngines").prepare())
+    assert clock[0] - t0 < 5, "a read does not wait for a hold on writes"
+    s.send(requests.Request("GET", "https://api.zsapi.net/zpa/mgmtconfig/v1/x").prepare())
+    assert sent[-1][0] == "GET", "non-ZIA requests pass untouched"

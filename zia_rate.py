@@ -52,8 +52,12 @@ from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Tuple
 
 DEFAULTS = {"write": "1/s,400/h", "delete": "1/s,400/h", "endpoint_rules": "10/m,40/h",
             "cloud_app": "10/m,40/h", "activate": "10/m,40/h",
-            # GETs: counted from what the app sent (the session hook), never paced here.
+            # GETs: paced at the tenant's session (attach), 2 a second and 1000 an hour.
             "read": "2/s,1000/h"}
+# A per-second limit is paced with this margin: two requests exactly one
+# second apart can reach ZIA in the same second (network jitter), and ZIA
+# answers "Rate Limit (1/SECOND) exceeded". DLP_CHECK_ZIA_SECOND_MARGIN.
+SECOND_MARGIN = float(os.environ.get("DLP_CHECK_ZIA_SECOND_MARGIN", "1.25") or 1.25)
 _ENV = {k: f"DLP_CHECK_ZIA_LIMIT_{k.upper()}" for k in DEFAULTS}
 _UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0}
 _WORDS = {"write": "write (POST/PUT)", "delete": "delete", "endpoint_rules": "Endpoint DLP rule write",
@@ -110,6 +114,11 @@ def key_for(cloud: str, who: str, client: str) -> str:
 def key_of(client: Any) -> str:
     """The key stamped on an SDK client by the app (attach_client), or ""."""
     return str(getattr(client, "_zia_rate_key", "") or "")
+
+
+def label_of(client: Any) -> Optional[str]:
+    """The tenant label stamped on an SDK client, as the deployment log has it."""
+    return getattr(client, "_zia_rate_label", None) or None
 
 
 def current_key() -> str:
@@ -175,7 +184,7 @@ def _tenants_from(data: Dict[str, Any], now: float) -> Dict[str, Dict[str, Any]]
         last = max((t for q in sent.values() for t in q), default=None)
         if last is not None:
             refused.append({"at": last, "bucket": "write", "kind": "blocked", "reset": None,
-                            "message": "Resource Access Blocked (read from the earlier run's one-hour hold)", **_windows(sent, last)})
+                            "message": "Resource Access Blocked", **_windows(sent, last)})
     return {"": {"sent": sent, "hold_until": hold, "refused": refused, "server": data.get("server") or {}}}
 
 
@@ -300,10 +309,15 @@ def limits_default(bucket: str) -> List[Tuple[int, float]]:
     return out
 
 
+def _paced(rules: List[Tuple[int, float]]) -> List[Tuple[int, float]]:
+    """Limits as the app paces them: per-second windows with SECOND_MARGIN."""
+    return [(n, w * SECOND_MARGIN if w <= 1.0 else w) for n, w in rules]
+
+
 def _sim_rules(bucket: str) -> List[Tuple[int, float]]:
-    """The limits a forecast applies: the app paces at its setting, ZIA
-    refuses at its own, so both, the stricter binding."""
-    return sorted(set(limits(bucket)) | set(limits_default(bucket)), key=lambda r: r[1])
+    """The limits a forecast applies: the app paces at its setting (with the
+    per-second margin), ZIA refuses at its own, so both, the stricter binding."""
+    return sorted(set(_paced(limits(bucket))) | set(limits_default(bucket)), key=lambda r: r[1])
 
 
 def _longest(bucket: str) -> float:
@@ -336,7 +350,7 @@ def _delay(t: _Tenant, bucket: str, now: float) -> Tuple[float, Optional[Tuple[i
     while sent and now - sent[0] >= longest:
         sent.popleft()
     wait_s, binding = 0.0, None
-    for n, w in limits(bucket):
+    for n, w in _paced(limits(bucket)):
         recent = [x for x in sent if now - x < w]
         if len(recent) >= n:
             d = recent[-n] + w - now
@@ -360,12 +374,15 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
             _load()
             t = _t(key)
             now = _now()
-            # A hold is slept through once: it ends at a fixed moment.
-            held = 0.0 if waited_hold else t.hold[0] - now
+            # A hold is slept through once: it ends at a fixed moment. Reads
+            # do not wait for it: a preview must still be able to read.
+            held = 0.0 if (waited_hold or bucket == "read") else t.hold[0] - now
             d, binding = (0.0, None) if held > 0 else _delay(t, bucket, now)
             if held <= 0 and d <= 0:
                 t.sent[bucket].append(now)
-                _save()
+                if bucket != "read" or len(t.sent[bucket]) % 25 == 0:
+                    _save()
+                _ctx.prepaced = now    # the session does not pace the request this wait was for again
                 return total
         if held > 0:
             if log and not told_hold:
@@ -480,24 +497,14 @@ def _zia_path(url: str) -> Optional[str]:
 
 
 def observe(method: str, url: str, status: Optional[int], headers: Any = None, text: str = "", *, key: Optional[str] = None) -> None:
-    """One ZIA answer, seen by a session hook (attach): reads are counted
-    (writes are counted by wait), and ZIA's rate-limit headers and rate
-    refusals are kept for the next preflight. Takes the lock only briefly."""
+    """One ZIA answer, seen by a session hook (attach): ZIA's rate-limit
+    headers and rate refusals are kept for the next preflight (requests are
+    counted when they are paced, by wait). Takes the lock only briefly."""
     path = _zia_path(url)
     if path is None or "authenticatedsession" in path.lower():
         return
     m = (method or "GET").upper()
     bucket = bucket_of(m, path)
-    if m == "GET":
-        with _lock:
-            _load()
-            q = _t(key).sent["read"]
-            now = _now()
-            q.append(now)
-            while q and now - q[0] >= HOUR:
-                q.popleft()
-            if len(q) % 25 == 0:
-                _save()
     if headers is not None:
         note_headers(bucket, headers, key=key)
     if status in (403, 429) and _is_rate_answer(status, text):
@@ -508,10 +515,35 @@ def observe(method: str, url: str, status: Optional[int], headers: Any = None, t
         note_refusal(bucket, (text or f"HTTP {status}")[:160], key=key, reset=reset, status=status)
 
 
+def _pace_session(session: Any, key: str) -> None:
+    """Pace every ZIA request `session` sends for tenant `key` before it goes
+    out: reads at ZIA's read limit, writes at theirs, unless the caller has
+    just paced this request itself (wait marks it)."""
+    if getattr(session, "_zia_rate_paced", False):
+        return
+    real = session.send
+
+    def send(request, **kwargs):
+        path = _zia_path(getattr(request, "url", ""))
+        if path is not None and "authenticatedsession" not in path.lower():
+            mark = getattr(_ctx, "prepaced", None)
+            _ctx.prepaced = None
+            if mark is None or not (0 <= _now() - mark < 5):   # paced by its caller only just now
+                wait(getattr(request, "method", "GET"), path, key=key)
+                _ctx.prepaced = None
+        return real(request, **kwargs)
+
+    session.send = send
+    session._zia_rate_paced = True
+
+
 def attach(session: Any, key: str) -> Any:
-    """Count every ZIA request `session` sends for tenant `key`: a response
-    hook, so only this tenant's session is observed and nothing blocks. The
-    body of a 403/429 is read only for a request that was not streamed."""
+    """Pace and count every ZIA request `session` sends for tenant `key`
+    (_pace_session), and see ZIA's answers with a response hook, so only
+    this tenant's session is observed. The body of a 403/429 is read only
+    for a request that was not streamed."""
+    with contextlib.suppress(Exception):
+        _pace_session(session, key)
     def hook(resp, *args, **kwargs):
         try:
             req = getattr(resp, "request", None)
@@ -529,12 +561,15 @@ def attach(session: Any, key: str) -> Any:
     return session
 
 
-def attach_client(client: Any, key: str) -> Any:
-    """Stamp an SDK client with its tenant key, and give its request executor
-    a session that reports ZIA's answers (attach). A client with no executor
-    to hook (the legacy one) is only stamped."""
+def attach_client(client: Any, key: str, label: Optional[str] = None) -> Any:
+    """Stamp an SDK client with its tenant key (and the tenant label the
+    deployment log uses), and give its request executor a session that
+    reports ZIA's answers (attach). A client with no executor to hook (the
+    legacy one) is only stamped."""
     with contextlib.suppress(Exception):
         setattr(client, "_zia_rate_key", key)
+        if label:
+            setattr(client, "_zia_rate_label", label)
     ex = getattr(client, "_request_executor", None)
     if ex is not None and hasattr(ex, "set_session"):
         with contextlib.suppress(Exception):
@@ -545,6 +580,8 @@ def attach_client(client: Any, key: str) -> Any:
 
 # ── the forecast ─────────────────────────────────────────────────────────
 
+_SINGULAR = {"write": "dictionary, engine or rule (POST/PUT)", "delete": "delete", "endpoint_rules": "Endpoint DLP rule",
+             "cloud_app": "Cloud App Control rule", "activate": "activation", "read": "read (GET)"}
 BUCKET_LABELS = {"write": "dictionaries, engines and rules (POST/PUT)", "delete": "deletes",
                  "endpoint_rules": "Endpoint DLP rules", "cloud_app": "Cloud App Control rules", "activate": "activations",
                  "read": "reads (GET)"}
@@ -647,6 +684,32 @@ def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[
     return sorted(out)
 
 
+def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
+    """This tenant's deploys and removals in the deployment log of the last
+    week, and how many finished without ZIA refusing a request for its rate."""
+    try:
+        import deployments
+        rows = deployments._read()["deployments"]
+    except Exception:  # noqa: BLE001
+        rows = []
+    runs = clean = 0
+    for r in rows:
+        if tenant_label and r.get("tenant_label") not in (None, tenant_label):
+            continue
+        for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
+                              ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
+            try:
+                t = datetime.fromisoformat(str(when)).timestamp() if when else None
+            except ValueError:
+                t = None
+            if t is None or now - t >= HISTORY_SECONDS:
+                continue
+            runs += 1
+            if not any(isinstance(x, dict) and _is_rate_answer(None, str(x.get("error") or "")) for x in results):
+                clean += 1
+    return {"runs": runs, "clean": clean, "percent": round(100 * clean / runs) if runs else None}
+
+
 def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[str] = None,
              tenant_label: Optional[str] = None) -> Dict[str, Any]:
     """Will a run of `counts` requests per bucket succeed at ZIA's limits,
@@ -679,7 +742,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         zia_used = len(_prior(bucket, [], server, now))
         rows.append({"bucket": bucket, "label": BUCKET_LABELS.get(bucket, bucket), "requests": n, "limits": _rules_text(bucket),
                      "used_last_hour": len(sent[bucket]), "zia_reports_used": zia_used or None, "hourly_limit": hourly,
-                     "seconds": times[-1] - now, "over_hourly": bool(hourly and n > hourly)})
+                     "seconds": times[-1] - now, "duration": times[-1] - times[0], "over_hourly": bool(hourly and n > hourly)})
     total = max(0.0, start - now) if rows else 0.0
     pause = max(0.0, total - (fresh_end - now)) if rows else 0.0
     # Busiest 5 minutes of writes in this run, counting what was already sent.
@@ -738,7 +801,20 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         quip = _quip(case, now, writes=tol, hourly=next((r["hourly_limit"] for r in rows if r["over_hourly"] or r["used_last_hour"]), None))
         if quip:
             verdict = f"{quip} {verdict}"
-    return {"buckets": rows, "seconds": total, "pause_seconds": pause, "verdict": verdict, "severity": severity,
+    # The API plan, one line per kind of request, and the success outlook with this tenant's track record.
+    first = min((r["seconds"] - r["duration"] for r in rows), default=0.0)
+    plan = ([f"Starts at {_clock(now + first)}, once ZIA's limit has reset ({_human(first)} from now)"] if first >= 60 else []) + [
+        f"{r['requests']} {_SINGULAR.get(r['bucket'], r['label']) if r['requests'] == 1 else r['label']}: ZIA allows {r['limits']}; "
+        f"{r['used_last_hour']} already sent this hour"
+        + (f" (ZIA counts {r['zia_reports_used']})" if (r['zia_reports_used'] or 0) > r['used_last_hour'] else "")
+        + f"; takes about {_human(max(1.0, r['duration']))}" for r in rows]
+    record = _track_record(now, tenant_label) if use_recent else {"runs": 0, "clean": 0, "percent": None}
+    outlook = {"ok": "good", "warn": "good, but slow", "fail": "poor"}[severity]
+    success = {"outlook": outlook, "track_record": record,
+               "text": f"Outlook: {outlook}. " + (f"Track record: {record['clean']} of {record['runs']} of this tenant's runs in the last week "
+                                                 f"finished without ZIA refusing them for its rate ({record['percent']}%)."
+                                                 if record["runs"] else "Track record: no deploys or removals of this tenant in the last week.")}
+    return {"buckets": rows, "plan": plan, "success": success, "seconds": total, "pause_seconds": pause, "verdict": verdict, "severity": severity,
             "title": {"ok": "Will succeed", "warn": "Will succeed, with pauses", "fail": "Likely to fail"}[severity],
             "run_after": run_after, "refused_last_hour": len(blocked_hour) + len(limited), "peak_5min_writes": peak5,
             "tolerated": {"at": ceiling["at"], "writes_5m": ceiling["writes_5m"], "writes_1m": ceiling.get("writes_1m"),
@@ -863,3 +939,4 @@ def reset() -> None:
         for k in [k for k in _tenants if k]:
             del _tenants[k]
         _loaded[0] = True   # a reset is a fresh start: do not read the file back
+    _ctx.prepaced = None
