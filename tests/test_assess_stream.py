@@ -68,7 +68,7 @@ def test_checks_run_in_parallel_and_a_stuck_check_does_not_hold_the_run(monkeypa
     assert elapsed < 6, elapsed
     assert len(set(seen)) > 1, "checks did not run on more than one thread"
     stuck_ev = next(d for k, d in ev if k == "check" and d["id"] == "stuck")
-    assert stuck_ev["status"] == "INFO" and "timed out" in stuck_ev["detail"]
+    assert stuck_ev["status"] == "ERROR" and "timed out" in stuck_ev["detail"]
     complete = next(d for k, d in ev if k == "complete")
     assert [c["id"] for c in complete["checks"]] == [c[0] for c in checks]   # original order kept
     assert complete["journey"] is None and complete["metadata"]["elapsed_seconds"] >= 0
