@@ -610,9 +610,10 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
         out = ops.call(clears_on_the_fourth, op="create", kind="policy", name="R", log=logs.append, zia="ZIA")
         assert ops.stop_reason() is None
     assert out.ok and out.id == 9 and out.attempts == 4 and calls["n"] == 4
-    assert acts == [] and sleeps == list(ops.BLOCKED_WAIT_SECONDS[:3]) == [30.0, 60.0, 90.0], "Resource Access Blocked waits longer; nothing is activated mid-run"
-    assert any("(HTTP 403); waiting 30s and trying again (1 of 5)" in l for l in logs) and any("succeeded after the 403 (attempt 4)" in l for l in logs)
-    assert not any("activation requested" in l for l in logs) and any("nothing is activated until the run is done" in l for l in logs)
+    assert acts == [] and _windows(sleeps) == 3 and max(sleeps) <= 5, "each refusal waits out the limit's whole window (an hour), in Stop-able steps; nothing is activated"
+    assert any("pausing the whole run until the limit has completely reset" in l for l in logs)
+    assert any("then trying again (1 of 3)" in l for l in logs) and any("succeeded after ZIA's rate limit reset (attempt 4)" in l for l in logs)
+    assert not any("activation requested" in l for l in logs) and any("Nothing is sent meanwhile" in l for l in logs)
     # Never clears, plain Forbidden: five more tries, then failed, and a forbidden client still stops the run as before.
     acts.clear(); sleeps.clear(); logs.clear()
     always = lambda: (None, None, {"status": 403, "code": None, "message": "Forbidden"})
@@ -627,11 +628,11 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     blocked = lambda: (None, None, {"status": 403, "code": None, "message": "Resource Access Blocked"})
     with ops.run_scope():
         out = ops.call(blocked, op="create", kind="dictionary", name="D1", log=logs.append, zia="ZIA")
-        assert not out.ok and out.attempts == 6 and acts == [] and sleeps == list(ops.BLOCKED_WAIT_SECONDS)
-        assert ops.stop_reason() == ops.FORBIDDEN_STOP_REASON and "kept refusing it after 5 waits" in ops.stop_reason()
+        assert not out.ok and out.attempts == 1 + ops.RATE_WINDOWS and acts == [] and _windows(sleeps) == ops.RATE_WINDOWS
+        assert ops.stop_reason() == ops.RATE_STOP_REASON
         nxt = ops.call(blocked, op="create", kind="dictionary", name="D2", log=logs.append, zia="ZIA")
-        assert nxt.code == ops.STOPPED and acts == [] and sleeps == list(ops.BLOCKED_WAIT_SECONDS), "nothing more is sent or activated"
-    assert any(l.startswith("STOPPED — nothing more is written. ZIA refused a write with a 403") for l in logs)
+        assert nxt.code == ops.STOPPED and acts == [] and _windows(sleeps) == ops.RATE_WINDOWS, "nothing more is sent or activated"
+    assert any(l.startswith("STOPPED — nothing more is written. ZIA kept refusing writes for its rate limit") for l in logs)
     # A 403 followed by a rate limit on the retry: the 429 is waited out like any other write, then it succeeds.
     acts.clear(); sleeps.clear(); logs.clear(); calls["n"] = 0
 
@@ -645,7 +646,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     with ops.run_scope():
         out = ops.call(blocked_then_busy, op="create", kind="engine", name="E", log=logs.append, zia="ZIA")
         assert ops.stop_reason() is None
-    assert out.ok and out.id == 3 and out.attempts == 3 and acts == [] and sleeps == [30.0, ops.BACKOFF_SECONDS]
+    assert out.ok and out.id == 3 and out.attempts == 3 and acts == [] and _windows(sleeps) == 2, "a 429 after the block is a rate refusal too: another full window"
     # A 401 is refused credentials, not a 403: no activation, no wait.
     acts.clear(); sleeps.clear()
     unauthorized = lambda: (None, None, {"status": 401, "code": None, "message": "Not authorized"})
@@ -665,7 +666,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     acts.clear(); sleeps.clear(); logs.clear(); calls["n"] = 0
     with ops.run_scope():
         out = ops.call(clears_on_the_fourth, op="update", kind="dictionary", name="D", log=logs.append, zia="ZIA")
-    assert out.ok and acts == [] and sleeps == list(ops.BLOCKED_WAIT_SECONDS[:3])
+    assert out.ok and acts == [] and _windows(sleeps) == 3
     # A rank refusal is not retried; a read is not; a call without the client is not; a call outside a run is not.
     monkeypatch.setattr(ops, "_activate", lambda zia: (acts.append(zia) or {"activated": True, "status": "ACTIVE", "error": None}))
     acts.clear(); sleeps.clear()
@@ -696,7 +697,7 @@ def test_a_403_on_a_write_is_answered_by_activate_wait_and_up_to_five_more_tries
     with ops.run_scope(cancel):
         out = ops.call(lambda: (sent.append(1), blocked())[1], op="delete", kind="engine", name="E", zia="ZIA")
         assert ops.stop_reason() == ops.CANCELLED_REASON
-    assert sent == [1] and out.attempts == 1 and acts == [] and sleeps == [ops.BLOCKED_WAIT_SECONDS[0]], "the write in flight was the last one sent"
+    assert sent == [1] and out.attempts == 1 and acts == [] and sleeps == [5.0], "the write in flight was the last one sent; Stop ends the wait at its first step"
     # Patching pc.activate (the repository's convention) shows call() activates nothing mid-run.
     monkeypatch.setattr(ops, "_sleep", lambda s: sleeps.append(s))
     monkeypatch.setattr(ops, "_activate", original_activate)
@@ -743,7 +744,7 @@ def test_a_403_that_clears_is_retried_inside_a_deploy_and_a_removal_end_to_end(m
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
     assert time.monotonic() - started < 15, "the waits are the patched sleep, not real time"
     assert res["stopped"] is None and res["summary"].get("failed", 0) == 0 and res["status"] == "applied", res["summary"]
-    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS[:3]), "three waits, one per refused try (the longer schedule for Resource Access Blocked)"
+    assert _windows(sleeps) == 3, "three full-window waits, one per refused try"
     assert not any("activation requested" in l for l in logs) and len(acts) == 1, "no activation inside the retries; the deploy's one activation at the end"
     assert res["activation"] and res["activation"].get("activated")
     first = next(r for r in res["results"] if r["kind"] == "dictionary" and r["status"] == "created")
@@ -755,7 +756,7 @@ def test_a_403_that_clears_is_retried_inside_a_deploy_and_a_removal_end_to_end(m
     plan = pr.plan_removal(client, [pack])
     out = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True, log=logs.append)
     assert out["stopped"] is None and out["summary"].get("failed", 0) == 0 and out["summary"]["deleted"] == plan["remove_count"], out["summary"]
-    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS[:2]) and not any("activation requested" in l for l in logs)
+    assert _windows(sleeps) == 2 and not any("activation requested" in l for l in logs)
     assert not any("will retry after the tenant settles" in l for l in logs), "a 403 is not a delete that a later pass clears"
     assert out["verification"]["clean"]
 
@@ -779,11 +780,11 @@ def test_a_403_that_never_clears_stops_a_deploy_after_one_object_and_seventy_fiv
     rep = pd.preflight(client, [pack], writes_enabled=True)
     logs = []
     res = pd.apply(client, [pack], plan_hash=rep["plan_hash"], writes_enabled=True, verify=False, log=logs.append)
-    assert len(set(attempts)) == 1 and len(attempts) == 6, "one object, six tries"
-    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS) and acts == [], "five waits in all, not per object, and nothing activated"
-    assert res["status"] == "failed" and res["stopped"] == ops.FORBIDDEN_STOP_REASON
+    assert len(set(attempts)) == 1 and len(attempts) == 1 + ops.RATE_WINDOWS, "one object, one try and one per window"
+    assert _windows(sleeps) == ops.RATE_WINDOWS and acts == [], "the waits are for the run, not per object, and nothing is activated"
+    assert res["status"] == "failed" and res["stopped"] == ops.RATE_STOP_REASON
     assert res["summary"]["failed"] == 1 and res["summary"]["skipped"] >= 60, res["summary"]
-    assert all(r["reason"].startswith("not attempted: ZIA refused a write with a 403") or r["reason"].startswith("dependency failed")
+    assert all(r["reason"].startswith("not attempted: ZIA kept refusing writes for its rate limit") or r["reason"].startswith("dependency failed")
                for r in res["results"] if r["status"] == "skipped")
     assert z.dlp_engine.added == [] and z.dlp_web_rules.added == []
     assert not res["activation"], "nothing was written, so the deploy's own activation does not run"
@@ -803,8 +804,8 @@ def test_a_403_that_never_clears_stops_a_deploy_after_one_object_and_seventy_fiv
         svc.delete_rule = refuse
     plan = pr.plan_removal(client, [pack])
     out = pr.remove(client, [pack], plan_hash=plan["plan_hash"], writes_enabled=True)
-    assert len(deletes) == 6 and len(set(deletes)) == 1, "one rule, six tries"
-    assert sleeps == list(ops.BLOCKED_WAIT_SECONDS) and out["stopped"] == ops.FORBIDDEN_STOP_REASON
+    assert len(deletes) == 1 + ops.RATE_WINDOWS and len(set(deletes)) == 1, "one rule, one try and one per window"
+    assert _windows(sleeps) == ops.RATE_WINDOWS and out["stopped"] == ops.RATE_STOP_REASON
     assert out["summary"].get("deleted", 0) == 0 and out["summary"]["failed"] == 1 and out["summary"]["skipped"] == plan["remove_count"] - 1, out["summary"]
     assert z.dlp_engine.items and z.dlp_dictionary.items, "engines and dictionaries were never touched"
     assert len(acts) == 1, "no activation inside the retries; the removal's one activation after the tier that sent a delete"
@@ -840,3 +841,21 @@ def test_writes_wait_for_zias_per_endpoint_rate_limits(monkeypatch):
     waited.clear()
     ops.call(ok, op="create", kind="dictionary", name="D"); ops.call(ok, op="create", kind="dictionary", name="D")
     assert waited == [], "a bucket can be turned off"
+
+
+def _windows(sleeps):
+    """Full-window waits in a list of Stop-able sleep steps (an hour each)."""
+    return round(sum(sleeps) / 3600)
+
+
+def test_the_runs_activation_waits_out_the_activation_limit(monkeypatch):
+    # "The timer on the limit must completely elapse before we reattempt":
+    # the one activation of a run, refused for ZIA's rate, waits the
+    # activation limit's whole window (10/min, 40/hr) and activates again.
+    answers = [{"activated": False, "error": "Rate limit exceeded"}, {"activated": True, "status": "ACTIVE", "error": None}]
+    monkeypatch.setattr(ops.pc, "activate", lambda zia: answers.pop(0))
+    sleeps, logs = [], []
+    monkeypatch.setattr(ops, "_sleep", lambda s: sleeps.append(s))
+    act = ops.activate_once("ZIA", logs.append)
+    assert act["activated"] and _windows(sleeps) == 1 and max(sleeps) <= 5
+    assert any("waiting until the activation limit has completely reset" in l for l in logs)

@@ -108,6 +108,45 @@ def _plat(p: Dict[str, Any]) -> str:
     return _PLAT.get(str(raw).lower(), str(raw) or "?")
 
 
+def device_platform(d: Dict[str, Any]) -> str:
+    """The platform of an enrolled device: the numeric device type (1 iOS,
+    2 Android, 3 Windows, 4 macOS, 5 Linux — zscaler-sdk-python
+    utils.zcc_param_map), else the OS text."""
+    t = str(_v(d, "type", "device_type", "deviceType", default="") or "")
+    if t in ("1", "2", "3", "4", "5"):
+        return _PLAT[t]
+    txt = str(_v(d, "osType", "platform", "os", "osVersion", default="") or "").lower()
+    for k, v in (("win", "Windows"), ("mac", "macOS"), ("darwin", "macOS"), ("linux", "Linux"), ("ios", "iOS"), ("iphone", "iOS"), ("ipad", "iOS"), ("android", "Android")):
+        if k in txt:
+            return v
+    return "?"
+
+
+# The oldest Client Connector release Zscaler still supports on each
+# platform (the latest release, the two before it and the current LTS), from
+# https://help.zscaler.com/product-usage-terms/supported-versions — Windows
+# 4.7 (LTS), macOS 4.5.2 (LTS), Linux 3.7.2 (LTS) and 4.2, iOS 4.4.4,
+# Android 4.0. The LTS moves: keep these in step with that page.
+ZCC_MIN_SUPPORTED = {"Windows": (4, 7), "macOS": (4, 5, 2), "Linux": (3, 7, 2), "iOS": (4, 4, 4), "Android": (4, 0)}
+ZCC_SUPPORTED_REF = "https://help.zscaler.com/product-usage-terms/supported-versions"
+
+
+def version_tuple(v: Any) -> Tuple[int, ...]:
+    return tuple(int(x) for x in re.findall(r"\d+", str(v or ""))[:4])
+
+
+def zcc_unsupported(platform: str, version: Any) -> bool:
+    """True when this client version is older than every release Zscaler
+    supports on the platform. Linux supports only the 3.7.2 LTS and 4.2+."""
+    t = version_tuple(version)
+    mn = ZCC_MIN_SUPPORTED.get(platform)
+    if not t or not mn:
+        return False
+    if platform == "Linux":
+        return not (t[:3] == (3, 7, 2) or t[:2] >= (4, 2))
+    return t < mn
+
+
 def _name(p: Dict[str, Any]) -> str:
     return f"{_v(p, 'name', 'policyName', default='?')} ({_plat(p)})"
 
@@ -158,16 +197,26 @@ def z_anti_tampering(cl):
     profiles, e = _profiles(cl)
     if e:
         return e
-    off = [_name(p) for p in profiles if not _truthy(_v(p, "enableAntiTampering", "antiTampering"))]
+    # Enable Anti-tampering is a Windows app-profile setting only; the other
+    # platforms have no such switch, so they are not applicable here.
+    win = [p for p in profiles if _plat(p) in ("Windows", "?")]
+    other = len(profiles) - len(win)
+    na = f" {other} non-Windows profile(s) not applicable (anti-tampering is a Windows setting)." if other else ""
+    off = [_name(p) for p in win if not _truthy(_v(p, "enableAntiTampering", "antiTampering"))]
     company = _one(cl, "/zcc/companyInfo")
     warns = []
     if company and _falsy_set(_v(company, "enableAntiTampering")):
         warns.append("anti-tampering is off at the company level")
-    return _verdict(R, [f"anti-tampering OFF on {len(off)} profile(s): {', '.join(off[:6])}"] if off else [], warns,
-                    f"Anti-tampering on all {len(profiles)} profile(s): the client cannot be stopped or its files altered by the user.", _ref("zcc_deployment"))
+    if not win and not warns:
+        return R(R.INFO, "No Windows app profile: anti-tampering is a Windows setting." + _ref("zcc_deployment"))
+    return _verdict(R, [f"anti-tampering OFF on {len(off)} Windows profile(s): {', '.join(off[:6])}"] if off else [], warns,
+                    f"Anti-tampering on all {len(win)} Windows profile(s): the client cannot be stopped or its files altered by the user.{na}", _ref("zcc_deployment"))
 
 
-_PW = [("uninstallPassword", "uninstall"), ("disablePassword", "disable"), ("ziaDisablePassword", "disable Internet Security"),
+# disablePassword (disable_password on the Windows policy) is the "Disable
+# Password ZIA" field; the app-profile models have no ziaDisablePassword
+# (zscaler-sdk-python zcc/models/webpolicy.py).
+_PW = [("uninstallPassword", "uninstall"), ("disablePassword", "disable"),
        ("zpaDisablePassword", "disable Private Access"), ("zdpDisablePassword", "disable Data Protection"), ("zdxDisablePassword", "disable Digital Experience"),
        ("exitPassword", "exit"), ("logoutPassword", "logout")]
 
@@ -180,7 +229,7 @@ def z_disable_passwords(cl):
     fails, warns = [], []
     for p in profiles:
         missing = [label for key, label in _PW if not str(_v(p, key, key.replace("Password", "_password"), key.replace("Password", "Pass"), default="") or "").strip()]
-        core = [m for m in missing if m in ("uninstall", "disable", "disable Internet Security")]
+        core = [m for m in missing if m in ("uninstall", "disable")]
         if core:
             fails.append(f"{_name(p)}: no {', '.join(core)} password")
         elif missing:
@@ -200,14 +249,49 @@ def z_log_level(cl):
                     f"Log level is Info or lower on all {len(profiles)} profile(s).", _ref("zcc_deployment"))
 
 
+def _quic_blocked(cl) -> str:
+    """How ZIA blocks QUIC for Z-Tunnel 2.0 traffic, or "": an enabled
+    Firewall Filtering rule that blocks the QUIC network service, or a DNS
+    Control rule that blocks the HTTPS record type
+    (https://help.zscaler.com/zia/managing-quic-protocol)."""
+    def on(r):
+        return str(_v(r, "state", default="ENABLED")).upper() == "ENABLED" and str(_v(r, "action", default="")).upper().startswith("BLOCK")
+    fw, _ = _list(cl, "/zia/firewallFilteringRules")
+    for r in fw:
+        svc = [str((x.get("name") or x.get("id")) if isinstance(x, dict) else x).upper() for x in (_v(r, "nwServices", default=[]) or []) + (_v(r, "nwServiceGroups", default=[]) or [])]
+        if on(r) and any("QUIC" in s for s in svc):
+            return f"Firewall Filtering rule '{_v(r, 'name', default='?')}' blocks QUIC"
+    dns, _ = _list(cl, "/zia/firewallDnsRules")
+    for r in dns:
+        if on(r) and "HTTPS" in {str(t).upper() for t in (_v(r, "dnsRuleRequestTypes", default=[]) or [])}:
+            return f"DNS Control rule '{_v(r, 'name', default='?')}' blocks the HTTPS record type"
+    return ""
+
+
 def z_quic(cl):
+    """Drop QUIC Traffic is an iOS and Android app-profile setting for
+    Z-Tunnel 1.0. With Z-Tunnel 2.0 (Windows, macOS), Zscaler blocks QUIC
+    with a Firewall Filtering rule or a DNS Control HTTPS-record block."""
     R, _, _ = _rt()
     profiles, e = _profiles(cl)
     if e:
         return e
-    off = [_name(p) for p in profiles if not _truthy(_v(p, "dropQuicTraffic", "blockQuic"))]
-    return _verdict(R, [f"QUIC not dropped on {len(off)} profile(s): {', '.join(off[:6])} (HTTP/3 over UDP is not decrypted, so inline DLP and SSL inspection miss it)"] if off else [], [],
-                    f"QUIC is dropped on all {len(profiles)} profile(s), so browsers fall back to TCP and SSL inspection applies.", _ref("zia_ssl_leading"))
+    fps = {str(fp.get("id")): fp for fp in _list(cl, "/zcc/forwardingProfiles")[0]}
+
+    def zt1(p):
+        fp = fps.get(str(_v(p, "forwardingProfileId", default="")))
+        return True if not fp else any(a.get("mode_label") == "Z-Tunnel 1.0" for a in _actions(fp).values())
+    mobile = [p for p in profiles if _plat(p) in ("iOS", "Android")]
+    desktop = [p for p in profiles if p not in mobile]
+    off = [_name(p) for p in mobile if zt1(p) and not _truthy(_v(p, "dropQuicTraffic", "blockQuic"))]
+    fails = [f"Drop QUIC Traffic is off on {len(off)} iOS/Android profile(s) using Z-Tunnel 1.0: {', '.join(off[:6])} (HTTP/3 over UDP is not decrypted, so inline DLP and SSL inspection miss it)"] if off else []
+    warns, how = [], ""
+    if desktop:
+        how = _quic_blocked(cl)
+        if not how:
+            warns.append(f"{len(desktop)} Windows/macOS profile(s) rely on ZIA to block QUIC, but no enabled Firewall Filtering rule blocks the QUIC network service (UDP 443 and 80) and no DNS Control rule blocks the HTTPS record type; add one ahead of broad allow rules")
+    ok = "QUIC is blocked" + (f": {how}" if how else "") + (f"; Drop QUIC Traffic on all {len(mobile)} iOS/Android profile(s)" if mobile else "") + "."
+    return _verdict(R, fails, warns, ok, " Ref: https://help.zscaler.com/zia/managing-quic-protocol")
 
 
 def z_fail_open(cl):
@@ -316,11 +400,9 @@ def z_bypass_hygiene(cl):
         apps = (_v(p, "bypassCustomAppIds", "bypassCustomApps", default=[]) or []) + (_v(p, "bypassAppIds", "bypassApps", default=[]) or [])
         if isinstance(apps, list) and len(apps) > 10:
             warns.append(f"{_name(p)}: {len(apps)} application bypasses")
-        if _truthy(_v(p, "prioritizeDnsExclusions")):
-            warns.append(f"{_name(p)}: DNS exclusions take priority over the tunnel include list")
         if _truthy(_v(p, "allowPacExclusionsOnly")) is False and _v(p, "pac_url", "pacUrl", "customPacUrl"):
             warns.append(f"{_name(p)}: a PAC file is configured on the app profile; PAC DIRECT statements bypass the tunnel unless exclusions-only is set")
-    return _verdict(R, fails, warns, "Bypasses are narrow: no destination exclusion wider than a /16, short application lists, DNS exclusions not prioritised.", _ref("zcc_bypass"))
+    return _verdict(R, fails, warns, "Bypasses are narrow: no destination exclusion wider than a /16, short application lists.", _ref("zcc_bypass"))
 
 
 # ── forwarding profiles and trusted networks ───────────────────────────
@@ -330,6 +412,47 @@ def _actions(fp: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         return forwarding_actions(fp)
     except Exception:  # noqa: BLE001
         return {}
+
+
+def _net_entries(fp: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
+    """(network, entry) for every per-network block of a forwarding profile:
+    forwardingProfileActions[] and unifiedTunnel[] carry primaryTransport,
+    allowTLSFallback, useTunnel2ForProxiedWebTraffic, the IPv6 and
+    unreachable-domain settings and systemProxyData (zscaler-sdk-python
+    zcc/models/forwardingprofile.py)."""
+    out = []
+    for key in ("forwardingProfileActions", "unifiedTunnel"):
+        for a in (_v(fp, key, default=[]) or []):
+            if isinstance(a, dict):
+                out.append((str(_v(a, "networkType", default="network")), a))
+    return out
+
+
+def _net_values(fp: Dict[str, Any], *names: str, proxy: bool = False) -> List[Tuple[str, Any]]:
+    """[(network, value)] of a per-network setting; proxy=True reads the
+    entry's systemProxyData. A top-level value (older exports) counts as
+    one entry when no network carries the setting."""
+    vals = []
+    for lbl, a in _net_entries(fp):
+        src = _v(a, "systemProxyData", default={}) if proxy else a
+        v = _v(src, *names) if isinstance(src, dict) else None
+        if v is not None:
+            vals.append((lbl, v))
+    if not vals and _v(fp, *names) is not None:
+        vals.append(("profile", _v(fp, *names)))
+    return vals
+
+
+def _tunnels_2(a: Dict[str, Any]) -> bool:
+    """True unless the network entry says it forwards with something other than Z-Tunnel 2.0."""
+    raw = _v(a, "actionType")
+    if raw is None:
+        return True
+    try:
+        from data_flow import classify_mode
+        return classify_mode(raw)[0] == "Z-Tunnel 2.0"
+    except Exception:  # noqa: BLE001
+        return True
 
 
 def z_forwarding_modes(cl):
@@ -357,15 +480,20 @@ def z_forwarding_modes(cl):
             warns.append(f"{name}: on-trusted-network action is None (fine only if the site has a GRE/IPsec tunnel)")
         if vpn and vpn.get("mode_kind") == "none":
             warns.append(f"{name}: no forwarding on VPN (traffic inside the VPN is not inspected)")
-        pt = str(_v(fp, "primaryTransport", default="") or "").upper()
-        if pt and "DTLS" not in pt and "UDP" not in pt and "0" != pt:
-            warns.append(f"{name}: primary transport is {pt} (DTLS gives Z-Tunnel 2.0 its throughput; keep TLS as the fallback)")
-        if _falsy_set(_v(fp, "allowTLSFallback", "allowTlsFallback")):
-            warns.append(f"{name}: TLS fallback is off (Z-Tunnel 2.0 cannot recover where UDP is blocked)")
+        # Z-Tunnel 2.0 settings are per network (forwardingProfileActions[]).
+        z2 = {lbl for lbl, a in _net_entries(fp) if _tunnels_2(a)} | {"profile"}
+        for lbl, v in _net_values(fp, "primaryTransport"):
+            pt = str(v or "").upper()
+            if lbl in z2 and pt and "DTLS" not in pt and "UDP" not in pt and "0" != pt:
+                warns.append(f"{name} ({lbl}): primary transport is {pt} (DTLS gives Z-Tunnel 2.0 its throughput; keep TLS as the fallback)")
+        for lbl, v in _net_values(fp, "allowTLSFallback", "allowTlsFallback"):
+            if lbl in z2 and _falsy_set(v):
+                warns.append(f"{name} ({lbl}): TLS fallback is off (Z-Tunnel 2.0 cannot recover where UDP is blocked)")
         if _falsy_set(_v(fp, "enableLWFDriver")):
             warns.append(f"{name}: the lightweight filter driver is off (needed for Z-Tunnel 2.0 packet capture on Windows)")
-        if _falsy_set(_v(fp, "useTunnel2ForProxiedWebTraffic")):
-            warns.append(f"{name}: proxied web traffic is not sent through Z-Tunnel 2.0")
+        for lbl, v in _net_values(fp, "useTunnel2ForProxiedWebTraffic"):
+            if lbl in z2 and _falsy_set(v):
+                warns.append(f"{name} ({lbl}): proxied web traffic is not sent through Z-Tunnel 2.0")
     return _verdict(R, fails, warns, f"All {len(fps)} forwarding profile(s) tunnel off-network traffic with Z-Tunnel 2.0 over DTLS with TLS fallback.", _ref("zcc_ztunnel2"))
 
 
@@ -377,17 +505,40 @@ def z_forwarding_hygiene(cl):
     warns = []
     for fp in [x for x in d if isinstance(x, dict)]:
         name = str(_v(fp, "name", default=f"profile {fp.get('id')}"))
-        if _falsy_set(_v(fp, "dropIpv6Traffic")) and _falsy_set(_v(fp, "dropIpv6IncludeTrafficInT2")) and not _truthy(_v(fp, "dropIpv6TrafficInIpv6Network")):
-            warns.append(f"{name}: IPv6 is neither dropped nor tunnelled (dual-stack hosts can reach IPv6 destinations around Zscaler)")
-        if _falsy_set(_v(fp, "bypassProxyForPrivateIP")):
-            warns.append(f"{name}: private IP ranges are proxied (RFC1918 should go direct)")
-        if _truthy(_v(fp, "enablePAC")) or _v(fp, "pacURL", "pacUrl", "customPac"):
-            warns.append(f"{name}: a PAC file is part of forwarding (review it for DIRECT statements)")
+        entries = _net_entries(fp) or [("profile", fp)]
+        for lbl, a in entries:
+            src = a if _v(a, "dropIpv6Traffic", "dropIpv6IncludeTrafficInT2") is not None else fp
+            if _falsy_set(_v(src, "dropIpv6Traffic")) and _falsy_set(_v(src, "dropIpv6IncludeTrafficInT2")) and not _truthy(_v(src, "dropIpv6TrafficInIpv6Network")):
+                warns.append(f"{name} ({lbl}): IPv6 is neither dropped nor tunnelled (dual-stack hosts can reach IPv6 destinations around Zscaler)")
+        for lbl, v in _net_values(fp, "bypassProxyForPrivateIP", proxy=True):
+            if _falsy_set(v):
+                warns.append(f"{name} ({lbl}): private IP ranges are proxied (RFC1918 should go direct)")
+        pac = [lbl for lbl, v in _net_values(fp, "enablePAC", proxy=True) if _truthy(v)] + [lbl for lbl, v in _net_values(fp, "pacURL", "pacUrl", proxy=True) if v]
+        pac += [lbl for lbl, v in _net_values(fp, "customPac") if v]
+        if pac:
+            warns.append(f"{name} ({', '.join(sorted(set(pac)))}): a PAC file is part of forwarding (review it for DIRECT statements)")
         if _truthy(_v(fp, "skipTrustedCriteriaMatch")):
             warns.append(f"{name}: trusted-network criteria matching is skipped")
-        if _falsy_set(_v(fp, "blockUnreachableDomainsTraffic")):
-            warns.append(f"{name}: traffic to unreachable domains is not blocked")
+        for lbl, v in _net_values(fp, "blockUnreachableDomainsTraffic"):
+            if _falsy_set(v):
+                warns.append(f"{name} ({lbl}): traffic to unreachable domains is not blocked")
     return _verdict(R, [], warns, "Forwarding profiles drop or tunnel IPv6, send RFC1918 direct, use no PAC and evaluate trusted-network criteria.", _ref("zcc_ztunnel2"))
+
+
+# Trusted-network criteria (https://help.zscaler.com/zscaler-client-connector/configuring-trusted-networks-zscaler-client-connector):
+# DNS Server, DNS Search Domains, Hostname and IP, Network Range, Default
+# Gateway, DHCP Server, Egress IP. Hostname and resolved IP count as one.
+_CRITERIA = (("dnsServers",), ("dnsSearchDomains",), ("hostnames", "hostname", "resolvedIpsForHostname"), ("trustedSubnets",),
+             ("trustedGateways",), ("trustedDhcpServers",), ("trustedEgressIps",), ("ssids",))
+
+
+def _criteria(o: Dict[str, Any]) -> int:
+    n = 0
+    for names in _CRITERIA:
+        v = _v(o, *names)
+        if v and (not isinstance(v, (list, str)) or len(v)):
+            n += 1
+    return n
 
 
 def z_trusted_networks(cl):
@@ -396,23 +547,32 @@ def z_trusted_networks(cl):
     if e:
         return e
     nets, code = _list(cl, "/zcc/trustedNetworks")
+    fps = [fp for fp in d if isinstance(fp, dict)]
     fails, warns = [], []
-    uses_on_none = [str(_v(fp, "name", default="?")) for fp in d if isinstance(fp, dict) and (_actions(fp).get("on") or {}).get("mode_kind") == "none"]
+    uses_on_none = [str(_v(fp, "name", default="?")) for fp in fps if (_actions(fp).get("on") or {}).get("mode_kind") == "none"]
     weak = []
     for n in nets:
         name = str(_v(n, "networkName", "name", default=f"network {n.get('id')}"))
-        crit = 0
-        for k in ("dnsServers", "dnsSearchDomains", "trustedGateways", "trustedSubnets", "trustedEgressIps", "trustedDhcpServers", "hostnames", "ssids"):
-            v = _v(n, k)
-            if v and (not isinstance(v, (list, str)) or len(v)):
-                crit += 1
+        crit = _criteria(n)
         if crit <= 1:
             weak.append(f"{name} ({crit} criterion)")
-    if uses_on_none and not nets:
+    # A forwarding profile can define its trusted network inline (dnsServers,
+    # trustedSubnets … on the profile itself — SDK ForwardingProfile) or
+    # reference trusted networks by id.
+    inline, refs = 0, 0
+    for fp in fps:
+        crit = _criteria(fp)
+        if crit:
+            inline += 1
+            if crit <= 1:
+                weak.append(f"{_v(fp, 'name', default='?')} (inline, {crit} criterion)")
+        if _v(fp, "trustedNetworkIds", "predefinedTrustedNetworks", "trustedNetworks"):
+            refs += 1
+    if uses_on_none and not nets and not inline and not refs:
         fails.append(f"{', '.join(uses_on_none[:4])} stop forwarding on the trusted network but no trusted network is defined (code {code})")
     if weak:
         (fails if uses_on_none else warns).append(f"trusted network(s) relying on a single criterion, which a hostile network can spoof: {', '.join(weak[:6])} (combine DNS server + search domain, gateway or egress IP)")
-    return _verdict(R, fails, warns, f"{len(nets)} trusted network(s), each defined by more than one criterion.", _ref("zcc_deployment"))
+    return _verdict(R, fails, warns, f"{len(nets)} trusted network(s) and {inline} forwarding profile(s) with inline criteria, each defined by more than one criterion.", _ref("zcc_deployment"))
 
 
 # ── company, privacy, devices ──────────────────────────────────────────
@@ -421,19 +581,31 @@ def z_company(cl):
     c = _one(cl, "/zcc/companyInfo")
     if not c:
         return R(R.INFO, "Company settings: not readable (getCompanyInfo).")
+    # Rollout, cleanup and FIPS live in the nested webAppConfig (SDK CompanyInfo.WebAppConfig).
+    wac = _v(c, "webAppConfig", default={})
+    if isinstance(wac, str):
+        try:
+            wac = json.loads(wac)
+        except Exception:  # noqa: BLE001
+            wac = {}
+    wac = wac if isinstance(wac, dict) else {}
+
+    def cv(*names):
+        v = _v(wac, *names)
+        return v if v is not None else _v(c, *names)
     warns, fails, ok = [], [], []
     if _falsy_set(_v(c, "dlpEnabled")):
         fails.append("Endpoint Data Protection is not enabled for the company")
     if _falsy_set(_v(c, "enableAntiTampering")):
         warns.append("anti-tampering is off company-wide")
-    if not (_truthy(_v(c, "slowRolloutZCC")) or _truthy(_v(c, "enableZccSlowRolloutByDefault"))):
+    if not (_truthy(cv("slowRolloutZCC")) or _truthy(cv("enableZccSlowRolloutByDefault"))):
         warns.append("slow (phased) rollout of new client versions is off")
     if _falsy_set(_v(c, "enableGlobalZCCTelemetry")):
         warns.append("client telemetry is off (Zscaler cannot flag crashing builds)")
-    cleanup = _v(c, "inactiveDeviceCleanup", "deviceCleanup", "autoPurgeDays")
+    cleanup = cv("inactiveDeviceCleanup", "deviceCleanup", "autoPurgeDays")
     if cleanup is None or str(cleanup) in ("0", "False", "false"):
         warns.append("inactive devices are never removed automatically (stale devices inflate licences and the device view)")
-    if _truthy(_v(c, "enableFipsMode")):
+    if _truthy(cv("enableFipsMode")):
         ok.append("FIPS mode on")
     if _falsy_set(_v(c, "restrictAdminAccess")):
         warns.append("admin access to the Client Connector portal is not restricted")
@@ -486,33 +658,47 @@ def z_device_fleet(cl):
 
 
 def z_version_spread(cl):
+    """Client versions per platform and release (major.minor). Each
+    platform has its own supported releases: the latest, the two before it
+    and the LTS (ZCC_MIN_SUPPORTED); a device is behind only when its
+    release is older than all of them. A platform the device list does not
+    name falls back to the three newest releases seen in the fleet."""
     R, _, _ = _rt()
     devs, code = _list(cl, "/zcc/devices")
     if not devs:
         return R(R.INFO, f"Devices: not readable (getDevices, HTTP {code}).")
-    versions: Dict[str, int] = {}
+    groups: Dict[str, Dict[str, int]] = {}
+    rows = []
     for d in devs:
         v = str(_v(d, "agentVersion", "clientConnectorVersion", "zccVersion", default="") or "").strip()
-        if v:
-            versions[v] = versions.get(v, 0) + 1
-    if not versions:
+        if not v:
+            continue
+        plat = device_platform(d)
+        rel = ".".join(str(x) for x in version_tuple(v)[:2])
+        groups.setdefault(plat, {})
+        groups[plat][rel] = groups[plat].get(rel, 0) + 1
+        rows.append((plat, rel, v))
+    if not rows:
         return R(R.INFO, "Devices list no client version.")
-    def key(v):
-        return tuple(int(x) if x.isdigit() else 0 for x in re.split(r"[.\-]", v)[:4])
-    ordered = sorted(versions, key=key, reverse=True)
-    newest = ordered[:2]
-    behind = sum(versions[v] for v in ordered[2:])
-    n = sum(versions.values())
+    fleet_ok = {p: set(sorted(g, key=version_tuple, reverse=True)[:3]) for p, g in groups.items() if p not in ZCC_MIN_SUPPORTED}
+    behind: Dict[str, int] = {}
+    for plat, rel, v in rows:
+        late = zcc_unsupported(plat, v) if plat in ZCC_MIN_SUPPORTED else rel not in fleet_ok.get(plat, set())
+        if late:
+            behind[plat] = behind.get(plat, 0) + 1
+    n, nb = len(rows), sum(behind.values())
     warns = []
-    if behind and 100 * behind / n > 20:
-        warns.append(f"{behind} of {n} devices ({round(100 * behind / n)}%) are more than two versions behind ({', '.join(f'{v}: {versions[v]}' for v in ordered[2:6])})")
-    if len(versions) > 6:
-        warns.append(f"{len(versions)} distinct client versions in the fleet")
+    if nb and 100 * nb / n > 20:
+        warns.append(f"{nb} of {n} devices ({round(100 * nb / n)}%) run a release older than every one Zscaler supports on their platform ({', '.join(f'{p}: {c}' for p, c in behind.items())}; supported are the latest release, the two before it and the LTS: {ZCC_SUPPORTED_REF})")
+    wide = [f"{p} {len(g)}" for p, g in groups.items() if len(g) > 4]
+    if wide:
+        warns.append(f"many client releases in the fleet ({', '.join(wide)})")
     mism = [d for d in devs if _v(d, "expectedZCCVersion") and str(_v(d, "expectedZCCVersion")) != str(_v(d, "agentVersion", "clientConnectorVersion", default=""))
             and str(_v(d, "zccUpgradeStatus", default="")).lower() in ("failed", "error", "3")]
     if mism:
         warns.append(f"{len(mism)} device(s) failed to upgrade to the version the portal expects")
-    return _verdict(R, [], warns, f"{n} device(s) on {len(versions)} version(s); {n - behind} on the two newest ({', '.join(newest)}).", _ref("zcc_updates"))
+    summary = "; ".join(f"{p}: {', '.join(sorted(g, key=version_tuple, reverse=True)[:3])}" for p, g in groups.items())
+    return _verdict(R, [], warns, f"{n} device(s), {n - nb} on a supported release ({summary}).", _ref("zcc_updates"))
 
 
 # ── DLP notification templates ─────────────────────────────────────────

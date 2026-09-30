@@ -19,6 +19,20 @@ zscaler_*_checks modules. All failures gracefully degrade to INFO.
 
 from dlp_assessment_full_auto import R, _ls
 
+# The administration, apps and devices endpoints return only active data and
+# default to the previous 2 hours ("If not entered, returns the data for the
+# last 2 hours" — zscaler-sdk-python 1.11.0 zdx/apps.py, admin.py,
+# devices.py), so the checks ask for the last 24 hours.
+_SINCE = {"since": 24}
+
+
+def _wrapped(d, key):
+    """A ZDX list wrapped in an object ({"next_offset": …, key: [...]}); _ls
+    would read the wrapper itself as a one-item list."""
+    if isinstance(d, dict) and isinstance(d.get(key), list):
+        return d[key]
+    return _ls(d) if not isinstance(d, dict) or key not in d else []
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # ZDX — Administration
@@ -26,35 +40,35 @@ from dlp_assessment_full_auto import R, _ls
 
 def zdx_admin_apps(cl):
     """ZDX monitored applications — SaaS + internal apps under ZDX scoring"""
-    d, c = cl.get("/zdx/administration/apps")
+    d, c = cl.get("/zdx/administration/apps", _SINCE)
     items = _ls(d) if c in (200, 204) else []
     if c in (401, 403):
         return R(R.INFO, "ZDX apps endpoint not accessible — ZDX subscription may not be active.")
     if not items:
-        return R(R.WARN, "No applications configured under ZDX. Best Practice: Add the top 10 SaaS apps your users depend on (O365, Salesforce, Zoom, ServiceNow, etc.) so ZDX can score their health.")
-    return R(R.PASS, f"{len(items)} application(s) monitored by ZDX.")
+        return R(R.WARN, "No applications with ZDX activity in the last 24 hours. Best Practice: monitor the top 10 SaaS apps your users depend on (O365, Salesforce, Zoom, ServiceNow, etc.) so ZDX can score their health.")
+    return R(R.PASS, f"{len(items)} application(s) with ZDX activity in the last 24 hours.")
 
 
 def zdx_admin_locations(cl):
     """ZDX location coverage"""
-    d, c = cl.get("/zdx/administration/locations")
+    d, c = cl.get("/zdx/administration/locations", _SINCE)
     items = _ls(d) if c in (200, 204) else []
     if c in (401, 403):
         return R(R.INFO, "ZDX locations endpoint not accessible.")
     if not items:
-        return R(R.INFO, "No locations defined in ZDX. ZDX auto-derives locations from device telemetry; explicit locations improve reporting.")
-    return R(R.PASS, f"{len(items)} location(s) tracked in ZDX.")
+        return R(R.INFO, "No locations seen by ZDX in the last 24 hours. ZDX auto-derives locations from device telemetry; explicit locations improve reporting.")
+    return R(R.PASS, f"{len(items)} location(s) seen by ZDX in the last 24 hours.")
 
 
 def zdx_admin_departments(cl):
     """ZDX department segmentation for scoped reporting"""
-    d, c = cl.get("/zdx/administration/departments")
+    d, c = cl.get("/zdx/administration/departments", _SINCE)
     items = _ls(d) if c in (200, 204) else []
     if c in (401, 403):
         return R(R.INFO, "ZDX departments endpoint not accessible.")
     if not items:
-        return R(R.WARN, "No departments defined. Best Practice: Populate departments from your IdP so ZDX dashboards show per-team health — Finance hitting SAP, Engineering hitting GitHub, etc.")
-    return R(R.PASS, f"{len(items)} department(s) visible in ZDX.")
+        return R(R.WARN, "No departments seen by ZDX in the last 24 hours. Best Practice: Populate departments from your IdP so ZDX dashboards show per-team health — Finance hitting SAP, Engineering hitting GitHub, etc.")
+    return R(R.PASS, f"{len(items)} department(s) seen by ZDX in the last 24 hours.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -70,7 +84,8 @@ def zdx_alert_rules(cl):
 def zdx_alert_triggered(cl):
     """ZDX triggered alerts (ongoing + historical)"""
     d, c = cl.get("/zdx/alerts/ongoing")
-    items = _ls(d) if c in (200, 204) else []
+    # The body is {"next_offset": …, "alerts": [...]} (SDK zdx/models/alerts.py Alerts).
+    items = _wrapped(d, "alerts") if c in (200, 204) else []
     if c in (401, 403):
         return R(R.INFO, "ZDX ongoing alerts endpoint not accessible.")
     if items:
@@ -85,12 +100,14 @@ def zdx_alert_triggered(cl):
 def zdx_inventory_software(cl):
     """Software inventory from ZDX endpoint telemetry"""
     d, c = cl.get("/zdx/inventory/software")
-    items = _ls(d) if c in (200, 204) else []
+    # The body is {"next_offset": …, "software": [...]} (SDK zdx/models/software_inventory.py SoftwareList).
+    items = _wrapped(d, "software") if c in (200, 204) else []
     if c in (401, 403):
         return R(R.INFO, "ZDX software inventory not accessible.")
     if not items:
         return R(R.INFO, "No software inventory data. If ZDX has been running for 24+ hours, software should be populated.")
-    return R(R.PASS, f"{len(items)} software record(s) collected by ZDX — usable for vuln tracking and license audits.")
+    more = " (first page; more records follow)" if isinstance(d, dict) and d.get("next_offset") else ""
+    return R(R.PASS, f"{len(items)} software record(s) collected by ZDX{more} — usable for vuln tracking and license audits.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -108,13 +125,15 @@ def zdx_reports_available(cl):
 # ═══════════════════════════════════════════════════════════════════════
 
 def zdx_troubleshoot(cl):
-    """ZDX troubleshooting (deep-path trace) reachable"""
-    d, c = cl.get("/zdx/troubleshooting/devices")
+    """ZDX device telemetry reachable (active devices; deep traces are per device)"""
+    d, c = cl.get("/zdx/troubleshooting/devices", _SINCE)
     if c in (401, 403):
-        return R(R.INFO, "ZDX troubleshooting endpoint not accessible.")
+        return R(R.INFO, "ZDX devices endpoint not accessible.")
     if c in (200, 204):
-        return R(R.PASS, "ZDX troubleshooting reachable. Gives the helpdesk deep-path (hop-by-hop) visibility — a huge MTTR win vs. legacy network tools.")
-    return R(R.INFO, f"ZDX troubleshooting endpoint returned HTTP {c}.")
+        # The body is {"next_offset": …, "devices": [...]} (SDK zdx/models/devices.py Devices).
+        devs = _wrapped(d, "devices")
+        return R(R.PASS, f"ZDX device telemetry reachable: {len(devs)} active device(s) seen in the last 24 hours. Deep traces are per device (/devices/{{id}}/deeptraces) and are not read here.")
+    return R(R.INFO, f"ZDX devices endpoint returned HTTP {c}.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -129,5 +148,5 @@ ZDX_REG = [
     ("ZDX.5", "ZDX — Alerts",         "Ongoing triggered alerts",        zdx_alert_triggered),
     ("ZDX.6", "ZDX — Inventory",      "Software inventory from ZDX",     zdx_inventory_software),
     ("ZDX.7", "ZDX — Reports",        "Reports endpoint reachable",      zdx_reports_available),
-    ("ZDX.8", "ZDX — Troubleshooting","Deep-path troubleshoot reachable",zdx_troubleshoot),
+    ("ZDX.8", "ZDX — Troubleshooting","ZDX device telemetry reachable",  zdx_troubleshoot),
 ]

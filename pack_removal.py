@@ -142,6 +142,15 @@ def _tenant(client, packs: Sequence[Dict[str, Any]], tenant_cache: Optional[Dict
     return snap
 
 
+def _with_rate(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Add how this removal meets ZIA's rate limits, from the requests this
+    app sent in the last hour: its deletes plus the one activation."""
+    import zia_rate
+    n = int(plan.get("remove_count") or 0)
+    plan["rate_forecast"] = zia_rate.forecast({"delete": n, "activate": 1}) if n else None
+    return plan
+
+
 def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None,
                  everything: bool = False) -> Dict[str, Any]:
     """Preview the removal of one or more deployed packs. Returns items
@@ -310,11 +319,11 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         status = "blocked"
         blockers.append("Nothing matched, but the tenant could not be fully read: " + "; ".join(f"{k}: {v}" for k, v in unreadable.items())
                         + ". Check the API client's permissions for that area, then run the preview again.")
-    return {
+    return _with_rate({
         "status": status, "found": bool(items), "packs": pack_ids, "everything": everything, "items": items,
         "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
         "plan_hash": plan_hash, "warnings": warnings, "blockers": blockers, "read": _read_summary(snap),
-    }
+    })
 
 
 def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -398,10 +407,10 @@ def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Opt
         summary[key] = summary.get(key, 0) + 1
     to_remove = [it for it in items if it["status"] == "remove"]
     plan_hash = hashlib.sha256(json.dumps([(i["kind"], i.get("channel"), str(i["id"]), i["name"]) for i in to_remove], sort_keys=True).encode()).hexdigest()[:16]
-    return {"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": list(record.get("packs") or []),
+    return _with_rate({"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": list(record.get("packs") or []),
             "deployment": {"id": record.get("id"), "at": record.get("at"), "tenant_label": record.get("tenant_label"), "packs": record.get("packs")},
             "everything": False, "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
-            "plan_hash": plan_hash, "warnings": warnings, "blockers": []}
+            "plan_hash": plan_hash, "warnings": warnings, "blockers": []})
 
 
 def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_enabled: Optional[bool] = None,
@@ -692,10 +701,10 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
     to_remove = [it for it in items if it["status"] == "remove"]
     plan_hash = hashlib.sha256(json.dumps(
         [(i["kind"], i.get("channel"), str(i["id"]), i["name"]) for i in to_remove], sort_keys=True).encode()).hexdigest()[:16]
-    return {"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": [],
+    return _with_rate({"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": [],
             "selection": sorted(keys) + sorted(("engine", e) for e in picked_engines) + sorted(("dictionary", d) for d in picked_dicts),
             "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
-            "plan_hash": plan_hash, "warnings": warnings, "blockers": []}
+            "plan_hash": plan_hash, "warnings": warnings, "blockers": []})
 
 
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
@@ -879,7 +888,7 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     # sent no delete activates nothing.
     if sent_any:
         _log(f"Every tier done; activating once and waiting for ZIA to report ACTIVE…")
-        act = pc.activate(zia)
+        act = ops.activate_once(zia, _log)
         final_activation = dict(act, after=last_sent_tier)
         activations.append(final_activation)
         _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))

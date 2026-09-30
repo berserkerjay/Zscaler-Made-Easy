@@ -52,8 +52,9 @@ def test_by_rule_order_is_flagged_with_order_safety():
     r = chk.c_5_20(cl)
     assert r.status == chk.R.WARN and "Evaluate All Rules is OFF" in r.detail and r.data["evaluate_all"] is False
     assert "first matching rule fires" in r.detail
-    # A monitor rule above a block rule is exactly the unsafe order the wizard reorders.
-    assert "NOT yet safe" in r.detail or "already safe" in r.detail
+    # Rule order is not a readiness signal under Evaluate All Rules: it matters only between matching rules with the same action.
+    assert "NOT yet safe" not in r.detail and "already safe" not in r.detail
+    assert "same action" in r.detail and "deleting all existing inline DLP rules" in r.detail and "order_safe" not in r.data
 
 
 def test_unknown_mode_is_info_not_a_failure():
