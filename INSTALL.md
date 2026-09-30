@@ -348,6 +348,34 @@ install, nothing that can conflict with other software). Pick this for a
 shared server, or if you would rather not install Python on your own
 machine. It works the same way on Windows, Mac and Linux.
 
+There is no ready-made image to download: Docker builds the image on your
+computer from the code, so a fresh install is *install Docker, get the
+code with git, build it*. The steps below walk through each one. If you
+have done this before, here is the short version (after Step 1, in the
+folder you want the app in):
+
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/berserkerjay/DLP-Check.git
+cd DLP-Check
+powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
+docker logs dlp-check
+```
+
+```bash
+# Mac (Terminal) or Linux
+git clone https://github.com/berserkerjay/DLP-Check.git
+cd DLP-Check
+./update_container.sh --force
+docker logs dlp-check
+```
+
+Then open the `http://localhost:8001/?token=…` address that
+`docker logs` prints.
+
+No git on the computer? Docker can fetch the code from GitHub itself:
+see [Install with Docker commands only](#install-with-docker-commands-only-no-git-nothing-to-download).
+
 **Step 1 — Install Docker.**
 Docker is the program that runs containers. Follow the part for your
 computer, then do the check at the end of it; do not go on to Step 2
@@ -511,23 +539,68 @@ can also exempt `pypi.org` and `files.pythonhosted.org` from inspection.
 For a proxy, set it in Docker Desktop under **Settings → Resources →
 Proxies** (Linux: `docs.docker.com/engine/daemon/proxy/`).
 
-**Step 2 — Get the code**, the same way as above: sign in to GitHub, go
-to the repository page, **Code → Download ZIP**, extract it somewhere you
-will remember (or `git clone` it, if you have git; see the Linux section
-for the sign-in token).
+**Step 2 — Get the code with git.** Use `git clone`, not a ZIP: the
+update script (Step 3 and every update after it) only works in a git
+clone. The repository is private, so git asks you to sign in to GitHub
+the first time.
 
-**Step 3 — Build and run.**
-Open a terminal (Terminal on Mac, PowerShell or Command Prompt on
-Windows, your terminal app on Linux), move into the extracted folder
-(`cd `, then drag the folder in, then Enter), and run:
+- **Windows:** if `git --version` in PowerShell says "not recognized",
+  install Git for Windows as in [Windows](#windows) Step 2 (`git-scm.com`),
+  then open a **new** PowerShell window. Then:
 
-```bash
-docker compose up --build
+  ```powershell
+  cd $HOME\Documents
+  git clone https://github.com/berserkerjay/DLP-Check.git
+  cd DLP-Check
+  ```
+
+  A browser window opens to sign in to GitHub (Git Credential Manager);
+  sign in with the account that has access, and git remembers it, so
+  later updates do not ask again.
+
+- **Mac:** in Terminal:
+
+  ```bash
+  cd ~/Documents
+  git clone https://github.com/berserkerjay/DLP-Check.git
+  cd DLP-Check
+  ```
+
+  If macOS offers to install the "command line developer tools", click
+  **Install**, wait, and run the `git clone` line again. When git asks
+  for a password, paste a GitHub **personal access token**, not your
+  account password (how to make one: [Linux](#linux) Step 2). The macOS
+  keychain remembers it.
+
+- **Linux:** `git` came with Docker in Step 1. Make a personal access
+  token and clone exactly as in [Linux](#linux) Step 2 (the
+  `credential.helper store` line keeps the sign-in for later updates).
+
+**Step 3 — Build and run.** In the same terminal, still in the
+`DLP-Check` folder, run the update script with *force*. On a fresh
+install it builds the image, stamps it with the git commit it was built
+from (so the app can tell you when GitHub has a newer one) and starts
+the container in the background:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force   # Windows
 ```
 
-The first run takes a few minutes while it downloads and builds
-everything; it prints its progress the whole time. Once it settles, the
-last lines it prints are:
+```bash
+./update_container.sh --force                                            # Mac, Linux
+```
+
+(On Mac or Linux, if it says `Permission denied`, run
+`bash update_container.sh --force` instead.) The first build takes a few
+minutes while it downloads and builds everything. If it stops with
+`CERTIFICATE_VERIFY_FAILED`, you are behind TLS inspection: see the note
+at the end of Step 1. When the prompt comes back, run:
+
+```bash
+docker logs dlp-check
+```
+
+The last lines it prints are:
 
 ```
   UI token: …
@@ -536,28 +609,16 @@ last lines it prints are:
   (inside the container the server listens on every address; docker-compose.yml publishes it on 127.0.0.1:8001 of this machine only)
 ```
 
-(Under `docker compose up` each line starts with `dlp-check  | `.) Open
-that address in your browser on the same machine.
+Open that address in your browser on the same machine. The app keeps
+running in the background, also after a restart of the computer, until
+you stop it; you can close the terminal.
 
-**Finding the UI token again:** run `docker logs dlp-check` from another
-terminal in the same folder (same `cd` trick), or
-`docker compose exec dlp-check cat /data/ui_token.txt`.
+**Finding the UI token again:** run `docker logs dlp-check`, or
+`docker compose exec dlp-check cat /data/ui_token.txt` in the app folder.
 
-**On a shared server (no desktop on it):** get the code onto the server
-with `git clone` on the server itself (`sudo apt install -y git` first if
-`git` is not there, then the personal-access-token steps of the Linux
-section, Step 2) or copy the ZIP over with `scp` and unpack it
-(`sudo apt install -y unzip`, then `unzip DLP-Check-main.zip`);
-`cd DLP-Check` (no dragging). Run it detached so it does not hold your
-SSH session:
-
-```bash
-docker compose up --build -d
-docker compose logs dlp-check      # the UI token and the address
-```
-
-The container starts again by itself after a reboot until you run
-`docker compose down`. It listens on the server's own `127.0.0.1:8001`
+**On a shared server (no desktop on it):** Steps 2 and 3 are the same
+over SSH (the Linux commands). The container starts again by itself
+after a reboot until you run `docker compose down`. It listens on the server's own `127.0.0.1:8001`
 only, on purpose. To use it from your PC as one person, open a tunnel
 from your PC and then browse to `http://localhost:8001/?token=…` on your
 PC:
@@ -574,11 +635,12 @@ without SSO" check is switched off by design, so that `127.0.0.1:` is the
 only thing keeping the app off the network.
 
 **Everyday use:**
-- Stop it: `Ctrl + C` in the window running `docker compose up`, or
-  `docker compose down` from another window in the same folder (that is
-  the real stop for a detached container).
-- Start it again later: `docker compose up` (`-d` on a server; no
+- Stop it: `docker compose down` in the app folder.
+- Start it again later: `docker compose up -d` in the app folder (no
   `--build` needed unless the code changed).
+- Start over from scratch: `docker compose down -v` deletes the
+  container **and everything it saved** (tenant profiles, deployment
+  records, audit log; this cannot be undone), then run Step 3 again.
 - Update it: from the app folder run the update script. It pulls the
   latest code from GitHub and rebuilds the container only when there is
   something new; saved data stays, and the app restarts with a new UI
@@ -653,6 +715,74 @@ by side with a local install, which uses 8000. Each has its own UI token
 and its own saved data. For another port, put `DLP_CHECK_HOST_PORT=8002`
 (or any free port) in a file named `.env` in the app folder and run
 `docker compose up -d` again; `docker logs dlp-check` prints the address.
+
+### Install with Docker commands only (no git, nothing to download)
+
+Docker can fetch the code from GitHub itself and build it, so you need
+nothing but Docker (Step 1) and a terminal. It is the same image as
+above, run with the same settings as `docker-compose.yml`.
+
+**1. A GitHub token for Docker.** The repository is private, so Docker
+needs a read-only token to fetch it. On `github.com`: your avatar →
+**Settings** → **Developer settings** → **Personal access tokens** →
+**Fine-grained tokens** → **Generate new token**; *Repository access*:
+**Only select repositories** → `DLP-Check`; *Permissions* → *Contents*:
+**Read-only**; generate and copy it. Hand it to Docker for this terminal
+window only (it is not saved anywhere):
+
+```powershell
+$env:GIT_AUTH_TOKEN = Read-Host "GitHub token"                 # Windows (PowerShell): paste, Enter
+```
+
+```bash
+read -rsp "GitHub token: " GIT_AUTH_TOKEN; export GIT_AUTH_TOKEN; echo   # Mac, Linux: paste, Enter (nothing shows)
+```
+
+**2. Build it straight from GitHub.** The same line on every system
+(`#main` is the branch; `#qa` or `#dev` for those):
+
+```
+docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+```
+
+*Behind TLS inspection (Zscaler or another proxy)* the build stops with
+`CERTIFICATE_VERIFY_FAILED`. Save the root certificate in a folder of its
+own and hand that folder to the build with `--build-context certs=…`:
+
+```powershell
+# Windows (PowerShell), for Zscaler
+New-Item -ItemType Directory -Force $HOME\dlp-certs | Out-Null
+$c = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root | Where-Object { $_.Subject -like "*Zscaler Root CA*" } | Select-Object -First 1
+"-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($c.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n" | Set-Content -Encoding ascii -NoNewline $HOME\dlp-certs\zscaler-root.crt
+docker build --build-context certs=$HOME\dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+```
+
+```bash
+# Mac, for Zscaler (Linux: copy the .crt file IT gave you into ~/dlp-certs instead)
+mkdir -p ~/dlp-certs && security find-certificate -c "Zscaler Root CA" -p > ~/dlp-certs/zscaler-root.crt
+docker build --build-context certs=$HOME/dlp-certs --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN --build-arg DLP_CHECK_BUILD_BRANCH=main -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"
+```
+
+The build log then says `extra root certificates added: 1`.
+
+**3. Create the storage volume and run it:** steps 2 and 3 of
+[Build and run it by hand](#build-and-run-it-by-hand-without-docker-compose)
+below, exactly as written (`docker volume create dlpcheck-data`, then the
+`docker run` line for your system). Then `docker logs dlp-check` prints
+the `http://localhost:8001/?token=…` address to open.
+
+**Update it:** in a new terminal, step 1 (the token) and step 2 (the
+build) again, which fetch the latest code, then replace the container;
+the volume keeps your data:
+
+```
+docker rm -f dlp-check
+```
+
+and run the `docker run` line again. The *update available* notice in
+the app stays silent for an install made this way, because the build does
+not know which commit it fetched; run the update whenever you want the
+latest.
 
 ### Build and run it by hand (without Docker Compose)
 
