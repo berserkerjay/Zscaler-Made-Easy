@@ -137,6 +137,18 @@ def writes_enabled() -> bool:
     return os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
 
 
+def write_enable_hint() -> str:
+    """How to start the server with writes on, for where it runs: the
+    container (a .env setting), Windows (the start script) or Mac/Linux."""
+    if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1":
+        return (f"put ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} in the .env file next to docker-compose.yml on the computer "
+                "that runs Docker, then run: docker compose up -d (the container restarts with writes on; remove the line "
+                "and run it again to go back to read-only)")
+    if os.name == "nt":
+        return "start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat"
+    return f"start the server with: ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} ./start.sh"
+
+
 def write_mode_status() -> dict:
     """What the GUI shows: whether writes are on, where that comes from,
     and whether the operator may toggle it from the browser."""
@@ -148,9 +160,12 @@ def write_mode_status() -> dict:
         "bind_host": get_bind_host(),
         "can_toggle": local,
         "confirm_phrase": WRITE_CONFIRM_PHRASE,
+        "how_to_enable": write_enable_hint(),
         "reason": ("" if local else
-                   f"The server is bound to {get_bind_host()}, so write mode can only be enabled by starting it with "
-                   f"ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} (START_Zscaler_Assessment_WRITES_ENABLED.bat)."),
+                   (f"The app runs in a container (it listens on {get_bind_host()} inside it), so write mode is not switched "
+                    f"from the browser: {write_enable_hint()}."
+                    if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1" else
+                    f"The server is bound to {get_bind_host()}, so write mode can only be enabled at start: {write_enable_hint()}.")),
     }
 
 

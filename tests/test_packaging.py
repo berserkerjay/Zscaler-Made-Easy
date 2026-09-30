@@ -161,3 +161,21 @@ def test_the_container_asks_the_github_api_with_an_optional_token_and_never_leak
     monkeypatch.setattr(requests, "get", boom)
     sha, err = app_update.github_branch_head("main")
     assert sha is None and "ghp_secret_value" not in err
+
+
+def test_read_only_messages_say_how_to_turn_writes_on_where_the_app_runs(monkeypatch):
+    # In the container the browser switch is refused (the server listens on
+    # 0.0.0.0 inside it; that safeguard stays), and the message must name
+    # the container's way in, not a Windows .bat file.
+    import security
+    monkeypatch.setattr(security, "get_bind_host", lambda: "0.0.0.0")
+    monkeypatch.setenv("DLP_CHECK_IN_CONTAINER", "1")
+    st = security.write_mode_status()
+    assert st["can_toggle"] is False, "the in-browser switch stays off beyond loopback"
+    assert ".env" in st["reason"] and "docker compose up -d" in st["reason"] and ".bat" not in st["reason"]
+    assert ".env" in st["how_to_enable"]
+    monkeypatch.delenv("DLP_CHECK_IN_CONTAINER")
+    hint = security.write_enable_hint()
+    assert ("START_Zscaler_Assessment_WRITES_ENABLED.bat" in hint) if os.name == "nt" else ("./start.sh" in hint)
+    for name in ("dlp_api_server.py", "pack_deploy.py", "remediation.py", os.path.join("static", "deploy_studio.js")):
+        assert "WRITES_ENABLED.bat" not in _read(name), f"{name} still hard-codes the Windows start script"

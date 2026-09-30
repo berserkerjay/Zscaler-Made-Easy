@@ -243,7 +243,7 @@ async function _dzSetWriteMode(enable) {
       try { confirm = window.prompt(`Enable write mode on this server?\n\n${body}\n\nType ${expected} to continue:`, ''); } catch (e) { confirm = null; }
     }
     if (!confirm) {
-      DZ.writeNote = 'Still read-only: no confirmation phrase was entered.' + (dlg ? '' : ' If no box appeared, this browser cannot show prompts; start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat instead.');
+      DZ.writeNote = 'Still read-only: no confirmation phrase was entered.' + (dlg ? '' : ' If no box appeared, this browser cannot show prompts; ' + ((DZ.write || {}).how_to_enable || 'start the server with ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND') + ' instead.');
       announce(DZ.writeNote); _dzRender(); return;
     }
   } else {
@@ -266,7 +266,7 @@ async function _dzSetWriteMode(enable) {
   } catch (e) {
     DZ.writeNote = `Could not change write mode: ${e.message}`;
     announce(DZ.writeNote);
-    if (dlg) await dlg.notice({ title: 'Could not change write mode', body: String(e.message || e), fix: 'The server answered above. A wrong phrase or a server bound beyond localhost is refused; start it with START_Zscaler_Assessment_WRITES_ENABLED.bat to enable writes from the start script instead.', tone: 'bad' });
+    if (dlg) await dlg.notice({ title: 'Could not change write mode', body: String(e.message || e), fix: 'The server answered above. A wrong phrase or a server bound beyond localhost is refused; to enable writes at start instead, ' + ((DZ.write || {}).how_to_enable || 'start it with ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND') + '.', tone: 'bad' });
   }
   _dzRender();
 }
@@ -803,7 +803,7 @@ function _dzGatesHtml(R, { step } = {}) {
     gates.push({ ok: false, warn: true, text: `${u.name}: ${u.labels.join(', ')} unticked — the ${_dzN(u.rules, 'rule')} this pack ships there will NOT be deployed. Go back to Select and tick the channel${u.labels.length === 1 ? '' : 's'} to deploy them.` });
   }
   if (w.enabled) gates.push({ ok: true, text: 'Write mode is on for this server (every browser using it) until the server restarts.' });
-  else gates.push({ ok: false, text: w.can_toggle ? 'Write mode is off: click Enable write mode and type the confirmation phrase.' : `Write mode is off and cannot be enabled from here${w.reason ? ': ' + w.reason : ''}. Start the server with START_Zscaler_Assessment_WRITES_ENABLED.bat.` });
+  else gates.push({ ok: false, text: w.can_toggle ? 'Write mode is off: click Enable write mode and type the confirmation phrase.' : `Write mode is off and cannot be enabled from here${w.reason ? ': ' + w.reason : (w.how_to_enable ? ': ' + w.how_to_enable + '.' : '.')}` });
   if (step === 3) gates.push(DZ.consent ? { ok: true, text: 'You have ticked the approval box.' } : { ok: false, text: 'Tick the approval box above.' });
   else gates.push({ ok: true, text: 'Next: Review & approve, tick the approval box, then Deploy to tenant.' });
   return `<ul class="dz-gates" aria-label="What a deployment needs">${gates.map(g => `<li class="${g.ok ? 'ok' : (g.warn ? 'warn' : 'closed')}"><span class="ic" aria-hidden="true">${g.ok ? '✓' : (g.warn ? '!' : '✕')}</span><span class="sr-only">${g.ok ? 'Open: ' : (g.warn ? 'Warning: ' : 'Closed: ')}</span>${_dzE(g.text)}</li>`).join('')}</ul>`;
@@ -1313,7 +1313,7 @@ function _dzRemovalApprove() {
     ${nameOnly.length ? `<div class="dz-card sev-medium"><div class="bar"></div><div><div class="t">${nameOnly.length} object(s) matched by name only</div><div class="d">These carry no DLP-Check tag: ${_dzE(nameOnly.map(i => i.name).join(', '))}. Confirm they are yours before removing.</div></div></div>` : ''}
     <label class="dz-consent"><input type="checkbox" id="rmConsent" ${R.consent ? 'checked' : ''} onchange="DZ.removal.consent=this.checked;_dzRemovalRender()"> I have read the list above and I authorize the permanent removal of these ${remove.length} object(s) from ${_dzE(R.plan.tenant_label || 'the tenant')}.</label>`;
   document.getElementById('dzFoot').innerHTML = `
-    <div class="dz-summary">${!writeOn ? ((DZ.write || {}).can_toggle ? 'The server is read-only: click Enable write mode (you will type the confirmation phrase), then Remove now unlocks.' : _dzE((DZ.write || {}).reason || 'The server is read-only and write mode cannot be enabled from here; start it with START_Zscaler_Assessment_WRITES_ENABLED.bat.')) : (R.consent ? 'Ready: Remove now deletes the objects above and verifies by a fresh read.' : 'Tick the box to enable Remove now.')}</div>
+    <div class="dz-summary">${!writeOn ? ((DZ.write || {}).can_toggle ? 'The server is read-only: click Enable write mode (you will type the confirmation phrase), then Remove now unlocks.' : _dzE((DZ.write || {}).reason || ('The server is read-only and write mode cannot be enabled from here; ' + ((DZ.write || {}).how_to_enable || 'start it with ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND') + '.'))) : (R.consent ? 'Ready: Remove now deletes the objects above and verifies by a fresh read.' : 'Tick the box to enable Remove now.')}</div>
     <div class="dz-actions">
       <button type="button" class="dz-btn quiet" onclick="DZ.removal.step=1;_dzRemovalRender()">Back</button>
       <button type="button" class="dz-btn quiet" onclick="_dzRemovalReport()">Print or save as PDF</button>

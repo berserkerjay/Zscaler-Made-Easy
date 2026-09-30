@@ -1396,8 +1396,8 @@ def preflight(
         blockers.append("Could not read the tenant's current configuration, so overlaps and dependencies can't be checked: "
                         + "; ".join(tenant["errors"]))
     read_only_note = ("The server is in read-only mode: this plan can be reviewed and exported but not deployed. "
-                      "Click Enable write mode in Deploy Policy Packs (you type a confirmation phrase), or start the server with "
-                      "START_Zscaler_Assessment_WRITES_ENABLED.bat.") if writes_enabled is False else ""
+                      "Click Enable write mode in Deploy Policy Packs (you type a confirmation phrase) where the page offers it; otherwise "
+                      + __import__("security").write_enable_hint() + ".") if writes_enabled is False else ""
 
     unreadable = tenant.get("unreadable") or {}
 
@@ -1871,8 +1871,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
                        restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
     if writes_enabled is False:
-        return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs, or start it with "
-                                                  "START_Zscaler_Assessment_WRITES_ENABLED.bat, then deploy."],
+        return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs where the page "
+                                                  "offers it; otherwise " + __import__("security").write_enable_hint() + ". Then deploy."],
                 "report": public_report(report), "results": []}
     if report["status"] == "blocked":
         return {"status": "blocked", "blockers": report["blockers"], "report": public_report(report), "results": []}
