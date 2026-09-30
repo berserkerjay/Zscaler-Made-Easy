@@ -7,6 +7,26 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Each pack shows how it measures against ZIA's rate limits, and every preview says whether the run will go straight through
+- **What you asked for.** "Make a note on each pack how it measures against the rate limit for a deployment or delete, and give a notice to the user based on all recent transactions if it will succeed."
+- **On each pack card**, a *Rate limits* line says, for a fresh hour, how many requests a full deploy sends and how long it takes at ZIA's limits, the same for a full removal, and whether any channel has more rules than ZIA allows in an hour. For example, ZBP Enterprise: *Full deploy: 77 requests, about 66s at ZIA's limits (Endpoint DLP rules go at 10/min and 40/hr). Removal: 76 deletes, about 75s.*
+- **The preflight** has a *ZIA rate limits* card in *Impact on this tenant*. It counts what this deploy creates or changes per limit, plus its one activation, and checks that against the requests DLP-Check sent in the last hour. It then gives one of these verdicts:
+  - *Goes straight through*, with the time it takes;
+  - *Will succeed, but pauses for ZIA's hourly limit*, with how long and why (for example *Endpoint DLP rules: 38 of 40/hr already used in the last hour*);
+  - the limit is still resetting from an earlier refusal, and when the run can start.
+- **The removal preview** has the same card for its deletes and the one activation.
+- **Recent requests survive a restart.** The requests of the last hour are kept in a small state file: `/data/zia_rate.json` in the container, or `zia_rate_state.json` next to the app, which you can set with `DLP_CHECK_ZIA_RATE_STATE`. A restart or a second run starts from the real count, not from zero. The forecast sees only what DLP-Check sent; another tool using the same API client is not visible, and the card says so.
+- **Verified.** Tests cover:
+  - the note on every pack;
+  - a fresh hour going straight through;
+  - 38 recent Endpoint rule writes turning the forecast into a pause with the reason;
+  - more than an hourly limit flagged even from a fresh start;
+  - an active hold;
+  - the count surviving a restart, and requests older than an hour dropped;
+  - the preflight and removal cards, with the forecast kept out of the plan hash.
+
+  The full suite fails only the 8 tests that already fail on dev.
+
 ### A rate refusal pauses the whole run until the limit has completely reset
 - **What you asked for.** "I wanted to create 565 objects, and after 5 minutes I started getting the 403 error. We need the timer on the limit to completely elapse before we reattempt, for every deployment or removal of a pack."
 - **Before.** A 403 "Resource Access Blocked" was retried after 30 s, 1, 1.5, 2 and 2 minutes, and a 429 after a few seconds. Both are shorter than ZIA's windows (a minute or an hour), so the retries ran into the same limit again and added to the refusals.
