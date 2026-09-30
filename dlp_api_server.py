@@ -169,7 +169,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -2569,7 +2569,224 @@ async def upstream_check_offline(refresh: bool = False):
             "daily": {"where": "GitHub Actions, .github/workflows/upstream_check.yml", "schedule": "06:23 UTC daily and on demand",
                       "covers": "the online half too: PyPI's latest SDK release diffed on the modules the app calls, the 2.x prerelease's service definition, the provider's latest version, schema and docs, and Zscaler's API reference",
                       "result": "drift opens or updates one issue labelled upstream-drift in the repository and fails the job; a clean day closes it. This server does not read that run.",
-                      "not": "this is not a CISA check and not a check of the customer's tenant"}}
+                      "not": "this is not a CISA check and not a check of the customer's tenant"},
+            "beacon": {"where": "/report/beacon", "what": "the same check's online half, run on this server on a timer, with what changed since the last run"}}
+
+
+# ── Beacon: what changed in the SDK, the API and Terraform ─────────────
+# beacon.py runs the upstream check's watchers (SDK, API, Terraform) on
+# this server and keeps the last 30 snapshots with what changed between
+# them. A timer runs the online watchers every DLP_CHECK_BEACON_HOURS
+# (default 24; 0 turns it off) while this server process runs; it never
+# runs the tenant API watch, which needs credentials and is started from
+# the Beacon tab. Nothing is written to any tenant: the watch is GET only.
+_BEACON_DEFAULT_HOURS = 24.0
+_BEACON_STATUS_REFRESH_SECONDS = 3600   # /api/beacon/status?refresh=1 starts an online run at most this often
+
+
+def _beacon_hours() -> float:
+    """DLP_CHECK_BEACON_HOURS as a number of hours; blank, invalid or
+    negative falls back to the default with a line in the log."""
+    raw = (os.environ.get("DLP_CHECK_BEACON_HOURS") or "").strip()
+    if not raw:
+        return _BEACON_DEFAULT_HOURS
+    try:
+        hours = float(raw)
+    except ValueError:
+        print(f"[beacon] DLP_CHECK_BEACON_HOURS={raw!r} is not a number; using {_BEACON_DEFAULT_HOURS:g} hours.")
+        return _BEACON_DEFAULT_HOURS
+    if hours < 0:
+        print(f"[beacon] DLP_CHECK_BEACON_HOURS={raw!r} is negative; using {_BEACON_DEFAULT_HOURS:g} hours (0 turns the timer off).")
+        return _BEACON_DEFAULT_HOURS
+    return hours
+
+
+_BEACON_STATE: Dict[str, Any] = {"enabled": False, "interval_hours": None, "last_run_at": None, "last_status": None, "last_error": None,
+                                 "next_run_at": None, "running": False, "running_since": None, "running_trigger": None,
+                                 "runs_while": "this server process is running", "covers": "SDK, API and Terraform (never the tenant API watch)"}
+
+
+def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: str = "") -> Optional[Dict[str, Any]]:
+    """One Beacon run by a caller that already holds beacon.RUN_LOCK; the
+    lock is released here, whatever happens. Keeps the timer state."""
+    import beacon
+    _BEACON_STATE.update({"running": True, "running_since": datetime.now(timezone.utc).isoformat(timespec="seconds"), "running_trigger": trigger})
+    try:
+        snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger)
+        _BEACON_STATE.update({"last_status": "error" if snap.get("error") else "ok", "last_error": snap.get("error")})
+        return snap
+    except Exception as e:  # noqa: BLE001 — a failed run is reported on the tab, never raised into the server
+        _BEACON_STATE.update({"last_status": "error", "last_error": f"{type(e).__name__}: {str(e)[:200]}"})
+        return None
+    finally:
+        _BEACON_STATE.update({"running": False, "running_since": None, "running_trigger": None,
+                              "last_run_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        if client is not None:
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001
+                pass
+        beacon.RUN_LOCK.release()
+
+
+def _beacon_run_blocking(online: bool, trigger: str) -> Optional[Dict[str, Any]]:
+    """One upstream-only run, or None when another run is in progress."""
+    import beacon
+    if not beacon.RUN_LOCK.acquire(blocking=False):
+        return None
+    return _beacon_run_locked(online, trigger)
+
+
+def _beacon_start_background(online: bool, trigger: str, client: Any = None, label: str = "") -> bool:
+    """Start a run on its own thread; False when one is already running."""
+    import beacon
+    import threading
+    if not beacon.RUN_LOCK.acquire(blocking=False):
+        return False
+    try:
+        threading.Thread(target=_beacon_run_locked, args=(online, trigger, client, label), name="beacon-run", daemon=True).start()
+    except Exception:
+        beacon.RUN_LOCK.release()
+        raise
+    return True
+
+
+def _beacon_last_online_age(history: List[Dict[str, Any]]) -> Optional[float]:
+    """Seconds since the newest online run, or None when there is none."""
+    for s in reversed(history):
+        if s.get("online"):
+            try:
+                return max(0.0, time.time() - datetime.fromisoformat(str(s.get("at"))).timestamp())
+            except ValueError:
+                return None
+    return None
+
+
+async def _beacon_loop() -> None:
+    """The timer: the online upstream watchers every N hours. The first run
+    waits until the newest online snapshot is N hours old (at least a
+    minute after startup), so a restart does not re-fetch everything."""
+    import beacon
+    interval = _BEACON_STATE["interval_hours"] * 3600
+    try:
+        age = _beacon_last_online_age(await asyncio.to_thread(beacon.load_history))
+    except Exception:  # noqa: BLE001
+        age = None
+    delay = max(60.0, interval - age) if age is not None else 60.0
+    while _BEACON_STATE.get("enabled"):
+        _BEACON_STATE["next_run_at"] = datetime.fromtimestamp(time.time() + delay, timezone.utc).isoformat(timespec="seconds")
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            break
+        try:
+            await asyncio.to_thread(_beacon_run_blocking, True, "timer")
+        except Exception as e:  # noqa: BLE001 — the timer never takes the server down
+            _BEACON_STATE.update({"last_status": "error", "last_error": f"{type(e).__name__}: {str(e)[:200]}"})
+        delay = interval
+
+
+@app.on_event("startup")
+async def _start_beacon() -> None:
+    hours = _beacon_hours()
+    _BEACON_STATE["interval_hours"] = hours
+    if hours <= 0:
+        _BEACON_STATE.update({"enabled": False, "last_status": "disabled", "next_run_at": None})
+        return
+    try:
+        import beacon  # noqa: F401
+        _BEACON_STATE["enabled"] = True
+        asyncio.create_task(_beacon_loop())
+    except Exception:  # noqa: BLE001
+        _BEACON_STATE.update({"enabled": False, "last_status": "disabled"})
+
+
+def _beacon_timer() -> Dict[str, Any]:
+    t = dict(_BEACON_STATE)
+    if t.get("interval_hours") is None:
+        t["interval_hours"] = _beacon_hours()   # the startup hook has not run (tests, a bare import)
+    t["setting"] = "DLP_CHECK_BEACON_HOURS (0 turns the timer off)"
+    return t
+
+
+class BeaconRunRequest(TenantCredsRequest):
+    """Body of POST /api/beacon/run. `online` reads PyPI, the Terraform
+    registry, the provider's docs and Zscaler's pages (false: the installed
+    SDK and the committed Terraform only). `tenant_watch` also GETs every
+    endpoint the app reads from the tenant the credentials name (blank
+    fields fall back to the saved profile, the environment or
+    tenant_config.json, like every tenant call)."""
+    online: bool = True
+    tenant_watch: bool = False
+    customer_id: str = ""   # ZPA endpoints are probed only with one
+
+
+@app.get("/api/beacon")
+async def beacon_get():
+    """The latest Beacon snapshot, what changed since the run before it,
+    the history (newest first) and the timer."""
+    import beacon
+    history = await asyncio.to_thread(beacon.load_history)
+    latest = history[-1] if history else None
+    return {"latest": latest, "diff": (latest or {}).get("diff"), "history": beacon.history_rows(history),
+            "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "running_since": _BEACON_STATE["running_since"],
+            "timer": _beacon_timer(), "state_file": beacon.state_path(), "keep": beacon.HISTORY_KEEP}
+
+
+@app.get("/api/beacon/status")
+async def beacon_status(refresh: bool = False):
+    """Short form for a notice: the current SDK / API / Terraform drift, the
+    count of changes since the previous run and where the details are.
+    Reads the kept snapshot only; `refresh` starts an online run in the
+    background when the newest online one is over an hour old."""
+    import beacon
+    history = await asyncio.to_thread(beacon.load_history)
+    started = False
+    if refresh:
+        age = _beacon_last_online_age(history)
+        if age is None or age > _BEACON_STATUS_REFRESH_SECONDS:
+            started = _beacon_start_background(True, "status")
+    latest = history[-1] if history else None
+    online = next((s for s in reversed(history) if s.get("online")), None)
+    diff = (latest or {}).get("diff") or {}
+    drift = (online or latest or {}).get("drift") or []
+    import hashlib
+    key = hashlib.sha256("\n".join(sorted(f"{d.get('watcher')}|{d.get('text')}" for d in drift)).encode("utf-8")).hexdigest()[:16] if drift else ""
+    return {"at": (latest or {}).get("at"), "online_at": (online or {}).get("at"), "drift": drift, "drift_key": key,
+            "changes": len(diff.get("changes") or []), "summary": (diff.get("summary") or [None])[0],
+            "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "started": started, "details": "/report/beacon",
+            "next_run_at": _BEACON_STATE.get("next_run_at")}
+
+
+@app.post("/api/beacon/run")
+async def beacon_run(req: BeaconRunRequest):
+    """Start a Beacon run in the background; GET /api/beacon shows it when
+    it is done. With `tenant_watch`, the credentials are checked and signed
+    in first (a refusal is answered here, secrets masked) and the tenant
+    is then only read: GET, about one request a second."""
+    import beacon
+    if _BEACON_STATE["running"] or beacon.RUN_LOCK.locked():
+        raise HTTPException(status_code=409, detail=f"A Beacon run is already in progress (started {_BEACON_STATE.get('running_since') or 'just now'}); wait for it to finish.")
+    client, label = None, ""
+    if req.tenant_watch:
+        client = await asyncio.to_thread(_build_client, req)   # validates every field; 400/401 without echoing a secret
+        label = tenant_auth.label(_tenant_creds(req))
+    if not _beacon_start_background(bool(req.online), "manual", client, label):
+        if client is not None:
+            client.close()
+        raise HTTPException(status_code=409, detail="A Beacon run is already in progress; wait for it to finish.")
+    return {"started": True, "online": bool(req.online), "tenant_watch": bool(req.tenant_watch), "tenant": label or None,
+            "endpoints": len(beacon.tenant_endpoints()) if req.tenant_watch else 0}
+
+
+@app.get("/report/beacon")
+async def report_beacon_page():
+    """Standalone tab for Beacon (static/report_beacon.html)."""
+    page = os.path.join(STATIC_DIR, "report_beacon.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
 @app.get("/api/secure-by-design")

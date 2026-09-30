@@ -217,6 +217,14 @@
     get: 'What changed, with a working link or a fallback to the section it now lives in.',
     next: 'Skim for changes in the areas your customer cares about.',
   };
+  X.beacon = {
+    group: 'Reference', name: 'Beacon: SDK, API & Terraform changes', href: '/report/beacon',
+    what: 'A watch on the three things outside this app that can silently break it: the Zscaler Python SDK (a new release, and whether it changes a module the app calls), the ZIA API (the SDK's machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now, and says what changed since the last run. Optionally it reads every endpoint the app uses from one tenant, GET only, and says which ones now answer differently.',
+    why: 'When Zscaler moves an endpoint, renames a field or ships an SDK that changes a request body, a deploy or a check fails in front of the customer. Beacon says so first, in plain words, with what to do.',
+    when: 'Glance at it before an engagement and after a Zscaler release; run the tenant API watch when a check starts answering 403 or 404 and you want to know whether the endpoint or the permission moved.',
+    get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',
+    next: 'Act on new drift: read the SDK or provider changelog before upgrading, grant the permission a 403 names, or report an endpoint that moved.',
+  };
   X.logs = {
     group: 'Troubleshoot', name: 'Log analyzer', href: '/report/logs',
     what: 'Drop in the ZIP that Client Connector\'s Export Logs produced (or single .log files, or a PAC file). It reads them on this computer and tells you what happened, what it means for the user, and what to do next.',
@@ -281,7 +289,7 @@
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
     const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
-      '/report/logs': 'logs', '/report/digest': 'digest', '/permissions': 'permissions', '/help': 'help' };
+      '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
   }
 
