@@ -304,7 +304,7 @@
   .dz-pack .dz-stage .nm { white-space: normal; }
   /* Write-mode banner */
   .dz-write { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-lg); border: 1px solid var(--border); margin-bottom: var(--sp-4); background: var(--well); }
-  .dz-write.on { border-left: 3px solid var(--pass); }
+  .dz-write.on { border-left: 3px solid var(--warn); }   /* write mode is a warning, never a green 'ok' */
   .dz-write.off { border-left: 3px solid var(--warn); }
   .dz-write > div { flex: 1; min-width: 0; }
   .dz-write .t { font-weight: 700; color: var(--text); }
