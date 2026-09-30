@@ -147,7 +147,7 @@ def _with_rate(plan: Dict[str, Any], client: Any = None) -> Dict[str, Any]:
     app sent in the last hour: its deletes plus the one activation."""
     import zia_rate
     n = int(plan.get("remove_count") or 0)
-    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client)) if n and not plan.get("blockers") else None
+    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client), tenant_label=zia_rate.label_of(client)) if n and not plan.get("blockers") else None
     if f:
         f["detail"] = zia_rate.history_text(f)
         if f["severity"] != "ok":

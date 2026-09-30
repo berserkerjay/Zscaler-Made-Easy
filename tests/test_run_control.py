@@ -826,9 +826,9 @@ def test_writes_wait_for_zias_per_endpoint_rate_limits(monkeypatch):
     ok = lambda: ({"id": 1}, None, None)
     for _ in range(3):
         ops.call(ok, op="create", kind="dictionary", name="D")
-    assert waited == [1.0, 1.0], "dictionaries: one a second"
+    assert waited == [1.25, 1.25], "dictionaries: one a second, with the per-second margin"
     ops.call(ok, op="read", kind="dictionary", name="D")
-    assert waited == [1.0, 1.0], "reads are not held back here"
+    assert waited == [1.25, 1.25], "reads are not held back here (the tenant session paces them)"
     waited.clear()
     logs = []
     for i in range(11):

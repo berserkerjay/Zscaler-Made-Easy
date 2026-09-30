@@ -7,6 +7,33 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Every deploy and delete shows the rate-limit check in its popup, and the app stops crushing ZIA's read limit itself
+- **What you asked for.**
+  - "The popup warning didn't tell me my API plan and success rate, and my sarcastic comment if I was crushing Zscaler's API rates."
+  - "I want to see the sample warning."
+  - "Should apply for any deploy or delete."
+- **The popup.** Every confirmation now opens with the rate-limit check:
+  - the verdict, with its sarcastic opener when ZIA's limits bite;
+  - the **API plan**: each kind of request with how many, ZIA's limit, how many were already sent this hour and how long it takes, starting with when the run can begin if there is a wait first;
+  - the **success outlook**: good, good but slow, or poor. It comes with this tenant's **track record**: how many of its deploys and removals in the last week finished without ZIA refusing them for its rate.
+- **Where.**
+  - Pack deploy: every time, not only on a warning. The approve screen shows the check too.
+  - Removal: packs, a deployment, or selected rules.
+  - The Evaluate All Rules migration: post, delete-all and enable.
+  - Both remediation paths, and applying or rolling back a proposal.
+
+  A new endpoint, `/api/rate-check`, gives any of them the check without sending anything to ZIA.
+- **What was really crushing ZIA's API.** The container's own record for the last hour: 66 writes, 14 Endpoint DLP rules and 223 reads. ZIA answered with 14 × "Rate Limit (2/SECOND) exceeded", 4 × "Rate Limit (1/SECOND) exceeded", then "Resource Access Blocked".
+  - **Reads.** The assessment client spaced its requests 0.15 s apart, 6 to 7 a second, and nothing paced the SDK's reads. ZIA's read limit is 2 a second.
+  - **Writes.** Writes paced at exactly one a second still reached ZIA two in one second.
+- **Now:**
+  - every ZIA request on a tenant's session, from the SDK or the assessment, is paced before it goes out: reads at 2 a second, and writes at their limits unless the caller has just paced them;
+  - per-second limits keep a 25% margin (`DLP_CHECK_ZIA_SECOND_MARGIN`, default 1.25);
+  - reads do not wait for a hold on writes, so previews still work.
+- **Verified.**
+  - Tests cover the API plan and track record (only this tenant's runs), the popups on every path, `/api/rate-check`, and reads paced at 2 per 1.25 s. A write paced by its caller is not paced twice, an unpaced write is paced at the session, and a read does not wait for a hold.
+  - The sample popup was rendered by the app's own `zdRateText` from the container's real record.
+
 ### When a run is crushing Zscaler's API rate limits, the check says so, sarcastically
 - **What you asked for.** "I want the wording to be sarcastic if we are crushing Zscaler's API rate limits."
 - **Now**, when the rate-limit check is not a plain *Will succeed*, the verdict opens with a line that gives ZIA's limits the respect they have earned. The facts follow unchanged: what ZIA did, the traffic that led to it, and when to run. For example: *Zscaler's API, a global cloud platform, needs a lie-down after 110 writes. Likely to fail: ZIA blocked this API client…*
