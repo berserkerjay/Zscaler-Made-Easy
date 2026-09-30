@@ -387,3 +387,6 @@
 .dz-deploy-note { margin: 0.5rem 0 0.6rem; padding: 0.6rem 0.75rem; border-left: 4px solid var(--warn, #b45309);
   background: color-mix(in srgb, var(--warn, #b45309) 10%, transparent); border-radius: 6px;
   font-size: 1rem; font-weight: 600; line-height: 1.4; }
+
+.dz-rate-note { margin: 0 0 0.6rem; font-size: 0.85rem; color: var(--muted, #555); line-height: 1.4; }
+.dz-rate-note .k { font-weight: 600; margin-right: 0.4rem; color: var(--fg, inherit); }
