@@ -579,9 +579,32 @@ only thing keeping the app off the network.
   the real stop for a detached container).
 - Start it again later: `docker compose up` (`-d` on a server; no
   `--build` needed unless the code changed).
-- Update it: get the latest code (`git pull`, or download a fresh ZIP and
-  replace the folder) and run `docker compose up --build` again. The
-  in-app **Update app** button does not apply inside a container.
+- Update it: from the app folder run the update script. It pulls the
+  latest code from GitHub and rebuilds the container only when there is
+  something new; saved data stays, and the app restarts with a new UI
+  token (`docker logs dlp-check`). The folder must be a `git clone`.
+
+  ```
+  powershell -ExecutionPolicy Bypass -File .\update_container.ps1     # Windows
+  ./update_container.sh                                                # Mac, Linux
+  ```
+
+- **Automatic updates:** run the same script once with `-Schedule`
+  (Windows) or `--schedule` (Mac, Linux). The computer then runs it every
+  day at 03:17 (Windows also runs it at the next start if it was off).
+  `-Unschedule` / `--unschedule` stops it. What it did is in
+  `update_container.log` in the app folder. It stops, without changing
+  anything, if a file in the folder was edited by hand.
+- **Update notice in the app:** a minute after the page opens, and every
+  6 hours while it stays open, the app checks GitHub and shows a notice at
+  the top when a newer build is out (both for the container and for a
+  local install). Because the repository is private, the container needs
+  a read-only GitHub token for that check: create a fine-grained token on
+  GitHub (*Settings → Developer settings → Fine-grained tokens*, only this
+  repository, *Contents: read*), put `DLP_CHECK_GITHUB_TOKEN=<the token>`
+  in the `.env` file next to `docker-compose.yml`, and run
+  `docker compose up -d`. Without it everything else works; only the
+  notice stays silent.
 
 What the app saves (tenant profiles, deployment records, the audit log,
 uploaded packs, digests, proposals, the guidance state and the token

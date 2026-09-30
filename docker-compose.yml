@@ -9,7 +9,14 @@
 # _CLIENT_SECRET / _REDIRECT_URL variables in that .env file.
 services:
   dlp-check:
-    build: .
+    build:
+      context: .
+      # Which commit the image is built from, so the app can say whether
+      # GitHub has a newer one. update_container.sh / .ps1 set these; a plain
+      # docker compose up --build leaves them "unknown" / "main".
+      args:
+        DLP_CHECK_BUILD_COMMIT: "${DLP_CHECK_BUILD_COMMIT:-unknown}"
+        DLP_CHECK_BUILD_BRANCH: "${DLP_CHECK_BUILD_BRANCH:-main}"
     image: dlp-check:local
     container_name: dlp-check
     ports:

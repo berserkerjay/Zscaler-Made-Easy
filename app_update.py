@@ -187,6 +187,40 @@ def _github_owner_repo(app_dir: str) -> Optional[Tuple[str, str]]:
     return (m.group(1), m.group(2)) if m else None
 
 
+UPSTREAM_REPO = "berserkerjay/DLP-Check"
+
+
+def github_branch_head(branch: str, timeout: int = 10) -> Tuple[Optional[str], Optional[str]]:
+    """Short sha of `branch` on GitHub over its REST API, for a copy with
+    no git checkout (the container, a ZIP). The repository is private, so
+    a read-only token in DLP_CHECK_GITHUB_TOKEN (fine-grained, Contents:
+    read) is needed; it is only ever sent to api.github.com and never
+    logged. Returns (sha, error)."""
+    repo = os.environ.get("DLP_CHECK_GITHUB_REPO", "").strip() or UPSTREAM_REPO
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        return None, "DLP_CHECK_GITHUB_REPO must look like owner/repository"
+    token = os.environ.get("DLP_CHECK_GITHUB_TOKEN", "").strip()
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        import requests
+        r = requests.get(f"https://api.github.com/repos/{repo}/commits/{branch}", headers=headers, timeout=timeout)
+    except Exception as e:  # noqa: BLE001
+        msg = str(e).replace(token, "[token]") if token else str(e)
+        return None, f"GitHub could not be reached ({type(e).__name__}: {msg[:160]}); on a network with TLS inspection see INSTALL.md (certs folder)"
+    if r.status_code == 200:
+        sha = str((r.json() or {}).get("sha") or "")[:7]
+        return (sha or None), (None if sha else "GitHub's answer had no commit")
+    if r.status_code in (401, 403, 404) and not token:
+        return None, ("The repository is private, so the update check needs a read-only GitHub token: create a fine-grained token with "
+                      "Contents: read on " + repo + " and put DLP_CHECK_GITHUB_TOKEN=<token> in the .env file next to docker-compose.yml, "
+                      "then docker compose up -d.")
+    if r.status_code in (401, 403, 404):
+        return None, f"GitHub refused the token (HTTP {r.status_code}): it must be able to read {repo} (Contents: read) and not be expired."
+    return None, f"GitHub answered HTTP {r.status_code}"
+
+
 def verify_against_github_api(app_dir: str, branch: str, local_sha: str, timeout: int = 10) -> Dict[str, Any]:
     """Cross-check the commit just pulled over git against what GitHub's
     REST API reports for the same branch: a channel separate from the
@@ -286,6 +320,9 @@ def resolve_branch(app_dir: str, requested: Any = None) -> str:
     put on — else main."""
     if requested:
         return valid_branch(requested)
+    if in_container():
+        built = os.environ.get("DLP_CHECK_BUILD_BRANCH", "").strip()
+        return built if built in BRANCHES else DEFAULT_BRANCH
     cur = current_branch(app_dir)
     return cur if cur in BRANCHES else DEFAULT_BRANCH
 
@@ -295,6 +332,18 @@ def branch_choices(app_dir: str) -> List[Dict[str, Any]]:
     it is the one checked out."""
     cur = current_branch(app_dir)
     return [{"name": b, "label": BRANCH_LABELS[b], "current": b == cur} for b in BRANCHES]
+
+
+CONTAINER_UPDATE_HELP = (
+    "This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker, in the "
+    "DLP-Check folder: Windows  powershell -ExecutionPolicy Bypass -File .\\update_container.ps1 ; Mac or Linux  ./update_container.sh . "
+    "Add -Schedule (Windows) or --schedule (Mac, Linux) once to update automatically every day. Saved data survives; "
+    "the app restarts with a new UI token.")
+
+
+def in_container() -> bool:
+    """True inside the DLP-Check image (the Dockerfile sets DLP_CHECK_IN_CONTAINER=1)."""
+    return os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
 
 
 def status(app_dir: str, remote_sha: Optional[str] = None, branch: Optional[str] = None) -> Dict[str, Any]:
@@ -307,6 +356,18 @@ def status(app_dir: str, remote_sha: Optional[str] = None, branch: Optional[str]
                            "target_branch": target, "branches": branch_choices(app_dir),
                            "remote_commit": remote_sha, "update_available": None, "dirty_files": [],
                            "can_update": False, "reason": ""}
+    if in_container():
+        # The container has no git and a read-only filesystem: it is updated
+        # from the computer that runs Docker (update_container.sh / .ps1),
+        # which rebuilds it. Say whether GitHub is ahead of the build.
+        out["in_container"] = True
+        built = os.environ.get("DLP_CHECK_BUILD_COMMIT", "").strip()
+        out["local_commit"] = built if built and built != "unknown" else None
+        out["branch"] = os.environ.get("DLP_CHECK_BUILD_BRANCH", "").strip() or None
+        if remote_sha and out["local_commit"]:
+            out["update_available"] = not remote_sha.startswith(out["local_commit"]) and not out["local_commit"].startswith(remote_sha)
+        out["reason"] = CONTAINER_UPDATE_HELP
+        return out
     if not out["git_available"]:
         out["reason"] = ("git is not installed or not on PATH. Install Git (Windows: https://git-scm.com/download/win; Mac: run  xcode-select --install  "
                          "in Terminal; Linux: your package manager) and restart the app.")

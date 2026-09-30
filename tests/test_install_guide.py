@@ -36,7 +36,7 @@ def test_the_install_guide_names_only_files_that_exist_and_links_that_resolve():
     named = set(re.findall(r"`([A-Za-z0-9_./-]+\.(?:bat|sh|md|vbs|example|txt|log|json))`", INSTALL))
     # Files the guide tells the reader to look for or run must be in the repository; files the app
     # writes at run time (its log, the token file, the settings copy) are expected not to be.
-    written_at_runtime = {"server.log", "launcher.log", "ui_token.txt", "local_settings.bat", "local_settings.env"}
+    written_at_runtime = {"server.log", "launcher.log", "ui_token.txt", "local_settings.bat", "local_settings.env", "update_container.log"}
     missing = sorted(n for n in named if n not in written_at_runtime and not _exists(*n.split("/")))
     assert not missing, f"INSTALL.md names files that are not in the repository: {missing}"
     for target in re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", INSTALL):
