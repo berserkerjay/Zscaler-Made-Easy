@@ -294,8 +294,9 @@ The same code runs without the browser:
 
 `python dlp_mcp_server.py` runs a separate, optional MCP server (port
 8080, or `--transport stdio`) that lets an AI agent run the same
-assessment with credentials from `ZSCALER_*` variables; no launcher
-starts it.
+assessment with credentials from `ZSCALER_*` variables only (no tool
+accepts a secret, so none passes through the AI conversation;
+`get_health` names any variable that is missing); no launcher starts it.
 
 ## Limits, and what is still to come
 

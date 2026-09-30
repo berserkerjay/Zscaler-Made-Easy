@@ -2159,14 +2159,14 @@ def run_checks(client, checks, con=None):
             for id,sec,label,fn in checks:
                 prog.update(task,description=f"[cyan]{id}[/] {label}")
                 try: r=fn(client)
-                except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
+                except Exception as ex: r=R(R.ERROR,f"{label}: Could not complete check. {str(ex)[:120]}")  # "Could not be checked", never "Not configured"
                 results.append(_plain({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail}))
                 prog.advance(task)
     else:
         for i,(id,sec,label,fn) in enumerate(checks,1):
             print(f"  [{i}/{len(checks)}] {id}: {label}...",end=" ",flush=True)
             try: r=fn(client)
-            except Exception as ex: r=R(R.INFO,f"{label}: Could not complete check. {str(ex)[:120]}")
+            except Exception as ex: r=R(R.ERROR,f"{label}: Could not complete check. {str(ex)[:120]}")  # "Could not be checked", never "Not configured"
             results.append(_plain({"id":id,"sec":sec,"label":label,"status":r.status,"detail":r.detail}))
             print(r.status)
     return results
@@ -2208,12 +2208,34 @@ def compute(results):
     passed=sum(s["pass"] for s in secs.values())
     return secs, (round(passed/scored_total*100) if scored_total else None)
 
+def coverage(results):
+    """How much of the run was actually assessed (permissions.assessment_summary):
+    the same numbers the GUI and the Word report show."""
+    import permissions
+    return permissions.assessment_summary(results)
+
+def coverage_text(cov):
+    """'Assessed 180 of 206 checks · 20 not permitted · 6 could not be checked'."""
+    parts=[f"Assessed {cov['assessed']} of {cov['total']} checks"]
+    if cov["not_permitted"]: parts.append(f"{cov['not_permitted']} not permitted to the API client")
+    if cov["errors"]: parts.append(f"{cov['errors']} could not be checked")
+    if cov["not_in_scope"]: parts.append(f"{cov['not_in_scope']} not in scope")
+    return " · ".join(parts)
+
+def partial_banner(cov):
+    """The warning a partial run carries next to its score, or ''."""
+    if cov["state"]!="partial": return ""
+    return (f"PARTIAL COVERAGE: the score covers only what could be checked. {cov['not_permitted']} check(s) were refused to the API client "
+            f"and {cov['errors']} could not be completed; they are left out of the score, so it may look better than the tenant is.")
+
 def report(results, cfg, con=None):
     secs,overall=compute(results); mat=maturity(overall)
+    cov=coverage(results); banner=partial_banner(cov)
     if HAS_RICH and con:
         con.print("\n")
         o=overall if overall is not None else 0
-        con.print(Panel.fit(f"[bold]{cfg.get('org_name','')}[/] · {datetime.now().strftime('%Y-%m-%d')}\n[bold {'dim' if overall is None else 'green' if o>=75 else 'yellow' if o>=50 else 'red'}]{pct_text(overall)} — {mat}[/]\n[dim]{len(REG)} checks · zero manual[/]",border_style="cyan",title="[bold cyan]DLP ASSESSMENT[/]"))
+        con.print(Panel.fit(f"[bold]{cfg.get('org_name','')}[/] · {datetime.now().strftime('%Y-%m-%d')}\n[bold {'dim' if overall is None else 'green' if o>=75 else 'yellow' if o>=50 else 'red'}]{pct_text(overall)} — {mat}[/]\n[dim]{coverage_text(cov)} · zero manual[/]",border_style="cyan",title="[bold cyan]DLP ASSESSMENT[/]"))
+        if banner: con.print(Panel.fit(f"[bold yellow]{banner}[/]",border_style="yellow"))
         t=Table(title="Scorecard",show_lines=True)
         t.add_column("Section",style="bold"); t.add_column("Score",justify="center"); t.add_column("P",style="green",justify="center"); t.add_column("F",style="red",justify="center"); t.add_column("R",style="yellow",justify="center")
         for s,d in secs.items():
@@ -2233,12 +2255,13 @@ def report(results, cfg, con=None):
             con.print(f"\n[bold red]CRITICAL ({len(fails)})[/]")
             for r in fails: con.print(f"  [red]✗[/] {r['id']}: {r['label']} — {r['detail']}")
     else:
-        print(f"\n{'='*64}\n  {cfg.get('org_name','')} · {pct_text(overall)} {mat} · {len(REG)} checks\n{'='*64}")
+        print(f"\n{'='*64}\n  {cfg.get('org_name','')} · {pct_text(overall)} {mat} · {coverage_text(cov)}\n{'='*64}")
+        if banner: print(f"  !! {banner}\n{'='*64}")
         for r in results: print(f"  {r['status']:>7} {r['id']:>5} {r['label']}")
 
 def save(results, cfg, path):
     secs,overall=compute(results)
-    rpt={"metadata":{"tool":"DLP Assessment Full Auto","version":"3.0","ts":datetime.now(timezone.utc).isoformat(),"org":cfg.get("org_name",""),"assessor":cfg.get("assessor",""),"cloud":cfg.get("cloud",""),"checks":len(REG)},"score":overall,"maturity":maturity(overall),"sections":secs,"checks":[{"id":r["id"],"sec":r["sec"],"label":r["label"],"status":r["status"],"detail":r["detail"]} for r in results],"critical":[r for r in results if r["status"]==R.FAIL],"review":[r for r in results if r["status"]==R.WARN]}
+    rpt={"metadata":{"tool":"DLP Assessment Full Auto","version":"3.0","ts":datetime.now(timezone.utc).isoformat(),"org":cfg.get("org_name",""),"assessor":cfg.get("assessor",""),"cloud":cfg.get("cloud",""),"checks":len(results)},"score":overall,"maturity":maturity(overall),"coverage":coverage(results),"sections":secs,"checks":[{"id":r["id"],"sec":r["sec"],"label":r["label"],"status":r["status"],"detail":r["detail"]} for r in results],"critical":[r for r in results if r["status"]==R.FAIL],"review":[r for r in results if r["status"]==R.WARN]}
     with open(path,"w") as f: json.dump(rpt,f,indent=2,default=str)
 
 class ConfigError(ValueError):

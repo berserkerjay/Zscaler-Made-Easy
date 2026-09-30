@@ -342,7 +342,7 @@ def test_sdk_client_and_mcp_take_the_classic_sign_in_from_the_environment(monkey
     built = {}
     monkeypatch.setattr(ta, "build_legacy_sdk_client", lambda creds, **kw: built.update(creds) or type("Z", (), {"zia": object()})())
     assert cl.auth() is True and built["api_key"] == "k"
-    mcp = pytest.importorskip("dlp_mcp_server", reason="the installed mcp package is not the one the MCP server was written for")
+    import dlp_mcp_server as mcp  # a hard import: an mcp release that breaks the server must fail here, not skip
     m = mcp._create_client()
     assert m._creds["auth_method"] == "legacy" and m._creds["cloud"] == "zscalerten"
 

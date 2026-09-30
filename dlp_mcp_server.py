@@ -5,10 +5,12 @@ DLP Assessment MCP Tool Server
 Model Context Protocol (MCP) server that exposes the DLP assessment
 engine as tools callable by AI agents (Claude, Cursor, Copilot, etc.).
 
-Credentials come from environment variables — AI prompts never need secrets.
+Credentials come from environment variables only — no tool takes a client
+ID, secret, password or API key, so a secret never passes through the AI
+conversation or its tool-call logs.
 
 Install:
-    pip install "mcp[cli]" zscaler-sdk-python
+    pip install "mcp[cli]" zscaler-sdk-python     # mcp 2.x (MCPServer) or 1.x (FastMCP)
 
 Run:
     python dlp_mcp_server.py                         # streamable-http on :8080
@@ -31,13 +33,17 @@ Tools exposed:
 """
 
 import argparse
+import inspect
 import logging
 import os
 import sys
 from datetime import datetime, timezone
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+try:  # mcp 2.x renamed FastMCP to MCPServer; the requirements.lock pins 2.x
+    from mcp.server.mcpserver import MCPServer
+except ImportError:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP as MCPServer
 
 # ── Import the assessment engine ─────────────────────────────────────
 # Engine sits alongside this file
@@ -66,7 +72,7 @@ logger = logging.getLogger("dlp_mcp")
 
 # ── MCP Server ───────────────────────────────────────────────────────
 
-mcp = FastMCP(
+mcp = MCPServer(
     "Zscaler DLP Assessment",
     instructions=(
         "Zscaler DLP Assessment tool server. Runs 150+ automated checks "
@@ -92,19 +98,17 @@ def _get_sections() -> dict:
 
 
 def _create_client(
-    client_id: Optional[str] = None,
-    client_secret: Optional[str] = None,
     vanity_domain: Optional[str] = None,
     cloud: Optional[str] = None,
 ) -> SdkClient:
-    """Create an SdkClient from params or environment variables. The
-    classic ZIA API sign-in comes from the environment alone
+    """Create an SdkClient from environment variables. Only the vanity
+    domain and cloud, which are not secrets, may be overridden by a tool
+    argument. Client ID and secret, and the classic ZIA API sign-in
     (ZSCALER_AUTH_METHOD=legacy, ZSCALER_USERNAME, ZSCALER_PASSWORD,
-    ZSCALER_API_KEY; see tenant_auth)."""
+    ZSCALER_API_KEY), come from the environment alone; see tenant_auth."""
     import tenant_auth
     env = tenant_auth.from_env()
-    c = tenant_auth.merge({"client_id": client_id or "", "client_secret": client_secret or "",
-                           "vanity_domain": vanity_domain or "", "cloud": cloud or ""}, env)
+    c = tenant_auth.merge({"vanity_domain": vanity_domain or "", "cloud": cloud or ""}, env)
     return SdkClient(
         client_id=c["client_id"], client_secret=c["client_secret"], vanity_domain=c["vanity_domain"],
         cloud=c["cloud"] or "production", auth_method=c["auth_method"], username=c["username"],
@@ -166,20 +170,19 @@ def run_assessment(
     assessor: str = "AI Agent",
     cloud: str = "",
     vanity_domain: str = "",
-    client_id: str = "",
-    client_secret: str = "",
 ) -> dict:
     """
     Run the full DLP assessment (150+ checks) against a Zscaler tenant.
 
-    Credentials are loaded from environment variables by default.
-    Only pass client_id/client_secret if env vars are not set.
+    Credentials are read from the server's environment variables only.
+    Never ask the user for a client secret, password or API key: if
+    get_health reports credentials missing, tell the user which
+    environment variables to set before starting the server.
 
     Returns a scored maturity report with pass/fail/review for every check,
     section scores, overall score, and critical findings.
     """
-    client = _create_client(client_id or None, client_secret or None,
-                            vanity_domain or None, cloud or None)
+    client = _create_client(vanity_domain or None, cloud or None)
     auth = client.auth()
     if auth is not True:
         return {"error": f"Authentication failed: {auth}"}
@@ -197,11 +200,11 @@ def run_section(
     org_name: str = "Unknown",
     cloud: str = "",
     vanity_domain: str = "",
-    client_id: str = "",
-    client_secret: str = "",
 ) -> dict:
     """
     Run checks for a specific assessment section only.
+
+    Credentials are read from the server's environment variables only.
 
     Available sections (use list_checks to see all):
       "1 — CC Portal", "2 — Bypass Inventory", "3 — App Profile",
@@ -222,8 +225,7 @@ def run_section(
         available = sorted(set(sec for _, sec, _, _ in REG))
         return {"error": f"No section matches '{section}'", "available": available}
 
-    client = _create_client(client_id or None, client_secret or None,
-                            vanity_domain or None, cloud or None)
+    client = _create_client(vanity_domain or None, cloud or None)
     auth = client.auth()
     if auth is not True:
         return {"error": f"Authentication failed: {auth}"}
@@ -261,17 +263,19 @@ def get_health() -> dict:
     Verifies the engine is loaded and credentials are configured.
     Does NOT make API calls to Zscaler.
     """
-    has_creds = bool(
-        os.environ.get("ZSCALER_CLIENT_ID")
-        and os.environ.get("ZSCALER_CLIENT_SECRET")
-        and os.environ.get("ZSCALER_VANITY_DOMAIN")
-    )
+    import tenant_auth
+    env = tenant_auth.from_env()
+    missing = [tenant_auth.ENV[k] for k in tenant_auth.missing(env)]
     return {
         "status": "ok",
         "engine_loaded": True,
         "total_checks": len(REG),
         "version": "3.0",
-        "credentials_configured": has_creds,
+        "auth_method": env["auth_method"],
+        "credentials_configured": not missing,
+        # Names only, never values. These are set where the server runs;
+        # no tool accepts a secret.
+        "missing_environment_variables": missing,
         "sdk": "zscaler-sdk-python",
     }
 
@@ -294,9 +298,10 @@ if __name__ == "__main__":
     if args.transport in ("streamable-http", "sse") and args.host not in ("127.0.0.1", "localhost", "::1"):
         print(f"WARNING: MCP server bound to {args.host}: anyone who can reach port {args.port} can run assessments "
               "with this process's tenant credentials. Put an authenticating proxy in front of it.", file=sys.stderr)
-    if args.transport == "streamable-http":
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
-    elif args.transport == "sse":
-        mcp.run(transport="sse", host=args.host, port=args.port)
-    else:
+    if args.transport == "stdio":
         mcp.run(transport="stdio")
+    elif "host" in inspect.signature(mcp.run).parameters:  # mcp 2.x takes the address in run()
+        mcp.run(transport=args.transport, host=args.host, port=args.port)
+    else:  # mcp 1.x reads it from settings
+        mcp.settings.host, mcp.settings.port = args.host, args.port
+        mcp.run(transport=args.transport)
