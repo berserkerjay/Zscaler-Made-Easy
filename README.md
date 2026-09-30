@@ -51,12 +51,25 @@ Type the tenant's API credentials in the form, or save a tenant profile.
 
 ## Quick start (container)
 
-Install Docker first (INSTALL.md, *Run it in a container instead*, Step 1, has the steps for Windows, Mac and Linux), then:
+There is no published image: Docker builds it from this code. Install Docker first (INSTALL.md, *Run it in a container instead*, has every step for Windows, Mac and Linux), then clone and build:
+
+```powershell
+# Windows (PowerShell)
+git clone https://github.com/berserkerjay/DLP-Check.git; cd DLP-Check
+powershell -ExecutionPolicy Bypass -File .\update_container.ps1 -Force
+docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
+```
 
 ```bash
-docker compose up --build          # published on 127.0.0.1:8001 only (the local install uses 8000)
-docker logs dlp-check              # shows the UI token
+# Mac or Linux
+git clone https://github.com/berserkerjay/DLP-Check.git && cd DLP-Check
+./update_container.sh --force
+docker logs dlp-check              # shows the UI token and http://localhost:8001/?token=…
 ```
+
+No git? Docker can fetch and build it by itself: `docker build --secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN -t dlp-check:local "https://github.com/berserkerjay/DLP-Check.git#main"` with a read-only GitHub token in `GIT_AUTH_TOKEN`, then `docker run` (INSTALL.md, *Install with Docker commands only*).
+
+The update script runs `docker compose up -d --build` with the build's git commit stamped in; plain `docker compose up --build` works too. It is published on 127.0.0.1:8001 only (the local install uses 8000).
 
 The container runs as a non-root user on a read-only filesystem with every
 capability dropped; everything it writes (profiles, deployment records,

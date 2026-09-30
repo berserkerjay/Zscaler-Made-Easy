@@ -239,7 +239,7 @@ def test_the_container_option_says_how_to_install_docker_step_by_step():
     """"Install instructions: you forgot the steps to install Docker": the
     container option walks a first-timer through installing Docker on
     Windows, Mac and Linux, with a check after each, before Step 2."""
-    step1 = INSTALL[INSTALL.index("**Step 1 — Install Docker.**"):INSTALL.index("**Step 2 — Get the code**, the same way as above")]
+    step1 = INSTALL[INSTALL.index("**Step 1 — Install Docker.**"):INSTALL.index("**Step 2 — Get the code with git.**")]
     flat = re.sub(r"\s+", " ", re.sub(r"\n>\s?", "\n", step1))   # quoted blocks read as plain text
     # Windows: WSL 2, the installer's own screens, first start, the docker-users group.
     for phrase in ("wsl --install --no-distribution", "Docker Desktop for Windows - x86_64", "Use WSL 2 instead of Hyper-V (recommended)",
@@ -259,6 +259,46 @@ def test_the_container_option_says_how_to_install_docker_step_by_step():
     # The compose file really needs 2.24: its env_file uses the long syntax.
     compose = _read("docker-compose.yml")
     assert "required: false" in compose
+
+
+def test_a_fresh_container_install_is_spelled_out_for_windows_mac_and_linux():
+    """"What do I type to pull down the docker image and load it for a fresh
+    install", "the instructions should account for a fresh install of a
+    container on mac windows or linux": there is no image to pull, so the
+    guide says so, clones with git on each system (the update script needs a
+    clone) and builds with the update script, which stamps the commit."""
+    part = INSTALL[INSTALL.index("## Run it in a container instead"):INSTALL.index("**Everyday use:**")]
+    flat = re.sub(r"\s+", " ", part)
+    assert "no ready-made image to download" in flat
+    assert "Use `git clone`, not a ZIP" in flat and "Download ZIP" not in flat
+    assert flat.count("git clone https://github.com/berserkerjay/DLP-Check.git") >= 4, "short version for two shells, Step 2 on Windows and Mac"
+    for piece in ("cd $HOME\\Documents","cd ~/Documents", "Git Credential Manager", "personal access token", "command line developer tools",
+                  "update_container.ps1 -Force", "./update_container.sh --force", "bash update_container.sh --force", "docker logs dlp-check"):
+        assert piece in flat, piece
+    everyday = INSTALL[INSTALL.index("**Everyday use:**"):]
+    assert "docker compose down -v" in everyday and "cannot be undone" in everyday
+    readme = _read("README.md")
+    quick = readme[readme.index("## Quick start (container)"):]
+    assert "update_container.ps1 -Force" in quick and "./update_container.sh --force" in quick and "no published image" in quick
+    for flag in ("--force)", ):
+        assert flag in _read("update_container.sh")
+    assert "[switch]$Force" in _read("update_container.ps1")
+
+
+def test_the_container_installs_with_docker_commands_only():
+    """"I should be able to use the docker command line and put the command in
+    there to download the files from GH and install": Docker fetches the
+    private repository itself with a token passed as a build secret, and a
+    TLS-inspection certificate comes in through --build-context certs=."""
+    part = INSTALL[INSTALL.index("### Install with Docker commands only"):INSTALL.index("### Build and run it by hand")]
+    url = '"https://github.com/berserkerjay/DLP-Check.git#main"'
+    assert part.count("--secret id=GIT_AUTH_TOKEN,env=GIT_AUTH_TOKEN") == 3 and part.count(url) == 3
+    assert "Contents*: **Read-only**" in part.replace("\n", " ") and "Read-Host" in part and "read -rsp" in part
+    assert "--build-context certs=$HOME\dlp-certs" in part and "--build-context certs=$HOME/dlp-certs" in part
+    assert "docker rm -f dlp-check" in part and "docker logs dlp-check" in part
+    df = _read("Dockerfile")
+    assert "FROM scratch AS certs\nCOPY certs/ /" in df.replace("\r\n", "\n") and "COPY --from=certs / /tmp/extra-ca/" in df
+    assert "COPY certs/ /tmp/extra-ca/" not in df, "the certificates must come through the overridable stage"
 
 
 def test_the_container_can_be_built_and_run_by_hand_with_the_same_settings_as_compose():
