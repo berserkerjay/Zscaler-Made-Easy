@@ -7,6 +7,17 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Email DLP finds the Exchange tenant the SaaS tenant list leaves out
+- **What you reported.** The preflight said "No Exchange, Gmail or secure email gateway tenant in the SaaS tenant list (listed: SMOES (SHAREPOINT))", but Exchange is integrated.
+- **Why.** The app found email tenants only in ZIA's SaaS tenant list (`casbTenant/lite`). A read-only look at the tenant showed that list returns only the SharePoint tenant (id 177648211): not with active-only, not with include-deleted, and not filtered to email. The Exchange email tenant is a separate object with the same name, "SMOES" (id 171656574). The Email DLP rule already on the tenant, DLP_Rule_1, is scoped to it. The dependency row also still said the tenant was "optional", which the preflight change earlier today had missed.
+- **Now**
+  - When the preflight reads the Email DLP rules, it records the email tenants they are scoped to, and uses them alongside any the SaaS list returns.
+  - New Email rules are scoped to your Exchange tenant (id 171656574), not the SharePoint tenant with the same name.
+  - A pack that pins `"tenants": ["SMOES"]` on an Email rule gets the email tenant too.
+  - The dependency row says an email tenant is required, and names the rule it was found on.
+  - With no email tenant anywhere, the row is *missing* and says what to onboard.
+- **Verified.** Tests model this tenant (SharePoint-only list, DLP_Rule_1 on the Exchange tenant). Email rules are created scoped to id 171656574, a pinned "SMOES" resolves to the email tenant, and with no email tenant the row is missing and no request is sent.
+
 ### SaaS Security and Email DLP are scored in the assessment
 - **What you reported.** "In the assessment I don't see scores for SaaS and Email."
 - **Why.** Inline Web, Endpoint and GenAI were sections of their own with a score; SaaS and Email only had one presence check each inside Multi-Channel.
