@@ -879,7 +879,7 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     # sent no delete activates nothing.
     if sent_any:
         _log(f"Every tier done; activating once and waiting for ZIA to report ACTIVE…")
-        act = pc.activate(zia)
+        act = ops.activate_once(zia, _log)
         final_activation = dict(act, after=last_sent_tier)
         activations.append(final_activation)
         _log("Activation " + ("done." if act.get("activated") else f"could not run: {act.get('error')}"))

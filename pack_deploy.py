@@ -2193,7 +2193,7 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
     settled = None
     if wrote and activate:
         _log("Activating pending ZIA changes…")
-        activation = pc.activate(client.zia)
+        activation = ops.activate_once(client.zia, _log)
         _log("Activation " + ("done." if activation.get("activated") else f"could not run: {activation.get('error')}"))
         if activation.get("activated"):
             settled = pc.wait_active(client.zia, settle_seconds, _log)

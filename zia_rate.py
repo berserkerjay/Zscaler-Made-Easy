@@ -54,6 +54,10 @@ _now: Callable[[], float] = time.monotonic
 
 _lock = threading.Lock()
 _sent: Dict[str, Deque[float]] = {k: deque() for k in DEFAULTS}
+# After ZIA refuses a request for its rate (429, or 403 "Resource Access
+# Blocked"), nothing more is sent until this moment: the limit's window
+# has completely reset. Every bucket honours it.
+_hold_until = [0.0]
 
 
 def limits(bucket: str) -> List[Tuple[int, float]]:
@@ -112,6 +116,12 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
     with the limit and the time the request goes out."""
     bucket = bucket_of(method, path, channel=channel, kind=kind)
     total = 0.0
+    held = _hold_until[0] - _now()
+    if held > 0:
+        if log:
+            log(f"{what + ': ' if what else ''}ZIA's rate limit is still resetting; waiting {_human(held)} more before sending anything.")
+        _sleep(held)
+        total += held
     with _lock:
         while True:
             d, binding = _delay(bucket, _now())
@@ -126,6 +136,39 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
             total += d
         _sent[bucket].append(_now())
     return total
+
+
+def full_reset(bucket: str) -> float:
+    """Seconds until the limit's timer has completely elapsed for `bucket`:
+    every request of it this app counted has aged out of the bucket's
+    longest window. When none is counted (the limit was reached by other
+    traffic), a whole longest window."""
+    rules = limits(bucket) or limits_default(bucket)
+    longest = max((w for _, w in rules), default=60.0)
+    now = _now()
+    with _lock:
+        sent = _sent[bucket]
+        while sent and now - sent[0] >= longest:
+            sent.popleft()
+        return (sent[0] + longest - now) if sent else longest
+
+
+def limits_default(bucket: str) -> List[Tuple[int, float]]:
+    """A bucket's limits from its default, whatever the setting says (a
+    bucket turned off still has a window to wait out after a refusal)."""
+    out = []
+    for part in DEFAULTS[bucket].split(","):
+        n, unit = part.split("/")
+        out.append((int(n), _UNITS[unit[:1]]))
+    return out
+
+
+def hold(seconds: float) -> float:
+    """Send nothing more, in any bucket, for `seconds`. Returns the moment
+    (monotonic) the hold ends."""
+    with _lock:
+        _hold_until[0] = max(_hold_until[0], _now() + max(0.0, seconds))
+        return _hold_until[0]
 
 
 def estimate(bucket: str, count: int) -> float:
@@ -157,3 +200,4 @@ def reset() -> None:
     with _lock:
         for q in _sent.values():
             q.clear()
+        _hold_until[0] = 0.0
