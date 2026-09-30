@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### A run paused for ZIA's rate limit counts down to when it sends again
+- **What you saw.** "The timer isn't resuming when the threshold is met": after "Resource Access Blocked" the removal window said "Working…" for the whole 54-minute pause while the clock kept climbing, with no sign of when it would go on. The run was not stuck (it resumed on schedule, as it had after an earlier pause in the same run), but nothing on screen said so.
+- **Now.** While a deploy or removal is paused for ZIA's rate limit the window says *Paused for ZIA's rate limit — resumes at 1:00 PM (in 13:05). Nothing is sent meanwhile*, counting down every second, then *ZIA's pause is over — sending again…*. The job status (`/api/dlp-packs/jobs/{id}`) carries `paused_seconds` and `paused_until` for that tenant's pause only. The clock on the right is still the whole run's time.
+
 ### Your six Secure by Design decisions: SSO per person (still off by default), who did what, writer groups, job logging, a warning banner
 - **What you decided.** Asked one at a time; you picked the recommended option each time, and confirmed that SSO stays off by default and is only a setting you turn on.
 - **SSO is off by default.** Nothing changes for a normal install or the container on its default loopback publish: the UI token works as before and SSO is never offered. Turn it on with `ZSCALER_SSO_ENABLED=1` plus the `ZSCALER_SSO_*` settings (SECURITY.md).

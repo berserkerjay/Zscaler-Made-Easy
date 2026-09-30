@@ -1107,8 +1107,13 @@ def _build_sdk_client(creds: Dict[str, str]):
 def _keyed(client, fn, *args):
     """Run `fn` with the client's tenant key, so its waits and holds draw on
     that tenant's ZIA rate limits (a deploy or removal job thread)."""
+    import pack_jobs
     import zia_rate
-    with zia_rate.using(zia_rate.key_of(client)):
+    key = zia_rate.key_of(client)
+    job = pack_jobs.current()
+    if job is not None:
+        job.rate_key = key
+    with zia_rate.using(key):
         return fn(*args)
 
 
