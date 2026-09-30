@@ -465,14 +465,28 @@ def pd_rule_summary(r: Any) -> Dict[str, Any]:
     return {"id": pd._field(r, "id"), "name": str(pd._field(r, "name", default="") or "").strip(), "engine_ids": pc.engine_ids_of(r)}
 
 
-# Deletes ZIA refuses for a reason that time or an activation clears are
-# tried again (up to MAX_PASSES per tier) after activating and waiting for
-# ACTIVE. The words below are what ZIA and the SDK put in those answers.
+# Deletes ZIA refuses for a reason that time clears (edit lock, rate
+# limit, an activation in progress) are tried again, up to MAX_PASSES per
+# tier, after a wait. Nothing is activated mid-run: a removal activates
+# once, at the end. An engine or dictionary still referenced by a rule
+# that is only pending deletion stays "in use" until that activation, so
+# such a refusal is not retried (a retry cannot succeed, and a run of
+# refused requests gets the client blocked): it is reported with the
+# advice to run the removal again once this one has activated.
 MAX_PASSES = 3
 RETRY_BASE_SECONDS = 3.0
-_RETRYABLE_WORDS = ("in use", "referenced", "associated", "being used", "used by", "in progress", "activation", "pending",
+_IN_USE_WORDS = ("in use", "referenced", "associated", "being used", "used by")
+_RETRYABLE_WORDS = ("in progress", "activation", "pending",
                     "edit lock", "edit_lock", "locked", "rate limit", "too many", "429", "409", "503", "502", "timeout", "timed out",
                     "temporarily", "try again", "ruletype", "rule type")
+RUN_AGAIN = ("still in use by a rule this removal deleted; ZIA frees it when this removal's activation is live. "
+             "Run the removal again to remove it.")
+
+
+def _in_use(error: Any) -> bool:
+    """A delete refused because a pending-deleted rule still references the object."""
+    e = str(error or "").lower()
+    return any(w in e for w in _IN_USE_WORDS)
 
 
 def _retryable(error: Any, http_status: Any = None) -> bool:
@@ -486,6 +500,8 @@ def _retryable(error: Any, http_status: Any = None) -> bool:
         return False   # the run has stopped; nothing clears that inside this run
     if http_status == 403 or "resource access blocked" in e or "forbidden" in e:
         return False
+    if _in_use(e):
+        return False   # only the end-of-run activation clears it
     return any(w in e for w in _RETRYABLE_WORDS)
 
 
@@ -734,10 +750,10 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
 
     # Delete in dependency tiers — rules and endpoint application groups
     # first, then engines, then dictionaries (pack_ops.DELETE_TIERS) — and
-    # ACTIVATE between tiers. ZIA validates a delete against the saved
-    # (activated) config, so an engine or dictionary cannot be removed while
-    # a rule that references it is only pending-deleted; activating each
-    # tier clears those references so the next tier's objects actually delete.
+    # ACTIVATE ONCE, after the last tier. ZIA validates a delete against the
+    # saved (activated) config, so an engine or dictionary a pending-deleted
+    # rule still references is refused as "in use"; it is reported with the
+    # advice to run the removal again after this one's activation.
     TIERS = ops.DELETE_TIERS
     TIER_LABEL = dict(enumerate(ops.TIER_LABELS))
     entries: Dict[Tuple[str, Optional[str], str], Dict[str, Any]] = {}
@@ -745,7 +761,6 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     settled_status: Optional[str] = None
     last_sent_tier = "rules"
     sent_any = False               # some delete reached ZIA (a STOPPED run that never sent one activates nothing)
-    activated_after_last = False   # the last tier that sent a delete was followed by its activation
 
     def attempt(c: Dict[str, Any], entry: Dict[str, Any]) -> bool:
         """One delete of one object, after checking the id still carries the
@@ -834,30 +849,18 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
             if not retry or pass_no == MAX_PASSES or ops.stop_reason():
                 break
             # Give ZIA time to finish what it is doing before the next pass.
-            _log(f"{len(retry)} {TIER_LABEL[ti]} refused for now; activating and waiting for ZIA to report ACTIVE, then trying again…")
-            act = pc.activate(zia)
-            activations.append(dict(act, after=f"{TIER_LABEL[ti]} (retry pass {pass_no})"))
-            _settle(zia, settle_seconds, _log)
+            _log(f"{len(retry)} {TIER_LABEL[ti]} refused for now; waiting {RETRY_BASE_SECONDS * pass_no:.0f}s and trying again "
+                 "(nothing is activated until the removal is done)…")
             _sleep(RETRY_BASE_SECONDS * pass_no)
             names_cache.clear()
             pending = retry
-        # Activate after EVERY tier that had something to remove, before the
-        # next tier starts, and WAIT for the activation to complete: rules
-        # first, activate, then engines, activate, then dictionaries,
-        # activate. ZIA validates a delete against the saved configuration,
-        # so an engine whose rules are only pending-deleted is still "in
-        # use"; the activation runs even when this tier deleted nothing
-        # (every delete refused by ZIA), so the next tier always starts
-        # from a settled tenant. A tier that sent nothing (every object
-        # already gone or skipped, or the run stopped first) is not
-        # followed by one.
+        # No activation between tiers: the removal activates once, below.
         more = any(c["kind"] in k for k in TIERS[ti + 1:] for c in to_remove)
         # A delete that reached ZIA (deleted, or refused by ZIA) is what an
         # activation follows; a call the run stopped before sending is not.
         sent_here = sum(1 for c in tier if entries.get((c["kind"], c.get("channel"), str(c["id"])), {}).get("status") in ("deleted", "failed"))
         if sent_here:
             sent_any = True
-            activated_after_last = False
         if ops.stop_reason():
             # Say what was never tried, then finish the bookkeeping below.
             for c in to_remove:
@@ -868,26 +871,14 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
                     recorder.record(c["kind"], c["name"], "skipped", op="delete", channel=c.get("channel"), entry=entry,
                                     reason=f"not attempted: {ops.stop_reason()}")
             break
-        if sent_here and more:
-            _log(f"Activating after the {TIER_LABEL[ti]} ({deleted_here} deleted) and waiting for ZIA to report ACTIVE before removing the {TIER_LABEL.get(ti + 1, 'rest')}…")
-            act = pc.activate(zia)
-            final_activation = dict(act, after=TIER_LABEL[ti])
-            activations.append(final_activation)
-            _log("Activation " + ("requested." if act.get("activated") else f"could not run: {act.get('error')}"))
-            settled_status = _settle(zia, settle_seconds, _log)
-            _log(f"Activation status: {settled_status or 'unknown'}.")
-            names_cache.clear()   # re-read after activation
-            activated_after_last = True
         last_sent_tier = TIER_LABEL[ti] if sent_here else last_sent_tier
 
-    # The activation after the last tier that sent a delete (the
-    # dictionaries, or whichever tier came last), whatever its deletes
-    # returned, so every deletion is live; then wait for ZIA to report
-    # ACTIVE (an activation is not instantaneous). A tier already followed
-    # by its activation is not activated twice, and a run that sent no
-    # delete activates nothing.
-    if sent_any and not activated_after_last:
-        _log(f"Activating after the {last_sent_tier} and waiting for ZIA to report ACTIVE…")
+    # The one activation of the removal, after the last tier, whatever its
+    # deletes returned, so every deletion goes live together; then wait for
+    # ZIA to report ACTIVE (an activation is not instantaneous). A run that
+    # sent no delete activates nothing.
+    if sent_any:
+        _log(f"Every tier done; activating once and waiting for ZIA to report ACTIVE…")
         act = pc.activate(zia)
         final_activation = dict(act, after=last_sent_tier)
         activations.append(final_activation)
@@ -933,6 +924,11 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     _log("Verification: " + ("nothing of the pack remains in the tenant." if verification["clean"]
                              else (f"{len(remaining)} object(s) still present." if remaining else "could not re-read the tenant.")))
 
+    run_again = [r for r in results if r["status"] == "failed" and _in_use(r.get("error"))]
+    for r in run_again:
+        r["reason"] = RUN_AGAIN
+    if run_again:
+        _log(f"{len(run_again)} object(s) were still in use by rules this removal deleted; run the removal again now that it has activated.")
     counts: Dict[str, int] = {}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
@@ -944,5 +940,7 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
             "verification": verification,
             "activation": final_activation, "activations": activations,
             "activation_required": bool(counts.get("deleted")) and not (final_activation and final_activation.get("activated")),
+            # Engines / dictionaries refused as in use: run the removal again to finish.
+            "run_again": bool(run_again),
             # Why the run stopped deleting before the end (None when it ran through).
             "stopped": ops.stop_reason()}
