@@ -68,7 +68,7 @@
       ['Built-in packs folder', `<code>${E(lib.packs_root)}</code>`],
       ['Adding and removing packs', lib.writes_allowed ? '<span class="chip ok">Allowed</span>' : '<span class="chip warn">Locked</span> <span class="dim">bind to 127.0.0.1 or set ZSCALER_UI_AUTH=1</span>'],
       ['Bind host', `<code>${E(lib.bind_host)}</code> <span class="dim">(ZSCALER_BIND_HOST${lib.env && lib.env.ZSCALER_BIND_HOST ? ' = ' + E(lib.env.ZSCALER_BIND_HOST) : ' not set'})</span>`],
-      ['UI token gate', lib.ui_auth ? '<span class="chip ok">On</span> <span class="dim">every browser needs the token from ui_token.txt</span>' : '<span class="chip">Off</span> <span class="dim">ZSCALER_UI_AUTH=0 or not enforced</span>'],
+      ['UI token gate', lib.ui_auth ? '<span class="chip ok">On</span> <span class="dim">every browser needs the token from ui_token.txt</span>' : '<span class="chip warn">Off</span> <span class="dim">anyone who can reach this address can use the app (ZSCALER_UI_AUTH=0); remove that setting, or set ZSCALER_UI_AUTH=1, and restart to turn it back on</span>'],
       ['Changes to the Zscaler tenant', lib.writes_to_tenant ? '<span class="chip warn">Enabled</span> <span class="dim">Deploy policy packs and remediation can write, after your approval</span>' : '<span class="chip ok">Read-only</span> <span class="dim">the app only reads the tenant; set ZSCALER_WRITES=1 to allow deployments</span>'],
       ['Upload limit', `${E(lib.max_upload_mb)} MB per upload`],
     ];
