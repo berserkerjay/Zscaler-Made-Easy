@@ -1265,7 +1265,7 @@ function _dzRemovalSelect() {
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${rules.length} DLP rule(s) in the tenant${nOrph ? `, plus ${_dzN(nOrph, 'orphan')} (an engine no rule uses, or a dictionary no engine uses)` : ''}</div>
       <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Orphan engines and dictionaries are listed at the bottom so a leftover with no rule can go too. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
     <div class="dz-pick-tools">
-      <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="DZ.removal.filter=this.value;_dzRemovalRender()" aria-label="Filter rules">
+      <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="_dzRefilter(DZ.removal, this, _dzRemovalRender)" aria-label="Filter rules">
       <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select DLP-Check rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(r => String(r.state).toUpperCase() !== 'ENABLED')">Select disabled rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(() => true)">Select all shown</button>
@@ -1283,6 +1283,18 @@ function _dzRemovalSelect() {
     </div>`;
 }
 
+// A rule filter re-renders the whole sheet, which replaces the box being
+// typed in. Put focus and the caret back in the new box so typing goes on.
+function _dzRefilter(state, input, render) {
+  if (!state) return;
+  const at = input.selectionStart;
+  state.filter = input.value;
+  render();
+  const box = document.querySelector('#dzBody input[aria-label="Filter rules"]');
+  if (!box) return;
+  box.focus();
+  try { const n = at == null ? box.value.length : at; box.setSelectionRange(n, n); } catch (e) { /* some input types refuse a selection */ }
+}
 function _dzPickToggle(k, on) { const R = DZ.removal; if (!R) return; if (on) R.selected.add(k); else R.selected.delete(k); _dzRemovalRender(); }
 function _dzPickSet(pred) {
   const R = DZ.removal; if (!R) return;
@@ -1951,7 +1963,7 @@ function _dzExportRender() {
       <input type="text" class="dz-input" placeholder="Pack name (optional)" maxlength="120" value="${_dzE(X.name || '')}" oninput="DZ.exportPack.name=this.value" aria-label="Pack name">
     </div>
     <div class="dz-pick-tools">
-      <input type="search" class="dz-input" placeholder="Filter by rule or engine" value="${_dzE(X.filter || '')}" oninput="DZ.exportPack.filter=this.value;_dzExportRender()" aria-label="Filter rules">
+      <input type="search" class="dz-input" placeholder="Filter by rule or engine" value="${_dzE(X.filter || '')}" oninput="_dzRefilter(DZ.exportPack, this, _dzExportRender)" aria-label="Filter rules">
       <button type="button" class="dz-link" onclick="_dzExportSet(true)">Select all shown</button>
       <button type="button" class="dz-link" onclick="_dzExportSet(false)">Clear</button>
     </div>
