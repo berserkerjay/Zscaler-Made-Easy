@@ -3795,10 +3795,9 @@ async def migrate_status_manual(req: ManualModeRequest):
     base["ready_to_migrate"] = not evaluate_all
     if evaluate_all:
         base["recommendation"] = "✅ You declared this tenant is in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning."
-    elif base.get("order_already_safe_for_eval_all"):
-        base["recommendation"] = "You declared this tenant is in Rule Order mode. Rule order is already optimal for Evaluate All — safe to enable the feature with low risk."
     else:
-        base["recommendation"] = "You declared this tenant is in Rule Order mode. Rule order is NOT yet safe for Evaluate All — run Step 3 (Optimize) before enabling."
+        from rule_migrator import _SWITCH
+        base["recommendation"] = "You declared this tenant is in Rule Order mode. " + _SWITCH
     return base
 
 

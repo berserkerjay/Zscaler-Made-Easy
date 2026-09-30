@@ -233,6 +233,9 @@ def reorder_for_eval_all(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+_SWITCH = 'Under Evaluate All Rules, rule order matters only between matching rules with the same action; across actions the most restrictive one is enforced. Switching mode requires deleting all existing inline DLP rules first, so export them, have the Zscaler Account team enable the mode, then re-create them (use exception rules for workflow carve-outs instead of higher-ordered Allow rules).'
+
+
 def generate_migration_plan(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Generate a complete migration plan:
@@ -260,15 +263,15 @@ def generate_migration_plan(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "shift": (old_pos - new_pos) if old_pos else None,
             })
 
+    # The mode cannot change while inline DLP rules exist, and the account
+    # team enables it (https://help.zscaler.com/zia/configuring-dlp-advanced-settings).
     checklist = [
-        "1. Review the analysis below — address WARNING-level issues before migrating.",
-        "2. In the Zscaler admin portal, enable audit/log-only mode for all rules that will change action (no enforcement yet).",
-        "3. Import the proposed ordering using the exported JSON or manually apply in the portal.",
-        "4. Enable 'Evaluate All Rules' in ZIA Advanced Settings → DLP.",
-        "5. Monitor logs for 48-72 hours to validate no unintended double-fires or user impact.",
-        "6. If issues found, disable 'Evaluate All Rules' and investigate specific rules.",
-        "7. When stable, switch audit-only rules back to their intended enforcement action (Block/Confirm/Allow).",
-        "8. Document the migration date, test window, and any rule changes for compliance audit.",
+        "1. Export all inline web DLP rules (JSON).",
+        "2. Ask the Zscaler Account team to enable Evaluate All Rules mode.",
+        "3. Delete all existing inline DLP rules (required before the mode can change).",
+        "4. In Data Security > Common Resources > DLP Advanced Settings, set Inline DLP Rule Evaluation to 'Evaluate All Rules' and activate.",
+        "5. Re-create the rules; convert Allow carve-outs into exception rules (subRules) under the parent rule.",
+        "6. Monitor logs. Rolling back also requires deleting all inline DLP rules again.",
     ]
 
     return {
@@ -279,7 +282,7 @@ def generate_migration_plan(rules: List[Dict[str, Any]]) -> Dict[str, Any]:
         "unchanged_count": len(rules) - len(diff),
         "checklist": checklist,
         "target_mode": "Evaluate All Rules",
-        "zscaler_best_practice_reference": "https://help.zscaler.com/zia/about-first-match-wins-and-evaluate-all-rules-for-dlp",
+        "zscaler_best_practice_reference": "https://help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled",
     }
 
 
@@ -645,10 +648,11 @@ def assess_current_status(client) -> Dict[str, Any]:
 
     if evaluate_all is True:
         recommendation = "✅ Tenant is ALREADY in Evaluate All Rules mode. No migration needed — focus on ongoing rule tuning and exception management."
-    elif evaluate_all is False and order_already_safe:
-        recommendation = "Tenant is in Rule Order mode. Rule order is ALREADY optimal for Evaluate All — safe to enable the feature with low risk."
-    elif evaluate_all is False and not order_already_safe:
-        recommendation = "Tenant is in Rule Order mode and rule order is NOT yet safe for Evaluate All. Run Step 3 (Optimize) before enabling."
+    elif evaluate_all is False:
+        # Rule order is not a readiness signal: under Evaluate All Rules it
+        # matters only between matching rules with the same action
+        # (https://help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled).
+        recommendation = "Tenant is in Rule Order mode. " + _SWITCH
     else:
         # Could not auto-detect the MODE. Build a helpful message.
         endpoints_hit = [d for d in diagnostics if d.get("status") == 200]
@@ -661,7 +665,7 @@ def assess_current_status(client) -> Dict[str, Any]:
         elif feature_available is False:
             feature_note = (
                 f"ℹ Feature availability flag says the capability is OFF on this tenant: {feature_source}. "
-                "Zscaler support may need to enable it before Evaluate All Rules can be selected.\n\n"
+                "The Zscaler Account team enables it.\n\n"
             )
 
         # Hard truth: the zscaler-sdk-python, zscaler-sdk-go, and
@@ -694,7 +698,7 @@ def assess_current_status(client) -> Dict[str, Any]:
             recommendation = (
                 feature_note + sdk_note +
                 "📋 What to do:\n"
-                "  1. Verify the current mode in ZIA Admin → Administration → Advanced Settings → DLP → 'Inline DLP Rule Evaluation' ('By Rule Order' or 'Evaluate All Rules').\n"
+                "  1. Verify the current mode in Data Security > Common Resources > DLP Advanced Settings > Inline DLP Rule Evaluation ('By Rule Order' or 'Evaluate All Rules').\n"
                 "  2. Use the 'Declare Mode Manually' selector below — Steps 2-5 will proceed normally under that declared mode.\n"
                 "  3. Step 4's API activation will attempt every known endpoint as a best-effort, but will almost certainly fall back to 'failed' on your tenant. That's expected; it's not a bug.\n"
                 "  4. If you believe your tenant has a newer API surface that exposes this, share the /api/migrate/status diagnostics — we can add a new endpoint candidate.\n\n"

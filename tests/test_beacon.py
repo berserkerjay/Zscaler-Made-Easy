@@ -295,7 +295,8 @@ def test_the_watch_covers_what_the_app_reads_and_not_the_guesses():
     for ep in ("/zia/webDlpRules", "/zia/dlpDictionaries", "/zia/sslInspectionRules", "/zcc/devices", "/zcc/companyInfo", "/zdx/alerts/ongoing", "/zid/users"):
         assert ep in eps, ep
     assert "discover_endpoints.py" not in beacon.TENANT_WATCH_MODULES and "scope_permissions.py" not in beacon.TENANT_WATCH_MODULES
-    assert "/zia/advancedSettings" not in eps, "only discover_endpoints.py guesses it"
+    # CA.5 reads Cascading to URL Filtering from Advanced Settings (SDK advanced_settings.get_advanced_settings).
+    assert "/zia/advancedSettings" in eps and "zscaler_full_checks.py" in eps["/zia/advancedSettings"]
     assert "/zcc/getAdminRoles" not in eps, "only the scope_permissions catalogue lists it"
     assert not [e for e in eps if e.startswith("raw:") or e.endswith("/")]
     assert 50 <= len(eps) <= 200
