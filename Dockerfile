@@ -14,12 +14,14 @@
 FROM scratch AS certs
 COPY certs/ /
 
-FROM python:3.11-slim-bookworm AS base
+FROM python:3.11-slim-trixie AS base
 
 # The floating 3.11 tag picks up the current Debian and Python security
 # releases on every build (the image scan in CI fails on a stale base).
 # To pin exactly for a reproducible build, replace the tag with the digest:
-#   docker pull python:3.11-slim-bookworm && docker inspect --format='{{index .RepoDigests 0}}' python:3.11-slim-bookworm
+#   docker pull python:3.11-slim-trixie && docker inspect --format='{{index .RepoDigests 0}}' python:3.11-slim-trixie
+# Debian 13 (trixie), not 12: bookworm's perl, util-linux, openssl and
+# zlib carry critical and high CVEs Debian will not fix there.
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -77,6 +79,28 @@ ENV DLP_CHECK_BUILD_COMMIT=$DLP_CHECK_BUILD_COMMIT \
 
 COPY --chown=dlpcheck:dlpcheck . .
 RUN rm -rf .git tests *.zip && mkdir -p /data && chown dlpcheck:dlpcheck /data
+
+# The app runs Python and nothing else: it never calls perl, tar, mount,
+# apt or the login tools, and does not use sqlite. Remove those packages
+# (and the libraries only they need), so their CVEs are not in the image at
+# all; nothing can install packages into the running image either. What
+# stays is what Python needs to run: glibc, OpenSSL's library, zlib, and
+# dash/coreutils for the shell. Last root step: the build fails if one of
+# them is still installed, or if the app no longer imports.
+RUN set -e; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt; \
+    dpkg --purge --force-remove-essential --force-remove-protected --force-depends \
+      apt libapt-pkg7.0 \
+      perl-base tar diffutils \
+      util-linux bsdutils mount login libblkid1 libmount1 libsmartcols1 libuuid1 liblastlog2-2 \
+      passwd login.defs \
+      libsystemd0 libudev1 \
+      libsqlite3-0 \
+      openssl openssl-provider-legacy; \
+    for p in apt perl-base tar util-linux passwd libsystemd0 libsqlite3-0 openssl; do \
+      ! dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed' || { echo "$p is still installed" >&2; exit 1; }; \
+    done; \
+    python -c "import ssl, zlib, hashlib, uuid, fastapi, uvicorn, requests, zscaler; ssl.create_default_context(); print('image trimmed; Python and its libraries still load')"
 
 # Everything the app writes goes to /data (mount a volume there); the
 # application directory itself stays read-only.
