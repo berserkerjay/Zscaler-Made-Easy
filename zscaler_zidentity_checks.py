@@ -58,13 +58,8 @@ def zid_resource_servers(cl):
 
 def zid_user_entitlements(cl):
     """ZIdentity user entitlements (role assignments per user)"""
-    d, c = cl.get("/zid/userEntitlement")
-    items = _ls(d) if c in (200, 204) else []
-    if c in (401, 403):
-        return R(R.INFO, "User entitlements endpoint not accessible.")
-    if not items:
-        return R(R.INFO, "No user entitlements returned. If all your role assignments are group-based (best practice), individual-user entitlements can legitimately be empty.")
-    return R(R.WARN, f"{len(items)} individual-user entitlement(s) found. Best Practice: Prefer group-based role assignments — per-user entitlements don't survive offboarding cleanly.")
+    return R(R.INFO, "ZIdentity lists entitlements per user (/users/{id}/service-entitlements), not for the whole tenant. "
+                     "Best Practice: Prefer group-based role assignments — per-user entitlements don't survive offboarding cleanly. Review them in the ZIdentity admin portal.")
 
 
 def zid_admin_coverage(cl):

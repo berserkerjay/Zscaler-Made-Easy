@@ -75,7 +75,7 @@ _ZCC_MAP = {
     "zpnModuleMode":      "webZPNModuleMode/listByCompany",
     "appBypass":          "webBypassAppConfig/listByCompany",
     "privacyInfo":        ["getWebPrivacyInfo", "webPrivacyInfo/listByCompany"],
-    "deviceCleanup":      "webDeviceCleanupInfo/listByCompany",
+    "deviceCleanup":      "getDeviceCleanupInfo",
     "deviceGroups":       "webDeviceGroups/listByCompany",
     "lastPostureFields":  "web/getLastAppPostureFields",
     "downloadStatus":     "downloadServiceStatus",
@@ -99,12 +99,13 @@ _ZDX_MAP = {
     "troubleshooting":"troubleshooting",
 }
 
-# ZIdentity endpoints — from zscaler-sdk-python/zid/
+# ZIdentity endpoints — from zscaler-sdk-python/zid/, served at
+# /ziam/admin/api/v1 on the OneAPI gateway. Entitlements are per user
+# (/users/{id}/service-entitlements); there is no list of all of them.
 _ZID_MAP = {
     "users":             "users",
     "groups":            "groups",
-    "resourceServers":   "resource_servers",
-    "userEntitlement":   "user_entitlement",
+    "resourceServers":   "resource-servers",
 }
 
 def _resolve_candidates(ep, customer_id="", legacy=False):
@@ -148,7 +149,7 @@ def _resolve_ep(ep, customer_id="", legacy=False):
     if ep.startswith("/zid/"):
         suffix = ep[5:]
         mapped = _ZID_MAP.get(suffix, suffix)
-        return "/zidentity/v1/" + mapped
+        return "/ziam/admin/api/v1/" + mapped
     if ep.startswith("/zpa/"):
         if customer_id:
             return f"/zpa/mgmtconfig/v1/admin/customers/{customer_id}/" + ep[5:]
@@ -270,6 +271,8 @@ class Client:
                     return ({"error":str(a),"status":401}, 401)
         return None
     def get(s, ep, p=None, _retry=0):
+        if ep in _FAN_OUT and _retry == 0:
+            return s._fan_out(ep, p)
         # Self-healing: skip ZPA calls if no customer_id provided
         if s.legacy and _resolve_ep(ep, s.customer_id, legacy=True) is None:
             return _LEGACY_ZIA_ONLY
@@ -349,6 +352,30 @@ class Client:
             res = ({"error":str(e)[:200],"status":0}, 0)
         s._cache_set(k, res); return res
 
+    def _fan_out(s, ep, p=None):
+        """An endpoint the API only lists in parts (_FAN_OUT): every part,
+        each item tagged with the part it came from, as one list. HTTP 200
+        when any part answered 200, otherwise the first part's status."""
+        k = f"{ep}|{json.dumps(p or {},sort_keys=True)}"
+        with s._lock:
+            if k in s._c:
+                s._c.move_to_end(k)
+                return s._c[k]
+        items, answered, first = [], False, None
+        for part, params, tag in _FAN_OUT[ep]:
+            d, c = s.get(part, dict(p or {}, **params))
+            if first is None:
+                first = (d, c)
+            if c in (200, 204):
+                answered = True
+                for x in _ls(d):
+                    if isinstance(x, dict):
+                        x = dict(x); x.setdefault(*tag)
+                    items.append(x)
+        res = (items, 200) if answered else first
+        s._cache_set(k, res)
+        return res
+
     def _write(s, method, ep, body=None, _retry=0):
         """Shared write path for POST / PUT / DELETE with self-healing."""
         real_ep = _resolve_ep(ep, s.customer_id, s.legacy)
@@ -423,7 +450,7 @@ def _ls(d):
     if isinstance(d,list): return d
     if isinstance(d,dict):
         # Handle paginated responses like {"list": [...]} or {"data": [...]}
-        for key in ("list","data","items","rules"):
+        for key in ("list","data","items","rules","records"):
             if key in d and isinstance(d[key],list): return d[key]
         # If dict has an "error" key, it's not real data
         if "error" in d or "status" in d: return []
@@ -513,8 +540,8 @@ def c_1_12(cl):
     return R(R.PASS,f"Telemetry on {len(t)}/{len(d)} profile(s).") if t else R(R.WARN,"Telemetry not detected.")
 def c_1_13(cl):
     """Check 1.13 (1 — CC Portal): Posture Profiles."""
-    d,c=cl.get("/zia/devicePostureProfiles"); 
-    if c==404: d,c=cl.get("/zcc/postureProfiles")
+    d,c=cl.get("/zcc/postureProfiles")
+    if c==404: return R(R.INFO,"Posture profiles are not in the public Client Connector API; check them in the Client Connector portal.")
     items=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(items)} Posture Profile(s).") if items else R(R.WARN,"No Posture Profiles.")
 def c_1_14(cl):
@@ -612,11 +639,21 @@ def _dictify(x):
 
 def _cbi_profiles(cl):
     """Browser Isolation profiles (empty list when the feature is not licensed or the API says no)."""
-    d,c=cl.get("/zia/isolationProfile"); return [_dictify(p) for p in (_ls(d) if c in(200,204) else [])], c
+    d,c=cl.get("/zia/browserIsolation/profiles"); return [_dictify(p) for p in (_ls(d) if c in(200,204) else [])], c
 
 _CAC_TYPES = ("AI_ML","BUSINESS_PRODUCTIVITY","CONSUMER","CUSTOM_CAPP","DNS_OVER_HTTPS","ENTERPRISE_COLLABORATION","FILE_SHARE","FINANCE",
               "HEALTH_CARE","HOSTING_PROVIDER","HUMAN_RESOURCES","INSTANT_MESSAGING","IT_SERVICES","LEGAL","SALES_AND_MARKETING",
               "SOCIAL_NETWORKING","STREAMING_MEDIA","SYSTEM_AND_DEVELOPMENT","WEBMAIL")
+
+# Endpoints the API only lists in parts; Client.get asks every part and
+# returns one list, each item tagged with its part. Cloud App Control
+# rules are listed per rule type (/webApplicationRules/{type}); ZCC admin
+# users per userType (1 ZIA, 2 ZPA, 3 ZIdentity, 4 ZDX: the API refuses
+# the call without it).
+_FAN_OUT = {
+    "/zia/cloudApplicationRules": tuple((f"/zia/webApplicationRules/{t}", {}, ("type", t)) for t in _CAC_TYPES),
+    "/zcc/adminUsers": tuple(("/zcc/getAdminUsers", {"userType": n}, ("userType", n)) for n in (1, 2, 3, 4)),
+}
 
 def _cac_rules_all_types(cl):
     """Cloud App Control rules across every rule type (the API lists them per type)."""
@@ -673,7 +710,7 @@ def c_a17(cl):
     return R(R.WARN, "No ISOLATE rule targets the risky channels (file sharing, webmail, AI, social, consumer apps). Isolation is most valuable exactly there: users keep access, data cannot leave.")
 def c_3_8(cl):
     """Check 3.8 (3 — App Profile): Isolation controls."""
-    d,c=cl.get("/zia/isolationProfile"); p=_ls(d) if c in(200,204) else []
+    d,c=cl.get("/zia/browserIsolation/profiles"); p=_ls(d) if c in(200,204) else []
     if not p: return R(R.WARN,"No isolation profiles.")
     ctrl=[x for x in p if x.get("uploadControl") or x.get("downloadControl") or x.get("clipboardControl") or x.get("settings")]
     return R(R.PASS,f"{len(ctrl)} profile(s) with content controls.") if ctrl else R(R.WARN,"Isolation without content controls.")
@@ -735,8 +772,7 @@ def c_4_8(cl):
     return R(R.PASS,f"{len(cf)} Prompt/Confirm rule(s).") if cf else R(R.WARN,"No Prompt/Confirm actions.")
 def c_4_9(cl):
     """Check 4.9 (4 — SSL Policy): EUN templates."""
-    d,c=cl.get("/zia/notificationTemplates")
-    if c==404: d,c=cl.get("/zia/dlpNotificationTemplates")
+    d,c=cl.get("/zia/dlpNotificationTemplates")
     t=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(t)} notification template(s).") if t else R(R.WARN,"No notification templates.")
 def c_4_10(cl):
@@ -770,10 +806,7 @@ def c_5_1(cl):
     return c_3_2(cl)
 def c_5_2(cl):
     """Check 5.2 (5 — Endpoint DLP): DLP Resources."""
-    d,c=cl.get("/zia/endpointDlpResources")
-    if c==404: d,c=cl.get("/zia/endpointDlp/resources")
-    r=_ls(d) if c in(200,204) else []
-    return R(R.PASS,f"{len(r)} endpoint DLP resource(s).") if r else R(R.WARN,"No endpoint DLP resources.")
+    return R(R.INFO,"Endpoint DLP resources are not listed by the ZIA API; check them in the ZIA Admin Portal.")
 def c_5_3(cl):
     """Check 5.3 (5 — Endpoint DLP): Web DLP rules."""
     d,e=_g(cl,"/zia/webDlpRules","DLP"); 
@@ -897,20 +930,18 @@ def c_mc1(cl):
     return c_5_3(cl)
 def c_mc2(cl):
     """Check MC.2 (Multi-Channel): Endpoint DLP."""
-    d,c=cl.get("/zia/endpointDlpRules")
-    if c==404: d,c=cl.get("/zia/endpointDlp/rules")
+    d,c=cl.get("/zia/endPointDlpRules")
     r=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(r)} endpoint DLP rule(s).") if r else R(R.WARN,"No endpoint DLP rules via API.")
 def c_mc3(cl):
     """Check MC.3 (Multi-Channel): CASB."""
-    d,c=cl.get("/zia/casbDlpRules")
+    d,c=cl.get("/zia/casbDlpRules/all")
     if c==404: return R(R.WARN,"CASB not licensed.")
     r=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(r)} CASB rule(s).") if r else R(R.WARN,"No CASB rules.")
 def c_mc4(cl):
     """Check MC.4 (Multi-Channel): Email DLP."""
     d,c=cl.get("/zia/emailDlpRules")
-    if c==404: d,c=cl.get("/zia/emailSecurityRules")
     r=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(r)} email DLP rule(s).") if r else R(R.WARN,"No email DLP rules.")
 def c_mc5(cl):
@@ -1015,7 +1046,7 @@ def c_8_5(cl):
 def c_8_6(cl):
     """Check 8.6 (8 — Pilot Tests): Evidence (ICAP)."""
     d,c=cl.get("/zia/icapServers")
-    if c==404: d,c=cl.get("/zia/incidentReceivers")
+    if c==404: d,c=cl.get("/zia/incidentReceiverServers")
     s=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(s)} ICAP/IR server(s).") if s else R(R.WARN,"No evidence capture.")
 def c_8_7(cl):
@@ -1086,7 +1117,7 @@ def c_11_3(cl):
 def c_12_1(cl):
     """Check 12.1 (12 — Incident Mgmt): ICAP/IR deployed."""
     d,c=cl.get("/zia/icapServers")
-    if c==404: d,c=cl.get("/zia/incidentReceivers")
+    if c==404: d,c=cl.get("/zia/incidentReceiverServers")
     return R(R.PASS,f"{len(_ls(d))} ICAP/IR server(s).") if c in(200,204) and _ls(d) else R(R.WARN,"No ICAP/IR.")
 def c_12_2(cl):
     """Check 12.2 (12 — Incident Mgmt): Secure ICAP mTLS."""
@@ -1099,10 +1130,7 @@ def c_12_3(cl):
     return c_12_1(cl)
 def c_12_4(cl):
     """Check 12.4 (12 — Incident Mgmt): Workflow Automation."""
-    d,c=cl.get("/zia/workflowAutomation")
-    if c==404: d,c=cl.get("/zia/workflows")
-    w=_ls(d) if c in(200,204) else []
-    return R(R.PASS,f"{len(w)} workflow(s).") if w else R(R.WARN,"No Workflow Automation.")
+    return R(R.INFO,"Workflow Automation is its own API (ZWA), not part of ZIA; FP/TP Detection Ratio reads its incidents. Check the workflows in the Workflow Automation portal.")
 def c_12_5(cl):
     """Check 12.5 (12 — Incident Mgmt): Remediation workflows."""
     return c_12_4(cl)
@@ -1115,7 +1143,6 @@ def c_12_7(cl):
 def c_12_8(cl):
     """Check 12.8 (12 — Incident Mgmt): NSS/SIEM."""
     d,c=cl.get("/zia/nssFeeds")
-    if c==404: d,c=cl.get("/zia/nssFeed")
     f=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(f)} NSS feed(s) streaming.") if f else R(R.WARN,"No NSS or Cloud NSS feed: transaction logs stay in ZIA and only incidents are visible outside it. Recommended, not required: a feed gives the full transaction baseline (normal business traffic and what no rule caught) for SIEM correlation and continuous evaluation; without it, Workflow Automation incidents and analyst verdicts are the near-real-time source. Best Practice: Configure a Cloud NSS feed (web + DLP logs) to your SIEM or a collector, with the DLP fields in the format string. Ref: https://help.zscaler.com/zia/about-cloud-nss-feeds")
 def c_12_9(cl):
@@ -1140,7 +1167,6 @@ def c_12_12(cl):
 def c_12_13(cl):
     """Check 12.13 (12 — Incident Mgmt): Admin role segregation."""
     d,c=cl.get("/zia/adminRoles")
-    if c==404: d,c=cl.get("/zia/adminAndRoleManagement")
     r=_ls(d) if c in(200,204) else []
     return R(R.PASS,f"{len(r)} admin roles.") if len(r)>=2 else R(R.WARN,f"Only {len(r)} role(s).")
 def c_12_14(cl):

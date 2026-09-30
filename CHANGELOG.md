@@ -7,6 +7,35 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Every API the checks read is one the tenant serves
+- **What you asked for.** An inventory of every Zscaler API the app uses, called read-only against the tenant, then "update all the APIs".
+- **What the probe found.** With zscaler-sdk-python 1.11.0, many reads went to paths Zscaler does not serve (404, 400 or 405), and some checks turned that refusal into a finding. The affected reads were:
+  - firewall, DNS and IPS rules, and static IPs;
+  - ZIA admin users;
+  - ATP and malware settings;
+  - Cloud App Control rules (the API lists them per rule type);
+  - File Type Control, and Endpoint DLP rules (`endPointDlpRules`);
+  - Browser Isolation profiles, incident receivers and NSS feeds;
+  - SaaS Security API rules (they need `/all`);
+  - the security blacklist (a field of `/security/advanced`);
+  - ZIdentity (served at `/ziam/admin/api/v1`, not `/zidentity/v1`);
+  - ZCC admin users (they need `userType`) and ZCC device cleanup.
+- **Now** every one of those reads the real path, checked on a live tenant, where every fixed path answered 200.
+  - Cloud App Control rules and ZCC admin users are read in parts and returned as one list, each item tagged with its rule type or user type. The SDK client now reads Cloud App Control for every type, not only STREAMING_MEDIA.
+  - Some things no public API lists: endpoint DLP resources, ZCC posture profiles, Workflow Automation (its own ZWA API) and ZIdentity entitlements (listed per user only). Their checks now report INFO saying so, instead of reporting a gap.
+  - "Group-only entitlement binding is in force" is no longer reported when the list could not be read.
+  - Malware protection is read from the per-category `Blocked` flags.
+  - Dead fallbacks are gone, and so are four evaluate-all-rules probes that could never answer (two duplicates, two with no product prefix).
+  - The SdkClient no longer maps endpoint DLP resources to the ICAP server list, or posture profiles to device groups.
+- **Not changed.**
+  - ZPA and ZDX answered 401 to this tenant's API client. That is a role to grant in ZIdentity, not a path.
+  - Cloud Sandbox's quota 403 is a license.
+  - rule_migrator's remaining probes for the evaluate-all setting stay, since one tenant exposed it through a feature flag.
+- **Verified.**
+  - `tests/test_api_paths.py` covers the resolver, the per-type and per-userType reads, the corrected checks, and that no check reads a path the API does not serve.
+  - Test fakes keyed on the old paths now use the real ones.
+  - Full suite: the same failures as `dev` had before this change, none new.
+
 ### Read-only in the container: the message says how to turn writes on there
 - **What you reported.** In the container, Deploy policy packs showed no Enable write mode switch and told you to start `START_Zscaler_Assessment_WRITES_ENABLED.bat`, which does not exist there.
 - **Why.** Inside the container the server listens on 0.0.0.0, and the in-browser switch is refused beyond loopback. That safeguard is unchanged.

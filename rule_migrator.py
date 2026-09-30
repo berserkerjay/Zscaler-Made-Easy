@@ -368,7 +368,7 @@ def fetch_current_rules(client, rule_type: str = "web_dlp") -> List[Dict[str, An
         "web_dlp": "/zia/webDlpRules",
         "ssl_inspection": "/zia/sslInspectionRules",
         "url_filtering": "/zia/urlFilteringRules",
-        "firewall": "/zia/firewallRules",
+        "firewall": "/zia/firewallFilteringRules",
         "cloud_app_control": "/zia/cloudApplicationRules",
     }
     endpoint = endpoint_map.get(rule_type, "/zia/webDlpRules")
@@ -444,15 +444,11 @@ def assess_current_status(client) -> Dict[str, Any]:
         # Raw-path variants for DLP Advanced Settings — some OneAPI
         # surfaces don't follow the /zia/api/v1/ pattern or use a
         # different casing / prefix.
-        "raw:/zia/api/v1/dlpAdvancedSettings",
-        "raw:/zia/api/v1/dlp/advancedSettings",
         "raw:/zia/api/v1/dlp-advanced-settings",
         "raw:/zia/api/v1/admin/dlpAdvancedSettings",
         "raw:/zia/api/v1/dlpSettings/advanced",
-        "raw:/api/v1/dlpAdvancedSettings",          # pre-OneAPI naming
         "raw:/zia/v1/dlpAdvancedSettings",           # drop /api/
         "raw:/zia/dlp/v1/advancedSettings",          # alt ordering
-        "raw:/dlp/api/v1/advancedSettings",          # alt namespace
         # "Inline DLP Rule Evaluation" surface candidates
         "/zia/inlineDlpConfig",
         "/zia/inlineDlpSettings",
@@ -887,15 +883,11 @@ def _probe_eval_all_field(client) -> Dict[str, Any]:
         "/zia/advancedSettings/dlp", "/zia/dlpSettings",
         "/zia/dlp/advancedSettings", "/zia/dlp/settings",
         "/zia/configuration/advanced",
-        "raw:/zia/api/v1/dlpAdvancedSettings",
-        "raw:/zia/api/v1/dlp/advancedSettings",
         "raw:/zia/api/v1/dlp-advanced-settings",
         "raw:/zia/api/v1/admin/dlpAdvancedSettings",
         "raw:/zia/api/v1/dlpSettings/advanced",
-        "raw:/api/v1/dlpAdvancedSettings",
         "raw:/zia/v1/dlpAdvancedSettings",
         "raw:/zia/dlp/v1/advancedSettings",
-        "raw:/dlp/api/v1/advancedSettings",
         "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
         "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
         "/zia/featureFlags", "/zia/features", "/zia/featureVisibility",
@@ -1049,15 +1041,11 @@ def enable_evaluate_all_rules(client, dry_run: bool = True) -> Dict[str, Any]:
         "/zia/dlp/advancedSettings", "/zia/dlp/settings",
         "/zia/configuration/advanced",
         # Raw-path variants bypass the /zia/api/v1/ resolver
-        "raw:/zia/api/v1/dlpAdvancedSettings",
-        "raw:/zia/api/v1/dlp/advancedSettings",
         "raw:/zia/api/v1/dlp-advanced-settings",
         "raw:/zia/api/v1/admin/dlpAdvancedSettings",
         "raw:/zia/api/v1/dlpSettings/advanced",
-        "raw:/api/v1/dlpAdvancedSettings",
         "raw:/zia/v1/dlpAdvancedSettings",
         "raw:/zia/dlp/v1/advancedSettings",
-        "raw:/dlp/api/v1/advancedSettings",
         "/zia/inlineDlpConfig", "/zia/inlineDlpSettings",
         "/zia/dlpRuleEvaluation", "/zia/dlpConfiguration", "/zia/dlpConfig",
     ]

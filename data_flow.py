@@ -259,8 +259,8 @@ def read_zia(client) -> Dict[str, Any]:
     z["dlp"] = [normalize_dlp_rule(r) for r in _fetch_rules(client, "/zia/webDlpRules", diagnostics, "Web DLP rules")]
     z["url"] = [_norm_generic(r) for r in _fetch_rules(client, "/zia/urlFilteringRules", diagnostics, "URL filtering rules")]
     z["cac"] = [_norm_generic(r) for r in _fetch_rules(client, "/zia/cloudApplicationRules", diagnostics, "Cloud App Control rules")]
-    z["ftc"] = [_norm_generic(r) for r in _fetch_rules(client, "/zia/fileTypeControlRules", diagnostics, "File Type Control rules")]
-    for key, ep, label in (("endpoint", "/zia/endpointDlpRules", "Endpoint DLP rules"), ("saas", "/zia/casbDlpRules", "SaaS Security API DLP rules"),
+    z["ftc"] = [_norm_generic(r) for r in _fetch_rules(client, "/zia/fileTypeRules", diagnostics, "File Type Control rules")]
+    for key, ep, label in (("endpoint", "/zia/endPointDlpRules", "Endpoint DLP rules"), ("saas", "/zia/casbDlpRules/all", "SaaS Security API DLP rules"),
                            ("email", "/zia/emailDlpRules", "Outbound Email DLP rules")):
         rules = _fetch_rules(client, ep, diagnostics, label)
         z[key] = [{"id": r.get("id"), "name": r.get("name"), "state": str(r.get("state") or "ENABLED").upper(),
