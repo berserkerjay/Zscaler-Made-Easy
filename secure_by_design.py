@@ -10,7 +10,8 @@ says, in plain English, what it found and what to do when it falls short.
 
 The score is the share of applicable controls met: a pass counts 1, a
 warning 0.5, a failure 0; a control that does not apply to a local,
-single-operator tool (MFA) is shown but not scored.
+single-operator tool (MFA), or that could not be checked from here, is
+shown but not scored — never counted as a pass.
 """
 from __future__ import annotations
 
@@ -38,6 +39,13 @@ PLEDGE = {
 
 _DANGEROUS_RE = re.compile(r"\beval\(|\bexec\(|\bpickle\b|shell\s*=\s*True|os\.system\(")
 _LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+# A call that sends a write to the tenant: the SDK write methods the
+# shared-path guard knows (tests/test_shared_path.py), and the REST
+# client's post/put/patch/delete.
+_TENANT_WRITE_RE = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|update_dict|update_dlp_engine|update_rule|update_sub_rule|"
+                              r"delete_dict|delete_dlp_engine|delete_rule|raw_request)\(|\bclient\.(post|put|patch|delete)\(")
+# The shared execution path itself and the channel adapter it calls.
+_SHARED_PATH = ("pack_ops.py", "pack_channels.py")
 
 
 def _read(path: str, limit: int = 2_000_000) -> str:
@@ -74,6 +82,23 @@ def _python_sources() -> List[str]:
     return out
 
 
+def _direct_tenant_writers() -> Dict[str, int]:
+    """{file: number of calls} for every module outside the shared path
+    that sends a write to the tenant itself."""
+    out: Dict[str, int] = {}
+    for p in _python_sources():
+        rel = os.path.relpath(p, APP_DIR).replace(os.sep, "/")
+        if rel in _SHARED_PATH:
+            continue
+        for line in _read(p).splitlines():
+            st = line.strip()
+            if st.startswith(("#", "def ", "async def ")):
+                continue
+            if _TENANT_WRITE_RE.search(line):
+                out[rel] = out.get(rel, 0) + 1
+    return out
+
+
 def evaluate(app: Any = None) -> Dict[str, Any]:
     """Every control with its status, evidence and next step, plus the score."""
     import security
@@ -106,14 +131,18 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
                              "A single-operator tool on the consultant's own laptop: access is the operating-system login plus the per-process UI token. There is no user directory to attach a second factor to.",
                              "Either expose the server beyond loopback only behind a reverse proxy that authenticates users with MFA and terminates TLS, or set ZSCALER_SSO_ENABLED and the ZSCALER_SSO_* variables to require sign-in through an identity provider."))
 
+    direct = _direct_tenant_writers()
+    direct_note = (" Not every write goes that way: " + ", ".join(sorted(direct)) + " write to the tenant directly once write mode is on, "
+                   "with no plan hash and without the DISABLED default." if direct else "")
     w = security.write_mode_status()
     if not w.get("enabled"):
         checks.append(_check("writes", "Changes to the Zscaler tenant are refused until write mode is enabled on purpose", P_OWN, "secure_defaults", "pass",
-                             "Read-only now. Write mode needs the confirmation phrase typed in this window (only while nobody but this computer can reach the server) or ENABLE_WRITE_ACTIONS in the start script; every deploy also needs an approved plan hash, and every rule ships DISABLED and monitor-only.",
+                             "Read-only now. Write mode needs the confirmation phrase typed in this window (only while nobody but this computer can reach the server) or ENABLE_WRITE_ACTIONS in the start script. "
+                             "A policy-pack deploy also needs an approved plan hash, and its rules ship DISABLED and monitor-only." + direct_note,
                              "Leave it read-only between engagements."))
     else:
         checks.append(_check("writes", "Changes to the Zscaler tenant are refused until write mode is enabled on purpose", P_OWN, "secure_defaults", "warn",
-                             f"Write mode is on ({'enabled from this window for the session' if w.get('source') == 'session' else 'set by the start script'}). Deploys still need an approved plan and ship DISABLED.",
+                             f"Write mode is on ({'enabled from this window for the session' if w.get('source') == 'session' else 'set by the start script'}). Policy-pack deploys still need an approved plan and ship DISABLED." + direct_note,
                              "Switch back to read-only in Deploy Policy Packs when the work is done; it also returns to read-only when the server restarts."))
 
     host = security.get_bind_host()
@@ -260,7 +289,11 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     else:
         checks.append(_check("limits", "Known limitations are written down, not hidden", P_OPEN, "disclosure", "warn", "SECURITY.md has no Known limitations section.", "Write down what the tool does not protect against."))
 
-    if "AuditMiddleware" in have or app is None:
+    if app is None:
+        checks.append(_check("audit", "Every write call is recorded for later investigation", P_OPEN, "evidence", "n/a",
+                             "Not checked: the running server's middleware could not be inspected from here, so whether audit.log is being written is unknown.",
+                             "Open this page from the running app."))
+    elif "AuditMiddleware" in have:
         audit_path = os.path.join(APP_DIR, "audit.log")
         size = os.path.getsize(audit_path) if os.path.exists(audit_path) else 0
         checks.append(_check("audit", "Every write call is recorded for later investigation", P_OPEN, "evidence", "pass",
@@ -307,8 +340,10 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     tests_dir = os.path.join(APP_DIR, "tests")
     n_tests = len([f for f in os.listdir(tests_dir) if f.startswith("test_") and f.endswith(".py")]) if os.path.isdir(tests_dir) else 0
     if "pytest" in ci and n_tests:
+        extras = [t for t, needle in (("py_compile on every Python file", "py_compile"), ("node --check on every script", "node --check"),
+                                      ("the pack mirror check", "mirror"), ("Terraform validation", "terraform")) if needle in ci.lower()]
         checks.append(_check("tests", "Tests, byte-compilation and syntax checks gate every push", P_LEAD, "classes", "pass",
-                             f"{n_tests} test files run in CI with py_compile on every Python file, node --check on every script, the pack mirror check and Terraform validation.", "Nothing to do."))
+                             f"{n_tests} test files run in CI" + (" with " + ", ".join(extras) if extras else "") + ".", "Nothing to do."))
     else:
         checks.append(_check("tests", "Tests, byte-compilation and syntax checks gate every push", P_LEAD, "classes", "fail", "CI does not run the tests.", "Run pytest in .github/workflows/tests.yml."))
 
@@ -354,11 +389,19 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
                               "and rules never enabled (ownership of outcomes), objects changed in the tenant without the pack recording it (transparency), "
                               "and rules weakened against the pack (secure defaults), each with what to do." if ok else "The journey check does not cover all three principles."),
                              "Run Where is this tenant? on each pack card after a deployment, and again on every visit."))
-        checks.append(_check("shared_path", "Every pack is deployed, verified and removed through one execution path", P_LEAD, "classes", "pass",
-                             f"pack_ops.py is the only module that writes to a tenant: names and limits are validated before any request, dependencies are created first and "
-                             f"removed last, transient refusals are retried, every write leaves a structured event, and {len(pack_ops.EXPLANATIONS)} known refusals carry a "
-                             "plain-language explanation. A test fails the build if any other module calls the SDK directly (docs/SHARED_EXECUTION_PATH.md).",
-                             "Keep new packs as data (JSON) and new object kinds inside pack_ops."))
+        path_text = (f"Policy packs go through pack_ops.py: names and limits are validated before any request, dependencies are created first and "
+                     f"removed last, transient refusals are retried, every write leaves a structured event, and {len(pack_ops.EXPLANATIONS)} known refusals carry a "
+                     "plain-language explanation. A test fails the build if a new module writes to the tenant outside it (docs/SHARED_EXECUTION_PATH.md).")
+        if not direct:
+            checks.append(_check("shared_path", "Every pack is deployed, verified and removed through one execution path", P_LEAD, "classes", "pass",
+                                 "pack_ops.py is the only module that writes to a tenant. " + path_text,
+                                 "Keep new packs as data (JSON) and new object kinds inside pack_ops."))
+        else:
+            checks.append(_check("shared_path", "Every pack is deployed, verified and removed through one execution path", P_LEAD, "classes", "warn",
+                                 path_text + " But pack_ops.py is not the only module that writes to a tenant: "
+                                 + ", ".join(f"{f} ({n} write call{'s' if n != 1 else ''})" for f, n in sorted(direct.items()))
+                                 + " send writes directly, without its validation, retries or events. They are still refused until write mode is on.",
+                                 "Route these writes through pack_ops, or keep them read-only unless you have reviewed each change."))
     except Exception as e:  # noqa: BLE001
         checks.append(_check("pack_findings", "Deployed policy packs are measured against the same principles", P_OWN, "defaults", "fail",
                              f"The journey check could not be loaded: {e}", "Reinstall the app files."))
@@ -372,4 +415,4 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
     return {"score": score, "grade": grade, "counts": counts, "checks": checks,
             "principles": [P_OWN, P_OPEN, P_LEAD],
             "reference": "https://www.cisa.gov/securebydesign",
-            "note": "Measured live from this server and the app folder. A pass counts 1, a warning 0.5, a failure 0; controls that do not apply to a local single-operator tool are shown but not scored."}
+            "note": "Measured live from this server and the app folder. A pass counts 1, a warning 0.5, a failure 0; controls that do not apply to a local single-operator tool, or that could not be checked from here, are shown but not scored."}

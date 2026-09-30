@@ -36,12 +36,17 @@ from test_zia_contract import strict_tenant
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 WRITE_CALL = re.compile(r"\.(add_dict|add_dlp_engine|add_rule|add_sub_rule|update_dict|update_dlp_engine|update_rule|update_sub_rule|"
-                        r"delete_dict|delete_dlp_engine|delete_rule|raw_request)\(")
+                        r"delete_dict|delete_dlp_engine|delete_rule|raw_request)\(|\bclient\.(post|put|patch|delete)\(")
 # The only files allowed to name an SDK write method, and why.
 ALLOWED = {
     "pack_ops.py": "the shared execution path itself",
     "pack_channels.py": "the per-channel SDK adapter pack_ops calls (payload shapes, raw requests)",
     "fed_policy_pack/dlp_stand_alone_import.py": "the original Fed importer, kept as the reference; the app never runs it",
+    # Known exceptions, not packs: they write directly (still behind write
+    # mode), and the Secure by Design page says so rather than claiming
+    # pack_ops is the only writer. Do not add to this list lightly.
+    "remediation.py": "assessment fix recipes (POST/PUT/DELETE through the REST client)",
+    "rule_migrator.py": "Evaluate All Rules reorder and rule migration (PUT/POST/DELETE through the REST client)",
 }
 
 

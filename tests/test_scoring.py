@@ -44,6 +44,35 @@ def test_the_score_divides_only_over_what_could_be_judged():
     assert s["score_formula"] == perm.SCORE_FORMULA
 
 
+def test_a_check_that_crashes_is_could_not_be_checked_not_not_configured():
+    import dlp_assessment_full_auto as eng
+
+    def boom(client):
+        raise KeyError("unexpected API shape")
+    rows = eng.run_checks(object(), [("X.1", "DLP", "crashes", boom), ("X.2", "DLP", "fine", lambda c: eng.R(eng.R.PASS, "ok"))])
+    assert rows[0]["status"] == "ERROR" and "Could not complete check" in rows[0]["detail"]
+    assert perm.classify(rows[0]) == "error"
+    s = perm.assessment_summary(rows)
+    assert s["errors"] == 1 and s["informational"] == 0 and s["state"] == "partial"
+
+
+def test_the_cli_report_and_json_show_coverage_and_warn_when_partial(capsys, tmp_path):
+    import dlp_assessment_full_auto as eng
+    rows = [_r("1", "PASS"), _r("2", "FAIL"), _r("3", "INFO", DENIED), _r("4", "ERROR", "check 4: Could not complete check. boom")]
+    eng.report(rows, {"org_name": "Acme"})
+    out = capsys.readouterr().out
+    assert "Assessed 3 of 4 checks" in out and "1 not permitted" in out and "1 could not be checked" in out
+    assert "PARTIAL COVERAGE" in out and f"{len(eng.REG)} checks" not in out
+    path = tmp_path / "r.json"
+    eng.save(rows, {"org_name": "Acme"}, str(path))
+    d = json.loads(path.read_text())
+    assert d["metadata"]["checks"] == 4 and d["coverage"]["state"] == "partial" and d["coverage"]["errors"] == 1 and d["coverage"]["not_permitted"] == 1
+    # A complete run carries no banner.
+    eng.report([_r("1", "PASS"), _r("2", "FAIL")], {"org_name": "Acme"})
+    out = capsys.readouterr().out
+    assert "Assessed 2 of 2 checks" in out and "PARTIAL COVERAGE" not in out
+
+
 def test_the_real_run_numbers_reproduce():
     """The audited run: 311 checks — 89 configured, 20 action required, 132 needs review, 70 outside the score, 2 of them not permitted."""
     rows = [_r(f"p{i}", "PASS") for i in range(89)] + [_r(f"f{i}", "FAIL") for i in range(20)] + [_r(f"r{i}", "REVIEW") for i in range(132)]
