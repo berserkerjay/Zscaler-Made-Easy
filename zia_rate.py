@@ -731,6 +731,13 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
                              f"{_clock(now + total)}{f' ({why})' if why else ''}. The run waits and carries on by itself."), "warn"
     else:
         verdict, severity = f"Will succeed: goes straight through within ZIA's rate limits, about {_human(total)}.", "ok"
+    if rows and severity != "ok":
+        case = ("blocked" if blocked_hour else "ceiling") if severity == "fail" else (
+            "resetting" if (held > 0 or limited) else ("close" if ceiling and peak5 >= 0.8 * ceiling["writes_5m"] else "pauses"))
+        tol = ceiling["writes_5m"] if ceiling else (blocked_hour[-1].get("writes_5m") if blocked_hour else None)
+        quip = _quip(case, now, writes=tol, hourly=next((r["hourly_limit"] for r in rows if r["over_hourly"] or r["used_last_hour"]), None))
+        if quip:
+            verdict = f"{quip} {verdict}"
     return {"buckets": rows, "seconds": total, "pause_seconds": pause, "verdict": verdict, "severity": severity,
             "title": {"ok": "Will succeed", "warn": "Will succeed, with pauses", "fail": "Likely to fail"}[severity],
             "run_after": run_after, "refused_last_hour": len(blocked_hour) + len(limited), "peak_5min_writes": peak5,
@@ -738,6 +745,39 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
                           "reads_5m": ceiling.get("reads_5m"), "message": ceiling["message"]} if ceiling else None,
             "sent_last_hour": {k: len(v) for k, v in sent.items() if v}, "refused_runs": [{"at": t, "error": e} for t, e in history],
             "recent": {k: len(v) for k, v in sent.items()} if use_recent else {}}
+
+
+# When the run is crushing ZIA's rate limits, the verdict says so with the
+# respect those limits have earned. DLP_CHECK_RATE_TONE=plain keeps it dry.
+_QUIPS = {
+    "blocked": ["Zscaler's API has fainted again.",
+                "Down goes the Zero Trust Exchange, felled by {writes} writes.",
+                "Zscaler's API, a global cloud platform, needs a lie-down after {writes} writes."],
+    "ceiling": ["Last time, {writes} writes in 5 minutes was apparently too much excitement for Zscaler's API.",
+                "Zscaler's API has a documented limit and a real one; the real one is {writes} writes in 5 minutes.",
+                "History lesson: Zscaler's API folded at {writes} writes in 5 minutes."],
+    "resetting": ["Zscaler's API is still catching its breath.",
+                  "Zscaler's API is on its union-mandated break.",
+                  "Hold please: Zscaler's API is recovering from the last few requests."],
+    "close": ["Living dangerously: this is within a whisker of what knocked Zscaler's API over last time.",
+              "Fingers crossed: this is close to the {writes} writes that floored Zscaler's API before."],
+    "pauses": ["Zscaler rations its API like wartime butter{hourly_text}.",
+               "Patience: Zscaler's API counts its requests like a miser counts coins{hourly_text}.",
+               "Plenty of time for coffee: Zscaler's API takes its limits very seriously{hourly_text}."],
+}
+
+
+def _quip(case: str, now: float, *, writes: Optional[int] = None, hourly: Optional[int] = None) -> str:
+    """A sarcastic opener for a verdict where ZIA's limits bite, or "" when
+    DLP_CHECK_RATE_TONE is "plain". Picked by the hour, so a preview does
+    not change its wording on every refresh."""
+    if (os.environ.get("DLP_CHECK_RATE_TONE") or "sarcastic").strip().lower() in ("plain", "off", "0", "no"):
+        return ""
+    options = [q for q in _QUIPS.get(case, []) if "{writes}" not in q or writes]
+    if not options:
+        return ""
+    q = options[int(now // 3600) % len(options)]
+    return q.format(writes=writes, hourly_text=f" ({hourly} an hour)" if hourly else "")
 
 
 def _ago(seconds: float) -> str:
