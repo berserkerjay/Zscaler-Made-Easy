@@ -61,7 +61,7 @@ const _dzChan = c => DZ_CHANNEL[c] || (c ? String(c) : '');
 const DZ_CARVED = ['cloud_app', 'file_type', 'url', 'ssl'];
 // Shown in large bold type on every pack card; a pack.json deploy_note
 // replaces it. One channel per run keeps each deploy small and checkable.
-const DZ_ONE_CHANNEL_NOTE = "INSTALL ONE CHANNEL AT A TIME. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).";
+const DZ_ONE_CHANNEL_NOTE = "Install one channel at a time. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).";
 
 function _dzChannelChips(channels) {
   if (!channels) return '';
