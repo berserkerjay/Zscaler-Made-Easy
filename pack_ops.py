@@ -39,6 +39,7 @@ import contextlib
 import json
 import logging
 import re
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -78,12 +79,26 @@ BACKOFF_SECONDS = 1.0
 # 75 seconds against the same answer.
 FORBIDDEN_ATTEMPTS = 5
 FORBIDDEN_WAIT_SECONDS = 15.0
+# "Resource Access Blocked" is ZIA's API gateway holding the client off
+# after a burst; on a live tenant it lasted about five minutes, far past
+# 5 x 15 seconds. It keeps the activate-and-retry rule but waits longer
+# before each try: about 7 minutes in all.
+BLOCKED_WAIT_SECONDS = (30.0, 60.0, 90.0, 120.0, 120.0)
 _FORBIDDEN_WORDS = ("forbidden", "resource access blocked", "not authorized", "access denied")
 FORBIDDEN_STOP_REASON = (
-    f"ZIA refused a write with a 403 and kept refusing it after {FORBIDDEN_ATTEMPTS} activations and {FORBIDDEN_ATTEMPTS} waits of "
-    f"{FORBIDDEN_WAIT_SECONDS:.0f} seconds. Either the API client's admin role lost access to DLP dictionaries, engines or rules, "
+    f"ZIA refused a write with a 403 and kept refusing it after {FORBIDDEN_ATTEMPTS} activations and {FORBIDDEN_ATTEMPTS} waits "
+    f"({FORBIDDEN_WAIT_SECONDS:.0f} seconds each; {sum(BLOCKED_WAIT_SECONDS) / 60:.0f} minutes in all when ZIA answers Resource Access Blocked). "
+    "Either the API client's admin role lost access to DLP dictionaries, engines or rules, "
     "or ZIA blocked the client after a burst of refused requests. Wait a few minutes, click Authenticate, and run this again; "
     "what was already written is kept. If it still fails, check the role in ZIA Administration > Role Management.")
+
+
+def forbidden_wait(retry: int, error: Optional[str]) -> float:
+    """Seconds to wait before 403 retry `retry` (1-based): the longer
+    schedule for "Resource Access Blocked", FORBIDDEN_WAIT_SECONDS otherwise."""
+    if "resource access blocked" in str(error or "").lower():
+        return BLOCKED_WAIT_SECONDS[min(max(retry, 1), len(BLOCKED_WAIT_SECONDS)) - 1]
+    return FORBIDDEN_WAIT_SECONDS
 
 
 def _activate(zia: Any) -> Dict[str, Any]:
@@ -94,6 +109,35 @@ def _activate(zia: Any) -> Dict[str, Any]:
 
 
 _sleep: Callable[[float], None] = time.sleep   # tests replace this
+
+
+# Writes are paced. A deploy or removal is 80-160 objects, and sending them
+# back to back is the burst after which ZIA's API gateway answers every
+# request with 403 "Resource Access Blocked" for several minutes (seen on a
+# live tenant). DLP_CHECK_WRITE_GAP seconds between writes (default 1.0;
+# 0 turns pacing off). Reads are not paced.
+def _write_gap() -> float:
+    try:
+        return max(0.0, float(os.environ.get("DLP_CHECK_WRITE_GAP", "1.0") or 0))
+    except ValueError:
+        return 1.0
+
+
+_pace_sleep: Callable[[float], None] = time.sleep   # tests replace this
+_pace_lock = threading.Lock()
+_last_write = [0.0]
+
+
+def _pace() -> None:
+    """Wait until DLP_CHECK_WRITE_GAP seconds have passed since the last write."""
+    gap = _write_gap()
+    if gap <= 0:
+        return
+    with _pace_lock:
+        wait = _last_write[0] + gap - time.monotonic()
+        if wait > 0:
+            _pace_sleep(wait)
+        _last_write[0] = time.monotonic()
 
 # Outcome.code of a write that was never sent because the run had stopped.
 STOPPED = "STOPPED"
@@ -393,6 +437,8 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
     def once() -> Outcome:
         nonlocal attempts
         attempts += 1
+        if op != "read":
+            _pace()
         try:
             out = normalize(fn(*args, **kwargs))
         except Exception as e:  # noqa: BLE001 — one object never stops the run
@@ -423,7 +469,8 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             if _stopped_now():
                 break
             seen = f"HTTP {outcome.http_status}" if outcome.http_status else "no HTTP status in the answer"
-            _log(f"[{kind or op}] {name}: ZIA answered '{outcome.error}' ({seen}); activating, waiting {FORBIDDEN_WAIT_SECONDS:.0f}s and trying again ({retry} of {FORBIDDEN_ATTEMPTS})")
+            wait = forbidden_wait(retry, outcome.error)
+            _log(f"[{kind or op}] {name}: ZIA answered '{outcome.error}' ({seen}); activating, waiting {wait:.0f}s and trying again ({retry} of {FORBIDDEN_ATTEMPTS})")
             logger.info("forbidden-retry", extra={"op": op, "kind": kind, "name": name, "channel": channel, "retry": retry, "error": outcome.error,
                                                   "http_status": outcome.http_status})
             act = _activate(zia)
@@ -431,7 +478,7 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
                 _log(f"[{kind or op}] {name}: activation requested (ZIA reports {act.get('status') or 'unknown'}); every pending change in the tenant goes live with it")
             else:
                 _log(f"[{kind or op}] {name}: activation could not run ({act.get('error')}); waiting anyway")
-            _sleep(FORBIDDEN_WAIT_SECONDS)
+            _sleep(wait)
             if _stopped_now():
                 break   # Stop was clicked during the wait: nothing more is sent
             outcome = with_backoff()

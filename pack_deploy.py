@@ -1115,12 +1115,24 @@ def _saas_orders_now(zia, saas_type: str) -> List[int]:
     return sorted(out)
 
 
+# Key in a run's saas_next: the rank ZIA accepted after refusing the one a
+# rule asked for. Later SaaS rules of the run start there, so a pack's SaaS
+# rules cost one refused request, not one each: a burst of refused writes
+# makes ZIA block the API client (Resource Access Blocked).
+_ACCEPTED_RANK = "__accepted_rank__"
+
+
 def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], saas_next: Dict[str, int], _log, name: str) -> ops.Outcome:
     """Create one SaaS rule at an order ZIA accepts, through the shared path."""
     t = str(payload.get("type") or "ANY")
     first = saas_next.get(t) or (saas_orders.get(t, 0) + 1)
     tried: List[int] = []
     errors: List[str] = []
+    rank_was = None
+    learned = saas_next.get(_ACCEPTED_RANK)
+    if learned is not None and payload.get("rank") != learned:
+        rank_was, payload["rank"] = payload.get("rank"), learned
+        _log(f"[saas] '{name}': starting at rank {learned}; ZIA refused rank {rank_was} earlier in this run (admin rank)")
 
     def attempt(order: int) -> ops.Outcome:
         payload["order"] = order
@@ -1136,7 +1148,6 @@ def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], sa
         return out.ok and out.id is not None
 
     out = attempt(first)
-    rank_was = None
     if not placed(out) and _rank_refusal(errors[-1]):
         # A real tenant refused rank 0 with 'Rule rank is higher than the
         # admin rank' and every order tried after it: the rank, not the
@@ -1166,6 +1177,7 @@ def _add_saas_rule(zia, payload: Dict[str, Any], saas_orders: Dict[str, int], sa
     if placed(out) and rank_was is not None:
         payload["rank_note"] = f"rank {rank_was} refused by ZIA (admin rank); created at rank {payload['rank']}"
         _log(f"[saas] '{name}': created at rank {payload['rank']} instead of {rank_was}")
+        saas_next[_ACCEPTED_RANK] = payload["rank"]
     if placed(out):
         saas_orders[t] = max(saas_orders.get(t, 0), int(payload["order"]))
         # The next rule of this type starts where this one landed, plus one.
