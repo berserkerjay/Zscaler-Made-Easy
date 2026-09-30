@@ -1895,12 +1895,14 @@ def apply(
     were never sent are reported as skipped, not failed. Activation and
     the read-back still run, so what was written is live and recorded. Its
     waits, holds and refusals draw on the client's own tenant's ZIA rate
-    limits, whichever thread runs it."""
+    limits, whichever thread runs it. Every write and the run's summary
+    go to the audit log (pack_ops.audited_run)."""
     import zia_rate
-    with zia_rate.using_client(client), ops.run_scope(cancel):
-        return _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
-                      writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                      activate=activate, log=log, settle_seconds=settle_seconds)
+    with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
+        run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
+                               writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
+                               activate=activate, log=log, settle_seconds=settle_seconds)
+        return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,

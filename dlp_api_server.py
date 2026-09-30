@@ -375,10 +375,17 @@ async def ping():
 @app.get("/api/auth/status")
 async def auth_status(request: Request):
     """Whether this server asks for a UI token, whether this browser has
-    it, and whether that token can only be obtained via SSO."""
-    return {"required": _security.ui_auth_enabled(), "unlocked": _security.ui_request_ok(request),
-            "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None,
-            "sso": _sso.sso_enabled()}
+    it, and whether sign-in is through SSO instead (then also who is
+    signed in and whether they may change the tenant)."""
+    if not _sso.sso_enabled():
+        return {"required": _security.ui_auth_enabled(), "unlocked": _security.ui_request_ok(request),
+                "token_file": _security.UI_TOKEN_FILE if _security.ui_auth_enabled() else None,
+                "sso": False}
+    session = _security.sso_session(request)
+    return {"required": True, "unlocked": session is not None, "token_file": None, "sso": True,
+            "user": (session.get("email") or session.get("sub")) if session else None,
+            "may_write": _sso.is_writer(session) if session else False,
+            "sso_login_url": "/api/auth/sso/login", "logout_url": "/api/auth/logout"}
 
 
 @app.post("/api/auth/unlock")
@@ -412,10 +419,12 @@ async def sso_login():
 @app.get("/api/auth/sso/callback")
 async def sso_callback(request: Request, code: str = "", state: str = "", error: str = "", error_description: str = ""):
     """Where the identity provider sends the browser back. On success,
-    mints the same UI token cookie every other request is already gated
-    on — nothing else about the gate changes. `error`/`error_description`
-    and any exception text are attacker-influenceable (query params, or
-    echoed from the token response) and are HTML-escaped before display."""
+    starts a session for this person (sso.create_session) and sets a
+    cookie holding only its random id. With ZSCALER_SSO_ALLOWED_GROUPS
+    set, a person in none of those groups is refused (and audited).
+    `error`/`error_description` and any exception text are
+    attacker-influenceable (query params, or echoed from the token
+    response) and are HTML-escaped before display."""
     import html as _html
     if not _sso.sso_enabled():
         raise HTTPException(status_code=404, detail="SSO is not enabled on this server.")
@@ -425,9 +434,36 @@ async def sso_callback(request: Request, code: str = "", state: str = "", error:
         claims = _sso.complete_login(state, code)
     except Exception as e:
         return HTMLResponse(f"<p>Sign-in failed: could not verify the identity provider's response ({_html.escape(str(e))}).</p>", status_code=401)
+    who = str(claims.get("email") or claims.get("sub") or "unknown")
+    if not _sso.sign_in_allowed(claims):
+        has_groups = bool(_sso.claim_groups(claims))
+        _audit.record("sso_login_refused", actor=who, email=claims.get("email"), subject=claims.get("sub"),
+                      groups=_sso.claim_groups(claims), reason="not in any group listed in ZSCALER_SSO_ALLOWED_GROUPS"
+                      if has_groups else f"the ID token has no '{_sso.groups_claim()}' claim, so no allowed group could be matched")
+        return HTMLResponse(
+            f"<p>Sign-in refused: {_html.escape(who)} is not in a group allowed to use this server. Ask the person who runs it "
+            "to add you to one of the groups in ZSCALER_SSO_ALLOWED_GROUPS"
+            + ("" if has_groups else f", and to have the identity provider send the '{_html.escape(_sso.groups_claim())}' claim") + ".</p>",
+            status_code=403)
+    session_id = _sso.create_session(claims)
     resp = RedirectResponse("/", status_code=303)
-    _security.set_ui_cookie(resp, request)
-    _audit.record("sso_login", email=claims.get("email"), subject=claims.get("sub"))
+    _security.set_session_cookie(resp, request, session_id)
+    _audit.record("sso_login", actor=who, email=claims.get("email"), subject=claims.get("sub"), groups=_sso.claim_groups(claims))
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    """Sign out (SSO only): end this browser's session on the server and
+    clear its cookie. Audited. Works even after the session has expired,
+    so the cookie is always cleared."""
+    if not _sso.sso_enabled():
+        raise HTTPException(status_code=404, detail="Sign out is only used with SSO; this server uses the UI token.")
+    ended = _sso.end_session(request.cookies.get(_security.SSO_SESSION_COOKIE))
+    _audit.record("sso_logout", actor=_security.current_actor() if ended else "not signed in",
+                  ended=bool(ended), client=request.client.host if request.client else "?")
+    resp = JSONResponse({"ok": True, "signed_out": bool(ended), "sso_login_url": "/api/auth/sso/login"})
+    _security.clear_session_cookie(resp, request)
     return resp
 
 
@@ -532,6 +568,8 @@ async def remediation_execute(req: RemediationExecuteRequest):
         from remediation import execute
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"remediation unavailable: {e}")
+    if not req.dry_run:
+        _security.require_writer()
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(execute, client, req.check_id, req.criteria, req.dry_run)
     return result
@@ -1074,6 +1112,28 @@ def _keyed(client, fn, *args):
         return fn(*args)
 
 
+def _actor(request: Request) -> Optional[str]:
+    """Who asked for a deploy / removal / hand-off, for its audit entries:
+    security.current_actor(request) once per-user identity provides it,
+    None until then. Never fails the request."""
+    fn = getattr(_security, "current_actor", None)
+    if fn is None:
+        return None
+    try:
+        who = fn(request)
+    except Exception:  # noqa: BLE001
+        return None
+    return str(who)[:200] if who else None
+
+
+def _as_actor(actor: Optional[str], fn, *args):
+    """Run a synchronous deploy or removal with `actor` on its audit entries
+    (a job carries its actor itself)."""
+    import pack_ops
+    with pack_ops.audit_scope(actor=actor):
+        return fn(*args)
+
+
 def _resolve_pack_ids(pack_ids: List[str]) -> List[Dict[str, Any]]:
     """Map requested ids onto discovered packs. Ids are only ever matched
     against the discovery list, so a request can't name an arbitrary path."""
@@ -1296,7 +1356,7 @@ class ProposalDecision(BaseModel):
     """A person's decision on a continuous-evaluation proposal (approve, dismiss, snooze, reopen)."""
     decision: str            # approve | dismiss | snooze | reopen
     note: str = ""
-    by: str = ""
+    by: str = ""             # accepted from older pages but ignored: the server sets who decided (security.current_actor)
     days: int = 14           # snooze length
     confirm: str = ""        # the confirm phrase for approve_double gates
 
@@ -1327,10 +1387,13 @@ async def proposals_export(tenant: str = "", format: str = "markdown"):
 @app.post("/api/proposals/{tenant}/{pid}/decide")
 async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
     """A person decides: approve (a double gate needs the confirm phrase),
-    dismiss (remembered 30 days), snooze (days), reopen. Recorded in audit.log."""
+    dismiss (remembered 30 days), snooze (days), reopen. Recorded in audit.log
+    with who decided: the signed-in person (or "local UI token"), never a
+    name the page sends."""
     import proposals
+    by = (_security.current_actor() or "")[:80]
     try:
-        out = proposals.decide(tenant, pid, req.decision, by=req.by[:80], note=req.note[:500], days=req.days, confirm=req.confirm)
+        out = proposals.decide(tenant, pid, req.decision, by=by, note=req.note[:500], days=req.days, confirm=req.confirm)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     # A guidance proposal (new article mapped to checks) applies by recording
@@ -1338,8 +1401,8 @@ async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
     if req.decision == "approve" and out.get("applies_via") == "guidance":
         import guidance
         try:
-            rec = guidance.record_approval(out, by=req.by[:80])
-            out = proposals.set_status(tenant, pid, "applied", by=req.by[:80],
+            rec = guidance.record_approval(out, by=by)
+            out = proposals.set_status(tenant, pid, "applied", by=by,
                                        note=f"reference recorded for {len(rec['checks'])} check(s) in checks_config.json; ships with the next app update") or out
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -1347,8 +1410,8 @@ async def proposals_decide(tenant: str, pid: str, req: ProposalDecision):
 
 
 class ProposalApplyRequest(TenantCredsRequest):
-    """Body for applying or rolling back a proposal: tenant credentials, who, confirmation."""
-    by: str = ""
+    """Body for applying or rolling back a proposal: tenant credentials and confirmation."""
+    by: str = ""             # accepted from older pages but ignored: the server sets who (security.current_actor)
     confirm: bool = False
 
 
@@ -1375,6 +1438,7 @@ async def proposals_preview(tenant: str, pid: str, req: ProposalApplyRequest, di
 async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
     """Apply an approved proposal through the deploy path: write gate,
     re-read, update, read-back, recorded way back. Nothing is activated."""
+    _security.require_writer()
     import proposal_apply
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
@@ -1382,8 +1446,9 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     client = await asyncio.to_thread(_proposal_client, req)
     logs: list = []
+    by = (_security.current_actor() or "")[:80]
     try:
-        out = await asyncio.to_thread(lambda: proposal_apply.apply(client, tenant, pid, writes_enabled=True, by=req.by[:80], log=logs.append))
+        out = await asyncio.to_thread(lambda: proposal_apply.apply(client, tenant, pid, writes_enabled=True, by=by, log=logs.append))
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     out["logs"] = logs
@@ -1394,6 +1459,7 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
 async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
     """Put back the value the rule had before the proposal was applied,
     with the same re-read and read-back."""
+    _security.require_writer()
     import proposal_apply
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
@@ -1401,8 +1467,9 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     client = await asyncio.to_thread(_proposal_client, req)
     logs: list = []
+    by = (_security.current_actor() or "")[:80]
     try:
-        out = await asyncio.to_thread(lambda: proposal_apply.rollback(client, tenant, pid, writes_enabled=True, by=req.by[:80], log=logs.append))
+        out = await asyncio.to_thread(lambda: proposal_apply.rollback(client, tenant, pid, writes_enabled=True, by=by, log=logs.append))
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     out["logs"] = logs
@@ -1666,13 +1733,14 @@ async def dlp_pack_removal_inventory(req: TenantCredsRequest):
 
 
 @app.post("/api/dlp-packs/removal/apply")
-async def dlp_pack_removal_apply(req: PackRemovalRequest):
+async def dlp_pack_removal_apply(req: PackRemovalRequest, request: Request):
     """Remove what the preflight found, in reverse dependency order. Needs
     write mode, confirm=true and the plan_hash from a matching preflight;
     if the tenant changed since the preview the removal is refused as
     stale. Activates, waits for ZIA to report ACTIVE, then re-reads the
     tenant: `verification` says whether anything of the pack(s) is still
     there. Several pack_ids remove every selected pack in one pass."""
+    _security.require_writer()
     try:
         import pack_removal  # noqa: F401 — availability check; the run is in _run_removal
     except Exception as e:
@@ -1687,7 +1755,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    result = await asyncio.to_thread(_run_removal, client, req, rec, packs, None, None)
+    result = await asyncio.to_thread(_as_actor, _actor(request), _run_removal, client, req, rec, packs, None, None)
     if result.get("status") == "blocked":
         raise HTTPException(status_code=403, detail="; ".join(result.get("blockers") or ["Removal blocked."]))
     if result.get("status") == "stale":
@@ -1725,11 +1793,12 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
 
 
 @app.post("/api/dlp-packs/removal/apply/start")
-async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
+async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request):
     """Start the same removal as /removal/apply as a background job and
     return its id at once. Poll GET /api/dlp-packs/jobs/{job_id} for the
     log as it is written and the result when it finishes; POST
     /api/dlp-packs/jobs/{job_id}/cancel stops the remaining deletes."""
+    _security.require_writer()
     import pack_jobs
     if not req.pack_ids and not req.rules and not req.deployment_id:
         raise HTTPException(status_code=400, detail="Select at least one pack, pick the rules, or name the deployment to remove.")
@@ -1742,7 +1811,8 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
-    job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label)
+    job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label,
+                           actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -1911,6 +1981,8 @@ async def write_mode_set(req: WriteModeRequest):
     """Switch write mode for this server process. Enabling needs the typed
     confirmation phrase and a localhost bind; the setting is not persisted."""
     from security import set_write_mode
+    if req.enable:
+        _security.require_writer()
     try:
         out = set_write_mode(req.enable, req.confirm)
     except ValueError as e:
@@ -2227,7 +2299,7 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
 
 
 @app.post("/api/dlp-packs/terraform/start")
-async def dlp_packs_terraform_start(req: DLPPackDeployRequest):
+async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request):
     """Start the same Terraform hand-off as /terraform as a background job
     and return its id at once; poll GET /api/dlp-packs/jobs/{job_id} for
     the log (in gap mode the tenant read, step by step) and, once it is
@@ -2237,7 +2309,8 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest):
         raise HTTPException(status_code=400, detail="Select at least one pack.")
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
-    job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
+                           actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2256,11 +2329,12 @@ async def dlp_pack_job_download(job_id: str):
 
 
 @app.post("/api/dlp-packs/apply")
-async def dlp_packs_apply(req: DLPPackDeployRequest):
+async def dlp_packs_apply(req: DLPPackDeployRequest, request: Request):
     """Execute an approved plan. Requires confirm=true and the plan_hash
     returned by /preflight. If the tenant or selection changed since
     approval the response is 409 with status 'plan_changed' and nothing
     is written. Blocked or failed items never stop the others."""
+    _security.require_writer()
     try:
         import pack_deploy  # noqa: F401 — availability check; the run is in _run_apply
     except Exception as e:
@@ -2274,7 +2348,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    result = await asyncio.to_thread(_run_apply, client, creds, req, packs, None, None)
+    result = await asyncio.to_thread(_as_actor, _actor(request), _run_apply, client, creds, req, packs, None, None)
     if result.get("status") in ("plan_changed", "blocked"):
         return JSONResponse(result, status_code=409)
     return result
@@ -2317,13 +2391,14 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
 
 
 @app.post("/api/dlp-packs/apply/start")
-async def dlp_packs_apply_start(req: DLPPackDeployRequest):
+async def dlp_packs_apply_start(req: DLPPackDeployRequest, request: Request):
     """Start the same deployment as /apply as a background job and return
     its id at once, so the browser can show the log while the tenant is
     written to (a pack is minutes of API calls, activation and read-back).
     Poll GET /api/dlp-packs/jobs/{job_id}; POST .../cancel stops the
     remaining writes. The checks are the same as /apply: confirm, the
     plan_hash from /preflight, write mode."""
+    _security.require_writer()
     import pack_jobs
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
@@ -2334,7 +2409,8 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest):
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids))
+    job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
+                           actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2347,12 +2423,13 @@ async def dlp_deployments_list(tenant_label: Optional[str] = None):
 
 
 @app.post("/api/deployments/{dep_id}/undo")
-async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
+async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: Request):
     """Delete what a recorded deployment created (rules, endpoint
     application groups, engines, dictionaries, in that order). Only
     objects this tool created are removed, and only while the tenant still
     lists the id under the name we gave it. Needs write mode and
     confirm=true. Changes still need activation in ZIA."""
+    _security.require_writer()
     import deployments
     import pack_deploy
     rec = deployments.get(dep_id)
@@ -2368,7 +2445,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
         raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
-    result = await asyncio.to_thread(pack_deploy.undo, client, rec, writes_enabled=True, log=logs.append)
+    result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.undo(client, rec, writes_enabled=True, log=logs.append))
     result["logs"] = logs
     updated = deployments.mark_undo(dep_id, result.get("results") or [], complete=bool(result.get("complete")))
     result["deployment"] = deployments.summary(updated) if updated else None
@@ -2376,11 +2453,12 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
 
 
 @app.post("/api/dlp-packs/{pack_id}/import")
-async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
+async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Request):
     """Single-pack deploy for scripts, through the same shared path as Deploy
     Policy Packs (pack_deploy.preflight + apply → pack_ops). Without a
     `plan_hash` the endpoint only plans and returns the plan to review;
     with the hash of that plan it deploys. Nothing is written otherwise."""
+    _security.require_writer()
     import pack_deploy
     pack = _resolve_pack_ids([pack_id])[0]
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
@@ -2395,7 +2473,7 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     logs: list = []
-    result = await asyncio.to_thread(lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
+    result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
                                                                log=logs.append))
     result["logs"] = logs
@@ -3889,6 +3967,8 @@ async def migrate_enable(req: EnableRequest):
         from rule_migrator import enable_evaluate_all_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if not req.dry_run:
+        _security.require_writer()
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
 
@@ -3906,6 +3986,8 @@ async def migrate_delete_all(req: DeleteAllRequest):
         from rule_migrator import delete_all_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    if not req.dry_run:
+        _security.require_writer()
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
 
@@ -3932,6 +4014,8 @@ async def migrate_post(req: PostRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.proposed_rules:
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
+    if not req.dry_run:
+        _security.require_writer()
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
 
@@ -4914,7 +4998,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if hp.isdigit() and 0 < int(hp) < 65536:
             shown_port = int(hp)
     open_url = f"http://{('localhost' if host == '127.0.0.1' or (in_container and host == '0.0.0.0') else host)}:{shown_port}/"
-    if _security.ui_auth_enabled():
+    if _sso.sso_enabled():
+        # Each person signs in at the identity provider; the static UI token
+        # is refused, so it is neither printed nor written to ui_token.txt.
+        print("  Sign-in: through your identity provider (SSO); the UI token is not used.")
+    elif _security.ui_auth_enabled():
         try:
             token_path = _security.write_ui_token_file(os.environ.get("DLP_CHECK_UI_TOKEN_DIR") or _APP_DIR)
         except OSError as e:

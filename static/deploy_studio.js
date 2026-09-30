@@ -222,6 +222,14 @@ async function _dzLoadWriteMode() {
   } catch (e) { DZ.write = null; }
   if (DZ.step === 1 || DZ.step === 3) _dzRender();
 }
+// The app-wide safety banner (safety_banner.js) can switch back to read-only,
+// or notice another tab did: re-read write mode so this sheet agrees with it.
+window.addEventListener('dlp:write-mode', e => {
+  if (!e || !e.detail || e.detail.from !== 'banner') return;
+  if (!document.getElementById('dzTitle')) return;   // the Studio was never opened on this page
+  DZ.writeNote = '';
+  _dzLoadWriteMode();
+});
 // The switch asks in the app's own dialog (ui_auth.js): never the browser's
 // prompt() / alert() / confirm(), which an embedded browser may refuse
 // silently, so that clicking Enable write mode looked as if nothing happened.
@@ -263,6 +271,8 @@ async function _dzSetWriteMode(enable) {
     if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
     DZ.write = data;
     announce(data.enabled ? 'Write mode enabled on this server until it restarts.' : 'Read-only mode.');
+    // Every page's safety banner shows (or hides) its write-mode warning now, not at its next poll.
+    try { window.dispatchEvent(new CustomEvent('dlp:write-mode', { detail: { from: 'studio', status: data } })); } catch (e) { /* old browser */ }
     // The removal review is open: refresh it so Remove now unlocks in place.
     if (DZ.removal && document.getElementById('rmConsent')) { _dzRemovalRender(); return; }
     // A plan made in read-only mode carries a read-only blocker; refresh it.
@@ -279,7 +289,7 @@ function _dzWriteBanner() {
   if (!w) return '';
   const note = DZ.writeNote ? `<div class="d dz-write-note" role="status">${_dzE(DZ.writeNote)}</div>` : '';
   if (w.enabled) {
-    return `<div class="dz-write on"><span class="dz-status ready">Write mode</span><div><div class="t">Deploying will create objects in the tenant you approve; the removal review and Undo can delete them.</div>
+    return `<div class="dz-write on"><span class="dz-status warnings">Write mode</span><div><div class="t">Deploying will create objects in the tenant you approve; the removal review and Undo can delete them.</div>
       <div class="d">This app can now create and delete DLP policy in the tenant you are signed in to. Every rule arrives DISABLED; existing objects are not overwritten (confidence tweaks on existing dictionaries are listed as <em>Will modify</em> for approval). ${w.source === 'session' ? 'Enabled from this app: it applies to every browser using this server until the server restarts, or until you click Back to read-only.' : 'Set by the start script (ENABLE_WRITE_ACTIONS); on until the server restarts.'}</div>${note}</div>
       ${w.source === 'session' ? `<button type="button" class="dz-btn" onclick="_dzSetWriteMode(false)">Back to read-only</button>` : ''}</div>`;
   }
@@ -821,7 +831,7 @@ function _dzGatesHtml(R, { step } = {}) {
   for (const u of _dzUntickedChannels([...DZ.selected])) {
     gates.push({ ok: false, warn: true, text: `${u.name}: ${u.labels.join(', ')} unticked — the ${_dzN(u.rules, 'rule')} this pack ships there will NOT be deployed. Go back to Select and tick the channel${u.labels.length === 1 ? '' : 's'} to deploy them.` });
   }
-  if (w.enabled) gates.push({ ok: true, text: 'Write mode is on for this server (every browser using it) until the server restarts.' });
+  if (w.enabled) gates.push({ ok: false, warn: true, text: 'Write mode is on for this server (every browser using it) until the server restarts.' });
   else gates.push({ ok: false, text: w.can_toggle ? 'Write mode is off: click Enable write mode and type the confirmation phrase.' : `Write mode is off and cannot be enabled from here${w.reason ? ': ' + w.reason : (w.how_to_enable ? ': ' + w.how_to_enable + '.' : '.')}` });
   if (step === 3) gates.push(DZ.consent ? { ok: true, text: 'You have ticked the approval box.' } : { ok: false, text: 'Tick the approval box above.' });
   else gates.push({ ok: true, text: 'Next: Review & approve, tick the approval box, then Deploy to tenant.' });

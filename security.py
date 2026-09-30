@@ -26,17 +26,21 @@ Optional hardening (env-toggled):
   ENABLE_WRITE_ACTIONS                       — must equal "YES_I_UNDERSTAND"
                                                for any rule write/delete
   ZSCALER_SSO_ENABLED  (default 0)          — require an OpenID Connect
-                                               login (see sso.py) before
-                                               the UI token cookie is
-                                               issued, instead of the
-                                               static-token shortcuts
+                                               sign-in per person (see
+                                               sso.py) instead of the
+                                               static UI token, which is
+                                               then refused in every form
   ZSCALER_ALLOW_NONLOCAL_BIND                — must equal "YES_I_UNDERSTAND"
-                                               to start bound beyond
-                                               loopback without SSO fully
-                                               configured (require_safe_bind)
+                                               to start a local install
+                                               bound beyond loopback without
+                                               SSO fully configured (the UI
+                                               token gate must still be on;
+                                               require_safe_bind). Not used
+                                               in the container.
 """
 from __future__ import annotations
 
+import contextvars
 import os
 import re
 import time
@@ -197,30 +201,51 @@ def write_mode_status() -> dict:
 NONLOCAL_BIND_CONFIRM_PHRASE = "YES_I_UNDERSTAND"
 
 
+def _sso_ready() -> bool:
+    import sso as _sso
+    return ui_auth_enabled() and _sso.sso_enabled() and not _sso.config_errors()
+
+
 def require_safe_bind() -> None:
-    """Fail closed at startup: a server bound beyond loopback needs its
-    own authentication in front of it — the UI token is a bearer secret,
-    not multi-factor authentication (see SECURITY.md). Refuses to start
-    unless SSO is fully configured (sso.py), or the UI token gate is at
-    least on and the operator explicitly accepts the risk with
-    ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND because they already
+    """Fail closed at startup: a server reachable beyond this computer
+    needs its own authentication in front of it — the UI token is a
+    bearer secret, not multi-factor authentication (see SECURITY.md).
+
+    In the container (DLP_CHECK_IN_CONTAINER=1) the server always listens
+    on 0.0.0.0 inside; what decides who can reach it is the host address
+    docker-compose.yml publishes it on (DLP_CHECK_HOST_BIND, loopback by
+    default). Loopback starts; anything else starts only with SSO fully
+    configured.
+
+    Outside the container: a loopback bind always starts. A wider bind
+    with ZSCALER_UI_AUTH=0 is always refused. Otherwise it needs SSO fully
+    configured (sso.py), or the operator explicitly accepting the risk
+    with ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND because they already
     have their own authenticating reverse proxy in front of it. Called
     once at server startup; a variable changed afterwards takes effect
     on the next restart, the same as ENABLE_WRITE_ACTIONS."""
     host = get_bind_host()
+    if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1":
+        published = os.environ.get("DLP_CHECK_HOST_BIND", "").strip() or "127.0.0.1"
+        if host in _LOCAL_HOSTS or published in _LOCAL_HOSTS or _sso_ready():
+            return
+        raise RuntimeError(
+            f"Refusing to start: the container is published on {published} (DLP_CHECK_HOST_BIND), so other computers "
+            "can reach it, and no identity-provider sign-in is configured. Either configure SSO (ZSCALER_SSO_ENABLED=1 "
+            "plus every ZSCALER_SSO_* setting, see SECURITY.md), or publish on this computer's loopback only "
+            "(DLP_CHECK_HOST_BIND=127.0.0.1, the default)."
+        )
     if host in _LOCAL_HOSTS:
-        return
-    if (os.environ.get("ZSCALER_ALLOW_NONLOCAL_BIND", "").strip() == NONLOCAL_BIND_CONFIRM_PHRASE):
         return
     if not ui_auth_enabled():
         raise RuntimeError(
             f"Refusing to start bound to {host}: ZSCALER_UI_AUTH=0 turns off the UI token gate entirely, so "
             "anyone who can reach this host could use the API with no credential at all. Remove ZSCALER_UI_AUTH=0, "
-            "or set ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND if you understand the risk and already have your "
-            "own authenticating reverse proxy (with TLS) in front of this server."
+            "or bind to 127.0.0.1 (ZSCALER_BIND_HOST, the default)."
         )
-    import sso as _sso
-    if not (_sso.sso_enabled() and not _sso.config_errors()):
+    if (os.environ.get("ZSCALER_ALLOW_NONLOCAL_BIND", "").strip() == NONLOCAL_BIND_CONFIRM_PHRASE):
+        return
+    if not _sso_ready():
         raise RuntimeError(
             f"Refusing to start bound to {host}: no identity-provider sign-in is configured (ZSCALER_SSO_ENABLED), "
             "so the UI token is the only guard, and it is a bearer secret, not multi-factor authentication. Set "
@@ -467,13 +492,21 @@ import secrets as _secrets
 UI_TOKEN_COOKIE = "dlpcheck_token"
 UI_TOKEN_HEADER = "X-DLP-Check-Token"
 UI_TOKEN_FILE = "ui_token.txt"
+SSO_SESSION_COOKIE = "dlpcheck_session"   # with SSO on: the per-person session id (sso.py), never the UI token
 _ui_token: "str | None" = None
 # Paths a browser needs before it can present the token: the page itself,
 # its assets, the standalone report pages (they then call the API with the
 # cookie) and the unlock/status/ping calls.
 _UI_AUTH_EXEMPT_PREFIXES = ("/static/", "/report/")
 _UI_AUTH_EXEMPT_PATHS = {"/", "/app.css", "/permissions", "/help", "/api/auth/status", "/api/auth/unlock", "/api/ping", "/favicon.ico",
-                          "/api/auth/sso/login", "/api/auth/sso/callback"}
+                          "/api/auth/sso/login", "/api/auth/sso/callback", "/api/auth/logout"}
+# Who is making the request being handled, set by UIAuthMiddleware and
+# read by the audit log and the writer check: {"actor", "session"}.
+_CALLER: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("dlp_check_caller", default=None)
+LOCAL_TOKEN_ACTOR = "local UI token"
+LOCAL_NO_TOKEN_ACTOR = "local, no UI token"
+NO_REQUEST_ACTOR = "the app itself (no signed-in request)"
+NOT_SIGNED_IN = "not signed in"
 
 
 def ui_auth_enabled() -> bool:
@@ -526,16 +559,92 @@ def _token_from_request(request: Request) -> Optional[str]:
     return request.cookies.get(UI_TOKEN_COOKIE)
 
 
+def _gate_on() -> bool:
+    """The gate is on unless ZSCALER_UI_AUTH=0; SSO on always means sign-in first."""
+    import sso as _sso
+    return ui_auth_enabled() or _sso.sso_enabled()
+
+
+def sso_session(request: Request) -> Optional[dict]:
+    """With SSO on: this browser's live session (sso.get_session), or None."""
+    import sso as _sso
+    if not _sso.sso_enabled():
+        return None
+    return _sso.get_session(request.cookies.get(SSO_SESSION_COOKIE))
+
+
 def ui_request_ok(request: Request) -> bool:
-    """Is this request allowed through the UI token gate (header, cookie or query)?"""
+    """Is this request allowed through the gate? With SSO on only a live
+    signed-in session counts: the static UI token is refused in every
+    form. Otherwise the UI token (header, Bearer or cookie)."""
+    import sso as _sso
+    if _sso.sso_enabled():
+        return sso_session(request) is not None
     return (not ui_auth_enabled()) or ui_token_ok(_token_from_request(request))
+
+
+def _https(request: Request) -> bool:
+    return request.url.scheme == "https" or (request.headers.get("x-forwarded-proto") or "").lower() == "https"
 
 
 def set_ui_cookie(response, request: Request) -> None:
     """Attach the token cookie: HttpOnly, SameSite=Strict, Secure when the
     page itself came over HTTPS (a reverse proxy in front of the server)."""
-    secure = request.url.scheme == "https" or (request.headers.get("x-forwarded-proto") or "").lower() == "https"
-    response.set_cookie(UI_TOKEN_COOKIE, ui_token(), httponly=True, samesite="strict", secure=secure, path="/", max_age=12 * 3600)
+    response.set_cookie(UI_TOKEN_COOKIE, ui_token(), httponly=True, samesite="strict", secure=_https(request), path="/", max_age=12 * 3600)
+
+
+def set_session_cookie(response, request: Request, session_id: str) -> None:
+    """Attach an SSO session cookie: only the random session id, HttpOnly,
+    SameSite=Lax (the browser arrives from the identity provider), Secure
+    over HTTPS."""
+    response.set_cookie(SSO_SESSION_COOKIE, session_id, httponly=True, samesite="lax", secure=_https(request), path="/", max_age=12 * 3600)
+
+
+def clear_session_cookie(response, request: Request) -> None:
+    response.delete_cookie(SSO_SESSION_COOKIE, path="/", httponly=True, samesite="lax", secure=_https(request))
+
+
+def current_actor(request: Optional[Request] = None) -> Optional[str]:
+    """Who a request is from, for the audit log and a proposal's `by`: the
+    signed-in email (or subject) under SSO, otherwise "local UI token"
+    (or "local, no UI token" with the gate off). With `request`, read from
+    that request (None under SSO when it carries no live session);
+    without, the request being handled now (UIAuthMiddleware), or
+    "the app itself" outside any request."""
+    if request is not None:
+        caller = _caller_for(request, sso_session(request))
+        return None if caller["actor"] == NOT_SIGNED_IN else caller["actor"]
+    caller = _CALLER.get()
+    return (caller or {}).get("actor") or NO_REQUEST_ACTOR
+
+
+def _caller_for(request: Request, session: Optional[dict]) -> dict:
+    import sso as _sso
+    if _sso.sso_enabled():
+        who = (session or {}).get("email") or (session or {}).get("sub")
+        return {"actor": str(who) if who else NOT_SIGNED_IN, "session": session}
+    return {"actor": LOCAL_TOKEN_ACTOR if ui_auth_enabled() else LOCAL_NO_TOKEN_ACTOR, "session": None}
+
+
+def may_write() -> bool:
+    """May the person making this request change the tenant? Always yes
+    without SSO or without ZSCALER_SSO_WRITERS; otherwise only the
+    listed groups and email addresses."""
+    import sso as _sso
+    if not _sso.sso_enabled() or not _sso.writers():
+        return True
+    return _sso.is_writer((_CALLER.get() or {}).get("session"))
+
+
+def require_writer() -> None:
+    """403 with a plain reason when this person may not change the tenant
+    (sso.is_writer). Called by every endpoint that writes to the tenant,
+    before its write-mode check."""
+    if not may_write():
+        raise HTTPException(status_code=403, detail=(
+            f"You are signed in as {current_actor()}, who may not change the tenant on this server: only the users and "
+            "groups listed in ZSCALER_SSO_WRITERS may turn on write mode, deploy, remove, import, undo, or apply and roll "
+            "back proposals. You can still assess, read and preview. Ask the person who runs this server to add you."))
 
 
 def _audit_denied(request: Request, event: str, reason: str) -> None:
@@ -543,7 +652,7 @@ def _audit_denied(request: Request, event: str, reason: str) -> None:
     outside AuditMiddleware, so its own 401s would otherwise go unrecorded.
     The token that was offered is never written."""
     import audit as _audit
-    _audit.record(event, method=request.method, path=request.url.path,
+    _audit.record(event, actor=NOT_SIGNED_IN, method=request.method, path=request.url.path,
                   client=request.client.host if request.client else "?", reason=reason)
 
 
@@ -551,12 +660,21 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
     """Require the UI token on every request except the ones a browser
     needs to obtain it. `/?token=...` (what the launcher opens) sets the
     cookie and redirects to `/` so the token never stays in the URL —
-    unless SSO is enabled (sso.py), in which case that static-token
-    shortcut is turned off: the cookie is only ever minted by a
-    completed identity-provider login (/api/auth/sso/callback)."""
+    unless SSO is enabled (sso.py), in which case the static token is
+    refused in every form (header, Bearer, cookie, ?token= and unlock):
+    only a per-person session from a completed identity-provider login
+    (/api/auth/sso/callback) gets in. Also records who each request is
+    from (current_actor) for the audit log and the writer check."""
 
     async def dispatch(self, request: Request, call_next):
-        if not ui_auth_enabled():
+        token = _CALLER.set(_caller_for(request, sso_session(request)))
+        try:
+            return await self._dispatch(request, call_next)
+        finally:
+            _CALLER.reset(token)
+
+    async def _dispatch(self, request: Request, call_next):
+        if not _gate_on():
             return await call_next(request)
         import sso as _sso
         path = request.url.path
@@ -577,7 +695,10 @@ class UIAuthMiddleware(BaseHTTPMiddleware):
             return resp
         if ui_request_ok(request):
             return await call_next(request)
-        _audit_denied(request, "auth_denied", "invalid UI token" if _token_from_request(request) else "no UI token or sign-in")
+        offered = _token_from_request(request)
+        _audit_denied(request, "auth_denied",
+                      ("a UI token was offered, but this server requires SSO sign-in" if _sso.sso_enabled() else "invalid UI token")
+                      if offered else "no UI token or sign-in")
         if _sso.sso_enabled():
             return JSONResponse({"detail": "Sign in required.", "token_required": True, "sso_required": True,
                                  "sso_login_url": "/api/auth/sso/login"}, status_code=401)

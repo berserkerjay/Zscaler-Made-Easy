@@ -151,6 +151,46 @@
       }).then(v => v === true);
   }
 
+  // SSO only (ZSCALER_SSO_ENABLED): a small "Signed in as … · Sign out"
+  // control, or "Sign in" once the session has ended. Without SSO nothing
+  // is shown and the UI token works as before.
+  let ssoStatus = null;
+  function ssoBar(status) {
+    ssoStatus = status;
+    if (!status || !status.sso || !document.body || window.top !== window) return;
+    let bar = document.getElementById('dlpSsoBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'dlpSsoBar';
+      bar.setAttribute('role', 'region');
+      bar.setAttribute('aria-label', 'Sign-in');
+      bar.style.cssText = 'position:fixed;top:8px;right:12px;z-index:9999;display:flex;gap:8px;align-items:center;font-size:var(--fs-footnote,0.75rem);'
+        + 'padding:4px 8px;border-radius:var(--r-md,10px);border:1px solid var(--border,#334155);background:var(--card-solid,#1c1c1e);color:var(--text,#fff);';
+      document.body.appendChild(bar);
+    }
+    const btn = 'font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--border,#334155);border-radius:var(--r-sm,6px);background:transparent;color:inherit;padding:2px 8px;';
+    if (status.unlocked) {
+      bar.innerHTML = `<span>Signed in as <strong>${esc(status.user || 'you')}</strong>${status.may_write === false ? ' (read and preview only)' : ''}</span>`
+        + `<button type="button" id="dlpSignOut" style="${btn}">Sign out</button>`;
+      bar.querySelector('#dlpSignOut').addEventListener('click', async () => {
+        try { await fetch(status.logout_url || '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+        window.location.href = '/';
+      });
+    } else {
+      bar.innerHTML = `<span>Not signed in</span><a href="${esc(status.sso_login_url || '/api/auth/sso/login')}" style="${btn}text-decoration:none;">Sign in</a>`;
+    }
+  }
+  function loadSsoStatus() {
+    fetch('/api/auth/status', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).then(ssoBar).catch(() => {});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadSsoStatus); else loadSsoStatus();
+
+  // Under SSO there is no token to paste: send the person to sign in instead.
+  async function unlockOrSignIn(message) {
+    if (ssoStatus && ssoStatus.sso) { window.location.href = ssoStatus.sso_login_url || '/api/auth/sso/login'; return null; }
+    return unlock(message);
+  }
+
   window.dlpDialog = { unlock, notice, phrase, ask };
-  window.__dlpUnlockDialog = unlock;
+  window.__dlpUnlockDialog = unlockOrSignIn;
 })();

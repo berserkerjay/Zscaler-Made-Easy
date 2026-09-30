@@ -230,7 +230,10 @@ def test_callback_completes_the_login_and_unlocks_the_session(monkeypatch, idp):
     state, nonce = q["state"][0], q["nonce"][0]
     _mock_http(monkeypatch, idp, token_response={"id_token": idp.make_id_token(nonce=nonce)})
     r = c.get(f"/api/auth/sso/callback?code=abc&state={state}", follow_redirects=False)
-    assert r.status_code == 303 and security.UI_TOKEN_COOKIE in r.headers.get("set-cookie", "")
+    cookie = r.headers.get("set-cookie", "")
+    assert r.status_code == 303 and security.SSO_SESSION_COOKIE in cookie and security.UI_TOKEN_COOKIE not in cookie
+    assert security.ui_token() not in cookie, "the cookie carries a per-login session id, never the UI token"
+    assert "HttpOnly" in cookie and "samesite=lax" in cookie.lower()
     assert c.get("/api/auth/status").json()["unlocked"] is True
     assert c.get("/api/health").status_code == 200
 
@@ -281,3 +284,250 @@ def test_sso_routes_404_when_sso_is_not_enabled():
     c = TestClient(srv.app)
     assert c.get("/api/auth/sso/login", follow_redirects=False).status_code == 404
     assert c.get("/api/auth/sso/callback?code=x&state=y", follow_redirects=False).status_code == 404
+
+
+# ── Per-person sessions, sign-out, who did it, writers by group ──────
+
+def _sign_in(monkeypatch, idp, c=None, **claims):
+    """A full sign-in through the app against the fake identity provider; returns the client."""
+    c = c or TestClient(srv.app)
+    _mock_http(monkeypatch, idp)
+    login = c.get("/api/auth/sso/login", follow_redirects=False)
+    q = parse_qs(urlparse(login.headers["location"]).query)
+    _mock_http(monkeypatch, idp, token_response={"id_token": idp.make_id_token(nonce=q["nonce"][0], **claims)})
+    c.last_callback = c.get(f"/api/auth/sso/callback?code=abc&state={q['state'][0]}", follow_redirects=False)
+    return c
+
+
+def test_each_sign_in_gets_its_own_server_side_session(monkeypatch, idp):
+    _env(monkeypatch)
+    sso._SESSIONS.clear()
+    a = _sign_in(monkeypatch, idp, email="a@example.com", sub="a", groups=["dlp-readers"])
+    b = _sign_in(monkeypatch, idp, email="b@example.com", sub="b")
+    sid_a, sid_b = a.cookies.get(security.SSO_SESSION_COOKIE), b.cookies.get(security.SSO_SESSION_COOKIE)
+    assert sid_a and sid_b and sid_a != sid_b and security.ui_token() not in (sid_a, sid_b)
+    s = sso._SESSIONS[sid_a]
+    assert s["email"] == "a@example.com" and s["sub"] == "a" and s["groups"] == ["dlp-readers"]
+    assert s["expires"] - s["created"] == 12 * 3600 and s["last_seen"] >= s["created"]
+    assert sso._SESSIONS[sid_b]["groups"] == []          # no groups claim: none recorded
+    assert a.get("/api/auth/status").json()["user"] == "a@example.com"
+    assert b.get("/api/auth/status").json()["user"] == "b@example.com"
+
+
+def test_the_static_ui_token_is_refused_in_every_form_under_sso(monkeypatch, tmp_path):
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    _env(monkeypatch)
+    tok = security.ui_token()
+    c = TestClient(srv.app)
+    assert c.get("/api/health", headers={security.UI_TOKEN_HEADER: tok}).status_code == 401
+    assert c.get("/api/health", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
+    c.cookies.set(security.UI_TOKEN_COOKIE, tok)
+    assert c.get("/api/health").status_code == 401
+    c.cookies.set(security.SSO_SESSION_COOKIE, tok)          # the token dressed up as a session id
+    assert c.get("/api/health").status_code == 401
+    fresh = TestClient(srv.app)
+    r = fresh.get(f"/?token={tok}", follow_redirects=False)
+    assert r.status_code != 303 and security.UI_TOKEN_COOKIE not in r.headers.get("set-cookie", "")
+    assert fresh.post("/api/auth/unlock", json={"token": tok}).status_code == 403
+    assert fresh.get("/api/auth/status").json()["unlocked"] is False
+    assert tok not in (tmp_path / "audit.log").read_text(encoding="utf-8")
+
+
+def test_sessions_end_after_the_idle_timeout_and_after_12_hours(monkeypatch, idp):
+    _env(monkeypatch)
+    monkeypatch.setenv("ZSCALER_SSO_IDLE_MINUTES", "5")
+    c = _sign_in(monkeypatch, idp)
+    sid = c.cookies.get(security.SSO_SESSION_COOKIE)
+    assert c.get("/api/health").status_code == 200
+    sso._SESSIONS[sid]["last_seen"] -= 6 * 60               # idle for 6 minutes
+    assert c.get("/api/health").status_code == 401 and sid not in sso._SESSIONS
+    c = _sign_in(monkeypatch, idp)
+    sid = c.cookies.get(security.SSO_SESSION_COOKIE)
+    sso._SESSIONS[sid]["expires"] -= 12 * 3600              # busy all day: still ends at 12 hours
+    assert c.get("/api/health").status_code == 401
+    monkeypatch.delenv("ZSCALER_SSO_IDLE_MINUTES")
+    assert sso.idle_seconds() == 30 * 60
+
+
+def test_sign_out_ends_the_session_clears_the_cookie_and_is_audited(monkeypatch, idp, tmp_path):
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    _env(monkeypatch)
+    c = _sign_in(monkeypatch, idp, email="leaver@example.com")
+    sid = c.cookies.get(security.SSO_SESSION_COOKIE)
+    r = c.post("/api/auth/logout")
+    assert r.status_code == 200 and r.json()["signed_out"] is True
+    assert security.SSO_SESSION_COOKIE in r.headers["set-cookie"] and "max-age=0" in r.headers["set-cookie"].lower()
+    assert sid not in sso._SESSIONS
+    replay = TestClient(srv.app)
+    replay.cookies.set(security.SSO_SESSION_COOKIE, sid)    # a copied cookie is dead too
+    assert replay.get("/api/health").status_code == 401
+    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    out = [e for e in events if e["event"] == "sso_logout"]
+    assert out and out[0]["actor"] == "leaver@example.com" and out[0]["ended"] is True
+    assert any(e["event"] == "sso_login" and e["actor"] == "leaver@example.com" for e in events)
+    assert sid not in log.read_text(encoding="utf-8")
+
+
+def test_sso_does_not_print_or_write_the_ui_token(monkeypatch, tmp_path, capsys):
+    _env(monkeypatch)
+    monkeypatch.setenv("DLP_CHECK_UI_TOKEN_DIR", str(tmp_path))
+    monkeypatch.setattr(srv, "_port_problem", lambda host, port: None)
+    import uvicorn
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    assert srv.main([]) == 0
+    out = capsys.readouterr().out
+    assert security.ui_token() not in out and "?token=" not in out and "identity provider" in out
+    assert not (tmp_path / security.UI_TOKEN_FILE).exists()
+
+
+def test_every_audit_line_names_the_signed_in_person(monkeypatch, idp, tmp_path):
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    _env(monkeypatch)
+    c = _sign_in(monkeypatch, idp, email="auditor@example.com")
+    c.post("/api/tenant/check", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20})
+    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    api = [e for e in events if e["event"] == "api"]
+    assert api and all(e["actor"] == "auditor@example.com" for e in api)
+    assert all("actor" in e for e in events)
+
+
+def test_allowed_groups_refuse_and_audit_a_sign_in_from_outside_them(monkeypatch, idp, tmp_path):
+    log = tmp_path / "audit.log"
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
+    _env(monkeypatch)
+    monkeypatch.setenv("ZSCALER_SSO_ALLOWED_GROUPS", "dlp-team, secops")
+    out = _sign_in(monkeypatch, idp, email="stranger@example.com", groups=["marketing"])
+    assert out.last_callback.status_code == 403 and "ZSCALER_SSO_ALLOWED_GROUPS" in out.last_callback.text
+    assert not out.cookies.get(security.SSO_SESSION_COOKIE)
+    none = _sign_in(monkeypatch, idp, email="nogroups@example.com")
+    assert none.last_callback.status_code == 403 and "'groups' claim" in none.last_callback.text
+    ok = _sign_in(monkeypatch, idp, email="member@example.com", groups=["SecOps"])
+    assert ok.last_callback.status_code == 303 and ok.get("/api/health").status_code == 200
+    events = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    refused = [e for e in events if e["event"] == "sso_login_refused"]
+    assert [e["actor"] for e in refused] == ["stranger@example.com", "nogroups@example.com"]
+
+
+def test_the_groups_claim_name_is_configurable(monkeypatch, idp):
+    _env(monkeypatch)
+    monkeypatch.setenv("ZSCALER_SSO_GROUPS_CLAIM", "roles")
+    monkeypatch.setenv("ZSCALER_SSO_ALLOWED_GROUPS", "dlp-team")
+    c = _sign_in(monkeypatch, idp, roles=["dlp-team"])
+    assert c.last_callback.status_code == 303
+    assert sso._SESSIONS[c.cookies.get(security.SSO_SESSION_COOKIE)]["groups"] == ["dlp-team"]
+
+
+WRITER_CALLS = [
+    ("/api/write-mode", {"enable": True, "confirm": "YES_I_UNDERSTAND"}),
+    ("/api/dlp-packs/apply", {"pack_ids": ["x"], "confirm": True}),
+    ("/api/dlp-packs/apply/start", {"pack_ids": ["x"], "confirm": True}),
+    ("/api/dlp-packs/removal/apply", {"pack_ids": ["x"], "confirm": True}),
+    ("/api/dlp-packs/removal/apply/start", {"pack_ids": ["x"], "confirm": True}),
+    ("/api/deployments/dep-1/undo", {"confirm": True}),
+    ("/api/dlp-packs/x/import", {"confirm": True}),
+    ("/api/proposals/acme/p1/apply", {"confirm": True}),
+    ("/api/proposals/acme/p1/rollback", {"confirm": True}),
+    ("/api/remediation/execute", {"check_id": "x", "dry_run": False}),
+    ("/api/migrate/enable", {"dry_run": False}),
+    ("/api/migrate/delete-all", {"dry_run": False}),
+    ("/api/migrate/post", {"dry_run": False, "proposed_rules": [{"name": "r"}]}),
+]
+
+
+def test_only_listed_writers_may_change_the_tenant(monkeypatch, idp):
+    _env(monkeypatch)
+    monkeypatch.setattr(security, "_write_override", None)
+    monkeypatch.delenv("ENABLE_WRITE_ACTIONS", raising=False)
+    monkeypatch.setenv("ZSCALER_SSO_WRITERS", "dlp-admins, boss@example.com")
+    reader = _sign_in(monkeypatch, idp, email="reader@example.com", groups=["dlp-readers"])
+    for path, body in WRITER_CALLS:
+        r = reader.post(path, json=body)
+        assert r.status_code == 403 and "ZSCALER_SSO_WRITERS" in r.json()["detail"] and "reader@example.com" in r.json()["detail"], (path, r.text)
+    assert reader.get("/api/health").status_code == 200                                  # still reads
+    assert reader.post("/api/write-mode", json={"enable": False}).status_code == 200      # and may always switch writes off
+    assert "ZSCALER_SSO_WRITERS" not in reader.post("/api/remediation/execute", json={"check_id": "x", "dry_run": True}).text   # previews
+    assert reader.get("/api/auth/status").json()["may_write"] is False
+    for writer in (_sign_in(monkeypatch, idp, email="someone@example.com", groups=["DLP-Admins"]),
+                   _sign_in(monkeypatch, idp, email="Boss@Example.com")):
+        assert writer.get("/api/auth/status").json()["may_write"] is True
+        for path, body in WRITER_CALLS:
+            assert "ZSCALER_SSO_WRITERS" not in writer.post(path, json=body).text, path
+    monkeypatch.setattr(security, "_write_override", None)
+
+
+def test_without_writers_set_every_signed_in_person_may_write(monkeypatch, idp):
+    _env(monkeypatch)
+    monkeypatch.setattr(security, "_write_override", None)
+    monkeypatch.delenv("ENABLE_WRITE_ACTIONS", raising=False)
+    monkeypatch.delenv("ZSCALER_SSO_WRITERS", raising=False)
+    c = _sign_in(monkeypatch, idp, email="anyone@example.com")
+    for path, body in WRITER_CALLS:
+        assert "ZSCALER_SSO_WRITERS" not in c.post(path, json=body).text, path
+    monkeypatch.setattr(security, "_write_override", None)
+
+
+def test_every_endpoint_that_writes_to_the_tenant_checks_the_writer_list():
+    """Any handler with the write-mode gate, a dry_run switch or the write
+    mode toggle calls security.require_writer() first, so a new writer
+    cannot forget it."""
+    import os
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dlp_api_server.py"), encoding="utf-8").read()
+    handlers = re.split(r"\n@app\.", src)
+    gated = [h for h in handlers if "if not writes_enabled():" in h or "req.dry_run)" in h or "req.dry_run, req.mode)" in h
+             or "set_write_mode(req" in h]
+    assert len(gated) >= 13, len(gated)
+    for h in gated:
+        head = h.split("\n", 1)[0]
+        assert "_security.require_writer()" in h, head
+        if "if not writes_enabled():" in h:
+            assert h.index("_security.require_writer()") < h.index("if not writes_enabled():"), head
+
+
+def test_proposal_decisions_record_the_signed_in_person_not_the_body(monkeypatch, idp, tmp_path):
+    import proposals as pr
+    from test_proposals import REPORT
+    monkeypatch.setenv("DLPCHECK_PROPOSALS_FILE", str(tmp_path / "proposals.json"))
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    _env(monkeypatch)
+    pr.refresh_from_report(REPORT, "acme")
+    pid = next(p["id"] for p in pr.list_queue("acme") if p["kind"] == "retire_rule")
+    c = _sign_in(monkeypatch, idp, email="approver@example.com")
+    r = c.post(f"/api/proposals/acme/{pid}/decide", json={"decision": "dismiss", "by": "someone-else", "note": "n"})
+    assert r.status_code == 200, r.text
+    assert r.json()["decided_by"] == "approver@example.com" and "someone-else" not in r.text
+    events = [json.loads(ln) for ln in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()]
+    d = [e for e in events if e["event"] == "proposal_decision"][0]
+    assert d["by"] == "approver@example.com" and d["actor"] == "approver@example.com"
+
+
+def test_the_page_offers_sign_out_only_under_sso():
+    ua = TestClient(srv.app).get("/static/ui_auth.js").text
+    assert "Sign out" in ua and "/api/auth/logout" in ua and "status.sso" in ua
+    assert "if (!status || !status.sso" in ua, "nothing is shown without SSO"
+
+
+def _request(cookie=""):
+    from starlette.requests import Request
+    headers = [(b"cookie", cookie.encode())] if cookie else []
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": headers, "query_string": b""})
+
+
+def test_current_actor_of_a_request(monkeypatch, idp):
+    """security.current_actor(request): the SSO session's email (or sub),
+    else "local UI token", or "local, no UI token" with the gate off."""
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "0")
+    monkeypatch.delenv("ZSCALER_SSO_ENABLED", raising=False)
+    assert security.current_actor(_request()) == "local, no UI token"
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
+    assert security.current_actor(_request()) == "local UI token"
+    _env(monkeypatch)
+    assert security.current_actor(_request()) is None
+    c = _sign_in(monkeypatch, idp, email="who@example.com")
+    sid = c.cookies.get(security.SSO_SESSION_COOKIE)
+    assert security.current_actor(_request(f"{security.SSO_SESSION_COOKIE}={sid}")) == "who@example.com"
+    c = _sign_in(monkeypatch, idp, email=None, sub="subject-9")
+    sid = c.cookies.get(security.SSO_SESSION_COOKIE)
+    assert security.current_actor(_request(f"{security.SSO_SESSION_COOKIE}={sid}")) == "subject-9"

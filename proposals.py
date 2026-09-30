@@ -300,8 +300,9 @@ def decide(tenant: str, pid: str, decision: str, *, by: str = "", note: str = ""
     try:
         import audit
         audit.record("proposal_decision", tenant=tenant_key(tenant), proposal=pid, kind=p.get("kind"), target=p.get("target"), decision=decision, by=by, note=note)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001 - the decision stands; the lost audit line is reported loudly
+        import audit
+        audit.report_failure(f"the decision '{decision}' on proposal {pid}", e)
     return result
 
 
