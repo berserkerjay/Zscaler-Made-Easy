@@ -243,7 +243,7 @@ def test_the_preflight_check_says_will_succeed_or_likely_to_fail(clock):
     zia_rate.note_refusal("write", "Resource Access Blocked", key=A, status=403)
     clock[0] += 600
     rep2 = pd.preflight(_client(A), [pack], writes_enabled=True, channel_targets={pack["id"]: ["endpoint"]})
-    assert rep2["rate_forecast"]["severity"] == "fail" and rep2["warnings"][0].startswith("ZIA rate limits: Likely to fail")
+    assert rep2["rate_forecast"]["severity"] == "fail" and rep2["warnings"][0].startswith("ZIA rate limits: ") and "Likely to fail" in rep2["warnings"][0]
     assert rep2["plan_hash"] == rep["plan_hash"], "the forecast is not part of the plan"
     rep3 = pd.preflight(_client(B), [pack], writes_enabled=True, channel_targets={pack["id"]: ["endpoint"]})
     assert rep3["rate_forecast"]["severity"] == "ok", "another tenant's preflight is not affected"
@@ -269,3 +269,15 @@ def test_refused_runs_in_the_deployment_log_are_part_of_the_history(clock, tmp_p
     monkeypatch.setenv("DLP_CHECK_DEPLOYMENTS", str(log))
     f = zia_rate.forecast({"write": 5}, key=A, tenant_label="a")
     assert len(f["refused_runs"]) == 1 and "1 run(s) in the deployment log" in zia_rate.history_text(f)
+
+
+def test_crushing_zscalers_limits_gets_the_sarcasm_it_deserves(clock, monkeypatch):
+    zia_rate._t(A).sent["write"].extend(clock[0] - 200 + i * 1.7 for i in range(110))
+    zia_rate.note_refusal("write", "Resource Access Blocked", key=A, status=403)
+    f = zia_rate.forecast({"write": 10}, key=A)
+    assert f["verdict"].split(" Likely to fail")[0] in {q.format(writes=110, hourly_text="") for q in zia_rate._QUIPS["blocked"]}
+    assert "Likely to fail: ZIA blocked this API client" in f["verdict"], "the facts are all still there"
+    assert zia_rate.forecast({"write": 10}, key=A)["verdict"] == f["verdict"], "the same wording on a refresh"
+    assert zia_rate.forecast({"write": 10}, key=B)["verdict"].startswith("Will succeed: goes straight"), "no sarcasm when nothing is crushed"
+    monkeypatch.setenv("DLP_CHECK_RATE_TONE", "plain")
+    assert zia_rate.forecast({"write": 10}, key=A)["verdict"].startswith("Likely to fail")

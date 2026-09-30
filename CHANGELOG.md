@@ -7,6 +7,13 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### When a run is crushing Zscaler's API rate limits, the check says so, sarcastically
+- **What you asked for.** "I want the wording to be sarcastic if we are crushing Zscaler's API rate limits."
+- **Now**, when the rate-limit check is not a plain *Will succeed*, the verdict opens with a line that gives ZIA's limits the respect they have earned. The facts follow unchanged: what ZIA did, the traffic that led to it, and when to run. For example: *Zscaler's API, a global cloud platform, needs a lie-down after 110 writes. Likely to fail: ZIA blocked this API client…*
+- **Which line.** Each case has its own lines: blocked, the remembered ceiling, still resetting, close to the ceiling, and long pauses. The line is picked by the hour, so a refresh does not change the wording.
+- **The run log.** When ZIA refuses a write mid-run, the log gets a line too.
+- **Plain wording.** A clean *Will succeed* stays plain, and `DLP_CHECK_RATE_TONE=plain` turns the sarcasm off everywhere.
+
 ### The preflight checks whether a run will succeed at ZIA's rate limits, from what the app actually executed
 - **What you asked for.** "Preflight checks should be where I get the warning, based on previous API calls and the limits: you succeed or epically fail, based on Zscaler's weak infra." Then: "look at the app here and based on what was executed as well."
 - **What the app executed tonight.** The container's own record for the deploy started at 04:40 UTC:
