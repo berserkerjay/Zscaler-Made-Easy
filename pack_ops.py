@@ -86,12 +86,72 @@ FORBIDDEN_WAIT_SECONDS = 15.0
 # before each try: about 7 minutes in all.
 BLOCKED_WAIT_SECONDS = (30.0, 60.0, 90.0, 120.0, 120.0)
 _FORBIDDEN_WORDS = ("forbidden", "resource access blocked", "not authorized", "access denied")
+RATE_STOP_REASON = (
+    "ZIA kept refusing writes for its rate limit after the limit's window had completely reset, three times. Another tool or "
+    "session is probably using the same API client. Wait an hour and run this again; what was already written is kept.")
+
+
+def _human_secs(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s}s" if s < 90 else (f"{round(s / 60)} min" if s < 5400 else f"{s / 3600:.1f} h")
+
+
 FORBIDDEN_STOP_REASON = (
     f"ZIA refused a write with a 403 and kept refusing it after {FORBIDDEN_ATTEMPTS} waits "
     f"({FORBIDDEN_WAIT_SECONDS:.0f} seconds each; {sum(BLOCKED_WAIT_SECONDS) / 60:.0f} minutes in all when ZIA answers Resource Access Blocked). "
     "Either the API client's admin role lost access to DLP dictionaries, engines or rules, "
     "or ZIA blocked the client after a burst of refused requests. Wait a few minutes, click Authenticate, and run this again; "
     "what was already written is kept. If it still fails, check the role in ZIA Administration > Role Management.")
+
+
+# A rate refusal inside a deploy or removal (429, or 403 "Resource Access
+# Blocked") pauses the whole run until the limit's window has completely
+# reset (ZIA's reset header when the answer has one, otherwise the full
+# window of the bucket the write draws on), then tries the same write
+# again. Up to RATE_WINDOWS such waits; still refused after that, the run
+# stops. Nothing is activated, and no other write goes out meanwhile.
+RATE_WINDOWS = 3
+_RATE_WORDS = ("resource access blocked", "rate limit", "too many requests", "ratelimit")
+
+
+def is_rate_refusal(outcome: "Outcome") -> bool:
+    """ZIA refused the request for its rate, not for what it asked."""
+    e = str(outcome.error or "").lower()
+    return outcome.http_status == 429 or any(w in e for w in _RATE_WORDS)
+
+
+def _reset_seconds(ret: Any) -> Optional[float]:
+    """ZIA's own reset timer from a refused answer's headers, when the SDK
+    hands them back (x-ratelimit-reset or Retry-After, in seconds)."""
+    resp = ret[1] if isinstance(ret, tuple) and len(ret) >= 3 else None
+    headers = None
+    for attr in ("headers", "_headers"):
+        headers = headers or getattr(resp, attr, None)
+    if headers is None and hasattr(resp, "get_headers"):
+        try:
+            headers = resp.get_headers()
+        except Exception:  # noqa: BLE001
+            headers = None
+    if not headers:
+        return None
+    low = {str(k).lower(): v for k, v in dict(headers).items()}
+    for k in ("x-ratelimit-reset", "retry-after"):
+        try:
+            v = float(str(low.get(k, "")).split(",")[0].strip())
+            if v > 0:
+                return v
+        except ValueError:
+            continue
+    return None
+
+
+def _wait_out(seconds: float) -> None:
+    """Sleep `seconds` in short steps, so Stop still ends the run."""
+    left = seconds
+    while left > 0 and not _stopped_now():
+        step = min(left, 5.0)
+        _sleep(step)
+        left -= step
 
 
 def forbidden_wait(retry: int, error: Optional[str]) -> float:
@@ -269,6 +329,7 @@ class Outcome:
     code: Optional[str] = None
     http_status: Optional[int] = None
     attempts: int = 1
+    reset_seconds: Optional[float] = None   # ZIA's reset timer from a rate refusal's headers
     transient: bool = False
 
     def as_error(self) -> Optional[str]:
@@ -366,7 +427,9 @@ def normalize(ret: Any) -> Outcome:
             data, err = (ret[0] if ret else None), None
         if err:
             msg, code, status = _error_parts(err)
-            return Outcome(False, data=data, error=msg, code=code, http_status=status, transient=is_transient(msg, status))
+            out = Outcome(False, data=data, error=msg, code=code, http_status=status, transient=is_transient(msg, status))
+            out.reset_seconds = _reset_seconds(ret)
+            return out
         oid = _extract_id((data, None, None)) if data is not None else None
         if oid is None and isinstance(data, dict):
             oid = data.get("id")
@@ -436,6 +499,8 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
         for attempt in range(1, max(1, max_attempts)):
             if out.ok or not out.transient or _stopped_now():
                 break
+            if op != "read" and in_run() and is_rate_refusal(out):
+                break   # waited out below, for the limit's whole window
             wait = BACKOFF_SECONDS * attempt
             _log(f"[{kind or op}] {name}: ZIA answered '{out.error}' (attempt {attempt} of {max_attempts}); waiting {wait:.0f}s and trying again")
             logger.info("retry", extra={"op": op, "kind": kind, "name": name, "channel": channel, "attempt": attempt, "error": out.error})
@@ -444,8 +509,32 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
         return out
 
     outcome = with_backoff()
-    # A 403 on a write inside a run: activate, wait, try again — up to FORBIDDEN_ATTEMPTS times.
-    if not outcome.ok and zia is not None and op != "read" and in_run() and is_forbidden(outcome):
+    # A rate refusal on a write inside a run: pause the whole run until the
+    # limit's window has completely reset, then try the same write again.
+    if not outcome.ok and op != "read" and in_run() and is_rate_refusal(outcome):
+        import zia_rate
+        bucket = zia_rate.bucket_of(_METHOD.get(op, "POST"), channel=channel, kind=kind)
+        for window in range(1, RATE_WINDOWS + 1):
+            if _stopped_now():
+                break
+            secs = getattr(outcome, "reset_seconds", None) or zia_rate.full_reset(bucket)
+            zia_rate.hold(secs)
+            src = "ZIA's reset timer" if getattr(outcome, "reset_seconds", None) else "the limit's full window"
+            _log(f"[{kind or op}] {name}: ZIA refused it for its rate ('{outcome.error}'); pausing the whole run until the limit "
+                 f"has completely reset ({src}): {_human_secs(secs)}, then trying again ({window} of {RATE_WINDOWS}). Nothing is sent meanwhile.")
+            logger.info("rate-wait", extra={"op": op, "kind": kind, "name": name, "channel": channel, "window": window, "seconds": secs})
+            _wait_out(secs)
+            if _stopped_now():
+                break
+            outcome = with_backoff()
+            if outcome.ok or not is_rate_refusal(outcome):
+                break
+        if outcome.ok:
+            _log(f"[{kind or op}] {name}: succeeded after ZIA's rate limit reset (attempt {attempts})")
+        elif is_rate_refusal(outcome) and not _stopped_now():
+            _stop(RATE_STOP_REASON, _log)
+    # A 403 on a write inside a run (not a rate refusal): wait, try again — up to FORBIDDEN_ATTEMPTS times.
+    if not outcome.ok and zia is not None and op != "read" and in_run() and is_forbidden(outcome) and not is_rate_refusal(outcome):
         for retry in range(1, FORBIDDEN_ATTEMPTS + 1):
             if _stopped_now():
                 break
@@ -769,6 +858,25 @@ def current_names(zia, kind: str, channel: Optional[str]) -> Tuple[Optional[Dict
         return out, None
     except Exception as e:  # noqa: BLE001
         return None, str(e)[:200]
+
+
+def activate_once(zia, log: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    """The run's one activation. Refused for ZIA's rate (activations: 10 a
+    minute, 40 an hour), it waits until the activation limit's window has
+    completely reset and tries again, up to RATE_WINDOWS times."""
+    import zia_rate
+    _log = log or (lambda m: None)
+    act = pc.activate(zia)
+    for window in range(1, RATE_WINDOWS + 1):
+        if act.get("activated") or not is_rate_refusal(Outcome(False, error=str(act.get("error") or ""))):
+            break
+        secs = zia_rate.full_reset("activate")
+        zia_rate.hold(secs)
+        _log(f"ZIA refused the activation for its rate ('{act.get('error')}'); waiting until the activation limit has completely "
+             f"reset: {_human_secs(secs)}, then activating again ({window} of {RATE_WINDOWS}).")
+        _wait_out(secs)
+        act = pc.activate(zia)
+    return act
 
 
 def activate_and_settle(zia, seconds: float, log: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:

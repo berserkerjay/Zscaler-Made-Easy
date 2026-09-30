@@ -7,6 +7,26 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### A rate refusal pauses the whole run until the limit has completely reset
+- **What you asked for.** "I wanted to create 565 objects, and after 5 minutes I started getting the 403 error. We need the timer on the limit to completely elapse before we reattempt, for every deployment or removal of a pack."
+- **Before.** A 403 "Resource Access Blocked" was retried after 30 s, 1, 1.5, 2 and 2 minutes, and a 429 after a few seconds. Both are shorter than ZIA's windows (a minute or an hour), so the retries ran into the same limit again and added to the refusals.
+- **Now**, during any deploy or removal, when ZIA refuses a write for its rate (429, or 403 "Resource Access Blocked"):
+  - the **whole run pauses**, and nothing is sent, until that limit has **completely reset**;
+  - the wait uses ZIA's reset timer when the answer carries one (`x-ratelimit-reset` or `Retry-After`). Otherwise it waits until every write this run counted has left the limit's window, an hour for the hourly limits;
+  - the same write is then tried again, up to three full windows, after which the run stops with the reason;
+  - the log says how long and why. Stop still ends the wait within seconds.
+  - The run's one activation follows the same rule against the activation limit.
+  - A plain permission 403 ("Forbidden") keeps its short retries, since time does not clear it.
+- **Getting past the limit.** It cannot be reset or worked around from the app. The ways to go faster are a limit increase from Zscaler for the tenant, deploying one channel at a time, and reusing what already exists.
+- **Verified.** Tests cover:
+  - a blocked write waits one full window per refusal, never activates, and succeeds after the reset;
+  - a limit that never clears stops the run after three windows, with the next object not sent;
+  - a 429 after a block is waited out the same way;
+  - Stop ends the wait at its first step;
+  - the activation waits out its own limit.
+
+  The all-pack regression test passes, and the full suite has no new failures.
+
 ### Policy packs activate once, and every write waits for ZIA's rate limits
 - **What you asked for.**
   - "For the policy packs, don't activate until the entire deployment is complete or completely deleted."
