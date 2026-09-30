@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Report details are part of the tenant configuration
+- **What you asked for.** "Make the report details section part of the tenant config."
+- **Now** the organisation and assessor fields are a Report details block in the tenant configuration on Connect to the tenant, above Authenticate, instead of a section of Scope assessment. They are saved with the tenant profile, as before, so choosing a profile fills them. Running an assessment with either one blank opens Connect on that field.
+
 ### Windows: the container update no longer stops when the build starts
 - **What you reported.** Enable write mode still did not appear in the container.
 - **Why.** The container was still running the old build. `update_container.ps1` pulled the new code, then stopped on docker's first build line: `Image dlp-check:local Building ... NativeCommandError`. Docker writes its build progress to stderr, and Windows PowerShell 5.1 treats each stderr line as an error record, which the script's `Stop` setting made fatal. The rebuild finished only because docker carried on in the background; the script said nothing about it and never reached *Done*.
