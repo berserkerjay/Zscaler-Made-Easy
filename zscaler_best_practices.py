@@ -358,8 +358,8 @@ BEST_PRACTICES: List[Dict[str, Any]] = [
     {
         "key": "splunk_zia_nss_deployment",
         "service": "ZIA",
-        "title": "Best Practices for ZIA NSS + Splunk Deployment",
-        "url": "https://help.zscaler.com/zia/best-practices-deploying-nss-servers",
+        "title": "Deploying NSS Virtual Appliances (ZIA NSS + SIEM)",
+        "url": "https://help.zscaler.com/zia/deploying-nss-virtual-appliances",
         "topics": ["zia", "nss", "splunk", "siem", "logs"],
         "source": "help_zscaler",
     },

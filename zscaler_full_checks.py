@@ -39,8 +39,8 @@ def fw_2(cl):
         act = default[0].get("action", "?")
         if act.upper() in ("BLOCK_DROP", "BLOCK_RESET", "DROP"):
             return R(R.PASS, f"Default rule action: {act}. Aligns with Zscaler best practice of deny-all default posture.")
-        return R(R.WARN, f"Default rule action is {act}. Best Practice: Zscaler recommends Block/Drop as the default action, especially for regulated industries (healthcare, finance). An allow-all default should only be used for guest networks.")
-    return R(R.WARN, "No default firewall rule found. Best Practice: Ensure the Zscaler default firewall rules are intact. Do not modify the first 4 default rules including the 'Recommended Firewall Rule'.")
+        return R(R.WARN, f"Default rule action is {act}. Best Practice: Zscaler recommends enabling the Default Firewall Filtering Rule with the Block action and the lowest rule order, so anything no rule allows is dropped. Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
+    return R(R.WARN, "No default firewall rule found. Best Practice: Enable the predefined Default Firewall Filtering Rule with the Block action at the lowest rule order, and keep the Recommended Firewall Rule as a narrow Allow for HTTP, HTTPS and DNS. Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
 
 def fw_3(cl):
     """DNS control rules"""
@@ -82,7 +82,7 @@ def fw_8(cl):
         a = (rule.get("action") or "").upper()
         broad = not rule.get("srcIpGroups") and not rule.get("destIpGroups") and not rule.get("departments")
         if a == "ALLOW" and broad and i < len(r) - 1:
-            return R(R.WARN, f"Broad ALLOW at position {i+1} may shadow later rules. Best Practice: Zscaler processes firewall rules top-to-bottom, first match wins. Place specific deny rules above broad allow rules. Never modify the first 4 default rules. Add custom rules after 'Recommended Firewall Rule'.")
+            return R(R.WARN, f"Broad ALLOW at position {i+1} may shadow later rules. Best Practice: Zscaler processes firewall rules top-to-bottom, first match wins. Place specific deny rules above broad allow rules, and build every Allow rule from at least three conditions (Zscaler's recommendation). Ref: https://help.zscaler.com/zia/best-practices-firewall-control-policy")
     return R(R.PASS, f"Firewall rule order appears valid ({len(r)} rules). Rules follow Zscaler's recommended top-to-bottom precedence.")
 
 
@@ -255,7 +255,7 @@ def usr_5(cl):
         return R(R.PASS, "Audit logging accessible. Admin changes are tracked for compliance.")
     if c == 404:
         return R(R.INFO, "No audit log report has been requested: the API only returns the status of a report someone started. Admin changes are still logged; review them in the ZIA Admin Portal (Audit Logs).")
-    return R(R.WARN, "Audit log not accessible via API. Best Practice: Regularly review admin audit logs for unauthorized configuration changes. Export to SIEM for retention beyond 30 days.")
+    return R(R.WARN, "Audit log not accessible via API. Best Practice: Regularly review admin audit logs for unauthorized configuration changes. ZIA keeps audit logs for up to 6 months; export them to a SIEM to keep them longer. Ref: https://help.zscaler.com/zia/about-audit-logs")
 
 def usr_6(cl):
     """Rule labels for organization"""
@@ -349,7 +349,7 @@ def zpa_7(cl):
     d, c = cl.get("/zpa/policySet/rules/TIMEOUT_POLICY")
     r = _ls(d) if c in (200, 204) else []
     if not r and isinstance(d, dict): r = _ls(d.get("list", d.get("rules", [])))
-    return R(R.PASS, f"{len(r)} timeout policy rule(s).") if r else R(R.WARN, "No timeout policies — default 15min idle timeout applies. Best Practice: Configure timeout policies per application type. Long-running sessions (RDP, SSH) may need extended timeouts. Short timeouts for web apps improve security by forcing re-authentication.")
+    return R(R.PASS, f"{len(r)} timeout policy rule(s).") if r else R(R.WARN, "No timeout policy rules — the default rule applies: users re-authenticate every 7 days and sessions never end on an idle timeout. Ref: https://help.zscaler.com/zpa/about-timeout-policy. Best Practice: Configure timeout policies per application type. Long-running sessions (RDP, SSH) may need extended timeouts. Short timeouts for web apps improve security by forcing re-authentication.")
 
 def zpa_8(cl):
     """Service edges"""
@@ -403,7 +403,7 @@ def zpa_14(cl):
     d, c = cl.get("/zpa/lssConfig")
     r = _ls(d) if c in (200, 204) else []
     if not r and isinstance(d, dict): r = _ls(d.get("list", []))
-    return R(R.PASS, f"{len(r)} LSS config(s) — ZPA logs streaming.") if r else R(R.WARN, "No LSS — ZPA logs not streamed to SIEM. Best Practice: Configure Log Streaming Service (LSS) to send ZPA user activity, connector status, and audit logs to your SIEM. Without LSS, ZPA logs are retained only 30 days in the portal. Ref: SIEM and ZPA Integration Deployment and Operations Guide.")
+    return R(R.PASS, f"{len(r)} LSS config(s) — ZPA logs streaming.") if r else R(R.WARN, "No LSS — ZPA logs not streamed to SIEM. Best Practice: Configure Log Streaming Service (LSS) to send ZPA user activity, connector status, and audit logs to your SIEM. Without LSS, ZPA keeps user activity, user status and App Connector logs for a rolling 14 days (audit logs six months). Ref: https://help.zscaler.com/zpa/about-log-streaming-service")
 
 def zpa_15(cl):
     """Machine groups (for machine-based access)"""
@@ -679,7 +679,7 @@ def zcc_18(cl):
               f"{has_ssid} with SSID check, {has_dns} with DNS check, "
               f"{has_hostname} with hostname resolve. ")
     if has_ssid == 0 and has_dns == 0 and has_hostname == 0:
-        return R(R.WARN, detail + "Best Practice: Trusted-network detection needs at least one check method (SSID / DNS / hostname) to work reliably.")
+        return R(R.WARN, detail + "Best Practice: Trusted-network detection needs at least one criterion; Zscaler recommends static properties such as DNS Server and DNS Search Domains (hostname and IP resolution is dynamic). Ref: https://help.zscaler.com/zscaler-client-connector/configuring-trusted-networks-zscaler-client-connector")
     return R(R.PASS, detail)
 
 
