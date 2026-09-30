@@ -301,7 +301,11 @@ async function _gdUpdateApp() {
   const poll = async () => {
     try {
       const h = await (await fetch('/api/health', { cache: 'no-store' })).json();
-      if (h.git_commit && h.git_commit === res.after) { lines[lines.length - 1] = { name: `Restarted on build ${h.git_commit}. Reloading…`, ok: true }; show(); setTimeout(() => location.reload(), 600); return; }
+      if (h.git_commit && h.git_commit === res.after) {
+        // An update GitHub's API could not confirm stays on screen until the person has read why.
+        if (res.verified === false) { lines[lines.length - 1] = { name: `Restarted on build ${h.git_commit}`, ok: true }; show(`<div class="gd-upd-line warn">⚠ This update was not verified against GitHub (${_gdE(res.verify_skipped || 'the check could not run')}). <a href="#" onclick="location.reload();return false;">Reload the page</a> to use the new build.</div>`); return; }
+        lines[lines.length - 1] = { name: `Restarted on build ${h.git_commit}. Reloading…`, ok: true }; show(); setTimeout(() => location.reload(), 600); return;
+      }
     } catch (_) { /* server is down while it restarts */ }
     if (Date.now() - started > 90000) { lines[lines.length - 1] = { name: 'The app did not come back within 90 seconds', ok: false, detail: 'The update itself succeeded. ' + hint }; show(); return; }
     setTimeout(poll, 1500);
