@@ -223,3 +223,8 @@ h3.db-tile-t { margin: 0 0 0.6rem; }
 .section-score-na { color: var(--dim); font-weight: 600; font-size: 0.8rem; }
 .stat-note { margin: 0.6rem 0 0; font-size: 0.8rem; color: var(--dim); line-height: 1.45; }
 .stat-note:empty { display: none; }
+
+/* Report details: their own block in the tenant configuration, above Authenticate. */
+.db-connect-report { margin: 1.2rem 0 1rem; padding-top: 1rem; border-top: 1px solid var(--border, rgba(127,127,127,.25)); }
+.db-connect-report h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+.db-connect-report .helper { margin: 0 0 0.8rem; }
