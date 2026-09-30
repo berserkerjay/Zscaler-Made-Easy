@@ -158,3 +158,12 @@ def test_the_page_never_prints_undefined_and_reads_one_summary():
     assert "sections || {}).filter(([, d]) => d.pct !== null" in js
     assert "docs/SCORING.md" in js
     assert os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "SCORING.md"))
+
+
+def test_the_server_reports_a_crashed_or_timed_out_check_as_could_not_be_checked():
+    """A check that raised, returned junk or timed out was reported as INFO,
+    which the score reads as "Not configured"; the CLI already says ERROR."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dlp_api_server.py"), encoding="utf-8").read()
+    for text in ('Could not complete check. {str(ex)[:120]}")', 'Invalid check result.")', "Check timed out after"):
+        line = next(l for l in src.splitlines() if text in l)
+        assert "R(R.ERROR," in line and "R(R.INFO," not in line, line.strip()
