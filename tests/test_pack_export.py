@@ -411,3 +411,437 @@ def test_both_ui_entry_points_start_the_export_job():
     # Deploy policy packs: the export action with its rule picker.
     assert "Export from tenant as a pack" in studio and 'onclick="_dzExportPick()"' in studio
     assert "'/api/dlp-packs/export/start'" in studio
+
+
+# ---------------------------------------------------------------------------
+# Refused reads, rate limits and Stop
+# ---------------------------------------------------------------------------
+
+def _refuse(svc, method, text):
+    setattr(svc, method, lambda *a, **k: (None, None, Exception(text)))
+
+
+def test_a_refused_dictionary_or_engine_read_fails_the_export_instead_of_an_empty_ready_pack():
+    for svc, method, path in (("dlp_dictionary", "list_dicts", "dlpDictionaries"), ("dlp_engine", "list_dlp_engines", "dlpEngines")):
+        client = _source()
+        _refuse(getattr(client.zia, svc), method, '{"status": 403, "code": null, "message": "Resource Access Blocked", "url": "https://api.zsapi.net/zia/api/v1/%s"}' % path)
+        res = pe.export_pack(client, tenant_label="acme")
+        assert res["status"] == "error", (svc, res["status"])
+        assert "resource access blocked" in res["error"].lower()
+        assert "pack" not in res
+
+
+def test_a_dictionary_list_that_could_not_be_read_is_not_reported_as_missing_dictionaries():
+    snap = pe.read_tenant(_source())
+    snap["dictionaries"], snap["errors"]["dictionaries"] = [], "HTTP 500"
+    pack = pe.build_pack(snap)
+    reasons = [d["reason"] for d in pack["not_exported"] if d["kind"] == "engine"]
+    assert reasons and all("could not be read" in r and "does not have" not in r for r in reasons), reasons
+
+
+def _refuse_n(svc, method, text, times):
+    real, left, calls = getattr(svc, method), [times], []
+
+    def fn(*a, **k):
+        calls.append(1)
+        if left[0] > 0:
+            left[0] -= 1
+            return None, None, Exception(text)
+        return real(*a, **k)
+    setattr(svc, method, fn)
+    return calls
+
+
+TOO_MANY = '{"status": 429, "code": null, "message": "Too Many Requests"}'
+BLOCKED = '{"status": 403, "code": null, "message": "Resource Access Blocked"}'
+
+
+def test_a_rate_refused_rule_read_is_waited_out_and_retried(monkeypatch):
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    client = _source()
+    _refuse_n(client.zia.dlp_web_rules, "list_rules", TOO_MANY, times=1)
+    logs = []
+    res = pe.export_pack(client, tenant_label="acme", log=logs.append)
+    assert res["status"] == "ready"
+    assert {"Web-Projects", "Web-PCI"} <= {p["name"] for p in res["pack"]["policies"]}
+    assert any("rate" in l.lower() for l in logs)
+
+
+def test_a_persistent_resource_access_blocked_fails_the_export_and_stops_reading(monkeypatch):
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    client = _source()
+    _refuse_n(client.zia.dlp_web_rules, "list_rules", BLOCKED, times=99)
+    later = _refuse_n(client.zia.endpoint_dlp_rules, "list_rules", "unused", times=0)
+    res = pe.export_pack(client, tenant_label="acme")
+    assert res["status"] == "error" and "resource access blocked" in res["error"].lower()
+    assert later == [], "kept sending reads to a client ZIA had just blocked"
+
+
+def test_stop_during_the_reads_sends_no_more_reads():
+    import threading
+    calls = []
+    cancel = threading.Event()
+    src = _source()
+
+    class Proxy:
+        def __init__(self, t):
+            self._t = t
+
+        def __getattr__(self, name):
+            v = getattr(self._t, name)
+            if callable(v) and name.startswith('list'):
+                def call(*a, **k):
+                    calls.append(name)
+                    cancel.set()          # Stop arrives during the first read
+                    return v(*a, **k)
+                return call
+            if not callable(v) and hasattr(v, '__dict__') and not isinstance(v, (list, dict, str, int)):
+                return Proxy(v)
+            return v
+
+    class C:
+        pass
+    c = C()
+    c.zia = Proxy(src.zia)
+    res = pe.export_pack(c, tenant_label='acme', cancel=cancel)
+    assert res['status'] == 'stopped'
+    assert calls == ['list_dicts'], calls
+
+
+def test_stop_on_an_export_job_speaks_of_reads():
+    import threading
+    import pack_jobs
+    gate = threading.Event()
+
+    def fn(log, cancel):
+        gate.wait(5)
+        return {'status': 'stopped', 'stopped': 'You clicked Stop.'}
+    job = pack_jobs.start('export', fn, label='t')
+    assert pack_jobs.cancel(job.id)
+    gate.set()
+    for _ in range(200):
+        if job.status != pack_jobs.RUNNING:
+            break
+        time.sleep(0.01)
+    line = [l for l in job.logs if l.startswith('Stop requested')][0]
+    assert 'activation' not in line and 'write' not in line, line
+    assert job.status == pack_jobs.CANCELLED
+
+
+# ---------------------------------------------------------------------------
+# Names: renames, clashes and names ZIA accepts
+# ---------------------------------------------------------------------------
+
+def test_a_cross_channel_rename_never_collides_with_another_rule_name():
+    client = make_client(casb_tenants=TENANTS)
+    client.zia.dlp_dictionary.items = [Obj(id=1001, name="A", description="", custom=True, dictionary_type="PATTERNS_AND_PHRASES",
+        custom_phrase_match_type="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY", phrases=[{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": "aaa aaa"}], patterns=[], proximity=0)]
+    client.zia.dlp_engine.items = [Obj(id=5000, name="E", description="", custom_dlp_engine=True, engine_expression="((D1001.S > 0))")]
+    client.zia.dlp_web_rules.items = [Obj(id=11, name="Block", order=1, rank=7, action="ALLOW", state="ENABLED", protocols=["ANY_RULE"], dlp_engines=[Obj(id=5000, name="E")])]
+    ep = lambda i, n, o: Obj(id=i, name=n, order=o, rank=7, action="ALLOW", state="ENABLED", dlp_engines=[Obj(id=5000, name="E")], data_transfer_method="REMOVABLE_DRIVE_TRANSFER")  # noqa: E731
+    client.zia.endpoint_dlp_rules = FakeChannelRules([ep(21, "Block [Endpoint]", 1), ep(22, "Block", 2)], start=8000)
+    res = pe.export_pack(client, tenant_label="src")
+    names = [p["name"] for p in res["pack"]["policies"]]
+    assert len(names) == 3 and len(set(names)) == 3, names
+    assert res["validation"]["ok"], res["validation"]["problems"]
+    assert pl.validate_pack(res["pack"])["ok"]
+    assert [r["from"] for r in res["pack"]["meta"]["renamed_rules"]] == ["Block"]
+
+
+def test_a_sub_rule_named_like_a_rule_on_another_channel_is_renamed():
+    import pack_channels as pc
+    client = _source()
+    client.zia.endpoint_dlp_rules.items[0].sub_rules = [
+        Obj(id=22, name="Web-PCI", order=1, action="ALLOW", state="ENABLED", dlp_engines=[Obj(id=5002, name="Board Leak")])]
+    res = pe.export_pack(client, tenant_label="t")
+    names = [p["name"] for p in pc.expand_sub_rules(res["pack"]["policies"])]
+    assert len(names) == len(set(names)), names
+    assert res["validation"]["ok"], res["validation"]["problems"]
+    assert any(r["from"] == "Web-PCI" for r in res["pack"]["meta"].get("renamed_rules", []))
+
+
+def test_endpoint_sub_rules_keep_the_tenants_order():
+    client = _source()
+    eng = [Obj(id=5002, name="Board Leak")]
+    client.zia.endpoint_dlp_rules.items[0].sub_rules = [
+        Obj(id=23, name="EP-exc-second", order=2, action="ALLOW", state="ENABLED", dlp_engines=eng),
+        Obj(id=22, name="EP-exc-first", order=1, action="BLOCK", state="DISABLED", dlp_engines=eng)]
+    pack = pe.export_pack(client, tenant_label="t")["pack"]
+    ep = next(p for p in pack["policies"] if p["name"] == "EP-Board")
+    assert [s["name"] for s in ep["sub_rules"]] == ["EP-exc-first", "EP-exc-second"]
+
+
+def _cd(i, name, phrase):
+    return Obj(id=i, name=name, description="", custom=True, dictionary_type="PATTERNS_AND_PHRASES",
+               custom_phrase_match_type="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+               phrases=[{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": phrase}], patterns=[], proximity=0)
+
+
+def _one_rule_client(dicts, expr):
+    c = make_client(casb_tenants=TENANTS)
+    c.zia.dlp_dictionary.items = [Obj(id=1, name="SSN", custom=False)] + dicts
+    c.zia.dlp_engine.items = [Obj(id=5000, name="E", description="", custom_dlp_engine=True, engine_expression=expr)]
+    c.zia.dlp_web_rules.items = [Obj(id=11, name="R", order=1, rank=7, action="ALLOW", state="ENABLED", protocols=["ANY_RULE"], dlp_engines=[Obj(id=5000, name="E")])]
+    return c
+
+
+def test_two_source_dictionaries_that_map_to_one_pack_name_are_not_silently_merged():
+    pack = pe.export_pack(_one_rule_client([_cd(1001, "Codes", "one phrase"), _cd(1002, "Codes ", "two phrase")],
+                                           "((D1001.S > 0) AND (D1002.S > 0))"), tenant_label="src")["pack"]
+    phrases = sorted(ph["phrase"] for d in pack["dictionaries"] for ph in d.get("phrases", []))
+    assert phrases == ["one phrase", "two phrase"] or pack["meta"]["not_exported"] or pack["warnings"], (phrases, pack["engines"])
+
+
+def test_a_custom_dictionary_named_like_a_predefined_one_does_not_hide_the_predefined_term():
+    pack = pe.export_pack(_one_rule_client([_cd(1001, "SSN", "my ssn phrase")], "((D1001.S > 0) AND (D1.S > 0))"), tenant_label="src")["pack"]
+    expr = pack["engines"][0]["expression"] if pack["engines"] else ""
+    assert not (expr.count("D:SSN ") == 2 and not pack["meta"]["not_exported"] and not pack["warnings"]), expr
+
+
+def _plan_and_apply(pack, tmp_path, target=None):
+    saved = pl.save_pack(pl.assemble_pack(_upload(pe.zip_pack(pack)[1])), root=str(tmp_path))
+    packs = [{"id": saved["id"], "dir": saved["dir"]}]
+    target = target or _empty_target()
+    rep = pd.preflight(target, packs, writes_enabled=True)
+    assert rep["status"] in ("ready", "warnings"), rep.get("blockers")
+    res = pd.apply(target, packs, plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
+    assert res["status"] == "applied", res
+    return target.zia
+
+
+def test_renamed_dictionaries_plan_into_an_empty_tenant_as_two_distinct_dictionaries(tmp_path):
+    res = pe.export_pack(_one_rule_client([_cd(1001, "Codes", "one phrase"), _cd(1002, "Codes ", "two phrase")],
+                                          "((D1001.S > 0) AND (D1002.S > 0))"), tenant_label="src")
+    assert res["validation"]["ok"], res["validation"]["problems"]
+    renamed = res["pack"]["meta"]["renamed_dictionaries"]
+    assert [(r["from"], r["to"]) for r in renamed] == [("Codes ", "Codes (2)")]
+    z = _plan_and_apply(res["pack"], tmp_path)
+    ids = {o.name: o.id for o in z.dlp_dictionary.items}
+    assert z.dlp_engine.added[0]["engine_expression"] == f"((D{ids['Codes']}.S > 0) AND (D{ids['Codes (2)']}.S > 0))"
+
+    res = pe.export_pack(_one_rule_client([_cd(1001, "SSN", "my ssn phrase")], "((D1001.S > 0) AND (D1.S > 0))"), tenant_label="src")
+    assert res["pack"]["engines"][0]["expression"] == "((D:SSN (custom) > 0) AND (D:SSN > 0))"
+    z = _plan_and_apply(res["pack"], tmp_path / "second")
+    ids = {o.name: o.id for o in z.dlp_dictionary.items}
+    assert z.dlp_engine.added[0]["engine_expression"] == f"((D{ids['SSN (custom)']}.S > 0) AND (D91.S > 0))"
+
+
+def test_a_custom_dictionary_or_engine_named_like_a_predefined_one_is_not_merged_with_it():
+    c = make_client(casb_tenants=TENANTS)
+    z = c.zia
+    z.endpoint_dlp_rules, z.casb_dlp_rules, z.outbound_email_dlp_rules = FakeChannelRules([]), FakeCasbRules([]), FakeChannelRules([])
+    z.dlp_dictionary.items = [Obj(id=1, name="SSN", custom=False),
+        Obj(id=300, name="SSN", custom=True, dictionary_type="PATTERNS_AND_PHRASES", patterns=[{"action": "PATTERN_COUNT_TYPE_ALL", "pattern": r"\bX\d+\b"}], phrases=[])]
+    eng = lambda i, n, x: Obj(id=i, name=n, custom_dlp_engine=True, engine_expression=x)  # noqa: E731
+    z.dlp_engine.items = [eng(10, "Uses predefined SSN", "((D1.S > 0))"), eng(11, "Uses custom SSN", "((D300.S > 0))"),
+        Obj(id=61, name="PCI", predefined_engine_name="PCI", custom_dlp_engine=False), eng(12, "PCI", "((D300.S > 1))")]
+    rule = lambda i, n, e: Obj(id=i, name=n, order=i, rank=7, action="ALLOW", state="ENABLED", protocols=["ANY_RULE"], dlp_engines=[Obj(id=e, name="x")])  # noqa: E731
+    z.dlp_web_rules.items = [rule(1, "R1", 10), rule(2, "R2", 11), rule(3, "R3", 61), rule(4, "R4", 12)]
+    pack = pe.export_pack(c, tenant_label="t")["pack"]
+    listed = {d["name"] for d in pack["not_exported"]}
+    exprs = {e["name"]: e["expression"] for e in pack["engines"]}
+    assert exprs.get("Uses predefined SSN") != exprs.get("Uses custom SSN") or listed & {"SSN", "Uses predefined SSN", "Uses custom SSN"}
+    rules = {p["name"]: p.get("engines") for p in pack["policies"]}
+    assert rules.get("R3") != rules.get("R4") or listed & {"PCI", "R3", "R4"}
+
+
+def test_a_custom_dictionary_named_like_a_predefined_one_deploys_beside_the_targets_predefined_one(tmp_path):
+    c = make_client(casb_tenants=TENANTS)
+    z = c.zia
+    z.endpoint_dlp_rules, z.casb_dlp_rules, z.outbound_email_dlp_rules = FakeChannelRules([]), FakeCasbRules([]), FakeChannelRules([])
+    z.dlp_dictionary.items = [Obj(id=1, name="SSN", custom=False), _cd(300, "SSN", "my ssn phrase")]
+    eng = lambda i, n, x: Obj(id=i, name=n, custom_dlp_engine=True, engine_expression=x)  # noqa: E731
+    z.dlp_engine.items = [eng(10, "Uses predefined SSN", "((D1.S > 0))"), eng(11, "Uses custom SSN", "((D300.S > 0))"),
+                          Obj(id=61, name="PCI", predefined_engine_name="PCI", custom_dlp_engine=False), eng(12, "PCI", "((D300.S > 1))")]
+    rule = lambda i, n, e: Obj(id=i, name=n, order=i, rank=7, action="ALLOW", state="ENABLED", protocols=["ANY_RULE"], dlp_engines=[Obj(id=e, name="x")])  # noqa: E731
+    z.dlp_web_rules.items = [rule(1, "R1", 10), rule(2, "R2", 11), rule(3, "R3", 61), rule(4, "R4", 12)]
+    res = pe.export_pack(c, tenant_label="t")
+    meta = res["pack"]["meta"]
+    assert [(r["from"], r["to"]) for r in meta["renamed_engines"]] == [("PCI", "PCI (custom)")]
+    assert {p["name"]: p["engines"] for p in res["pack"]["policies"]}["R4"] == ["PCI (custom)"]
+    t = _plan_and_apply(res["pack"], tmp_path)
+    ids = {o.name: o.id for o in t.dlp_dictionary.items}
+    exprs = {e["name"]: e["engine_expression"] for e in t.dlp_engine.added}
+    assert exprs["Uses predefined SSN"] == "((D91.S > 0))", "the target's own predefined SSN, not the pack's custom one"
+    assert exprs["Uses custom SSN"] == f"((D{ids['SSN (custom)']}.S > 0))"
+    web = {r["name"]: r for r in t.dlp_web_rules.added}
+    assert web["R3"]["dlp_engines"] == [97] and web["R4"]["dlp_engines"] != [97]
+
+
+def test_dictionary_names_zia_accepts_do_not_make_the_exported_pack_invalid(tmp_path):
+    mk = lambda i, n, ph: Obj(id=i, name=n, description="", custom=True, dictionary_type="PATTERNS_AND_PHRASES",  # noqa: E731
+        custom_phrase_match_type="MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY", phrases=[{"action": "PHRASE_COUNT_TYPE_ALL", "phrase": ph}], patterns=[], proximity=0)
+    c = make_client(casb_tenants=TENANTS)
+    c.zia.dlp_dictionary.items = [mk(1001, "Codes (legacy", "one phrase"), mk(1002, "Ref D7.S v2", "two phrase")]
+    c.zia.dlp_engine.items = [Obj(id=5000, name="E", description="", custom_dlp_engine=True, engine_expression="((D1001.S > 0) OR (D1002.S > 0))")]
+    c.zia.dlp_web_rules.items = [Obj(id=11, name="R", order=1, rank=7, action="ALLOW", state="ENABLED", protocols=["ANY_RULE"], dlp_engines=[Obj(id=5000, name="E")])]
+    res = pe.export_pack(c, tenant_label="src")
+    assert res["validation"]["ok"], res["validation"]["problems"]
+    z = _plan_and_apply(res["pack"], tmp_path)
+    ids = {o.name: o.id for o in z.dlp_dictionary.items}
+    assert z.dlp_engine.added[0]["engine_expression"] == f"((D{ids['Codes (legacy']}.S > 0) OR (D{ids['Ref D7.S v2']}.S > 0))"
+
+
+@pytest.mark.parametrize("name", ["名前", "Отчёт", "..."])
+def test_a_pack_name_without_latin_letters_still_gives_a_pack_the_library_saves(tmp_path, name):
+    res = pe.export_pack(_source(), name=name, tenant_label="acme (production)")
+    assert res["status"] == "ready" and res["validation"]["ok"]
+    fname, data = pe.zip_pack(res["pack"])
+    saved = pl.save_pack(pl.assemble_pack(_upload(data, fname)), root=str(tmp_path))
+    assert saved["id"]
+
+
+# ---------------------------------------------------------------------------
+# Broken references and nothing to export
+# ---------------------------------------------------------------------------
+
+def test_an_export_with_no_rules_is_not_offered_as_a_pack_the_library_then_refuses():
+    def client_with(dicts, engines, web):
+        c = make_client(casb_tenants=TENANTS)
+        z = c.zia
+        z.dlp_dictionary.items, z.dlp_engine.items, z.dlp_web_rules.items = dicts, engines, web
+        z.endpoint_dlp_rules, z.casb_dlp_rules, z.outbound_email_dlp_rules = FakeChannelRules([]), FakeCasbRules([]), FakeChannelRules([])
+        return c
+    gone = Obj(id=1, name="Only rule", order=1, rank=7, action="ALLOW", state="ENABLED", dlp_engines=[Obj(id=999, name="Deleted")])
+    for client in (client_with([], [], []), client_with([Obj(id=1, name="SSN", custom=False)], [], [gone])):
+        res = pe.export_pack(client, tenant_label="t")
+        if res["status"] == "ready":
+            pl.assemble_pack(_upload(pe.zip_pack(res["pack"])[1]))
+        else:
+            assert res.get("error"), res
+
+
+@pytest.mark.parametrize("selection", [{"web": [99999]}, {"web": "Web-PCI"}, {"web": "some"}])
+def test_a_selection_that_matches_no_rule_is_not_reported_as_a_ready_pack(selection):
+    try:
+        res = pe.export_pack(_source(), selection=selection, name="x", tenant_label="acme (production)")
+    except ValueError:
+        return  # refusing a malformed selection up front is fine
+    assert res["status"] != "ready" or not res["validation"]["ok"], (res["status"], res["pack"]["meta"]["counts"])
+
+
+def test_web_all_on_a_tenant_without_web_rules_is_not_a_ready_empty_pack():
+    client = _source()
+    client.zia.dlp_web_rules.items = []
+    res = pe.export_pack(client, selection={"web": "all"}, name="Step 2", tenant_label="acme (production)")
+    assert res["status"] != "ready" or not res["validation"]["ok"], res["pack"]["meta"]["counts"]
+
+
+def test_a_clone_whose_template_is_missing_says_so_and_names_the_template_id():
+    c = make_client(casb_tenants=TENANTS)
+    z = c.zia
+    z.endpoint_dlp_rules, z.casb_dlp_rules, z.outbound_email_dlp_rules = FakeChannelRules([]), FakeCasbRules([]), FakeChannelRules([])
+    z.dlp_dictionary.items = [Obj(id=1, name="SSN", custom=False),
+        Obj(id=100, name="Orphan Clone", custom=True, predefined_clone=True, dict_template_id=4242),
+        Obj(id=101, name="Clone of clone", custom=True, predefined_clone=True, dict_template_id=100)]
+    z.dlp_engine.items = [Obj(id=10, name="E", custom_dlp_engine=True, engine_expression="((D100.S > 0) OR (D101.S > 0) OR (D1.S > 0))")]
+    z.dlp_web_rules.items = [Obj(id=1, name="R", order=1, rank=7, action="ALLOW", state="ENABLED", protocols=["ANY_RULE"], dlp_engines=[Obj(id=10, name="E")])]
+    pack = pe.export_pack(c, tenant_label="t")["pack"]
+    why = {d["name"]: d["reason"] for d in pack["not_exported"] if d["kind"] == "dictionary"}
+    assert "no template id" not in why["Orphan Clone"] and "4242" in why["Orphan Clone"], why
+    assert "no template id" not in why.get("Clone of clone", ""), why
+
+
+def test_a_rule_without_a_name_is_listed_not_dropped_silently():
+    c = make_client(casb_tenants=TENANTS)
+    z = c.zia
+    z.endpoint_dlp_rules, z.casb_dlp_rules, z.outbound_email_dlp_rules = FakeChannelRules([]), FakeCasbRules([]), FakeChannelRules([])
+    z.dlp_dictionary.items = []
+    z.dlp_engine.items = [Obj(id=61, name="PCI", predefined_engine_name="PCI", custom_dlp_engine=False)]
+    z.dlp_web_rules.items = [Obj(id=7, order=1, rank=7, action="ALLOW", state="ENABLED", dlp_engines=[Obj(id=61, name="PCI")])]
+    res = pe.export_pack(c, tenant_label="t")
+    # No rule is left to export, so the export fails; not_exported still says why.
+    left = res["pack"]["not_exported"] if res["status"] == "ready" else res["not_exported"]
+    assert any(d["kind"] == "rule" and "7" in str(d["name"]) for d in left), left
+
+
+# ---------------------------------------------------------------------------
+# Channels
+# ---------------------------------------------------------------------------
+
+def test_saas_rule_tenants_survive_the_sdk_model():
+    from zscaler.zia.models.casb_dlp_rules import CasbdDlpRules
+    raw = [{"id": 31, "name": "SaaS-Projects", "order": 1, "rank": 7, "type": "OFLCASB_DLP_FILE",
+            "action": "OFLCASB_DLP_REPORT_INCIDENT", "state": "ENABLED",
+            "dlpEngines": [{"id": 5001, "name": "Project Leak"}], "cloudAppTenants": [{"id": 501, "name": "Acme Box"}]}]
+
+    class Resp:
+        def get_results(self):
+            return raw
+
+    class SdkCasb:
+        # As the SDK builds its models: from form_response_body(item), a copy,
+        # so the raw answer keeps the references the model loses.
+        def list_all_rules(self, *a, **k):
+            from zscaler.api_client import APIClient
+            return [CasbdDlpRules(APIClient.form_response_body(r)) for r in raw], Resp(), None
+        list_rules = list_all_rules
+
+    client = _source()
+    client.zia.casb_dlp_rules = SdkCasb()
+    pack = pe.export_pack(client, tenant_label="t", selection={"saas": "all"})["pack"]
+    assert pack["policies"][0]["tenants"] == ["Acme Box"]
+    assert not [d for d in pack["meta"]["not_exported"] if d.get("field") == "cloud_app_tenants"]
+
+
+def test_deploying_an_exported_pack_does_not_change_the_confidence_of_existing_predefined_dictionaries(tmp_path):
+    pack = pe.export_pack(_source(), tenant_label="src")["pack"]
+    assert pack["meta"]["confidence_tweaks"] == []
+    saved = pl.save_pack(pl.assemble_pack(_upload(pe.zip_pack(pack)[1])), root=str(tmp_path))
+    packs = [{"id": saved["id"], "dir": saved["dir"]}]
+    target = _empty_target()
+    target.zia.dlp_dictionary.items += [
+        Obj(id=93, name="MEDICAL", custom=False, confidence_threshold="CONFIDENCE_LEVEL_MEDIUM"),
+        Obj(id=94, name="FINANCIAL", custom=False, confidence_threshold="CONFIDENCE_LEVEL_MEDIUM"),
+    ]
+    rep = pd.preflight(target, packs, writes_enabled=True)
+    assert [t for t in items_by(rep, "tweak").values() if t["status"] == pd.MODIFY] == []
+    res = pd.apply(target, packs, plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
+    assert res["status"] == "applied", res
+    assert target.zia.dlp_dictionary.updated == []
+
+
+# ---------------------------------------------------------------------------
+# Input checks and privacy
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("rules", [{"web": 5}, {"web": True}, {"endpoint": 1.5}, {"web": "abc"}, {"saas": {"a": 1}}, {"web": "some"}])
+def test_export_start_rejects_malformed_rule_selection_with_400(monkeypatch, rules):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: ReadOnly(_source()))
+    c = TestClient(srv.app, raise_server_exceptions=False)
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20}
+    r = c.post("/api/dlp-packs/export/start", json=dict(creds, rules=rules))
+    assert r.status_code == 400, (r.status_code, r.text[:200])
+
+
+def test_normalize_selection_rejects_non_list_ids():
+    for bad in ({"web": 5}, {"web": True}, {"web": "abc"}, {"web": {"a": 1}}, {"web": [True]}, {"web": [1.5]}):
+        with pytest.raises(ValueError):
+            pe.normalize_selection(bad)
+    assert pe.normalize_selection({"web": ["11", 12], "email": "all"}) == {"web": {"11", "12"}, "email": None}
+    assert pe.normalize_selection([{"channel": "web", "id": 11}, {"channel": "email", "id": "41"}]) == {"web": {"11"}, "email": {"41"}}
+
+
+def test_a_string_selection_is_refused():
+    with pytest.raises(ValueError):
+        pe.normalize_selection({"web": "some"})
+
+
+def test_people_named_in_rule_scope_never_reach_the_pack():
+    client = _source()
+    r = next(x for x in client.zia.dlp_web_rules.items if x.name == "Web-Projects")
+    r.auditor = Obj(id=77, name="auditor.person@corp.example")
+    r.users = [Obj(id=78, name="jane.admin@corp.example")]
+    r.excluded_users = [Obj(id=79, name="bob@corp.example")]
+    res = pe.export_pack(client, tenant_label="acme")
+    blob = json.dumps(pe.pack_files(res["pack"])) + json.dumps(res["pack"]["meta"])
+    for who in ("auditor.person@corp.example", "jane.admin@corp.example", "bob@corp.example"):
+        assert who not in blob, who
+    left = {(d["name"], d.get("field")) for d in res["pack"]["meta"]["not_exported"]}
+    assert {("Web-Projects", "auditor"), ("Web-Projects", "users"), ("Web-Projects", "excluded_users")} <= left
