@@ -57,6 +57,13 @@ RUN python -m pip install --require-hashes --no-deps -r requirements.lock \
  && ! python -c "import setuptools" 2>/dev/null \
  && ! python -c "import pip" 2>/dev/null
 
+# The commit and branch the image is built from (update_container.sh / .ps1
+# pass them), so Update app can say whether GitHub has a newer build.
+ARG DLP_CHECK_BUILD_COMMIT=unknown
+ARG DLP_CHECK_BUILD_BRANCH=main
+ENV DLP_CHECK_BUILD_COMMIT=$DLP_CHECK_BUILD_COMMIT \
+    DLP_CHECK_BUILD_BRANCH=$DLP_CHECK_BUILD_BRANCH
+
 COPY --chown=dlpcheck:dlpcheck . .
 RUN rm -rf .git tests *.zip && mkdir -p /data && chown dlpcheck:dlpcheck /data
 

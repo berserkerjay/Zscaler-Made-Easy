@@ -216,7 +216,15 @@ async function _gdUpdateCheck() {
     const target = st.target_branch || 'main';
     const here = `this install is on ${_gdE(st.local_commit)}${st.branch ? ` (${_gdE(st.branch)})` : ''}`;
     const note = st.reason && st.can_update ? `<div class="gd-upd-line soft">${_gdE(st.reason)}</div>` : '';
-    if (st.reason && !st.can_update) _gdUpdateBox(`<span class="gd-upd-line warn">${_gdE(st.reason)}</span>`);
+    if (st.in_container) {
+      const built = st.local_commit ? `this container was built from ${_gdE(st.local_commit)}` : 'the build of this container is not recorded (it was built without update_container)';
+      const head = st.update_available ? `${_gdE(target)} on GitHub is on build ${_gdE(st.remote_commit)}; ${built}.`
+        : st.update_available === false ? `Up to date with ${_gdE(target)} (build ${_gdE(st.local_commit)}).` : `${_gdE(target)} on GitHub is on build ${_gdE(st.remote_commit || '?')}; ${built}.`;
+      _gdContainerUpdateHelp();
+      const box = document.getElementById('gdUpdate');
+      if (box) box.insertAdjacentHTML('afterbegin', `<div class="gd-upd-line ${st.update_available === false ? 'ok' : ''}">${head}</div>`);
+    }
+    else if (st.reason && !st.can_update) _gdUpdateBox(`<span class="gd-upd-line warn">${_gdE(st.reason)}</span>`);
     else if (st.update_available) _gdUpdateBox(`<span class="gd-upd-line">${_gdE(target)} on GitHub is on build ${_gdE(st.remote_commit)}; ${here}.${st.branch && st.branch !== target ? ` Update app switches this install to ${_gdE(target)}.` : ''}</span>${note}`);
     else _gdUpdateBox(`<span class="gd-upd-line ok">Up to date with ${_gdE(target)} (build ${_gdE(st.local_commit || '?')}).</span>`);
   } catch (e) { _gdUpdateBox(`<span class="gd-upd-line warn">Could not check: ${_gdE(e.message)}</span>`); }
@@ -239,7 +247,20 @@ function _gdUpdateHelp() {
     <pre class="gd-upd-cmd" id="gdUpdCmd">${_gdE(cmd)}</pre>
     <button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('gdUpdCmd').textContent).then(() => announce('Command copied'))">Copy command</button>`);
 }
+// In a container the app cannot update itself (no git, read-only files):
+// the computer that runs Docker pulls the code and rebuilds it. Both
+// commands are shown because the page cannot tell which system that is.
+function _gdContainerUpdateHelp() {
+  const win = 'powershell -ExecutionPolicy Bypass -File .\\update_container.ps1';
+  const nix = './update_container.sh';
+  const copy = id => `<button type="button" class="gd-btn quiet gd-btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('${id}').textContent).then(() => announce('Command copied'))">Copy command</button>`;
+  _gdUpdateBox(`<div class="gd-upd-line">This copy runs in a container, which cannot update itself. Update it from the computer that runs Docker: open a terminal in the DLP-Check folder (the one with <code>docker-compose.yml</code>) and run the command for that computer. It pulls the latest code from GitHub and rebuilds the container only when there is something new; saved data stays, and the app restarts with a new UI token (<code>docker logs dlp-check</code>).</div>
+    <div class="gd-upd-line soft">Windows (PowerShell):</div><pre class="gd-upd-cmd" id="gdUpdCmdWin">${_gdE(win)}</pre>${copy('gdUpdCmdWin')}
+    <div class="gd-upd-line soft">Mac or Linux (Terminal):</div><pre class="gd-upd-cmd" id="gdUpdCmdNix">${_gdE(nix)}</pre>${copy('gdUpdCmdNix')}
+    <div class="gd-upd-line soft">Automatic updates: run it once with <code>-Schedule</code> (Windows) or <code>--schedule</code> (Mac, Linux) and it updates every day at 03:17.</div>`);
+}
 async function _gdUpdateApp() {
+  if (GD.about && GD.about.in_container) { _gdContainerUpdateHelp(); return; }
   if (GD.about && GD.about.is_git_checkout === false) { _gdUpdateHelp(); return; }
   const btn = document.getElementById('gdUpdateBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
   const lines = [];
