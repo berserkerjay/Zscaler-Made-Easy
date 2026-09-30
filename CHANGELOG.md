@@ -7,6 +7,22 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Your six Secure by Design decisions: SSO per person (still off by default), who did what, writer groups, job logging, a warning banner
+- **What you decided.** Asked one at a time; you picked the recommended option each time, and confirmed that SSO stays off by default and is only a setting you turn on.
+- **SSO is off by default.** Nothing changes for a normal install or the container on its default loopback publish: the UI token works as before and SSO is never offered. Turn it on with `ZSCALER_SSO_ENABLED=1` plus the `ZSCALER_SSO_*` settings (SECURITY.md).
+
+**When SSO is on**
+- Each sign-in gets its own session (12 hours, or 30 idle minutes: `ZSCALER_SSO_IDLE_MINUTES`); the cookie holds only a random session id. The page shows who is signed in, with **Sign out** (`POST /api/auth/logout`, audited). A restart of the app signs everyone out.
+- The static UI token is refused in every form (header, Bearer, cookie, `?token=`, unlock), and is no longer printed or written to `ui_token.txt`: scripts that sent it must sign in through the browser instead. SSO on with `ZSCALER_UI_AUTH=0` now still requires sign-in.
+- `ZSCALER_SSO_ALLOWED_GROUPS` limits who may sign in; `ZSCALER_SSO_WRITERS` (groups or e-mails) limits who may deploy, remove, import, undo, apply or roll back proposals, run fix recipes or migrations, or turn write mode on. Everyone else can still assess, read and preview. The claim name is `ZSCALER_SSO_GROUPS_CLAIM` (default `groups`); SECURITY.md says how to get Entra ID, Okta, Keycloak and Google to send it. Unset: everyone signed in may write, as before.
+
+**For every install**
+- **Who did what.** Every audit entry names the actor: the signed-in e-mail under SSO, otherwise "local UI token". Proposal decisions, applies and rollbacks take "by" from the server, not from what the page sends. A failed audit write is reported on stderr instead of being ignored.
+- **What a deploy actually did.** Every background deploy, removal or Terraform job writes a `job_finished` entry when it ends (who, tenant, approved plan, succeeded / failed / cancelled, counts, activation, duration), and every object DLP-Check creates, updates or deletes on a tenant writes an `object_write` entry (type, id, name, result, ZIA's error). Runs started without a job add a `run_finished` summary. Secrets and request bodies are never recorded; an audit failure never fails the deploy.
+- **The container decides from where it is published.** `docker-compose.yml`, the by-hand `docker run` and CI no longer set `ZSCALER_ALLOW_NONLOCAL_BIND`. Published on loopback (`DLP_CHECK_HOST_BIND`, the default) it starts as before; published wider without SSO it refuses to start and says both ways out. A local install bound beyond loopback with `ZSCALER_UI_AUTH=0` is always refused, override or not.
+- **A warning banner on every page** while write mode is on ("this app can change your Zscaler tenant", with **Back to read-only**) or while the UI token gate is off. Deploy Studio shows write mode in amber instead of a green "ok", and Advanced settings flags "UI token gate: Off" as a warning.
+- **Checked** in a container built from this change: healthy on the default loopback publish without the override, `sso:false`, the banner is on the page, turning write mode on is audited as "local UI token", and publishing on 0.0.0.0 without SSO refuses to start.
+
 ### The container image: from 70 vulnerabilities to 16, none critical
 - **What you asked for.** "Docker is showing a lot of vulnerabilities in the container; scan and fix."
 - **What the scan found.** Docker Scout on the image built from main: 70 vulnerabilities in 18 packages, including 2 critical and several high in perl, util-linux, openssl and zlib. Every one was in a Debian 12 (bookworm) package Debian has not fixed; none were in the app's own Python libraries.
