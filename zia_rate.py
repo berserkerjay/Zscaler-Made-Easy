@@ -327,6 +327,24 @@ def _is_rate_answer(status: Optional[int], text: str) -> bool:
     return status == 429 or "resource access blocked" in low or "rate limit" in low or "too many requests" in low
 
 
+def _simulate(rules: List[Tuple[int, float]], prior: List[float], start: float, n: int) -> List[float]:
+    """When each of `n` requests goes out, starting at `start`, after the
+    `prior` ones, at the (count, window) `rules`."""
+    sim = list(prior)
+    out: List[float] = []
+    t = start
+    for _ in range(n):
+        wait_s = 0.0
+        for lim, w in rules:
+            inside = [x for x in sim if t - x < w]
+            if len(inside) >= lim:
+                wait_s = max(wait_s, inside[-lim] + w - t)
+        t += max(0.0, wait_s)
+        sim.append(t)
+        out.append(t)
+    return out
+
+
 def forecast(counts: Dict[str, int], *, use_recent: bool = True) -> Dict[str, Any]:
     """Will a run of `counts` requests per bucket succeed at ZIA's limits?
     Simulated, nothing is sent, against what this app actually executed:
@@ -354,18 +372,12 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True) -> Dict[str, An
         mine = sorted(recent.get(bucket, []))
         zia = sorted(_server_used(bucket, now)) if use_recent else []
         sim = list(zia) if len(zia) > len([t for t in mine if zia and t >= zia[0]]) else list(mine)
-        t = now + held
-        for _ in range(n):
-            wait_s = 0.0
-            for lim, w in rules:
-                inside = [x for x in sim if t - x < w]
-                if len(inside) >= lim:
-                    wait_s = max(wait_s, inside[-lim] + w - t)
-            t += max(0.0, wait_s)
-            sim.append(t)
-            planned.append(t)
-        took = t - now
-        fresh = estimate(bucket, n)
+        times = _simulate(rules, sim, now + held, n)
+        planned.extend(times)
+        took = (times[-1] - now) if times else 0.0
+        # The same run from a quiet hour, at the documented limits: the time
+        # its own pacing takes. Anything beyond that is a pause for recent traffic.
+        fresh = (lambda ts: ts[-1] - now if ts else 0.0)(_simulate(rules, [], now, n))
         hourly = max((lim for lim, w in rules if w >= 3600), default=None)
         rows.append({"bucket": bucket, "label": BUCKET_LABELS.get(bucket, bucket), "requests": n, "limits": _rules_text(bucket),
                      "used_last_hour": len(mine), "zia_reports_used": len(zia) if zia else None,
