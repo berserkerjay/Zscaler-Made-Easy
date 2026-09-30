@@ -7,6 +7,11 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Read-only in the container: the message says how to turn writes on there
+- **What you reported.** In the container, Deploy policy packs showed no Enable write mode switch and told you to start `START_Zscaler_Assessment_WRITES_ENABLED.bat`, which does not exist there.
+- **Why.** Inside the container the server listens on 0.0.0.0, and the in-browser switch is refused beyond loopback. That safeguard is unchanged.
+- **Now** every read-only message says how to turn writes on where the app runs: in the container, put `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in `.env` next to `docker-compose.yml` and run `docker compose up -d`; on Windows the start script; on Mac and Linux `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND ./start.sh`.
+
 ### Email DLP rules deploy like the Fed pack's in every pack; Exchange, Gmail and secure email gateway tenants recognised
 - **What you reported.** ZBP's Email rules were skipped with "none of the onboarded SaaS tenants match email (onboarded: SMOES (SHAREPOINT))", and every pack should follow the Fed pack's methodology.
 - **Why.** Every pack goes through the same deploy path, and it required a Microsoft 365 or Gmail tenant before creating any Email DLP rule. The Fed pack is skipped the same way on this tenant. The API does not need one: email tenants are optional on an Email DLP rule (the SDK's own example and the zscaler/zia provider create one without them).

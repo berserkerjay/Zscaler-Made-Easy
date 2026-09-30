@@ -919,10 +919,11 @@ class PackRemovalRequest(TenantCredsRequest):
     deployment_id: str = ""            # undo mode: what one recorded deployment created
 
 
-_WRITES_DISABLED_MSG = (
-    "Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. "
-    "Relaunch via START_Zscaler_Assessment_WRITES_ENABLED.bat."
-)
+def _writes_disabled_msg() -> str:
+    """The read-only refusal, with the way to turn writes on where this
+    server runs (container, Windows, Mac/Linux)."""
+    from security import write_enable_hint
+    return f"Write actions require ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND. To turn them on, {write_enable_hint()}."
 
 
 def _tenant_creds(req: Any) -> Dict[str, str]:
@@ -1335,7 +1336,7 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     client = await asyncio.to_thread(_proposal_client, req)
     logs: list = []
     try:
@@ -1354,7 +1355,7 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     client = await asyncio.to_thread(_proposal_client, req)
     logs: list = []
     try:
@@ -1611,7 +1612,7 @@ async def dlp_pack_removal_apply(req: PackRemovalRequest):
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
@@ -1665,7 +1666,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest):
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Removal requires explicit confirmation (confirm=true).")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids) if req.pack_ids else []
     creds = _tenant_creds(req)
     rec = _deployment_for_removal(req, creds) if req.deployment_id else None
@@ -2199,7 +2200,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest):
     if not req.plan_hash:
         raise HTTPException(status_code=400, detail="plan_hash is required — run /api/dlp-packs/preflight first.")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
@@ -2259,7 +2260,7 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest):
     if not req.plan_hash:
         raise HTTPException(status_code=400, detail="plan_hash is required — run /api/dlp-packs/preflight first.")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
@@ -2290,7 +2291,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest):
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Undo requires explicit confirmation (confirm=true).")
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     creds = _tenant_creds(req)
     label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     if rec.get("tenant_label") and rec["tenant_label"] != label:
@@ -2322,7 +2323,7 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest):
                              "plan_hash set to the value below, or use Deploy Policy Packs in the app.")
         return public
     if not writes_enabled():
-        raise HTTPException(status_code=403, detail=_WRITES_DISABLED_MSG)
+        raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     logs: list = []
     result = await asyncio.to_thread(lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
