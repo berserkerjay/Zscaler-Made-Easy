@@ -934,6 +934,22 @@ def fetch_channel_state(zia, need: Dict[str, Any], log: Optional[Callable[[str],
                         srs["parent_name"] = r["name"]
                         flat.append(srs)
                 rules = flat
+            if ch == EMAIL:
+                # An Exchange (or Gmail / SEG) integration used for Email DLP is
+                # an email tenant the SaaS tenant list does not return (seen on a
+                # live tenant: casbTenant/lite listed only SharePoint while an
+                # Email DLP rule was scoped to the Exchange tenant). The rules
+                # that already use one are the reliable way to find it.
+                seen_ids = set()
+                found = []
+                for raw in data or []:
+                    for t in (_field(raw, "email_tenants", "emailTenants", default=[]) or []):
+                        tid, tname = _field(t, "id"), str(_field(t, "name", default="") or "").strip()
+                        if tid is not None and str(tid) not in seen_ids:
+                            seen_ids.add(str(tid))
+                            found.append({"id": tid, "name": tname or str(tid), "app": "EMAIL",
+                                          "status": [], "from_rule": str(_field(raw, "name", default="") or "").strip()})
+                state["email_tenants_in_rules"] = found
             state["rules"][ch] = rules
             _log(f"Reading the tenant: {label(ch)} rules: {len(rules)} found.")
         except Exception as e:  # noqa: BLE001 — surfaced as a dependency failure
@@ -1045,10 +1061,15 @@ def _match_tenants(tenants: Sequence[Dict[str, Any]], keywords: Tuple[str, ...])
 
 def email_tenants(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The onboarded email tenants (Exchange, Gmail, secure email gateway):
-    the ones Zscaler lists as EMAIL, plus any whose application name says so."""
+    the ones Zscaler lists as EMAIL, any whose application name says so, and
+    the email tenants existing Email DLP rules are scoped to (an Exchange
+    integration the SaaS tenant list does not return)."""
     tenants = state.get("casb_tenants") or []
     by_type = set(state.get("email_tenant_ids") or [])
-    return [t for t in tenants if str(t["id"]) in by_type or _is_email_tenant(t)]
+    out = [t for t in tenants if str(t["id"]) in by_type or _is_email_tenant(t)]
+    have = {str(t["id"]) for t in out}
+    out += [t for t in (state.get("email_tenants_in_rules") or []) if str(t["id"]) not in have]
+    return out
 
 
 def _tenant_list(tenants: Sequence[Dict[str, Any]]) -> str:
@@ -1080,6 +1101,8 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
             missing.append(f"SaaS application tenants could not be listed ({state['casb_error']})")
         elif isinstance(want, list) and want:
             by_name = {t["name"].lower(): t for t in tenants}
+            if channel == EMAIL:
+                by_name.update({t["name"].lower(): t for t in email_tenants(state)})
             chosen, absent = [], []
             for w in want:
                 t = by_name.get(str(w).strip().lower())
@@ -1275,16 +1298,20 @@ def dependency_report(policy_items: Sequence[Dict[str, Any]], state: Dict[str, A
                 st, detail = "error", state["casb_error"]
             elif ch == EMAIL:
                 em = email_tenants(state)
-                st = "ok" if em else "info"
-                detail = (f"Email tenant(s): {_tenant_list(em)}." if em else
-                          f"No Exchange, Gmail or secure email gateway tenant in the SaaS tenant list (listed: {_tenant_list(tenants)}); Email DLP rules are created "
-                          "without an email tenant filter, which the API allows.")
+                st = "ok" if em else "missing"
+                from_rules = [t for t in em if t.get("from_rule")]
+                detail = (f"Email tenant(s): {_tenant_list(em)}."
+                          + (f" Found on existing Email DLP rules ({', '.join(sorted({t['from_rule'] for t in from_rules}))}); "
+                             "the SaaS tenant list does not return them." if from_rules else "")
+                          if em else
+                          f"No Exchange, Gmail or secure email gateway tenant in the SaaS tenant list (listed: {_tenant_list(tenants)}) or on an "
+                          "existing Email DLP rule. ZIA requires at least one email tenant on an Email DLP rule; onboard one, then deploy the Email channel.")
             else:
                 st = "ok" if tenants else "missing"
                 detail = f"Onboarded: {_tenant_list(tenants)}." if tenants else "No SaaS application tenant onboarded."
             rows.append({
                 "channel": ch, "label": spec["label"], "status": st,
-                "requirement": ("Email tenant for scoping (optional; Administration > SaaS Application Tenants)"
+                "requirement": ("An email tenant (required by ZIA: Exchange, Gmail or a secure email gateway)"
                                 if ch == EMAIL else "SaaS application tenant(s) onboarded (Administration > SaaS Application Tenants)"),
                 "detail": detail, "rules": names(items),
             })
