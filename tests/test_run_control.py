@@ -574,8 +574,12 @@ def test_a_saas_rule_refused_on_admin_rank_is_created_at_the_other_rank_not_cycl
     assert res["status"] == "applied", res["summary"]
     assert len(saas) == 9 and all(r["rank"] == 7 for r in saas), [(r["name"], r["rank"]) for r in saas]
     assert res["summary"].get("failed", 0) == 0
+    # One refused rank-0 attempt per run, not one per SaaS rule: the later
+    # rules start at the rank ZIA accepted (a burst of refusals gets the
+    # client blocked).
     retried = [l for l in logs if "refused rank 0" in l and "trying rank 7" in l]
-    assert len(retried) == 9, logs
+    assert len(retried) == 1, logs
+    assert len([l for l in logs if "starting at rank 7; ZIA refused rank 0 earlier in this run" in l]) == 8, logs
     assert len([l for l in logs if "created at rank 7 instead of 0" in l]) == 9, logs
     assert not any("refused every order tried" in l for l in logs)
     created_saas = [r for r in res["results"] if r.get("channel") == "saas" and r["status"] == "created"]
@@ -806,3 +810,22 @@ def test_a_403_that_never_clears_stops_a_deploy_after_one_object_and_seventy_fiv
     assert out["summary"].get("deleted", 0) == 0 and out["summary"]["failed"] == 1 and out["summary"]["skipped"] == plan["remove_count"] - 1, out["summary"]
     assert z.dlp_engine.items and z.dlp_dictionary.items, "engines and dictionaries were never touched"
     assert len(acts) == 5 + 1, "five activations inside the retries, and the activation after the rules tier that sent a delete"
+
+
+def test_writes_are_paced_so_a_big_run_is_not_a_burst(monkeypatch):
+    # A deploy or removal sends 80-160 writes; back to back they are the
+    # burst after which ZIA answers "Resource Access Blocked" for minutes.
+    paced, t = [], [100.0]
+    monkeypatch.setattr(ops, "_pace_sleep", lambda s: (paced.append(round(s, 3)), t.__setitem__(0, t[0] + s)))
+    monkeypatch.setattr(ops.time, "monotonic", lambda: t[0])
+    monkeypatch.setattr(ops, "_last_write", [0.0])
+    monkeypatch.delenv("DLP_CHECK_WRITE_GAP", raising=False)
+    ok = lambda: ({"id": 1}, None, None)
+    for _ in range(3):
+        ops.call(ok, op="create", kind="dictionary", name="D")
+    assert paced == [1.0, 1.0], "about one write a second by default"
+    ops.call(ok, op="read", kind="dictionary", name="D")
+    assert paced == [1.0, 1.0], "reads are not paced"
+    monkeypatch.setenv("DLP_CHECK_WRITE_GAP", "0")
+    ops.call(ok, op="delete", kind="dictionary", name="D")
+    assert paced == [1.0, 1.0], "DLP_CHECK_WRITE_GAP=0 turns pacing off"

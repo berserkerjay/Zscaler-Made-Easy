@@ -7,6 +7,14 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Deploys and removals pace their writes
+- **What you asked for.** "Why am I getting the resource block when I try to deploy or remove too much?"
+- **Why.** A deploy or removal sent its 80–160 writes back to back, as fast as ZIA answered. Seen on this tenant: after a burst of requests, especially refused ones, ZIA's API gateway answers every request with 403 "Resource Access Blocked" for several minutes (about five), then lets the client back in. Zscaler does not publish the threshold.
+- **Now**
+  - Every create, update and delete waits until about a second has passed since the previous write (`DLP_CHECK_WRITE_GAP`, default 1.0; 0 turns pacing off). Reads are not paced. A whole pack takes one to three minutes longer; one channel, well under a minute.
+  - Together with sending no request ZIA would refuse (the email-tenant gap, and a single rank-0 attempt per run) and the one-channel-at-a-time note, a run stays well below the burst that gets the client blocked.
+- **Verified.** A test checks that writes are spaced a second apart, that reads are not, and that the setting turns pacing off. The rank test now expects one refused rank-0 attempt per run instead of one per SaaS rule. The all-pack regression test passes.
+
 ### Every pack deploys the way ZBP Enterprise did, and a regression test holds them to it
 - **What you asked for.** "This finally worked; every pack needs to deploy like that", and regression testing for all packs.
 - **Now** `tests/test_pack_regression.py` deploys every shipped pack one channel at a time (Web, Endpoint, SaaS, Email) against a fake tenant that answers the way the real one did:
