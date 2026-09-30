@@ -55,7 +55,7 @@ DISABLED_NOTE = ("Deploy Policy Packs creates every rule DISABLED and monitor-on
                  "tenant it came from; the pack keeps the original action and state, and a blocking action becomes the "
                  "target the data-governance journey names. Enable each rule once it has been reviewed.")
 ORDER_NOTE = ("Rules are listed per channel in the order the tenant had them (also in rule_order). Deploy Policy Packs "
-              "places each new rule at the top of its channel's policy, so check the order after a deploy.")
+              "adds the new rules above the rules already in the target, in this order, so check where they sit after a deploy.")
 CONFIDENCE_NOTE = ("An exported pack carries no confidence tweaks: deploying it leaves the confidence of the target tenant's "
                    "predefined dictionaries as it is.")
 ONE_CHANNEL_NOTE = ("Install one channel at a time. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, "
