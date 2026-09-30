@@ -7,6 +7,16 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### The container updates from main, qa or dev
+- **What you asked for.** "The container should also have the option to update from dev, qa or main branch."
+- **Before.** `update_container.ps1` and `update_container.sh` only pulled the branch the folder already had checked out. The Branch list in Update app changed only which branch the container was compared with.
+- **Now** both scripts take a branch: `-Branch main|qa|dev` on Windows, `--branch main|qa|dev` on Mac and Linux.
+  - The script switches the folder to that branch and rebuilds. Later runs and the daily schedule keep updating from it.
+  - Any other name is refused. `DLP-CHECK-QA`, the QA branch's old name, is taken as `qa`.
+  - In the container, Update app shows both commands for the branch picked in its Branch list, and so does the update notice's **Show how**.
+  - `INSTALL.md` explains the choice: main is what customers run; qa and dev carry changes before they are promoted.
+- **Verified.** A new test runs `update_container.sh` against a scratch git remote that has main, qa and dev, with `docker` replaced by a stub. It covers switching to qa, staying on qa on the next run, `--branch=dev`, the old QA name, and refusing `prod`; each switch rebuilds and an up-to-date run does not. The PowerShell script was run the same way by hand (-Branch qa, a plain run, DEV, DLP-CHECK-QA, main), with the same results.
+
 ### Enable write mode in the container, when only this computer can reach it
 - **What you asked for.** "No option to enable write mode in the container", then: yes to a switch there.
 - **Why it was missing.** The switch is refused unless the server listens on loopback. Inside the container it listens on 0.0.0.0, even though `docker-compose.yml` publishes it on the host's 127.0.0.1 only. The container could not see that, so it refused.

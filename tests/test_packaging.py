@@ -209,3 +209,77 @@ def test_the_container_offers_the_write_switch_only_when_published_on_loopback(m
     assert security.write_mode_status()["can_toggle"] is False, "outside the container the setting means nothing"
     compose = _read("docker-compose.yml")
     assert 'DLP_CHECK_HOST_BIND: "${DLP_CHECK_HOST_BIND:-127.0.0.1}"' in compose, "the app reads the same address ports: publishes on"
+
+
+def test_the_container_update_scripts_take_a_branch_and_keep_it():
+    # "The container should also have the option to update from dev, qa or
+    # main": both scripts take the branch, switch the checkout to it (so
+    # later runs and the schedule keep it) and refuse any other name.
+    sh, ps = _read("update_container.sh"), _read("update_container.ps1")
+    assert "--branch" in sh and 'main|qa|dev' in sh and "Unknown branch" in sh
+    assert "[ValidateSet('main', 'qa', 'dev', 'DLP-CHECK-QA')][string]$Branch" in ps
+    assert "$want" in ps, "PowerShell names are case-insensitive: the request is kept apart from the checked-out $branch"
+    for src in (sh, ps):
+        assert "git checkout --quiet" in src and "--track" in src and "DLP-CHECK-QA" in src
+        assert "later runs and the schedule update from" in src
+    import app_update
+    assert "--branch main|qa|dev" in app_update.CONTAINER_UPDATE_HELP and "-Branch main|qa|dev" in app_update.CONTAINER_UPDATE_HELP
+    guide = _read(os.path.join("static", "guide.js"))
+    i = guide.index("function _gdContainerUpdateHelp")
+    helper = guide[i:guide.index("\nfunction ", i + 10)]
+    assert "_gdUpdBranch()" in helper and "-Branch ${branch}" in helper and "--branch ${branch}" in helper, "the commands carry the Branch chosen"
+    notice = _read(os.path.join("static", "update_beacon.js"))
+    assert "-Branch ${esc(target)}" in notice and "--branch ${esc(target)}" in notice
+    assert "--branch qa" in _read("INSTALL.md") and "-Branch qa" in _read("INSTALL.md")
+
+
+def test_the_shell_update_script_switches_branches_against_a_scratch_remote(tmp_path):
+    import shutil
+    bash = shutil.which("bash")
+    if not bash or not shutil.which("git"):
+        pytest.skip("bash and git are needed to run the script")
+
+    def sh(*args, cwd, env=None):
+        return subprocess.run([bash, "-c", " ".join(args)], cwd=cwd, env=env, capture_output=True, text=True)
+
+    def git(*args, cwd):
+        r = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", *args],
+                           cwd=cwd, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        return r.stdout.strip()
+
+    origin, seed, deploy, fake = tmp_path / "origin.git", tmp_path / "seed", tmp_path / "deploy", tmp_path / "bin"
+    git("init", "-q", "--bare", "-b", "main", str(origin), cwd=tmp_path)
+    git("clone", "-q", str(origin), str(seed), cwd=tmp_path)
+    shutil.copy(os.path.join(ROOT, "update_container.sh"), seed / "update_container.sh")
+    (seed / "which.txt").write_text("main\n")
+    git("add", ".", cwd=seed); git("commit", "-qm", "main", cwd=seed); git("push", "-q", "origin", "main", cwd=seed)
+    for b in ("qa", "dev"):
+        git("checkout", "-qb", b, cwd=seed)
+        (seed / "which.txt").write_text(b + "\n")
+        git("commit", "-qam", b, cwd=seed); git("push", "-q", "origin", b, cwd=seed)
+        git("checkout", "-q", "main", cwd=seed)
+    git("clone", "-q", str(origin), str(deploy), cwd=tmp_path)
+    fake.mkdir()
+    (fake / "docker").write_text('#!/bin/sh\necho "$*" >> "$(dirname "$0")/calls"\n[ "$1" = ps ] && echo dlp-check\nexit 0\n', newline="\n")
+    os.chmod(fake / "docker", 0o755)
+    # A bash-style PATH entry: on Windows a C:\ path's colon would split PATH.
+    fake_dir = sh("cd", f"'{fake.as_posix()}'", "&&", "pwd", cwd=tmp_path).stdout.strip()
+
+    def run(*args):
+        r = sh(f"PATH='{fake_dir}':\"$PATH\"", "./update_container.sh", *args, cwd=deploy)
+        branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=deploy)
+        return r.returncode, r.stdout + r.stderr, branch, (deploy / "which.txt").read_text().strip()
+
+    code, out, branch, which = run("--branch", "qa")
+    assert code == 0 and branch == "qa" and which == "qa" and "Switched from main to qa" in out, out
+    code, out, branch, _ = run()
+    assert code == 0 and branch == "qa" and "Up to date: qa" in out, "the branch chosen is kept"
+    code, out, branch, _ = run("--branch=dev")
+    assert code == 0 and branch == "dev", out
+    code, out, branch, _ = run("--branch", "DLP-CHECK-QA")
+    assert code == 0 and branch == "qa", "the QA branch's old name maps to qa"
+    code, out, branch, _ = run("--branch", "prod")
+    assert code == 2 and branch == "qa" and "choose main, qa or dev" in out
+    calls = (fake / "calls").read_text()
+    assert calls.count("compose up -d --build") == 3, "every switch rebuilds; staying up to date does not"
