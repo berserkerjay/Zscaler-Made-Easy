@@ -11,9 +11,17 @@ turns into "not attempted" for every remaining write.
 
 Jobs live in this process only (the tool is single-user). Finished jobs
 are kept for an hour so a page that was reloaded can still show them.
+
+A job outlives both its HTTP request (whose audit entry only says "200",
+the job was queued) and its hour in memory, so every job leaves one
+`job_finished` entry in the audit log when it ends, however it ends: who
+asked (when known), the tenant, the plan, the final status, the counts,
+the activation, whether it was cancelled and how long it took. The run
+inside the job adds what it knows through note() (pack_ops.audited_run).
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import uuid
@@ -27,6 +35,8 @@ KEEP_SECONDS = 3600.0     # finished jobs stay this long
 MAX_LOG_LINES = 5000      # a runaway log is cut at the top, never grows unbounded
 
 JobFn = Callable[[Callable[[str], None], threading.Event], Dict[str, Any]]
+
+logger = logging.getLogger("dlp_check.jobs")
 
 
 @dataclass
@@ -45,6 +55,11 @@ class Job:
     artifact: Optional[Tuple[str, str, bytes]] = None
     cancel: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Who started it (the start endpoint's actor), when known.
+    actor: Optional[str] = None
+    # What the run inside reported for the audit entry (note()): tenant,
+    # plan_hash, counts, activation, stopped.
+    audit: Dict[str, Any] = field(default_factory=dict)
 
     def log(self, line: str) -> None:
         with self.lock:
@@ -58,19 +73,54 @@ class Job:
 
 _jobs: Dict[str, Job] = {}
 _registry_lock = threading.Lock()
+_here = threading.local()   # the job the current thread is running, if any
 
 
-def start(kind: str, fn: JobFn, *, label: str = "") -> Job:
+def current() -> Optional[Job]:
+    """The job this thread is running (inside its `fn`), or None."""
+    return getattr(_here, "job", None)
+
+
+def note(**fields: Any) -> bool:
+    """Add what the run knows (tenant, plan_hash, counts...) to the current
+    job's `job_finished` entry. False when this thread runs no job, so the
+    caller writes its own entry instead."""
+    job = current()
+    if job is None:
+        return False
+    with job.lock:
+        job.audit.update({k: v for k, v in fields.items() if v is not None})
+    return True
+
+
+def write_audit(event: str, **fields: Any) -> None:
+    """One audit entry through audit.record (redacted, owner-only, rotated).
+    A failure to write it is logged as an error, never raised: auditing
+    must not fail a deploy or a removal, least of all one already done."""
+    try:
+        import audit
+        if audit.record(event, **fields) is None:
+            logger.error("AUDIT WRITE FAILED: could not append the %s entry to %s", event, audit.path())
+    except Exception as e:  # noqa: BLE001
+        logger.error("AUDIT WRITE FAILED: the %s entry was not written: %s", event, f"{type(e).__name__}: {str(e)[:200]}")
+
+
+def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None) -> Job:
     """Run `fn(log, cancel)` in a daemon thread and return the job at once.
     `fn` returns the result dict; an exception becomes status `failed`
     with the message. A `cancel` set before `fn` returns is reported as
-    `cancelled` when the function honoured it (its result says `stopped`)."""
+    `cancelled` when the function honoured it (its result says `stopped`).
+    `actor` is who asked for the job, for its audit entry. That entry is
+    written before the final status is published, so a poller that sees
+    the job end also finds it in the audit log."""
     prune()
-    job = Job(id=uuid.uuid4().hex[:12], kind=kind, label=label)
+    job = Job(id=uuid.uuid4().hex[:12], kind=kind, label=label, actor=actor or None)
     with _registry_lock:
         _jobs[job.id] = job
 
     def _run() -> None:
+        final = FAILED
+        _here.job = job
         try:
             result = fn(job.log, job.cancel)
             with job.lock:
@@ -79,17 +129,49 @@ def start(kind: str, fn: JobFn, *, label: str = "") -> Job:
                 artifact = job.result.pop("artifact", None)
                 if isinstance(artifact, tuple) and len(artifact) == 3:
                     job.artifact = artifact
-                job.status = CANCELLED if (job.cancel.is_set() and (job.result or {}).get("stopped")) else DONE
+            final = CANCELLED if (job.cancel.is_set() and (job.result or {}).get("stopped")) else DONE
         except Exception as e:  # noqa: BLE001 — the job reports, never crashes the server
             with job.lock:
                 job.error = f"{type(e).__name__}: {str(e)[:300]}"
-                job.status = FAILED
             job.log(f"The run stopped with an error: {job.error}")
         finally:
+            _here.job = None
             job.finished = time.time()
+            _audit_finished(job, final)
+            with job.lock:
+                job.status = final
 
     threading.Thread(target=_run, name=f"job-{kind}-{job.id}", daemon=True).start()
     return job
+
+
+_NO_WRITES = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0, "failed": 0, "unchanged": 0}
+
+
+def _audit_finished(job: Job, final: str) -> None:
+    """The job's one `job_finished` audit entry. Counts, tenant, plan and
+    activation come from the run inside (note()); a job whose run said
+    nothing (a Terraform hand-off writes nothing to the tenant) reports
+    zero writes and the tenant its result names."""
+    try:
+        with job.lock:
+            info = dict(job.audit)
+            result = dict(job.result or {})
+        stopped = info.pop("stopped", None) or result.get("stopped")
+        error = job.error or info.pop("error", None)
+        for k in ("error", "cancelled"):   # the job's own ending decides these
+            info.pop(k, None)
+        write_audit(
+            "job_finished", job_id=job.id, kind=job.kind, label=job.label, actor=job.actor,
+            tenant=info.pop("tenant", None) or result.get("tenant_label") or None,
+            plan_hash=info.pop("plan_hash", None) or result.get("plan_hash") or None,
+            status=final, result_status=info.pop("result_status", None) or result.get("status"),
+            counts=info.pop("counts", None) or dict(_NO_WRITES), activation=info.pop("activation", None),
+            cancelled=final == CANCELLED, cancel_requested=job.cancel.is_set(),
+            stopped=str(stopped)[:200] if stopped else None, error=error,
+            duration_seconds=round((job.finished or time.time()) - job.started, 1), **info)
+    except Exception as e:  # noqa: BLE001 — the audit entry never breaks the job's ending
+        logger.error("AUDIT WRITE FAILED: job %s: %s", job.id, f"{type(e).__name__}: {str(e)[:200]}")
 
 
 def get(job_id: str) -> Optional[Job]:
