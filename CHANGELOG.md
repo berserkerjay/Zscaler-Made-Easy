@@ -7,6 +7,13 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Fresh container install: one set of steps for Windows, Mac and Linux
+- **What you asked for.** "What do I type to pull down the docker image and load it for a fresh install like I have never done it before", and "the instructions should account for a fresh install of a container on mac windows or linux".
+- **INSTALL.md, *Run it in a container instead*.** Opens with a short copy-paste version for each system and says plainly that there is no image to pull: Docker builds it from the code. Step 2 now clones with git on each system (with the GitHub sign-in each one asks for) instead of a ZIP, because the update script only works in a git clone. Step 3 builds with the update script (`-Force` / `--force`), which stamps the build commit so the update notice works from day one, and then `docker logs dlp-check` gives the token. Stop, start and *start over from scratch* (`docker compose down -v`, with the warning that it deletes saved data) are spelled out.
+- **README.md, *Quick start (container)*.** The same commands for Windows and for Mac or Linux. Plus the Docker-only build.
+- **Docker commands only, no git.** You asked: "I should be able to use the docker command line and put the command in there to download the files from GH and install". New section *Install with Docker commands only*: Docker fetches the private repository itself (`docker build … "https://github.com/berserkerjay/DLP-Check.git#main"`, with a read-only GitHub token passed as a build secret, so it never lands in the image or the shell history), then the same `docker volume create` and `docker run` as the by-hand section.
+- **Dockerfile: TLS-inspection certificates for a build from GitHub.** A build from the URL has no local `certs/` folder, so the Zscaler root certificate had nowhere to go and pip failed with `CERTIFICATE_VERIFY_FAILED`. The certificates now come from a `certs` build stage that is the `certs/` folder by default and any folder with `--build-context certs=<folder>`. Builds from a clone behave as before.
+
 ### Every deploy and delete shows the rate-limit check in its popup, and the app stops crushing ZIA's read limit itself
 - **What you asked for.**
   - "The popup warning didn't tell me my API plan and success rate, and my sarcastic comment if I was crushing Zscaler's API rates."
