@@ -13,7 +13,10 @@ Based on Zscaler best practices for securing GenAI:
   - Zscaler AI/ML Applications URL category
 """
 
-from dlp_assessment_full_auto import R, _ls
+import re
+
+from dlp_assessment_full_auto import (R, _ls, _ssl_action, _ssl_enabled, _SSL_INSPECT, _SSL_DNI, _fv, _names, _enabled, _truthy,
+                                      GENAI_CATS, genai_category_ids, targets_genai)
 
 # Known GenAI/LLM/AI vendor indicators (expand as new tools emerge)
 GENAI_KEYWORDS = [
@@ -28,11 +31,13 @@ GENAI_KEYWORDS = [
     "dall-e", "midjourney", "stable diffusion",
     "huggingface", "hugging face",
     "mistral", "llama", "meta ai",
-    "grok", "x.ai",
+    "grok", "x.ai", "deepseek",
     "ollama",
     "jasper", "writesonic", "copy.ai",
     "notion ai", "notionai",
 ]
+# Whole words only: a bare "ai" substring matches Email, Webmail, Domain, Maintenance.
+_GENAI_RE = re.compile(r"\b(" + "|".join(re.escape(k.strip()) for k in GENAI_KEYWORDS) + r")\b", re.I)
 
 # Sensitive data types that should not leak to GenAI
 SENSITIVE_PATTERNS = [
@@ -56,14 +61,26 @@ def _has_any(text, keywords):
     return any(k in t for k in keywords)
 
 
-def _genai_rules(rules, field="name"):
-    """Return rules whose name/description mentions GenAI/AI keywords."""
+def _genai_rules(rules, field="name", ids=None):
+    """Rules that target GenAI by what they apply to: a GenAI URL category
+    (AI_ML_APPS, GENERAL_AI_ML, or a custom category named for AI), a Cloud
+    App Control rule of type AI_ML, or an AI cloud application. The rule
+    name and description are a fallback, matched on whole words."""
+    ids = ids or GENAI_CATS
     out = []
     for r in rules:
+        if not isinstance(r, dict):
+            continue
+        apps = " ".join(n.replace("_", " ") for n in _names(_fv(r, "cloudApplications")))
         text = str(r.get(field, "")) + " " + str(r.get("description", ""))
-        if _has_any(text, GENAI_KEYWORDS):
+        if targets_genai(r, ids) or str(_fv(r, "type") or "").upper() == "AI_ML" or _GENAI_RE.search(apps) or _GENAI_RE.search(text):
             out.append(r)
     return out
+
+
+def _rules(cl, path):
+    d, c = cl.get(path)
+    return [r for r in (_ls(d) if c in (200, 204) else []) if isinstance(r, dict)]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -72,47 +89,42 @@ def _genai_rules(rules, field="name"):
 
 def ai_1(cl):
     """GenAI URL categories are being used"""
-    d, c = cl.get("/zia/urlCategories")
-    cats = _ls(d) if c in (200, 204) else []
-    ai_cats = []
-    for cat in cats:
-        name = (cat.get("configuredName") or cat.get("val") or "")
-        if _has_any(name, ["ai", "ml", "genai", "chatgpt", "copilot", "llm", "artificial"]):
-            ai_cats.append(cat)
-    if ai_cats:
-        names = ", ".join(c.get("configuredName", c.get("val", "?")) for c in ai_cats[:5])
-        return R(R.PASS, f"Found {len(ai_cats)} AI/ML URL categor(ies): {names}. Best Practice: Zscaler's 'AI and ML Applications' URL category provides a foundation for GenAI governance. Periodically review which AI apps you allow/block — this list grew 3,464% YoY per ThreatLabz 2025.")
-    return R(R.FAIL, "No AI/ML URL categories configured. Best Practice: Zscaler provides the 'AI and ML Applications' URL category covering ChatGPT, Claude, Gemini, Copilot, and 500+ other AI tools. Enable this category as your first line of defense for GenAI governance. Ref: Zscaler Securing Generative AI guide.")
+    ids = genai_category_ids(cl)
+    used = {}
+    for path, lbl in (("/zia/urlFilteringRules", "URL Filtering"), ("/zia/sslInspectionRules", "SSL Inspection"), ("/zia/webDlpRules", "web DLP")):
+        used[lbl] = [r for r in _rules(cl, path) if _enabled(r) and targets_genai(r, ids)]
+    if any(used.values()):
+        parts = ", ".join(f"{len(v)} {k}" for k, v in used.items())
+        return R(R.PASS, f"The AI URL categories are used by enabled rules ({parts}). Zscaler's 'Generative AI and ML Applications' and 'General AI and ML Applications' categories are the foundation for GenAI governance; review which AI apps you allow or block periodically. Ref: https://help.zscaler.com/zia/about-url-categories")
+    return R(R.FAIL, "No enabled URL Filtering, SSL Inspection or DLP rule uses the AI URL categories. Every tenant has the predefined 'Generative AI and ML Applications' (formerly 'AI and ML Applications') and 'General AI and ML Applications' categories, covering ChatGPT, Claude, Gemini, Copilot and other AI tools; they protect only once a rule uses them. Use them in URL Filtering, SSL Inspection and DLP rules as the first line of GenAI governance. Ref: https://help.zscaler.com/zia/about-url-categories")
 
 
 def ai_2(cl):
     """AI/ML traffic has URL filtering rules"""
-    d, c = cl.get("/zia/urlFilteringRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
+    rules = _rules(cl, "/zia/urlFilteringRules")
+    ai_rules = _genai_rules(rules, ids=genai_category_ids(cl))
     enabled = [r for r in ai_rules if (r.get("state") or "").upper() == "ENABLED"]
-    if not ai_rules:
-        return R(R.WARN, "No URL filtering rules target GenAI by name. Best Practice: Create a dedicated URL filtering rule for AI/ML Applications. Zscaler recommends starting with Block or Caution, then selectively allowing sanctioned AI tools for specific user groups. Ref: Zscaler Securing Generative AI.")
+    if not enabled:
+        return R(R.WARN, "No enabled URL filtering rule targets GenAI (the AI URL categories or AI apps). Best Practice: Create a dedicated URL filtering rule for the Generative AI and ML Applications category. Zscaler recommends starting with Block or Caution, then selectively allowing sanctioned AI tools for specific user groups. Ref: Zscaler Securing Generative AI.")
     return R(R.PASS, f"{len(enabled)} active URL filter rule(s) target GenAI.")
 
 
 def ai_3(cl):
     """Shadow AI detection via Cloud App Control"""
-    d, c = cl.get("/zia/cloudApplicationRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
+    rules = _rules(cl, "/zia/cloudApplicationRules")
+    # The client lists Cloud App Control rules per type (/webApplicationRules/AI_ML) and tags each with it.
+    ai_rules = [r for r in rules if str(_fv(r, "type") or "").upper() == "AI_ML" and str(r.get("state") or "ENABLED").upper() != "DISABLED" and not _truthy(_fv(r, "predefined"))]
     if ai_rules:
-        return R(R.PASS, f"{len(ai_rules)} Cloud App Control rule(s) target AI apps. This enables granular actions (prompt/upload/download control) on sanctioned vs unsanctioned AI tools.")
-    return R(R.WARN, "No Cloud App Control rules for AI apps. Best Practice: Cloud App Control enables granular inspection of GenAI activities (prompt submission, file upload, download, share). Without CAC, you can only block the URL, not the specific activity. Create CAC rules using rule_type='AI_ML' to govern each AI tool individually.")
+        return R(R.PASS, f"{len(ai_rules)} AI & ML Applications Cloud App Control rule(s). This enables granular actions (prompt/upload/download control) on sanctioned vs unsanctioned AI tools.")
+    return R(R.WARN, "No Cloud App Control rules for AI apps. Best Practice: Cloud App Control enables granular inspection of GenAI activities (prompt submission, file upload, download, share). Without CAC, you can only block the URL, not the specific activity. Create CAC rules using rule_type='AI_ML' to govern each AI tool individually. Ref: https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control")
 
 
 def ai_4(cl):
-    """Browser Isolation available for risky AI tools"""
-    d, c = cl.get("/zia/browserIsolation/profiles")
-    profiles = _ls(d) if c in (200, 204) else []
+    """Zero Trust Browser (formerly Browser Isolation) available for risky AI tools"""
+    profiles = _rules(cl, "/zia/browserIsolation/profiles")
     if profiles:
-        return R(R.PASS, f"{len(profiles)} Browser Isolation profile(s) available. Best Practice: Route unsanctioned AI tools through Browser Isolation with upload/download/clipboard disabled — users can still use the tools but can't exfiltrate sensitive data. This is Zscaler's recommended 'coach, don't block' approach.")
-    return R(R.WARN, "No Browser Isolation profiles. Best Practice: Browser Isolation is the ideal middle-ground for AI tools — it allows access without enabling data exfiltration. Configure profiles with clipboard/download/upload restrictions for AI categories.")
+        return R(R.PASS, f"{len(profiles)} isolation profile(s) available (Zero Trust Browser, formerly Browser Isolation). Best Practice: Route unsanctioned AI tools through isolation with upload/download/clipboard disabled — users can still use the tools but can't exfiltrate sensitive data. This is Zscaler's recommended 'coach, don't block' approach.")
+    return R(R.WARN, "No isolation profiles (Zero Trust Browser, formerly Browser Isolation). Best Practice: isolation is the middle ground for AI tools — it allows access without enabling data exfiltration. Configure isolation profiles with clipboard/download/upload restrictions for AI categories. Ref: https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -123,24 +135,31 @@ def ai_5(cl):
     """SSL inspection enabled for AI traffic"""
     d, c = cl.get("/zia/sslInspectionRules")
     rules = _ls(d) if c in (200, 204) else []
-    inspect_rules = [r for r in rules if (r.get("action") or "").upper() in ("INSPECT", "SSL_INSPECT")]
+    inspect_rules = [r for r in rules if _ssl_enabled(r) and _ssl_action(r) in _SSL_INSPECT]
     if not inspect_rules:
         return R(R.FAIL, "No SSL inspection rules. Best Practice: SSL inspection is MANDATORY for GenAI governance. Without it, Zscaler sees only the domain (chat.openai.com) but cannot inspect prompts, uploads, or DLP content. All AI traffic is HTTPS — you need SSL inspection to see inside.")
     return R(R.PASS, f"{len(inspect_rules)} SSL inspect rule(s) enabled. GenAI prompts and uploads can be inspected for DLP violations.")
+
+
+_AI_EXEMPT_WORDS = ["chatgpt", "openai", "claude", "anthropic", "gemini", "copilot", "huggingface", "perplexity", "deepseek", "mistral", "grok"]
 
 
 def ai_6(cl):
     """AI domains are NOT in SSL Do-Not-Inspect lists"""
     d, c = cl.get("/zia/sslInspectionRules")
     rules = _ls(d) if c in (200, 204) else []
-    dni = [r for r in rules if (r.get("action") or "").upper() in ("DO_NOT_INSPECT", "SSL_DO_NOT_INSPECT", "EXEMPT")]
+    dni = [r for r in rules if _ssl_enabled(r) and _ssl_action(r) in _SSL_DNI]
     risky = []
     for r in dni:
+        # A category exemption is stored as its id (AI_ML_APPS), which no keyword matches.
+        if any(n in GENAI_CATS for n in _names(_fv(r, "urlCategories"))):
+            risky.append(r.get("name", "?"))
+            continue
         text = str(r).lower()
-        if any(k in text for k in ["chatgpt", "openai", "claude", "anthropic", "gemini", "copilot", "huggingface"]):
+        if any(k in text for k in _AI_EXEMPT_WORDS):
             risky.append(r.get("name", "?"))
     if risky:
-        return R(R.FAIL, f"{len(risky)} SSL DNI rule(s) exempt AI domains: {', '.join(risky[:3])}. Best Practice: NEVER exempt GenAI domains from SSL inspection — this creates a blind spot where sensitive data can flow unchecked. Remove these exemptions immediately.")
+        return R(R.FAIL, f"{len(risky)} SSL DNI rule(s) exempt AI domains or the AI categories: {', '.join(risky[:3])}. Best Practice: NEVER exempt GenAI from SSL inspection — for the granular actions to work, SSL/TLS inspection must be enabled for the application, and uninspected prompts and uploads bypass DLP. Remove these exemptions. Ref: https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control")
     return R(R.PASS, "No AI domains exempted from SSL inspection.")
 
 
@@ -150,24 +169,33 @@ def ai_6(cl):
 
 def ai_7(cl):
     """DLP rules target AI destinations"""
-    d, c = cl.get("/zia/webDlpRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
+    rules = _rules(cl, "/zia/webDlpRules")
+    ai_rules = _genai_rules(rules, ids=genai_category_ids(cl))
     enabled = [r for r in ai_rules if (r.get("state") or "").upper() == "ENABLED"]
     if not ai_rules:
-        return R(R.FAIL, "No DLP rules target GenAI by name. Best Practice: Create dedicated DLP rules with URL category 'AI and ML Applications' as the destination. Scan prompts and file uploads for PII, source code, credentials, and confidential data before they reach LLMs.")
+        return R(R.FAIL, "No DLP rules target GenAI (the AI URL categories or AI apps). Best Practice: Create dedicated DLP rules with URL category 'Generative AI and ML Applications' as the destination. Scan prompts and file uploads for PII, source code, credentials, and confidential data before they reach LLMs.")
     return R(R.PASS, f"{len(enabled)} active DLP rule(s) target GenAI destinations.")
 
 
 def ai_8(cl):
-    """Prompt/Confirm user coaching on AI tools"""
-    d, c = cl.get("/zia/webDlpRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
-    confirm = [r for r in ai_rules if (r.get("action") or "").upper() in ("CONFIRM", "PROMPT", "ALLOW_WITH_CONFIRM", "CAUTION")]
-    if confirm:
-        return R(R.PASS, f"{len(confirm)} AI DLP rule(s) use Prompt/Confirm actions — users are coached before risky AI interactions. Aligns with Zscaler 'coach, don't block' best practice.")
-    return R(R.WARN, "No Prompt/Confirm actions on AI DLP rules. Best Practice: Instead of hard-blocking AI tools (which drives users to personal devices), use Prompt/Confirm. This displays a warning message explaining AI data risks and requires user acknowledgment before access. Significantly reduces shadow AI usage.")
+    """User coaching on AI tools (Caution / Confirm)
+
+    Coaching for GenAI is the Caution action (a browser EUN) on the AI & ML
+    Applications Cloud App Control rule (CAUTION_AI_ML_WEB_USE) and on URL
+    Filtering rules for the AI categories; web DLP Confirm is a secondary
+    signal (web DLP actions are ANY, NONE, BLOCK, CONFIRM, ALLOW,
+    ICAP_RESPONSE — terraform zia_dlp_web_rules)."""
+    ids = genai_category_ids(cl)
+    cac = [r for r in _rules(cl, "/zia/cloudApplicationRules") if str(_fv(r, "type") or "").upper() == "AI_ML"
+           and str(r.get("state") or "ENABLED").upper() != "DISABLED" and any("CAUTION" in str(a).upper() for a in (_fv(r, "actions") or []))]
+    url = [r for r in _rules(cl, "/zia/urlFilteringRules") if _enabled(r) and str(_fv(r, "action") or "").upper() == "CAUTION" and targets_genai(r, ids)]
+    dlp = [r for r in _genai_rules(_rules(cl, "/zia/webDlpRules"), ids=ids) if _enabled(r)
+           and str((r.get("action") or {}).get("type") if isinstance(r.get("action"), dict) else r.get("action") or "").upper() == "CONFIRM"]
+    if cac or url:
+        return R(R.PASS, f"Users are coached before using AI tools: {len(cac)} AI & ML Applications Cloud App Control rule(s) and {len(url)} URL Filtering rule(s) use Caution" + (f", and {len(dlp)} web DLP rule(s) on AI destinations use Confirm." if dlp else "."))
+    if dlp:
+        return R(R.PASS, f"{len(dlp)} web DLP rule(s) on AI destinations use Confirm, so users justify sensitive uploads. Consider also the Caution action on the AI & ML Applications Cloud App Control rule or on URL Filtering rules for the AI categories.")
+    return R(R.WARN, "No Caution or Confirm coaching on AI tools. Best Practice: Instead of hard-blocking AI tools (which drives users to personal devices), use the Caution action (browser EUN) on the AI & ML Applications Cloud App Control rule or on URL Filtering rules for the AI categories; it explains the AI data risks and asks the user to acknowledge before access. Ref: https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control")
 
 
 def ai_9(cl):
@@ -255,23 +283,30 @@ def ai_13(cl):
 # ═══════════════════════════════════════════════════════════════════════
 
 def ai_14(cl):
-    """Copilot oversharing — tenant restriction awareness"""
-    d, c = cl.get("/zia/tenancyRestrictionProfile")
-    profiles = _ls(d) if c in (200, 204) else []
-    ms_profiles = []
-    for p in profiles:
-        name = (p.get("name") or "").lower()
-        if any(k in name for k in ["microsoft", "m365", "o365", "office", "copilot", "azure"]):
-            ms_profiles.append(p)
-    if ms_profiles:
-        return R(R.PASS, f"{len(ms_profiles)} Microsoft tenancy restriction profile(s). Prevents users from accessing personal Copilot/M365 instances from corporate devices.")
-    return R(R.WARN, "No Microsoft tenancy restriction profiles. Best Practice: Prevent data exfiltration to personal Microsoft accounts via Copilot. Create tenancy restrictions listing only your corporate M365 tenant. Critical for Copilot governance per Zscaler Copilot Deployment Wizard guidance.")
+    """Copilot oversharing — tenant restriction awareness
+
+    Tenant profiles say which app they restrict in appType (zscaler-sdk-python
+    tenancy_restriction_profile: MSLOGINSERVICES, CHATGPT_AI …); the name is
+    free text. A ChatGPT tenant profile works only when attached
+    (tenancyProfileIds) to an AI & ML Applications Cloud App Control rule."""
+    profiles = _rules(cl, "/zia/tenancyRestrictionProfile")
+    def app(p): return str(_fv(p, "appType") or "").upper()
+    ms = [p for p in profiles if app(p) == "MSLOGINSERVICES"]
+    chat = [p for p in profiles if app(p) == "CHATGPT_AI"]
+    attached = {n for r in _rules(cl, "/zia/cloudApplicationRules") if str(_fv(r, "type") or "").upper() == "AI_ML" and _enabled(r)
+                for n in _names(_fv(r, "tenancyProfileIds"))}
+    chat_on = [p for p in chat if str(p.get("id")).upper() in attached or str(p.get("name") or "").upper() in attached]
+    note = (f" ChatGPT tenant profile(s): {len(chat)}, {len(chat_on)} attached to an AI & ML Applications rule, so users reach only the corporate ChatGPT workspace." if chat
+            else " No ChatGPT tenant profile (CHATGPT_AI): attach one to the AI & ML Applications rule to allow only the corporate ChatGPT workspace.")
+    ref = " Ref: https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control"
+    if ms:
+        return R(R.PASS, f"{len(ms)} Microsoft Login Services tenant profile(s) (appType MSLOGINSERVICES). Prevents users from accessing personal Copilot/M365 instances from corporate devices." + note)
+    return R(R.WARN, "No Microsoft Login Services tenant profile (appType MSLOGINSERVICES). Best Practice: Prevent data exfiltration to personal Microsoft accounts via Copilot. Create a tenant profile listing only your corporate M365 tenant and attach it to the Cloud App Control rule." + note + ref)
 
 
 def ai_15(cl):
     """Copilot access control via Cloud App Control"""
-    d, c = cl.get("/zia/cloudApplicationRules")
-    rules = _ls(d) if c in (200, 204) else []
+    rules = _rules(cl, "/zia/cloudApplicationRules")
     copilot = []
     for r in rules:
         text = str(r).lower()
@@ -279,7 +314,7 @@ def ai_15(cl):
             copilot.append(r)
     if copilot:
         return R(R.PASS, f"{len(copilot)} Copilot-specific CAC rule(s). Enables granular controls on Copilot prompts and data access.")
-    return R(R.WARN, "No Copilot-specific Cloud App Control rules. Best Practice: Create a CAC rule specifically for Microsoft Copilot. Zscaler can detect Copilot prompts and inspect them for sensitive data. Without this, Copilot inherits broad Microsoft 365 policies that may not address AI-specific risks.")
+    return R(R.WARN, "No Copilot-specific Cloud App Control rules. Best Practice: Create an AI & ML Applications Cloud App Control rule for Microsoft Copilot (granular actions: Chatting, Deleting, Renaming, Sharing, Uploading). To inspect Copilot with DLP and capture its prompts, have Zscaler Support enable WebSocket inspection, then create a custom URL category for substrate.office.com and copilot.microsoft.com with an SSL/TLS Inspection rule above the OneClick rule. DLP inspection and prompt capture cover Microsoft Copilot Chat only, not Copilot embedded in Office apps. Ref: https://help.zscaler.com/zia/configuring-advanced-policy-settings")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -287,19 +322,25 @@ def ai_15(cl):
 # ═══════════════════════════════════════════════════════════════════════
 
 def ai_16(cl):
-    """NSS streaming captures GenAI events beyond 30 days"""
-    d, c = cl.get("/zia/nssFeeds")
-    feeds = _ls(d) if c in (200, 204) else []
-    if feeds:
-        return R(R.PASS, f"{len(feeds)} NSS feed(s) streaming. GenAI events retained in SIEM beyond the 30-day ZIA default.")
-    return R(R.FAIL, "No NSS feeds. Best Practice: Zscaler retains web logs for only 30 days by default. Given GenAI usage is a top data loss vector, stream logs to SIEM (Splunk/Sentinel/QRadar) for longer retention and threat hunting. Critical for incident investigations weeks/months later.")
+    """NSS streaming captures GenAI events beyond ZIA's six-month log window
+
+    GenAI prompts and transactions are in the web log, so only an enabled
+    WEBLOG (or MULTIFEEDLOG) Cloud NSS feed keeps them (SDK NssFeeds
+    nssLogType, feedStatus)."""
+    feeds = _rules(cl, "/zia/nssFeeds")
+    def typ(f): return str(_fv(f, "nssLogType") or "").upper()
+    web = [f for f in feeds if typ(f) in ("", "WEBLOG", "MULTIFEEDLOG") and str(_fv(f, "feedStatus") or "ENABLED").upper() == "ENABLED"]
+    if web:
+        return R(R.PASS, f"{len(web)} enabled web-log NSS feed(s) streaming. GenAI events retained in SIEM beyond ZIA's six-month log window.")
+    found = sorted({typ(f) or "unknown" for f in feeds})
+    lead = (f"No enabled web-log NSS feed (found: {', '.join(found)}; GenAI prompts and transactions are in the web log). " if feeds else "No NSS feeds. ")
+    return R(R.FAIL, lead + "Best Practice: ZIA keeps web logs for a rolling six months (180 days) and no longer (https://help.zscaler.com/zia/about-insights-logs). Given GenAI usage is a top data loss vector, stream web logs to SIEM (Splunk/Sentinel/QRadar) for longer retention and threat hunting. Critical for incident investigations weeks/months later.")
 
 
 def ai_17(cl):
     """Rule scoping for AI policies (user-aware)"""
-    d, c = cl.get("/zia/webDlpRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
+    rules = _rules(cl, "/zia/webDlpRules")
+    ai_rules = _genai_rules(rules, ids=genai_category_ids(cl))
     scoped = [r for r in ai_rules if r.get("departments") or r.get("groups") or r.get("users")]
     if not ai_rules:
         return R(R.INFO, "No GenAI DLP rules to assess for scoping.")
@@ -310,9 +351,8 @@ def ai_17(cl):
 
 def ai_18(cl):
     """File type control for AI uploads"""
-    d, c = cl.get("/zia/webDlpRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
+    rules = _rules(cl, "/zia/webDlpRules")
+    ai_rules = _genai_rules(rules, ids=genai_category_ids(cl))
     file_scoped = []
     for r in ai_rules:
         if r.get("fileTypes") or r.get("fileTypeCategories"):
@@ -325,35 +365,41 @@ def ai_18(cl):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# BROWSER ISOLATION FOR AI
+# ZERO TRUST BROWSER (FORMERLY BROWSER ISOLATION) FOR AI
 # ═══════════════════════════════════════════════════════════════════════
 
 def ai_19(cl):
-    """Browser Isolation with restricted controls for AI"""
-    d, c = cl.get("/zia/browserIsolation/profiles")
-    profiles = _ls(d) if c in (200, 204) else []
+    """Zero Trust Browser (formerly Browser Isolation) with restricted controls for AI"""
+    profiles = _rules(cl, "/zia/browserIsolation/profiles")
     restricted = []
     for p in profiles:
         if p.get("uploadControl") or p.get("downloadControl") or p.get("clipboardControl"):
             restricted.append(p)
     if not profiles:
-        return R(R.WARN, "No Browser Isolation profiles. Best Practice: For uncategorized/emerging AI tools, Browser Isolation with upload/download/clipboard disabled is the gold standard — allows access, prevents exfiltration.")
+        return R(R.WARN, "No isolation profiles (Zero Trust Browser, formerly Browser Isolation). Best Practice: For uncategorized/emerging AI tools, isolation with upload/download/clipboard disabled is the gold standard — allows access, prevents exfiltration.")
     if restricted:
-        return R(R.PASS, f"{len(restricted)}/{len(profiles)} BI profile(s) have restricted controls (upload/download/clipboard). Ideal for AI tool access.")
-    return R(R.WARN, f"{len(profiles)} Browser Isolation profile(s) exist but none restrict upload/download/clipboard. Best Practice: Create a dedicated BI profile for AI tools with all data egress disabled.")
+        return R(R.PASS, f"{len(restricted)}/{len(profiles)} isolation profile(s) have restricted controls (upload/download/clipboard). Ideal for AI tool access.")
+    return R(R.WARN, f"{len(profiles)} isolation profile(s) exist (Zero Trust Browser) but none restrict upload/download/clipboard. Best Practice: Create a dedicated isolation profile for AI tools with all data egress disabled.")
 
 
 def ai_20(cl):
-    """Device posture gates AI access"""
-    d, c = cl.get("/zia/urlFilteringRules")
-    rules = _ls(d) if c in (200, 204) else []
-    ai_rules = _genai_rules(rules)
-    posture_gated = [r for r in ai_rules if r.get("devicePostureProfiles") or r.get("deviceTrustLevels")]
-    if not ai_rules:
-        return R(R.INFO, "No GenAI URL rules to check for device posture.")
+    """Device posture gates AI access
+
+    URL Filtering rules (and AI & ML Cloud App Control rules) gate on
+    deviceTrustLevels (ANY, UNKNOWN_DEVICETRUSTLEVEL, LOW_TRUST,
+    MEDIUM_TRUST, HIGH_TRUST — terraform zia_url_filtering_rules); a rule
+    that lists ANY or the unknown level applies to all traffic."""
+    ids = genai_category_ids(cl)
+    rules = _genai_rules(_rules(cl, "/zia/urlFilteringRules"), ids=ids) + [r for r in _rules(cl, "/zia/cloudApplicationRules") if str(_fv(r, "type") or "").upper() == "AI_ML" and _enabled(r)]
+    def gated(r):
+        lv = {str(x).upper() for x in (_fv(r, "deviceTrustLevels") or [])}
+        return bool(lv) and not lv & {"ANY", "UNKNOWN_DEVICETRUSTLEVEL"}
+    posture_gated = [r for r in rules if gated(r)]
+    if not rules:
+        return R(R.INFO, "No GenAI URL or AI & ML Cloud App Control rules to check for device posture.")
     if posture_gated:
-        return R(R.PASS, f"{len(posture_gated)} AI rule(s) gated by device posture. Only compliant devices can access AI tools.")
-    return R(R.WARN, "AI access not gated by device posture. Best Practice: Only allow AI tool access from managed, compliant devices. Link AI URL rules to Device Posture Profiles that verify disk encryption, OS version, EDR running, etc.")
+        return R(R.PASS, f"{len(posture_gated)} AI rule(s) gated by device trust level. Only trusted devices can access AI tools.")
+    return R(R.WARN, "AI access not gated by device posture. Best Practice: Only allow AI tool access from managed, compliant devices. Set device trust levels (from Client Connector posture) on the AI URL Filtering and AI & ML Cloud App Control rules, leaving out Unknown, which applies to all traffic.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -365,7 +411,7 @@ GENAI_REG = [
     ("AI.1", "GenAI — Discovery", "AI/ML URL categories in use", ai_1),
     ("AI.2", "GenAI — Discovery", "URL filter rules target GenAI", ai_2),
     ("AI.3", "GenAI — Discovery", "Cloud App Control for AI", ai_3),
-    ("AI.4", "GenAI — Discovery", "Browser Isolation availability", ai_4),
+    ("AI.4", "GenAI — Discovery", "Zero Trust Browser (formerly Browser Isolation) availability", ai_4),
 
     # SSL Inspection
     ("AI.5", "GenAI — SSL Inspection", "SSL inspection enabled", ai_5),
@@ -373,7 +419,7 @@ GENAI_REG = [
 
     # Prompt & Upload Governance
     ("AI.7", "GenAI — Prompt Governance", "DLP rules target AI destinations", ai_7),
-    ("AI.8", "GenAI — Prompt Governance", "User coaching (Prompt/Confirm)", ai_8),
+    ("AI.8", "GenAI — Prompt Governance", "User coaching (Caution/Confirm)", ai_8),
     ("AI.9", "GenAI — Prompt Governance", "Source code exfiltration rules", ai_9),
     ("AI.10", "GenAI — Prompt Governance", "PII/PHI/PCI on AI destinations", ai_10),
     ("AI.11", "GenAI — Prompt Governance", "Credentials & secrets dictionaries", ai_11),
@@ -392,6 +438,6 @@ GENAI_REG = [
     ("AI.18", "GenAI — Monitoring", "File type scoping on AI rules", ai_18),
 
     # Browser Isolation & Posture
-    ("AI.19", "GenAI — Isolation & Posture", "BI with restricted controls", ai_19),
+    ("AI.19", "GenAI — Isolation & Posture", "Zero Trust Browser with restricted controls", ai_19),
     ("AI.20", "GenAI — Isolation & Posture", "Device posture gates AI access", ai_20),
 ]

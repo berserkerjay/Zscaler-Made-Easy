@@ -133,6 +133,9 @@ def load_pack_metadata(pack_dir: str) -> Dict[str, Any]:
         ch = str(p.get("channel") or "web").strip().lower()
         channels[ch] = channels.get(ch, 0) + 1 + len(p.get("sub_rules") or [])
     meta["channels"] = channels
+    # How the whole pack measures against ZIA's rate limits (a fresh hour).
+    import zia_rate
+    meta["rate"] = zia_rate.pack_note(meta)
     return meta
 
 

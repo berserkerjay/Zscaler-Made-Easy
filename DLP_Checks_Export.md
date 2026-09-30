@@ -1,6 +1,6 @@
 # DLP Assessment Checks Reference
 
-**Total: 170 checks** | Generated: 2026-04-13
+**Total: 172 checks** | Generated: 2026-04-13
 
 ---
 
@@ -101,6 +101,8 @@
 - **4.12** — ECH handling
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
 - **4.13** — TLS 1.3
+  - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
+- **4.14** — Decrypt rule hardening
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
 
 ## 5 — Endpoint DLP
@@ -278,7 +280,7 @@
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
 - **12.10** — SIEM correlation
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
-- **12.11** — 30-day retention
+- **12.11** — Log retention beyond 180 days (NSS export)
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
 - **12.12** — Evidence storage
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
@@ -355,6 +357,10 @@
 - **B.15** — Workflow Automation
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
 - **B.16** — User coaching
+  - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
+
+## Ch.D — Email DLP
+- **D.9** — Images in email are scanned
   - Frameworks: CIS, GDPR, HIPAA, ISO_27001, NIST_800_171, NIST_800_53, PCI_DSS, SOC_2
 
 ## Ch.E — GenAI

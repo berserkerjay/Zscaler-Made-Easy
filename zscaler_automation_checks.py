@@ -231,10 +231,11 @@ def auto_tf_5(cl):
         return R(R.INFO, "No rules visible to check for name uniqueness.")
     if duplicates:
         details = "; ".join(f"{k}: {len(v)} dup(s)" for k, v in duplicates.items())
-        return R(R.WARN,
-                 f"Duplicate rule names detected ({details}). "
-                 f"zscaler-terraformer uses name for resource addresses "
-                 f"— duplicates cause import collisions. "
+        return R(R.INFO,
+                 f"Duplicate rule names detected ({details}). Duplicate names "
+                 f"make rules hard to tell apart in plans and reviews "
+                 f"(zscaler-terraformer names resources <type>_<id>, so "
+                 f"duplicates do not break import). "
                  f"Ref: https://github.com/zscaler/zscaler-terraformer")
     return R(R.PASS,
              f"All {total} rule names are unique within their rule types.")
@@ -263,23 +264,27 @@ def auto_ans_1(cl):
 
 
 def auto_ans_2(cl):
-    """Admin audit log retention ≥ 30 days (needed for compliance replay)"""
-    d, c = cl.get("/zia/auditlogEntryReport")
-    # The endpoint returns configuration info; we check for retention hints
-    if c != 200 or not isinstance(d, dict):
-        return R(R.INFO, "Retention not inspectable via this endpoint.")
-    ret = d.get("retentionDays") or d.get("retention_period") or d.get("retention")
-    if isinstance(ret, (int, float)) and ret < 30:
-        return R(R.WARN,
-                 f"Audit log retention is {ret} days. Automation best "
-                 f"practice is ≥ 30 days to cover most compliance review "
-                 f"cycles (SOC 2, PCI-DSS).")
-    if isinstance(ret, (int, float)):
-        return R(R.PASS,
-                 f"Audit log retention {ret} days — covers typical "
-                 f"compliance review windows.")
+    """Admin audit log kept beyond ZIA's 6 months (Admin Audit NSS feed)
+
+    GET /auditlogEntryReport returns only the status of an audit-log report
+    request (status, progressItemsComplete, progressEndTime, errorMessage —
+    zscaler-sdk-python audit_logs.get_status), not a retention setting, and
+    ZIA keeps audit logs for up to 6 months (fixed)."""
+    d, c = cl.get("/zia/nssFeeds")
+    feeds = [f for f in (_ls(d) if c in (200, 204) else []) if isinstance(f, dict)]
+    def fv(f, *k):
+        for n in k:
+            if f.get(n) is not None:
+                return f[n]
+        return None
+    aud = [f for f in feeds if str(fv(f, "nssLogType", "nss_log_type") or "").upper() == "ADMIN_AUDIT"
+           and str(fv(f, "feedStatus", "feed_status") or "ENABLED").upper() == "ENABLED"]
+    if aud:
+        return R(R.PASS, f"{len(aud)} enabled Admin Audit Cloud NSS feed(s): audit logs are kept in the SIEM beyond ZIA's 6 months.")
     return R(R.INFO,
-             "Retention value not exposed in this response shape.")
+             "ZIA keeps audit logs for up to 6 months (fixed). To keep them longer for compliance, "
+             "stream them with an Admin Audit Cloud NSS feed or export them regularly (audit log report API or download). "
+             "Ref: https://help.zscaler.com/zia/about-audit-logs")
 
 
 def auto_ans_3(cl):
@@ -356,9 +361,10 @@ def auto_iac_1(cl):
     if c != 200:
         return R(R.INFO, f"Admin roles endpoint returned HTTP {c}.")
     roles = _ls(d)
+    # Admin rank runs from 0 (high, the super admin) to 7 (low): https://help.zscaler.com/zia/understanding-admin-rank
     super_admins = [r for r in roles
                     if "super" in (r.get("name") or "").lower()
-                    or (r.get("rank") or 99) == 1]
+                    or r.get("rank") == 0]
     if len(roles) <= 2:
         return R(R.WARN,
                  f"Only {len(roles)} admin role(s). Least-privilege best "
@@ -451,7 +457,7 @@ AUTOMATION_REG = [
     ("AUTO-TF-05",  "Automation — Terraform",     "Rule names unique within type (terraformer)",   auto_tf_5),
 
     ("AUTO-ANS-01", "Automation — Ansible",       "Admin audit log accessible",                    auto_ans_1),
-    ("AUTO-ANS-02", "Automation — Ansible",       "Audit log retention ≥ 30 days",                 auto_ans_2),
+    ("AUTO-ANS-02", "Automation — Ansible",       "Admin audit log kept beyond ZIA's 6 months",    auto_ans_2),
     ("AUTO-ANS-03", "Automation — Ansible",       "Locations API reachable",                       auto_ans_3),
 
     ("AUTO-ZPA-01", "Automation — ZPA",           "ZPA customer_id configured",                    auto_zpa_1),

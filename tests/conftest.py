@@ -15,7 +15,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _no_backoff_sleep(monkeypatch):
+def _no_backoff_sleep(monkeypatch, tmp_path_factory):
     """The shared execution path backs off between retries of a transient
     refusal; tests never wait for that."""
     import pack_ops
@@ -24,6 +24,7 @@ def _no_backoff_sleep(monkeypatch):
     for bucket in zia_rate.DEFAULTS:   # ZIA's rate limits are off in tests (test_run_control turns them on with a fake clock)
         monkeypatch.setenv(f"DLP_CHECK_ZIA_LIMIT_{bucket.upper()}", "off")
     monkeypatch.setattr(zia_rate, "_sleep", lambda s: None)
+    monkeypatch.setenv("DLP_CHECK_ZIA_RATE_STATE", str(tmp_path_factory.mktemp("zia_rate") / "zia_rate.json"))
     zia_rate.reset()
 
 

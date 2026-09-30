@@ -120,7 +120,10 @@ class _Fixed:
 
 def test_malware_settings_are_read_from_the_blocked_flags():
     import zscaler_full_checks as fc
-    on = fc.sec_3(_Fixed({"/zia/cyberThreatProtection/malwareSettings": ({"trojanBlocked": True, "spywareBlocked": False}, 200)}))
+    # Zscaler recommends keeping every category blocked (the default), so one allowed category is a finding.
+    on = fc.sec_3(_Fixed({"/zia/cyberThreatProtection/malwareSettings": ({"trojanBlocked": True, "spywareBlocked": True}, 200)}))
+    part = fc.sec_3(_Fixed({"/zia/cyberThreatProtection/malwareSettings": ({"trojanBlocked": True, "spywareBlocked": False}, 200)}))
+    assert part.status == "REVIEW" and "spywareBlocked" in part.detail
     off = fc.sec_3(_Fixed({"/zia/cyberThreatProtection/malwareSettings": ({"trojanBlocked": False, "spywareBlocked": False}, 200)}))
     assert on.status == "PASS" and off.status != "PASS"
 

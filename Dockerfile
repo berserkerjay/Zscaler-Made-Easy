@@ -73,6 +73,7 @@ ENV ZSCALER_BIND_HOST=0.0.0.0 \
     ZSCALER_PORT=8000 \
     DLP_CHECK_PROFILES=/data/tenant_profiles.json \
     DLP_CHECK_DEPLOYMENTS=/data/deployments.json \
+    DLP_CHECK_ZIA_RATE_STATE=/data/zia_rate.json \
     DLP_CHECK_AUDIT=/data/audit.log \
     DLP_CHECK_UI_TOKEN_DIR=/data \
     DLP_CHECK_DIGESTS=/data/digests \

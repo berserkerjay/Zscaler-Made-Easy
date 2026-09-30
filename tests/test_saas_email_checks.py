@@ -41,7 +41,7 @@ def run(cl):
 
 def test_both_channels_are_scored_sections_in_the_assessment():
     secs = [r[1] for r in a.REG]
-    assert secs.count(se.SAAS) == 8 and secs.count(se.EMAIL) == 8
+    assert secs.count(se.SAAS) == 8 and secs.count(se.EMAIL) == 9
     assert secs.index(se.SAAS) > secs.index("Ch.B — Endpoint") and secs.index(se.EMAIL) < secs.index("Ch.E — GenAI")
     import channel_scope
     assert se.SAAS in channel_scope.CHANNEL_CHECKS["saas_casb"]["sections"]
@@ -60,13 +60,16 @@ def test_a_tenant_with_sharepoint_and_monitor_only_pack_rules():
     res = run(cl)
     st = {k: v.status for k, v in res.items()}
     assert st["C.1"] == "PASS" and "SMOES (SHAREPOINT)" in res["C.1"].detail
-    assert st["C.2"] == "PASS" and st["C.3"] == "PASS" and st["C.4"] == "PASS" and st["C.5"] == "PASS" and st["C.8"] == "PASS"
+    # The pack rules are disabled: they scan nothing yet, so coverage is only "by disabled rules" (C.6).
+    assert st["C.2"] == "PASS" and st["C.3"] == "REVIEW" and st["C.4"] == "REVIEW" and st["C.5"] == "INFO" and st["C.8"] == "REVIEW"
+    assert "disabled" in res["C.3"].detail and "disabled" in res["C.4"].detail and "disabled" in res["C.8"].detail
     assert st["C.6"] == "FAIL" and "disabled" in res["C.6"].detail
     assert st["C.7"] == "REVIEW"
     assert st["D.1"] == "FAIL" and "Exchange, Gmail or secure email gateway" in res["D.1"].detail and "requires one" in res["D.1"].detail
+    assert "Data Security > Email DLP > Email Tenants" in res["D.1"].detail and "SaaS Application Tenants" not in res["D.1"].detail
     assert st["D.2"] == "PASS" and st["D.3"] == "PASS" and st["D.4"] == "FAIL" and st["D.5"] == "REVIEW"
     assert st["D.6"] == "REVIEW" and "name no email tenant" in res["D.6"].detail
-    assert all(ep in ("/zia/casbTenant/lite", "/zia/casbDlpRules/all", "/zia/emailDlpRules") for ep, _ in cl.calls), "read-only GETs only"
+    assert all(ep in ("/zia/casbTenant/lite", "/zia/casbDlpRules/all", "/zia/emailDlpRules", "/zia/webDlpGlobalOptions") for ep, _ in cl.calls), "read-only GETs only"
     assert ("/zia/casbTenant/lite", {"activeOnly": "true", "appType": "EMAIL"}) in cl.calls
 
 
@@ -75,7 +78,8 @@ def test_an_exchange_tenant_is_recognised_and_scoped_rules_pass():
         ("/zia/casbTenant/lite", None): ([SP, EXO], 200),
         ("/zia/casbTenant/lite", "EMAIL"): ([EXO], 200),
         "/zia/casbDlpRules/all": ([_saas_rule(state="ENABLED", action="OFLCASB_DLP_QUARANTINE")], 200),
-        "/zia/emailDlpRules": ([_email_rule(state="ENABLED", action="BLOCK", email_tenants=[{"id": 22}], external_auditor_email="soc@corp.example")], 200),
+        "/zia/emailDlpRules": ([_email_rule(state="ENABLED", action="BLOCK", email_tenants=[{"id": 22}], external_auditor_email="soc@corp.example",
+                                            notification_template={"id": 3})], 200),
     })
     st = {k: v.status for k, v in run(cl).items()}
     assert st["D.1"] == "PASS" and st["D.4"] == "PASS" and st["D.5"] == "PASS" and st["D.6"] == "PASS" and st["D.7"] == "PASS"
@@ -95,5 +99,5 @@ def test_nothing_onboarded_and_not_licensed_are_said_plainly():
 def test_a_rule_without_engines_and_an_uncovered_app_fail():
     box = {"tenant_id": 33, "tenant_name": "Box", "saas_application": "BOX"}
     cl = FakeCl({("/zia/casbTenant/lite", None): ([SP, box], 200),
-                 "/zia/casbDlpRules/all": ([_saas_rule(dlp_engines=[])], 200)})
+                 "/zia/casbDlpRules/all": ([_saas_rule(dlp_engines=[], state="ENABLED")], 200)})
     assert se.c_c5(cl).status == "FAIL" and se.c_c3(cl).status == "FAIL" and "Box (BOX)" in se.c_c3(cl).detail

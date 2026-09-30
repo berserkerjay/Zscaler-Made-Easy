@@ -36,8 +36,10 @@ NETS = [{"id": 1, "networkName": "HQ", "dnsServers": ["10.1.1.1"], "dnsSearchDom
 FAILOPEN = {"enableFailOpen": 1, "enableWebSecOnTunnelFailure": 0, "captivePortalWebSecDisableMinutes": 30, "enableStrictEnforcementPrompt": 1}
 COMPANY = {"dlpEnabled": 0, "enableAntiTampering": 1, "slowRolloutZCC": 0, "enableGlobalZCCTelemetry": 1, "inactiveDeviceCleanup": 0}
 PRIVACY = {"collectUserInfo": 0, "collectMachineHostname": 1, "enablePacketCapture": 1, "restrictRemotePacketCapture": 0, "exportLogsForNonAdmin": 1}
-DEVICES = [{"id": i, "registrationState": "REGISTERED", "strictEnforcement": 1 if i < 7 else 0, "antiTamperingStatus": 1, "tunnelVersion": "2.0" if i else "1.0",
-            "zdpEnabled": 1, "agentVersion": "4.5.0.1" if i < 3 else ("4.4.0.1" if i < 5 else "4.1.0.1")} for i in range(10)]
+# Windows devices (type 3): 4.8 and 4.7 (the LTS) are supported, 4.1 is not.
+DEVICES = [{"id": i, "type": 3, "registrationState": "REGISTERED", "strictEnforcement": 1 if i < 7 else 0, "antiTamperingStatus": 1, "tunnelVersion": "2.0" if i else "1.0",
+            "zdpEnabled": 1, "agentVersion": "4.8.0.1" if i < 3 else ("4.7.0.1" if i < 5 else "4.1.0.1")} for i in range(10)]
+QUIC_BLOCK = [{"id": 9, "name": "Block QUIC", "state": "ENABLED", "order": 1, "action": "BLOCK_DROP", "nwServices": [{"id": 1, "name": "QUIC"}]}]
 TEMPLATES = [{"id": 1, "name": "Auditor", "tlsEnabled": True, "attachContent": False, "subject": "DLP ${RULENAME}", "htmlMessage": "<p>${USER} ${ENGINES}</p>", "plainTextMessage": "${USER}"},
              {"id": 2, "name": "Legacy", "tlsEnabled": False, "attachContent": True, "subject": "", "htmlMessage": "<p>match</p>", "plainTextMessage": ""}]
 RULES = [{"id": 1, "name": "Block-PCI", "state": "ENABLED", "action": "BLOCK", "notificationTemplate": {"id": 1}},
@@ -61,17 +63,21 @@ def test_flatten_reads_policy_extension_and_platform_codes():
 
 def test_profile_checks_name_the_profile_and_the_setting():
     cl = _cl()
-    r = ze.z_anti_tampering(cl); assert r.status == R.FAIL and "Contractors (macOS)" in r.detail and "best-practices-zscaler-client-connector-deployment" in r.detail
+    # Anti-tampering is a Windows setting: the macOS profile is not applicable, a Windows profile without it fails.
+    r = ze.z_anti_tampering(cl); assert r.status == R.PASS and "1 non-Windows profile(s) not applicable" in r.detail
+    win_bad = dict(BAD_PROFILE, device_type=3)
+    r = ze.z_anti_tampering(_cl(profiles=(GOOD_PROFILE, win_bad))); assert r.status == R.FAIL and "Contractors (Windows)" in r.detail and "best-practices-zscaler-client-connector-deployment" in r.detail
     r = ze.z_disable_passwords(cl); assert r.status == R.FAIL and "Contractors" in r.detail and "uninstall" in r.detail and "Corp-Win" not in r.detail.split(";")[0]
     r = ze.z_log_level(cl); assert r.status == R.WARN and "debug" in r.detail.lower()
-    r = ze.z_quic(cl); assert r.status == R.FAIL and "QUIC" in r.detail and "Contractors" in r.detail
+    # Windows and macOS (Z-Tunnel 2.0) need ZIA to block QUIC; Drop QUIC Traffic is an iOS/Android Z-Tunnel 1.0 setting.
+    r = ze.z_quic(cl); assert r.status == R.WARN and "Firewall Filtering" in r.detail and "managing-quic-protocol" in r.detail
     r = ze.z_fail_open(cl); assert r.status == R.FAIL and "tunnel failure" in r.detail and "30 minutes" in r.detail
     r = ze.z_revert(cl); assert r.status == R.FAIL and "revert" in r.detail
     r = ze.z_adapters(cl); assert r.status == R.WARN and "all adapters" in r.detail and "7 VPN gateway" in r.detail
     r = ze.z_disable_window(cl); assert r.status == R.FAIL and "480 minutes" in r.detail and "without a password" in r.detail
-    r = ze.z_bypass_hygiene(cl); assert r.status == R.FAIL and "0.0.0.0/0" in r.detail and "DNS exclusions" in r.detail
+    r = ze.z_bypass_hygiene(cl); assert r.status == R.FAIL and "0.0.0.0/0" in r.detail and "DNS exclusions" not in r.detail
     # A tenant with only the good profile passes every profile check.
-    good = _cl(profiles=(GOOD_PROFILE,), fwd=(FWD_GOOD,))
+    good = _cl(profiles=(GOOD_PROFILE,), fwd=(FWD_GOOD,), **{"/zia/firewallFilteringRules": QUIC_BLOCK})
     for fn in (ze.z_anti_tampering, ze.z_disable_passwords, ze.z_log_level, ze.z_quic, ze.z_revert, ze.z_adapters, ze.z_disable_window, ze.z_bypass_hygiene):
         assert fn(good).status == R.PASS, fn.__name__
 
