@@ -1942,6 +1942,8 @@ function reorderReset() {
 async function step3bDeleteAll(dryRun) {
   if (!dryRun) {
     if (!confirm('⚠ This will DELETE EVERY Inline Web DLP rule from the tenant.\n\nMake sure you have saved a JSON backup (Step 2 → 💾 Save JSON backup).\n\nThis cannot be undone via API. Continue?')) return;
+    const n = (typeof migrateRules !== 'undefined' && Array.isArray(migrateRules) && migrateRules.length) || 1;
+    if (window.zdRateGate && !(await window.zdRateGate({ delete: n, activate: 1 }, migrateCredBody(), `Delete ${n} Inline Web DLP rule(s).`))) return;
   }
   const body = migrateValidateCreds(); if (!body) return;
   // Clear any stale step3b entry before re-running — keeps the pending
@@ -2156,6 +2158,7 @@ async function step4Activate() {
     return;
   }
   if (!confirm('This will attempt to enable "Evaluate All DLP Rules" via API write.\n\nThe tool will try the exact field it detected first, then blind-probe candidate endpoints/fields. Every attempt is logged.\n\nContinue?')) return;
+  if (window.zdRateGate && !(await window.zdRateGate({ write: 1, activate: 1 }, migrateCredBody(), 'Enable "Evaluate All DLP Rules" (one write, or a few if the field has to be probed).'))) return;
   const body = migrateValidateCreds(); if (!body) return;
   body.dry_run = false;
   const el = document.getElementById('step4Result'); el.style.display = 'block';
@@ -2252,6 +2255,7 @@ async function step5Post(dryRun) {
   body.mode = document.getElementById('step5Mode').value || 'auto';
   if (!dryRun) {
     if (!confirm(`This will write ${sourceRules.length} rule(s) live to the tenant in mode="${body.mode}".\n\nDry-run first if you haven't. Continue?`)) return;
+    if (window.zdRateGate && !(await window.zdRateGate({ write: sourceRules.length, activate: 1 }, migrateCredBody(), `Write ${sourceRules.length} rule(s) to the tenant.`))) return;
   }
   const el = document.getElementById('step5Result'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building post plan (dry-run)...' : 'Posting rules live...'}</span>`;
@@ -3238,6 +3242,7 @@ async function remediationActivate() {
   if (recipe.destructive) {
     if (!confirm(`This will APPLY the remediation to your tenant.\n\nRecipe: ${recipe.label}\n\nMake sure you launched via START_Zscaler_Assessment_WRITES_ENABLED.bat. Continue?`)) return;
   }
+  if (window.zdRateGate && !(await window.zdRateGate({ write: recipe.writes || 1, activate: 1 }, migrateCredBody(), `Apply the remediation '${recipe.label}'.`))) return;
   const criteria = _collectRemediationCriteria();
   const body = migrateCredBody();
   body.check_id = check_id;
@@ -3517,6 +3522,7 @@ async function wizardApply() {
   const recipe = _findRecipeForCheck(check_id);
   if (!recipe) return;
   if (recipe.destructive && !confirm(`Apply '${recipe.label}' to the tenant now?`)) return;
+  if (window.zdRateGate && !(await window.zdRateGate({ write: recipe.writes || 1, activate: 1 }, migrateCredBody(), `Apply the remediation '${recipe.label}'.`))) return;
   const body = migrateCredBody();
   body.check_id = check_id;
   body.criteria = _collectWizardCriteria();

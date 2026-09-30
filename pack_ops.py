@@ -521,7 +521,8 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
             secs = getattr(outcome, "reset_seconds", None) or zia_rate.full_reset(bucket)
             zia_rate.hold(secs)
             src = "ZIA's reset timer" if getattr(outcome, "reset_seconds", None) else "the limit's full window"
-            _log(f"[{kind or op}] {name}: ZIA refused it for its rate ('{outcome.error}'); pausing the whole run until the limit "
+            quip = zia_rate._quip("blocked" if "blocked" in str(outcome.error or "").lower() else "resetting", zia_rate._now())
+            _log(f"[{kind or op}] {name}: {quip + ' ' if quip else ''}ZIA refused it for its rate ('{outcome.error}'); pausing the whole run until the limit "
                  f"has completely reset ({src}): {_human_secs(secs)}, then trying again ({window} of {RATE_WINDOWS}). Nothing is sent meanwhile.")
             logger.info("rate-wait", extra={"op": op, "kind": kind, "name": name, "channel": channel, "window": window, "seconds": secs})
             _wait_out(secs)

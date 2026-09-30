@@ -1297,7 +1297,7 @@ def _rate_forecast(all_items: Sequence[Dict[str, Any]], client: Any = None) -> D
             continue
         ch = (i.get("channel") or (pc.channel_of(i["definition"]) if i["kind"] == "policy" and i.get("definition") else None)) if i["kind"] == "policy" else None
         counts[zia_rate.bucket_of("POST", channel=ch, kind=i["kind"])] = counts.get(zia_rate.bucket_of("POST", channel=ch, kind=i["kind"]), 0) + 1
-    return zia_rate.forecast(counts, key=zia_rate.key_of(client))
+    return zia_rate.forecast(counts, key=zia_rate.key_of(client), tenant_label=zia_rate.label_of(client))
 
 
 def _rate_detail(f: Dict[str, Any]) -> str:

@@ -687,6 +687,8 @@ function _dzRateCheck(f, blocked) {
   const local = f.run_after ? ` (${new Date(f.run_after * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} your time)` : '';
   return `<div class="dz-card sev-${sev}" style="margin-top:0.9rem;" role="status"><div class="bar"></div><div>
     <div class="t">Rate-limit check: ${_dzE(f.title || '')}</div><div class="d">${_dzE(f.verdict)}${_dzE(local)}</div>
+    ${(f.plan || []).length ? `<div class="d" style="margin-top:0.35rem;"><strong>API plan</strong><br>${f.plan.map(l => `• ${_dzE(l)}`).join('<br>')}</div>` : ''}
+    ${f.success ? `<div class="d" style="margin-top:0.35rem;"><strong>Success</strong> — ${_dzE(f.success.text)}</div>` : ''}
     ${f.detail ? `<div class="d" style="margin-top:0.3rem;color:var(--dim);">${_dzE(f.detail)}</div>` : ''}</div></div>`;
 }
 
@@ -952,6 +954,7 @@ function _dzRenderApprove() {
       <div class="sub">Channels — ${_dzTargetsSummary([...DZ.selected])}</div></div>
     </div>
     ${DZ.write && !DZ.write.enabled ? _dzWriteBanner() : ''}
+    ${_dzRateCheck(R.rate_forecast, R.status === 'blocked')}
     ${warns.length ? `<div class="dz-h">Warnings<span class="count">${warns.length}</span></div><div class="dz-rows">${warns.map(w => `<div class="dz-row st-differs"><span class="ic" aria-hidden="true">!</span><div class="rs" style="margin-top:0.25rem;color:var(--text);">${_dzE(w)}</div><div></div></div>`).join('')}</div>` : ''}
     ${_dzSection('Exactly what will be written', writes)}
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Before you approve, confirm with the customer</div><div class="d">
@@ -976,7 +979,18 @@ function _dzRenderApprove() {
 }
 
 // ── Step 4: deploy ────────────────────────────────────────────────
+// The rate-limit check as popup text: the verdict (sarcasm and all), the
+// API plan and the success outlook.
+function _dzRateText(f) {
+  if (!f) return '';
+  if (typeof window.zdRateText === 'function') return window.zdRateText(f);
+  const when = f.run_after ? ` (${new Date(f.run_after * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} your time)` : '';
+  return `Rate-limit check: ${f.title}\n${f.verdict}${when}\n\nAPI plan:\n${(f.plan || []).map(l => `  • ${l}`).join('\n')}\n\n${(f.success || {}).text || ''}`;
+}
+
 async function _dzApply() {
+  const f = (DZ.report || {}).rate_forecast;
+  if (f && !window.confirm(`${_dzRateText(f)}\n\n${f.severity === 'ok' ? 'Deploy now?' : 'Deploy anyway?'} Click OK to deploy, or Cancel to stop.`)) return;
   DZ.step = 4; DZ.busy = true; DZ.result = null; DZ.error = ''; DZ.job = null;
   _dzRender();
   try {
@@ -1425,7 +1439,7 @@ async function _dzRemovalApply() {
   const rules = remove.filter(i => i.kind === 'policy').map(i => i.name);
   const others = remove.length - rules.length;
   const named = rules.slice(0, 8).map(n => `  • ${n}`).join('\n') + (rules.length > 8 ? `\n  … and ${rules.length - 8} more` : '');
-  if (!window.confirm(`Final confirmation.\n\nPermanently remove ${rules.length} rule(s) from ${R.plan.tenant_label || 'this tenant'}:\n${named || '  (none)'}\n\nplus ${others} engine(s) and dictionar${others === 1 ? 'y' : 'ies'} that nothing else uses (checked again right before each one goes).\n\nThis cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
+  if (!window.confirm(`Final confirmation.\n\nPermanently remove ${rules.length} rule(s) from ${R.plan.tenant_label || 'this tenant'}:\n${named || '  (none)'}\n\nplus ${others} engine(s) and dictionar${others === 1 ? 'y' : 'ies'} that nothing else uses (checked again right before each one goes).\n\n${R.plan.rate_forecast ? _dzRateText(R.plan.rate_forecast) + '\n\n' : ''}This cannot be undone from here. Click OK to remove, or Cancel to stop.`)) return;
   DZ.busy = true; R.step = 3; DZ.job = null; _dzRemovalRender();
   try {
     const snap = await _dzRunJob('/api/dlp-packs/removal/apply/start', { ..._dzRemovalScope(), plan_hash: R.plan.plan_hash, confirm: true, ..._dzCreds() });
