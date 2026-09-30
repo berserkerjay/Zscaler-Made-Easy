@@ -22,8 +22,12 @@ services:
     ports:
       # Host port: 8001, so the container runs beside a local install that has
       # 8000; set DLP_CHECK_HOST_PORT in .env for another one. The app inside
-      # the container always listens on 8000.
-      - "127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000"
+      # the container always listens on 8000. Host address: the host's
+      # loopback (127.0.0.1) unless DLP_CHECK_HOST_BIND in .env says otherwise;
+      # change it here only through that variable, because the app reads the
+      # same value (below) to decide whether Enable write mode may be offered
+      # in the browser. Publishing beyond loopback turns that switch off.
+      - "${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000"
     env_file:
       - path: .env
         required: false
@@ -38,6 +42,7 @@ services:
       ZSCALER_ALLOW_NONLOCAL_BIND: "YES_I_UNDERSTAND"
       ZSCALER_PORT: "8000"
       DLP_CHECK_HOST_PORT: "${DLP_CHECK_HOST_PORT:-8001}"   # so the printed address uses the host port
+      DLP_CHECK_HOST_BIND: "${DLP_CHECK_HOST_BIND:-127.0.0.1}"   # the address ports: publishes on; loopback lets the browser enable writes
       DLP_CHECK_USER_PACKS: /data/user_packs   # packs added from Advanced settings persist on the volume
     volumes:
       - dlpcheck-data:/data
