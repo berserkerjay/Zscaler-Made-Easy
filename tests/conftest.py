@@ -29,6 +29,7 @@ def _no_backoff_sleep(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(zia_rate, "_sleep", lambda s: None)
     monkeypatch.delenv("DLP_CHECK_RATE_TONE", raising=False)   # the verdict's tone as shipped, whatever the shell says
     monkeypatch.setenv("DLP_CHECK_ZIA_RATE_STATE", str(tmp_path_factory.mktemp("zia_rate") / "zia_rate.json"))
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path_factory.mktemp("audit") / "audit.log"))   # never the repo's own audit.log
     zia_rate.reset()
 
 
