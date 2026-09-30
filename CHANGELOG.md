@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Windows: the container update no longer stops when the build starts
+- **What you reported.** Enable write mode still did not appear in the container.
+- **Why.** The container was still running the old build. `update_container.ps1` pulled the new code, then stopped on docker's first build line: `Image dlp-check:local Building ... NativeCommandError`. Docker writes its build progress to stderr, and Windows PowerShell 5.1 treats each stderr line as an error record, which the script's `Stop` setting made fatal. The rebuild finished only because docker carried on in the background; the script said nothing about it and never reached *Done*.
+- **Now** the script relaxes that setting for the docker call alone and judges the build by docker's exit code. The progress lines go to the window and `update_container.log`.
+- **Verified.** A fake docker that writes its progress to stderr: exit 0 ends in *Done*, and exit 1 ends in *The build failed; the previous container keeps running*. On this machine the container now runs `a33c043` with `DLP_CHECK_HOST_BIND=127.0.0.1`, and write mode reports `can_toggle: true`.
+
 ### ZPA and ZDX checks read the paths the tenant serves
 - **What you asked for.** "Try ZPA and ZDX again", once the API client had its ZPA and ZDX roles.
 - **What the probe found.** The 401s were gone, but 16 of the 25 ZPA reads and 4 of the 8 ZDX reads still failed:

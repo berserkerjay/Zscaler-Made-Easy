@@ -72,7 +72,14 @@ if ($local -eq $remote -and -not $Force -and $running) { Say "Up to date: $branc
 if ($local -ne $remote) { git pull --ff-only --quiet origin $branch; if ($LASTEXITCODE -ne 0) { Say 'git pull failed; nothing was changed.'; exit 1 } }
 $env:DLP_CHECK_BUILD_COMMIT = (git rev-parse --short HEAD).Trim(); $env:DLP_CHECK_BUILD_BRANCH = $branch
 Say "Building $branch at $($env:DLP_CHECK_BUILD_COMMIT) (was $before) and restarting the container..."
-docker compose up -d --build 2>&1 | ForEach-Object { Add-Content -LiteralPath $Log -Value "$_"; Write-Host $_ }
-if ($LASTEXITCODE -ne 0) { Say 'The build failed; the previous container keeps running. See the lines above (TLS inspection: INSTALL.md, certs folder).'; exit 1 }
+# docker writes its build progress to stderr. Windows PowerShell 5.1 turns
+# each such line into an error record, which 'Stop' makes fatal: the script
+# died on the first progress line. Relax it for this one call and judge the
+# build by docker's exit code instead.
+$ErrorActionPreference = 'Continue'
+docker compose up -d --build 2>&1 | ForEach-Object { Add-Content -LiteralPath $Log -Value "$_"; Write-Host "$_" }
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($buildExit -ne 0) { Say 'The build failed; the previous container keeps running. See the lines above (TLS inspection: INSTALL.md, certs folder).'; exit 1 }
 docker image prune -f 2>$null | Out-Null
 Say 'Done. The new UI token and address: docker logs dlp-check'
