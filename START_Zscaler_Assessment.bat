@@ -33,8 +33,13 @@ REM --------------------------------------------------------------
 REM  If you're behind a corporate proxy, uncomment and edit one of:
 REM    set HTTPS_PROXY=http://user:pass@proxy.corp:8080
 REM    set ZSCALER_UPDATE_PROXY=http://proxy.corp:8080
-REM  If corporate TLS inspection breaks the update checker:
-REM    set ZSCALER_UPDATE_VERIFY_TLS=0
+REM  If corporate TLS inspection breaks the update checker, trust the
+REM  proxy's root certificate (a .pem file) instead of switching checks off:
+REM    set REQUESTS_CA_BUNDLE=C:\certs\corporate-root-ca.pem
+REM  (see local_settings.bat.example). ZSCALER_UPDATE_VERIFY_TLS=0 is a
+REM  last resort: the update and documentation checks then accept
+REM  any certificate, so anyone on the network path can feed them false
+REM  content.
 REM --------------------------------------------------------------
 
 REM Find real Python (skip Microsoft Store stub)

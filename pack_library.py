@@ -695,6 +695,16 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
         formats.add("zscaler")
     if not any(parts.values()):
         raise ValueError("no dictionaries, engines or rules were found in the upload")
+    # Proximity is a number of characters. Uploaded packs are untrusted, so
+    # anything else is refused here rather than carried to the preview page.
+    for d in parts["dictionaries"]:
+        if isinstance(d, dict) and d.get("proximity") not in (None, ""):
+            try:
+                if isinstance(d["proximity"], bool):
+                    raise TypeError
+                d["proximity"] = int(d["proximity"])
+            except (TypeError, ValueError):
+                raise ValueError(f"dictionary '{str(d.get('name') or '')[:80]}': proximity must be a whole number of characters") from None
     name = (pack_name or meta.get("name") or "").strip()
     if not name:
         first = sources[0] if sources else "uploaded pack"

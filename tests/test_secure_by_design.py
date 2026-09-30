@@ -3,6 +3,9 @@ and the app folder, every control with evidence and a next step, shown in
 the Advanced settings tab."""
 from __future__ import annotations
 
+import os
+import re
+
 from fastapi.testclient import TestClient
 
 import dlp_api_server as srv
@@ -86,3 +89,35 @@ def test_endpoint_and_advanced_page(monkeypatch):
     assert 'id="sbd"' in html and "CISA Secure by Design score" in html and 'id="advSbdCheck"' in html and "cisa.gov/securebydesign" in html
     js = c.get("/static/advanced.js").text
     assert "/api/secure-by-design" in js and "function renderSbd" in js
+
+
+def test_plain_smtp_is_reported_as_unverified_tls(monkeypatch):
+    monkeypatch.setenv("DLP_CHECK_SMTP_HOST", "smtp.example.test")
+    by = {c["id"]: c for c in sbd.evaluate(srv.app)["checks"]}
+    assert by["tls"]["status"] == "pass" and "mail server" in by["tls"]["evidence"]
+    monkeypatch.setenv("DLP_CHECK_SMTP_TLS", "0")
+    by = {c["id"]: c for c in sbd.evaluate(srv.app)["checks"]}
+    assert by["tls"]["status"] == "warn" and "DLP_CHECK_SMTP_TLS=0" in by["tls"]["evidence"]
+
+
+def test_tls_hints_point_to_a_ca_bundle_and_state_the_risk_of_switching_off():
+    """Where users are told about ZSCALER_UPDATE_VERIFY_TLS=0, the CA bundle
+    comes first and the risk is said in the same place."""
+    import requests
+    import zscaler_update_check as uc
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for name in ("START_Zscaler_Assessment.bat", "local_settings.env.example"):
+        with open(os.path.join(root, name), encoding="utf-8") as f:
+            text = re.sub(r"\s*\n\s*(?:REM\b|#)?\s*", " ", f.read())   # comment lines joined into prose
+        at = text.index("ZSCALER_UPDATE_VERIFY_TLS=0")
+        assert "REQUESTS_CA_BUNDLE" in text[:at] and "last resort" in text[at - 300:at + 300].lower() and "any certificate" in text[at - 300:at + 300], name
+
+    def boom(*a, **k):
+        raise requests.exceptions.SSLError("certificate verify failed")
+    orig = requests.get
+    requests.get = boom
+    try:
+        _, _, err = uc._safe_get("https://pypi.org/pypi/zscaler-sdk-python/json")
+    finally:
+        requests.get = orig
+    assert "REQUESTS_CA_BUNDLE" in err and "any certificate" in err and err.index("REQUESTS_CA_BUNDLE") < err.index("ZSCALER_UPDATE_VERIFY_TLS=0")

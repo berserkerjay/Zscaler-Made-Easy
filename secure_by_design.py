@@ -153,14 +153,21 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
                              "Missing from the running server: " + ", ".join(missing) + ".", "Start the app from dlp_api_server.py; the middleware is added there unconditionally."))
 
     tls = (os.environ.get("ZSCALER_UPDATE_VERIFY_TLS") or "").strip()
-    if tls != "0":
+    smtp_plain = (bool((os.environ.get("DLP_CHECK_SMTP_HOST") or "").strip())
+                  and (os.environ.get("DLP_CHECK_SMTP_TLS", "1") or "").strip().lower() in ("0", "false", "no"))
+    if tls != "0" and not smtp_plain:
         checks.append(_check("tls", "Outbound TLS is verified", P_OWN, "secure_defaults", "pass",
-                             "Certificate verification is on for the Zscaler API, GitHub and the documentation hosts; a corporate root can be added with a CA bundle instead of switching verification off.",
-                             "Keep ZSCALER_UPDATE_VERIFY_TLS unset."))
+                             "Certificate verification is on for the Zscaler API, GitHub, the documentation hosts and the digest mail server; a corporate root can be added with a CA bundle instead of switching verification off.",
+                             "Keep ZSCALER_UPDATE_VERIFY_TLS and DLP_CHECK_SMTP_TLS unset."))
     else:
+        found = []
+        if tls == "0":
+            found.append("ZSCALER_UPDATE_VERIFY_TLS=0: the updater accepts any certificate.")
+        if smtp_plain:
+            found.append("DLP_CHECK_SMTP_TLS=0: the digest e-mail goes to the mail server unencrypted.")
         checks.append(_check("tls", "Outbound TLS is verified", P_OWN, "secure_defaults", "warn",
-                             "ZSCALER_UPDATE_VERIFY_TLS=0: the updater accepts any certificate.",
-                             "Point the app at the TLS-inspection proxy's root certificate (CA bundle) and remove the override."))
+                             " ".join(found),
+                             "Point the app at the TLS-inspection proxy's or mail server's root certificate (CA bundle) and remove the override."))
 
     try:
         import zscaler_update_check
