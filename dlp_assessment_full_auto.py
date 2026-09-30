@@ -229,7 +229,9 @@ class Client:
         s.base = zscaler_clouds.legacy_api_base(cloud) if s.legacy else _base_url(cloud)
         s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
-        import zia_rate; zia_rate.install_tap()   # every ZIA request counts toward the next preflight's rate check
+        import zia_rate   # every ZIA answer on this session counts toward the tenant's next preflight rate check
+        s.rate_key = zia_rate.key_for(cloud, vd or s.username, cid or s.username)
+        zia_rate.attach(s.sess, s.rate_key)
         # Use OrderedDict for O(1) LRU eviction
         from collections import OrderedDict
         s._c = OrderedDict()
@@ -406,7 +408,7 @@ class Client:
                 kwargs["json"] = body
             if ep.startswith("/zia/"):
                 import zia_rate
-                zia_rate.wait(method, ep)   # ZIA's per-endpoint write limits
+                zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
             s._limiter.wait()
             r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
             s.requests_made += 1

@@ -24,7 +24,7 @@ lists what each batch of changes did, newest first.
 
   When it is not *Will succeed*, the verdict is also the first warning.
 - **What the check is based on.**
-  - **Every ZIA request the app sends, reads included.** One tap on the HTTP layer sees the SDK and the assessment's session alike: deploys, removals, preflights, assessments, benchmarks and continuous evaluation.
+  - **Every ZIA request the app sends, reads included.** A hook on each tenant's session sees the SDK's and the assessment's requests alike: deploys, removals, preflights, assessments, benchmarks and continuous evaluation.
   - **ZIA's own answers.** Its `x-ratelimit-*` headers include other tools on the same client. Its rate refusals are kept for a week, each with the requests of the minute, 5 minutes and hour before it.
   - **Earlier records.** The deployment log's refused runs, and a hold recorded before refusal details were kept. Tonight's run counts, too.
 - **Verified.**
@@ -33,6 +33,16 @@ lists what each batch of changes did, newest first.
     - the tap, and observing reads, headers and refusals (a permission 403 is not a rate refusal);
     - the deployment-log history;
     - the preflight warning, with the forecast kept out of the plan hash.
+- **Review, before release.** 10 reviewers and 2 independent checkers per finding confirmed 22 findings in this check. All are fixed:
+  - **Nothing freezes.** Pacing no longer sleeps while holding the rate lock, so a paced write never holds up another thread's ZIA request or a preview's forecast. A hold set by another run while this one waits is also honoured.
+  - **One record per tenant and API client.** The key is a hash of cloud, tenant and client ID. A refusal on one tenant no longer makes another tenant's preflight say *Likely to fail*. Answers are seen by a hook on that tenant's own session, the SDK's and the assessment's, instead of a process-wide wrapper around every HTTP request.
+  - **Refusals are classified.** A client-wide "Resource Access Blocked" in the last hour is *Likely to fail*. A 429 on an endpoint this run uses is a pause, for as long as ZIA's reset timer runs. A 429 on a read never affects a deploy.
+  - **A like-for-like ceiling.** What ZIA tolerated comes only from client-wide blocks and counts writes on both sides; the reads are still shown.
+  - **The simulation.** Buckets are simulated in the order a run sends them. ZIA's header count adds to the app's own hourly record instead of replacing it. A pause is measured against the same run from a quiet hour at the documented limits.
+  - **The state file.** Processes merge into it under a lock file, using a unique temp file. The record from before tenants were told apart keeps its inferred refusal after its hold ends, and it applies to every tenant.
+  - **Times.** They are shown in UTC, and the card adds your browser's local time.
+  - **No card on a blocked plan.**
+  - **Tests.** They now use the documented limits instead of pacing turned off. The permission-403 check can fail when it should.
 
 ### Each pack shows how it measures against ZIA's rate limits, and every preview says whether the run will go straight through
 - **What you asked for.** "Make a note on each pack how it measures against the rate limit for a deployment or delete, and give a notice to the user based on all recent transactions if it will succeed."
