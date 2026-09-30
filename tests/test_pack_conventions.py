@@ -312,3 +312,23 @@ def test_every_loader_applies_the_same_rename(tmp_path):
     files = pack_terraform.generate(pack)
     assert '"Z-Private Key"' in files["dictionaries.tf"] and '"Private Key"' not in files["dictionaries.tf"]
     assert json.load(open(os.path.join(pack["dir"], "configs", "dlp_dictionaries.json")))[0]["name"] == "Private Key", "the file is left as written"
+
+
+def test_every_pack_says_in_large_bold_type_to_install_one_channel_at_a_time():
+    # "Make a note for each pack to only install one channel at a time ...
+    # in large bold letters ... this applies for every pack."
+    import json
+    import re as _re
+    from dlp_importer import discover_packs
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for p in discover_packs():
+        if p.get("source") != "built-in":
+            continue
+        meta = json.load(open(os.path.join(p["dir"], "pack.json"), encoding="utf-8"))
+        assert str(meta.get("deploy_note", "")).startswith("INSTALL ONE CHANNEL AT A TIME"), p["id"]
+    js = open(os.path.join(root, "static", "deploy_studio.js"), encoding="utf-8").read()
+    assert 'class="dz-deploy-note" role="note">${_dzE(p.deploy_note || DZ_ONE_CHANNEL_NOTE)}' in js, "every card, uploaded packs included"
+    assert 'const DZ_ONE_CHANNEL_NOTE = "INSTALL ONE CHANNEL AT A TIME' in js
+    css = open(os.path.join(root, "static", "deploy_studio.css"), encoding="utf-8").read()
+    rule = _re.search(r"\.dz-deploy-note\s*\{([^}]*)\}", css).group(1)
+    assert "font-weight: 800" in rule and float(_re.search(r"font-size:\s*([\d.]+)rem", rule).group(1)) >= 1.1, "large and bold"

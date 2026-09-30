@@ -63,9 +63,9 @@ def test_a_tenant_with_sharepoint_and_monitor_only_pack_rules():
     assert st["C.2"] == "PASS" and st["C.3"] == "PASS" and st["C.4"] == "PASS" and st["C.5"] == "PASS" and st["C.8"] == "PASS"
     assert st["C.6"] == "FAIL" and "disabled" in res["C.6"].detail
     assert st["C.7"] == "REVIEW"
-    assert st["D.1"] == "REVIEW" and "Exchange, Gmail or secure email gateway" in res["D.1"].detail
+    assert st["D.1"] == "FAIL" and "Exchange, Gmail or secure email gateway" in res["D.1"].detail and "requires one" in res["D.1"].detail
     assert st["D.2"] == "PASS" and st["D.3"] == "PASS" and st["D.4"] == "FAIL" and st["D.5"] == "REVIEW"
-    assert st["D.6"] == "INFO" and "without an email tenant filter" in res["D.6"].detail
+    assert st["D.6"] == "REVIEW" and "name no email tenant" in res["D.6"].detail
     assert all(ep in ("/zia/casbTenant/lite", "/zia/casbDlpRules/all", "/zia/emailDlpRules") for ep, _ in cl.calls), "read-only GETs only"
     assert ("/zia/casbTenant/lite", {"activeOnly": "true", "appType": "EMAIL"}) in cl.calls
 

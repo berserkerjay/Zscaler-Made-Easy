@@ -225,7 +225,8 @@ def c_d1(cl):
     if code not in (200, 204) and not rows:
         return _unavailable(code, "the email tenant list")
     if not rows:
-        return R(R.WARN, "No Exchange, Gmail or secure email gateway tenant is onboarded under SaaS Application Tenants. Email DLP rules can still apply, but cannot be scoped to a mail tenant.")
+        return R(R.FAIL, "No Exchange, Gmail or secure email gateway tenant is onboarded (Administration > SaaS Application Tenants). "
+                         "ZIA requires one for every Email DLP rule, so no Email DLP rule can exist until it is onboarded.")
     return R(R.PASS, f"Email tenant(s): {_tenant_names(rows)}.")
 
 
@@ -296,8 +297,9 @@ def c_d6(cl):
     stale = [str(_f(r, "name", default="?")) for r in scoped if ids and not set(_ids(_f(r, "email_tenants", "emailTenants"))) & ids]
     if stale:
         return R(R.FAIL, f"{len(stale)} Email DLP rule(s) point at email tenants that are no longer onboarded: {', '.join(stale[:4])}.")
-    if not scoped:
-        return R(R.INFO, f"All {len(rules)} Email DLP rule(s) apply without an email tenant filter.")
+    if len(scoped) < len(rules):
+        bare = [str(_f(r, "name", default="?")) for r in rules if not _ids(_f(r, "email_tenants", "emailTenants", default=[]))]
+        return R(R.WARN, f"{len(bare)} Email DLP rule(s) name no email tenant: {', '.join(bare[:4])}. ZIA requires one; set the mail tenant on them.")
     return R(R.PASS, f"{len(scoped)} of {len(rules)} Email DLP rule(s) are scoped to onboarded email tenants.")
 
 

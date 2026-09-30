@@ -1088,17 +1088,19 @@ def resolve(channel: str, policy_def: Dict[str, Any], state: Dict[str, Any]) -> 
                 missing.append(f"SaaS application tenant(s) not onboarded: {', '.join(absent)} (available: {_tenant_list(tenants)})")
             resolved["tenants"] = chosen
         elif channel == EMAIL:
-            # An Email DLP rule's email tenants are optional (the API, the
-            # SDK's own example and the zscaler/zia provider all create one
-            # without them). With "any", scope it to the onboarded Microsoft
-            # 365 / Gmail tenants when there are some; otherwise create it
-            # unscoped and say so, rather than skipping the rule.
+            # ZIA refuses an Email DLP rule without an email tenant ("One or
+            # more Email tenants is required", HTTP 400, seen on a live
+            # tenant), whatever the SDK's example suggests. With "any", scope
+            # it to the onboarded Exchange / Gmail / secure email gateway
+            # tenants; with none, the rule is a gap found here, before any
+            # request: a run of refused writes makes ZIA block the API client
+            # (Resource Access Blocked) and stops the rest of the deploy.
             chosen = email_tenants(state)
             if not chosen:
-                resolved["unscoped_note"] = (
-                    "no Exchange, Gmail or secure email gateway tenant is in the SaaS tenant list"
-                    + (f" (listed: {_tenant_list(tenants)})" if tenants else "")
-                    + ", so the rule is created without an email tenant filter")
+                missing.append(
+                    "ZIA requires at least one email tenant on an Email DLP rule, and no Exchange, Gmail or secure email "
+                    "gateway tenant is onboarded" + (f" (onboarded: {_tenant_list(tenants)})" if tenants else "")
+                    + "; onboard one under Administration > SaaS Application Tenants, then deploy the Email channel")
             resolved["tenants"] = chosen
         else:
             keywords = SAAS_TYPE_APPS.get(policy_def.get("saas_type", ""), ())
