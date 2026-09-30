@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### The one-channel note is emphasised, not shouted
+- **What you asked for.** "Make the bold note less bold; it's abrasively bold and large."
+- **Now** the note on every pack card is in sentence case ("Install one channel at a time. …"), at body size (1rem, was 1.15rem) and semi-bold (600, was 800). It keeps its highlighted box, so it still stands out.
+
 ### Email DLP finds the Exchange tenant the SaaS tenant list leaves out
 - **What you reported.** The preflight said "No Exchange, Gmail or secure email gateway tenant in the SaaS tenant list (listed: SMOES (SHAREPOINT))", but Exchange is integrated.
 - **Why.** The app found email tenants only in ZIA's SaaS tenant list (`casbTenant/lite`). A read-only look at the tenant showed that list returns only the SharePoint tenant (id 177648211): not with active-only, not with include-deleted, and not filtered to email. The Exchange email tenant is a separate object with the same name, "SMOES" (id 171656574). The Email DLP rule already on the tenant, DLP_Rule_1, is scoped to it. The dependency row also still said the tenant was "optional", which the preflight change earlier today had missed.
