@@ -7,6 +7,13 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Every pack says: install one channel at a time
+- **What you asked for.** "Make a note for each pack to only install one channel at a time … in large bold letters … this applies for every pack."
+- **Now** every pack card in Deploy policy packs opens with, in large bold type: **INSTALL ONE CHANNEL AT A TIME.** Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify, and it avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).
+  - Each shipped pack carries the note in its `pack.json` (`deploy_note`).
+  - Any other pack, uploaded ones included, shows the same note.
+- **Verified.** A test checks that every built-in pack has the note and that every card shows it (with the fallback), in type at least 1.1rem and weight 800.
+
 ### Email DLP rules wait for an email tenant instead of being refused
 - **What you reported.** A ZBP Enterprise deploy ran into five failed Email DLP rules ("One or more Email tenants is required", HTTP 400), then "Resource Access Blocked" (HTTP 403). It stopped with 10 rules never attempted and the tenant unreadable for the read-back.
 - **Why.** The 2026-09-30 change *Email DLP rules deploy in every pack* created an Email rule without an email tenant when none was onboarded, trusting the SDK's example. ZIA refuses such a rule. Five refused writes in a row then made ZIA block the API client for several minutes, longer than the five 15-second retries, so everything after them was lost.
