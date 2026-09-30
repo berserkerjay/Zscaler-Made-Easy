@@ -134,7 +134,11 @@ to do when a control falls short.
   file. Prefer `local_settings.bat` or the form on a shared laptop.
 - The updater fast-forwards `main` over HTTPS and cross-checks the
   commit it pulled against GitHub's REST API (a channel separate from
-  the git pull), but it does not verify GPG or Sigstore signatures on
+  the git pull). The repository is private, so that cross-check needs a
+  read-only `DLP_CHECK_GITHUB_TOKEN`; without one (or offline, or from a
+  fork or mirror) it cannot run, and the update shows a "Verify against
+  GitHub: skipped" warning with the reason instead of claiming it was
+  verified. It does not verify GPG or Sigstore signatures on
   commits or tags — `main` carries no signed tags. A compromise of
   GitHub itself, or of the maintainer's account, would defeat both
   checks. Update over a trusted network; do not set

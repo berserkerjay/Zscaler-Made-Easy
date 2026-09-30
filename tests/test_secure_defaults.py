@@ -17,6 +17,27 @@ def test_mcp_server_binds_loopback_by_default():
     assert '"ZSCALER_MCP_BIND_HOST", "127.0.0.1"' in src
 
 
+def test_mcp_server_imports_with_the_locked_mcp_and_takes_no_secret_from_the_llm(monkeypatch):
+    import asyncio
+    import dlp_mcp_server as mcp  # a hard import, so an mcp release that breaks the server fails the build
+    tools = {t.name: t for t in asyncio.run(mcp.mcp.list_tools())}
+    assert {"run_assessment", "run_section", "list_checks", "get_health"} <= set(tools)
+    for t in tools.values():
+        schema = getattr(t, "input_schema", None) or getattr(t, "inputSchema", None) or {}
+        props = set(schema.get("properties", {}))
+        assert not props & {"client_id", "client_secret", "password", "api_key", "username"}, (t.name, props)
+    for k in ("ZSCALER_AUTH_METHOD", "ZSCALER_CLIENT_ID", "ZSCALER_CLIENT_SECRET", "ZSCALER_USERNAME", "ZSCALER_PASSWORD", "ZSCALER_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ZSCALER_VANITY_DOMAIN", "acme")
+    h = mcp.get_health()
+    assert h["credentials_configured"] is False and h["missing_environment_variables"] == ["ZSCALER_CLIENT_ID", "ZSCALER_CLIENT_SECRET"]
+    for k, v in (("ZSCALER_AUTH_METHOD", "legacy"), ("ZSCALER_USERNAME", "u"), ("ZSCALER_PASSWORD", "p"), ("ZSCALER_API_KEY", "k")):
+        monkeypatch.setenv(k, v)
+    h = mcp.get_health()
+    assert h["credentials_configured"] is True and h["auth_method"] == "legacy", "a classic ZIA API sign-in in the environment counts"
+    assert "p" not in h.values() and "k" not in h.values()
+
+
 def test_pack_upload_is_refused_unless_bound_to_localhost(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "get_bind_host", lambda: "0.0.0.0")
     monkeypatch.setattr(srv, "PACKS_ROOT", str(tmp_path))
