@@ -514,6 +514,7 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
     if not outcome.ok and op != "read" and in_run() and is_rate_refusal(outcome):
         import zia_rate
         bucket = zia_rate.bucket_of(_METHOD.get(op, "POST"), channel=channel, kind=kind)
+        zia_rate.note_refusal(bucket, outcome.error or "", reset=getattr(outcome, "reset_seconds", None), status=outcome.http_status)
         for window in range(1, RATE_WINDOWS + 1):
             if _stopped_now():
                 break

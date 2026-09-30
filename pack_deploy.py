@@ -1286,7 +1286,7 @@ def _impacts(policy_items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any], us
     return impacts, blockers
 
 
-def _rate_forecast(all_items: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def _rate_forecast(all_items: Sequence[Dict[str, Any]], client: Any = None) -> Dict[str, Any]:
     """This deploy's writes per ZIA rate-limit bucket (what it creates or
     changes, plus its one activation), forecast against the requests this
     app sent in the last hour."""
@@ -1297,7 +1297,7 @@ def _rate_forecast(all_items: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
             continue
         ch = (i.get("channel") or (pc.channel_of(i["definition"]) if i["kind"] == "policy" and i.get("definition") else None)) if i["kind"] == "policy" else None
         counts[zia_rate.bucket_of("POST", channel=ch, kind=i["kind"])] = counts.get(zia_rate.bucket_of("POST", channel=ch, kind=i["kind"]), 0) + 1
-    return zia_rate.forecast(counts)
+    return zia_rate.forecast(counts, key=zia_rate.key_of(client))
 
 
 def _rate_detail(f: Dict[str, Any]) -> str:
@@ -1519,7 +1519,7 @@ def preflight(
         warnings.append(read_only_note)
 
     creates = sum(1 for i in all_items if i["status"] in WRITE_STATUSES)
-    rate_forecast = _rate_forecast(all_items) if creates else None
+    rate_forecast = _rate_forecast(all_items, client) if creates and not blockers else None
     if rate_forecast:
         rate_forecast["detail"] = _rate_detail(rate_forecast)
         if rate_forecast["severity"] != "ok":

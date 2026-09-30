@@ -142,12 +142,12 @@ def _tenant(client, packs: Sequence[Dict[str, Any]], tenant_cache: Optional[Dict
     return snap
 
 
-def _with_rate(plan: Dict[str, Any]) -> Dict[str, Any]:
+def _with_rate(plan: Dict[str, Any], client: Any = None) -> Dict[str, Any]:
     """Add how this removal meets ZIA's rate limits, from the requests this
     app sent in the last hour: its deletes plus the one activation."""
     import zia_rate
     n = int(plan.get("remove_count") or 0)
-    f = zia_rate.forecast({"delete": n, "activate": 1}) if n else None
+    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client)) if n and not plan.get("blockers") else None
     if f:
         f["detail"] = zia_rate.history_text(f)
         if f["severity"] != "ok":
@@ -328,7 +328,7 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
         "status": status, "found": bool(items), "packs": pack_ids, "everything": everything, "items": items,
         "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
         "plan_hash": plan_hash, "warnings": warnings, "blockers": blockers, "read": _read_summary(snap),
-    })
+    }, client)
 
 
 def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -415,7 +415,7 @@ def plan_removal_deployment(client, record: Dict[str, Any], *, tenant_cache: Opt
     return _with_rate({"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": list(record.get("packs") or []),
             "deployment": {"id": record.get("id"), "at": record.get("at"), "tenant_label": record.get("tenant_label"), "packs": record.get("packs")},
             "everything": False, "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
-            "plan_hash": plan_hash, "warnings": warnings, "blockers": []})
+            "plan_hash": plan_hash, "warnings": warnings, "blockers": []}, client)
 
 
 def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_enabled: Optional[bool] = None,
@@ -709,7 +709,7 @@ def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_
     return _with_rate({"status": "ready" if to_remove else "nothing", "found": bool(items), "packs": [],
             "selection": sorted(keys) + sorted(("engine", e) for e in picked_engines) + sorted(("dictionary", d) for d in picked_dicts),
             "items": items, "summary": summary, "remove_count": len(to_remove), "keep_count": len(items) - len(to_remove),
-            "plan_hash": plan_hash, "warnings": warnings, "blockers": []})
+            "plan_hash": plan_hash, "warnings": warnings, "blockers": []}, client)
 
 
 def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_enabled: Optional[bool] = None,
