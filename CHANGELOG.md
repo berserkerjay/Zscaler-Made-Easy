@@ -7,6 +7,21 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Whatever works on a local install works in the container
+- **What you asked for.** "Whatever works on the local install should work in the container without fault", then "please check".
+- **How it was checked.** Every place the app writes a file, every external program it runs and every localhost-only rule was listed from the code. The running container was then asked whether each location is writable: `/app` is read-only there, and `/data` is the only place it can write.
+- **What was broken in the container, and now works:**
+  - **Uploading a pack** (Advanced settings) failed, and packs on the volume were never listed. Discovery and the upload both passed the app's own folder, so `DLP_CHECK_USER_PACKS` was ignored and both used read-only `/app/user_packs`. The setting now applies to the app's own folder, however it is passed.
+  - **Approving guidance as a check reference** could not be saved, because the shipped `checks_config.json` is read-only. Approvals now go to `/data/checks_config.json` (`DLP_CHECK_CHECKS_CONFIG`), and the app reads the shipped file and the approvals together. A local install keeps using the one file.
+  - **The SDK & docs update check, the best-practice crawler and its discoveries** lost everything they learned on every run. Their caches sat in the read-only home folder, and the write failures were silent. `XDG_CACHE_HOME=/data/cache` keeps them on the volume.
+  - **Beacon's SDK diff** called `pip download`, and the image ships without pip. The SDK wheel is now fetched straight from PyPI (`files.pythonhosted.org`, added to the allowlist) and checked against PyPI's published SHA-256 before it is unpacked. This works the same everywhere.
+  - **Rebuild pack from tenant** was refused ("only allowed when the server is bound to localhost") and could not have written the pack anyway. It now follows the same rule as write mode: nobody but this computer can reach the server. A built-in pack whose folder is read-only is rebuilt as a copy in the pack library under the same id, and that copy replaces the shipped one. Removing it there restores the shipped pack. Its Terraform is regenerated beside it.
+  - **Secure by Design** scored the container down: "reachable from the network" for listening on 0.0.0.0 inside it. A container published on the host's loopback now passes, as a local install does.
+- **Left as they are, with the container's own path:**
+  - **Update app:** the container cannot replace its own files. It shows the `update_container` commands instead.
+  - **Opening the browser at start**, and **Terraform** when it is not on PATH: the same as on a local install.
+- **Verified.** A container built from this change (read-only, `/data` volume, published on loopback) ran every fixed path for real: the write switch, Secure by Design, an approval, the three caches, the SDK download without pip, and a rebuild into the library that replaced the shipped pack and regenerated its Terraform. All passed. `tests/test_container_parity.py` pins each fix, and the full suite has no new failures.
+
 ### Report details are part of the tenant configuration
 - **What you asked for.** "Make the report details section part of the tenant config."
 - **Now** the organisation and assessor fields are a Report details block in the tenant configuration on Connect to the tenant, above Authenticate, instead of a section of Scope assessment. They are saved with the tenant profile, as before, so choosing a profile fills them. Running an assessment with either one blank opens Connect on that field.
