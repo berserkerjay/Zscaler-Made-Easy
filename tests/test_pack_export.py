@@ -411,3 +411,50 @@ def test_both_ui_entry_points_start_the_export_job():
     # Deploy policy packs: the export action with its rule picker.
     assert "Export from tenant as a pack" in studio and 'onclick="_dzExportPick()"' in studio
     assert "'/api/dlp-packs/export/start'" in studio
+
+
+class InsertingRules(FakeChannelRules):
+    """Like ZIA Web / Endpoint / Email DLP: a rule added at order N goes to N, the rest move down."""
+    def add_rule(self, **kw):
+        obj, resp, err = super().add_rule(**kw)
+        self.items.remove(obj)
+        ordered = sorted(self.items, key=lambda r: int(r.order))
+        ordered.insert(int(kw.get("order") or 1) - 1, obj)
+        for i, r in enumerate(ordered, 1):
+            r.order = i
+        self.items = ordered
+        return obj, resp, err
+
+
+def test_the_tenants_rule_order_comes_back_after_export_deploy_export(tmp_path):
+    src = _source()
+    z = src.zia
+    z.dlp_web_rules.items = [Obj(id=10 + i, name=f"Web-{i}", order=i, rank=7, action="ALLOW", state="ENABLED",
+                                 protocols=["ANY_RULE"], dlp_engines=[Obj(id=61, name="PCI")]) for i in (1, 2, 3)]
+    z.endpoint_dlp_rules = FakeChannelRules([Obj(id=20 + i, name=f"EP-{i}", order=i, rank=7, action="ALLOW", state="ENABLED",
+                                                 dlp_engines=[Obj(id=61, name="PCI")], data_transfer_method="REMOVABLE_DRIVE_TRANSFER")
+                                             for i in (1, 2, 3)])
+    pack = pe.export_pack(src, selection={"web": "all", "endpoint": "all"}, tenant_label="src")["pack"]
+    saved = pl.save_pack(pl.assemble_pack(_upload(pe.zip_pack(pack)[1])), root=str(tmp_path))
+    packs = [{"id": saved["id"], "dir": saved["dir"]}]
+    target = _empty_target()
+    target.zia.dlp_web_rules = InsertingRules(start=7000)
+    target.zia.endpoint_dlp_rules = InsertingRules(start=8000)
+    rep = pd.preflight(target, packs, writes_enabled=True)
+    res = pd.apply(target, packs, plan_hash=rep["plan_hash"], writes_enabled=True, verify=False)
+    assert res["status"] == "applied", res
+    assert [r.name for r in sorted(target.zia.dlp_web_rules.items, key=lambda r: int(r.order))] == ["Web-1", "Web-2", "Web-3"]
+    assert [r.name for r in sorted(target.zia.endpoint_dlp_rules.items, key=lambda r: int(r.order))] == ["EP-1", "EP-2", "EP-3"]
+    # The report still lists the rules in pack order.
+    assert [r["name"] for r in res["results"] if r["kind"] == "policy" and r.get("channel") == "web"] == ["Web-1", "Web-2", "Web-3"]
+
+
+def test_a_same_named_tenant_engine_whose_dictionaries_the_plan_creates_is_reported_as_differing(tmp_path):
+    pack = pe.export_pack(_source(), tenant_label="src")["pack"]
+    saved = pl.save_pack(pl.assemble_pack(_upload(pe.zip_pack(pack)[1])), root=str(tmp_path))
+    packs = [{"id": saved["id"], "dir": saved["dir"]}]
+    target = _empty_target()
+    target.zia.dlp_engine.items.append(Obj(id=3101, name="Project Leak", custom_dlp_engine=True, engine_expression="((D91.S > 9))"))
+    rep = pd.preflight(target, packs, writes_enabled=True)
+    eng = items_by(rep, "engine")["Project Leak"]
+    assert eng["status"] == pd.REUSE_DIFFERS, (eng["status"], eng.get("reason"))
