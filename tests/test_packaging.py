@@ -10,6 +10,8 @@ import os
 import re
 import subprocess
 import sys
+
+import pytest
 import tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -47,7 +49,7 @@ def test_installer_and_container_install_the_same_pinned_file_and_run_the_same_e
     assert "requirements.lock" in _read("INSTALL_Zscaler_Assessment.bat") and "--require-hashes" in _read("INSTALL_Zscaler_Assessment.bat")
     assert "dlp_api_server.py" in _read("start.sh") and "dlp_api_server.py" in _read("START_Zscaler_Assessment.bat")
     compose = _read("docker-compose.yml")
-    assert "context: ." in compose and "127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "read_only: true" in compose
+    assert "context: ." in compose and '"${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000"' in compose and "read_only: true" in compose
 
 
 def test_shell_scripts_parse_and_are_executable():
@@ -170,6 +172,7 @@ def test_read_only_messages_say_how_to_turn_writes_on_where_the_app_runs(monkeyp
     import security
     monkeypatch.setattr(security, "get_bind_host", lambda: "0.0.0.0")
     monkeypatch.setenv("DLP_CHECK_IN_CONTAINER", "1")
+    monkeypatch.delenv("DLP_CHECK_HOST_BIND", raising=False)
     st = security.write_mode_status()
     assert st["can_toggle"] is False, "the in-browser switch stays off beyond loopback"
     assert ".env" in st["reason"] and "docker compose up -d" in st["reason"] and ".bat" not in st["reason"]
@@ -179,3 +182,30 @@ def test_read_only_messages_say_how_to_turn_writes_on_where_the_app_runs(monkeyp
     assert ("START_Zscaler_Assessment_WRITES_ENABLED.bat" in hint) if os.name == "nt" else ("./start.sh" in hint)
     for name in ("dlp_api_server.py", "pack_deploy.py", "remediation.py", os.path.join("static", "deploy_studio.js")):
         assert "WRITES_ENABLED.bat" not in _read(name), f"{name} still hard-codes the Windows start script"
+
+
+def test_the_container_offers_the_write_switch_only_when_published_on_loopback(monkeypatch):
+    # Inside the container the server listens on 0.0.0.0; who can reach it
+    # is decided by the host address docker-compose.yml publishes on, which
+    # the same file passes in as DLP_CHECK_HOST_BIND.
+    import security
+    monkeypatch.setattr(security, "get_bind_host", lambda: "0.0.0.0")
+    monkeypatch.setenv("DLP_CHECK_IN_CONTAINER", "1")
+    monkeypatch.setattr(security, "_write_override", None)
+    monkeypatch.setenv("DLP_CHECK_HOST_BIND", "127.0.0.1")
+    assert security.write_mode_status()["can_toggle"] is True
+    with pytest.raises(ValueError, match="YES_I_UNDERSTAND"):
+        security.set_write_mode(True, "yes")          # the typed phrase is still required
+    assert security.set_write_mode(True, security.WRITE_CONFIRM_PHRASE)["enabled"] is True
+    assert security.set_write_mode(False)["enabled"] is False
+    for published in ("0.0.0.0", "192.168.1.20", ""):
+        monkeypatch.setenv("DLP_CHECK_HOST_BIND", published)
+        st = security.write_mode_status()
+        assert st["can_toggle"] is False and ".env" in st["reason"], published
+        with pytest.raises(ValueError):
+            security.set_write_mode(True, security.WRITE_CONFIRM_PHRASE)
+    monkeypatch.setenv("DLP_CHECK_HOST_BIND", "127.0.0.1")
+    monkeypatch.delenv("DLP_CHECK_IN_CONTAINER")
+    assert security.write_mode_status()["can_toggle"] is False, "outside the container the setting means nothing"
+    compose = _read("docker-compose.yml")
+    assert 'DLP_CHECK_HOST_BIND: "${DLP_CHECK_HOST_BIND:-127.0.0.1}"' in compose, "the app reads the same address ports: publishes on"

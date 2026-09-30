@@ -124,8 +124,9 @@ def is_debug() -> bool:
 WRITE_CONFIRM_PHRASE = "YES_I_UNDERSTAND"
 _LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 # Session override set from the GUI (Deploy Studio > Enable write mode).
-# Only honoured while the server is bound to localhost, and never
-# persisted: a restart returns to whatever the environment says.
+# Only honoured while the server is reachable from this computer alone
+# (bound to localhost, or a container published on the host's loopback),
+# and never persisted: a restart returns to whatever the environment says.
 _write_override: "bool | None" = None
 
 
@@ -149,11 +150,27 @@ def write_enable_hint() -> str:
     return f"start the server with: ENABLE_WRITE_ACTIONS={WRITE_CONFIRM_PHRASE} ./start.sh"
 
 
+def _published_on_loopback() -> bool:
+    """Inside the container the server listens on 0.0.0.0, but what reaches
+    it from outside is the host address docker-compose.yml publishes it on.
+    The compose file passes that same address in (DLP_CHECK_HOST_BIND, also
+    used by its ports: line), so the container knows it is reachable from
+    the host's loopback only. Unset, or anything but loopback, is no."""
+    return (os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1"
+            and os.environ.get("DLP_CHECK_HOST_BIND", "").strip() in _LOCAL_HOSTS)
+
+
+def _toggle_allowed() -> bool:
+    """May write mode be switched from the browser? Only while nobody but
+    this computer can reach the server."""
+    return get_bind_host() in _LOCAL_HOSTS or _published_on_loopback()
+
+
 def write_mode_status() -> dict:
     """What the GUI shows: whether writes are on, where that comes from,
     and whether the operator may toggle it from the browser."""
     env_on = os.environ.get("ENABLE_WRITE_ACTIONS") == WRITE_CONFIRM_PHRASE
-    local = get_bind_host() in _LOCAL_HOSTS
+    local = _toggle_allowed()
     return {
         "enabled": writes_enabled(),
         "source": ("session" if _write_override is not None else ("environment" if env_on else "default")),
@@ -162,7 +179,8 @@ def write_mode_status() -> dict:
         "confirm_phrase": WRITE_CONFIRM_PHRASE,
         "how_to_enable": write_enable_hint(),
         "reason": ("" if local else
-                   (f"The app runs in a container (it listens on {get_bind_host()} inside it), so write mode is not switched "
+                   (f"The app runs in a container that is not published on this computer's loopback only "
+                    f"(DLP_CHECK_HOST_BIND={os.environ.get('DLP_CHECK_HOST_BIND', '').strip() or 'unset'}), so write mode is not switched "
                     f"from the browser: {write_enable_hint()}."
                     if os.environ.get("DLP_CHECK_IN_CONTAINER", "").strip() == "1" else
                     f"The server is bound to {get_bind_host()}, so write mode can only be enabled at start: {write_enable_hint()}.")),
@@ -207,13 +225,15 @@ def require_safe_bind() -> None:
 
 def set_write_mode(enable: bool, confirm: str = "") -> dict:
     """Toggle writes for this server process. Enabling needs the typed
-    confirmation phrase and a localhost bind; disabling is always allowed.
+    confirmation phrase and a server only this computer can reach (a
+    localhost bind, or a container published on the host's loopback);
+    disabling is always allowed.
     Raises ValueError with a plain-language reason."""
     global _write_override
     if not enable:
         _write_override = False
         return write_mode_status()
-    if get_bind_host() not in _LOCAL_HOSTS:
+    if not _toggle_allowed():
         raise ValueError(write_mode_status()["reason"])
     if (confirm or "").strip() != WRITE_CONFIRM_PHRASE:
         raise ValueError(f"Type {WRITE_CONFIRM_PHRASE} exactly to enable write mode.")

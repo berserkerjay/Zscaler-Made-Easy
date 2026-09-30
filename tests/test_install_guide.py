@@ -267,12 +267,12 @@ def test_the_container_can_be_built_and_run_by_hand_with_the_same_settings_as_co
                   "no-new-privileges:true", "--restart unless-stopped", "docker logs dlp-check"):
         assert piece in part, piece
     compose = open(os.path.join(ROOT, "docker-compose.yml")).read()
-    assert "127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "dlpcheck-data:/data" in compose and "mem_limit: 1g" in compose
+    assert "${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000" in compose and "dlpcheck-data:/data" in compose and "mem_limit: 1g" in compose
 
 
 def test_the_container_can_run_beside_a_local_install_on_another_host_port():
     compose = open(os.path.join(ROOT, "docker-compose.yml")).read()
-    assert '"127.0.0.1:${DLP_CHECK_HOST_PORT:-8001}:8000"' in compose, "loopback only, 8001 by default so it runs beside a local install on 8000"
+    assert '"${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000"' in compose, "loopback only, 8001 by default so it runs beside a local install on 8000"
     assert 'DLP_CHECK_HOST_PORT: "${DLP_CHECK_HOST_PORT:-8001}"' in compose, "the container prints the address with the host port"
     src = open(os.path.join(ROOT, "dlp_api_server.py")).read()
     assert 'os.environ.get("DLP_CHECK_HOST_PORT"' in src
