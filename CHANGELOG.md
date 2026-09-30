@@ -7,6 +7,16 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### Enable write mode in the container, when only this computer can reach it
+- **What you asked for.** "No option to enable write mode in the container", then: yes to a switch there.
+- **Why it was missing.** The switch is refused unless the server listens on loopback. Inside the container it listens on 0.0.0.0, even though `docker-compose.yml` publishes it on the host's 127.0.0.1 only. The container could not see that, so it refused.
+- **Now** `docker-compose.yml` takes the host address from one setting, `DLP_CHECK_HOST_BIND` (default `127.0.0.1`), for both its `ports:` line and the app itself.
+  - Published on loopback (the default), Deploy policy packs offers **Enable write mode** as on a laptop: you type `YES_I_UNDERSTAND`, it lasts until the container restarts, and the UI token still guards it.
+  - Published beyond loopback, the switch is refused and the message points at `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in `.env`.
+  - A container that does not pass the setting (an older compose file, or a `docker run` without `-e DLP_CHECK_HOST_BIND=127.0.0.1`) stays refused, as before.
+  - `INSTALL.md` (the compose and by-hand runs) and `docs/OVERVIEW.md` say so.
+- **Verified.** A new test covers the switch in the container on loopback: offered, the phrase still required, and turning writes off always allowed. The same test covers publishing on 0.0.0.0, on a LAN address or unset (refused), and the compose file passing the same address its `ports:` line uses. The tests that pinned the `ports:` line now pin the variable with its `127.0.0.1` default.
+
 ### Beacon: SDK, API and Terraform changes, on a timer, with what changed since the last run
 
 - **What you asked for.** A Beacon that watches for SDK changes, Zscaler API changes and Terraform changes, on demand and on a timer, and shows what changed since the last run.

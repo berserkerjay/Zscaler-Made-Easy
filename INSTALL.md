@@ -609,10 +609,14 @@ only thing keeping the app off the network.
 What the app saves (tenant profiles, deployment records, the audit log,
 uploaded packs, digests, proposals, the guidance state and the token
 file) lives outside the container in a Docker-managed storage area
-called `dlpcheck-data`, so it survives rebuilds and updates. The
-container does not take the in-app **Enable write mode** switch: to
-deploy from it, put `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in a `.env`
-file next to `docker-compose.yml` and run `docker compose up -d` again.
+called `dlpcheck-data`, so it survives rebuilds and updates. To
+deploy from the container, click **Enable write mode** in Deploy policy
+packs and type the confirmation phrase, as on a laptop: the switch is
+offered because the container is published on this machine's loopback
+only (`DLP_CHECK_HOST_BIND`, `127.0.0.1` unless you change it). If you
+publish it beyond loopback the switch is refused; then put
+`ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in a `.env` file next to
+`docker-compose.yml` and run `docker compose up -d` again.
 
 ---
 
@@ -665,7 +669,7 @@ docker run -d --name dlp-check \
   -p 127.0.0.1:8001:8000 \
   -v dlpcheck-data:/data \
   -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND \
-  -e DLP_CHECK_HOST_PORT=8001 \
+  -e DLP_CHECK_HOST_PORT=8001   -e DLP_CHECK_HOST_BIND=127.0.0.1 \
   -e DLP_CHECK_USER_PACKS=/data/user_packs \
   --read-only --tmpfs /tmp:size=256m \
   --cap-drop ALL --security-opt no-new-privileges:true \
@@ -677,7 +681,7 @@ docker run -d --name dlp-check \
 Windows (PowerShell or Command Prompt), the same command on one line:
 
 ```
-docker run -d --name dlp-check -p 127.0.0.1:8001:8000 -v dlpcheck-data:/data -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
+docker run -d --name dlp-check -p 127.0.0.1:8001:8000 -v dlpcheck-data:/data -e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND -e DLP_CHECK_HOST_PORT=8001 -e DLP_CHECK_HOST_BIND=127.0.0.1 -e DLP_CHECK_USER_PACKS=/data/user_packs --read-only --tmpfs /tmp:size=256m --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --memory 1g --restart unless-stopped dlp-check:local
 ```
 
 What each part does:
@@ -687,13 +691,14 @@ What each part does:
 | `-p 127.0.0.1:8001:8000` | Publishes the app on port 8001 of this machine only (the local install uses 8000). Keep the `127.0.0.1:`; see the warning above about `0.0.0.0`. |
 | `-v dlpcheck-data:/data` | Mounts the storage volume, so profiles, deployment records, the audit log, uploaded packs and the token survive rebuilds. |
 | `-e ZSCALER_ALLOW_NONLOCAL_BIND=YES_I_UNDERSTAND` | Lets the server listen inside the container. Without it the app refuses to start. |
+| `-e DLP_CHECK_HOST_BIND=127.0.0.1` | Tells the app it is published on this machine's loopback only (match the `-p 127.0.0.1:` part), so **Enable write mode** is offered in the browser. Leave it out, or publish beyond loopback, and the switch is refused. |
 | `--read-only --tmpfs /tmp` | The app folder stays read-only; only `/data` and a small `/tmp` are writable. |
 | `--cap-drop ALL --security-opt no-new-privileges:true` | The container gets no extra Linux privileges. |
 | `--restart unless-stopped` | Starts again after a reboot until you stop it. |
 
 Credentials or other settings from a file: add `--env-file .env` before
-`dlp-check:local`. To allow deploys from the container, put
-`ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in that `.env` file.
+`dlp-check:local`. To allow deploys, click **Enable write mode** in the
+app, or put `ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND` in that `.env` file.
 
 **4. Open it.** Read the UI token and open the address it prints:
 
