@@ -1302,8 +1302,8 @@ def _rate_forecast(all_items: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _rate_detail(f: Dict[str, Any]) -> str:
     parts = [f"{r['requests']} {r['label']} (limit {r['limits']}; {r['used_last_hour']} sent in the last hour)" for r in f["buckets"]]
-    return (f"{f['verdict']} This run sends: " + "; ".join(parts) + ". Counted from the requests DLP-Check sent in the last hour; "
-            "another tool using the same API client is not visible here.")
+    import zia_rate
+    return "This run sends: " + "; ".join(parts) + ". " + zia_rate.history_text(f)
 
 
 def _plan_hash(pack_ids: Sequence[str], options: Dict[str, Any], items: Sequence[Dict[str, Any]], tenant: Dict[str, Any]) -> str:
@@ -1521,8 +1521,9 @@ def preflight(
     creates = sum(1 for i in all_items if i["status"] in WRITE_STATUSES)
     rate_forecast = _rate_forecast(all_items) if creates else None
     if rate_forecast:
-        impacts.append({"type": "rate_limits", "title": "ZIA rate limits: " + rate_forecast["verdict"].split(":")[0],
-                        "detail": _rate_detail(rate_forecast), "severity": "warning" if rate_forecast["severity"] == "warn" else "ok"})
+        rate_forecast["detail"] = _rate_detail(rate_forecast)
+        if rate_forecast["severity"] != "ok":
+            warnings.insert(0, f"ZIA rate limits: {rate_forecast['verdict']}")
     if tenant["reachable"] and creates == 0 and not blockers:
         if any(s.get("baseline") for s in sources):
             blockers.append("Nothing to deploy: every policy pack object already exists in the tenant. Use the journey check to see how far the tenant has taken them.")
