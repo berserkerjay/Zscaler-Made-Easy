@@ -500,7 +500,8 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
     # is the tenant unreachable. What could not be read is planned as new
     # (the API rejects duplicate names, so nothing is overwritten) and every
     # such item is marked unverified, with the permission that would fix it.
-    snap["reachable"] = len(snap["unreadable"]) < 3
+    # Out of three reads (two when a scoped read leaves the Web DLP rules out).
+    snap["reachable"] = len(snap["unreadable"]) < (3 if (need or {}).get("web_rules", True) else 2)
     # Each refused read with ZIA's status in front ("HTTP 403: Resource
     # Access Blocked"), so a 403 is never mistaken for a 429 or a timeout.
     _log(f"Tenant read in {time.time() - started:.0f} s"
@@ -1392,6 +1393,7 @@ def preflight(
     restore_drift: bool = False,
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
     tenant_cache: Optional[Dict[str, Any]] = None,
+    read_scope: Optional[Dict[str, Any]] = None,
     log: LogFn = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
@@ -1406,6 +1408,11 @@ def preflight(
     which DLP channels each pack is deployed into: deselected channels
     are skipped, channels the pack has no rule for get a monitor-only
     extension rule with the pack's engines.
+
+    `read_scope` ({"channels": web/endpoint/saas/email, "casb": bool}) caps
+    the tenant read for a caller that may read only an in-scope part: no
+    rules of a channel outside `channels` (the Web DLP rules included), and
+    no SaaS application tenants unless `casb` is true.
 
     `restore_drift` (converge mode) makes policy pack objects that differ from
     the reference RESTORE (overwrite) instead of being kept; it is off by
@@ -1423,6 +1430,14 @@ def preflight(
     sources = load_sources(packs, targets_norm)
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
+    if read_scope is not None:
+        allowed = {str(c) for c in (read_scope.get("channels") or ())} & set(pc.DLP_CHANNELS)
+        need["channels"] = set(need["channels"]) & allowed
+        need["web_rules"] = pc.WEB in allowed
+        if not read_scope.get("casb"):
+            need["casb"] = False
+        if pc.ENDPOINT not in allowed:
+            need["endpoint_app_groups"] = False
     if tenant_cache is not None:
         import copy
         if tenant_cache.get("snapshot") is None:
