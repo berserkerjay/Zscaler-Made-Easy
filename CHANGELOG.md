@@ -5,6 +5,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-01
+
+### Help-center pages are read again: Beacon and the Updates tab see the real articles
+- **What you saw.** On Beacon (and the *Zscaler SDK & docs updates* tab) all seven watched help-center pages said *no readable content (119 characters of text)*. help.zscaler.com now renders in the browser: every URL answers the same empty shell, so the pages could never show a change.
+- **Now.** A help.zscaler.com page is read the way the site reads it, through its article answer (`/zapi/fetch-data`); its title and body are what is checked and hashed (for a documentation index such as *Zscaler Deployments & Operations*, its list of guides, so a guide added or removed shows as a change). Other sites are read as before, and an unusable article answer falls back to the page itself.
+- **Moved pages.** Three watched articles no longer exist and point at their replacements: ZPA API (`/zpa/about-api-key-management`), First Match Wins vs Evaluate All Rules (`/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled`, also the source link on the Evaluate All Rules tab and in the wizard) and GenAI (`/zia/adding-ai-ml-applications-rule-cloud-app-control`, also the Word report's fallback citation). A page that answers 404 shows *moved or gone* on Beacon, and one in maintenance (the OneAPI page today) *not readable*, with the help center's own reason.
+- **One-time new baseline.** The first check after this update reads each page a new way, so it records a new baseline instead of reporting every page as changed; later checks compare against it. A watched page whose address changes starts over the same way. On Beacon, a page that was readable and now answers 404 is reported as gone, not changed.
+- **Best-practices library.** Titles of help-center articles found through the sitemap come from the article answer instead of the shell's generic title.
+
 ## 2026-09-30
 
 ### The Terraform hand-off says which hand-off to use, and when

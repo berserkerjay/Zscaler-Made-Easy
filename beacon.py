@@ -147,20 +147,28 @@ def _sdk_watcher(rep: Dict[str, Any], online: bool, findings: List[Dict[str, Any
     return w
 
 
-def _page_entry(source: Dict[str, Any], text: Optional[str], err: str) -> Dict[str, Any]:
-    """One help-center page, hashed exactly as zscaler_update_check hashes it."""
+def _page_entry(source: Dict[str, Any], fetch: Fetch) -> Dict[str, Any]:
+    """One help-center page, read and hashed exactly as zscaler_update_check
+    reads and hashes it (a help.zscaler.com article through its fetch-data
+    answer, since the page itself is an empty browser shell)."""
     import zscaler_update_check as zu
     e: Dict[str, Any] = {"key": source["key"], "name": source["name"], "url": source["url"],
                          "importance": source.get("importance", "medium"), "hash": None, "ok": False, "reason": ""}
-    if not text:
+
+    def get(url: str):
+        text, err = fetch(url)
+        return (text.encode("utf-8", "ignore"), 200, "") if text else (None, 0, err or "no answer")
+    content, q, _code, err = zu.read_page(source["url"], get)
+    if q is None:
         e["reason"] = err or "no answer"
         return e
-    body = text.encode("utf-8", "ignore")
-    q = zu.page_quality(body, 200)
-    e["hash"] = zu._hash(zu._strip_volatile(body))
+    e["hash"] = zu._hash(content or b"")
     e["ok"] = bool(q.get("ok"))
     e["reason"] = q.get("reason") or ""
     e["title"] = q.get("title") or ""
+    e["basis"] = q.get("basis") or "page"  # a hash is only compared with one taken the same way
+    if q.get("article_status") is not None:
+        e["article_status"] = q["article_status"]
     return e
 
 
@@ -174,10 +182,10 @@ def watch_pages(fetch: Fetch) -> List[Dict[str, Any]]:
         if s.get("type") != "html_hash":
             continue
         try:
-            text, err = fetch(s["url"])
+            out.append(_page_entry(s, fetch))
         except Exception as e:  # noqa: BLE001 — one page never stops the others
-            text, err = None, f"{type(e).__name__}: {str(e)[:150]}"
-        out.append(_page_entry(s, text, err))
+            out.append({"key": s["key"], "name": s["name"], "url": s["url"], "importance": s.get("importance", "medium"),
+                        "hash": None, "ok": False, "reason": f"{type(e).__name__}: {str(e)[:150]}"})
     return out
 
 
@@ -438,12 +446,16 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
         prev_pages = {p["key"]: p for p in (up.get("api") or {}).get("pages") or []}
         for p in (cur.get("api") or {}).get("pages") or []:
             q = prev_pages.get(p["key"])
-            if not q:
+            # A page read another way, or at another address, is a new
+            # baseline (the first run that reads help.zscaler.com's article
+            # instead of its empty shell is not a change on every page).
+            if not q or q.get("basis", "page") != p.get("basis", "page") or q.get("url") != p.get("url"):
                 continue
-            if p.get("hash") and q.get("hash") and p["hash"] != q["hash"]:
-                add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
-            elif q.get("ok") and p.get("hash") and not p.get("ok"):
+            # Gone first: a page that went away also hashes differently.
+            if q.get("ok") and p.get("hash") and not p.get("ok"):
                 add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
+            elif p.get("hash") and q.get("hash") and p["hash"] != q["hash"]:
+                add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
 
     tb = None
     ct = cur.get("tenant")
