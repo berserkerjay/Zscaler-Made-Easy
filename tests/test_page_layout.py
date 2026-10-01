@@ -102,3 +102,13 @@ def test_step_strip_buttons_take_you_to_each_step():
     assert "① Connect" in html and "② Scope assessment" in html and "③ Dashboard: findings + export" in html
     assert "function _stepGo(step)" in html and 'id="scopeField"' in html and "Click a step to go there" in html
     assert '<span class="step-item"' not in html, "the strip is made of real buttons, not labels"
+
+
+def test_terraform_hand_off_says_when_to_use_each_and_defaults_to_static():
+    js = _page().get("/static/deploy_studio.js").text
+    assert "2 · Which hand-off" in js and 'class="tf-choose"' in js
+    for choice in ("<b>Deploy policy packs</b>", "<b>Gap mode</b>", "<b>Static</b>", "<b>Neither yet</b>"):
+        assert choice in js
+    assert js.count("<b>Use when</b>") == 2 and js.count("<b>Not when</b>") == 2
+    # Gap mode reads the tenant, so it is never picked just because credentials are there.
+    assert "return TF.mode === 'gap' && _tfCanGap() ? 'gap' : 'static';" in js
