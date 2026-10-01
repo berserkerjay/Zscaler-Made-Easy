@@ -402,6 +402,10 @@ def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict
 # Tenant snapshot
 # ---------------------------------------------------------------------------
 
+class _NotRead(Exception):
+    """A read the caller's scope leaves out: not attempted, not an error."""
+
+
 def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None) -> Dict[str, Any]:
     """Read everything the plan needs from the tenant: dictionaries,
     engines and web DLP rules always; other channels' rules and their
@@ -462,8 +466,12 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
         snap["unreadable"]["engines"] = str(e)[:200]
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
-    _log("Reading the tenant: Web DLP rules…")
+    # need["web_rules"] False (a scoped read with Inline Web DLP out of
+    # scope) leaves the Web DLP rules unread; every other caller reads them.
+    _log("Reading the tenant: Web DLP rules…" if (need or {}).get("web_rules", True) else "Web DLP rules: not in scope, not read.")
     try:
+        if not (need or {}).get("web_rules", True):
+            raise _NotRead()
         rules, err = _nx(zia.dlp_web_rules.list_rules())
         if err:
             raise RuntimeError(str(err))
@@ -483,6 +491,8 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
                 "description": _field(r, "description"),
             })
         snap["rules"].sort(key=lambda r: r["order"])
+    except _NotRead:
+        pass
     except Exception as e:  # noqa: BLE001
         snap["unreadable"]["web DLP rules"] = str(e)[:200]
         snap["errors"].append(f"web DLP rules: {str(e)[:200]}")

@@ -27,7 +27,7 @@
   .dg-dim { color: var(--dim); font-size: 0.85rem; }
   .dg-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
   .dg-status { font-size: 0.86rem; color: var(--dim); min-height: 1.3em; }
-  .dg-status.bad { color: var(--fail); }
+  .dg-status.bad { color: var(--fail); } .dg-status.warn { color: var(--warn); }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 </style>
 </head>
@@ -89,7 +89,8 @@
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const $ = id => document.getElementById(id);
     function announce(t) { const r = $('liveRegion'); if (r) { r.textContent = ''; setTimeout(() => { r.textContent = t; }, 30); } }
-    function status(t, bad) { const s = $('dgStatus'); s.textContent = t; s.classList.toggle('bad', !!bad); }
+    function status(t, bad, warn) { const s = $('dgStatus'); s.textContent = t; s.classList.toggle('bad', !!bad); s.classList.toggle('warn', !!warn); }
+    let latestId = null, waiting = null;
     const fmt = t => { try { return new Date(t).toLocaleString(); } catch (e) { return t || ''; } };
     function tile(k, v, d) { return `<div class="dg-tile"><div class="k">${E(k)}</div><div class="v">${E(v)}</div>${d ? `<div class="d">${E(d)}</div>` : ''}</div>`; }
 
@@ -99,6 +100,7 @@
       catch (e) { status(`Could not load: ${e.message}`, true); return; }
       status('');
       const latest = (data.digests || [])[0];
+      latestId = latest ? latest.id : null;
       if (!latest) {
         $('dgVerdict').className = 'dg-verdict';
         $('dgVerdict').innerHTML = '<strong>No digest yet.</strong> The loop runs only when you click Run the loop now (or, if the operator set DLP_CHECK_CONTINUOUS_EVAL_HOURS, on that timer), for every tenant profile that remembers its secret, reading only what each profile has in scope.';
@@ -148,14 +150,47 @@
       status('Open the FP/TP detection ratio from the assessment page (Find the gaps): it needs that page\'s tenant sign-in to read the incidents.');
       if (typeof window.__dlpGoHome === 'function') window.__dlpGoHome(); else location.href = '/';
     });
+    // Another run (the timer, another tab, or a scheduled
+    // RUN_Continuous_Evaluation.bat) is reading the tenants: nothing failed.
+    // Watch for the digest it writes and show it when it lands.
+    function waitForOtherRun() {
+      if (waiting) return;
+      const before = latestId;
+      let tries = 0;
+      waiting = setInterval(async () => {
+        tries += 1;
+        try {
+          const r = await fetch('/api/digests', { cache: 'no-store' });
+          const data = await r.json();
+          const now = ((data.digests || [])[0] || {}).id || null;
+          if (now && now !== before) {
+            clearInterval(waiting); waiting = null;
+            await load(); status('The run that was in progress has finished: the digest above is the one it made.'); announce('The other run finished');
+            return;
+          }
+        } catch (e) { /* try again */ }
+        if (tries >= 360) { clearInterval(waiting); waiting = null; status('The other run has not written a digest yet; reload the page later.', false, true); }
+      }, 10000);
+    }
     $('dgRun').addEventListener('click', async () => {
       $('dgRun').disabled = true; status('Running the loop… for every tenant profile that remembers its secret, only what its Scope page puts in scope is read; this takes a minute per tenant.'); announce('Running the loop');
       try {
         const r = await fetch('/api/digests/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notify: true }) });
         const d = await r.json().catch(() => ({}));
+        if (r.status === 409) {
+          status('A run of the loop is already in progress (the timer, another tab or a scheduled run), so this one was not started; nothing failed. This page shows its digest when it finishes.', false, true);
+          announce('A run is already in progress');
+          waitForOtherRun();
+          return;
+        }
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
-        await load(); status('Done: the digest above is the one just made.'); announce('The loop finished');
-      } catch (e) { status(`The run failed: ${e.message}`, true); }
+        await load();
+        if (d.status === 'partial' || Number(d.errors || 0) > 0) {
+          const n = Number(d.errors || 0);
+          status(`Finished with errors (status partial): ${n || 'some'} tenant read${n === 1 ? '' : 's'} or section${n === 1 ? '' : 's'} failed, for example on the API rate limit. The digest above lists them; what failed was not measured.`, false, true);
+          announce('The loop finished with errors');
+        } else { status('Done: the digest above is the one just made.'); announce('The loop finished'); }
+      } catch (e) { status(`The run failed: ${e.message}`, true); announce('The run failed'); }
       finally { $('dgRun').disabled = false; }
     });
     load();
