@@ -117,8 +117,12 @@
         try { $('dgFull').textContent = await (await fetch(`/api/digests/${encodeURIComponent(latest.id)}?format=markdown`)).text(); } catch (e) { $('dgFull').textContent = ''; }
       }
       const sc = data.schedule || {}, n = data.notifications || {};
-      const next = sc.next_run_at ? fmt(sc.next_run_at * 1000) : 'after the server starts';
-      $('dgSched').innerHTML = tile('Every', `${n.interval_hours || 6} h`, `while the server runs · next ${next}`) + tile('Last run', sc.last_run_at ? fmt(sc.last_run_at) : 'not yet', sc.last_status ? `status ${sc.last_status}` : '')
+      // The timer is off unless DLP_CHECK_CONTINUOUS_EVAL_HOURS opts in; when on, it shows the configured interval.
+      const hrs = Number(sc.interval_seconds || 0) / 3600;
+      const every = sc.enabled && hrs > 0
+        ? tile('Every', `${Math.round(hrs * 10) / 10} h`, `while the server runs · next ${sc.next_run_at ? fmt(sc.next_run_at * 1000) : 'once the first run ends'}`)
+        : tile('Timer', 'off', 'runs only when you click Run the loop now; set DLP_CHECK_CONTINUOUS_EVAL_HOURS to run it on a timer');
+      $('dgSched').innerHTML = every + tile('Last run', sc.last_run_at ? fmt(sc.last_run_at) : 'not yet', sc.last_status ? `status ${sc.last_status}` : '')
         + tile('E-mail', n.email && n.email.configured ? 'on' : 'off', n.email && n.email.configured ? `to ${n.email.to}` : 'set DLP_CHECK_SMTP_HOST and DLP_CHECK_DIGEST_TO')
         + tile('Chat webhook', n.webhook && n.webhook.configured ? (n.webhook.kind || 'on') : 'off', n.webhook && n.webhook.configured ? n.webhook.host : 'set DLP_CHECK_DIGEST_WEBHOOK (https)')
         + tile('Send when', n.mode || 'noteworthy', 'DLP_CHECK_NOTIFY') + tile('Guidance queue', (data.guidance_queue || {}).open || 0, 'open, app-wide') + tile('References recorded', (data.checks_config || {}).references || 0, 'checks_config.json');

@@ -30,6 +30,7 @@ saved on the tenant profile, and comes back in the report as
 say the same thing."""
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 CHOICES = ("zscaler", "alternative", "gap")
@@ -92,9 +93,10 @@ ENDPOINT_CHANNELS: Dict[str, Tuple[str, ...]] = {
     "/zia/tenancyRestrictionProfile": ("cloud_app_control",),
 }
 
-# Which checks read each of those endpoints. tests/test_channel_scope.py
-# runs every check against a recording client and fails when a check
-# reads one of them without being listed here, so this cannot drift.
+# Which checks read each of those endpoints. tests/test_no_implicit_reads.py
+# runs every check against a recording client (list-, dict- and
+# error-shaped answers) and fails when a check reads one of them without
+# being listed here, so this cannot drift.
 CHANNEL_READS: Dict[str, Sequence[str]] = {
     "/zia/webDlpRules": ("4.8", "5.3", "5.7", "5.9", "5.13", "5.16", "5.17", "5.19", "5.20", "MC.1", "MC.12", "8.5", "8.6",
                          "8.8", "8.12", "12.1", "12.3", "12.6", "12.12", "12.15", "A.1", "A.3", "A.4", "A.5", "A.8", "A.9",
@@ -109,7 +111,7 @@ CHANNEL_READS: Dict[str, Sequence[str]] = {
     "/zia/sslInspectionRules": ("4.1", "4.3", "4.4", "4.5", "4.6", "4.10", "4.11", "4.13", "4.14", "5.5", "MC.12", "6.4", "6.5",
                                 "7.2", "7.3", "9.2", "9.3", "A.2", "E.2", "CA.3", "AI.1", "AI.5", "AI.6", "AUTO-TF-01"),
     "/zia/cloudApplicationRules": ("3.7", "4.7", "5.18", "MC.5", "A.6", "A.7", "A.17", "E.1", "E.3", "E.8", "E.9", "E.13", "CA.1",
-                                   "CA.2", "CA.3", "CA.4", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20"),
+                                   "CA.2", "CA.3", "CA.4", "CA.5", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20"),
     "/zia/tenancyRestrictionProfile": ("5.18", "A.7", "CA.2", "AI.14"),
 }
 
@@ -157,9 +159,12 @@ def normalize(channels: Any) -> Dict[str, Dict[str, str]]:
 def effective(channels: Any) -> Dict[str, Dict[str, str]]:
     """normalize(), and once anything is declared, every Scope-page channel
     the declaration leaves out counts as a gap: only channels marked
-    Zscaler are read. An empty declaration stays empty (nothing narrowed)."""
+    Zscaler are read. An empty declaration stays empty (nothing narrowed);
+    a non-empty one is a declaration even when none of its entries can be
+    read (a blank key, an unknown id sent as null): every channel is then a
+    gap, never "nothing narrowed"."""
     ch = normalize(channels)
-    if ch:
+    if ch or (isinstance(channels, dict) and channels):
         for cid, name in CHANNELS.items():
             ch.setdefault(cid, {"choice": "gap", "note": "", "name": name})
     return ch
@@ -255,12 +260,27 @@ class ScopedClient:
     is never read, even by a code path the check map missed). Everything
     else goes to the real client. With no declaration nothing is refused."""
 
+    # Answers that mean the tenant did not answer the read (rate limited,
+    # unavailable, timed out or unreachable): a check built on one cannot
+    # judge anything (unanswered()).
+    UNANSWERED = frozenset({0, 429, 502, 503, 504})
+
     def __init__(self, client: Any, channels: Any):
         ch = effective(channels)
         self._client = client
         self._declared = bool(ch)
         self._on = {k for k, v in ch.items() if v["choice"] == "zscaler"}
         self.refused: List[str] = []
+        self._tl = threading.local()
+
+    def begin(self) -> None:
+        """Start recording the reads of the check running on this thread."""
+        self._tl.unanswered = []
+
+    def unanswered(self) -> List[Tuple[str, int]]:
+        """(endpoint, code) of this thread's reads since begin() that the
+        tenant did not answer."""
+        return list(getattr(self._tl, "unanswered", None) or [])
 
     def get(self, ep, *a, **k):
         chans = endpoint_channels(ep)
@@ -268,7 +288,15 @@ class ScopedClient:
             self.refused.append(str(ep))
             return ({"error": "not in scope",
                      "message": "This channel was not ticked on the Scope page; the tenant was not read."}, 0)
-        return self._client.get(ep, *a, **k)
+        res = self._client.get(ep, *a, **k)
+        try:
+            code = res[1]
+        except Exception:  # noqa: BLE001
+            code = None
+        rec = getattr(self._tl, "unanswered", None)
+        if rec is not None and code in self.UNANSWERED:
+            rec.append((str(ep), int(code)))
+        return res
 
     def __getattr__(self, name):
         return getattr(self._client, name)

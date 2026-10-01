@@ -191,7 +191,9 @@
   // _gdAuthVerdict calls this); it never starts a run.
   window.__dbSignedIn = function () {
     const n = $('dbRunNote');
-    if (n && !n.hidden) note('Signed in. Click Run assessment to assess what is in scope.');
+    // Only a "Sign in first" warning is answered by signing in; any other
+    // (Report details to fill in, a refused run) still stands.
+    if (n && !n.hidden && /^Sign in first/.test(n.textContent || '')) note('Signed in. Click Run assessment to assess what is in scope.');
   };
 
   // ── Scope: one combined page for everything that decides what the
@@ -255,7 +257,7 @@
             <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
           </div>
         </div>
-        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it. <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are reported as <em>Not in scope</em> (the report lists it as a gap). The declaration is saved with the tenant profile and printed in the report.</p>
+        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it (a check that also reads another channel's rules, such as a GenAI check reading the Web DLP rules, runs only when that channel is ticked too). <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are reported as <em>Not in scope</em> (the report lists it as a gap). The declaration is saved with the tenant profile and printed in the report.</p>
         <div id="dbChList" class="db-ch-list"></div>
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
@@ -739,12 +741,31 @@
   // While a run is in flight the tiles say so — the Completion tile follows
   // the same progress events as the progress card (index.html handleEvent),
   // and a previous score stays visible only labelled as previous.
+  let beforeRun = null;   // the tiles as they were, put back when the server refuses the run
   window.__dbRunStarted = function () {
-    const cp = $('dbCompPct'), ct = $('dbCompTxt'); if (cp) cp.textContent = '0%'; if (ct) ct.textContent = 'starting…';
+    const cp = $('dbCompPct'), ct = $('dbCompTxt'), arc = $('dbCompArc');
+    beforeRun = { cp: cp ? cp.textContent : null, ct: ct ? ct.textContent : null, sm: ($('scoreMeta') || {}).textContent,
+                  arc: arc ? arc.style.strokeDashoffset : null };
+    if (cp) cp.textContent = '0%'; if (ct) ct.textContent = 'starting…';
     ring('dbCompArc', 0);
     const sm = $('scoreMeta'), sn = $('scoreNum');
     if (sm) sm.textContent = (sn && sn.textContent !== '—') ? 'Assessing now · previous result shown until it finishes' : 'Assessing now';
     const f = $('dbFooter'); if (f) f.hidden = true; document.body.classList.remove('db-has-footer');
+  };
+  // The server refused the run (nothing to read in the chosen scope, a
+  // channel to tick): the tiles go back as they were, and the reason is
+  // shown on the Scope page, where the run was started and the fix is made.
+  window.__dbRunRefused = function (reason) {
+    const b = beforeRun || {}; beforeRun = null;
+    const cp = $('dbCompPct'), ct = $('dbCompTxt'), sm = $('scoreMeta'), arc = $('dbCompArc');
+    if (cp && b.cp !== null && b.cp !== undefined) cp.textContent = b.cp;
+    if (ct && b.ct !== null && b.ct !== undefined) ct.textContent = b.ct;
+    if (sm && b.sm !== undefined) sm.textContent = b.sm || '';
+    if (arc && b.arc !== null && b.arc !== undefined) arc.style.strokeDashoffset = b.arc;
+    showScopeView(); setCurrent('scope');
+    note(reason, 'warn');
+    say(reason);
+    const run = $('dbScopeRun'); if (run) { run.scrollIntoView({ behavior: 'smooth', block: 'center' }); run.focus(); }
   };
   window.__dbProgress = function (evt) {
     if (!evt || evt.total === undefined || evt.completed === undefined) return;

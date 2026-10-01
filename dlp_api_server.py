@@ -17,7 +17,7 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, re, sys, tempfile, time
+import json, asyncio, os, re, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from starlette.background import BackgroundTask
@@ -1614,12 +1614,11 @@ _DH_REFRESH_STATE: Dict[str, Any] = {"enabled": False, "interval_seconds": None,
 
 
 def _continuous_eval_hours() -> float:
-    """DLP_CHECK_CONTINUOUS_EVAL_HOURS as hours; unset, 0 or unreadable is off."""
-    try:
-        h = float((os.environ.get("DLP_CHECK_CONTINUOUS_EVAL_HOURS") or "0").strip())
-    except ValueError:
-        return 0.0
-    return h if h > 0 and h == h and h != float("inf") else 0.0
+    """DLP_CHECK_CONTINUOUS_EVAL_HOURS as hours; unset, 0 or unreadable is
+    off. A positive value below continuous_eval.MIN_INTERVAL_HOURS is raised
+    to it: a typo such as 1e-5 must not read every tenant back to back."""
+    import continuous_eval
+    return float(continuous_eval._interval_hours() or 0.0)
 
 
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
@@ -1946,6 +1945,51 @@ def _close_quietly(client: Any) -> None:
             pass
 
 
+_UNANSWERED_WORDS = {429: "rate limited (HTTP 429)", 502: "unavailable (HTTP 502)", 503: "unavailable (HTTP 503)",
+                     504: "unavailable (HTTP 504)", 0: "no answer (timed out or unreachable)"}
+
+
+def _unanswered_result(r: Any, label: str, unanswered: List[Tuple[str, int]]) -> Any:
+    """A check built on a read the tenant did not answer (rate limited,
+    unavailable, timed out) judged nothing: it is "Could not be checked"
+    (ERROR, outside the score, the run partial), never "Configured", "Not
+    configured" or an empty tenant ("0 devices", "No PAC files")."""
+    if not unanswered or str(getattr(r, "status", "")) == str(R.ERROR):
+        return r
+    codes = sorted({c for _ep, c in unanswered})
+    why = ", ".join(_UNANSWERED_WORDS.get(c, f"HTTP {c}") for c in codes)
+    eps = ", ".join(sorted({ep.split("?", 1)[0] for ep, _c in unanswered}))[:160]
+    return R(R.ERROR, f"{label}: Could not be checked: the tenant did not answer {len(unanswered)} read(s) ({why}; {eps}). "
+                      "Run the assessment again later.")
+
+
+def _close_when_done(client: Any):
+    """A done-callback for the thread still using `client`: ends its
+    session once that thread has stopped (never under a running read)."""
+    def _cb(fut):
+        if not fut.cancelled():
+            fut.exception()   # retrieved, so an error is not logged as unhandled
+        threading.Thread(target=_close_quietly, args=(client,), name="journey-close", daemon=True).start()
+    return _cb
+
+
+async def _end_checks_session(client: Any, pool: Any, running: set) -> None:
+    """End the assessment checks' session. When no check thread is still
+    using it, at once; otherwise (a check past its timeout, or a stream
+    closed mid-run) in the background once those threads are done, so no
+    running read is cut off and nothing waits on a stuck request."""
+    if client is None:
+        return
+    if pool is None or not running:
+        await asyncio.to_thread(_close_quietly, client)
+        return
+
+    def _later():
+        pool.shutdown(wait=True)
+        _close_quietly(client)
+    threading.Thread(target=_later, name="assess-close", daemon=True).start()
+
+
 @app.post("/api/tenant/check")
 async def tenant_check(req: TenantCredsRequest):
     """Sign-in test for Authenticate: obtains the token (or, for the classic
@@ -2139,17 +2183,54 @@ def _journey_scope(pack_ids: List[str], channels: Any) -> Tuple[List[Dict[str, A
     return packs, chosen
 
 
+class JourneyStopped(Exception):
+    """The run the journey belongs to has ended (stream closed, timed out)."""
+
+
+_PLAIN = (str, bytes, int, float, bool, type(None), dict, list, tuple, set)
+
+
+class _StopAware:
+    """Wraps an SDK client so that every call made through it (every
+    tenant read) first checks `stop`: once the run has ended, the next read
+    raises JourneyStopped instead of reaching the tenant."""
+
+    def __init__(self, target: Any, stop: Any):
+        object.__setattr__(self, "_t", target)
+        object.__setattr__(self, "_stop", stop)
+
+    def __getattr__(self, name):
+        val = getattr(self._t, name)
+        if isinstance(val, _PLAIN):
+            return val
+        if callable(val) and not isinstance(val, type):
+            stop = self._stop
+
+            def call(*a, **k):
+                if stop.is_set():
+                    raise JourneyStopped("the run ended; no further tenant read")
+                return val(*a, **k)
+            return call
+        return _StopAware(val, self._stop)
+
+    def __setattr__(self, name, value):
+        setattr(self._t, name, value)
+
+
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
                  channel_targets: Optional[Dict[str, List[str]]] = None,
-                 progress: Optional[Any] = None) -> Dict[str, Any]:
+                 progress: Optional[Any] = None, stop: Optional[Any] = None) -> Dict[str, Any]:
     """Read-only journey check: one preflight per policy pack (so each
     pack is measured on its own), rolled up with pack_deploy.journey.
     `channel_targets` measures the pack as the operator chose to deploy
     it (extension rules count, skipped channels do not). The tenant is
     read once for every pack (superset of their needs); `progress(i, n,
-    pack_id)` is called before each pack is measured."""
+    pack_id)` is called before each pack is measured. `stop` (an Event):
+    once set, no further tenant read is made (JourneyStopped)."""
     import pack_deploy
     import pack_channels as pc
+    if stop is not None:
+        client = _StopAware(client, stop)
     rows: List[Dict[str, Any]] = []
     tenant = None
     blockers: List[str] = []
@@ -2162,6 +2243,8 @@ def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
     except Exception:  # noqa: BLE001 — fall back to per-pack needs
         cache.pop("need", None)
     for i, pk in enumerate(packs):
+        if stop is not None and stop.is_set():
+            raise JourneyStopped("the run ended; no further tenant read")
         if progress is not None:
             try:
                 progress(i, len(packs), pk["id"])
@@ -2207,7 +2290,10 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
         raise HTTPException(status_code=404, detail="No policy packs found (pack.json needs a \"policy pack\" section).")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
+    try:
+        out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
+    finally:   # end the session (a classic ZIA API one stays open otherwise)
+        await asyncio.to_thread(_close_quietly, client)
     out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
     return out
 
@@ -4184,6 +4270,7 @@ async def migrate_export(request: Request, format: str = "json"):
 
 # The legacy single `scope` values _get_checks knows (MCP / CLI callers).
 _LEGACY_SCOPES = frozenset({"full", "all", "automation", "zdx", "zidentity", "rbac", "zia", "zpa", "zcc", "dlp"})
+_LEGACY_DLP_SCOPES = frozenset({"full", "all", "zia", "dlp"})   # legacy scopes whose checks include the DLP ones
 
 
 def _get_checks(scope: str = "dlp", scopes: list = None):
@@ -4300,12 +4387,16 @@ async def assess_stream(req: AssessRequest):
     # a default set) and only on their channels marked Zscaler.
     journey_pack_ids = [str(b) for b in (profile or {}).get("baseline_packs") or [] if b]
     try:
-        journey_packs, journey_targets = _journey_scope(journey_pack_ids, req.channels) if "dlp" in req.scopes else ([], {})
+        dlp_in_scope = ("dlp" in req.scopes) if req.scopes else (str(req.scope or "").strip() in _LEGACY_DLP_SCOPES)
+        journey_packs, journey_targets = _journey_scope(journey_pack_ids, req.channels) if dlp_in_scope else ([], {})
     except Exception:  # noqa: BLE001 — no journey rather than a failed run
         journey_packs, journey_targets = [], {}
 
     async def event_generator():
         results = []
+        client = None
+        pool = None
+        running: set = set()   # checks whose thread has started and not yet returned
         try:
             yield _sse("auth", {"status": "authenticating", "auth_method": creds["auth_method"]})
 
@@ -4346,10 +4437,15 @@ async def assess_stream(req: AssessRequest):
 
             def _run_one(idx, check_id, section, label, fn):
                 started[idx] = time.time()
+                running.add(idx)
                 try:
+                    scoped_client.begin()
                     r = fn(scoped_client)
+                    r = _unanswered_result(r, label, scoped_client.unanswered())
                 except Exception as ex:  # noqa: BLE001
                     r = R(R.ERROR, f"{label}: Could not complete check. {str(ex)[:120]}")  # "Could not be checked", never "Not configured"
+                finally:
+                    running.discard(idx)
                 loop.call_soon_threadsafe(inbox.put_nowait, (idx, r))
 
             pool = ThreadPoolExecutor(max_workers=ASSESS_WORKERS, thread_name_prefix="assess")
@@ -4408,6 +4504,11 @@ async def assess_stream(req: AssessRequest):
                         pass
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
+            # The checks' own session ends as soon as the checks are in (a
+            # classic ZIA API admin session stays open otherwise).
+            api_requests = getattr(client, "requests_made", None)
+            await _end_checks_session(client, pool, running)
+            client = None
             results = _chs.merge(check_order, [done[i] for i in range(len(checks))], skipped_checks)
 
             # Results first: the report goes out as soon as the checks are
@@ -4432,7 +4533,7 @@ async def assess_stream(req: AssessRequest):
                     "total_checks": total_all,
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
                     "elapsed_seconds": round(time.time() - run_started, 1),
-                    "api_requests": getattr(client, "requests_made", None),
+                    "api_requests": api_requests,
                 },
                 "score": overall,
                 "maturity": maturity(overall),
@@ -4481,6 +4582,8 @@ async def assess_stream(req: AssessRequest):
             if want_journey:
                 journey = None
                 sdk = None
+                task = None
+                stop = threading.Event()   # set when the run ends: the journey makes no further tenant read
                 try:
                     packs = journey_packs
                     yield _sse("progress", {"total": total_all, "completed": total_all, "pct": 100,
@@ -4491,7 +4594,7 @@ async def assess_stream(req: AssessRequest):
                     def _note(i, n, pack_id):
                         loop.call_soon_threadsafe(notes.put_nowait, (i, n, pack_id))
 
-                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, channel_targets=journey_targets, progress=_note))
+                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, channel_targets=journey_targets, progress=_note, stop=stop))
                     deadline = time.time() + JOURNEY_TIMEOUT
                     while not task.done():
                         if time.time() > deadline:
@@ -4507,8 +4610,16 @@ async def assess_stream(req: AssessRequest):
                 except Exception as ex:  # noqa: BLE001
                     journey = {"status": "error", "error": tenant_auth.mask_secrets(str(ex), creds)[:200]}
                 finally:
-                    if sdk is not None:   # end the journey's session (a classic ZIA API one stays open otherwise)
-                        await asyncio.to_thread(_close_quietly, sdk)
+                    # Timed out, failed or nobody listening: the journey stops
+                    # before its next tenant read, and its session (a classic
+                    # ZIA API one stays open otherwise) is ended only once the
+                    # journey thread has stopped using it.
+                    stop.set()
+                    if sdk is not None:
+                        if task is not None and not task.done():
+                            task.add_done_callback(_close_when_done(sdk))
+                        else:
+                            await asyncio.to_thread(_close_quietly, sdk)
                 report["journey"] = journey
                 report["profile"] = _record_history(report)
                 yield _sse("journey", {"journey": journey, "profile": report["profile"]})
@@ -4516,6 +4627,13 @@ async def assess_stream(req: AssessRequest):
         except Exception as e:
             # Catch-all: never let the generator crash the stream
             yield _sse("error", {"message": f"Server error: {str(e)[:200]}"})
+        finally:
+            # Failed sign-in, error or the browser gone: the checks' session
+            # is still ended (once no check thread is using it).
+            if pool is not None:
+                pool.shutdown(wait=False, cancel_futures=True)
+            if client is not None:
+                await _end_checks_session(client, pool, running)
 
     return StreamingResponse(
         event_generator(),

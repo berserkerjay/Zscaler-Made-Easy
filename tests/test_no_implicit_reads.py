@@ -50,9 +50,17 @@ class Recorder:
         return lambda *a, **k: ([], 200)
 
 
+_ITEM = {"id": 1, "name": "x", "state": "ENABLED", "order": 1}
+# List-, dict- and error-shaped answers: a check that reads a channel's
+# configuration only after a dict answer (CA.5 after the advanced
+# settings) is exercised too.
+_SHAPES = ([], [_ITEM], {}, dict(_ITEM), {"list": [_ITEM]}, {"cascadeUrlFiltering": False, "enabled": False},
+           {"cascadeUrlFiltering": True, "enabled": True})
+
+
 def _reads(fn):
     eps = set()
-    for data in ([], [{"id": 1, "name": "x", "state": "ENABLED", "order": 1}]):
+    for data in _SHAPES:
         rec = Recorder(data)
         try:
             fn(rec)

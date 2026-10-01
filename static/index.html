@@ -1225,6 +1225,7 @@
     </div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
     <div class="progress-detail" id="progressDetail"></div>
+    <div class="actions"><button type="button" class="btn btn-secondary" id="stopBtn" onclick="stopAssessment()">Stop</button></div>
   </div>
 
   <!-- Results -->
@@ -1310,6 +1311,9 @@
 <script>
 let reportData = null;
 let partialResults = [];
+// The running assessment's request: Stop (or New assessment) aborts it, and
+// the server then cancels the checks still queued (no further tenant read).
+let assessAbort = null;
 let runMeta = null;
 const LS_KEY = 'zscaler_assessment_config';
 
@@ -2575,13 +2579,28 @@ async function runAssessment() {
     channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {},
   };
 
+  const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+  assessAbort = ctl;
   try {
     const resp = await fetch('/api/assess', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined,
     });
-    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    if (!resp.ok) {
+      // A refused run (nothing in scope, a channel to tick, a bad field) is
+      // guidance, not a lost connection: show the server's reason where the
+      // run was started, and put the tiles back as they were.
+      const reason = await refusalText(resp);
+      assessAbort = null;
+      btn.disabled = false;
+      btn.textContent = 'Run assessment';
+      prog.classList.remove('active');
+      setStatus(reason, 'error');
+      if (window.__dbRunRefused) { try { window.__dbRunRefused(reason); } catch (e) {} }
+      return;
+    }
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -2615,7 +2634,9 @@ async function runAssessment() {
       buildPartialReport();
     }
   } catch(e) {
-    setStatus('Connection lost: ' + e.message + '. Showing partial results.', 'error');
+    const stopped = !!(ctl && ctl.signal.aborted);
+    setStatus(stopped ? 'Stopped. The checks still queued were cancelled; showing the checks that finished.'
+                      : 'Connection lost: ' + e.message + '. Showing partial results.', 'error');
     btn.disabled = false;
     btn.textContent = 'Run assessment';
     prog.classList.remove('active');
@@ -4113,7 +4134,27 @@ async function downloadDocx() {
   }
 }
 
+// The server's reason for refusing a run (FastAPI's {"detail": ...}), in words.
+async function refusalText(resp) {
+  let d = '';
+  try {
+    const j = await resp.json();
+    d = j && j.detail;
+    if (Array.isArray(d)) d = d.map(x => (x && x.msg) || '').filter(Boolean).join('; ');
+    else if (d && typeof d === 'object') d = [d.cause, d.fix].filter(Boolean).join(' ') || d.message || '';
+  } catch (e) { d = ''; }
+  return String(d || '').trim() || `The server refused the run (HTTP ${resp.status}).`;
+}
+
+// Stop: abort the running assessment's request; the server cancels the
+// checks still queued, so the tenant is read no further.
+function stopAssessment() {
+  if (assessAbort) { try { assessAbort.abort(); } catch (e) {} }
+  assessAbort = null;
+}
+
 function resetForm() {
+  stopAssessment();   // a new assessment never leaves the previous one reading the tenant
   document.getElementById('results').style.display = 'none';
   reportData = null;
   forgetResults();

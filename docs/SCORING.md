@@ -35,7 +35,13 @@ score = configured ÷ (configured + action required + needs review) × 100
   marked *Zscaler* runs as usual; one marked *Alternative* or left unticked
   (a gap) has its checks reported as *Not in scope* and never read, because
   the assessment reads only what was put in scope. A check shared with a
-  *Zscaler* channel still runs. The declaration is saved on the tenant
+  *Zscaler* channel still runs, except that a check which also reads
+  another channel's own configuration (its rules: `CHANNEL_READS`, e.g. a
+  GenAI check that reads the Web DLP or SSL inspection rules) runs only
+  when that channel is marked *Zscaler* too; otherwise it is *Not in
+  scope* and names the channel to tick. A non-empty declaration whose
+  entries cannot be read (a blank or unknown id, a null value) counts
+  every channel as unticked. The declaration is saved on the tenant
   profile and comes back in the report as `channel_coverage` (dashboard
   insight, Word report section, JSON export), which still lists the gaps.
   With no declaration at all (an MCP or CLI caller) every check in the

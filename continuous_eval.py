@@ -17,10 +17,18 @@ One run of the loop, for every tenant profile that remembers its secret:
                   digest (JSON + Markdown) and, when it is noteworthy, sent
                   by e-mail and/or to a Teams / Slack webhook.
 
-The same function runs from the server every six hours and from the
-command line (`python continuous_eval.py --once`), so a Windows scheduled
-task, cron, or a container can keep the loop alive without the browser.
-Nothing here writes to any tenant.
+The same function runs from the server's Digest tab ("Run the loop now"),
+on a timer only when DLP_CHECK_CONTINUOUS_EVAL_HOURS opts in (off by
+default), and from the command line (`python continuous_eval.py --once`),
+so a Windows scheduled task, cron, or a container can keep the loop alive
+without the browser. Nothing here writes to any tenant.
+
+Each profile is read only for what its saved Scope page puts in scope
+(`scopes` and `channels`, as the assessment does): detection health and the
+drift journey only with DLP in scope, the journey only for the ticked packs
+on their channels marked Zscaler, the SaaS / email tenants only when SaaS
+Security or Email DLP is marked Zscaler. A profile that saved no scope is
+not read at all, not even signed in to.
 """
 from __future__ import annotations
 
@@ -40,7 +48,7 @@ from urllib.parse import urlparse
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DIGEST_DIRNAME = "digests"
 KEEP_DIGESTS = 60
-INTERVAL_SECONDS = 6 * 3600
+MIN_INTERVAL_HOURS = 1.0         # the opt-in timer never runs more often: every run reads every in-scope tenant
 LogFn = Optional[Callable[[str], None]]
 
 
@@ -126,22 +134,84 @@ def run_once(*, build_client: Optional[Callable[[Dict[str, str]], Any]] = None, 
     return digest
 
 
+class _NotInScope(Exception):
+    """A step the profile's Scope page leaves out: the tenant is not read for it."""
+
+
+def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
+    """What the profile's saved Scope page lets the loop read: DLP in
+    scope or not, and the channels marked Zscaler."""
+    import channel_scope
+    scopes = [str(x) for x in (profile.get("scopes") or []) if x]
+    on = set(channel_scope.in_scope(profile.get("channels") or {}))
+    return {"dlp": "dlp" in scopes, "channels": on, "tenants": bool(on & {"saas_casb", "email_dlp"})}
+
+
+def _journey_targets(packs: List[Dict[str, Any]], channels: Any) -> Dict[str, List[str]]:
+    """pack id -> the pack's own DLP channels marked Zscaler (a pack with
+    none is left out), as the assessment's journey measures it."""
+    import channel_scope
+    import pack_channels as pc
+    import pack_deploy
+    targets = channel_scope.pack_targets(channels)
+    out: Dict[str, List[str]] = {}
+    for pk in packs:
+        try:
+            own = {pc.channel_of(p) for p in pack_deploy.load_sources([pk])[0]["policies"]}
+        except Exception:  # noqa: BLE001 - an unreadable pack is not measured
+            continue
+        mine = [c for c in pc.DLP_CHANNELS if c in own and c in targets]
+        if mine:
+            out[pk["id"]] = mine
+    return out
+
+
 def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -> Dict[str, Any]:
     import tenant_profiles
     pid = profile["id"]
     out: Dict[str, Any] = {"profile_id": pid, "name": profile.get("name") or pid, "tenant": profile.get("vanity_domain") or pid,
-                           "detection_health": None, "proposals": None, "tenants": None, "drift": None, "errors": []}
+                           "detection_health": None, "proposals": None, "tenants": None, "drift": None, "not_read": [], "errors": []}
     try:
         full = tenant_profiles.get(pid, with_secret=True) or {}
+    except Exception as e:  # noqa: BLE001
+        out["errors"].append(f"connect: {str(e)[:200]}")
+        return out
+    # Only what the profile's Scope page put in scope is read.
+    scope = profile_scope({"scopes": full.get("scopes") or profile.get("scopes"),
+                           "channels": full.get("channels") or profile.get("channels")})
+    if not scope["dlp"]:
+        out["not_read"].append("detection health and drift: DLP is not in scope on the profile's Scope page")
+    if not scope["tenants"]:
+        out["not_read"].append("SaaS / email tenants: neither SaaS Security nor Email DLP is ticked as Zscaler on the profile's Scope page")
+    if not scope["dlp"] and not scope["tenants"]:
+        return out   # nothing in scope: not even a sign-in
+    try:
         creds = tenant_profiles.creds_from(full)
         client = build_client(creds)
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"connect: {str(e)[:200]}")
         return out
     tenant_key = creds.get("vanity_domain") or pid
+    try:
+        return _evaluate_in_scope(out, profile, full, client, scope, tenant_key, days=days, log=log)
+    finally:
+        close = getattr(client, "close", None)   # end the session (a classic ZIA API one stays open otherwise)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[str, Any], client: Any, scope: Dict[str, Any],
+                       tenant_key: str, *, days: int, log) -> Dict[str, Any]:
+    import tenant_profiles
+    pid = profile["id"]
 
     # 2. detection health + proposals
     try:
+        if not scope["dlp"]:
+            raise _NotInScope()
         import detection_health
         import proposals
         rep = detection_health.generate(client, days=days)
@@ -157,11 +227,15 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
                             "titles": [q["title"] for q in proposals.list_queue(tenant_key) if q.get("status") == "open"][:8]}
         tenant_profiles.add_history(pid, {"detection_health": out["detection_health"], "continuous_evaluation": True})
         log(f"{pid}: detection health {rep.get('incident_count')} incidents, {out['proposals']['new']} new proposal(s)")
+    except _NotInScope:
+        pass
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"detection health: {type(e).__name__}: {str(e)[:200]}")
 
     # 3. SaaS / email tenants
     try:
+        if not scope["tenants"]:
+            raise _NotInScope()
         import saas_matrix
         tenants, err = saas_matrix.list_tenants(client)
         if err:
@@ -173,6 +247,8 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
             out["tenants"]["not_active"] = [{"name": t["name"], "app": t.get("app"), "status": t.get("status")} for t in f["not_active"]]
             out["tenants"]["onboard_candidates"] = [c["name"] for c in f["onboard_candidates"]][:12]
             _sync_reauthorise(tenant_key, f["not_active"])   # raises for tenants not ACTIVE, resolves the ones that recovered
+    except _NotInScope:
+        pass
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"tenants: {type(e).__name__}: {str(e)[:200]}")
     # The queue after every source of proposals has run.
@@ -190,12 +266,22 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
 
     # 4. drift: the journey against the profile's packs, compared with the last record
     try:
+        if not scope["dlp"]:
+            raise _NotInScope()
         import pack_deploy
         from dlp_importer import discover_packs
         wanted = [str(x) for x in (profile.get("baseline_packs") or full.get("baseline_packs") or []) if x]
         packs = [pk for pk in discover_packs(ROOT) if pk["id"] in wanted] if wanted else []
+        # Only the ticked packs, each on its own DLP channels marked Zscaler.
+        targets = _journey_targets(packs, full.get("channels") or profile.get("channels") or {}) if packs else {}
+        if packs and not targets:
+            out["drift"] = {"packs": [], "changed": [],
+                            "note": "no ticked pack has a channel marked Zscaler on the Scope page; tick the channel to measure drift"}
+            raise _NotInScope()
+        packs = [pk for pk in packs if pk["id"] in targets]
         if packs:
-            rep = pack_deploy.preflight(client, packs, writes_enabled=False, apply_tweaks=False)
+            rep = pack_deploy.preflight(client, packs, writes_enabled=False, apply_tweaks=False, channel_targets=targets,
+                                        tenant_cache={"only_channels": True})
             j = pack_deploy.journey(rep)
             last = _last_journey(full)
             rows = []
@@ -215,6 +301,8 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
                                               "continuous_evaluation": True})
         else:
             out["drift"] = {"packs": [], "changed": [], "note": "no packs ticked on the profile; tick the packs to measure drift"}
+    except _NotInScope:
+        pass
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"drift: {type(e).__name__}: {str(e)[:200]}")
     return out
@@ -336,6 +424,8 @@ def to_markdown(d: Dict[str, Any]) -> str:
                     L.append(f"  - next: {step}")
             if dr.get("note"):
                 L.append(f"- {dr['note']}")
+        for n in t.get("not_read") or []:
+            L.append(f"- Not read (not in scope): {n}")
         for e in t.get("errors") or []:
             L.append(f"- Error: {e}")
     if d.get("errors"):
@@ -401,7 +491,18 @@ def notification_settings() -> Dict[str, Any]:
                       "tls": env.get("DLP_CHECK_SMTP_TLS", "1") not in ("0", "false", "no")},
             "webhook": {"configured": bool(webhook and webhook.startswith("https://")), "host": host,
                         "kind": "teams" if host and ("webhook.office.com" in host or "logic.azure.com" in host or "powerautomate" in host) else ("slack" if host and "hooks.slack.com" in host else ("generic" if host else None))},
-            "interval_hours": INTERVAL_SECONDS // 3600}
+            "interval_hours": _interval_hours()}
+
+
+def _interval_hours() -> Optional[float]:
+    """The opt-in timer's interval (DLP_CHECK_CONTINUOUS_EVAL_HOURS), None when off."""
+    try:
+        h = float((os.environ.get("DLP_CHECK_CONTINUOUS_EVAL_HOURS") or "0").strip())
+    except ValueError:
+        return None
+    if not (h > 0 and h == h and h != float("inf")):
+        return None
+    return max(h, MIN_INTERVAL_HOURS)
 
 
 def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:

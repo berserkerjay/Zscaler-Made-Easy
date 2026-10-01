@@ -47,7 +47,8 @@ def _client(tenants):
 
 
 def _profile(remember=True):
-    p = tp.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "abc123456789", "baseline_packs": []},
+    p = tp.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "abc123456789", "baseline_packs": [],
+                   "scopes": ["dlp"], "channels": {"saas_casb": "zscaler"}},
                   client_secret="secret-secret-secret", remember_secret=remember)
     return p["id"]
 
