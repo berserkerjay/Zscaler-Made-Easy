@@ -508,6 +508,15 @@ def hold(seconds: float, key: Optional[str] = None) -> float:
         return t.hold[0]
 
 
+def paused_for(key: Optional[str] = None) -> float:
+    """Seconds left on this tenant's hold (0 when there is none), so a job
+    window can count down to the moment the run sends again."""
+    with _lock:
+        _refresh()
+        left = _t(key).hold[0] - _now()
+    return left if left > 0 else 0.0
+
+
 def estimate(bucket: str, count: int) -> float:
     """Seconds `count` requests of `bucket` take at the configured limits,
     starting from an empty window (for a removal's time estimate)."""

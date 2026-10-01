@@ -57,6 +57,9 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
     # Who started it (the start endpoint's actor), when known.
     actor: Optional[str] = None
+    # The tenant's ZIA rate-limit key, once the run inside knows it
+    # (dlp_api_server._keyed), so the snapshot can say when a pause ends.
+    rate_key: Optional[str] = None
     # What the run inside reported for the audit entry (note()): tenant,
     # plan_hash, counts, activation, stopped.
     audit: Dict[str, Any] = field(default_factory=dict)
@@ -200,7 +203,20 @@ def snapshot(job: Job, since: int = 0) -> Dict[str, Any]:
             "job_id": job.id, "kind": job.kind, "label": job.label, "status": job.status,
             "elapsed_seconds": job.elapsed(), "logs": lines, "next": len(job.logs), "cancel_requested": job.cancel.is_set(),
         }
-        if job.status != RUNNING:
+        rate_key, running = job.rate_key, job.status == RUNNING
+    if running and rate_key is not None:
+        # Paused for ZIA's rate limit: how long until it sends again, so the
+        # window counts down instead of looking stuck.
+        try:
+            import zia_rate
+            left = zia_rate.paused_for(rate_key)
+        except Exception:  # noqa: BLE001 - the poll must never fail over this
+            left = 0.0
+        if left > 0:
+            out["paused_seconds"] = round(left)
+            out["paused_until"] = round(time.time() + left)
+    with job.lock:
+        if out["status"] != RUNNING:   # the status this snapshot reports
             out["result"] = job.result
             out["error"] = job.error
             if job.artifact is not None:

@@ -889,6 +889,15 @@ function _dzMMSS(seconds) {
 }
 // The step the log is at, in words, from its last progress line.
 function _dzJobPhase(J) {
+  // Paused for ZIA's rate limit: count down to the moment it sends again.
+  if (J && J.pausedEnd && J.status === 'running') {
+    const left = (J.pausedEnd - Date.now()) / 1000;
+    if (left > 0) {
+      const at = new Date(J.pausedEnd).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return `Paused for ZIA's rate limit — resumes at ${at} (in ${_dzMMSS(left)}). Nothing is sent meanwhile; keep this window open.`;
+    }
+    return "ZIA's pause is over — sending again…";
+  }
   const lines = (J && J.logs) || [];
   const steps = [
     [/^STOPPED/, 'Stopped — finishing activation and the read-back'],
@@ -900,6 +909,7 @@ function _dzJobPhase(J) {
     [/refused for now; activating/, 'Waiting for ZIA to settle, then trying the refused deletes again'],
     [/\); waiting \d+s and trying again/, 'ZIA refused with a 403 — waiting and trying again (up to 5 times; about 7 minutes when ZIA answers Resource Access Blocked). Nothing is activated until the run is done'],
     [/ZIA allows \d+ .* waiting /, 'Waiting for the ZIA rate limit (the log says how long)'],
+    [/pausing the whole run|rate limit is still resetting/, "Paused for ZIA's rate limit — the last log line says how long; nothing is sent meanwhile"],
   ];
   for (let i = lines.length - 1; i >= 0; i--) {
     for (const [re, text] of steps) if (re.test(lines[i])) return text;
@@ -910,6 +920,8 @@ function _dzJobPhase(J) {
 }
 function _dzJobUpdate(snap) {
   DZ.job = Object.assign(DZ.job || {}, snap);
+  // The server says how many seconds the pause has left; count down from now.
+  DZ.job.pausedEnd = snap.paused_seconds > 0 ? Date.now() + snap.paused_seconds * 1000 : null;
   const log = document.getElementById('dzJobLog');
   if (log) { log.textContent = (snap.logs || []).join('\n') || 'Connecting to the tenant…'; log.scrollTop = log.scrollHeight; }
   const ph = document.getElementById('dzJobPhase');
@@ -923,6 +935,7 @@ function _dzJobTick() {
   const J = DZ.job; if (!J || !J.startedAt) return;
   const el = document.getElementById('dzJobElapsed');
   if (el) el.textContent = _dzMMSS((Date.now() - J.startedAt) / 1000);
+  if (J.pausedEnd) { const ph = document.getElementById('dzJobPhase'); if (ph) ph.textContent = _dzJobPhase(J); }
 }
 async function _dzCancelJob() {
   const J = DZ.job; if (!J || !J.id) return;
