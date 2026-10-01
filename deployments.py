@@ -66,7 +66,7 @@ def _write(data: Dict[str, Any]) -> None:
 
 
 def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], options: Dict[str, Any],
-               channel_targets: Optional[Dict[str, Any]] = None, by: str = "") -> Optional[Dict[str, Any]]:
+               channel_targets: Optional[Dict[str, Any]] = None, by: str = "", tenant_key: str = "") -> Optional[Dict[str, Any]]:
     """Build a record from an apply() result. None when nothing was created."""
     created: List[Dict[str, Any]] = []
     other: List[Dict[str, Any]] = []
@@ -79,7 +79,7 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
             other.append(entry)
     if not created:
         return None
-    return {
+    rec = {
         "id": f"dep-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
         "at": _now(),
         "tenant_label": tenant_label,
@@ -93,6 +93,13 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
         "undone_at": None,
         "undo": None,
     }
+    # The tenant's opaque rate key (zia_rate.key_for: a hash, the one the
+    # rate state already keeps), so classic-API tenants on one cloud, which
+    # share the label 'classic API (cloud)', keep their history apart.
+    # Never shown; it names no tenant and no admin.
+    if tenant_key:
+        rec["tenant_key"] = str(tenant_key)
+    return rec
 
 
 def add(record: Dict[str, Any]) -> Dict[str, Any]:
