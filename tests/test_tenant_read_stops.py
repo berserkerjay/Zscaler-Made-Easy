@@ -299,6 +299,67 @@ def test_the_digest_reads_only_the_ticked_channels(tmp_path, monkeypatch):
     assert any("SaaS / email tenants" in n for n in out["not_read"])
 
 
+def _digest_client(calls):
+    """The recording fake SDK client, with a Workflow Automation incident
+    search and the Web DLP incident-receiver listers, so the real
+    detection_health.generate can run on it (nothing is stubbed out)."""
+    from types import SimpleNamespace
+    from test_pack_channels import add_control_services, make_client
+    c = add_control_services(make_client())
+    c.zwa = SimpleNamespace(dlp_incidents=SimpleNamespace(dlp_incident_search=lambda **k: ([], None, None)))
+    c.zia.dlp_resources = SimpleNamespace(list_dlp_incident_receiver=lambda: ([], None, None),
+                                          list_dlp_icap_servers=lambda: ([], None, None))
+    return _Rec(c, calls)
+
+
+UNTICKED_READS = {
+    "web_dlp": ("client.zia.dlp_web_rules.list_rules", "client.zia.dlp_resources.list_dlp_incident_receiver",
+                "client.zia.dlp_resources.list_dlp_icap_servers"),
+    "endpoint_dlp": ("client.zia.endpoint_dlp_rules.list_rules",),
+    "saas_casb": ("client.zia.casb_dlp_rules.list_all_rules",),
+    "email_dlp": ("client.zia.outbound_email_dlp_rules.list_rules",),
+    "workflow_automation": ("client.zwa.dlp_incidents.dlp_incident_search",),
+}
+
+
+@pytest.mark.parametrize("ticked", [("web_dlp",), ("endpoint_dlp", "workflow_automation"), ("email_dlp",), ()])
+def test_the_digests_detection_health_reads_only_the_ticked_channels(tmp_path, monkeypatch, ticked):
+    # The FP/TP Detection Ratio step itself (detection_health.generate, not
+    # stubbed): no unticked channel's rules, no SaaS tenant list unless
+    # SaaS or Email is ticked, no incidents unless Workflow Automation is.
+    import continuous_eval as ce
+    monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")
+    channels = {cid: ("zscaler" if cid in ticked else "gap") for cid in UNTICKED_READS}
+    profile = _digest_profile(tmp_path, monkeypatch, baseline_packs=[], scopes=["dlp"], channels=channels)
+    calls = []
+    out = ce._evaluate_tenant(profile, lambda creds: _digest_client(calls), days=30, log=lambda s: None)
+    read = set(calls)
+    assert out["detection_health"] is not None, out["errors"]
+    for cid, eps in UNTICKED_READS.items():
+        for ep in eps:
+            if cid in ticked:
+                assert ep in read, f"{ep} not read though {cid} is ticked"
+            else:
+                assert ep not in read, f"{ep} was read though {cid} is unticked"
+    if not {"saas_casb", "email_dlp"} & set(ticked):
+        assert "client.zia.saas_security_api.list_casb_tenant_lite" not in read
+        assert any("SaaS / email tenants" in n for n in out["not_read"])
+    if "workflow_automation" not in ticked:
+        assert any("Workflow Automation" in n for n in out["not_read"])
+    # Shared objects stay readable.
+    assert "client.zia.dlp_dictionary.list_dicts" in read
+
+
+def test_detection_health_on_its_own_still_reads_every_channel():
+    # The FP/TP Detection Ratio page (an explicit run without a scope) is unchanged.
+    import detection_health
+    calls = []
+    detection_health.generate(_digest_client(calls), days=30)
+    for eps in UNTICKED_READS.values():
+        for ep in eps:
+            assert ep in calls, ep
+
+
 def test_the_digest_signs_in_to_nothing_outside_the_profiles_scope(tmp_path, monkeypatch):
     import continuous_eval as ce
     built = []

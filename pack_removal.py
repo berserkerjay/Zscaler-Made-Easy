@@ -20,7 +20,7 @@ import hashlib
 import json
 import re
 import threading
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
 import pack_deploy as pd
@@ -549,10 +549,19 @@ def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
     return web + others
 
 
-def inventory(client) -> Dict[str, Any]:
+def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
     """Every DLP rule the tenant has, on every channel, with its engines
-    and provenance, so an operator can pick the leftovers to remove."""
-    snap = pd.fetch_tenant(client, _all_need())
+    and provenance, so an operator can pick the leftovers to remove.
+    `channels` (pack channels: web / endpoint / saas / email) limits the
+    read to those channels' rules plus the shared dictionaries and
+    engines: an unlisted channel's rules, the SaaS tenants and the
+    endpoint application groups are not read. None reads every channel."""
+    if channels is None:
+        snap = pd.fetch_tenant(client, _all_need())
+    else:
+        need = pc.needs([])
+        need["channels"] = {c for c in channels if c in pc.DLP_CHANNELS}
+        snap = pd.fetch_tenant(client, need, only_channels=True)
     if not snap.get("reachable", True):
         return {"status": "blocked", "rules": [], "blockers": ["Could not read the tenant. Check credentials and permissions."],
                 "errors": snap.get("errors", [])}

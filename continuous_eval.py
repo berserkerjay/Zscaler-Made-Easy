@@ -212,9 +212,17 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
     try:
         if not scope["dlp"]:
             raise _NotInScope()
+        import channel_scope
         import detection_health
         import proposals
-        rep = detection_health.generate(client, days=days)
+        # Only the DLP channels marked Zscaler: their rules (and the Web DLP
+        # incident delivery when Web DLP is one), and Workflow Automation's
+        # incidents only when it is ticked too.
+        pack_chs = [channel_scope.PACK_CHANNELS[c] for c in sorted(scope["channels"]) if c in channel_scope.PACK_CHANNELS]
+        read_incidents = "workflow_automation" in scope["channels"]
+        if not read_incidents:
+            out["not_read"].append("Workflow Automation incidents: Workflow Automation is not ticked as Zscaler on the profile's Scope page")
+        rep = detection_health.generate(client, days=days, channels=pack_chs, read_incidents=read_incidents)
         s = rep.get("summary") or {}
         before = proposals.summary(tenant_key)
         merged = proposals.refresh_from_report(rep, tenant_key)

@@ -724,22 +724,37 @@ def dictionary_why(name: str, incs: List[Dict[str, Any]], definition: Optional[D
 
 
 # ── report ─────────────────────────────────────────────────────────────
-def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None) -> Dict[str, Any]:
+def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None,
+             channels: Optional[Iterable[str]] = None, read_incidents: bool = True) -> Dict[str, Any]:
     """The Detection Health report for one tenant: incidents from
     Workflow Automation, rules from the tenant inventory, metrics and
-    findings. Never raises; read problems are listed in `errors`."""
+    findings. Never raises; read problems are listed in `errors`.
+    `channels` (pack channels: web / endpoint / saas / email; the
+    continuous-evaluation loop passes the ones its profile marks Zscaler)
+    limits the rule inventory to those channels, reads the incident
+    delivery (Web DLP rules, receivers) only when web is one of them, and
+    leaves out incidents of the other DLP channels. None reads every
+    channel. `read_incidents=False` leaves Workflow Automation unread."""
     _log = log or (lambda m: None)
     s = dict(DEFAULTS, **(settings or {}))
     days = int(days or s["days"])
     errors: List[str] = []
-    _log(f"Reading Workflow Automation incidents for the last {days} days…")
-    incidents, errs = fetch_incidents(client, days, _log)
-    errors.extend(errs)
+    chans = None if channels is None else {c for c in channels}
+    if read_incidents:
+        _log(f"Reading Workflow Automation incidents for the last {days} days…")
+        incidents, errs = fetch_incidents(client, days, _log)
+        errors.extend(errs)
+    else:
+        _log("Workflow Automation is not in scope: incidents are not read.")
+        incidents = []
+    if chans is not None:
+        import pack_channels as pc
+        incidents = [i for i in incidents if i.get("channel") not in pc.DLP_CHANNELS or i.get("channel") in chans]
     rules: List[Dict[str, Any]] = []
     definitions: Dict[str, Dict[str, Any]] = {}
     try:
         from pack_removal import inventory
-        inv = inventory(client)
+        inv = inventory(client) if chans is None else inventory(client, channels=chans)
         rules = inv.get("rules") or []
         definitions = inv.get("dictionaries") or {}
         for ch, err in (inv.get("errors") or {}).items():
@@ -749,7 +764,12 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
         errors.append(f"rule inventory failed: {str(e)[:200]}")
     _log(f"{len(incidents)} incident(s), {len(rules)} rule(s); evaluating…")
     ev = evaluate(incidents, rules, s, definitions=definitions)
-    delivery = incident_delivery(client)
+    if chans is None or "web" in chans:
+        delivery = incident_delivery(client)
+    else:   # Web DLP not in scope: its rules and the incident receivers are not read
+        delivery = {"path": "not_read", "rules_enabled": 0, "rules_cloud": 0, "rules_icap": 0, "rules_silent": [],
+                    "receivers": [], "icap_servers": [], "misconfigured": [], "errors": [],
+                    "explain": "Web DLP is not in scope: its rules and the incident receivers were not read."}
     errors.extend(delivery.pop("errors", []))
     ev["delivery"] = delivery
     if delivery["path"] == "none" and not incidents:
@@ -762,7 +782,7 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     for i in incidents:
         i.pop("_created", None)
     ev.update({"days": days, "incident_count": len(incidents), "errors": errors,
-               "read": {"incidents": not any("incident search" in e or "Workflow Automation" in e for e in errors), "rules": bool(rules)},
+               "read": {"incidents": read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors), "rules": bool(rules)},
                "sources": {"incidents": "Workflow Automation: POST /zwa/dlp/v1/incidents/search",
                            "rules": "ZIA: /webDlpRules, /endpointDlpRules, /casbDlpRules, /emailDlpRules"}})
     return ev

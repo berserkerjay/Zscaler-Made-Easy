@@ -58,7 +58,7 @@ def test_run_once_builds_a_digest_and_raises_tenant_proposals(tmp_path, monkeypa
     pid = _profile()
     tenants = [{"tenant_id": 1, "tenant_name": "Acme OneDrive", "saas_application": "ONEDRIVE", "status": "ACTIVE", "saas_type": "OFLCASB_DLP_FILE"},
                {"tenant_id": 2, "tenant_name": "Acme Box", "saas_application": "BOX", "status": "AUTH_EXPIRED", "saas_type": "OFLCASB_DLP_FILE"}]
-    monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None: dict(REPORT, incident_count=36, summary={"closed": 30, "not_real": 12, "fp_rate_pct": 40, "noisy_rules": 1, "dead_rules": 1, "promotable_rules": 1, "noisy_dictionaries": 1}))
+    monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None, **k: dict(REPORT, incident_count=36, summary={"closed": 30, "not_real": 12, "fp_rate_pct": 40, "noisy_rules": 1, "dead_rules": 1, "promotable_rules": 1, "noisy_dictionaries": 1}))
     monkeypatch.setattr("zscaler_best_practices.list_all", lambda service="": [])
     logs = []
     d = ce.run_once(build_client=lambda creds: _client(tenants), log=logs.append, notify=True)
