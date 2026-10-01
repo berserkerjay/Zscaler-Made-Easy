@@ -154,7 +154,7 @@ def test_check_html_says_moved_or_maintenance(monkeypatch):
     monkeypatch.setattr(zu, "_safe_get", site({"/oneapi": article(status=403)}))
     r = zu._check_html(one, {})
     # /oneapi is its own section: the link stays on the page, and the note says why it is not readable.
-    assert r["status"] == "dead_link" and r["link"] == one["url"] and not r["link_fallback"]
+    assert r["status"] == "unreadable" and r["link"] == one["url"] and not r["link_fallback"]
     assert "Maintenance" in r["link_note"] and "section index" not in r["link_note"]
     # fetch-data unusable and the page itself 404s: an error that still links to the section.
     monkeypatch.setattr(zu, "_safe_get", lambda u, verify_tls=None: (b"junk", 200, "") if alias(u) else (b"", 404, ""))
@@ -324,3 +324,72 @@ def test_one_failed_read_does_not_hide_the_next_change():
     for between in (shell, unread):
         assert _doc_changes(_snap(2, between), [_snap(1, ok)]) == []
         assert _doc_changes(_snap(3, new), [_snap(1, ok), _snap(2, between)]) == [("doc_changed", "dlp_engines_bp")]
+
+
+# ── Review fixes, round 2 (PR #40) ────────────────────────────────────
+
+def _down(answer):
+    calls = []
+
+    def get(url, verify_tls=None):
+        calls.append(url)
+        return answer
+    get.calls = calls
+    return get
+
+
+@pytest.mark.parametrize("answer", [(None, 0, "Connection timeout to help.zscaler.com."), (b"Too Many Requests", 429, "")])
+def test_crawler_titles_do_not_fetch_the_page_after_a_network_error_or_429(monkeypatch, answer):
+    """The crawler reads titles through read_page: a timeout or a 429 on
+    fetch-data costs one request per article, not two."""
+    monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
+    entries = [{"url": f"https://help.zscaler.com/zia/a{i}", "title": f"a{i}", "via": "sitemap"} for i in range(bc.MAX_TITLE_FETCHES + 10)]
+    get = _down(answer)
+    n = bc._resolve_titles(entries, get, False, None)
+    assert n == len(get.calls) == bc.MAX_TITLE_FETCHES and all(alias(u) for u in get.calls)
+    assert all(not e.get("titled") and e["title"].startswith("a") for e in entries)
+    get = _down(answer)
+    assert zu.read_page(SRC["url"], get)[1] is None and len(get.calls) == 1
+
+
+def test_updates_tab_keeps_the_link_of_an_article_in_maintenance(monkeypatch):
+    """A 403 maintenance article is not readable, not gone: its own link is
+    kept and it is not sent to the section index."""
+    monkeypatch.setattr(zu, "_safe_get", site({"/zia/about-dlp-engines": article(status=403)}))
+    r = zu._check_html(SRC, {"hash": "abc", "basis": "article", "url": SRC["url"]})
+    assert r["status"] == "unreadable" and r["link"] == SRC["url"] and not r["link_fallback"]
+    assert "Maintenance" in r["link_note"] and "section index" not in r["link_note"]
+    html = open("static/index.html", encoding="utf-8").read()
+    assert "unreadable: ['#f59e0b','NOT READABLE']" in html
+
+
+@pytest.mark.parametrize("title", ["Viewing Removed Devices", "About Error Codes", "Configuring the Access Denied Page", "Page Not Found Settings"])
+def test_a_real_article_is_not_dead_because_of_its_title(monkeypatch, title):
+    content = "<p>" + "Real guidance about devices. " * 40 + "</p>"
+    _, q = zu.help_article(article(title=title, content=content))
+    assert q["ok"] and q["title"] == title
+    monkeypatch.setattr(zu, "_safe_get", site({"/zia/about-dlp-engines": article(title=title, content=content)}))
+    r = zu._check_html(SRC, {})
+    assert r["status"] == "new" and r["link"] == SRC["url"]
+
+
+def test_a_malformed_index_answer_does_not_raise(monkeypatch):
+    for bad in (5, True, "x", {"a": 1}):
+        body = json.dumps({"data": {"info": {"status": 200}, "body": {"title": "Idx", "content": "", "categories": [{"title": "A", "articles": bad}]}}}).encode()
+        _, q = zu.help_article(body)
+        assert not q["ok"]
+    monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
+    entries = [{"url": f"https://help.zscaler.com/zia/b{i}", "title": f"b{i}", "via": "sitemap"} for i in range(2)]
+    bad = json.dumps({"data": {"info": {"status": 200}, "body": {"title": "Idx", "content": "", "categories": [{"title": "A", "articles": 5}]}}}).encode()
+    assert bc._resolve_titles(entries, lambda u, verify_tls=None: (bad, 200, ""), False, None) == 2
+
+
+def test_help_api_url_keeps_an_already_encoded_path():
+    assert "url_alias=/zia/caf%C3%A9-guide&" in zu.help_api_url("https://help.zscaler.com/zia/caf%C3%A9-guide")
+    assert "url_alias=/zia/caf%C3%A9-guide&" in zu.help_api_url("https://help.zscaler.com/zia/café-guide")
+
+
+def test_the_word_report_fallback_cites_the_live_guides_page():
+    import report_docx
+    text = report_docx._resolve_best_practice("zzz-no-such-label", "zzz", "ZZZ.0")
+    assert "https://help.zscaler.com/zscaler-deployments-operations " in text

@@ -194,7 +194,7 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
             return f"{text} Reference: {url}"
     return (
         "Apply the Zscaler-recommended baseline for this control. Reference "
-        "https://help.zscaler.com/zscaler-deployments-operation for the "
+        "https://help.zscaler.com/zscaler-deployments-operations for the "
         "deployment-and-operations guide covering this feature area."
     )
 

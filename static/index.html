@@ -5032,6 +5032,7 @@ function renderUpdateResults(data) {
       unchanged: ['#64748b','OK'],
       error:     ['#ef4444','ERROR'],
       dead_link: ['#f59e0b','NO PAGE'],
+      unreadable: ['#f59e0b','NOT READABLE'],
     };
     const [col, label] = statusColors[r.status] || ['#64748b', (r.status||'?').toUpperCase()];
     const impColor = r.importance === 'high' ? '#f59e0b' : r.importance === 'medium' ? '#64748b' : '#475569';

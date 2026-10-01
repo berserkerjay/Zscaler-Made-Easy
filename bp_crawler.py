@@ -461,8 +461,10 @@ def _resolve_titles(entries: List[Dict[str, Any]], safe_get, skip_tls_verify: bo
 
     help.zscaler.com pages are an empty browser shell with no title; the
     article (title included) comes from the help center's fetch-data
-    answer, so that is read instead. An article that answers 404/403
-    keeps its slug title. Only an unusable answer falls back to the page."""
+    answer, so that is read instead (zscaler_update_check.read_page). An
+    article that answers 404/403 keeps its slug title. Only an unusable
+    answer falls back to the page; a network error or a 429 on the
+    article API does not, so each entry costs at most one wait."""
     import zscaler_update_check as zu
     verify = False if skip_tls_verify else None
     fetched = 0
@@ -476,22 +478,16 @@ def _resolve_titles(entries: List[Dict[str, Any]], safe_get, skip_tls_verify: bo
 
     todo = [e for e in entries if e.get("via") == "sitemap" and not e.get("titled")]
     for e in todo[:MAX_TITLE_FETCHES]:
-        t, read = "", False
-        api = zu.help_api_url(e["url"])
-        if api:
-            body, code, err = get(api)
-            art = zu.help_article(body) if not err and code == 200 and body else None
-            if art:
-                read = True
-                if art[1].get("article_status") == 200:
-                    t = art[1].get("title") or ""
-        if not read:
-            body, code, err = get(e["url"])
-            if not err and code == 200 and body:
-                try:
-                    t = page_title(body.decode("utf-8", errors="ignore"))
-                except Exception:
-                    t = ""
+        t = ""
+        body, q, _code, _err = zu.read_page(e["url"], get)
+        if q and q.get("basis") == "article":
+            if q.get("article_status") == 200:
+                t = q.get("title") or ""
+        elif q and body:
+            try:
+                t = page_title(body.decode("utf-8", errors="ignore"))
+            except Exception:
+                t = ""
         if t:
             e["title"] = _clean_title(t) or e["title"]
             e["titled"] = True

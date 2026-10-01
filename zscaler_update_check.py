@@ -56,7 +56,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 # ── Sources to monitor ───────────────────────────────────────────────
 
@@ -422,7 +422,8 @@ def help_api_url(url: str) -> Optional[str]:
     u = urlparse(url)
     if (u.hostname or "").lower() != HELP_HOST:
         return None
-    alias = quote(u.path.rstrip("/") or "/", safe="/")
+    # unquote first: a URL that is already percent-encoded keeps its octets.
+    alias = quote(unquote(u.path.rstrip("/") or "/"), safe="/")
     return (f"https://{HELP_HOST}/zapi/fetch-data?url_alias={alias}&view_type=full&cloud=null&domain=zscaler"
             "&applicable_category=&applicable_version=&applicable_parent_version=&applicable_product=&keyword=&language=en&_format=json")
 
@@ -435,7 +436,8 @@ def _help_index_html(categories: List[Any]) -> str:
         if not isinstance(c, dict):
             continue
         parts.append(f"<h2>{html.escape(str(c.get('title') or ''))}</h2><ul>")
-        for a in c.get("articles") or []:
+        articles = c.get("articles")
+        for a in articles if isinstance(articles, list) else []:
             if isinstance(a, dict):
                 parts.append(f"<li><a href=\"{html.escape(str(a.get('url') or ''))}\">{html.escape(str(a.get('title') or ''))}</a></li>")
         parts.append("</ul>")
@@ -472,8 +474,12 @@ def help_article(body: Optional[bytes]) -> Optional[Tuple[bytes, Dict[str, Any]]
         # body of its own: its content is the list of guides under it, so a
         # guide added, renamed or removed is what changes.
         content = _help_index_html(art["categories"])
-    q = page_quality(f"<html><head><title>{title}</title></head><body><main>{content}</main></body></html>".encode("utf-8"), 200)
-    return _strip_volatile(f"{title}\n{content}".encode("utf-8")), {**q, "basis": "article", "article_status": 200}
+    # The help center said 200, so the article is there: its title is not
+    # searched for "not found" / "error" wording (an article titled
+    # "Viewing Removed Devices" or "About Error Codes" is real). Only the
+    # body is judged.
+    q = page_quality(f"<html><body><main>{content}</main></body></html>".encode("utf-8"), 200)
+    return _strip_volatile(f"{title}\n{content}".encode("utf-8")), {**q, "title": title, "basis": "article", "article_status": 200}
 
 
 def read_page(url: str, get: Callable[[str], Tuple[Optional[bytes], int, str]]) -> Tuple[Optional[bytes], Optional[Dict[str, Any]], int, str]:
@@ -485,12 +491,15 @@ def read_page(url: str, get: Callable[[str], Tuple[Optional[bytes], int, str]]) 
 
     The page is only tried when the help center answered: after a network
     error (timeout, proxy, TLS; status 0) the page, on the same host,
-    would fail the same way and only double the wait."""
+    would fail the same way and only double the wait; after a 429 a second
+    request to the same host would only add to the rate limit."""
     api = help_api_url(url)
     if api:
         body, code, err = get(api)
         if err and not code:
             return None, None, 0, err
+        if code == 429:
+            return body, None, 429, err
         art = help_article(body) if not err and code == 200 and body else None
         if art:
             return art[0], art[1], 200, ""
@@ -545,6 +554,13 @@ def _check_html(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Opti
         res["action_hint"] = ("First reading of this page as it is now read (the help center's article, or a new address): "
                               "a new baseline, not a change. Later checks compare against it.")
     if not q["ok"]:
+        if basis == "article" and q.get("article_status") not in (200, 404, 410):
+            # A locked article (403 "Help Article in Maintenance") is still
+            # there and comes back: not readable now, its own link kept.
+            res.update({"status": "unreadable", "link": url, "link_fallback": False, "action_hint": None,
+                        "link_note": f"{url} — {q['reason']}. The page is still there but cannot be read right now; "
+                                     "the next check reads it again."})
+            return res
         link, note = _gone_note(url, source["name"], q["reason"])
         res.update({"status": "dead_link", "link": link, "link_fallback": link != url, "action_hint": None, "link_note": note})
     return res
