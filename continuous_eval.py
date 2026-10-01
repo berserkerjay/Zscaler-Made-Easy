@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import smtplib
@@ -56,21 +57,40 @@ SCOPE_PACK_CHANNELS = {"web_dlp": "web", "endpoint_dlp": "endpoint", "saas_casb"
 SAAS_SCOPE_CHANNEL = "saas_casb"
 
 
-def interval_hours() -> float:
+# The opt-in timer's bounds. Every pass reads every in-scope tenant, so a
+# typo such as 0.0001 must not turn it into a busy loop against the ZIA API
+# rate limit; a value beyond a year (or one whose seconds overflow) is not a
+# schedule either.
+MIN_INTERVAL_HOURS = 1.0
+MAX_INTERVAL_HOURS = 24.0 * 366
+
+
+def interval_hours(*, warn: bool = True) -> float:
     """DLP_CHECK_CONTINUOUS_EVAL_HOURS as a number of hours; unset, blank,
-    zero, negative or invalid is 0 (the server's timer is off), with a
-    line in the log for a value that is not understood."""
+    zero, negative, invalid or outside MIN_INTERVAL_HOURS..MAX_INTERVAL_HOURS
+    is 0 (the server's timer is off), with a line in the log for a value
+    that is not usable (warn=False reads it without logging)."""
     raw = (os.environ.get("DLP_CHECK_CONTINUOUS_EVAL_HOURS") or "").strip()
     if not raw:
+        return 0.0
+    shown = ascii(raw)   # ASCII only: the log may be a cp1252 file (server.log)
+
+    def _off(why: str) -> float:
+        if warn:
+            print(f"[continuous-eval] DLP_CHECK_CONTINUOUS_EVAL_HOURS={shown} {why}; the timer stays off.")
         return 0.0
     try:
         hours = float(raw)
     except ValueError:
-        print(f"[continuous-eval] DLP_CHECK_CONTINUOUS_EVAL_HOURS={raw!r} is not a number; the timer stays off.")
+        return _off("is not a number")
+    if hours == 0:
         return 0.0
-    if hours != hours or hours in (float("inf"),) or hours < 0:   # NaN, infinite or negative
-        print(f"[continuous-eval] DLP_CHECK_CONTINUOUS_EVAL_HOURS={raw!r} is not a usable number of hours; the timer stays off (0 is off).")
-        return 0.0
+    if not math.isfinite(hours) or hours < 0 or not math.isfinite(hours * 3600):   # NaN, infinite, negative, overflowing
+        return _off("is not a usable number of hours (0 is off)")
+    if hours < MIN_INTERVAL_HOURS:
+        return _off(f"is below the minimum of {MIN_INTERVAL_HOURS:g} hour(s): every run reads every in-scope tenant against the ZIA API rate limit")
+    if hours > MAX_INTERVAL_HOURS:
+        return _off(f"is above the maximum of {MAX_INTERVAL_HOURS:g} hours")
     return hours
 
 
@@ -80,7 +100,12 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     `pack_channels` (the DLP channels a pack is measured on). Only a channel
     marked "zscaler" is in scope; "alternative", "gap" or no choice is not."""
     import channel_scope
-    scopes = [str(x).strip().lower() for x in (profile.get("scopes") or []) if str(x).strip()]
+    raw = profile.get("scopes")
+    if isinstance(raw, str):          # a hand-edited "dlp" or "dlp, zia_extras"
+        raw = raw.split(",")
+    if not isinstance(raw, (list, tuple)):   # 5, true, a dict: nothing in scope
+        raw = []
+    scopes = [str(x).strip().lower() for x in raw if isinstance(x, (str, int, float)) and not isinstance(x, bool) and str(x).strip()]
     chans = channel_scope.normalize(profile.get("channels"))
     on_zscaler = {cid for cid, v in chans.items() if v["choice"] == "zscaler"}
     return {"scopes": scopes, "dlp": "dlp" in scopes, "saas": SAAS_SCOPE_CHANNEL in on_zscaler,
@@ -151,7 +176,13 @@ def run_once(*, build_client: Optional[Callable[[Dict[str, str]], Any]] = None, 
         digest["errors"].append("no API client builder: tenant sections skipped")
         profiles = []
     for p in profiles:
-        digest["tenants"].append(_evaluate_tenant(p, build_client, days=days, log=_log))
+        try:
+            digest["tenants"].append(_evaluate_tenant(p, build_client, days=days, log=_log))
+        except Exception as e:  # noqa: BLE001  # one malformed profile must not stop the others or the digest
+            pid = str(p.get("id") or "?")
+            digest["tenants"].append({"profile_id": pid, "name": p.get("name") or pid, "tenant": p.get("vanity_domain") or pid,
+                                      "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
+                                      "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]})
 
     digest["duration_s"] = round(time.time() - started, 1)
     digest["noteworthy"] = noteworthy(digest)
@@ -350,7 +381,10 @@ def noteworthy(d: Dict[str, Any]) -> bool:
 
 def summarise(d: Dict[str, Any]) -> Dict[str, Any]:
     tenants = d.get("tenants") or []
-    return {"tenants": len(tenants),
+    # A profile with nothing in scope (a note, no client built) was not read:
+    # it is counted apart, never as evaluated.
+    not_read = [t for t in tenants if t.get("note")]
+    return {"tenants": len(tenants) - len(not_read), "tenants_not_in_scope": len(not_read),
             "proposals_new": sum(int((t.get("proposals") or {}).get("new") or 0) for t in tenants) + len((d.get("guidance") or {}).get("raised") or []),
             "proposals_open": sum(int((t.get("proposals") or {}).get("open") or 0) for t in tenants),
             "guidance_new": len((d.get("guidance") or {}).get("raised") or []),
@@ -485,7 +519,7 @@ def notification_settings() -> Dict[str, Any]:
                       "tls": env.get("DLP_CHECK_SMTP_TLS", "1") not in ("0", "false", "no")},
             "webhook": {"configured": bool(webhook and webhook.startswith("https://")), "host": host,
                         "kind": "teams" if host and ("webhook.office.com" in host or "logic.azure.com" in host or "powerautomate" in host) else ("slack" if host and "hooks.slack.com" in host else ("generic" if host else None))},
-            "interval_hours": interval_hours()}
+            "interval_hours": interval_hours(warn=False)}   # logged once, when the server decides the timer
 
 
 def send_notifications(d: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -565,7 +599,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(to_markdown(d))
     else:
         print(f"digest {d['id']}: {'noteworthy' if d['noteworthy'] else 'quiet'}; written to {d['path']}; notified: {d.get('notified')}")
-    return 0 if not d.get("errors") else 1
+    return 0 if not run_errors(d) else 1
+
+
+def run_errors(d: Dict[str, Any]) -> int:
+    """How many errors a run recorded, the run's own and each tenant's (a
+    tenant read refused by the rate limit is one): a run with any is not a
+    clean success."""
+    return len(d.get("errors") or []) + sum(len(t.get("errors") or []) for t in d.get("tenants") or [])
 
 
 if __name__ == "__main__":

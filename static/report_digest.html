@@ -15,7 +15,7 @@
   .dg-tile { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
   .dg-tile .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
   .dg-tile .v { font-size: 1.3rem; font-weight: 700; }
-  .dg-tile .d { font-size: 0.8rem; color: var(--dim); }
+  .dg-tile .d { font-size: 0.8rem; color: var(--dim); overflow-wrap: anywhere; }
   .dg-verdict { border-radius: var(--r-lg); padding: 0.9rem 1.1rem; margin: 0.6rem 0; border: 1px solid var(--border); background: var(--well); }
   .dg-verdict.hot { border-color: var(--warn); } .dg-verdict.ok { border-color: var(--pass); }
   .dg-md { white-space: pre-wrap; font-size: 0.86rem; line-height: 1.5; background: var(--well); border-radius: var(--r-md); padding: 0.8rem 1rem; overflow-x: auto; }
@@ -108,10 +108,14 @@
         $('dgVerdict').className = `dg-verdict ${latest.noteworthy ? 'hot' : 'ok'}`;
         // The verdict says what the run covered: with no stored secret the loop
         // looked at guidance and the SaaS matrix only, and says so.
-        const nT = Number(s.tenants || 0);
-        const scope = nT ? `${nT} tenant profile${nT === 1 ? '' : 's'} evaluated.` : 'No tenant was evaluated: no tenant profile remembers its secret, so this run covered the guidance sources and the SaaS capability matrix only. Save a profile with Remember ticked to include a tenant.';
+        // A profile with nothing in scope was not read and is counted apart.
+        const nT = Number(s.tenants || 0), nSkip = Number(s.tenants_not_in_scope || 0);
+        const skipped = nSkip ? ` ${nSkip} tenant profile${nSkip === 1 ? ' was' : 's were'} not read: nothing in scope on the Scope page.` : '';
+        const scope = nT ? `${nT} tenant profile${nT === 1 ? '' : 's'} evaluated.${skipped}`
+          : nSkip ? `No tenant was read.${skipped} This run covered the guidance sources and the SaaS capability matrix only.`
+          : 'No tenant was evaluated: no tenant profile remembers its secret, so this run covered the guidance sources and the SaaS capability matrix only. Save a profile with Remember ticked to include a tenant.';
         $('dgVerdict').innerHTML = `<strong>${latest.noteworthy ? 'Something needs a look.' : 'Nothing new.'}</strong> Run at ${E(fmt(latest.at))}. ${E(scope)}`;
-        $('dgTiles').innerHTML = tile('Tenants evaluated', nT, nT ? 'profiles with a remembered secret' : 'no profile remembers its secret') + tile('New proposals', s.proposals_new || 0, 'decide them in FP/TP detection ratio') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
+        $('dgTiles').innerHTML = tile('Tenants evaluated', nT, nSkip ? `${nSkip} not in scope, not read` : nT ? 'profiles with a remembered secret' : 'no profile remembers its secret') + tile('New proposals', s.proposals_new || 0, 'decide them in FP/TP detection ratio') + tile('Open proposals', s.proposals_open || 0) + tile('New guidance', s.guidance_new || 0, 'articles mapped to checks')
           + tile('Stale sources', s.stale_sources || 0) + tile('SaaS tenants not active', s.tenants_not_active || 0) + tile('Packs moved', s.drift_changed || 0, 'journey stage changed') + tile('Errors', s.errors || 0);
         $('dgMd').href = `/api/digests/${encodeURIComponent(latest.id)}?format=markdown`; $('dgMd').setAttribute('aria-disabled', 'false');
         try { $('dgFull').textContent = await (await fetch(`/api/digests/${encodeURIComponent(latest.id)}?format=markdown`)).text(); } catch (e) { $('dgFull').textContent = ''; }

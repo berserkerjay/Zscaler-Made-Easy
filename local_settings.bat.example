@@ -39,7 +39,8 @@ REM the ZIA API rate limit), so it runs only when you click Run the loop now
 REM on the Digest tab, or run RUN_Continuous_Evaluation.bat (Task Scheduler).
 REM Each profile is read only for what its Scope page puts in scope.
 REM DLP_CHECK_CONTINUOUS_EVAL_HOURS opts in to a timer while the app runs:
-REM unset or 0 (the default) is off; 6 runs it every 6 hours.
+REM unset or 0 (the default) is off; 6 runs it every 6 hours (1 to 8784).
+REM A run already in progress is never started twice.
 REM set DLP_CHECK_CONTINUOUS_EVAL_HOURS=0
 REM E-mail needs an SMTP relay; the webhook is a Teams or Slack incoming
 REM webhook (https only).

@@ -63,7 +63,8 @@ def test_digest_says_when_the_loop_runs_and_what_it_covers():
     # A manual run keeps the same bookkeeping as the scheduled one.
     src = open("dlp_api_server.py", encoding="utf-8").read()
     body = src.split("async def digests_run(")[1].split("@app.get")[0]
-    assert '_DH_REFRESH_STATE["last_status"] = "ok"' in body and "_dh_refresh_once" not in src
+    once = src.split("def _continuous_eval_locked(")[1].split("async def ")[0]
+    assert "_continuous_eval_once" in body and '_DH_REFRESH_STATE["last_status"] = "partial" if errors else "ok"' in once and "_dh_refresh_once" not in src
 
 
 def test_this_apps_cisa_score_is_labelled_as_the_apps_and_the_daily_upstream_check_is_exposed():
