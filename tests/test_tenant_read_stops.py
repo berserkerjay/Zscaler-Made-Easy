@@ -481,6 +481,42 @@ def test_an_unanswered_read_is_could_not_be_checked(code):
     assert srv._unanswered_result(R(R.PASS, "ok"), "x", guard.unanswered()).status == R.PASS
 
 
+class _Answer:
+    headers = {"Retry-After": "0"}
+    text = ""
+
+    def __init__(self, code):
+        self.status_code = code
+
+    def json(self):
+        return []
+
+
+@pytest.mark.parametrize("code", [429, 503])
+def test_a_partly_unanswered_fan_out_read_is_could_not_be_checked(code):
+    # /zia/cloudApplicationRules is read one rule type at a time: one type
+    # the tenant did not answer makes the whole read unanswered, never a
+    # partial "no rules" list reported as HTTP 200.
+    import dlp_assessment_full_auto as full
+    import zscaler_full_checks as zf
+    c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
+    c.token, c.exp, c._limiter.min_gap = "t", time.time() + 3600, 0
+    c.sess.get = lambda url, params=None, timeout=None: _Answer(code if url.endswith("/webApplicationRules/AI_ML") else 200)
+    sc = cs.ScopedClient(c, {"cloud_app_control": "zscaler"})
+    sc.begin()
+    r = srv._unanswered_result(zf.capp_1(sc), "Cloud app control", sc.unanswered())
+    assert str(r.status) == "ERROR" and "Could not be checked" in r.detail, (r.status, r.detail)
+
+
+def test_a_fan_out_part_the_tenant_refuses_is_still_left_out():
+    # A rule type the tenant answers 404/403 for (not licensed) is skipped as before.
+    import dlp_assessment_full_auto as full
+    c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
+    c.token, c.exp, c._limiter.min_gap = "t", time.time() + 3600, 0
+    c.sess.get = lambda url, params=None, timeout=None: _Answer(404 if url.endswith("/webApplicationRules/AI_ML") else 200)
+    assert c.get("/zia/cloudApplicationRules") == ([], 200)
+
+
 def test_a_rate_limited_run_reports_could_not_be_checked(monkeypatch):
     class Limited:
         requests_made = 0

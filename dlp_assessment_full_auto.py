@@ -173,6 +173,8 @@ def _resolve_ep(ep, customer_id="", legacy=False):
 
 # What a read answers once the run is stopped (Client.stop): nothing was sent.
 _STOPPED = ({"error": "run stopped", "status": 0}, 0)
+# Answers that mean the tenant did not answer a read (channel_scope.ScopedClient.UNANSWERED).
+_UNANSWERED_CODES = frozenset({0, 429, 502, 503, 504})
 
 
 class _RateLimiter:
@@ -390,24 +392,30 @@ class Client:
     def _fan_out(s, ep, p=None):
         """An endpoint the API only lists in parts (_FAN_OUT): every part,
         each item tagged with the part it came from, as one list. HTTP 200
-        when any part answered 200, otherwise the first part's status."""
+        when any part answered 200, otherwise the first part's status. A
+        part the tenant did not answer (rate limited, unavailable, timed
+        out) makes the whole read unanswered: a partial list is never
+        passed off as the tenant's whole configuration."""
         k = f"{ep}|{json.dumps(p or {},sort_keys=True)}"
         with s._lock:
             if k in s._c:
                 s._c.move_to_end(k)
                 return s._c[k]
-        items, answered, first = [], False, None
+        items, answered, first, missed = [], False, None, None
         for part, params, tag in _FAN_OUT[ep]:
             d, c = s.get(part, dict(p or {}, **params))
             if first is None:
                 first = (d, c)
+            if c in _UNANSWERED_CODES:
+                missed = (dict(d, part=part) if isinstance(d, dict) else {"error": "not answered", "status": c, "part": part}, c)
+                break   # the read is incomplete either way: no further part is asked for
             if c in (200, 204):
                 answered = True
                 for x in _ls(d):
                     if isinstance(x, dict):
                         x = dict(x); x.setdefault(*tag)
                     items.append(x)
-        res = (items, 200) if answered else first
+        res = missed or ((items, 200) if answered else first)
         s._cache_set(k, res)
         return res
 
