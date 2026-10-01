@@ -407,7 +407,11 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
                             "note": ("the ticked packs ship no rule on a DLP channel the Scope page marks as run on Zscaler; drift not measured" if packs
                                      else "none of the ticked packs was found; drift not measured")}
             raise _Skip()
-        rep = pack_deploy.preflight(client, measured, writes_enabled=False, apply_tweaks=False, channel_targets=targets)
+        # The tenant read is capped to the scope too: no Web DLP rules unless
+        # Inline Web DLP is run on Zscaler, and no SaaS application tenants
+        # (which Email rules would otherwise pull in) unless SaaS Security is.
+        rep = pack_deploy.preflight(client, measured, writes_enabled=False, apply_tweaks=False, channel_targets=targets,
+                                    read_scope={"channels": sorted(sc["pack_channels"]), "casb": bool(sc["saas"])})
         ten = rep.get("tenant") or {}
         failed = ([str(e)[:200] for e in (ten.get("errors") or [])]
                   + [f"{ch} rules: {str(e)[:200]}" for ch, e in (ten.get("channel_errors") or {}).items() if e])

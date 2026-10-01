@@ -108,6 +108,51 @@ def test_dlp_with_the_scope_page_default_reads_nothing(tmp_path, monkeypatch):
     assert "drift not measured" in t["drift"]["note"] and d["summary"]["tenants"] == 0
 
 
+_ALL_OFF = {"web_dlp": "alternative", "endpoint_dlp": "alternative", "saas_casb": "alternative", "email_dlp": "alternative",
+            "workflow_automation": "alternative"}
+_RULES_OF = {"web_dlp": "dlp_web_rules", "endpoint_dlp": "endpoint_dlp_rules", "saas_casb": "casb_dlp_rules",
+             "email_dlp": "outbound_email_dlp_rules"}
+
+
+@pytest.mark.parametrize("on", ["endpoint_dlp", "email_dlp", "saas_casb", "web_dlp"])
+def test_drift_reads_only_the_in_scope_channel_with_a_ticked_pack(tmp_path, monkeypatch, on):
+    """Drift with a ticked pack (Workflow Automation elsewhere, so only drift
+    and the SaaS step can read): no other channel's rules, no Web DLP rules
+    unless Inline Web is on Zscaler, no SaaS tenants unless SaaS Security is."""
+    _env(tmp_path, monkeypatch)
+    _quiet(monkeypatch)
+    _profile(scopes=["dlp"], channels=dict(_ALL_OFF, **{on: "zscaler"}), baseline_packs=["healthcare_phi_baseline"])
+    log = []
+    d = ce.run_once(build_client=lambda creds: _Reads(log), notify=False)
+    t = d["tenants"][0]
+    reads = sorted(set(log))
+    assert t["errors"] == [], t
+    assert any(_RULES_OF[on] in r for r in reads), reads
+    for ch, api in _RULES_OF.items():
+        if ch != on:
+            assert not any(api in r for r in reads), (ch, reads)
+    if on != "saas_casb":
+        assert not any("saas_security_api" in r or "casb_tenant" in r for r in reads), reads
+        assert "Not read (not in scope): SaaS tenants" in ce.to_markdown(d)
+
+
+def test_drift_with_web_out_of_scope_and_every_read_refused_is_unreachable(tmp_path, monkeypatch):
+    """With the Web DLP rules left out, the two reads that remain both
+    failing make the tenant unreachable (not 'reachable with 2 of 3')."""
+    import pack_deploy
+
+    class _Refuse:
+        def __getattr__(self, name):
+            return self
+
+        def __call__(self, *a, **k):
+            raise RuntimeError("HTTP 429 Too Many Requests")
+
+    snap = pack_deploy.fetch_tenant(_Refuse(), dict(pack_deploy.pc.needs([]), web_rules=False))
+    assert snap["reachable"] is False, snap
+    assert pack_deploy.fetch_tenant(_Refuse(), pack_deploy.pc.needs([]))["reachable"] is False
+
+
 # ── A run whose reads failed is not a measurement ────────────────────
 
 def test_every_read_refused_is_partial_and_raises_nothing(tmp_path, monkeypatch):
