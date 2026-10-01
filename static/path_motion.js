@@ -23,6 +23,14 @@
 
 const _pmE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PM_SVGNS = 'http://www.w3.org/2000/svg';
+// Names in the summary (the chain's text alternative) are capped the way
+// the hop detail caps them, so a tenant with hundreds of rules still gets
+// a description a screen reader can read out.
+const PM_LIST_MAX = 5;
+function _pmList(names, max) {
+  const n = max || PM_LIST_MAX, all = (names || []).map(x => String(x == null ? '' : x));
+  return all.length > n ? `${all.slice(0, n).join(', ')}, … and ${all.length - n} more` : all.join(', ');
+}
 const PM_TOP = 30, PM_W = 150, PM_H = 44, PM_BUS = 752;
 // Each stage of the chain. x/y are the box's top-left corner (before the
 // caption row). `col` groups them under the column captions.
@@ -32,7 +40,7 @@ const PM_NODES = [
   { key: 'cap_mail', x: 10, y: 170, label: 'Email', sub: 'outbound mail' },
   { key: 'cap_saas', x: 10, y: 245, label: 'SaaS API', sub: 'files at rest' },
   { key: 'dict', x: 200, y: 132, label: 'Dictionaries', sub: 'typed · confidence · count' },
-  { key: 'engine', x: 385, y: 132, label: 'DLP engine', sub: 'Boolean expr · Channels gate' },
+  { key: 'engine', x: 385, y: 132, label: 'DLP engine', sub: 'Boolean · Channels gate' },
   { key: 'r_web', x: 575, y: 20, label: 'Inline Web DLP rule', sub: 'needs SSL decryption' },
   { key: 'r_ep', x: 575, y: 95, label: 'Endpoint DLP rule', sub: 'runs on the device' },
   { key: 'r_mail', x: 575, y: 170, label: 'Email DLP rule', sub: 'Zscaler-tagged mail' },
@@ -142,15 +150,16 @@ function pmModel(res) {
     summary.push(`Inline web: ${why}`);
   } else if (out === 'enforce' || out === 'monitor') {
     const dlp = hop('dlp') || {}, rules = dlp.rules || [];
-    const engines = [...new Set(rules.flatMap(r => r.engines || []))];
+    // No flatMap: an older browser must still get the result (ES2017).
+    const engines = [...new Set(rules.reduce((a, r) => a.concat(r.engines || []), []))];
     if (rules.length && !engines.length) {
-      const why = `The covering rule(s) (${rules.map(r => r.name).join(', ')}) name no DLP engine: no dictionary count becomes a verdict.`;
+      const why = `The covering rule(s) (${_pmList(rules.map(r => r.name))}) name no DLP engine: no dictionary count becomes a verdict.`;
       stopRoute(web, 2, 'broken', why, 0.6);
       summary.push(`Inline web: ${why}`);
     } else {
       const over = rules.filter(r => (r.engines || []).length > 4);
-      summary.push(`Inline web: decrypted; ${rules.length} Web DLP rule(s) ${out === 'enforce' ? 'inspect and can block' : 'inspect but only monitor'} it, through ${engines.length} engine(s): ${engines.join(', ') || 'none named'}.`
-        + (over.length ? ` ${over.map(r => r.name).join(', ')} reference more than four engines, the per-rule limit.` : ''));
+      summary.push(`Inline web: decrypted; ${rules.length} Web DLP rule(s) ${out === 'enforce' ? 'inspect and can block' : 'inspect but only monitor'} it, through ${engines.length} engine(s): ${_pmList(engines) || 'none named'}.`
+        + (over.length ? ` ${_pmList(over.map(r => r.name))} reference more than four engines, the per-rule limit.` : ''));
       extra.r_web = out;
       // Telemetry: every match is logged; NSS / SIEM are not read here.
       routes.push({ edges: web.concat(['r_web>logs'], PM_LANE.tel), stop: null, tone: null, rate: 0.35 });
@@ -159,18 +168,18 @@ function pmModel(res) {
       const notifiers = inc.notifiers || [];
       if (notifiers.length) {
         routes.push({ edges: web.concat(['r_web>auditor']), stop: null, tone: null, rate: 0.25 });
-        summary.push(`Auditor email: notified by ${notifiers.join(', ')} (a parallel path; it never feeds Workflow Automation).`);
+        summary.push(`Auditor email: notified by ${_pmList(notifiers)} (a parallel path; it never feeds Workflow Automation).`);
       } else {
         summary.push('Auditor email: no covering rule notifies an auditor.');
       }
       const ir = rules.filter(r => r.incident_receiver), icap = rules.filter(r => r.icap_server && !r.incident_receiver);
       if (ir.length) {
         routes.push({ edges: web.concat(['r_web>evid'], PM_LANE.ev), stop: null, tone: null, rate: 0.5 });
-        summary.push(`Evidence lane: ${ir.map(r => r.name).join(', ')} → the Zscaler Incident Receiver: the match and the file are forwarded, so the evidence can reach customer storage and Workflow Automation (the storage bucket and the WA integration are not read here; they must exist and be Enabled).`);
+        summary.push(`Evidence lane: ${_pmList(ir.map(r => r.name))} → the Zscaler Incident Receiver: the match and the file are forwarded, so the evidence can reach customer storage and Workflow Automation (the storage bucket and the WA integration are not read here; they must exist and be Enabled).`);
       } else if (icap.length) {
         routes.push({ edges: web.concat(['r_web>evid'], PM_LANE.ev), stop: null, tone: 'assumed', rate: 0.4 });
         extra.assumed = ['r_web>evid'];
-        summary.push(`Evidence lane: ${icap.map(r => r.name).join(', ')} → an ICAP server only. That reaches Workflow Automation only if the ICAP server is a Zscaler Incident Receiver VM; a third-party ICAP server is a parallel path that never feeds it.`);
+        summary.push(`Evidence lane: ${_pmList(icap.map(r => r.name))} → an ICAP server only. That reaches Workflow Automation only if the ICAP server is a Zscaler Incident Receiver VM; a third-party ICAP server is a parallel path that never feeds it.`);
       } else {
         const why = 'No covering rule forwards evidence (Incident Receiver or cloud-to-cloud): the most-missed link. Matches stay in the logs and Workflow Automation stays empty.';
         stopRoute(web.concat(['r_web>evid'], PM_LANE.ev), 3, 'broken', why, 0.5);
@@ -178,7 +187,7 @@ function pmModel(res) {
       }
       if (rules.some(r => r.icap_server)) {
         routes.push({ edges: web.concat(['r_web>icap']), stop: null, tone: null, rate: 0.25 });
-        summary.push(`ICAP: a copy also goes to an ICAP server from ${rules.filter(r => r.icap_server).map(r => r.name).join(', ')}.`);
+        summary.push(`ICAP: a copy also goes to an ICAP server from ${_pmList(rules.filter(r => r.icap_server).map(r => r.name))}.`);
       }
     }
   }
@@ -233,6 +242,28 @@ function _pmStopLen(key, L) {
   return L / 2;
 }
 
+// The stretch of a broken or blocked edge that is its own. A rule's
+// forwarding edges all leave it along the same stub to the bus and run down
+// the same bus, so drawing the whole broken edge would paint the live
+// telemetry and auditor links beside it as broken too. With `live` (the
+// edges still carrying bits) it returns only what no live sibling from the
+// same rule also draws: the bus below the last live junction and the run
+// into the edge's own target. With no live sibling it is the whole edge.
+function _pmOwnD(key, live) {
+  const [a, b] = key.split('>').map(_pmNode);
+  if (!a.key.startsWith('r_') || a.key === 'r_dspm' || a.x === b.x) return _pmEdgeD(key);
+  const mid = n => n.y + PM_TOP + PM_H / 2, y1 = mid(a), y2 = mid(b), dir = Math.sign(y2 - y1);
+  let shared = -1;
+  (live || []).forEach(k => {
+    const [sa, sb] = k.split('>');
+    if (sa !== a.key || k === key || !_pmNode(sb)) return;
+    const d = mid(_pmNode(sb)) - y1;
+    shared = Math.max(shared, dir !== 0 && Math.sign(d) === dir ? Math.min(Math.abs(d), Math.abs(y2 - y1)) : 0);
+  });
+  if (shared < 0) return _pmEdgeD(key);
+  return `M${PM_BUS},${y1 + dir * shared} V${y2} H${b.x}`;
+}
+
 function _pmSvg() {
   const cols = PM_COLS.map(([x, l]) => `<text class="pm-col" x="${x + 2}" y="14">${_pmE(l.toUpperCase())}</text>`).join('');
   const edges = PM_EDGES.map(e => `<path class="pm-edge lane-${_pmLane(e)}" data-edge="${_pmE(e)}" d="${_pmEdgeD(e)}" marker-end="url(#pmArrow)"/>`).join('');
@@ -253,7 +284,7 @@ function _pmSvg() {
   return `<svg class="pm-svg" viewBox="0 0 ${PM_W_TOTAL} ${PM_H_TOTAL}" preserveAspectRatio="xMinYMin meet" role="img" aria-labelledby="pmTitle" aria-describedby="pmSummary" focusable="false">
     <title id="pmTitle">The DLP chain, end to end: content captured on a channel, dictionaries, engine, channel rule, then the evidence, telemetry and parallel lanes</title>
     <defs><marker id="pmArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="pm-arrow"/></marker></defs>
-    ${cols}<g class="pm-edges">${edges}</g>${never}<g class="pm-nodes">${nodes}</g><g class="pm-stops"></g><g class="pm-bits"></g>
+    ${cols}<g class="pm-edges">${edges}</g><g class="pm-cuts"></g>${never}<g class="pm-nodes">${nodes}</g><g class="pm-stops"></g><g class="pm-bits"></g>
   </svg>`;
 }
 
@@ -265,11 +296,11 @@ function renderPathMotion(container) {
       <button type="button" class="rp-btn" id="pmToggle" aria-controls="pmStage">Pause motion</button>
     </div>
     <div class="pm-wrap" id="pmStage">${_pmSvg()}</div>
-    <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence lane (feeds Workflow Automation)</span><span><i class="lane-tel"></i>telemetry and parallel paths (never feed it)</span><span><b class="pm-x">✕</b>where it stops</span></div>
+    <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence lane (feeds Workflow Automation)</span><span><i class="lane-tel"></i>telemetry and parallel paths (never feed it)</span><span><b class="pm-x">✕</b>where the chain breaks</span><span><b class="pm-sq">■</b>where policy blocks it</span></div>
     <div class="df-hint" id="pmMotionNote"></div>
     <ul class="pm-summary" id="pmSummary"></ul>`;
   const svg = container.querySelector('.pm-svg');
-  const bitsG = svg.querySelector('.pm-bits'), stopsG = svg.querySelector('.pm-stops');
+  const bitsG = svg.querySelector('.pm-bits'), stopsG = svg.querySelector('.pm-stops'), cutsG = svg.querySelector('.pm-cuts');
   const btn = container.querySelector('#pmToggle'), note = container.querySelector('#pmMotionNote');
   const paths = {};
   svg.querySelectorAll('.pm-edge').forEach(p => { paths[p.dataset.edge] = p; });
@@ -284,7 +315,7 @@ function renderPathMotion(container) {
     // The label says what a press does, so no aria-pressed: a toggle whose
     // label also flips would be read as "Play motion, pressed" while paused.
     btn.textContent = playing() ? 'Pause motion' : 'Play motion';
-    note.textContent = playing() ? 'Bits move along each lane; a ✕ marks where this path stops and why (hover it, or read the list below).'
+    note.textContent = playing() ? 'Bits move along each lane; a ✕ marks where the chain breaks and a ■ where policy blocks the traffic (hover either, or read the list below).'
       : (reduce.matches && chosen == null ? 'Motion is off because your system asks for reduced motion: the arrows show each lane\'s direction. Play motion starts it anyway.'
         : 'Motion paused: the arrows show each lane\'s direction.');
   }
@@ -334,7 +365,7 @@ function renderPathMotion(container) {
 
   function update(res) {
     const m = pmModel(res);
-    halt(); clearBits(); stopsG.innerHTML = '';
+    halt(); clearBits(); stopsG.innerHTML = ''; cutsG.innerHTML = '';
     // Edge and node states: live up to each stop, the stopping edge
     // marked, everything no route reaches dimmed.
     const live = new Set(), cut = new Set(), reached = new Set(), cutNodes = new Set();
@@ -353,6 +384,23 @@ function renderPathMotion(container) {
     // edges share the forwarding bus, so paint order decides what shows.
     const edgesG = svg.querySelector('.pm-edges'), rank = p => (p.classList.contains('is-off') ? 0 : p.classList.contains('is-broken') || p.classList.contains('is-blocked') ? 2 : 1);
     Object.values(paths).sort((a, b) => rank(a) - rank(b)).forEach(p => edgesG.appendChild(p));
+    // A broken or blocked edge that shares the bus with live ones shows its
+    // mark only on its own stretch (_pmOwnD); the shared stretch keeps the
+    // live lanes' look. The full path stays as the bits' geometry.
+    const liveKeys = [...live];
+    Object.entries(paths).forEach(([k, p]) => {
+      const cutTone = p.classList.contains('is-broken') ? 'is-broken' : p.classList.contains('is-blocked') ? 'is-blocked' : '';
+      const own = cutTone ? _pmOwnD(k, liveKeys) : null, split = !!own && own !== _pmEdgeD(k);
+      p.classList.toggle('is-split', split);
+      p.setAttribute('marker-end', split ? 'none' : 'url(#pmArrow)');
+      if (!split) return;
+      const o = document.createElementNS(PM_SVGNS, 'path');
+      o.setAttribute('class', `pm-edge pm-own lane-${_pmLane(k)} ${cutTone}`);
+      o.setAttribute('data-own', k);
+      o.setAttribute('d', own);
+      o.setAttribute('marker-end', 'url(#pmArrow)');
+      cutsG.appendChild(o);
+    });
     svg.querySelectorAll('.pm-node').forEach(g => {
       const k = g.dataset.node;
       g.classList.toggle('is-off', !reached.has(k) && !cutNodes.has(k));

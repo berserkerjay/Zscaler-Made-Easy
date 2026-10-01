@@ -458,13 +458,17 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pm-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .pm-head .sep { flex: 1; }
 .pm-mode { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
-.pm-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); padding: 6px; -webkit-overflow-scrolling: touch; }
-.pm-svg { display: block; width: 100%; min-width: 820px; height: auto; }
-.pm-col { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; fill: var(--dim); }
+.pm-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card-solid); padding: 4px; -webkit-overflow-scrolling: touch; }
+/* The chain is drawn 1310 units wide and never scaled below 1270px (0.97), so its
+   text stays at 11px and up; a narrower window scrolls the
+   chain sideways in .pm-wrap. The page is widened to fit it on a desktop. */
+.pa-page .rp-page { max-width: 1480px; }
+.pm-svg { display: block; width: 100%; min-width: 1270px; height: auto; }
+.pm-col { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; fill: var(--dim); }
 .pm-node .box { fill: var(--card-solid); stroke: var(--border-strong); stroke-width: 1.2; transition: opacity 0.3s; }
-.pm-node .lbl { font-size: 12px; font-weight: 700; fill: var(--text); }
-.pm-node .sub { font-size: 9.5px; fill: var(--dim); }
-.pm-node .tag { font-size: 8.5px; font-weight: 800; letter-spacing: 0.06em; fill: var(--dim); }
+.pm-node .lbl { font-size: 13px; font-weight: 700; fill: var(--text); }
+.pm-node .sub { font-size: 11.5px; fill: var(--dim); }
+.pm-node .tag { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; fill: var(--dim); }
 .pm-node[data-node="engine"] .box, .pm-node[data-node="wa"] .box { stroke: var(--accent); stroke-width: 2; }
 .pm-node[data-node="evid"] .box { stroke: var(--warn); stroke-width: 2; }
 .pm-node[data-node="icap"] .box, .pm-node[data-node="auditor"] .box, .pm-node[data-node="dspma"] .box { stroke-dasharray: 4 3; }
@@ -478,12 +482,15 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pm-edge.lane-par, .pm-edge.lane-dspm { stroke-dasharray: 5 4; }
 .pm-edge.is-off { opacity: 0.14; }
 .pm-edge.is-broken { stroke: var(--fail); stroke-dasharray: 3 5; opacity: 1; stroke-width: 2.2; }
-.pm-edge.is-blocked { stroke: var(--accent); stroke-dasharray: 3 5; opacity: 1; stroke-width: 2.2; }
+.pm-edge.is-blocked { stroke: var(--text); stroke-dasharray: 3 5; opacity: 1; stroke-width: 2.2; }
 .pm-edge.is-assumed { stroke: var(--warn); stroke-dasharray: 6 4; }
+/* A broken edge that shares the bus with live ones: its own stretch is drawn
+   by .pm-own (path_motion.js _pmOwnD); the full path only carries the bits. */
+.pm-edge.is-split, .pm-edge.is-split.is-broken, .pm-edge.is-split.is-blocked { stroke: none; }
 .pm-arrow { fill: var(--dim); }
 .pm-never path { fill: none; stroke: var(--dim); stroke-dasharray: 2 4; }
 .pm-x { fill: var(--fail); font-size: 12px; font-weight: 800; }
-.pm-note { font-size: 9.5px; font-style: italic; fill: var(--dim); }
+.pm-note { font-size: 11.5px; font-style: italic; fill: var(--dim); }
 .pm-bit { fill: var(--accent); transition: r 0.4s ease-out, opacity 0.4s ease-out; }
 .pm-bit.lane-ev { fill: var(--pass); }
 .pm-bit.lane-tel, .pm-bit.lane-par, .pm-bit.lane-dspm { fill: var(--dim); }
@@ -491,14 +498,14 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pm-bit.pop { r: 9px; opacity: 0; fill: var(--fail); }
 .pm-stop circle { fill: var(--card-solid); stroke: var(--fail); stroke-width: 2; }
 .pm-stop text { font-size: 11px; font-weight: 800; fill: var(--fail); }
-.pm-stop.tone-blocked circle { stroke: var(--accent); } .pm-stop.tone-blocked text { fill: var(--accent); font-size: 9px; }
+.pm-stop.tone-blocked circle { stroke: var(--text); } .pm-stop.tone-blocked text { fill: var(--text); font-size: 10px; }
 .pm-legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; margin-top: 0.5rem; font-size: 0.74rem; color: var(--dim); }
 .pm-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
 .pm-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
-.pm-legend i.lane-ev { background: var(--pass); } .pm-legend i.lane-tel { background: var(--dim); } .pm-legend .pm-x { color: var(--fail); }
+.pm-legend i.lane-ev { background: var(--pass); } .pm-legend i.lane-tel { background: var(--dim); } .pm-legend .pm-x { color: var(--fail); } .pm-legend .pm-sq { color: var(--text); }
 .pm-summary { margin: 0.6rem 0 0; padding-left: 1.2rem; font-size: 0.84rem; line-height: 1.5; display: grid; gap: 0.25rem; max-width: 110ch; }
 @media (prefers-reduced-motion: reduce) { .pm-bit, .pm-node .box, .pm-edge { transition: none; } }
-@media (max-width: 760px) { .pa-motion { padding: 0.7rem 0.6rem; } .pm-svg { min-width: 760px; } }
+@media (max-width: 760px) { .pa-motion { padding: 0.7rem 0.6rem; } }
 
 /* ── Live DLP Feed ─────────────────────────────────────────────────── */
 .lf-coverage { margin: 0 0 1rem; padding: 0.7rem 0.9rem; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--r-md); background: var(--well); font-size: 0.84rem; line-height: 1.5; }

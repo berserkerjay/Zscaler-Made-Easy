@@ -86,6 +86,11 @@
     // If it cannot draw (an old browser), the rest of the page still works.
     let motion = { update() {} };
     try { motion = renderPathMotion(document.getElementById('paMotionBody')); } catch (e) { document.getElementById('paMotion').hidden = true; }
+    // The picture never decides whether the analysis worked: if it cannot
+    // draw a result it is hidden, and the result and its verdict stand.
+    function showMotion(res) {
+      try { motion.update(res); } catch (e) { document.getElementById('paMotion').hidden = true; }
+    }
 
     // Credentials: the assessment tab that opened this page holds them;
     // otherwise a saved tenant profile, or what the server has in its
@@ -162,7 +167,7 @@
       const btn = document.getElementById('paRun');
       running = true; btn.disabled = true; btn.textContent = 'Analyzing…';
       body.innerHTML = liveHtml(dest);
-      motion.update(null);
+      showMotion(null);
       document.getElementById('paStop').addEventListener('click', stop);
       say(`Analyzing ${dest}.`);
       const t0 = Date.now();
@@ -179,7 +184,7 @@
         if (res.report_id) lastReport = res.report_id;
         setFresh(false);
         render(res, snap.logs || []);
-        motion.update(res);
+        showMotion(res);
         say(`Verdict: ${res.verdict.headline}`);
       } catch (e) {
         fail('The analysis could not run', e.message);
