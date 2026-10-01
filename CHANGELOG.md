@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-09-30
 
+### The Terraform hand-off says which hand-off to use, and when
+- **What you saw.** Gap mode and static were described by what they do, not by when to pick them, and gap mode was picked for you whenever tenant details were filled in.
+- **Now.** Step 2 is *Which hand-off*: a table from the customer's situation to the choice: Deploy policy packs when they change Zscaler in the portal; gap mode when they manage it as code and the tenant already has DLP objects; static for an empty tenant, no credentials, a reference to review or an uploaded pack; neither until object ownership is agreed when they also edit in the portal. Each mode lists *Use when* and *Not when*. Static is the default; gap mode, which reads the tenant (and counts against the ZIA API rate limit), runs only when you pick it.
+
 ### A run paused for ZIA's rate limit counts down to when it sends again
 - **What you saw.** "The timer isn't resuming when the threshold is met": after "Resource Access Blocked" the removal window said "Working…" for the whole 54-minute pause while the clock kept climbing, with no sign of when it would go on. The run was not stuck (it resumed on schedule, as it had after an earlier pause in the same run), but nothing on screen said so.
 - **Now.** While a deploy or removal is paused for ZIA's rate limit the window says *Paused for ZIA's rate limit — resumes at 1:00 PM (in 13:05). Nothing is sent meanwhile*, counting down every second, then *ZIA's pause is over — sending again…*. The job status (`/api/dlp-packs/jobs/{id}`) carries `paused_seconds` and `paused_until` for that tenant's pause only. The clock on the right is still the whole run's time.
