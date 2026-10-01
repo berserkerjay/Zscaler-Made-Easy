@@ -3,6 +3,7 @@ live, hop-by-hop path through the tenant with one verdict in plain words
 and every point that blocks or impacts the traffic named."""
 from __future__ import annotations
 
+import shutil
 import time
 
 import pytest
@@ -228,3 +229,94 @@ def test_the_mitigation_recommendation_reasons_across_every_channel():
     m = pa.analyze(c, "updates.vendor.com", "off", "macos")["verdict"]
     assert m["outcome"] == "monitor" and m["mitigations"] == [{"rank": 1, "channel": "web", "action": "Promote 'Bank-Customer PII (Global)-Monitor' from monitor to block",
         "why": "The content is inspected but only logged; once the incidents look right, blocking stops the leak instead of recording it.", "severity": "medium"}]
+
+
+def test_the_page_draws_the_dlp_chain_live_and_honours_reduced_motion():
+    """The live chain from the Data Security Architect reference (#chain)
+    sits above the result: inline SVG with bits on requestAnimationFrame,
+    a pause / play button, static arrows and no motion when the system
+    asks for reduced motion, a text summary for screen readers, and the
+    page's own colour tokens so it reads in both themes."""
+    import os
+    import dlp_api_server as srv
+    from fastapi.testclient import TestClient
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    t = TestClient(srv.app)
+    html = t.get("/report/path").text
+    for needle in ('<script src="/static/path_motion.js"></script>', 'id="paMotion"', 'id="paMotionBody"', 'href="/reference/data-security-architect#chain"',
+                   "renderPathMotion(document.getElementById('paMotionBody'))", "motion.update(null);", "motion.update(res);"):
+        assert needle in html, needle
+    assert html.index("data_flow.js") < html.index("path_motion.js")
+    assert "<h3" not in html
+    r = t.get("/static/path_motion.js")
+    assert r.status_code == 200
+    js = r.text
+    for needle in ("requestAnimationFrame", "cancelAnimationFrame", "(prefers-reduced-motion: reduce)", "aria-pressed", 'role="img"',
+                   'aria-labelledby="pmTitle"', 'aria-describedby="pmSummary"', 'marker-end="url(#pmArrow)"', "visibilitychange", "IntersectionObserver",
+                   "Incident Receiver", "Customer storage", "Storage event", "WA integration", "Workflow Automation", "NSS / Cloud NSS", "SIEM",
+                   "Auditor email", "3rd-party ICAP", "DSPM alerts", "never feeds WA", "Dictionaries", "DLP engine", "Channels gate", "≤ 4 engines per rule",
+                   "Inline Web DLP rule", "Endpoint DLP rule", "Email DLP rule", "SaaS API DLP rule"):
+        assert needle in js, needle
+    assert "http://" not in js.replace("http://www.w3.org/2000/svg", "") and "https://" not in js, "no external library or call"
+    css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
+    pm = css[css.index("/* Path motion"):css.index("/* ── Live DLP Feed")]
+    for needle in (".pa-motion", ".pm-svg", ".pm-bit", ".pm-edge.is-broken", ".pm-stop", "@media (prefers-reduced-motion: reduce)", "@media (max-width: 760px)", "overflow-x: auto"):
+        assert needle in pm, needle
+    assert "var(--accent)" in pm and "var(--pass)" in pm and "var(--fail)" in pm and "#" not in pm, "colours come from the theme tokens"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_the_bits_follow_the_analyzed_path_and_stop_where_it_breaks():
+    """pmModel turns an analyzer result into the routes the bits take: the
+    reference chain idles on every lane; a result sends them along the
+    path it describes and stops them at the link that breaks it."""
+    import json
+    import os
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    c = _lookup_client()
+    results = {"idle": None}
+    for key, dest, plat in (("bypassed", "updates.vendor.com", "windows"), ("blind", "mail.example.com", "windows"),
+                            ("enforce", "chat.openai.com", "windows"), ("blocked", "https://casino.example/play", "windows"),
+                            ("monitor", "updates.vendor.com", "macos")):
+        r = pa.analyze(c, dest, "off", plat)
+        r.pop("snapshot_for_cache", None)
+        results[key] = r
+    script = (
+        "const vm=require('vm'),fs=require('fs');const ctx={window:{}};vm.createContext(ctx);"
+        f"vm.runInContext(fs.readFileSync({json.dumps(os.path.join(root, 'static', 'path_motion.js'))},'utf8'),ctx);"
+        "const R=JSON.parse(fs.readFileSync(0,'utf8'));const out={};"
+        "for(const k of Object.keys(R)){const m=ctx.pmModel(R[k]);out[k]={mode:m.mode,routes:m.routes.map(r=>({edges:r.edges,stop:r.stop,tone:r.tone})),stops:m.stops,summary:m.summary};}"
+        "process.stdout.write(JSON.stringify(out));")
+    p = subprocess.run(["node", "-e", script], input=json.dumps(results, default=str), capture_output=True, text=True, encoding="utf-8")
+    assert p.returncode == 0, p.stderr
+    m = json.loads(p.stdout)
+
+    idle = m["idle"]
+    assert idle["mode"] == "reference" and not idle["stops"]
+    edges = {e for r in idle["routes"] for e in r["edges"]}
+    for e in ("cap_web>dict", "cap_ep>dict", "cap_mail>dict", "cap_saas>dict", "dict>engine", "engine>r_web", "engine>r_dspm",
+              "r_web>logs", "logs>nss", "nss>siem", "r_web>auditor", "r_web>evid", "evid>storage", "storage>event", "event>waint", "waint>wa",
+              "r_web>icap", "r_dspm>dspma"):
+        assert e in edges, e
+    # Only the evidence lane reaches Workflow Automation: telemetry, auditor email, ICAP and DSPM never do.
+    for r in idle["routes"]:
+        if "waint>wa" in r["edges"]:
+            assert any(e.endswith(">evid") for e in r["edges"]) and not any(x in r["edges"] for x in ("logs>nss", "nss>siem"))
+    assert not any(e.startswith(("siem>", "nss>wa", "auditor>", "icap>", "dspma>")) for e in edges)
+
+    def web(k):
+        return [r for r in m[k]["routes"] if r["edges"][0] == "cap_web>dict"]
+
+    assert web("bypassed")[0]["stop"] == 0 and web("bypassed")[0]["tone"] == "broken" and "Never reaches Zscaler" in m["bypassed"]["summary"][0]
+    assert web("blind")[0]["stop"] == 0 and "Left encrypted by SSL inspection rule" in m["blind"]["summary"][0]
+    assert web("blocked")[0]["tone"] == "blocked" and "Block gambling" in m["blocked"]["summary"][0]
+    enf = web("enforce")
+    assert any(r["edges"][-1] == "waint>wa" and r["stop"] is None for r in enf), "a rule with the Incident Receiver carries evidence to WA"
+    assert any(r["edges"][-1] == "nss>siem" for r in enf) and any(r["edges"][-1] == "r_web>auditor" for r in enf)
+    mon = web("monitor")
+    ev = next(r for r in mon if "r_web>evid" in r["edges"])
+    assert ev["edges"][ev["stop"]] == "r_web>evid" and ev["tone"] == "broken", "no forwarding: the bits stop before Evidence forwarding"
+    assert any("Workflow Automation stays empty" in s for s in m["monitor"]["summary"])
+    ep = next(r for r in m["monitor"]["routes"] if r["edges"][0] == "cap_ep>dict")
+    assert ep["stop"] == 0, "macOS: Endpoint DLP is not installed, so its content never reaches a dictionary"
