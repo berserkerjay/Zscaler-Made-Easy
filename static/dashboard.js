@@ -97,7 +97,6 @@
     if (!n) { n = document.createElement('div'); n.id = 'dbRunNote'; n.className = 'db-note'; n.setAttribute('role', 'status'); const sc = aside.querySelector('.db-item[data-db="scope"]'); sc.insertAdjacentElement('afterend', n); }
     n.textContent = text || ''; n.hidden = !text; n.className = 'db-note' + (kind ? ' ' + kind : '');
   }
-  let pendingRun = false;
   function goConnect(first) {
     hideScopeView();   // the Scope assessment page steps aside for the sign-in form
     if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
@@ -105,10 +104,10 @@
     if (first) setTimeout(() => { const el = $(first); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } }, 450);
   }
   function startRun() {
-    pendingRun = false; note('');
+    note('');
     if (typeof runAssessment !== 'function') return;
     const btn = $('runBtn');
-    if (btn && btn.disabled) return;   // already running (the Authenticate wrapper started it)
+    if (btn && btn.disabled) return;   // already running
     runAssessment();
     // The run happens on the main page: the Scope assessment page steps
     // aside and the progress card (then the results) is where you land.
@@ -127,29 +126,23 @@
       goConnect(report[0]);
       return;
     }
+    // Signing in never starts an assessment: every read counts against the
+    // tenant's ZIA API rate limit, so the run starts only from this click,
+    // once signed in. Signed out, say so and go to the sign-in form.
     if (missing.length) {
-      pendingRun = true;
-      note(`Sign in first: fill in ${missing.map(id => FIELD_LABELS[id] || id).join(', ')} and click Authenticate. The assessment starts by itself right after.`, 'warn');
-      say('Sign in first. Fill in the tenant details and click Authenticate; the assessment starts right after.');
+      note(`Sign in first: fill in ${missing.map(id => FIELD_LABELS[id] || id).join(', ')} and click Authenticate, then click Run assessment again.`, 'warn');
+      say('Sign in first. Fill in the tenant details and click Authenticate, then click Run assessment again.');
       goConnect(missing[0]);
       return;
     }
     if (!signedIn()) {
-      pendingRun = true;
-      note('Authenticating with the tenant, then running the assessment…');
-      setCurrent('configure');
-      if (typeof authenticateTenant === 'function') await authenticateTenant();
-      if (!pendingRun) return;          // the Authenticate wrapper already started the run
-      if (signedIn()) { startRun(); return; }
-      note('The tenant did not accept the sign-in. Fix the details in Connect to the tenant and click Authenticate; the assessment starts right after.', 'warn');
+      note('Sign in first: click Authenticate in Connect to the tenant, then click Run assessment again. Signing in reads nothing from the tenant.', 'warn');
+      say('Sign in first. Click Authenticate, then click Run assessment again.');
       goConnect();
       return;
     }
     startRun();
   }
-  // A successful Authenticate (the guide's button or the form's) starts a queued run.
-  const origTest = window._gdTest;
-  if (typeof origTest === 'function') window._gdTest = async function () { const r = await origTest.apply(this, arguments); if (pendingRun && signedIn()) startRun(); return r; };
 
   // ── Tenant configuration: the "Start here" guide with the tenant
   // details form is a sign-in surface, not part of the dashboard. Hidden
@@ -256,14 +249,14 @@
             <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
           </div>
         </div>
-        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it. <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap; the assessment still reads the tenant and the findings show what is missing. The declaration is saved with the tenant profile and printed in the report.</p>
+        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it. <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are reported as <em>Not in scope</em> (the report lists it as a gap). The declaration is saved with the tenant profile and printed in the report.</p>
         <div id="dbChList" class="db-ch-list"></div>
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
       <div class="card db-scope-section" id="dbScopeFwCard"><div id="dbScopeFwBody"></div></div>
       <div class="db-scope-foot">
         <button type="button" class="rp-btn primary" id="dbScopeRun">▶ Run assessment</button>
-        <span class="db-scope-p">Signs in first when needed. The assessment runs on this page; the results open on the Dashboard.</span>
+        <span class="db-scope-p">Authenticate first (it only signs in). The assessment reads only what is in scope here, runs on this page, and the results open on the Dashboard.</span>
       </div>`;
     const main = document.getElementById('main-content');
     main.insertBefore(sec, main.firstChild);
@@ -342,8 +335,9 @@
   }
   // What the assessment and the tenant profile read: every channel with its
   // choice (zscaler / alternative / gap), note and name (channel_scope.py
-  // applies it: an "alternative" channel's checks are reported as not in
-  // scope). A profile's saved declaration replaces this browser's copy.
+  // applies it: only a Zscaler channel is read; an alternative's or a gap's
+  // checks are reported as not in scope). A profile's saved declaration
+  // replaces this browser's copy.
   window.__dbChannelScope = function () {
     const out = {};
     allChannels().forEach(c => { const st = channelState[c.id] || {}; out[c.id] = { choice: st.choice === 'zscaler' || st.choice === 'alternative' ? st.choice : 'gap', note: st.note || '', name: c.name }; });
@@ -651,8 +645,10 @@
     const cc = data.channel_coverage;
     if (cc && cc.declared) {
       const alt = cc.alternative || [], gaps = cc.gaps || [];
-      const altTxt = alt.length ? `${alt.length} covered elsewhere (${alt.map(a => E(a.name) + (a.note ? ` — ${E(a.note)}` : '')).join(', ')}; ${cc.not_in_scope || 0} check${cc.not_in_scope === 1 ? '' : 's'} not in scope)` : '';
-      const gapTxt = gaps.length ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} (${gaps.map(g => E(g.name)).join(', ')})` : 'no gaps';
+      const nOut = rows => rows.reduce((n, r) => n + (r.checks_not_in_scope || 0), 0);
+      const nAlt = nOut(alt), nGap = nOut(gaps);
+      const altTxt = alt.length ? `${alt.length} covered elsewhere (${alt.map(a => E(a.name) + (a.note ? ` — ${E(a.note)}` : '')).join(', ')}; ${nAlt} check${nAlt === 1 ? '' : 's'} not in scope)` : '';
+      const gapTxt = gaps.length ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} (${gaps.map(g => E(g.name)).join(', ')}${nGap ? `; ${nGap} check${nGap === 1 ? '' : 's'} not in scope, not read` : ''})` : 'no gaps';
       items.push([gaps.length ? 'warn' : 'ok', '🎯', `<strong>Channels: ${(cc.zscaler || []).length} on Zscaler</strong>${altTxt ? `, ${altTxt}` : ''}, ${gapTxt}. Declared on the Scope page.`]);
     }
     if (!items.length) items.push(['ok', '✅', `<strong>${passes.length} of ${checks.length} checks configured.</strong> Nothing needs action.`]);

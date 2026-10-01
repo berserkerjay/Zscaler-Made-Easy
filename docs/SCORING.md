@@ -32,12 +32,14 @@ score = configured ÷ (configured + action required + needs review) × 100
   not-in-scope, could-not-be-checked and informational results are
   outside it: they neither raise nor lower the score.
 - **Channel ownership** (the Scope page, `channel_scope.py`): a channel
-  marked *Alternative* has its checks reported as *Not in scope* and never
-  read; a channel marked *Zscaler* or left as a gap runs as usual, because
-  a gap's findings are its evidence. The declaration is saved on the
-  tenant profile and comes back in the report as `channel_coverage`
-  (dashboard insight, Word report section, JSON export). Only *Alternative*
-  changes what runs.
+  marked *Zscaler* runs as usual; one marked *Alternative* or left unticked
+  (a gap) has its checks reported as *Not in scope* and never read, because
+  the assessment reads only what was put in scope. A check shared with a
+  *Zscaler* channel still runs. The declaration is saved on the tenant
+  profile and comes back in the report as `channel_coverage` (dashboard
+  insight, Word report section, JSON export), which still lists the gaps.
+  With no declaration at all (an MCP or CLI caller) every check in the
+  selected scopes runs.
 - **When nothing was scoreable the score is "Not assessed"**, not 100%
   and not 0%. This applies to the overall score and to every section: a
   section whose checks are all informational shows *Not measured* rather

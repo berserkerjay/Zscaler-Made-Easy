@@ -1029,7 +1029,7 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="authBtn" onclick="authenticateTenant()" title="Checks the four tenant values against Zscaler without changing anything. Run the assessment from Start here, step 2.">Authenticate</button>
+      <button class="btn btn-primary" id="authBtn" onclick="authenticateTenant()" title="Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page.">Authenticate</button>
       <span id="authStatus" class="auth-status" aria-live="polite"></span>
       <!-- The assessment itself starts from Start here (step 2); this hidden
            button keeps the existing run/complete handlers wired. -->
@@ -1255,7 +1255,7 @@
         <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Needs review</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">Not configured</div></div>
         <div class="stat" id="notPermStat" hidden><div class="stat-num" style="color:var(--info)" id="notPermCount">0</div><div class="stat-label">Not permitted</div></div>
-        <div class="stat" id="notScopeStat" hidden title="Checks of a channel the Scope page marks as covered by an alternative solution: not read, outside the score"><div class="stat-num" style="color:var(--info)" id="notScopeCount">0</div><div class="stat-label">Not in scope</div></div>
+        <div class="stat" id="notScopeStat" hidden title="Checks of a channel the Scope page marks as covered by an alternative solution or leaves unticked (a gap): not read, outside the score"><div class="stat-num" style="color:var(--info)" id="notScopeCount">0</div><div class="stat-label">Not in scope</div></div>
         <div class="stat" id="errorStat" hidden><div class="stat-num" style="color:var(--info)" id="errorCount">0</div><div class="stat-label">Could not be checked</div></div>
       </div>
       <p class="stat-note" id="coverageNote" aria-live="polite"></p>
@@ -1289,7 +1289,7 @@
 
     <div class="card">
       <h2>Detailed findings</h2>
-      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong>, <strong>Not in scope</strong> (a channel the Scope page marks as covered elsewhere) and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
+      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong>, <strong>Not in scope</strong> (a channel the Scope page marks as covered elsewhere or leaves unticked) and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
       <div class="checks-filter" role="group" aria-label="Filter findings by status">
         <button class="filter-btn active" data-filter="all" data-label="All" onclick="filterChecks('all',this)">All</button>
         <button class="filter-btn" data-filter="FAIL" data-label="Action required" onclick="filterChecks('FAIL',this)">Action required</button>
@@ -1376,7 +1376,7 @@ function coverageSentence(s, meta) {
   const parts = [];
   parts.push(s.state === 'partial' ? `Partial: ${s.assessed} of ${s.total} checks ran` : (s.not_in_scope ? `${s.assessed} of ${s.total} checks ran` : `${s.total} checks ran`));
   if (s.not_permitted) parts.push(`${s.not_permitted} not permitted for this API client`);
-  if (s.not_in_scope) parts.push(`${s.not_in_scope} not in scope (channels covered outside Zscaler, per the Scope page)`);
+  if (s.not_in_scope) parts.push(`${s.not_in_scope} not in scope (channels covered outside Zscaler or left unticked, per the Scope page)`);
   if (s.errors) parts.push(`${s.errors} could not be checked`);
   parts.push(s.scored ? `score = ${s.configured} configured ÷ ${s.scored} scoreable (${s.excluded} excluded)` : 'nothing was scoreable, so there is no score');
   if (meta && meta.partial) parts.push('the run stopped early: the numbers cover only the checks that finished');
@@ -1526,8 +1526,9 @@ function exportChecks(scope, format) {
 let migrateRules = null;
 let optimizedRules = null;
 
-// Authenticate only: the same read-only connection test the Start-here
-// panel uses. The assessment is started from Start here, step 2.
+// Authenticate only signs in (POST /api/tenant/check): it obtains the
+// token and reads nothing from the tenant. The assessment is started from
+// a Run assessment button.
 async function authenticateTenant() {
   const st = document.getElementById('authStatus');
   if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); return; }
@@ -1536,7 +1537,7 @@ async function authenticateTenant() {
   try {
     const r = await fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (st) st.textContent = r.ok ? `Connected to ${d.tenant_label}.` : `Could not connect: ${(d.detail && d.detail.cause) || d.detail || r.status}`;
+    if (st) st.textContent = r.ok ? `Signed in to ${d.tenant_label}. Nothing in the tenant was read.` : `Could not connect: ${(d.detail && d.detail.cause) || d.detail || r.status}`;
   } catch (e) { if (st) st.textContent = `Could not connect: ${e.message}`; }
 }
 
@@ -2569,8 +2570,8 @@ async function runAssessment() {
     org_name: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
     scopes: scopes,
-    // The Scope page's channel ownership (dashboard.js): a channel covered by
-    // an alternative solution has its checks reported as not in scope.
+    // The Scope page's channel ownership (dashboard.js): only a channel marked
+    // Zscaler is read; an alternative's or a gap's checks are reported as not in scope.
     channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {},
   };
 
@@ -3054,7 +3055,7 @@ function renderChecks(checks, filter) {
   const notPermitted = new Set(((typeof reportData !== 'undefined' && reportData && reportData.summary && reportData.summary.not_permitted_ids) || []).filter(Boolean));
   const classOf = c => c.out_of_scope ? 'NOTSCOPE' : notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
   const PILL = {PASS:'Configured', FAIL:'Action required', REVIEW:'Needs review', INFO:'Not configured', NOTPERM:'Not permitted', NOTSCOPE:'Not in scope', ERROR:'Could not be checked'};
-  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', NOTSCOPE: 'Its channel is covered by an alternative solution, as declared on the Scope page. Not read, outside the score.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
+  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', NOTSCOPE: 'Its channel is covered by an alternative solution or left unticked (a gap) on the Scope page. Not read, outside the score.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
   for (const c of checks) {
     const st = classOf(c);
     if (filter !== 'all' && st !== filter) continue;
@@ -4120,13 +4121,9 @@ function resetForm() {
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-// Enter key submits form
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !document.getElementById('runBtn').disabled) {
-    const activeEl = document.activeElement;
-    if (activeEl && activeEl.tagName === 'INPUT') runAssessment();
-  }
-});
+// No Enter-to-run: Enter in a field never starts an assessment. Every
+// read counts against the tenant's ZIA API rate limit, so a run starts
+// only from a Run assessment button.
 
 // ══════════════════════════════════════════════════════════════════
 // Update checker — monitors PyPI + help.zscaler.com for new APIs

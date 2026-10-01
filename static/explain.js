@@ -20,9 +20,9 @@
   X.connect = {
     group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
     what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
-    why: 'Nothing works until the app can read the tenant. Authenticate proves the credentials work and shows what the app can see, so a "no results" later is never a mystery.',
+    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does nothing else: it reads nothing from the tenant, because every read counts against the tenant\'s ZIA API rate limit. The tenant is read only when you run an assessment, and only for what you put in scope.',
     when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
-    get: 'Connected: N dictionaries, N engines, N rules, or a plain reason why not (wrong secret, TLS inspection, missing role).',
+    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection, missing role).',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {

@@ -61,8 +61,8 @@ what you get, what to do next.
   the customer's cloud, vanity domain, API client ID and secret, or the
   classic ZIA API sign-in (admin username, password, API key); tenant
   profiles save those details and the run history per customer.
-  Authenticate answers "Connected: N dictionaries, N engines, N rules" or
-  a plain reason why not.
+  Authenticate only signs in (it reads nothing from the tenant) and
+  answers "Signed in" or a plain reason why not.
 - **Assessment results** — the full results in their own tab: Summary
   (score and maturity), Scores by section, Best practices and
   benchmarks, Regulatory alignment, the Data governance journey, and

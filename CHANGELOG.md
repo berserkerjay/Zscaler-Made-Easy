@@ -5,6 +5,16 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-01
+
+### Signing in reads nothing; an assessment reads only what you put in scope
+- **What you asked for.** Authenticating (the Authenticate button, unlock, choosing or saving a tenant profile) must not read the tenant, because every read counts against its ZIA API rate limit. Nothing is assessed until you run it, and then only what the Scope page puts in scope.
+- **Authenticate only signs in.** `POST /api/tenant/check` obtains the token (or the classic API's session) and nothing else: it no longer lists dictionaries and engines or counts Web, Endpoint, SaaS and Email DLP rules. It answers *Signed in to <tenant>. Sign-in only: the tenant's configuration was not read*; a failure still says why and what to do.
+- **Nothing starts an assessment by itself.** Enter in a field no longer runs it, and a Run click while signed out no longer queues a run that Authenticate then starts: it says *Sign in first … then click Run assessment again*.
+- **Nothing in scope is refused.** `/api/assess` with no `scopes` answers 400 (*choose what to assess on the Scope page*) instead of running every check. An MCP or CLI caller that sets the legacy `scope` on purpose still runs as before.
+- **An unticked channel is not read.** A channel left unticked on the Scope page (a gap) now has its checks reported as *Not in scope*, outside the score, like an *Alternative* one; the report still lists it as a gap. A check shared with a channel marked Zscaler still runs. With no channel declaration at all (MCP, CLI) every check in the selected scopes runs, as before.
+- **The journey reads only what you chose.** The assessment's data-governance journey runs only when DLP is in scope, only for the policy packs ticked on the tenant profile (no packs ticked: no journey, never "every installed pack" or the industry's packs), and preflights each pack only on its channels marked Zscaler.
+
 ## 2026-09-30
 
 ### The Terraform hand-off says which hand-off to use, and when

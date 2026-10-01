@@ -29,7 +29,7 @@ def _unlink_quietly(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -318,13 +318,16 @@ class AssessRequest(BaseModel):
     username: str = ""         # classic ZIA API sign-in
     password: str = ""
     api_key: str = ""
-    scope: str = "full"  # legacy single scope, kept for compatibility
-    scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
+    # Legacy single scope, kept for MCP / CLI callers that set it on purpose.
+    # Left unset with no `scopes`, the request is refused: nothing is assessed
+    # unless it was put in scope.
+    scope: str = "full"
+    scopes: list[str] = []  # list of scope keys (dlp, zia_extras, zpa, zcc, ...): the Scope page's choice
     customer_id: str = ""  # Optional ZPA customer ID
     profile_id: str = ""   # Saved tenant profile: fills blanks, records history
     # The Scope page's channel ownership: {id: {choice: zscaler|alternative|gap, note, name}}.
-    # A channel covered by an alternative solution has its checks reported as
-    # not in scope instead of read from the tenant (channel_scope).
+    # Only a Zscaler channel is read; an alternative or a gap has its checks
+    # reported as not in scope instead of read from the tenant (channel_scope).
     channels: Dict[str, Any] = {}
 
 
@@ -1910,56 +1913,26 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
 
 @app.post("/api/tenant/check")
 async def tenant_check(req: TenantCredsRequest):
-    """Read-only connection test for the Start-here panel: authenticates,
-    counts DLP dictionaries, engines and the Web, Endpoint, SaaS and Email
-    DLP rules, and explains any
-    failure in plain language with what to do next."""
+    """Sign-in test for Authenticate: obtains the token (or, for the classic
+    ZIA API, the session) and nothing else. It never lists or counts
+    anything in the tenant: every read counts against the tenant's ZIA API
+    rate limit, so the tenant is read only by an assessment the operator
+    runs, for what they put in scope. A failure is explained in plain
+    language with what to do next."""
     creds = _tenant_creds(req)
     label = tenant_auth.label(creds)
     method = creds["auth_method"]
     try:
-        client = await asyncio.to_thread(_build_sdk_client, creds)
+        await asyncio.to_thread(_build_sdk_client, creds)   # signs in as it is built; no listing
     except HTTPException as e:
         raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, "auth_method": method, **_explain_connection_error(e.detail, method)})
-
-    def probe() -> Dict[str, Any]:
-        from pack_channels import _nx
-        z = client.zia
-        out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
-        if method == tenant_auth.LEGACY:
-            out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
-        dicts, err = _nx(z.dlp_dictionary.list_dicts())
-        if err:
-            raise RuntimeError(str(err))
-        items = list(dicts or [])
-        custom = sum(1 for d in items if getattr(d, "custom", False) or (isinstance(d, dict) and d.get("custom")))
-        out["dictionaries"] = len(items)
-        out["custom_dictionaries"] = custom
-        out["predefined_dictionaries"] = len(items) - custom
-        engines, err = _nx(z.dlp_engine.list_dlp_engines_lite())
-        out["engines"] = 0 if err else len(engines or [])
-        if err:
-            out["problems"].append("DLP engines could not be listed; the role may lack engine read access.")
-        rules, err = _nx(z.dlp_web_rules.list_rules())
-        out["web_rules"] = 0 if err else len(rules or [])
-        if err:
-            out["problems"].append("Web DLP rules could not be listed; the role may lack DLP policy read access.")
-        # The other DLP channels, so the operator sees the whole DLP policy
-        # before deploying into it. None = could not be read (said in problems).
-        import pack_channels as pc
-        for ch, key, name in ((pc.ENDPOINT, "endpoint_rules", "Endpoint DLP"), (pc.SAAS, "saas_rules", "SaaS Security API DLP"),
-                              (pc.EMAIL, "email_rules", "Email DLP")):
-            n, cerr = pc.count_rules(z, ch)
-            out[key] = n
-            if cerr:
-                out["problems"].append(f"{name} rules could not be listed; the role may lack read access to them or the tenant has no subscription for them.")
-        return out
-
-    try:
-        return await asyncio.to_thread(probe)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
                                                      **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
+    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
+    if method == tenant_auth.LEGACY:
+        out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2097,6 +2070,37 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
     return [{"id": p["id"], "dir": p["dir"]} for p in discover_packs() if pack_deploy.baseline_meta(p, p["id"])]
 
 
+def _journey_scope(pack_ids: List[str], channels: Any) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
+    """The packs and channels the assessment's journey may measure: only
+    the packs chosen on the profile (never every installed pack), each on
+    its own DLP channels that the Scope page marks Zscaler. A pack with no
+    such channel is left out, so nothing out of scope is read. Reads local
+    pack files only."""
+    import channel_scope
+    import pack_channels as pc
+    import pack_deploy
+    from dlp_importer import discover_packs
+    targets = channel_scope.pack_targets(channels)
+    if not pack_ids or not targets:
+        return [], {}
+    known = {p["id"]: p for p in discover_packs()}
+    packs: List[Dict[str, Any]] = []
+    chosen: Dict[str, List[str]] = {}
+    for pid in pack_ids:
+        if pid not in known or pid in chosen:
+            continue
+        pk = {"id": pid, "dir": known[pid]["dir"]}
+        try:
+            own = {pc.channel_of(p) for p in pack_deploy.load_sources([pk])[0]["policies"]}
+        except Exception:  # noqa: BLE001 — an unreadable pack is not measured
+            continue
+        mine = [c for c in pc.DLP_CHANNELS if c in own and c in targets]
+        if mine:
+            packs.append(pk)
+            chosen[pid] = mine
+    return packs, chosen
+
+
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
                  channel_targets: Optional[Dict[str, List[str]]] = None,
                  progress: Optional[Any] = None) -> Dict[str, Any]:
@@ -2113,7 +2117,7 @@ def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
     blockers: List[str] = []
     cache: Dict[str, Any] = {}
     try:
-        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, {}))
+        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, channel_targets or {}))
         cache["need"] = pc.needs(i["definition"] for i in merged["policy"].values())
     except Exception:  # noqa: BLE001 — fall back to per-pack needs
         cache = {}
@@ -4216,21 +4220,32 @@ async def assess_stream(req: AssessRequest):
             profile = None
         if profile:
             req.org_name = req.org_name if req.org_name not in ("", "Unknown") else (profile.get("org_name") or req.org_name)
+    # Nothing is assessed unless it was put in scope: no `scopes` and no
+    # legacy `scope` set on purpose (an MCP or CLI caller) is refused, never
+    # read as "everything".
+    if not req.scopes and "scope" not in req.model_fields_set:
+        raise HTTPException(status_code=400, detail="Nothing to assess: choose what to assess on the Scope page, then run the assessment.")
     # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
     creds = _validate_creds(_tenant_creds(req))
     cloud, vd = creds["cloud"], creds["vanity_domain"]
     checks = _get_checks(req.scope, req.scopes)
-    # The Scope page's channel ownership: a channel covered by an alternative
-    # solution has its checks reported as not in scope instead of read
-    # (channel_scope); the rest run. The findings keep their section order.
+    # The Scope page's channel ownership: only a channel marked Zscaler is
+    # read; an alternative or a gap has its checks reported as not in scope
+    # (channel_scope). The findings keep their section order.
     import channel_scope as _chs
     checks, skipped_checks, check_order = _chs.partition(checks, req.channels)
     total_all = len(checks) + len(skipped_checks)
-    # The journey (pack deficiencies) is measured against the profile's
-    # packs, or the packs of its industry when none are ticked.
+    # The profile's industry: the frameworks and packs the suggestions are limited to.
     import vertical as _vertical
     _scope = _vertical.scope_for(profile, all_packs=[p["id"] for p in __import__("dlp_importer").discover_packs()])
-    journey_pack_ids = list(_scope["packs"]) if _scope["scoped"] else [str(b) for b in (profile or {}).get("baseline_packs") or []]
+    # The journey (pack deficiencies) reads the tenant too, so it runs only
+    # when DLP is in scope, only for the packs ticked on the profile (never
+    # a default set) and only on their channels marked Zscaler.
+    journey_pack_ids = [str(b) for b in (profile or {}).get("baseline_packs") or [] if b]
+    try:
+        journey_packs, journey_targets = _journey_scope(journey_pack_ids, req.channels) if "dlp" in req.scopes else ([], {})
+    except Exception:  # noqa: BLE001 — no journey rather than a failed run
+        journey_packs, journey_targets = [], {}
 
     async def event_generator():
         results = []
@@ -4332,9 +4347,9 @@ async def assess_stream(req: AssessRequest):
 
             # Results first: the report goes out as soon as the checks are
             # in. The data-governance journey (one read-only preflight per
-            # baseline pack) follows as its own event so nobody waits on it.
-            want_journey = bool(_journey_packs(journey_pack_ids)) and (
-                not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"))
+            # chosen pack, on its channels in scope) follows as its own event
+            # so nobody waits on it.
+            want_journey = bool(journey_packs)
 
             try:
                 secs, overall = compute(results)
@@ -4401,7 +4416,7 @@ async def assess_stream(req: AssessRequest):
             if want_journey:
                 journey = None
                 try:
-                    packs = _journey_packs(journey_pack_ids)
+                    packs = journey_packs
                     yield _sse("progress", {"total": total_all, "completed": total_all, "pct": 100,
                                             "current": f"Data governance journey: measuring the tenant against {len(packs)} policy packs"})
                     sdk = await asyncio.to_thread(_build_sdk_client, creds)
@@ -4410,7 +4425,7 @@ async def assess_stream(req: AssessRequest):
                     def _note(i, n, pack_id):
                         loop.call_soon_threadsafe(notes.put_nowait, (i, n, pack_id))
 
-                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, progress=_note))
+                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, channel_targets=journey_targets, progress=_note))
                     deadline = time.time() + JOURNEY_TIMEOUT
                     while not task.done():
                         if time.time() > deadline:

@@ -571,7 +571,9 @@ highest one with all earlier stages reached.
 | 5 Enforcement | DLP rules use an enforcing action |
 
 The score is the share of required objects in place, averaged over the
-stages. The **assessment** runs this for every policy pack and shows a
+stages. The **assessment** runs this, when DLP is in scope, for the policy packs
+ticked on the tenant profile (only on their channels marked Zscaler on
+the Scope page; no pack ticked, no journey) and shows a
 *Data governance journey* card; each policy pack card in Deploy Studio has a
 *Where is this tenant?* action; and the API exposes the same thing:
 

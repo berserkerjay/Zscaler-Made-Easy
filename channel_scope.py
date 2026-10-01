@@ -9,13 +9,20 @@ Endpoint DLP, Email DLP, ...) and the operator marks each one:
   outside the score, with the vendor note when one was typed. Scoring a
   customer's Zscaler tenant for a channel they knowingly bought elsewhere
   would only produce noise.
-- **gap** (not addressed): nothing covers it. Its checks run exactly as
-  before, because the findings are the evidence of the gap.
+- **gap** (not ticked): nothing covers it, and the operator did not put it
+  in scope. Its checks are not run either: every read counts against the
+  tenant's ZIA API rate limit, so the assessment reads only what was put
+  in scope. Each is reported as *Not in scope*, outside the score, and the
+  report lists the channel as a gap.
+
+A check that belongs to several channels runs when any of them is on
+Zscaler. With no declaration at all (an MCP or CLI caller that sends no
+`channels`) nothing is narrowed: every check in the selected scopes runs.
 
 The declaration travels with the assessment request (`channels`), is
 saved on the tenant profile, and comes back in the report as
 `channel_coverage` so the dashboard, the JSON export and the Word report
-say the same thing. Only the *alternative* choice changes what runs."""
+say the same thing."""
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -36,6 +43,10 @@ CHANNELS: Dict[str, str] = {
     "device_control": "Device Control",
     "workflow_automation": "Workflow Automation",
 }
+
+# The Scope page's DLP channels as policy packs name them (pack_channels):
+# the journey's preflight measures a pack only on these, when on Zscaler.
+PACK_CHANNELS: Dict[str, str] = {"web_dlp": "web", "endpoint_dlp": "endpoint", "saas_casb": "saas", "email_dlp": "email"}
 
 # Which checks read each channel: whole sections (matched on the section
 # name's start) and single check ids. Deliberately narrow: "5 — Endpoint
@@ -86,6 +97,16 @@ def _matches(spec: Dict[str, Sequence[str]], check_id: str, section: str) -> boo
     return any(section == s or section.startswith(s) for s in spec.get("sections", ()))
 
 
+def in_scope(channels: Any) -> List[str]:
+    """The channel ids marked Zscaler: the only ones the tenant is read for."""
+    return [cid for cid, v in normalize(channels).items() if v["choice"] == "zscaler"]
+
+
+def pack_targets(channels: Any) -> List[str]:
+    """The pack channels (web / endpoint / saas / email) on Zscaler."""
+    return [PACK_CHANNELS[cid] for cid in in_scope(channels) if cid in PACK_CHANNELS]
+
+
 def channel_of_check(check_id: str, section: str, channels: Dict[str, Dict[str, str]]) -> Optional[str]:
     """The first of `channels` whose checks include this one, else None."""
     for cid in channels:
@@ -101,6 +122,16 @@ def skipped_result(check_id: str, section: str, label: str, cid: str, ch: Dict[s
     block so the findings row explains itself."""
     note = f" ({ch['note']})" if ch.get("note") else ""
     name = ch.get("name") or CHANNELS.get(cid) or cid
+    if ch.get("choice") == "gap":
+        return {
+            "id": check_id, "section": section, "label": label, "status": "INFO",
+            "detail": (f"Not in scope: {name} was not ticked on the Scope page (a gap: nothing covers it). "
+                       "The tenant was not read for this check and it is outside the score."),
+            "out_of_scope": True, "channel": cid, "gap": True,
+            "plain": {"found": f"Not read: {name} was left out of scope on the Scope page.",
+                      "means": "", "do": "",
+                      "outcome": "Tick the channel as Zscaler on the Scope page and run again to assess it."},
+        }
     return {
         "id": check_id, "section": section, "label": label, "status": "INFO",
         "detail": (f"Not in scope: {name} is covered by an alternative solution{note}, as declared on the Scope page. "
@@ -114,18 +145,21 @@ def skipped_result(check_id: str, section: str, label: str, cid: str, ch: Dict[s
 
 def partition(checks: Sequence[Tuple], channels: Any) -> Tuple[List[Tuple], List[Dict[str, Any]], List[Tuple[str, int]]]:
     """Split the check tuples (id, section, label, fn) into the ones to run
-    and the results of the ones declared out of scope, plus the order to
-    merge them back in (`merge`) so the findings keep their section order."""
-    alt = {k: v for k, v in normalize(channels).items() if v["choice"] == "alternative"}
+    and the results of the ones out of scope (alternative or gap), plus
+    the order to merge them back in (`merge`) so the findings keep their
+    section order. A check of a Zscaler channel always runs."""
+    ch = normalize(channels)
+    out = {k: v for k, v in ch.items() if v["choice"] != "zscaler"}
+    on = {k: v for k, v in ch.items() if v["choice"] == "zscaler"}
     to_run: List[Tuple] = []
     skipped: List[Dict[str, Any]] = []
     order: List[Tuple[str, int]] = []
     for chk in checks:
         check_id, section, label = str(chk[0]), str(chk[1]), str(chk[2])
-        cid = channel_of_check(check_id, section, alt) if alt else None
-        if cid:
+        cid = channel_of_check(check_id, section, out) if out else None
+        if cid and not channel_of_check(check_id, section, on):
             order.append(("skip", len(skipped)))
-            skipped.append(skipped_result(check_id, section, label, cid, alt[cid]))
+            skipped.append(skipped_result(check_id, section, label, cid, out[cid]))
         else:
             order.append(("run", len(to_run)))
             to_run.append(chk)
@@ -138,8 +172,8 @@ def merge(order: Iterable[Tuple[str, int]], run_results: Sequence[Dict[str, Any]
 
 def coverage(channels: Any, skipped: Iterable[Dict[str, Any]] = ()) -> Dict[str, Any]:
     """What was declared and what it did, for the report: the channels on
-    Zscaler, the ones covered elsewhere (with how many checks that took
-    out of scope), the gaps, and one sentence that says it."""
+    Zscaler, the ones covered elsewhere and the gaps (each with how many
+    checks that took out of scope), and one sentence that says it."""
     ch = normalize(channels)
     skipped = list(skipped)
     per: Dict[str, int] = {}
@@ -154,9 +188,13 @@ def coverage(channels: Any, skipped: Iterable[Dict[str, Any]] = ()) -> Dict[str,
     else:
         names = lambda rows: ", ".join(r["name"] + (f" ({r['note']})" if r["note"] else "") for r in rows)  # noqa: E731
         parts = [f"{len(by['zscaler'])} on Zscaler" + (f" ({names(by['zscaler'])})" if by["zscaler"] else "")]
+        n_alt = sum(r["checks_not_in_scope"] for r in by["alternative"])
+        n_gap = sum(r["checks_not_in_scope"] for r in by["gap"])
         parts.append(f"{len(by['alternative'])} covered by an alternative solution"
-                     + (f" ({names(by['alternative'])}; {len(skipped)} checks not in scope)" if by["alternative"] else ""))
-        parts.append(f"{len(by['gap'])} gap{'' if len(by['gap']) == 1 else 's'}" + (f" ({names(by['gap'])})" if by["gap"] else ""))
+                     + (f" ({names(by['alternative'])}; {n_alt} checks not in scope)" if by["alternative"] else ""))
+        parts.append(f"{len(by['gap'])} gap{'' if len(by['gap']) == 1 else 's'}"
+                     + (f" ({names(by['gap'])}; {n_gap} checks not in scope, not read)" if by["gap"] and n_gap
+                        else (f" ({names(by['gap'])})" if by["gap"] else "")))
         note = "Channels as declared on the Scope page: " + "; ".join(parts) + "."
     return {"declared": declared, "zscaler": by["zscaler"], "alternative": by["alternative"], "gaps": by["gap"],
             "not_in_scope": len(skipped), "note": note}
