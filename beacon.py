@@ -45,7 +45,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_KEEP = 30
@@ -340,7 +340,14 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
     beacon_scope.select), one about every `gap` seconds. There is no
     default: without a list nothing is read. A ZPA path without a ZPA
     customer id, and anything but ZIA on the classic ZIA API sign-in, is
-    skipped (the client would answer for it without asking the tenant)."""
+    skipped (the client would answer for it without asking the tenant).
+
+    One endpoint can cost more than one GET (an endpoint the client lists
+    in parts, a path with candidate spellings). When the client has a
+    request pacer (dlp_assessment_full_auto.Client._limiter), its gap is
+    raised to `gap` for the watch, so every HTTP GET is paced; otherwise
+    the wait after an endpoint grows with the GETs it took. `requests` is
+    the HTTP GETs the client sent when it counts them (requests_made)."""
     if str(method or "").upper() != "GET":
         raise ValueError(f"Beacon's tenant watch only sends GET; {method!r} was refused.")
     if endpoints is None:
@@ -350,10 +357,32 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
     ro = ReadOnlyClient(client)
     eps = endpoints
     legacy, customer_id = bool(ro.legacy), str(ro.customer_id or "")
+    limiter = getattr(client, "_limiter", None)
+    old_gap = getattr(limiter, "min_gap", None)
+    paced = isinstance(old_gap, (int, float)) and not isinstance(old_gap, bool)
+    if paced:
+        limiter.min_gap = max(float(old_gap), float(gap))
+    try:
+        return _probe_rows(ro, eps, legacy, customer_id, paced, gap, budget, sleep, clock, on_progress, permissions)
+    finally:
+        if paced:
+            limiter.min_gap = old_gap
+
+
+def _gets(ro: "ReadOnlyClient") -> Optional[int]:
+    n = ro.requests_made
+    return n if isinstance(n, int) and not isinstance(n, bool) else None
+
+
+def _probe_rows(ro: "ReadOnlyClient", eps: Dict[str, List[str]], legacy: bool, customer_id: str, paced: bool, gap: float,
+                budget: float, sleep: Callable[[float], None], clock: Callable[[], float],
+                on_progress: Optional[Callable[[int, int], None]], permissions: Any) -> Dict[str, Any]:
     started = clock()
     rows: List[Dict[str, Any]] = []
     stopped = None
     sent = 0
+    first = _gets(ro)
+    last_cost = 1
     for i, (ep, mods) in enumerate(eps.items()):
         base = {"endpoint": ep, "used_by": list(mods), "permission": permissions.permission_for_endpoint(ep).get("permission")}
         if legacy and not ep.startswith("/zia/"):
@@ -366,16 +395,21 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
             stopped = stopped or f"the {int(budget)}-second budget ran out"
             rows.append({**base, "status": "not probed", "http": None, "items": None})
             continue
-        if sent:
-            sleep(gap)
+        if sent and not paced:
+            sleep(gap * max(1, last_cost))
+        before = _gets(ro)
         rows.append({**base, **probe_endpoint(ro, ep, "GET")})
+        after = _gets(ro)
+        last_cost = (after - before) if before is not None and after is not None else 1
         sent += 1
         if on_progress:
             on_progress(i + 1, len(eps))
     counts: Dict[str, int] = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    return {"endpoints": rows, "counts": counts, "requests": sent, "stopped": stopped,
+    last = _gets(ro)
+    requests = (last - first) if first is not None and last is not None else sent
+    return {"endpoints": rows, "counts": counts, "requests": requests, "stopped": stopped,
             "seconds": round(clock() - started, 1), "method": "GET"}
 
 
@@ -407,12 +441,28 @@ def _usable(w: Optional[Dict[str, Any]]) -> bool:
     return bool(w) and w.get("status") in ("ok", "offline")
 
 
+def _watch_read(t: Optional[Dict[str, Any]]) -> bool:
+    """Whether a tenant watch read anything: not one that failed (the
+    probe raised) or skipped or left every endpoint unread."""
+    if not t or t.get("failed"):
+        return False
+    return any(e.get("status") not in ("skipped", "not probed") for e in t.get("endpoints") or [])
+
+
+def _scope_set(t: Dict[str, Any], rows: Iterable[str]) -> Set[str]:
+    """The endpoints a watch had in scope (what the selection picked),
+    else, for a watch from before the scope was kept, the rows it read."""
+    sc = t.get("scope") or {}
+    return set(sc["read"]) if isinstance(sc.get("read"), list) else set(rows)
+
+
 def _scope_change(prev: Dict[str, Any], cur: Dict[str, Any], prev_eps: Dict[str, Dict[str, Any]]) -> str:
-    """One sentence when the tenant watch read a different set of
-    endpoints than the last watch of the same tenant (the Scope page
-    changed); only the endpoints read both times are compared."""
-    now = {e["endpoint"] for e in cur.get("endpoints") or []}
-    before = set(prev_eps)
+    """One sentence when the tenant watch had a different scope than the
+    last watch of the same tenant (the Scope page changed); only the
+    endpoints read both times are compared. The scope is the selection
+    (its summary and endpoints), not what happened to be answered."""
+    now = _scope_set(cur, (e["endpoint"] for e in cur.get("endpoints") or []))
+    before = _scope_set(prev, prev_eps)
     ps, cs = (prev.get("scope") or {}).get("summary"), (cur.get("scope") or {}).get("summary")
     if now == before and (not ps or ps == cs):
         return ""
@@ -475,8 +525,12 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     tb = None
     ct = cur.get("tenant")
-    if ct:
-        tb = _baseline(history, lambda s: bool(s.get("tenant")) and (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id"))
+    if ct and not _watch_read(ct):
+        why = f" ({ct['stopped']})" if ct.get("stopped") else ""
+        add("tenant", "watch_failed", f"The tenant API watch of {ct.get('label') or 'the tenant'} read nothing{why}: nothing was compared, "
+            "and the last watch that read the tenant stays the one to compare with.")
+    elif ct:
+        tb = _baseline(history, lambda s: _watch_read(s.get("tenant")) and (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id"))
         if tb:
             prev_eps = {e["endpoint"]: e for e in (tb.get("tenant") or {}).get("endpoints") or []}
             sc = _scope_change(tb.get("tenant") or {}, ct, prev_eps)
@@ -496,16 +550,19 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
                     before_http=q.get("http"), after_http=e.get("http"))
 
     summary = []
-    if not up and not tb:
+    if not up and not tb and not changes:
         summary.append("First run of this kind: nothing to compare with yet. This run is the baseline for the next one.")
     elif not changes:
         when = (up or tb or {}).get("at", "")
         summary.append(f"Nothing changed since the last run ({when}).")
     else:
-        key = lambda c: "scope" if c["kind"] == "scope_changed" else c["watcher"]  # noqa: E731
-        n = {k: sum(1 for c in changes if key(c) == k) for k in ("sdk", "api", "terraform", "tenant", "scope")}
-        parts = [f"{v} {({'sdk': 'SDK', 'api': 'API', 'terraform': 'Terraform', 'tenant': 'tenant endpoint', 'scope': 'tenant scope'})[k]} change{'s' if v != 1 else ''}"
-                 for k, v in n.items() if v]
+        kinds = {"scope_changed": "scope", "watch_failed": "failed"}
+        key = lambda c: kinds.get(c["kind"], c["watcher"])  # noqa: E731
+        words = {"sdk": ("SDK change", "SDK changes"), "api": ("API change", "API changes"), "terraform": ("Terraform change", "Terraform changes"),
+                 "tenant": ("tenant endpoint change", "tenant endpoint changes"), "scope": ("tenant scope change", "tenant scope changes"),
+                 "failed": ("tenant watch that read nothing", "tenant watches that read nothing")}
+        n = {k: sum(1 for c in changes if key(c) == k) for k in words}
+        parts = [f"{v} {words[k][0 if v == 1 else 1]}" for k, v in n.items() if v]
         summary.append(f"{len(changes)} change{'s' if len(changes) != 1 else ''} since the last run: {', '.join(parts)}.")
         summary.extend(c["text"] for c in changes)
     return {"against": {"upstream": (up or {}).get("id"), "upstream_at": (up or {}).get("at"),
@@ -556,7 +613,7 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
         except PermissionError:
             raise
         except Exception as e:  # noqa: BLE001
-            t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET"}
+            t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET", "failed": True}
         t["label"] = tenant_label or "tenant"
         t["scope"] = beacon_scope.describe(tenant_scope, str(tenant_scope.get("source") or ""))
         snap["tenant"] = t

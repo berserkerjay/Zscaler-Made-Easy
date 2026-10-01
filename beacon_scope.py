@@ -11,17 +11,21 @@ derives the endpoint list:
     dlp_api_server._get_checks does (SCOPE_REGISTRIES below).
   - Each registered check's function is read (and every helper it calls,
     in its own module or another) for the literal endpoints it GETs.
-  - A check that belongs to a data-security channel (channel_scope.
-    CHANNEL_CHECKS: Ch.A Inline Web, Ch.B Endpoint, 4 — SSL Policy, ...)
-    counts only when that channel is marked **Zscaler** on the Scope page.
-    Alternative, gap (unticked) and undeclared channels are out of scope
-    for the watch. The Endpoint DLP, SaaS (CASB) and Email DLP rule
-    endpoints are read only with their channel on Zscaler, whichever check
-    reads them (CHANNEL_ONLY_ENDPOINTS).
+  - A DLP-scope check that belongs to a data-security channel
+    (channel_scope.CHANNEL_CHECKS: Ch.A Inline Web, Ch.B Endpoint, 4 — SSL
+    Policy, ...) counts only when that channel is marked **Zscaler** on
+    the Scope page. Alternative, gap (unticked) and undeclared channels are
+    out of scope for the watch. The Endpoint DLP, SaaS (CASB) and Email DLP
+    rule endpoints are read only with their channel on Zscaler, whichever
+    check reads them (CHANNEL_ONLY_ENDPOINTS).
+  - A check of any other ticked scope (GenAI & prompts, ZIA platform's
+    Cloud Apps, ...) is in scope because its scope is ticked; a channel
+    takes it out only when that channel is declared **alternative**, as
+    the assessment itself skips it then (channel_scope.partition).
 
 An endpoint is read when any in-scope check reads it. An endpoint that no
-check reads (only a feature module, such as data_flow.py, does) is
-"unmapped" and never read by the watch: nothing defaults to everything.
+check reads (only a feature module does) is "unmapped" and never read by
+the watch: nothing defaults to everything.
 """
 from __future__ import annotations
 
@@ -84,13 +88,43 @@ def _unwrap(fn: Any) -> Any:
     return inspect.unwrap(fn) if callable(fn) else fn
 
 
-def _called(fn: Any) -> List[Any]:
-    """The functions `fn` calls by name (its module's globals): f(...) and mod.f(...)."""
+def _local_imports(tree: ast.AST) -> Dict[str, Any]:
+    """Names a function imports in its own body (`from rule_migrator
+    import assess_current_status`, `import ssl_flow`), resolved."""
+    out: Dict[str, Any] = {}
+    for n in ast.walk(tree):
+        try:
+            if isinstance(n, ast.ImportFrom) and n.module and not n.level:
+                mod = importlib.import_module(n.module)
+                for a in n.names:
+                    if a.name != "*":
+                        out[a.asname or a.name] = getattr(mod, a.name, None)
+            elif isinstance(n, ast.Import):
+                for a in n.names:
+                    if a.asname:
+                        out[a.asname] = importlib.import_module(a.name)
+                    else:
+                        out[a.name.split(".")[0]] = importlib.import_module(a.name.split(".")[0])
+        except Exception:  # noqa: BLE001 — a module that does not load reads nothing
+            continue
+    return out
+
+
+def _parse(fn: Any) -> Optional[ast.AST]:
     try:
-        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
-    except (OSError, TypeError, SyntaxError):
+        return ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    except (OSError, TypeError, SyntaxError, IndentationError):
+        return None
+
+
+def _called(fn: Any, tree: Optional[ast.AST] = None) -> List[Any]:
+    """The functions `fn` calls or names (its module's globals and what it
+    imports in its own body): f(...), mod.f(...), and f handed on as a value."""
+    tree = tree if tree is not None else _parse(fn)
+    if tree is None:
         return []
-    g = getattr(fn, "__globals__", {}) or {}
+    g = dict(getattr(fn, "__globals__", {}) or {})
+    g.update(_local_imports(tree))
     out = []
     for n in ast.walk(tree):
         target = None
@@ -105,9 +139,16 @@ def _called(fn: Any) -> List[Any]:
     return out
 
 
+# An endpoint written out as a string of its own: "/zia/urlFilteringRules".
+_ENDPOINT_LITERAL = re.compile(r"/(?:zia|zcc|zpa|zdx|zid)/[A-Za-z0-9_/\-]*")
+
+
 def function_endpoints(fn: Any, _seen: Optional[Set[Any]] = None) -> Set[str]:
-    """The literal endpoints `fn` GETs, itself or through any helper it
-    calls (followed transitively, each function once)."""
+    """The literal endpoints `fn` reads, itself or through any helper it
+    calls (followed transitively, each function once). Every string that
+    is an endpoint path counts, whichever helper it is handed to
+    (cl.get, _g, _items, _rules, _fetch, ...) or when it is looped over
+    from a tuple: a check that names an endpoint reads it."""
     seen = _seen if _seen is not None else set()
     fn = _unwrap(fn)
     if fn in seen or not inspect.isfunction(fn):
@@ -118,7 +159,12 @@ def function_endpoints(fn: Any, _seen: Optional[Set[Any]] = None) -> Set[str]:
     except (OSError, TypeError):
         return set()
     eps = {m.group(1) for m in _get_call().finditer(src)}
-    for callee in _called(fn):
+    tree = _parse(fn)
+    if tree is not None:
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and _ENDPOINT_LITERAL.fullmatch(n.value):
+                eps.add(n.value)
+    for callee in _called(fn, tree):
         eps |= function_endpoints(callee, seen)
     return eps
 
@@ -192,10 +238,15 @@ def has_selection(scopes: Any, channels: Any) -> bool:
     return bool(normalize_scopes(scopes)) or bool(channel_scope.normalize(channels))
 
 
-def _owner_in_scope(owner: Dict[str, Any], scopes: Set[str], on: Set[str]) -> bool:
+def _owner_in_scope(owner: Dict[str, Any], scopes: Set[str], on: Set[str], alt: Set[str] = frozenset()) -> bool:
     if owner["scope"] not in scopes:
         return False
-    return not owner["channels"] or any(c in on for c in owner["channels"])
+    if not owner["channels"]:
+        return True
+    if owner["scope"] == "dlp":
+        return any(c in on for c in owner["channels"])
+    # Another ticked scope: its checks run unless a channel of theirs is covered elsewhere.
+    return not any(c in alt for c in owner["channels"])
 
 
 def summary(scopes: Sequence[str], on: Sequence[str], n: int) -> str:
@@ -224,6 +275,7 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
     eps = endpoints if endpoints is not None else beacon.tenant_endpoints()
     sc = normalize_scopes(scopes)
     on = zscaler_channels(channels)
+    alt = {cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "alternative"}
     sset, onset = set(sc), set(on)
     owners = endpoint_owners(eps)
     picked: Dict[str, List[str]] = {}
@@ -237,7 +289,7 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
         if need and need not in onset:
             not_in.append(ep)
             continue
-        if any(_owner_in_scope(o, sset, onset) for o in who):
+        if any(_owner_in_scope(o, sset, onset, alt) for o in who):
             picked[ep] = list(mods)
         else:
             not_in.append(ep)
@@ -266,3 +318,28 @@ def scope_map() -> Dict[str, Any]:
                 per_channel.setdefault(c, set()).add(ep)
     return {"scopes": {k: sorted(v) for k, v in per_scope.items()}, "channels": {k: sorted(v) for k, v in per_channel.items()},
             "unmapped": sorted(ep for ep, who in owners.items() if not who)}
+
+
+def unreadable(endpoints: Iterable[str], legacy: bool, customer_id: str) -> Dict[str, str]:
+    """endpoint -> why this sign-in cannot read it, as beacon.probe_tenant
+    skips it: anything but ZIA on the classic ZIA API sign-in, and a ZPA
+    path without a ZPA customer id."""
+    out: Dict[str, str] = {}
+    for ep in endpoints:
+        if legacy and not ep.startswith("/zia/"):
+            out[ep] = "the classic ZIA API sign-in reaches ZIA only"
+        elif ep.startswith("/zpa/") and not str(customer_id or "").strip():
+            out[ep] = "no ZPA customer id was given"
+    return out
+
+
+def nothing_readable(sel: Dict[str, Any], legacy: bool, customer_id: str) -> str:
+    """The refusal when not one endpoint in scope can be read with this
+    sign-in (so signing in would read nothing), else ""."""
+    eps = list(sel.get("endpoints") or [])
+    why = unreadable(eps, legacy, customer_id)
+    if not eps or len(why) < len(eps):
+        return ""
+    reasons = sorted(set(why.values()))
+    return (f"{NOTHING_IN_SCOPE} None of the {sel.get('summary') or f'{len(eps)} endpoints'} can be read with this sign-in "
+            f"({'; '.join(reasons)}), so the tenant is not signed in to.")

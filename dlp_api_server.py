@@ -2771,7 +2771,9 @@ def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: st
             snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger, tenant_scope=scope)
         else:
             snap = beacon.run(online=online, tenant_client=None, tenant_label=label, trigger=trigger)
-        _BEACON_STATE.update({"last_status": "error" if snap.get("error") else "ok", "last_error": snap.get("error")})
+        failed = (snap.get("tenant") or {}).get("failed")
+        err = snap.get("error") or (f"The tenant API watch read nothing: {(snap.get('tenant') or {}).get('stopped')}" if failed else None)
+        _BEACON_STATE.update({"last_status": "error" if err else "ok", "last_error": err})
         return snap
     except Exception as e:  # noqa: BLE001 — a failed run is reported on the tab, never raised into the server
         _BEACON_STATE.update({"last_status": "error", "last_error": f"{type(e).__name__}: {str(e)[:200]}"})
@@ -2893,6 +2895,20 @@ class BeaconScopeRequest(BaseModel):
     profile_id: str = ""
 
 
+def _beacon_readable(sel: Dict[str, Any], req: Any) -> None:
+    """400 when the sign-in these credentials resolve to (without signing
+    in) can read none of the endpoints in scope: the classic ZIA API
+    sign-in with only non-ZIA scopes, or only ZPA without a customer id."""
+    import beacon_scope
+    try:
+        creds = _tenant_creds(req)
+    except Exception:  # noqa: BLE001 — bad credentials are refused by the sign-in itself
+        return
+    why = beacon_scope.nothing_readable(sel, creds.get("auth_method") == tenant_auth.LEGACY, creds.get("customer_id") or "")
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+
+
 def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "") -> Dict[str, Any]:
     """What the tenant API watch would read: the page's selection, else
     (only when the page sent nothing at all) the saved profile's. The two
@@ -2979,6 +2995,7 @@ async def beacon_run(req: BeaconRunRequest):
     client, label, sel = None, "", None
     if req.tenant_watch:
         sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id)
+        await asyncio.to_thread(_beacon_readable, sel, req)   # nothing readable with this sign-in: 400, no sign-in
         client = await asyncio.to_thread(_build_client, req)   # validates every field; 400/401 without echoing a secret
         label = tenant_auth.label(_tenant_creds(req))
     if not _beacon_start_background(bool(req.online), "manual", client, label, sel):
@@ -2998,6 +3015,8 @@ async def beacon_scope_preview(req: BeaconScopeRequest):
     import beacon_scope
     try:
         sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id)
+        if req.profile_id:   # the profile's sign-in is known without signing in
+            await asyncio.to_thread(_beacon_readable, sel, req)
     except HTTPException as e:
         return {"ok": False, "detail": e.detail, "endpoints": 0}
     return {"ok": True, **beacon_scope.describe(sel, sel["source"])}

@@ -180,9 +180,12 @@
   // The tenant API watch reads only the endpoints of the ticked scopes and
   // of the channels marked Zscaler (every GET counts against the tenant's
   // ZIA API rate limit). Read live from the assessment tab that opened this
-  // one, else from what the Scope page keeps in this browser (the same
-  // localStorage keys). Only declared channels are sent; with nothing here
-  // the server uses the chosen profile's saved scopes and channels.
+  // one, else from the ticks the Scope page publishes on every change
+  // (localStorage 'zassess_scopes_live_v1', kept in step like the channels),
+  // never from the last "Save config" copy, which can be stale. Without
+  // either, nothing is sent and the server uses the chosen profile's saved
+  // scopes and channels (or refuses). Only each declared channel's choice is
+  // sent: the Scope page's free-text notes never leave this browser.
   function readJson(key, fallback) {
     try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
   }
@@ -190,7 +193,7 @@
     const out = {};
     Object.entries(state || {}).forEach(([id, v]) => {
       const choice = v && typeof v === 'object' ? v.choice : v;
-      if (choice === 'zscaler' || choice === 'alternative') out[id] = { choice, note: String((v && v.note) || '') };
+      if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
     });
     return out;
   }
@@ -200,30 +203,40 @@
     try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
     try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
     if (!Array.isArray(scopes)) {
-      const cfg = readJson('zscaler_assessment_config', {});
-      scopes = Array.isArray(cfg.scopes) ? cfg.scopes : [];
+      const live = readJson('zassess_scopes_live_v1', null);
+      scopes = live && Array.isArray(live.scopes) ? live.scopes : null;
     }
-    if (!channels) {
-      channels = declared(readJson('zassess_channels_v1', {}));
-      const extra = readJson('zassess_channels_v1_extra', []);
-      (Array.isArray(extra) ? extra : []).forEach(c => { if (c && channels[c.id]) channels[c.id].name = String(c.name || c.id); });
-    }
+    // The Scope page's ticks are unknown here: send no page selection at all,
+    // so the profile's saved selection is used whole, never mixed with stray channels.
+    if (!Array.isArray(scopes)) return { scopes: [], channels: {} };
+    if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
     return { scopes: scopes.map(String), channels };
   }
   let scopeOk = false;
+  let lastAsked = null, lastShown = null;
+  function showScope(html) {
+    // A polite live region: rewrite it only when what it says changed.
+    if (html === lastShown) return;
+    lastShown = html;
+    $('bcScope').innerHTML = html;
+  }
   async function previewScope() {
-    const el = $('bcScope');
     const sc = scopeSelection();
     const cb = credBody();
-    try {
-      const d = await api('/api/beacon/scope', { scopes: sc.scopes, channels: sc.channels, profile_id: cb.profile_id || '' });
+    const body = { scopes: sc.scopes, channels: sc.channels, profile_id: cb.profile_id || '' };
+    const asked = JSON.stringify(body);
+    // Nothing changed since the last preview (a window focus): no request, no rewrite.
+    if (asked !== lastAsked) try {
+      const d = await api('/api/beacon/scope', body);
+      lastAsked = asked;
       scopeOk = !!d.ok;
-      el.innerHTML = d.ok
+      showScope(d.ok
         ? `The watch will read <strong>${E(d.summary)}</strong> <span class="dim">(from ${E(d.source)}; ${E((d.not_in_scope || []).length + (d.unmapped || []).length)} endpoints not in scope are never read)</span>.`
-        : `<span class="chip warn">${E(d.detail)}</span>`;
+        : `<span class="chip warn">${E(d.detail)}</span>`);
     } catch (e) {
+      lastAsked = null;
       scopeOk = false;
-      el.textContent = `Could not work out what is in scope: ${e.message}`;
+      showScope(`Could not work out what is in scope: ${E(e.message)}`);
     }
     $('bcRunTenant').disabled = !scopeOk || $('bcRun').disabled;
     return sc;
@@ -251,7 +264,7 @@
   $('bcRunTenant').addEventListener('click', () => run(true));
   $('bcTenant').addEventListener('change', previewScope);
   window.addEventListener('focus', previewScope);
-  window.addEventListener('storage', e => { if (!e.key || e.key.startsWith('zassess_channels_v1') || e.key === 'zscaler_assessment_config') previewScope(); });
+  window.addEventListener('storage', e => { if (!e.key || e.key.startsWith('zassess_channels_v1') || e.key === 'zassess_scopes_live_v1') previewScope(); });
   tenantChoices().then(previewScope);
   load().then(d => { if (d && d.running) poll(); });
 })();
