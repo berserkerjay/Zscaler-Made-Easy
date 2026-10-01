@@ -14,7 +14,7 @@ import beacon
 import beacon_scope as bs
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ALL = beacon.tenant_endpoints()
+ALL = bs.watch_endpoints()
 WEB_EMAIL = {"web_dlp": {"choice": "zscaler"}, "email_dlp": {"choice": "zscaler"},
              "endpoint_dlp": {"choice": "alternative", "note": "Vendor X"}, "saas_casb": {"choice": "gap"}}
 
@@ -509,3 +509,281 @@ def test_the_scope_page_publishes_its_ticks_on_every_change():
     assert "contains('scope-cb')) publishScopes()" in html and "loadConfig();\npublishScopes();" in html
     fn = html[html.index("function setSelectedScopes"):html.index("function publishScopes")]
     assert "publishScopes()" in fn
+
+
+# ── Round 2: the map covers every endpoint a check reads ───────────────
+
+def test_every_endpoint_an_in_scope_check_reads_is_read_or_listed_as_not_read():
+    universe = set(ALL)
+    assert not [ep for ep in universe if ep.endswith("/")], "a base or prefix is not an endpoint"
+    for scopes in (["zia_extras", "zpa"], ["dlp"], ["zcc", "rbac"], list(bs.SCOPE_REGISTRIES)):
+        sel = bs.select(scopes, WEB_EMAIL)
+        known = set(sel["endpoints"]) | set(sel["not_in_scope"]) | set(sel["unmapped"])
+        missing = [(r["id"], ep) for r in bs.check_map() if r["scope"] in scopes for ep in r["endpoints"] if ep not in known]
+        assert not missing, (scopes, missing)
+    platform = bs.select(["zia_extras", "zpa"], {})["endpoints"]
+    for ep in ("/zia/firewallIpsRules", "/zia/networkServices", "/zia/bandwidthControlRules", "/zpa/serverGroup", "/zpa/connector", "/zpa/serviceEdge"):
+        assert ep in platform, ep
+    assert "/zia/casbTenant/lite" in bs.select(["dlp"], WEB_EMAIL)["endpoints"]
+
+
+def test_the_map_is_built_once_and_quickly_even_when_asked_at_the_same_time(monkeypatch):
+    import threading
+    monkeypatch.setattr(bs, "_MAP", None)
+    monkeypatch.setattr(bs, "_DIRECT", {})
+    builds = []
+    real = bs._build_map
+    monkeypatch.setattr(bs, "_build_map", lambda: builds.append(1) or real())
+    start = time.time()
+    out = []
+    ts = [threading.Thread(target=lambda: out.append(bs.check_map())) for _ in range(4)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert builds == [1] and len(out) == 4 and all(o is out[0] for o in out)
+    assert time.time() - start < 20, "each function is parsed once, not once per check"
+
+
+# ── Round 2: the same selection is the same scope ─────────────────────
+
+def test_channels_in_another_order_are_the_same_scope():
+    a, _, _ = _watch(["dlp"], {"web_dlp": "zscaler", "email_dlp": "zscaler"})
+    b, _, snap = _watch(["dlp"], {"email_dlp": "zscaler", "web_dlp": "zscaler"})
+    assert a["summary"] == b["summary"] and a["channels"] == b["channels"] == ["web_dlp", "email_dlp"]
+    assert not snap["diff"]["changes"], snap["diff"]["changes"]
+    assert snap["diff"]["summary"][0].startswith("Nothing changed")
+
+
+def test_a_channel_that_brings_nothing_in_is_not_named_and_is_not_a_scope_change():
+    a = bs.select(["zcc"], {"web_dlp": "zscaler", "email_dlp": "zscaler"})
+    assert a["summary"] == bs.select(["zcc"], {})["summary"] == "23 endpoints for ZCC"
+    _watch(["zcc"], {})
+    _, _, snap = _watch(["zcc"], {"web_dlp": "zscaler"})
+    assert not [c for c in snap["diff"]["changes"] if c["kind"] == "scope_changed"]
+
+
+# ── Round 2: a partial or unreachable watch ───────────────────────────
+
+def _clock_after(n_reads, budget=900):
+    """A clock that is past the budget once `n_reads` endpoints were read."""
+    state = {"calls": 0}
+
+    def clock():
+        state["calls"] += 1
+        return 0.0 if state["calls"] <= n_reads + 1 else budget + 1
+    return clock
+
+
+def test_a_watch_that_ran_out_of_budget_is_partial_not_nothing_changed():
+    first = _watch_with(_ok(), scopes=("zcc",))
+    n = len(first["tenant"]["endpoints"])
+    part = _watch_with(lambda c, endpoints: beacon.probe_tenant(c, endpoints=endpoints, sleep=lambda s: None, clock=_clock_after(2)), scopes=("zcc",))
+    assert part["tenant"]["counts"].get("not probed") == n - 2, part["tenant"]["counts"]
+    kinds = [c["kind"] for c in part["diff"]["changes"]]
+    assert "watch_partial" in kinds and not part["diff"]["summary"][0].startswith("Nothing changed"), part["diff"]["summary"]
+    assert f"{n - 2} of {n} endpoints in scope were not read" in " ".join(part["diff"]["summary"])
+    assert beacon.watch_problem(part["tenant"])[0] == "partial"
+    # The next complete watch compares with the complete one, not the partial one.
+    third = _watch_with(_ok(), scopes=("zcc",))
+    assert third["diff"]["against"]["tenant"] == first["id"]
+
+
+class _Down(Recorder):
+    """A tenant that cannot be reached: what Client.get answers on a ConnectionError."""
+    def get(self, ep, p=None):
+        self.calls.append(ep)
+        return {"error": "connection error: refused", "status": 0}, 0
+
+
+_REAL_PROBE = beacon.probe_tenant
+
+
+def _unreachable(c, endpoints):
+    return _REAL_PROBE(_Down(), endpoints=endpoints, sleep=lambda s: None)
+
+
+def test_a_watch_where_no_get_got_an_answer_read_nothing_and_is_not_the_baseline():
+    first = _watch_with(_ok(), scopes=("zcc",))
+    down = _watch_with(_unreachable, scopes=("zcc",))
+    assert [c["kind"] for c in down["diff"]["changes"]] == ["watch_failed"], down["diff"]["changes"]
+    assert "could not be reached" in down["diff"]["changes"][0]["text"]
+    assert beacon.watch_problem(down["tenant"])[0] == "error"
+    back = _watch_with(_ok(), scopes=("zcc",))
+    assert back["diff"]["against"]["tenant"] == first["id"] and not back["diff"]["changes"], back["diff"]
+
+
+def _partial(endpoints):
+    rows = [{"endpoint": ep, "status": "OK" if i < 2 else "not probed", "http": 200 if i < 2 else None, "items": 1}
+            for i, ep in enumerate(endpoints)]
+    return {"endpoints": rows, "counts": {}, "requests": 2, "stopped": "the 900-second budget ran out", "method": "GET", "seconds": 1.0}
+
+
+def test_an_unreachable_or_partial_watch_is_said_in_the_run_status(server, monkeypatch):
+    c = _client()
+    monkeypatch.setattr(beacon, "probe_tenant", lambda cl, endpoints=None, **k: _unreachable(cl, endpoints))
+    assert c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["zdx"]}).status_code == 200
+    d = _wait_idle(c)
+    assert d["timer"]["last_status"] == "error" and "could not be reached" in d["timer"]["last_error"], d["timer"]
+    monkeypatch.setattr(beacon, "probe_tenant", lambda cl, endpoints=None, **k: _partial(endpoints))
+    assert c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["zdx"]}).status_code == 200
+    d = _wait_idle(c)
+    assert d["timer"]["last_status"] == "partial" and "4 of 6 endpoints in scope were not read" in d["timer"]["last_error"], d["timer"]
+
+
+def test_the_get_count_includes_gets_that_timed_out():
+    import requests
+    import dlp_assessment_full_auto as full
+    cl = full.Client("cid", "sec", "acme", "production", "7")
+    cl.token, cl.exp = "t", time.time() + 3600
+    cl._limiter.min_gap = 0
+    sent = []
+
+    def boom(url, **k):
+        sent.append(url)
+        raise requests.exceptions.Timeout("read timed out")
+    cl.sess.get = boom
+    eps = {ep: ["x"] for ep in ("/zia/webDlpRules", "/zia/dlpDictionaries")}
+    t = beacon.probe_tenant(cl, endpoints=eps, gap=0, sleep=lambda s: None)
+    assert t["counts"] == {"timeout": 2} and t["requests"] == len(sent) == 4, (t, sent)
+
+
+# ── Round 2: the preview judges the sign-in the run will use ──────────
+
+_ENV_KEYS = ("ZSCALER_AUTH_METHOD", "ZSCALER_USERNAME", "ZSCALER_PASSWORD", "ZSCALER_API_KEY", "ZSCALER_CLIENT_ID",
+             "ZSCALER_CLIENT_SECRET", "ZSCALER_VANITY_DOMAIN", "ZSCALER_CUSTOMER_ID", "ZSCALER_CLOUD")
+
+
+def test_the_preview_and_the_run_agree_on_the_sign_in(server, monkeypatch):
+    import tenant_profiles
+    for k in _ENV_KEYS:
+        monkeypatch.delenv(k, raising=False)
+    tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "cid-abcdef123456"}, profile_id="acme")
+    c = _client()
+
+    def both(body):
+        p = c.post("/api/beacon/scope", json=body).json()
+        r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, **body})
+        if r.status_code == 200:
+            _wait_idle(c)
+        return p["ok"], r.status_code == 200, p
+    # A ZPA customer id typed on the assessment tab; the profile has none.
+    ok, ran, p = both({"scopes": ["zpa"], "channels": {}, "profile_id": "acme", "customer_id": "72000001"})
+    assert ok and ran, p
+    # The classic ZIA sign-in typed on the assessment tab, only ZDX in scope.
+    ok, ran, p = both({"scopes": ["zdx"], "channels": {}, **LEGACY})
+    assert not ok and not ran and "reaches ZIA only" in p["detail"], p
+    # The classic ZIA sign-in saved on this computer (environment).
+    monkeypatch.setenv("ZSCALER_AUTH_METHOD", "legacy")
+    monkeypatch.setenv("ZSCALER_USERNAME", LEGACY["username"])
+    monkeypatch.setenv("ZSCALER_PASSWORD", LEGACY["password"])
+    monkeypatch.setenv("ZSCALER_API_KEY", LEGACY["api_key"])
+    ok, ran, p = both({"scopes": ["zcc"], "channels": {}, "profile_id": ""})
+    assert not ok and not ran and "reaches ZIA only" in p["detail"], p
+
+
+def test_every_scope_unticked_on_the_page_is_nothing_in_scope_not_the_profile(server):
+    import tenant_profiles
+    tenant, built = server
+    tenant_profiles.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "cid-abcdef123456",
+                            "scopes": ["dlp", "zia_extras", "zpa", "zcc", "zdx"]}, profile_id="acme")
+    c = _client()
+    body = {"scopes": [], "channels": {}, "profile_id": "acme", "from_page": True}
+    r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, **body})
+    assert r.status_code == 400 and r.json()["detail"].startswith("Nothing is in scope"), r.text
+    assert c.post("/api/beacon/scope", json=body).json()["ok"] is False
+    assert built == [] and tenant.calls == []
+    # Without the page's ticks the profile's selection is still used.
+    assert c.post("/api/beacon/scope", json={"profile_id": "acme"}).json()["ok"] is True
+
+
+def test_the_page_says_when_every_scope_is_unticked(tmp_path):
+    d = _page({"zassess_scopes_live_v1": '{"scopes":[]}'}, tmp_path)
+    body = d["posts"][0]["body"]
+    assert body["scopes"] == [] and body["from_page"] is True
+    d = _page({}, tmp_path)
+    assert d["posts"][0]["body"]["from_page"] is False
+
+
+# ── Round 2: the page ─────────────────────────────────────────────────
+
+_RENDER_HARNESS = r"""
+const fs = require('fs');
+const src = fs.readFileSync(process.argv[2], 'utf8');
+const cfg = JSON.parse(process.argv[3]);
+const store = cfg.store || {};
+const els = {}, posts = [], listeners = {}, writes = {};
+function el(id) {
+  if (!els[id]) {
+    const o = { value: '', checked: false, disabled: false, textContent: '', addEventListener() {}, querySelector: () => el(id + ' tbody') };
+    let html = '';
+    Object.defineProperty(o, 'innerHTML', { get: () => html, set: v => { html = v; writes[id] = (writes[id] || 0) + 1; } });
+    els[id] = o;
+  }
+  return els[id];
+}
+const realST = setTimeout;
+global.setTimeout = (f, ms) => realST(f, Math.min(ms || 0, 5));
+global.document = { getElementById: el, querySelector: () => null, querySelectorAll: () => [], addEventListener() {} };
+global.window = { opener: null, addEventListener: (k, f) => { listeners[k] = f; } };
+global.localStorage = { getItem: k => (k in store ? store[k] : null), setItem() {} };
+global.fetch = async (url, opt) => {
+  if (opt && opt.method === 'POST') posts.push({ url, body: JSON.parse(opt.body) });
+  let body = {};
+  if (url === '/api/tenant-profiles') body = { profiles: [] };
+  else if (url === '/api/beacon/scope') { await new Promise(r => realST(r, cfg.scopeDelay || 0)); body = { ok: true, summary: '6 endpoints for ZDX', source: 'the Scope page' }; }
+  else if (url === '/api/beacon') body = cfg.beacon || { latest: null, history: [] };
+  return { ok: true, status: 200, json: async () => body };
+};
+eval(src);
+(async () => {
+  await new Promise(r => realST(r, 30));
+  for (let i = 0; i < (cfg.focus || 0); i++) { if (listeners.focus) listeners.focus(); await new Promise(r => realST(r, 5)); }
+  await new Promise(r => realST(r, cfg.wait || 150));
+  console.log(JSON.stringify({ posts: posts.filter(p => p.url === '/api/beacon/scope'), writes,
+    tenant: el('bcTenantBody').innerHTML, changes: el('bcChanges').innerHTML }));
+  process.exit(0);
+})();
+"""
+
+
+def _render(cfg, tmp_path):
+    import json
+    import shutil
+    import subprocess
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    h = tmp_path / "r.js"
+    h.write_text(_RENDER_HARNESS, encoding="utf-8")
+    r = subprocess.run(["node", str(h), os.path.join(ROOT, "static", "beacon.js"), json.dumps(cfg)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+def _snap(tenant, changes=()):
+    return {"latest": {"at": "2026-10-01T00:00:00+00:00", "online": False, "trigger": "manual", "seconds": 1, "drift": [], "tenant": tenant},
+            "diff": {"changes": list(changes), "summary": ["x"], "against": {}}, "history": [], "timer": {}}
+
+
+_SCOPE = {"summary": "2 endpoints for DLP", "source": "the Scope page", "not_in_scope": ["/zia/a"], "unmapped": ["/zia/b"], "read": ["/zia/c"]}
+
+
+def test_polling_does_not_rebuild_an_unchanged_tenant_body(tmp_path):
+    t = {"label": "acme", "counts": {"OK": 1}, "requests": 1, "seconds": 1.0, "endpoints": [{"endpoint": "/zia/c", "status": "OK", "http": 200}], "scope": _SCOPE}
+    d = _render({"beacon": dict(_snap(t), running=True), "wait": 200}, tmp_path)
+    assert d["writes"].get("bcTenantBody") == 1, d["writes"]
+    assert (d["writes"].get("bcChanges") or 0) > 3, "the page did poll"
+    # The disclosure sits beside the scope paragraph, never inside a <p>.
+    assert "</p><details" in d["tenant"], d["tenant"]
+
+
+def test_a_failed_watch_reads_as_failed_and_its_change_has_a_label(tmp_path):
+    t = {"label": "acme", "endpoints": [], "counts": {}, "requests": 0, "stopped": "ConnectionError: boom", "failed": True, "scope": _SCOPE}
+    d = _render({"beacon": _snap(t, [{"watcher": "tenant", "kind": "watch_failed", "text": "The tenant API watch of acme read nothing"}])}, tmp_path)
+    assert "failed: read nothing" in d["tenant"] and " in  s" not in d["tenant"] and "Read only what is in scope" not in d["tenant"]
+    assert 'chip warn">read nothing<' in d["changes"] and "watch_failed" not in d["changes"], d["changes"]
+
+
+def test_a_preview_in_flight_is_not_asked_again_on_focus(tmp_path):
+    d = _render({"store": {"zassess_scopes_live_v1": '{"scopes":["zdx"]}'}, "scopeDelay": 80, "focus": 4, "wait": 150}, tmp_path)
+    assert len(d["posts"]) == 1, d["posts"]

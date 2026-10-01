@@ -23,9 +23,13 @@ derives the endpoint list:
     takes it out only when that channel is declared **alternative**, as
     the assessment itself skips it then (channel_scope.partition).
 
-An endpoint is read when any in-scope check reads it. An endpoint that no
-check reads (only a feature module does) is "unmapped" and never read by
-the watch: nothing defaults to everything.
+The endpoints the watch knows (watch_endpoints) are the literal GET calls
+in beacon.TENANT_WATCH_MODULES plus every endpoint a check reads through a
+helper (_items, _rules, ...), so an in-scope check's endpoint is always
+either read or listed as not in scope. An endpoint is read when any
+in-scope check reads it. An endpoint that no check reads (only a feature
+module does) is "unmapped" and never read by the watch: nothing defaults
+to everything.
 """
 from __future__ import annotations
 
@@ -37,7 +41,8 @@ import os
 import re
 import sys
 import textwrap
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+import threading
+from typing import Any, Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
 import channel_scope
 
@@ -140,7 +145,35 @@ def _called(fn: Any, tree: Optional[ast.AST] = None) -> List[Any]:
 
 
 # An endpoint written out as a string of its own: "/zia/urlFilteringRules".
-_ENDPOINT_LITERAL = re.compile(r"/(?:zia|zcc|zpa|zdx|zid)/[A-Za-z0-9_/\-]*")
+# Not a base or a prefix ("/zia/", "/zpa/mgmtconfig/"): those are joined
+# to something else and are not an endpoint of their own.
+_ENDPOINT_LITERAL = re.compile(r"/(?:zia|zcc|zpa|zdx|zid)/[A-Za-z0-9_/\-]*[A-Za-z0-9_\-]")
+
+# function -> (the endpoints it names itself, the functions it calls).
+# Parsed once per function, however many checks share it.
+_DIRECT: Dict[Any, Tuple[FrozenSet[str], Tuple[Any, ...]]] = {}
+_DIRECT_LOCK = threading.RLock()
+
+
+def _direct(fn: Any) -> Tuple[FrozenSet[str], Tuple[Any, ...]]:
+    with _DIRECT_LOCK:
+        hit = _DIRECT.get(fn)
+        if hit is not None:
+            return hit
+        try:
+            src = inspect.getsource(fn)
+        except (OSError, TypeError):
+            res: Tuple[FrozenSet[str], Tuple[Any, ...]] = (frozenset(), ())
+        else:
+            eps = {m.group(1) for m in _get_call().finditer(src)}
+            tree = _parse(fn)
+            if tree is not None:
+                for n in ast.walk(tree):
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str) and _ENDPOINT_LITERAL.fullmatch(n.value):
+                        eps.add(n.value)
+            res = (frozenset(eps), tuple(_called(fn, tree)))
+        _DIRECT[fn] = res
+        return res
 
 
 def function_endpoints(fn: Any, _seen: Optional[Set[Any]] = None) -> Set[str]:
@@ -148,24 +181,19 @@ def function_endpoints(fn: Any, _seen: Optional[Set[Any]] = None) -> Set[str]:
     calls (followed transitively, each function once). Every string that
     is an endpoint path counts, whichever helper it is handed to
     (cl.get, _g, _items, _rules, _fetch, ...) or when it is looped over
-    from a tuple: a check that names an endpoint reads it."""
+    from a tuple: a check that names an endpoint reads it. Each function
+    is parsed once (_direct), so the whole map costs one pass over the code."""
     seen = _seen if _seen is not None else set()
-    fn = _unwrap(fn)
-    if fn in seen or not inspect.isfunction(fn):
-        return set()
-    seen.add(fn)
-    try:
-        src = inspect.getsource(fn)
-    except (OSError, TypeError):
-        return set()
-    eps = {m.group(1) for m in _get_call().finditer(src)}
-    tree = _parse(fn)
-    if tree is not None:
-        for n in ast.walk(tree):
-            if isinstance(n, ast.Constant) and isinstance(n.value, str) and _ENDPOINT_LITERAL.fullmatch(n.value):
-                eps.add(n.value)
-    for callee in _called(fn, tree):
-        eps |= function_endpoints(callee, seen)
+    eps: Set[str] = set()
+    stack = [_unwrap(fn)]
+    while stack:
+        f = stack.pop()
+        if f in seen or not inspect.isfunction(f):
+            continue
+        seen.add(f)
+        own, callees = _direct(f)
+        eps |= own
+        stack.extend(callees)
     return eps
 
 
@@ -183,11 +211,24 @@ def _registry(module: str, attr: str) -> Sequence[tuple]:
         return []
 
 
-@functools.lru_cache(maxsize=1)
+_MAP: Optional[Tuple[Dict[str, Any], ...]] = None
+_MAP_LOCK = threading.Lock()
+
+
 def check_map() -> Tuple[Dict[str, Any], ...]:
     """One row per registered check per scope: {scope, id, section,
-    channels, endpoints}. Cached: the code does not change while the
-    server runs."""
+    channels, endpoints, module}. Built once (callers that arrive while it
+    is being built wait for that one build): the code does not change
+    while the server runs."""
+    global _MAP
+    if _MAP is None:
+        with _MAP_LOCK:
+            if _MAP is None:
+                _MAP = _build_map()
+    return _MAP
+
+
+def _build_map() -> Tuple[Dict[str, Any], ...]:
     rows = []
     for scope, regs in SCOPE_REGISTRIES.items():
         seen_ids: Set[str] = set()
@@ -200,15 +241,30 @@ def check_map() -> Tuple[Dict[str, Any], ...]:
                     continue
                 seen_ids.add(cid)
                 rows.append({"scope": scope, "id": cid, "section": section, "channels": check_channels(cid, section),
-                             "endpoints": sorted(function_endpoints(fn))})
+                             "endpoints": sorted(function_endpoints(fn)), "module": f"{module}.py"})
     return tuple(rows)
+
+
+def watch_endpoints() -> Dict[str, List[str]]:
+    """endpoint -> modules: everything the watch could read. The literal
+    GET calls of beacon.tenant_endpoints, and every endpoint a check reads
+    through a helper the GET-call pattern does not see (_items(cl,
+    "/zia/firewallIpsRules"), ...), so no endpoint an in-scope check
+    depends on is left out of the watch or of its "not read" lists."""
+    import beacon
+    out = {ep: list(mods) for ep, mods in beacon.tenant_endpoints().items()}
+    for row in check_map():
+        for ep in row["endpoints"]:
+            mods = out.setdefault(ep, [])
+            if row["module"] not in mods:
+                mods.append(row["module"])
+    return dict(sorted(out.items()))
 
 
 def endpoint_owners(endpoints: Optional[Dict[str, List[str]]] = None) -> Dict[str, List[Dict[str, Any]]]:
     """endpoint -> who reads it: [{scope, channels}] (channels empty when
     the check belongs to no channel), only for the watch's endpoints."""
-    import beacon
-    eps = endpoints if endpoints is not None else beacon.tenant_endpoints()
+    eps = endpoints if endpoints is not None else watch_endpoints()
     out: Dict[str, List[Dict[str, Any]]] = {ep: [] for ep in eps}
     for row in check_map():
         for ep in row["endpoints"]:
@@ -229,8 +285,12 @@ def normalize_scopes(scopes: Any) -> List[str]:
 
 
 def zscaler_channels(channels: Any) -> List[str]:
-    """The channel ids marked Zscaler; alternative and gap are out."""
-    return [cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "zscaler"]
+    """The channel ids marked Zscaler, in the Scope page's channel order
+    whatever order they were sent in (so the same selection always reads
+    the same); alternative and gap are out."""
+    on = {cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "zscaler"}
+    order = list(channel_scope.CHANNELS)
+    return sorted(on, key=lambda c: (order.index(c) if c in order else len(order), c))
 
 
 def has_selection(scopes: Any, channels: Any) -> bool:
@@ -250,7 +310,8 @@ def _owner_in_scope(owner: Dict[str, Any], scopes: Set[str], on: Set[str], alt: 
 
 
 def summary(scopes: Sequence[str], on: Sequence[str], n: int) -> str:
-    """"12 endpoints for DLP (Web, Email), ZCC"."""
+    """"12 endpoints for DLP (Web, Email), ZCC". `on` is the channels that
+    bring something in (select passes only those)."""
     chans = [CHANNEL_SHORT.get(c, channel_scope.CHANNELS.get(c, c)) for c in on if c in channel_scope.CHANNEL_CHECKS]
     parts = []
     for s in scopes:
@@ -271,8 +332,7 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
      checks outside the selection, "unmapped": [ep, ...] read by no
      check, "scopes": [...], "channels": [zscaler channel ids],
      "summary": "12 endpoints for DLP (Web, Email), ZCC"}"""
-    import beacon
-    eps = endpoints if endpoints is not None else beacon.tenant_endpoints()
+    eps = endpoints if endpoints is not None else watch_endpoints()
     sc = normalize_scopes(scopes)
     on = zscaler_channels(channels)
     alt = {cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "alternative"}
@@ -293,8 +353,12 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
             picked[ep] = list(mods)
         else:
             not_in.append(ep)
+    # The summary names only the channels that bring something in: all of
+    # them with DLP ticked, else a channel whose own rule endpoint
+    # (CHANNEL_ONLY_ENDPOINTS) a check of another ticked scope reads.
+    named = on if "dlp" in sset else [c for c in on if any(CHANNEL_ONLY_ENDPOINTS.get(ep) == c for ep in picked)]
     return {"endpoints": picked, "not_in_scope": not_in, "unmapped": unmapped, "scopes": sc, "channels": on,
-            "summary": summary(sc, on, len(picked))}
+            "summary": summary(sc, named, len(picked))}
 
 
 def describe(sel: Dict[str, Any], source: str = "") -> Dict[str, Any]:

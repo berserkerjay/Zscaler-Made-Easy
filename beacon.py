@@ -1,6 +1,6 @@
 """Beacon: what changed upstream since the last run — the Zscaler SDK, the
 Zscaler API and the Terraform provider — and, when asked, whether the
-tenant still answers every endpoint the app reads.
+tenant still answers the endpoints that are in scope on the Scope page.
 
 Three watchers make one snapshot:
 
@@ -441,12 +441,45 @@ def _usable(w: Optional[Dict[str, Any]]) -> bool:
     return bool(w) and w.get("status") in ("ok", "offline")
 
 
+def _answered(e: Dict[str, Any]) -> bool:
+    """The tenant answered this read over HTTP (any status code). A
+    transport error or a timeout (HTTP 0) is no answer."""
+    if e.get("status") in ("skipped", "not probed"):
+        return False
+    try:
+        return int(e.get("http") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _watch_read(t: Optional[Dict[str, Any]]) -> bool:
     """Whether a tenant watch read anything: not one that failed (the
-    probe raised) or skipped or left every endpoint unread."""
+    probe raised), skipped or left every endpoint unread, or where not one
+    GET got an HTTP answer (the tenant could not be reached)."""
     if not t or t.get("failed"):
         return False
-    return any(e.get("status") not in ("skipped", "not probed") for e in t.get("endpoints") or [])
+    return any(_answered(e) for e in t.get("endpoints") or [])
+
+
+def _watch_complete(t: Optional[Dict[str, Any]]) -> bool:
+    """A watch that read and did not stop before reading everything in scope."""
+    return _watch_read(t) and not any(e.get("status") == "not probed" for e in (t or {}).get("endpoints") or [])
+
+
+def watch_problem(t: Optional[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
+    """("error", why) for a tenant watch that read nothing, ("partial", why)
+    for one that stopped before reading everything in scope, else None."""
+    if not t:
+        return None
+    rows = t.get("endpoints") or []
+    if not _watch_read(t):
+        why = t.get("stopped") or ("no endpoint got an HTTP answer (the tenant could not be reached)" if rows else "nothing was read")
+        return "error", f"The tenant API watch of {t.get('label') or 'the tenant'} read nothing: {why}."
+    unread = sum(1 for e in rows if e.get("status") == "not probed")
+    if unread:
+        return "partial", (f"The tenant API watch of {t.get('label') or 'the tenant'} stopped early ({t.get('stopped') or 'stopped'}): "
+                           f"{unread} of {len(rows)} endpoints in scope were not read.")
+    return None
 
 
 def _scope_set(t: Dict[str, Any], rows: Iterable[str]) -> Set[str]:
@@ -459,12 +492,13 @@ def _scope_set(t: Dict[str, Any], rows: Iterable[str]) -> Set[str]:
 def _scope_change(prev: Dict[str, Any], cur: Dict[str, Any], prev_eps: Dict[str, Dict[str, Any]]) -> str:
     """One sentence when the tenant watch had a different scope than the
     last watch of the same tenant (the Scope page changed); only the
-    endpoints read both times are compared. The scope is the selection
-    (its summary and endpoints), not what happened to be answered."""
+    endpoints read both times are compared. The scope is the set of
+    endpoints the selection picked, not what happened to be answered and
+    not its wording: the same endpoints are the same scope."""
     now = _scope_set(cur, (e["endpoint"] for e in cur.get("endpoints") or []))
     before = _scope_set(prev, prev_eps)
     ps, cs = (prev.get("scope") or {}).get("summary"), (cur.get("scope") or {}).get("summary")
-    if now == before and (not ps or ps == cs):
+    if now == before:
         return ""
     both, added, gone = len(now & before), len(now - before), len(before - now)
     was = ps or f"{len(before)} endpoints, before the watch followed the Scope page"
@@ -526,11 +560,22 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
     tb = None
     ct = cur.get("tenant")
     if ct and not _watch_read(ct):
-        why = f" ({ct['stopped']})" if ct.get("stopped") else ""
+        rows = ct.get("endpoints") or []
+        reason = ct.get("stopped") or ("no endpoint got an HTTP answer; the tenant could not be reached" if rows else "")
+        why = f" ({reason})" if reason else ""
         add("tenant", "watch_failed", f"The tenant API watch of {ct.get('label') or 'the tenant'} read nothing{why}: nothing was compared, "
             "and the last watch that read the tenant stays the one to compare with.")
     elif ct:
-        tb = _baseline(history, lambda s: _watch_read(s.get("tenant")) and (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id"))
+        same = lambda s: (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id")  # noqa: E731
+        # A complete watch is the baseline; one that stopped early only when there is no complete one.
+        tb = (_baseline(history, lambda s: _watch_complete(s.get("tenant")) and same(s))
+              or _baseline(history, lambda s: _watch_read(s.get("tenant")) and same(s)))
+        unread = sum(1 for e in ct.get("endpoints") or [] if e.get("status") == "not probed")
+        if unread:
+            n = len(ct.get("endpoints") or [])
+            add("tenant", "watch_partial", f"{unread} of {n} endpoints in scope were not read: {ct.get('stopped') or 'the watch stopped early'}. "
+                "Only the endpoints read are compared, and this watch is not the baseline while a complete one is kept.",
+                unread=unread, of=n)
         if tb:
             prev_eps = {e["endpoint"]: e for e in (tb.get("tenant") or {}).get("endpoints") or []}
             sc = _scope_change(tb.get("tenant") or {}, ct, prev_eps)
@@ -556,11 +601,12 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
         when = (up or tb or {}).get("at", "")
         summary.append(f"Nothing changed since the last run ({when}).")
     else:
-        kinds = {"scope_changed": "scope", "watch_failed": "failed"}
+        kinds = {"scope_changed": "scope", "watch_failed": "failed", "watch_partial": "partial"}
         key = lambda c: kinds.get(c["kind"], c["watcher"])  # noqa: E731
         words = {"sdk": ("SDK change", "SDK changes"), "api": ("API change", "API changes"), "terraform": ("Terraform change", "Terraform changes"),
                  "tenant": ("tenant endpoint change", "tenant endpoint changes"), "scope": ("tenant scope change", "tenant scope changes"),
-                 "failed": ("tenant watch that read nothing", "tenant watches that read nothing")}
+                 "failed": ("tenant watch that read nothing", "tenant watches that read nothing"),
+                 "partial": ("tenant watch that stopped early", "tenant watches that stopped early")}
         n = {k: sum(1 for c in changes if key(c) == k) for k in words}
         parts = [f"{v} {words[k][0 if v == 1 else 1]}" for k, v in n.items() if v]
         summary.append(f"{len(changes)} change{'s' if len(changes) != 1 else ''} since the last run: {', '.join(parts)}.")

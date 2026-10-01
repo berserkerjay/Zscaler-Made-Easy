@@ -329,8 +329,8 @@ class Client:
             return bad
         try:
             s._limiter.wait()
+            s.requests_made += 1   # every GET sent, whether it is answered, times out or is retried
             r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
-            s.requests_made += 1
             if r.status_code == 200:
                 try: res = (r.json(), 200)
                 except Exception: res = ([], 200)
@@ -410,8 +410,8 @@ class Client:
                 import zia_rate
                 zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
             s._limiter.wait()
+            s.requests_made += 1   # every request sent, answered or not
             r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
-            s.requests_made += 1
             if r.status_code in (200, 201):
                 try: return (r.json(), r.status_code)
                 except Exception: return ({}, r.status_code)

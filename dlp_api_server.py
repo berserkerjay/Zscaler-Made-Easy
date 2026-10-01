@@ -2771,9 +2771,14 @@ def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: st
             snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger, tenant_scope=scope)
         else:
             snap = beacon.run(online=online, tenant_client=None, tenant_label=label, trigger=trigger)
-        failed = (snap.get("tenant") or {}).get("failed")
-        err = snap.get("error") or (f"The tenant API watch read nothing: {(snap.get('tenant') or {}).get('stopped')}" if failed else None)
-        _BEACON_STATE.update({"last_status": "error" if err else "ok", "last_error": err})
+        problem = beacon.watch_problem(snap.get("tenant"))   # read nothing: error; stopped early: partial
+        if snap.get("error"):
+            status, err = "error", snap["error"]
+        elif problem:
+            status, err = problem
+        else:
+            status, err = "ok", None
+        _BEACON_STATE.update({"last_status": status, "last_error": err})
         return snap
     except Exception as e:  # noqa: BLE001 — a failed run is reported on the tab, never raised into the server
         _BEACON_STATE.update({"last_status": "error", "last_error": f"{type(e).__name__}: {str(e)[:200]}"})
@@ -2879,20 +2884,25 @@ class BeaconRunRequest(TenantCredsRequest):
     call), only the endpoints that belong to what is in scope: `scopes`
     (the Scope page's ticked .scope-cb keys) and `channels` (its channel
     declaration; only "zscaler" counts). When the body carries neither,
-    the profile's saved scopes and channels are used; with nothing in
-    scope the watch is refused (400), never widened to every endpoint."""
+    the profile's saved scopes and channels are used, unless `from_page`
+    says the Scope page's ticks are known (then empty is empty); with
+    nothing in scope the watch is refused (400), never widened to every
+    endpoint."""
     online: bool = True
     tenant_watch: bool = False
     customer_id: str = ""   # ZPA endpoints are probed only with one
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
+    from_page: bool = False   # the Scope page's ticks are known: nothing ticked is nothing in scope
 
 
-class BeaconScopeRequest(BaseModel):
-    """Body of POST /api/beacon/scope: the same selection fields as a run."""
+class BeaconScopeRequest(TenantCredsRequest):
+    """Body of POST /api/beacon/scope: the same selection and credential
+    fields as a run, so the preview judges the sign-in the run will use."""
+    customer_id: str = ""
     scopes: List[str] = []
     channels: Dict[str, Any] = {}
-    profile_id: str = ""
+    from_page: bool = False
 
 
 def _beacon_readable(sel: Dict[str, Any], req: Any) -> None:
@@ -2909,10 +2919,12 @@ def _beacon_readable(sel: Dict[str, Any], req: Any) -> None:
         raise HTTPException(status_code=400, detail=why)
 
 
-def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "") -> Dict[str, Any]:
+def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "", from_page: bool = False) -> Dict[str, Any]:
     """What the tenant API watch would read: the page's selection, else
-    (only when the page sent nothing at all) the saved profile's. The two
-    are never mixed, so the profile cannot widen what the page chose.
+    (only when the page sent nothing at all and does not know the Scope
+    page's ticks) the saved profile's. The two are never mixed, so the
+    profile cannot widen what the page chose, and every scope unticked on
+    the Scope page is nothing in scope, not the profile's selection.
     Raises HTTPException 400 when nothing is in scope. Never reads a
     tenant."""
     import beacon_scope
@@ -2920,7 +2932,7 @@ def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "") -> Dict[str,
     src = []
     sc = beacon_scope.normalize_scopes(scopes)
     ch = channels if channel_scope.normalize(channels) else {}
-    if sc or ch:
+    if sc or ch or from_page:
         src.append("the Scope page")
     elif profile_id:
         try:
@@ -2994,7 +3006,7 @@ async def beacon_run(req: BeaconRunRequest):
         raise HTTPException(status_code=409, detail=f"A Beacon run is already in progress (started {_BEACON_STATE.get('running_since') or 'just now'}); wait for it to finish.")
     client, label, sel = None, "", None
     if req.tenant_watch:
-        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id)
+        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id, req.from_page)
         await asyncio.to_thread(_beacon_readable, sel, req)   # nothing readable with this sign-in: 400, no sign-in
         client = await asyncio.to_thread(_build_client, req)   # validates every field; 400/401 without echoing a secret
         label = tenant_auth.label(_tenant_creds(req))
@@ -3011,12 +3023,14 @@ async def beacon_run(req: BeaconRunRequest):
 async def beacon_scope_preview(req: BeaconScopeRequest):
     """What the tenant API watch would read for this selection (the Scope
     page's, else the profile's): how many endpoints, for which scopes and
-    channels, and which are not in scope. Reads no tenant."""
+    channels, and which are not in scope. The same checks as a run with
+    the same body, including whether the sign-in it resolves to (typed,
+    profile, environment or tenant_config.json; never signed in to) can
+    read any of it. Reads no tenant."""
     import beacon_scope
     try:
-        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id)
-        if req.profile_id:   # the profile's sign-in is known without signing in
-            await asyncio.to_thread(_beacon_readable, sel, req)
+        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id, req.from_page)
+        await asyncio.to_thread(_beacon_readable, sel, req)
     except HTTPException as e:
         return {"ok": False, "detail": e.detail, "endpoints": 0}
     return {"ok": True, **beacon_scope.describe(sel, sel["source"])}
