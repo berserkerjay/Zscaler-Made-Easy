@@ -2059,17 +2059,16 @@ async function _tfToggle(id, on) {
   _tfRender();
 }
 // Gap mode needs tenant credentials; static never does. The operator
-// picks either (TF.mode); with no pick, gap is used when credentials
-// are there and static otherwise.
+// picks either (TF.mode); with no pick, static is used.
 function _tfCanGap() {
   const c = _dzCreds();
   const prof = (window.GD && GD.profile && GD.profileHasSecret);
   return !!((c.client_id && (c.client_secret || prof)) || (c.client_id && prof));
 }
+// Static unless the operator picks gap: gap reads the tenant, and a
+// tenant read is never chosen for them just because credentials are there.
 function _tfMode() {
-  if (TF.mode === 'static') return 'static';
-  if (TF.mode === 'gap' && _tfCanGap()) return 'gap';
-  return _tfCanGap() ? 'gap' : 'static';
+  return TF.mode === 'gap' && _tfCanGap() ? 'gap' : 'static';
 }
 function _tfSetMode(m) {
   if (m === 'gap' && !_tfCanGap()) { alert('Gap mode needs the tenant details on the assessment page (or a profile with a remembered secret). Static mode needs nothing.'); return; }
@@ -2103,19 +2102,31 @@ function _tfRender() {
     ${TF.error ? `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">Could not load packs</div><div class="d">${_dzE(TF.error)}</div></div></div>` : ''}
     <div class="dz-h">1 · Which packs</div>
     <div class="tf-packs">${packs || '<span class="d">Loading packs…</span>'}</div>
-    <div class="dz-h">2 · Which mode</div>
+    <div class="dz-h">2 · Which hand-off</div>
+    <div class="tf-choose-wrap"><table class="tf-choose">
+      <caption>Pick by the customer's situation, not by what is quickest for you.</caption>
+      <thead><tr><th scope="col">The customer…</th><th scope="col">Use</th><th scope="col">Why</th></tr></thead>
+      <tbody>
+        <tr><td>changes Zscaler in the ZIA portal, has no Terraform pipeline, and lets this tool write to the tenant</td><td><b>Deploy policy packs</b> (not this page)</td><td>The tool creates the objects directly, disabled and monitor-only. A Terraform workspace nobody runs is shelfware.</td></tr>
+        <tr><td>manages Zscaler as code <em>and</em> the tenant already has DLP dictionaries, engines or rules (most production tenants)</td><td><b>Gap mode</b></td><td>Existing objects are imported, so the first <code>terraform plan</code> creates only what is missing instead of duplicates. Costs one read of the pack's objects on every channel in it (counts against the ZIA API rate limit).</td></tr>
+        <tr><td>manages Zscaler as code on a new or empty tenant (nothing from these packs exists yet)</td><td><b>Static</b></td><td>There is nothing to import, so a tenant read buys nothing.</td></tr>
+        <tr><td>will not share credentials, or you have no API access yet</td><td><b>Static</b></td><td>No tenant access at all. Tell the platform team to import any objects that already exist before their first apply, or Terraform creates duplicates.</td></tr>
+        <tr><td>wants a design to review or a reference to diff against, not something to apply</td><td><b>Static</b></td><td>The workspace is the whole pack as written: easy to read in a pull request, independent of any tenant's state.</td></tr>
+        <tr><td>uploaded their own pack and wants it transcribed as is</td><td><b>Static</b></td><td>Their pack, unchanged, in the provider's resources.</td></tr>
+        <tr><td>edits DLP in the portal day to day and also wants Terraform</td><td><b>Neither yet</b></td><td>Agree who owns the objects first. Terraform reverts portal edits on the next apply unless they are folded back into the code.</td></tr>
+      </tbody></table></div>
     <div class="tf-modes" role="radiogroup" aria-label="Terraform mode">
       <label class="tf-mode ${mode === 'gap' ? 'on' : ''}"><input type="radio" name="tfMode" value="gap" ${mode === 'gap' ? 'checked' : ''} ${_tfCanGap() ? '' : 'disabled'} onchange="_tfSetMode('gap')"> <span><span class="t">Gap mode ${mode === 'gap' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
-        <span class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
+        <span class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.<br><b>Use when</b> the tenant already has DLP objects and the team will apply this workspace. <b>Not when</b> the tenant is empty, credentials are off limits, or you only need a reference.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
       <label class="tf-mode ${mode === 'static' ? 'on' : ''}"><input type="radio" name="tfMode" value="static" ${mode === 'static' ? 'checked' : ''} onchange="_tfSetMode('static')"> <span><span class="t">Static ${mode === 'static' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
-        <span class="d">No tenant access, no credentials sent, no import blocks. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. Choose this to hand over a reference, or to transcribe an uploaded pack as it is.</span></span></label>
+        <span class="d">No tenant access, no credentials sent, no import blocks. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. <br><b>Use when</b> the tenant is new or empty, credentials cannot be shared, you are handing over a reference or design for review, or transcribing an uploaded pack as it is. <b>Not when</b> the tenant already has these objects and nobody will import them first.</span></span></label>
     </div>
     <div class="dz-h">3 · What you get</div>
     ${sums || '<div class="d">Select at least one pack.</div>'}
     <div class="dz-h">4 · Download and hand over</div>
     <div class="tf-actions">
       <button type="button" class="dz-btn primary" ${sel.length && !TF.busy ? '' : 'disabled'} onclick="_tfDownload()">${TF.busy ? 'Working…' : `Download workspace (${mode} mode, ${_dzN(sel.length, 'pack')})`}</button>
-      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.${mode === 'gap' ? ' Gap mode reads the whole tenant first (dictionaries, engines, the rules on every channel): a minute or two, shown step by step below.' : ''}</span>
+      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.${mode === 'gap' ? ' Gap mode reads the tenant first (dictionaries, engines, the rules on every channel the pack uses): a minute or two, shown step by step below, and those reads count against the ZIA API rate limit.' : ''}</span>
     </div>
     ${TF.busy ? `
     <div class="dz-hero" style="margin-top:0.6rem;"><span class="dz-status busy">Working</span><div><div class="lead">${mode === 'gap' ? 'Reading the tenant, then building the workspace…' : 'Building the workspace…'}</div><div class="sub" id="dzJobPhase">${_dzE(_dzJobPhase(DZ.job || {}))}</div></div><div class="dz-elapsed" id="dzJobElapsed" aria-label="Elapsed">${_dzMMSS((DZ.job || {}).startedAt ? (Date.now() - DZ.job.startedAt) / 1000 : 0)}</div></div>
