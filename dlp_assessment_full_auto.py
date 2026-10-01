@@ -171,6 +171,10 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         return f"/zpa/mgmtconfig/{version}/" + suffix
     return ep
 
+# What a read answers once the run is stopped (Client.stop): nothing was sent.
+_STOPPED = ({"error": "run stopped", "status": 0}, 0)
+
+
 class _RateLimiter:
     """One request pacer shared by every thread of a Client: keeps a minimum
     gap between requests (the API's rate limit is per tenant, not per
@@ -179,8 +183,10 @@ class _RateLimiter:
     def __init__(s, min_gap):
         import threading
         s.min_gap = float(min_gap); s._lock = threading.Lock(); s._next = 0.0; s._pause_until = 0.0
-    def wait(s):
+    def wait(s, stopped=None):
         while True:
+            if stopped is not None and stopped.is_set():
+                return                      # the run was stopped: the caller sends nothing
             with s._lock:
                 now = time.time()
                 at = max(now, s._next, s._pause_until)
@@ -239,6 +245,9 @@ class Client:
         s._lock = threading.RLock()
         s._limiter = _RateLimiter(s.MIN_GAP)
         s.requests_made = 0
+        # Set when the run ends (Stop, the browser gone, the checks in): no
+        # further request reaches the tenant, not even a pending retry.
+        s.stopped = threading.Event()
 
     def _cache_set(s, k, v):
         with s._lock:
@@ -274,6 +283,10 @@ class Client:
     def _safe(s, text):
         """An error message with every secret masked."""
         return tenant_auth.mask_secrets(text, {"client_secret": s.sec, "password": s.password, "api_key": s.api_key})
+    def stop(s):
+        """End the run's reads: every later get() (a retry, a fan-out part,
+        a check still running) answers "run stopped" without a request."""
+        s.stopped.set()
     def close(s):
         """End a classic session (best effort); a OneAPI token just expires."""
         if s.legacy and s.token:
@@ -323,12 +336,16 @@ class Client:
             if k in s._c:
                 s._c.move_to_end(k)
                 return s._c[k]
+        if s.stopped.is_set():
+            return _STOPPED
         # Self-healing: re-auth if token is stale or missing
         bad = s._ensure_token()
         if bad:
             return bad
         try:
-            s._limiter.wait()
+            s._limiter.wait(s.stopped)
+            if s.stopped.is_set():
+                return _STOPPED
             r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
             s.requests_made += 1
             if r.status_code == 200:

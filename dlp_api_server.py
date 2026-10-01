@@ -1973,6 +1973,18 @@ def _close_when_done(client: Any):
     return _cb
 
 
+def _stop_reads(client: Any) -> None:
+    """Tell the checks' client the run is over: the checks still running
+    send no further request (no next endpoint, no 429 retry). Queued
+    checks are cancelled by the pool itself."""
+    stop = getattr(client, "stop", None)
+    if callable(stop):
+        try:
+            stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def _end_checks_session(client: Any, pool: Any, running: set) -> None:
     """End the assessment checks' session. When no check thread is still
     using it, at once; otherwise (a check past its timeout, or a stream
@@ -4504,6 +4516,7 @@ async def assess_stream(req: AssessRequest):
                         pass
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
+                _stop_reads(client)   # a check still running (timed out, or Stop) reads nothing more
             # The checks' own session ends as soon as the checks are in (a
             # classic ZIA API admin session stays open otherwise).
             api_requests = getattr(client, "requests_made", None)
@@ -4633,6 +4646,7 @@ async def assess_stream(req: AssessRequest):
             if pool is not None:
                 pool.shutdown(wait=False, cancel_futures=True)
             if client is not None:
+                _stop_reads(client)
                 await _end_checks_session(client, pool, running)
 
     return StreamingResponse(

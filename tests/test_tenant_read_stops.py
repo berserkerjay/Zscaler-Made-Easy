@@ -84,6 +84,97 @@ def test_the_checks_session_is_closed_when_sign_in_fails(monkeypatch):
     assert events == ["login", "close"]
 
 
+class _Resp429:
+    status_code = 429
+    headers = {"Retry-After": "2"}
+    text = ""
+
+    def json(self):
+        return []
+
+
+def _limited_client(monkeypatch, sent):
+    """The real Client, signed in, whose every GET is answered 429
+    (Retry-After 2 s): a rate-limited tenant. Nothing leaves the process."""
+    import dlp_assessment_full_auto as full
+    lock = threading.Lock()
+
+    def fake_get(url, params=None, timeout=None):
+        with lock:
+            sent.append((time.time(), url))
+        return _Resp429()
+
+    c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
+    c.token, c.exp = "t", time.time() + 3600
+    c.sess.get = fake_get
+    return c
+
+
+def test_a_stopped_client_sends_nothing_more_not_even_a_retry(monkeypatch):
+    sent = []
+    c = _limited_client(monkeypatch, sent)
+    res = []
+    t = threading.Thread(target=lambda: res.append(c.get("/zia/webDlpRules")), daemon=True)
+    t.start()
+    while not sent:
+        time.sleep(0.02)
+    c.stop()
+    t.join(5)
+    assert not t.is_alive(), "the read kept waiting on Retry-After after the stop"
+    assert len(sent) == 1 and res and res[0][1] == 0 and "stopped" in res[0][0]["error"]
+    assert c.get("/zia/urlFilteringRules") == ({"error": "run stopped", "status": 0}, 0) and len(sent) == 1
+
+
+def test_stop_ends_the_reads_of_checks_already_running(monkeypatch):
+    # A check already running when the stream closes (Stop, the browser
+    # gone) sends no further request: no 429 retry, no next endpoint.
+    import dlp_assessment_full_auto as full
+    sent = []
+    made = []
+
+    class C(full.Client):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.sess.get = _limited_client(monkeypatch, sent).sess.get
+            made.append(self)
+
+        def auth(self):
+            self.token, self.exp = "t", time.time() + 3600
+            return True
+
+    def check(cl):   # reads several endpoints in turn, like AUTO-TF-01
+        for ep in ("/zia/webDlpRules", "/zia/urlFilteringRules", "/zia/firewallFilteringRules", "/zia/sslInspectionRules"):
+            cl.get(ep)
+        return R(R.PASS, "ok")
+
+    monkeypatch.setattr(srv, "Client", C)
+    monkeypatch.setattr(srv, "_get_checks", lambda scope, scopes: [("AUTO-TF-01", "Automation", "ids", check)])
+    monkeypatch.setattr(srv, "_journey_scope", lambda ids, channels: ([], {}))
+    req = srv.AssessRequest(**CREDS, scopes=["automation"])
+
+    async def go():
+        resp = await srv.assess_stream(req)
+
+        async def consume():
+            async for _ in resp.body_iterator:
+                pass
+        task = asyncio.ensure_future(consume())
+        while not sent:
+            await asyncio.sleep(0.02)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        t = time.time()
+        await asyncio.sleep(3)   # longer than the tenant's Retry-After
+        return t
+
+    closed_at = asyncio.run(go())
+    assert made and made[0].stopped.is_set()
+    assert [u for ts, u in sent if ts > closed_at + 0.05] == [], "the running check kept reading after the stop"
+
+
 def test_the_explicit_journey_endpoint_closes_its_session(monkeypatch):
     events = []
 
