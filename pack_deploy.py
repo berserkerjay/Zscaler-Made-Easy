@@ -113,29 +113,46 @@ PACK_MARK = "[DLP-Check pack"          # provenance tag for packs without a base
 # (the deploy appends it; fit_description keeps it whole), which is what
 # keeps "[Q3 baseline review]" in a customer's own text from matching.
 DEFAULT_BY = "DLP-Check"
-BY_MAX = 40
-_BY_BAD = re.compile(r"[\[\]\r\n\t]+")
+BY_MAX = 40          # UTF-8 bytes (ZIA measures descriptions in bytes), so the tag always fits
+_BY_BAD = re.compile(r"[\[\]\x00-\x1f\x7f]+")
 _TAG_SUFFIX = r"(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?(?: Terraform-managed\.?)?"
-MARK_RE = re.compile(r"\s*\[(?P<by>[^\[\]\r\n]{1,60}?) (?P<kind>baseline|pack) (?P<pack>[^\s\]]+)(?: v[^\]\s]*)?\]" + _TAG_SUFFIX + r"\s*$")
+_TAG_BODY = r"\[(?P<by>[^\[\]\r\n]{1,60}?) (?P<kind>baseline|pack) (?P<pack>[^\s\]]+)(?: v[^\]\s]*)?\]" + _TAG_SUFFIX
+MARK_RE = re.compile(r"\s*" + _TAG_BODY + r"\s*$")
+_ANY_TAG_RE = re.compile(r"\s*" + _TAG_BODY)     # a tag anywhere (strip_mark only, known packs only)
 
 
 def attribution(assessor: Any) -> str:
     """The name a provenance tag carries: the assessor's name, cleaned so it
-    cannot break the tag (no brackets or line breaks, at most BY_MAX
-    characters), or DEFAULT_BY when there is none."""
-    s = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())[:BY_MAX].strip()
+    cannot break the tag (no brackets or control characters, at most
+    BY_MAX UTF-8 bytes), or DEFAULT_BY when there is none."""
+    s = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
+    s = s.encode("utf-8")[:BY_MAX].decode("utf-8", errors="ignore").strip()
     return s or DEFAULT_BY
+
+
+def assessor_name(assessor: Any) -> str:
+    """The sanitized assessor name a record stores: attribution() of a given
+    name, or blank when none was given (the tag then says DLP-Check)."""
+    given = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
+    return attribution(assessor) if given else ""
+
+
+def _counts(m: Any, known: Optional[Set[str]]) -> bool:
+    """Whether a tag match is a real provenance tag: the tool's own
+    "[DLP-Check ..." form, or an assessor's tag for a known pack id."""
+    return m.group("by") == DEFAULT_BY or (known is not None and m.group("pack") in known)
 
 
 def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = None) -> bool:
     """Whether a description carries a deploy's provenance tag, optionally
-    for one pack id and/or kind ("baseline" / "pack"). With neither given,
-    only the tool's own "[DLP-Check ..." tags count: a tag naming an
-    assessor is recognised once the pack or kind it must name is known."""
+    for one pack id and/or kind ("baseline" / "pack"). A tag naming an
+    assessor counts only for the pack id given (and only at the end of the
+    description); without a pack id only the tool's own "[DLP-Check ..."
+    tags count, so a customer's "[Q3 baseline review]" never qualifies."""
     d = str(desc or "")
     m = MARK_RE.search(d)
-    if m and (kind is None or m.group("kind") == kind) and (pack_id is None or m.group("pack") == pack_id):
-        if pack_id is not None or kind is not None or m.group("by") == DEFAULT_BY:
+    if m and (kind is None or m.group("kind") == kind) and _counts(m, {pack_id} if pack_id is not None else None):
+        if pack_id is None or m.group("pack") == pack_id:
             return True
     legacy = [BASELINE_MARK] if kind == "baseline" else [PACK_MARK] if kind == "pack" else [BASELINE_MARK, PACK_MARK]
     if pack_id is not None:
@@ -143,12 +160,23 @@ def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = 
     return any(mk in d for mk in legacy)
 
 
+def library_ids() -> Set[str]:
+    """The ids of every pack in the library (shipped and uploaded): the
+    pack ids an assessor's tag is recognised for when no pack is named."""
+    try:
+        from dlp_importer import discover_packs
+        return {str(p["id"]) for p in discover_packs()}
+    except Exception:  # noqa: BLE001 — no library: only "[DLP-Check ..." tags count
+        return set()
+
+
 def tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
     """The pack id inside a provenance tag, or None. A tag naming an
-    assessor counts only when its pack id is one of `known` (when given)."""
+    assessor counts only when its pack id is one of `known`; without
+    `known`, only the tool's own "[DLP-Check ..." tags count."""
     d = str(desc or "")
     m = MARK_RE.search(d)
-    if m and (known is None or m.group("by") == DEFAULT_BY or m.group("pack") in set(known)):
+    if m and _counts(m, set(known) if known is not None else None):
         return m.group("pack")
     for mk in (BASELINE_MARK, PACK_MARK):
         if mk in d:
@@ -157,11 +185,18 @@ def tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
     return None
 
 
-def strip_mark(base: Any) -> str:
-    """A description without its provenance tag (new or old form)."""
+def strip_mark(base: Any, known: Optional[Iterable[str]] = None) -> str:
+    """A description without its provenance tag: the tool's own
+    "[DLP-Check ..." tag (and anything after it, as before), and an
+    assessor's tag for a pack id in `known` wherever it stands (text an
+    admin added after it is kept). Customer text such as "[Q3 pack
+    review]" is kept."""
     s = str(base or "")
+    ks = set(known) if known is not None else None
+    if ks:
+        s = _ANY_TAG_RE.sub(lambda m: "" if m.group("by") != DEFAULT_BY and m.group("pack") in ks else m.group(0), s)
     m = MARK_RE.search(s)
-    if m:
+    if m and _counts(m, ks):
         s = s[:m.start()]
     for mk in (PACK_MARK, BASELINE_MARK):
         if mk in s:
@@ -221,7 +256,7 @@ def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Op
     tag = f"[{attribution(by)} baseline {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Measured on every journey check, never overwritten."
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
-    base = strip_mark(base)
+    base = strip_mark(base, known={b.get('pack', '?')})
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
@@ -235,14 +270,17 @@ def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Option
     tag = f"[{attribution(by)} pack {item.get('pack', '?')}{(' v' + ver) if ver else ''}]"
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
-    base = strip_mark(base)
+    base = strip_mark(base, known={item.get('pack', '?')})
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
 
 
-def _has_mark(obj: Any) -> bool:
-    return has_mark(_field(obj, "description", default=""), kind="baseline")
+def _has_mark(obj: Any, pack_id: Optional[str] = None) -> bool:
+    """Whether a tenant object carries a baseline tag: the tool's own, or
+    an assessor's for this baseline's pack id."""
+    d = _field(obj, "description", default="") if not isinstance(obj, str) else obj
+    return has_mark(d, kind="baseline") or (pack_id is not None and has_mark(d, kind="baseline", pack_id=pack_id))
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +667,7 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
                                   "predefined objects. Rename the policy pack dictionary.")
                 continue
             if baseline:
-                item["adopt"] = not _has_mark(existing)
+                item["adopt"] = not _has_mark(existing, (baseline or {}).get("pack"))
             if ten_sig is None:
                 item["status"] = REUSE
                 item["reason"] = "Already in the tenant; existing dictionary will be used (content not compared — tenant returned a summary only)."
@@ -746,7 +784,7 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
             item["tenant"] = {"id": _field(existing, "id")}
             baseline = item.get("baseline")
             if baseline:
-                item["adopt"] = not _has_mark(existing)
+                item["adopt"] = not _has_mark(existing, (baseline or {}).get("pack"))
             ten_expr = _field(existing, "engine_expression", "engineExpression")
             # A referenced dictionary the plan will CREATE has no ID yet, so
             # the tenant expression cannot be current. (A RESTORE keeps its
@@ -874,7 +912,7 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             item["tenant"] = existing
             baseline = item.get("baseline")
             if baseline:
-                item["adopt"] = not has_mark(existing.get("description"), kind="baseline")
+                item["adopt"] = not _has_mark(existing.get("description") or "", (baseline or {}).get("pack"))
                 drift = _policy_drift(p, channel, existing, engine_items, tenant, pack_action=pack_action,
                                       resolved=item.get("resolved") or {})
                 if drift and restore:
@@ -1364,7 +1402,7 @@ def _rate_forecast(all_items: Sequence[Dict[str, Any]], client: Any = None) -> D
             continue
         ch = (i.get("channel") or (pc.channel_of(i["definition"]) if i["kind"] == "policy" and i.get("definition") else None)) if i["kind"] == "policy" else None
         counts[zia_rate.bucket_of("POST", channel=ch, kind=i["kind"])] = counts.get(zia_rate.bucket_of("POST", channel=ch, kind=i["kind"]), 0) + 1
-    return zia_rate.forecast(counts, key=zia_rate.key_of(client), tenant_label=zia_rate.label_of(client))
+    return zia_rate.forecast(counts, key=zia_rate.key_of(client), tenant_label=zia_rate.labels_of(client))
 
 
 def _rate_detail(f: Dict[str, Any]) -> str:

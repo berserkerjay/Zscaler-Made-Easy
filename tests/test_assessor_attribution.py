@@ -37,6 +37,8 @@ def test_the_tag_names_the_assessor_and_falls_back_to_dlp_check():
 def test_the_assessor_name_cannot_break_the_tag():
     assert pd.attribution("  Jane ]\n[ Doe ") == "Jane Doe"
     assert pd.attribution("x" * 200) == "x" * pd.BY_MAX
+    # Capped by UTF-8 bytes (ZIA measures descriptions in bytes), never mid-character.
+    assert pd.attribution("\U0001F600" * 40) == "\U0001F600" * (pd.BY_MAX // 4)
     assert pd.attribution("") == pd.attribution(None) == pd.attribution("[]") == "DLP-Check"
 
 
@@ -52,17 +54,21 @@ def test_tags_are_recognised_in_both_forms_and_customer_text_is_not():
     old = "Cards [DLP-Check pack alpha v1]"
     assert pd.has_mark(new, pack_id="alpha") and pd.has_mark(old, pack_id="alpha")
     assert not pd.has_mark(new, pack_id="beta")
-    assert pd.tag_pack(new) == "alpha" and pd.tag_pack(old) == "alpha"
+    assert pd.tag_pack(new, known={"alpha"}) == "alpha" and pd.tag_pack(old) == "alpha"
+    assert pd.tag_pack(new) is None and pd.tag_pack(new, known={"beta"}) is None   # unscoped: only known packs
     # A customer's own bracketed text is not a tag: not at the end, or naming no pack the caller asked for.
     assert not pd.has_mark("[Q3 baseline review] owned by finance", kind="baseline")
     assert not pd.has_mark("Reviewed [Q3 pack review]")          # unscoped: only the tool's own tags
     assert pd.has_mark("Reviewed [Q3 pack review]", pack_id="alpha") is False
-    assert pd.strip_mark(new) == "Cards" and pd.strip_mark(old) == "Cards"
+    assert pd.strip_mark(new, known={"alpha"}) == "Cards" and pd.strip_mark(old) == "Cards"
+    assert pd.strip_mark("Reviewed [Q3 pack review]", known={"alpha"}) == "Reviewed [Q3 pack review]"
 
 
 def test_baseline_tags_by_an_assessor_still_mark_the_object_as_the_baselines():
     obj = Obj(id=1, name="x", description="[Jane Doe baseline zbp v4] Measured on every journey check, never overwritten.")
-    assert pd._has_mark(obj)
+    assert pd._has_mark(obj, "zbp")
+    # Customer text that only looks like a baseline tag does not stop the object being adopted.
+    assert not pd._has_mark(Obj(id=2, name="y", description="Owned by SecOps [team baseline v2]"), "zbp")
 
 
 # --- deploy --------------------------------------------------------------------
@@ -98,7 +104,8 @@ def test_objects_tagged_by_an_assessor_are_found_by_the_removal_by_tag(tmp_path)
 
 # --- export, library, Terraform ------------------------------------------------
 
-def test_export_and_the_library_strip_tags_naming_an_assessor():
+def test_export_and_the_library_strip_tags_naming_an_assessor(monkeypatch):
+    monkeypatch.setattr(pack_export, "_known_packs", lambda: frozenset({"alpha"}))
     assert pack_export._strip_mark("Cards [Jane Doe pack alpha v2] Deployed DISABLED; enable once reviewed.") == "Cards"
     assert pack_library._strip_provenance("Cards [Jane Doe pack alpha v2] Terraform-managed.") == "Cards"
     assert pack_library._strip_provenance("Cards [DLP-Check pack alpha v2] Terraform-managed.") == "Cards"
@@ -138,3 +145,124 @@ def test_the_server_takes_the_assessor_from_the_request_then_the_profile(monkeyp
     monkeypatch.setattr(tenant_profiles, "get", lambda pid, **kw: {"assessor": "Sam Lee"} if pid == "p1" else None)
     assert srv._assessor(srv.DLPPackDeployRequest(profile_id="p1")) == "Sam Lee"
     assert srv._assessor(srv.DLPPackDeployRequest()) == ""
+
+
+# --- round 1 regressions ----------------------------------------------------------
+
+def test_inventory_never_marks_customer_bracket_text_as_a_tool_tag(monkeypatch):
+    monkeypatch.setattr(pd, "library_ids", lambda: {"alpha"})
+    snap = {"reachable": True, "dictionaries": {}, "engines": {}, "channels": {},
+            "rules": [{"id": 7, "name": "Finance exfil", "description": "Customer finance rule [Q3 pack review]"},
+                      {"id": 8, "name": "HR", "description": "Owned by SecOps [team baseline v2]"},
+                      {"id": 9, "name": "Ours", "description": "Monitor. [Jane Doe pack alpha v2] Deployed DISABLED; enable once reviewed."},
+                      {"id": 10, "name": "Old", "description": "Monitor. [DLP-Check pack gone v1]"}]}
+    monkeypatch.setattr(pd, "fetch_tenant", lambda client, need=None: snap)
+    got = {r["name"]: (r["tagged"], r["pack"]) for r in pr.inventory(object())["rules"]}
+    assert got == {"Finance exfil": (False, None), "HR": (False, None), "Ours": (True, "alpha"), "Old": (True, "gone")}
+    assert pr._read_summary(snap)["tagged_rules"] == 2
+
+
+def test_export_keeps_customer_bracket_text_and_strips_an_inner_assessor_tag(monkeypatch):
+    monkeypatch.setattr(pack_export, "_known_packs", lambda: frozenset({"alpha"}))
+    assert pack_export._strip_mark("Block uploads to personal storage [Q3 pack review]") == "Block uploads to personal storage [Q3 pack review]"
+    assert pack_export._strip_mark("Owned by SecOps [team baseline v2]") == "Owned by SecOps [team baseline v2]"
+    # An admin's note after the tag is kept; the tag itself goes, so a redeploy does not stack a second one.
+    assert pack_export._strip_mark("Cards [Jane Doe pack alpha v2] owner: finance") == "Cards owner: finance"
+    item = {"kind": "dictionary", "pack": "alpha", "pack_version": "3"}
+    assert pd.pack_description(item, "Cards [Jane Doe pack alpha v2] owner", by="Sam") == "Cards owner [Sam pack alpha v3]"
+
+
+def test_a_long_multibyte_assessor_name_never_breaks_a_255_byte_tag():
+    pid = "a" * 64
+    for by in ("\U0001F600" * 40, "é" * 40, "x" * 200):
+        d = pd.baseline_description({"kind": "dictionary", "baseline": {"pack": pid, "version": "1.10.3"}}, "A" * 400, limit=255, by=by)
+        assert len(d.encode("utf-8")) <= 255 and d.endswith("never overwritten.")
+        assert pd.has_mark(d, pack_id=pid) and pd.strip_mark(d, known={pid}).startswith("AAA")
+        t = pack_terraform._provenance({"version": "1.10.3", "_by": by}, pid, "A" * 400, limit=255)
+        assert t.endswith("Terraform-managed.") and pd.has_mark(t, pack_id=pid)
+
+
+LEGACY = {"auth_method": "legacy", "username": "admin@acme.com", "password": "pw", "api_key": "k" * 12,
+          "vanity_domain": "acme-stale", "cloud": "zscalerten"}
+
+
+def test_the_deployment_record_stores_the_sanitized_assessor(monkeypatch, tmp_path):
+    import dlp_api_server as srv
+    monkeypatch.setenv("DLP_CHECK_DEPLOYMENTS", str(tmp_path / "deployments.json"))
+    seen = {}
+
+    def fake_apply(client, packs, **kw):
+        seen.update(kw)
+        return {"status": "applied", "results": [{"kind": "dictionary", "name": "d", "id": 1, "status": "created"}], "summary": {"created": 1}}
+    monkeypatch.setattr(pd, "apply", fake_apply)
+    req = srv.DLPPackDeployRequest(pack_ids=["alpha"], plan_hash="h", assessor="Eve]\n[DLP-Check pack pci v9] " + "A" * 200)
+    out = srv._run_apply(object(), tenant_auth.normalize(LEGACY), req, [{"id": "alpha"}], None, None)
+    by = out["deployment"]["by"]
+    assert by == seen["assessor"] == pd.attribution(req.assessor)
+    assert "[" not in by and "\n" not in by and len(by.encode("utf-8")) <= pd.BY_MAX
+    assert out["deployment"]["tenant_label"] == "classic API (zscalerten)"
+    assert srv._assessor(srv.DLPPackDeployRequest(assessor=" [ ] ")) == ""
+
+
+def test_the_terraform_gap_hand_off_names_a_classic_api_tenant_without_the_admin_login(monkeypatch, tmp_path):
+    import io
+    import zipfile
+    import dlp_api_server as srv
+    pack = _pack(tmp_path)
+    monkeypatch.setattr(pd, "preflight", lambda client, packs, **kw: {"items": []})
+    monkeypatch.setattr(pd, "public_report", lambda full: {"items": []})
+    creds = tenant_auth.normalize(LEGACY)
+    req = srv.DLPPackDeployRequest(pack_ids=["alpha"], mode="gap", assessor="Jane Doe")
+    out = srv._run_terraform(object(), creds, req, [pack], None, None)
+    assert out["tenant_label"] == "classic API (zscalerten)"
+    text = "\n".join(out["logs"])
+    z = zipfile.ZipFile(io.BytesIO(out["artifact"][2]))
+    text += "\n".join(z.read(n).decode("utf-8", "replace") for n in z.namelist())
+    assert "admin@acme.com" not in text and "acme-stale" not in text
+    assert "classic API (zscalerten)" in text and "[Jane Doe pack alpha v2] Terraform-managed." in text
+
+
+def test_the_classic_api_client_rate_label_matches_new_and_old_deployment_records(monkeypatch, tmp_path):
+    from datetime import datetime, timezone
+    import dlp_api_server as srv
+    import zia_rate
+    monkeypatch.setenv("DLP_CHECK_DEPLOYMENTS", str(tmp_path / "deployments.json"))
+
+    class Client:
+        pass
+    monkeypatch.setattr(tenant_auth, "build_legacy_sdk_client", lambda c, **kw: Client())
+    client = srv._build_sdk_client(dict(LEGACY))
+    assert zia_rate.label_of(client) == "classic API (zscalerten)"
+    now = datetime.now(timezone.utc)
+    for label in ("classic API (zscalerten)", "acme-stale (zscalerten)", "other (zscalerten)"):
+        rec = deployments.from_apply({"results": [{"kind": "dictionary", "name": "d", "id": 1, "status": "created"}]},
+                                     tenant_label=label, packs=["alpha"], options={})
+        rec["at"] = now.isoformat()
+        rec["failed"] = [{"kind": "engine", "name": "e", "error": "HTTP 429 Too Many Requests"}]
+        deployments.add(rec)
+    t = now.timestamp() + 1
+    assert zia_rate._track_record(t, zia_rate.labels_of(client))["runs"] == 2
+    assert len(zia_rate._deployment_refusals(t, zia_rate.labels_of(client))) == 2
+
+
+def test_export_from_a_classic_api_tenant_never_names_its_vanity_domain(monkeypatch):
+    import dlp_api_server as srv
+    seen = {}
+
+    def fake_export(client, **kw):
+        seen.update(kw)
+        return {"status": "blocked"}
+    monkeypatch.setattr(pack_export, "export_pack", fake_export)
+    logs: list = []
+    out = srv._run_pack_export(object(), tenant_auth.normalize(LEGACY), srv.PackExportRequest(pack_name="x"), None, logs.append, None)
+    assert seen["tenant_label"] == out["tenant_label"] == "classic API (zscalerten)"
+    assert not any("acme" in line for line in logs)
+
+
+def test_the_browser_sends_the_assessor_with_every_pack_request():
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    js = open(os.path.join(root, "static", "deploy_studio.js"), encoding="utf-8").read()
+    body = js[js.index("function _dzCreds()"):js.index("const _dzE")]
+    assert body.count("assessor: v('assessor').trim()") + body.count("b.assessor = v('assessor').trim()") == 2
+    assert "assessor: (_dzCreds() || {}).assessor" in js   # the static Terraform hand-off

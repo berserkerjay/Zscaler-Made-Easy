@@ -20,7 +20,7 @@ import hashlib
 import json
 import re
 import threading
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
 import pack_deploy as pd
@@ -63,9 +63,12 @@ _DICT_ID_RE = re.compile(r"D(\d+)\.S")
 UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
 
 
-def _tagged(desc: Any) -> bool:
-    """Whether a description ends in a deploy's provenance tag (any assessor)."""
-    return pd.tag_pack(desc) is not None
+def _tagged(desc: Any, known: Optional[Iterable[str]] = None) -> bool:
+    """Whether a description carries a deploy's provenance tag: the tool's
+    own "[DLP-Check ..." form, or an assessor's tag at the end for a pack
+    id in `known` (the library), so a customer's "[Q3 pack review]" never
+    counts."""
+    return pd.tag_pack(desc, known=known if known is not None else ()) is not None
 
 
 def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -102,17 +105,18 @@ def _is_custom_dictionary(d: Any, how: Optional[str] = None) -> bool:
 def _read_summary(snap: Dict[str, Any]) -> Dict[str, Any]:
     """What the preview could see, so "nothing to remove" can say what was
     read (and what was not) instead of leaving the operator guessing."""
+    known = pd.library_ids()
     dicts = snap.get("dictionaries") or {}
     custom = [d for d in dicts.values() if pd._field(d, "custom", "customDictionary", default=False)]
-    tagged = [d for d in dicts.values() if _tagged(pd._field(d, "description", default=""))]
+    tagged = [d for d in dicts.values() if _tagged(pd._field(d, "description", default=""), known)]
     engines = snap.get("engines") or {}
-    tagged_engines = [e for e in engines.values() if _tagged(pd._field(e, "description", default=""))]
+    tagged_engines = [e for e in engines.values() if _tagged(pd._field(e, "description", default=""), known)]
     rules = {pc.WEB: len(snap.get("rules") or [])}
     for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items():
         rules[ch] = len(rs or [])
-    tagged_rules = sum(1 for r in (snap.get("rules") or []) if _tagged(r.get("description")))
+    tagged_rules = sum(1 for r in (snap.get("rules") or []) if _tagged(r.get("description"), known))
     for rs in ((snap.get("channels") or {}).get("rules") or {}).values():
-        tagged_rules += sum(1 for r in (rs or []) if _tagged(r.get("description")))
+        tagged_rules += sum(1 for r in (rs or []) if _tagged(r.get("description"), known))
     return {"dictionaries": len(dicts), "custom_dictionaries": len(custom), "tagged_dictionaries": len(tagged),
             "engines": len(engines), "tagged_engines": len(tagged_engines), "rules": rules, "tagged_rules": tagged_rules,
             "unreadable": dict(snap.get("unreadable") or {}), "channel_errors": dict(((snap.get("channels") or {}).get("errors") or {})),
@@ -146,7 +150,7 @@ def _with_rate(plan: Dict[str, Any], client: Any = None) -> Dict[str, Any]:
     app sent in the last hour: its deletes plus the one activation."""
     import zia_rate
     n = int(plan.get("remove_count") or 0)
-    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client), tenant_label=zia_rate.label_of(client)) if n and not plan.get("blockers") else None
+    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client), tenant_label=zia_rate.labels_of(client)) if n and not plan.get("blockers") else None
     if f:
         f["detail"] = zia_rate.history_text(f)
         if f["severity"] != "ok":
@@ -531,9 +535,11 @@ def _all_need() -> Dict[str, Any]:
     return need
 
 
-def _tag_pack(desc: Any) -> Optional[str]:
-    """The pack id inside a provenance tag (any assessor), or None."""
-    return pd.tag_pack(desc)
+def _tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
+    """The pack id inside a provenance tag, or None: the tool's own
+    "[DLP-Check ..." form, or an assessor's tag for a pack id in `known`
+    (the library)."""
+    return pd.tag_pack(desc, known=known if known is not None else ())
 
 
 def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -550,11 +556,12 @@ def inventory(client) -> Dict[str, Any]:
         return {"status": "blocked", "rules": [], "blockers": ["Could not read the tenant. Check credentials and permissions."],
                 "errors": snap.get("errors", [])}
     engines = snap.get("engines") or {}
+    known = pd.library_ids()
     eng_name = {str(pd._field(e, "id")): n for n, e in engines.items()}
     rules = []
     for r in _tenant_rules(snap):
         desc = r.get("description")
-        pack = _tag_pack(desc)
+        pack = _tag_pack(desc, known)
         rules.append({"channel": r["channel"], "id": r.get("id"), "name": r.get("name"), "state": r.get("state"),
                       "action": r.get("action"), "parent_id": r.get("parent_id"), "type": r.get("type"),
                       "engine_ids": [str(x) for x in (r.get("engine_ids") or [])],
@@ -583,7 +590,7 @@ def inventory(client) -> Dict[str, Any]:
         eid = str(pd._field(e, "id"))
         if eid in used_engines or pd._field(e, "predefined_engine", default=False) or pd._field(e, "custom_dlp_engine", default=True) is False:
             continue
-        pack = _tag_pack(pd._field(e, "description"))
+        pack = _tag_pack(pd._field(e, "description"), known)
         orphan_engines.append({"kind": "engine", "id": pd._field(e, "id"), "name": name, "tagged": pack is not None, "pack": pack,
                                "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e))})
     used_dicts: set = set()
@@ -594,7 +601,7 @@ def inventory(client) -> Dict[str, Any]:
         did = str(pd._field(d, "id"))
         if did in used_dicts or not pd._field(d, "custom", "customDictionary", default=False):
             continue
-        pack = _tag_pack(pd._field(d, "description"))
+        pack = _tag_pack(pd._field(d, "description"), known)
         orphan_dicts.append({"kind": "dictionary", "id": pd._field(d, "id"), "name": name, "tagged": pack is not None, "pack": pack})
     orphan_engines.sort(key=lambda x: str(x["name"]).lower()); orphan_dicts.sort(key=lambda x: str(x["name"]).lower())
     return {"status": "ready", "rules": rules, "dictionaries": dicts, "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},
