@@ -55,7 +55,8 @@ def test_tags_are_recognised_in_both_forms_and_customer_text_is_not():
     assert pd.has_mark(new, pack_id="alpha") and pd.has_mark(old, pack_id="alpha")
     assert not pd.has_mark(new, pack_id="beta")
     assert pd.tag_pack(new, known={"alpha"}) == "alpha" and pd.tag_pack(old) == "alpha"
-    assert pd.tag_pack(new) is None and pd.tag_pack(new, known={"beta"}) is None   # unscoped: only known packs
+    # A tag carrying a version is a deploy's, whatever the library holds now (a pack since removed included).
+    assert pd.tag_pack(new) == "alpha" and pd.tag_pack(new, known={"beta"}) == "alpha"
     # A customer's own bracketed text is not a tag: not at the end, or naming no pack the caller asked for.
     assert not pd.has_mark("[Q3 baseline review] owned by finance", kind="baseline")
     assert not pd.has_mark("Reviewed [Q3 pack review]")          # unscoped: only the tool's own tags

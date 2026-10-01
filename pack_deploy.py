@@ -51,6 +51,7 @@ plan the user saw.
 """
 from __future__ import annotations
 
+import functools
 import re
 import hashlib
 import json
@@ -115,17 +116,33 @@ PACK_MARK = "[DLP-Check pack"          # provenance tag for packs without a base
 DEFAULT_BY = "DLP-Check"
 BY_MAX = 40          # UTF-8 bytes (ZIA measures descriptions in bytes), so the tag always fits
 _BY_BAD = re.compile(r"[\[\]\x00-\x1f\x7f]+")
-_TAG_SUFFIX = r"(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?(?: Terraform-managed\.?)?"
-_TAG_BODY = r"\[(?P<by>[^\[\]\r\n]{1,60}?) (?P<kind>baseline|pack) (?P<pack>[^\s\]]+)(?: v[^\]\s]*)?\]" + _TAG_SUFFIX
+# A name that begins like the tool's own legacy tag ("DLP-Check pack alpha")
+# would put the literal "[DLP-Check pack alpha" marker into another pack's tag.
+_BY_FORGED = re.compile(r"(?i)^dlp-check(?=\s+(?:pack|baseline)\b)")
+_TAG_SUFFIX = (r"(?P<suffix>(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?"
+               r"(?: Terraform-managed\.?)?)")
+_TAG_VER = r"(?: v(?P<ver>[^\[\]\r\n]*))?"     # versions are free text (pack.json), spaces included
+_TAG_BY = r"\[(?P<by>[^\[\]\r\n]{1,60}?) (?P<kind>baseline|pack) "
+_TAG_BODY = _TAG_BY + r"(?P<pack>[^\s\[\]]+)" + _TAG_VER + r"\]" + _TAG_SUFFIX
 MARK_RE = re.compile(r"\s*" + _TAG_BODY + r"\s*$")
-_ANY_TAG_RE = re.compile(r"\s*" + _TAG_BODY)     # a tag anywhere (strip_mark only, known packs only)
+_LOOKS_VER = re.compile(r"\d")
+
+
+@functools.lru_cache(maxsize=512)
+def _id_re(pack_id: str, anywhere: bool = False) -> "re.Pattern":
+    """A tag for exactly this pack id (which may contain spaces), at the end
+    of a description or, with `anywhere`, wherever it stands."""
+    body = _TAG_BY + "(?P<pack>" + re.escape(pack_id) + ")" + _TAG_VER + r"\]" + _TAG_SUFFIX
+    return re.compile(r"\s*" + body + ("" if anywhere else r"\s*$"))
 
 
 def attribution(assessor: Any) -> str:
     """The name a provenance tag carries: the assessor's name, cleaned so it
     cannot break the tag (no brackets or control characters, at most
-    BY_MAX UTF-8 bytes), or DEFAULT_BY when there is none."""
+    BY_MAX UTF-8 bytes, never the tool's own "DLP-Check pack|baseline"
+    marker), or DEFAULT_BY when there is none."""
     s = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
+    s = _BY_FORGED.sub("DLP Check", s)
     s = s.encode("utf-8")[:BY_MAX].decode("utf-8", errors="ignore").strip()
     return s or DEFAULT_BY
 
@@ -138,25 +155,35 @@ def assessor_name(assessor: Any) -> str:
 
 
 def _counts(m: Any, known: Optional[Set[str]]) -> bool:
-    """Whether a tag match is a real provenance tag: the tool's own
-    "[DLP-Check ..." form, or an assessor's tag for a known pack id."""
-    return m.group("by") == DEFAULT_BY or (known is not None and m.group("pack") in known)
+    """Whether a tag match at the end of a description is a real provenance
+    tag: the tool's own "[DLP-Check ..." form, an assessor's tag for a known
+    pack id, or an assessor's tag for any other pack id that carries what
+    every deploy writes (a version, or the deploy's closing sentence), so an
+    object deployed from a pack since gone from the library is still found
+    while a customer's "[Q3 pack review]" is not."""
+    if m.group("by") == DEFAULT_BY or (known is not None and m.group("pack") in known):
+        return True
+    return bool(m.group("suffix")) or bool(_LOOKS_VER.match(m.group("ver") or ""))
 
 
 def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = None) -> bool:
     """Whether a description carries a deploy's provenance tag, optionally
     for one pack id and/or kind ("baseline" / "pack"). A tag naming an
-    assessor counts only for the pack id given (and only at the end of the
-    description); without a pack id only the tool's own "[DLP-Check ..."
-    tags count, so a customer's "[Q3 baseline review]" never qualifies."""
+    assessor counts only at the end of the description, and with a pack id
+    only for that pack id; a customer's "[Q3 baseline review]" never
+    qualifies."""
     d = str(desc or "")
-    m = MARK_RE.search(d)
-    if m and (kind is None or m.group("kind") == kind) and _counts(m, {pack_id} if pack_id is not None else None):
-        if pack_id is None or m.group("pack") == pack_id:
-            return True
     legacy = [BASELINE_MARK] if kind == "baseline" else [PACK_MARK] if kind == "pack" else [BASELINE_MARK, PACK_MARK]
+    m = MARK_RE.search(d)
     if pack_id is not None:
+        pm = _id_re(str(pack_id)).search(d)
+        if pm and (kind is None or pm.group("kind") == kind):
+            return True
+        if not pm and m and m.group("by") != DEFAULT_BY and _counts(m, None):
+            return False      # the description ends in another pack's tag
         return any(f"{mk} {pack_id}" in d for mk in legacy)
+    if m and (kind is None or m.group("kind") == kind) and _counts(m, None):
+        return True
     return any(mk in d for mk in legacy)
 
 
@@ -171,12 +198,16 @@ def library_ids() -> Set[str]:
 
 
 def tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
-    """The pack id inside a provenance tag, or None. A tag naming an
-    assessor counts only when its pack id is one of `known`; without
-    `known`, only the tool's own "[DLP-Check ..." tags count."""
+    """The pack id inside a provenance tag, or None. Pack ids in `known`
+    are matched exactly (spaces included); any other tag counts as _counts
+    says (the tool's own, or one carrying a version or deploy sentence)."""
     d = str(desc or "")
+    ks = set(known) if known is not None else None
+    for k in sorted(ks or (), key=len, reverse=True):
+        if k and k in d and _id_re(k).search(d):
+            return k
     m = MARK_RE.search(d)
-    if m and _counts(m, set(known) if known is not None else None):
+    if m and _counts(m, ks):
         return m.group("pack")
     for mk in (BASELINE_MARK, PACK_MARK):
         if mk in d:
@@ -187,14 +218,15 @@ def tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
 
 def strip_mark(base: Any, known: Optional[Iterable[str]] = None) -> str:
     """A description without its provenance tag: the tool's own
-    "[DLP-Check ..." tag (and anything after it, as before), and an
-    assessor's tag for a pack id in `known` wherever it stands (text an
-    admin added after it is kept). Customer text such as "[Q3 pack
-    review]" is kept."""
+    "[DLP-Check ..." tag (and anything after it, as before), an assessor's
+    tag for a pack id in `known` wherever it stands (text an admin added
+    after it is kept), and a tag at the end that _counts. Customer text
+    such as "[Q3 pack review]" is kept."""
     s = str(base or "")
     ks = set(known) if known is not None else None
-    if ks:
-        s = _ANY_TAG_RE.sub(lambda m: "" if m.group("by") != DEFAULT_BY and m.group("pack") in ks else m.group(0), s)
+    for k in sorted(ks or (), key=len, reverse=True):
+        if k and k in s:
+            s = _id_re(k, True).sub(lambda m: "" if m.group("by") != DEFAULT_BY else m.group(0), s)
     m = MARK_RE.search(s)
     if m and _counts(m, ks):
         s = s[:m.start()]

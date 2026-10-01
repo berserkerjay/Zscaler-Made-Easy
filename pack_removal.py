@@ -66,8 +66,8 @@ UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
 def _tagged(desc: Any, known: Optional[Iterable[str]] = None) -> bool:
     """Whether a description carries a deploy's provenance tag: the tool's
     own "[DLP-Check ..." form, or an assessor's tag at the end for a pack
-    id in `known` (the library), so a customer's "[Q3 pack review]" never
-    counts."""
+    id in `known` (the library) or one carrying a version or the deploy's
+    sentence, so a customer's "[Q3 pack review]" never counts."""
     return pd.tag_pack(desc, known=known if known is not None else ()) is not None
 
 
@@ -199,9 +199,10 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     def_policies |= LEGACY_NAMES["policy"]
 
     def any_match(desc: Any, name: str, def_names: set) -> Optional[str]:
-        # "Everything" still means the packs in the library: an assessor's
-        # tag is matched by its pack id, so a customer's own "[x pack y]"
-        # text never qualifies an object for removal.
+        # "Everything" is every object carrying a deploy's tag at the end of
+        # its description, whoever deployed it and whether or not its pack is
+        # still in the library (pack_deploy._counts: a version or the deploy's
+        # sentence), so a customer's own "[x pack y]" never qualifies.
         if everything and pd.has_mark(desc):
             return "tag"
         if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):

@@ -146,6 +146,15 @@ def _label_ok(rec_label: Any, tenant_label: Any) -> bool:
     return rec_label in tuple(tenant_label)
 
 
+def _record_ok(r: Dict[str, Any], tenant_label: Any, key: Optional[str]) -> bool:
+    """Whether a deployment record belongs to the tenant: by its opaque
+    tenant key when both sides have one (classic-API tenants on a cloud
+    share one label), else by label."""
+    if key and r.get("tenant_key"):
+        return r.get("tenant_key") == key
+    return _label_ok(r.get("tenant_label"), tenant_label)
+
+
 def current_key() -> str:
     return str(getattr(_ctx, "key", "") or "")
 
@@ -773,7 +782,7 @@ def _view(key: Optional[str], use_recent: bool, now: float) -> Tuple[Dict[str, L
     return sent, held, refused, server, unkeyed
 
 
-def _deployment_refusals(now: float, tenant_label: Any) -> List[Tuple[float, str]]:
+def _deployment_refusals(now: float, tenant_label: Any, key: Optional[str] = None) -> List[Tuple[float, str]]:
     """Runs of this tenant in the deployment log of the last week that ZIA
     refused for its rate: (when, what it answered)."""
     try:
@@ -783,7 +792,7 @@ def _deployment_refusals(now: float, tenant_label: Any) -> List[Tuple[float, str
         return []
     out = []
     for r in rows:
-        if not _label_ok(r.get("tenant_label"), tenant_label):
+        if not _record_ok(r, tenant_label, key):
             continue
         for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
                               ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
@@ -801,7 +810,7 @@ def _deployment_refusals(now: float, tenant_label: Any) -> List[Tuple[float, str
     return sorted(out)
 
 
-def _track_record(now: float, tenant_label: Any) -> Dict[str, Any]:
+def _track_record(now: float, tenant_label: Any, key: Optional[str] = None) -> Dict[str, Any]:
     """This tenant's deploys and removals in the deployment log of the last
     week, and how many finished without ZIA refusing a request for its rate."""
     try:
@@ -811,7 +820,7 @@ def _track_record(now: float, tenant_label: Any) -> Dict[str, Any]:
         rows = []
     runs = clean = 0
     for r in rows:
-        if not _label_ok(r.get("tenant_label"), tenant_label):
+        if not _record_ok(r, tenant_label, key):
             continue
         for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
                               ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
@@ -887,7 +896,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     # What ZIA has shown it tolerates: the fewest writes in 5 minutes it blocked the client at.
     tolerated = [r for r in blocked if (r.get("writes_5m") or 0) > 0]
     ceiling = min(tolerated, key=lambda r: r["writes_5m"]) if tolerated else None
-    history = _deployment_refusals(now, tenant_label) if use_recent else []
+    history = _deployment_refusals(now, tenant_label, key) if use_recent else []
     # A run of deletes only is a removal: its advice is about removing, not deploying.
     removing = bool(counts.get("delete")) and not any(counts.get(b) for b in ("write", "endpoint_rules", "cloud_app"))
     run_after = None
@@ -968,7 +977,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         f"{r['used_last_hour']} already sent this hour"
         + (f" (ZIA counts {r['zia_reports_used']})" if (r['zia_reports_used'] or 0) > r['used_last_hour'] else "")
         + f"; takes about {_human(max(1.0, r['duration']))}" for r in rows]
-    record = _track_record(now, tenant_label) if use_recent else {"runs": 0, "clean": 0, "percent": None}
+    record = _track_record(now, tenant_label, key) if use_recent else {"runs": 0, "clean": 0, "percent": None}
     outlook = "good, unless that refusal was this tenant's" if only_unkeyed else {"ok": "good", "warn": "good, but slow", "fail": "poor"}[severity]
     success = {"outlook": outlook, "track_record": record,
                "text": f"Outlook: {outlook}. " + (f"Track record: {record['clean']} of {record['runs']} of this tenant's runs in the last week "
