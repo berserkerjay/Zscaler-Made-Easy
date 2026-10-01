@@ -973,3 +973,67 @@ def test_a_pick_of_no_rule_reads_nothing_and_says_so(monkeypatch):
     assert built == [], "signed in to the tenant for an empty pick"
     # A channel left empty beside one with picks still exports the picks.
     assert pe.export_pack(_source(), selection={"web": [], "email": "all"}, tenant_label="acme")["status"] == "ready"
+
+
+# ---------------------------------------------------------------------------
+# Independent review of PR #39, round 3
+# ---------------------------------------------------------------------------
+
+def test_a_short_429_is_waited_out_in_seconds_and_does_not_hold_the_tenant_for_the_hour(monkeypatch):
+    import zia_rate
+    holds, slept = [], []
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: holds.append(s) or 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: slept.append(s), raising=False)
+    for refusal in ('{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}', TOO_MANY,
+                    "Retry wait time 2 seconds exceeds configured maxRetrySeconds 1."):
+        holds.clear(), slept.clear()
+        client = _source()
+        calls = _refuse_n(client.zia.dlp_web_rules, "list_rules", refusal, times=1)
+        res = pe.export_pack(client, tenant_label="acme")
+        assert res["status"] == "ready", (refusal, res.get("error"))
+        assert len(calls) == 2, "the short refusal was not retried"
+        assert holds and max(holds) <= 30 and sum(slept) <= 30, (refusal, holds, sum(slept))
+
+
+def test_only_a_retry_too_long_with_a_long_wait_is_the_hourly_limit():
+    assert pe._is_hourly(HOURLY)
+    assert pe._is_hourly("Retry wait time 1800 seconds exceeds configured maxRetrySeconds 30.")
+    assert not pe._is_hourly("Retry wait time 2 seconds exceeds configured maxRetrySeconds 1.")
+    assert not pe._is_hourly('{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}')
+    assert pe._is_rate("Retry wait time 2 seconds exceeds configured maxRetrySeconds 1.")
+
+
+def test_blank_rule_ids_are_no_pick_and_are_refused_before_any_sign_in_or_read(monkeypatch):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    for rules in ({"web": [""]}, {"web": ["   "]}, {"web": [], "email": [""]}):
+        assert pe.nothing_picked(pe.normalize_selection(rules)), rules
+        ro = ReadOnly(_source())
+        reads = []
+        real = ro.zia.dlp_dictionary.list_dicts
+        ro.zia._t.dlp_dictionary.list_dicts = lambda *a, **k: (reads.append(1), real(*a, **k))[1]
+        res = pe.export_pack(ro, selection=rules, tenant_label="acme")
+        assert res["status"] == "error" and "no rule was picked" in res["error"].lower(), res
+        assert reads == [], "read the tenant for a blank pick"
+        built = []
+        monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or ro)
+        c = TestClient(srv.app, raise_server_exceptions=False)
+        creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20}
+        r = c.post("/api/dlp-packs/export/start", json=dict(creds, rules=rules))
+        assert r.status_code == 400 and "no rule was picked" in r.text.lower(), (rules, r.status_code, r.text[:200])
+        assert built == [], "signed in to the tenant for a blank pick"
+    # An id with spaces around it still names its rule.
+    res = pe.export_pack(_source(), selection={"web": [" 11 "]}, tenant_label="acme")
+    assert res["status"] == "ready", res.get("error")
+
+
+def test_a_channel_named_with_an_empty_pick_is_not_read(monkeypatch):
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    client = _source()
+    email = _refuse_n(client.zia.outbound_email_dlp_rules, "list_rules", HOURLY, times=99)
+    res = pe.export_pack(client, selection={"web": "all", "email": []}, tenant_label="acme")
+    assert email == [], "read the Email rules although no Email rule was picked"
+    assert res["status"] == "ready", res.get("error")
+    assert not any("Email" in d["name"] for d in res["pack"]["not_exported"]), res["pack"]["not_exported"]

@@ -208,9 +208,15 @@ READ_RETRIES = 2
 _RATE_WORDS = ("429", "too many requests", "rate limit", "ratelimit", "resource access blocked", "retry wait time")
 # The SDK's answer when ZIA's Retry-After is longer than the client will
 # wait (RetryTooLong: "Retry wait time 3600 seconds exceeds configured
-# maxRetrySeconds 30"): the hourly limit is reached, so waiting a few
-# seconds and reading again only sends more requests ZIA refuses.
-_HOURLY_WORDS = ("retry wait time",)
+# maxRetrySeconds 30"). With a wait of HOURLY_WAIT_MIN or more, the hourly
+# limit is reached: waiting a few seconds and reading again only sends more
+# requests ZIA refuses, so the export fails. A shorter wait is waited out.
+_RETRY_WAIT_RE = re.compile(r"retry wait time (\d+(?:\.\d+)?) seconds", re.I)
+HOURLY_WAIT_MIN = 300.0
+# A short refusal (429 for ZIA's per-second limit, after the SDK's own
+# retries) is waited out this long before each retry, and the tenant is
+# held only that long: never until the hour's read window turns.
+SHORT_RATE_WAIT_SECONDS = (5.0, 15.0)
 STOP_READS = "Stop requested: no more reads are sent."
 
 
@@ -226,9 +232,16 @@ def _is_rate(err_text: Any) -> bool:
     return any(w in low for w in _RATE_WORDS)
 
 
+def _retry_wait(err_text: Any) -> Optional[float]:
+    """The wait ZIA asked for in the SDK's RetryTooLong answer, or None."""
+    hit = _RETRY_WAIT_RE.search(str(err_text or ""))
+    return float(hit.group(1)) if hit else None
+
+
 def _is_hourly(err_text: Any) -> bool:
-    low = str(err_text or "").lower()
-    return any(w in low for w in _HOURLY_WORDS)
+    """ZIA's hourly limit is reached: a RetryTooLong with a long wait."""
+    secs = _retry_wait(err_text)
+    return secs is not None and secs >= HOURLY_WAIT_MIN
 
 
 def _stopped(cancel: Any) -> bool:
@@ -237,12 +250,18 @@ def _stopped(cancel: Any) -> bool:
 
 def _rate_wait(err: str, attempt: int) -> float:
     """Seconds to wait before retry `attempt` (1-based): the deploy's
-    Resource Access Blocked schedule, or until ZIA's read limit has room again."""
+    Resource Access Blocked schedule, the short wait ZIA asked for in a
+    RetryTooLong, or a few seconds for a short 429. Never the hour's read
+    window: only an hourly refusal (_is_hourly) is about the hour, and that
+    one is not retried."""
     if "resource access blocked" in err.lower():
         import pack_ops
         waits = pack_ops.BLOCKED_WAIT_SECONDS
         return waits[min(max(attempt, 1), len(waits)) - 1]
-    return zia_rate.full_reset("read")
+    asked = _retry_wait(err)
+    if asked is not None:
+        return asked + 1.0
+    return SHORT_RATE_WAIT_SECONDS[min(max(attempt, 1), len(SHORT_RATE_WAIT_SECONDS)) - 1]
 
 
 def _wait_out(seconds: float, cancel: Any) -> None:
@@ -391,7 +410,8 @@ def normalize_selection(selection: Any) -> Optional[Dict[str, Optional[set]]]:
             continue
         if not isinstance(ids, (list, tuple, set)) or any(isinstance(i, bool) or not isinstance(i, (str, int)) for i in ids if i is not None):
             raise ValueError(f"rules for '{ch}' must be \"all\" or a list of rule ids")
-        out[ch] = {str(i) for i in ids if i is not None}
+        # Blank ids name no rule: {"web": [""]} is a pick of nothing, refused before any read.
+        out[ch] = {str(i).strip() for i in ids if i is not None and str(i).strip()}
     return out
 
 
@@ -940,7 +960,8 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     if nothing_picked(sel):
         _log(NOTHING_PICKED)
         return {"status": "error", "error": NOTHING_PICKED}
-    channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel)
+    # Only the in-scope part of the tenant is read: a channel named with an empty pick has nothing to read.
+    channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel and (sel[ch] is None or sel[ch]))
     snap = read_tenant(client, channels, log=_log, cancel=cancel)
     if snap.get("stopped") or _stopped(cancel):
         return stopped
