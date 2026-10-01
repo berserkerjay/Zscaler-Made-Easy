@@ -61,7 +61,7 @@ def test_run_once_builds_a_digest_and_raises_tenant_proposals(tmp_path, monkeypa
     pid = _profile()
     tenants = [{"tenant_id": 1, "tenant_name": "Acme OneDrive", "saas_application": "ONEDRIVE", "status": "ACTIVE", "saas_type": "OFLCASB_DLP_FILE"},
                {"tenant_id": 2, "tenant_name": "Acme Box", "saas_application": "BOX", "status": "AUTH_EXPIRED", "saas_type": "OFLCASB_DLP_FILE"}]
-    monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None: dict(REPORT, incident_count=36, summary={"closed": 30, "not_real": 12, "fp_rate_pct": 40, "noisy_rules": 1, "dead_rules": 1, "promotable_rules": 1, "noisy_dictionaries": 1}))
+    monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None, **kw: dict(REPORT, incident_count=36, summary={"closed": 30, "not_real": 12, "fp_rate_pct": 40, "noisy_rules": 1, "dead_rules": 1, "promotable_rules": 1, "noisy_dictionaries": 1}))
     monkeypatch.setattr("zscaler_best_practices.list_all", lambda service="": [])
     logs = []
     d = ce.run_once(build_client=lambda creds: _client(tenants), log=logs.append, notify=True)
@@ -210,7 +210,7 @@ class _Recorder:
     def __init__(self, monkeypatch):
         self.calls = []
         rec = self.calls
-        monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None: rec.append(("detection_health",)) or dict(REPORT, incident_count=1, summary={}))
+        monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None, **kw: rec.append(("detection_health",)) or dict(REPORT, incident_count=1, summary={}))
         monkeypatch.setattr("saas_matrix.list_tenants", lambda client: rec.append(("list_tenants",)) or ([], None))
 
         def _preflight(client, packs, **kw):
@@ -408,7 +408,7 @@ def test_a_run_whose_tenant_reads_failed_is_not_reported_as_ok(tmp_path, monkeyp
     _env(tmp_path, monkeypatch)
     rec = _Recorder(monkeypatch)
 
-    def _limited(client, days=30, settings=None, log=None):
+    def _limited(client, days=30, settings=None, log=None, **kw):
         raise RuntimeError("429 Too Many Requests: rate limit exceeded")
     monkeypatch.setattr("detection_health.generate", _limited)
     monkeypatch.setattr(srv, "_build_sdk_client", rec.build)

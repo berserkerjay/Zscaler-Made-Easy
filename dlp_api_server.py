@@ -1518,7 +1518,7 @@ async def digests_run(req: DigestRunRequest):
         raise HTTPException(status_code=500, detail=f"the evaluation failed: {type(e).__name__}: {str(e)[:200]}")
     # The same bookkeeping the scheduled run does (_continuous_eval_once), so
     # the Digest tab's "Last run" and its status are right after a manual run too.
-    return {"ok": True, "digest": d}
+    return {"ok": True, "digest": d, "status": _DH_REFRESH_STATE.get("last_status"), "errors": __import__("continuous_eval").run_errors(d)}
 
 
 @app.get("/api/digests/{digest_id}")
@@ -1622,9 +1622,11 @@ def _continuous_eval_hours() -> float:
     return continuous_eval.interval_hours()
 
 
-class LoopRunInProgress(RuntimeError):
-    """A run of the loop is already reading the tenants."""
-
+# A run of the loop is already reading the tenants. continuous_eval.run_once
+# also takes a cross-process file lock (digests/.loop.lock), so a run here
+# and RUN_Continuous_Evaluation.bat / continuous_eval.py --once in another
+# process never overlap either: whichever starts second gets this.
+from continuous_eval import LoopRunInProgress  # noqa: E402
 
 _LOOP_RUN_LOCK = threading.Lock()
 

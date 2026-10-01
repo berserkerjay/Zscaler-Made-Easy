@@ -40,7 +40,8 @@ import smtplib
 import ssl
 import sys
 import time
-from datetime import datetime, timezone
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
@@ -55,6 +56,7 @@ LogFn = Optional[Callable[[str], None]]
 # (pack_channels.DLP_CHANNELS: web / endpoint / saas / email).
 SCOPE_PACK_CHANNELS = {"web_dlp": "web", "endpoint_dlp": "endpoint", "saas_casb": "saas", "email_dlp": "email"}
 SAAS_SCOPE_CHANNEL = "saas_casb"
+WA_SCOPE_CHANNEL = "workflow_automation"
 
 
 # The opt-in timer's bounds. Every pass reads every in-scope tenant, so a
@@ -97,8 +99,11 @@ def interval_hours(*, warn: bool = True) -> float:
 def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     """What a profile's saved Scope page lets the loop read: `dlp` (FP/TP
     Detection Ratio and pack drift), `saas` (the SaaS / email tenants) and
-    `pack_channels` (the DLP channels a pack is measured on). Only a channel
-    marked "zscaler" is in scope; "alternative", "gap" or no choice is not."""
+    `pack_channels` (the DLP channels whose rules are read and on which a
+    pack is measured). Only a channel marked "zscaler" is in scope;
+    "alternative", "gap" or no choice is not. `incidents` is False when
+    Workflow Automation is covered by another product: its incidents (the
+    FP/TP Detection Ratio's input) are then not read."""
     import channel_scope
     raw = profile.get("scopes")
     if isinstance(raw, str):          # a hand-edited "dlp" or "dlp, zia_extras"
@@ -109,7 +114,8 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     chans = channel_scope.normalize(profile.get("channels"))
     on_zscaler = {cid for cid, v in chans.items() if v["choice"] == "zscaler"}
     return {"scopes": scopes, "dlp": "dlp" in scopes, "saas": SAAS_SCOPE_CHANNEL in on_zscaler,
-            "pack_channels": [pc for cid, pc in SCOPE_PACK_CHANNELS.items() if cid in on_zscaler]}
+            "pack_channels": [pc for cid, pc in SCOPE_PACK_CHANNELS.items() if cid in on_zscaler],
+            "incidents": (chans.get(WA_SCOPE_CHANNEL) or {}).get("choice") != "alternative"}
 
 
 def _now() -> str:
@@ -122,10 +128,62 @@ def digest_dir() -> str:
     return d
 
 
+class LoopRunInProgress(RuntimeError):
+    """A run of the loop is already reading the tenants (in this process or
+    another one: the server, RUN_Continuous_Evaluation.bat, a scheduled
+    continuous_eval.py --once)."""
+
+
+LOCK_NAME = ".loop.lock"
+
+
+@contextmanager
+def run_lock():
+    """One run of the loop at a time, across processes: every tenant read
+    counts against the ZIA API rate limit, and two runs would also write
+    the same digest and history. An OS file lock on digests/.loop.lock,
+    released by the OS if the process dies, so a crash never leaves it
+    stuck. A second run raises LoopRunInProgress before reading anything."""
+    f = open(os.path.join(digest_dir(), LOCK_NAME), "a+")
+    try:
+        f.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        raise LoopRunInProgress("a run of the loop is already in progress (the server's Run the loop now or timer, "
+                                "or RUN_Continuous_Evaluation.bat / continuous_eval.py --once); wait for it to finish") from None
+    try:
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        f.close()
+
+
 # ── The run ──────────────────────────────────────────────────────────
 def run_once(*, build_client: Optional[Callable[[Dict[str, str]], Any]] = None, safe_get=None, log: LogFn = None,
              days: int = 30, notify: bool = True) -> Dict[str, Any]:
-    """Run the loop once. Returns the digest (also written to disk)."""
+    """Run the loop once. Returns the digest (also written to disk).
+    Raises LoopRunInProgress, before reading anything, while another run
+    (in any process) is in progress."""
+    with run_lock():
+        return _run_once_locked(build_client=build_client, safe_get=safe_get, log=log, days=days, notify=notify)
+
+
+def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: bool) -> Dict[str, Any]:
     _log = log or (lambda s: None)
     started = time.time()
     digest: Dict[str, Any] = {"id": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"), "at": _now(), "guidance": {}, "sources": {},
@@ -193,8 +251,11 @@ def run_once(*, build_client: Optional[Callable[[Dict[str, str]], Any]] = None, 
     digest["path"] = path
     try:
         import audit
-        audit.record("continuous_evaluation", digest=digest["id"], tenants=len(digest["tenants"]), noteworthy=digest["noteworthy"],
-                     proposals_new=digest["summary"].get("proposals_new"), errors=len(digest["errors"]))
+        # Profiles read, not profiles listed: one with nothing in scope was
+        # not read and is counted apart; every error of the run counts.
+        audit.record("continuous_evaluation", digest=digest["id"], tenants=digest["summary"].get("tenants"),
+                     tenants_not_in_scope=digest["summary"].get("tenants_not_in_scope"), noteworthy=digest["noteworthy"],
+                     proposals_new=digest["summary"].get("proposals_new"), errors=run_errors(digest))
     except Exception:  # noqa: BLE001
         pass
     return digest
@@ -214,40 +275,71 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
         out["note"] = "nothing in scope: no scopes are saved on this profile, so the tenant was not read; choose them on the Scope page and save the profile"
         log(f"{pid}: nothing in scope, not read")
         return out
+    full = tenant_profiles.get(pid, with_secret=True) or {}
+    # What each section may read. FP/TP Detection Ratio reads the rules of
+    # the DLP channels on Zscaler only, and Workflow Automation's incidents
+    # unless another product covers that channel; drift measures the ticked
+    # packs on those channels only.
+    read_dh = sc["dlp"] and bool(sc["pack_channels"]) and sc["incidents"]
+    wanted = [str(x) for x in (profile.get("baseline_packs") or full.get("baseline_packs") or []) if x]
+    read_drift = sc["dlp"] and bool(sc["pack_channels"]) and bool(wanted)
     if not sc["dlp"]:
         out["skipped"].append("FP/TP Detection Ratio and pack drift: DLP is not in the profile's scopes")
+    elif not sc["pack_channels"]:
+        out["skipped"].append("FP/TP Detection Ratio and pack drift: no DLP channel (Inline Web, Endpoint, SaaS Security, Email) is marked as run on Zscaler on the Scope page")
+        if wanted:
+            out["drift"] = {"packs": [], "changed": [], "note": "no DLP channel (Inline Web, Endpoint, SaaS Security, Email) is marked as run on Zscaler on the Scope page; drift not measured"}
+    else:
+        if not sc["incidents"]:
+            out["skipped"].append("FP/TP Detection Ratio: Workflow Automation is covered by another product on the Scope page, so its incidents are not read")
+        off = [CHANNEL_LABELS[c] for c in SCOPE_PACK_CHANNELS.values() if c not in sc["pack_channels"]]
+        if off:
+            out["skipped"].append(f"DLP rules on {', '.join(off)}: not marked as run on Zscaler on the Scope page")
+        if not wanted:
+            out["drift"] = {"packs": [], "changed": [], "note": "no packs ticked on the profile; tick the packs to measure drift"}
     if not sc["saas"]:
         out["skipped"].append("SaaS tenants: SaaS Security (CASB) is not marked as run on Zscaler on the Scope page")
-    if not sc["dlp"] and not sc["saas"]:
-        out["note"] = "nothing in scope for the loop: neither DLP nor SaaS Security (CASB) on Zscaler is in this profile's scope, so the tenant was not read"
+    if not (read_dh or read_drift or sc["saas"]):
+        out["note"] = ("nothing in scope for the loop: neither DLP on a channel run on Zscaler nor SaaS Security (CASB) on Zscaler is in this "
+                       "profile's scope, so the tenant was not read")
         log(f"{pid}: nothing in scope for the loop, not read")
         return out
     try:
-        full = tenant_profiles.get(pid, with_secret=True) or {}
         creds = tenant_profiles.creds_from(full)
         client = build_client(creds)
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"connect: {str(e)[:200]}")
         return out
     tenant_key = creds.get("vanity_domain") or pid
+    # The queue as it was before this run, so "new" counts only what this
+    # run raised, whichever sections ran.
+    open_before = None
+    try:
+        import proposals
+        open_before = int(proposals.summary(tenant_key).get("open", 0) or 0)
+    except Exception:  # noqa: BLE001
+        pass
 
     # 2. detection health + proposals
     try:
-        if not sc["dlp"]:
+        if not read_dh:
             raise _Skip()
         import detection_health
         import proposals
-        rep = detection_health.generate(client, days=days)
+        rep = detection_health.generate(client, days=days, channels=list(sc["pack_channels"]))
+        read_errors = [str(e)[:200] for e in (rep.get("errors") or [])]
+        if read_errors:
+            # A report built on reads that failed (a 429, say) is not a
+            # measurement: it raises no proposal and is not recorded.
+            out["errors"].extend(f"detection health: {e}" for e in read_errors[:10])
+            log(f"{pid}: detection health not measured, {len(read_errors)} read(s) failed")
+            raise _Skip()
         s = rep.get("summary") or {}
-        before = proposals.summary(tenant_key)
         merged = proposals.refresh_from_report(rep, tenant_key)
-        after = proposals.summary(tenant_key)
         out["detection_health"] = {"incidents": rep.get("incident_count"), "closed": s.get("closed"), "not_real": s.get("not_real"), "fp_rate_pct": s.get("fp_rate_pct"),
                                    "noisy_rules": s.get("noisy_rules"), "dead_rules": s.get("dead_rules"), "promotable_rules": s.get("promotable_rules"),
-                                   "noisy_dictionaries": s.get("noisy_dictionaries"), "delivery": (rep.get("delivery") or {}).get("path"), "errors": len(rep.get("errors") or [])}
-        out["proposals"] = {"new": int((merged or {}).get("new") or 0), "updated": int((merged or {}).get("updated") or 0), "open": after.get("open", 0),
-                            "approved": after.get("approved", 0), "applied": after.get("applied", 0), "open_before": before.get("open", 0),
-                            "titles": [q["title"] for q in proposals.list_queue(tenant_key) if q.get("status") == "open"][:8]}
+                                   "noisy_dictionaries": s.get("noisy_dictionaries"), "delivery": (rep.get("delivery") or {}).get("path"), "errors": 0}
+        out["proposals"] = {"new": int((merged or {}).get("new") or 0), "updated": int((merged or {}).get("updated") or 0)}
         tenant_profiles.add_history(pid, {"detection_health": out["detection_health"], "continuous_evaluation": True})
         log(f"{pid}: detection health {rep.get('incident_count')} incidents, {out['proposals']['new']} new proposal(s)")
     except _Skip:
@@ -282,49 +374,87 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
         pr.update({"open": after.get("open", 0), "approved": after.get("approved", 0), "applied": after.get("applied", 0),
                    "titles": [q["title"] for q in proposals.list_queue(tenant_key) if q.get("status") == "open"][:10]})
         pr.setdefault("new", 0)
-        pr["new"] = max(pr["new"], pr["open"] - int(pr.get("open_before") or 0))
+        if open_before is not None:
+            pr["open_before"] = open_before
+            pr["new"] = max(pr["new"], pr["open"] - open_before)
         out["proposals"] = pr
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"queue: {type(e).__name__}: {str(e)[:200]}")
 
     # 4. drift: the journey against the profile's packs, compared with the last record
     try:
-        if not sc["dlp"]:
+        if not read_drift:
             raise _Skip()
         import pack_deploy
         from dlp_importer import discover_packs
-        wanted = [str(x) for x in (profile.get("baseline_packs") or full.get("baseline_packs") or []) if x]
-        packs = [pk for pk in discover_packs(ROOT) if pk["id"] in wanted] if wanted else []   # only the ticked packs, never every pack
-        if packs and not sc["pack_channels"]:
-            out["drift"] = {"packs": [], "changed": [], "note": "no DLP channel (Inline Web, Endpoint, SaaS Security, Email) is marked as run on Zscaler on the Scope page; drift not measured"}
-        elif packs:
-            # Each pack is measured on the in-scope DLP channels only.
-            targets = {pk["id"]: list(sc["pack_channels"]) for pk in packs}
-            rep = pack_deploy.preflight(client, packs, writes_enabled=False, apply_tweaks=False, channel_targets=targets)
-            j = pack_deploy.journey(rep)
-            last = _last_journey(full)
-            rows = []
-            for b in j.get("baselines") or []:
-                prev = (last or {}).get(b.get("id")) or {}
-                rows.append({"id": b.get("id"), "name": b.get("name"), "stage": b.get("stage"), "stage_name": b.get("stage_name"), "score": b.get("score"),
-                             "previous_stage": prev.get("stage"), "previous_score": prev.get("score"),
-                             "moved": ("up" if prev.get("stage") is not None and (b.get("stage") or 0) > prev["stage"] else
-                                       "down" if prev.get("stage") is not None and (b.get("stage") or 0) < prev["stage"] else "same"),
-                             "customized": sum(1 for o in (b.get("objects") or []) if o.get("position") == "customized"),
-                             "relaxed": sum(1 for o in (b.get("objects") or []) if o.get("position") == "relaxed"),
-                             "missing": sum(1 for o in (b.get("objects") or []) if o.get("position") == "missing"),
-                             "next_steps": (b.get("next_steps") or [])[:3]})
-            out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]]}
-            tenant_profiles.add_history(pid, {"journey": {"stage": j.get("stage"), "score": j.get("score"),
-                                                          "baselines": [{"id": r["id"], "name": r["name"], "stage": r["stage"], "stage_name": r["stage_name"], "score": r["score"]} for r in rows]},
-                                              "continuous_evaluation": True})
-        else:
-            out["drift"] = {"packs": [], "changed": [], "note": "no packs ticked on the profile; tick the packs to measure drift"}
+        packs = [pk for pk in discover_packs(ROOT) if pk["id"] in wanted]   # only the ticked packs, never every pack
+        # Each pack is measured as packed, on the channels it ships rules
+        # for that are also in scope: a channel the pack has no rule on is
+        # never added (that would invent a "missing" monitor rule), and a
+        # channel out of scope is never read.
+        targets: Dict[str, List[str]] = {}
+        not_measured: List[str] = []
+        for pk in packs:
+            own = _pack_channels(pk)
+            on = [c for c in sc["pack_channels"] if c in own]
+            if on:
+                targets[pk["id"]] = on
+            else:
+                not_measured.append(pk.get("name") or pk["id"])
+        measured = [pk for pk in packs if pk["id"] in targets]
+        if not measured:
+            out["drift"] = {"packs": [], "changed": [], "not_measured": not_measured,
+                            "note": ("the ticked packs ship no rule on a DLP channel the Scope page marks as run on Zscaler; drift not measured" if packs
+                                     else "none of the ticked packs was found; drift not measured")}
+            raise _Skip()
+        rep = pack_deploy.preflight(client, measured, writes_enabled=False, apply_tweaks=False, channel_targets=targets)
+        ten = rep.get("tenant") or {}
+        failed = ([str(e)[:200] for e in (ten.get("errors") or [])]
+                  + [f"{ch} rules: {str(e)[:200]}" for ch, e in (ten.get("channel_errors") or {}).items() if e])
+        if failed or ten.get("reachable") is False:
+            # A journey measured on reads that failed is not a stage: it is
+            # neither reported as a move nor kept as the next baseline.
+            out["errors"].extend(f"drift: {e}" for e in (failed or ["the tenant could not be read"])[:10])
+            out["drift"] = {"packs": [], "changed": [], "note": "drift not measured: the tenant reads failed (see the errors)"}
+            log(f"{pid}: drift not measured, the tenant reads failed")
+            raise _Skip()
+        j = pack_deploy.journey(rep)
+        last = _last_journey(full)
+        rows = []
+        for b in j.get("baselines") or []:
+            prev = (last or {}).get(b.get("id")) or {}
+            rows.append({"id": b.get("id"), "name": b.get("name"), "stage": b.get("stage"), "stage_name": b.get("stage_name"), "score": b.get("score"),
+                         "previous_stage": prev.get("stage"), "previous_score": prev.get("score"),
+                         "moved": ("up" if prev.get("stage") is not None and (b.get("stage") or 0) > prev["stage"] else
+                                   "down" if prev.get("stage") is not None and (b.get("stage") or 0) < prev["stage"] else "same"),
+                         "customized": sum(1 for o in (b.get("objects") or []) if o.get("position") == "customized"),
+                         "relaxed": sum(1 for o in (b.get("objects") or []) if o.get("position") == "relaxed"),
+                         "missing": sum(1 for o in (b.get("objects") or []) if o.get("position") == "missing"),
+                         "next_steps": (b.get("next_steps") or [])[:3]})
+        out["drift"] = {"packs": rows, "changed": [r["name"] for r in rows if r["moved"] != "same" or r["relaxed"]]}
+        if not_measured:
+            out["drift"]["not_measured"] = not_measured
+            out["drift"]["note"] = f"not measured (no rule on a DLP channel run on Zscaler): {', '.join(not_measured)}"
+        tenant_profiles.add_history(pid, {"journey": {"stage": j.get("stage"), "score": j.get("score"),
+                                                      "baselines": [{"id": r["id"], "name": r["name"], "stage": r["stage"], "stage_name": r["stage_name"], "score": r["score"]} for r in rows]},
+                                          "continuous_evaluation": True})
     except _Skip:
         pass
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"drift: {type(e).__name__}: {str(e)[:200]}")
     return out
+
+
+CHANNEL_LABELS = {"web": "Inline Web", "endpoint": "Endpoint", "saas": "SaaS Security", "email": "Email"}
+
+
+def _pack_channels(pack: Dict[str, Any]) -> set:
+    """The DLP channels a pack ships rules on, read from the pack's own
+    files (no tenant read)."""
+    import pack_channels as pc
+    import pack_deploy
+    src = pack_deploy.load_sources([pack])[0]
+    return {pc.channel_of(p) for p in src.get("policies") or []} & set(pc.DLP_CHANNELS)
 
 
 class _Skip(Exception):
@@ -467,6 +597,10 @@ def to_markdown(d: Dict[str, Any]) -> str:
 
 def write_digest(d: Dict[str, Any]) -> str:
     dd = digest_dir()
+    # The id is the run's second; a run in the same second as the previous
+    # one takes the next free second, so a digest is never overwritten.
+    while os.path.exists(os.path.join(dd, f"digest-{d['id']}.json")):
+        d["id"] = (datetime.strptime(d["id"], "%Y%m%d-%H%M%S") + timedelta(seconds=1)).strftime("%Y%m%d-%H%M%S")
     base = os.path.join(dd, f"digest-{d['id']}")
     with open(base + ".json", "w", encoding="utf-8") as f:
         json.dump({k: v for k, v in d.items() if k != "path"}, f, indent=2, default=str)
@@ -594,7 +728,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     except Exception as e:  # noqa: BLE001
         print(f"warning: API client unavailable ({e}); tenant sections are skipped", file=sys.stderr)
         build_client = None
-    d = run_once(build_client=build_client, log=lambda s: print(s, file=sys.stderr), days=args.days, notify=not args.no_notify)
+    try:
+        d = run_once(build_client=build_client, log=lambda s: print(s, file=sys.stderr), days=args.days, notify=not args.no_notify)
+    except LoopRunInProgress as e:
+        # Another run (the server's, or another scheduled one) is reading the
+        # tenants: this one reads nothing and says so.
+        print(f"not run: {e}", file=sys.stderr)
+        return 2
     if args.print:
         print(to_markdown(d))
     else:
