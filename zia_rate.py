@@ -126,6 +126,26 @@ def label_of(client: Any) -> Optional[str]:
     return getattr(client, "_zia_rate_label", None) or None
 
 
+def labels_of(client: Any) -> Optional[Tuple[str, ...]]:
+    """Every label this client's tenant may carry in the deployment log
+    (the current one first, then older forms), or None."""
+    labels = getattr(client, "_zia_rate_labels", None)
+    if labels:
+        return tuple(labels)
+    one = label_of(client)
+    return (one,) if one else None
+
+
+def _label_ok(rec_label: Any, tenant_label: Any) -> bool:
+    """Whether a deployment record belongs to the tenant: `tenant_label` is
+    one label or a sequence of them (tenant_auth.record_labels)."""
+    if not tenant_label or rec_label is None:
+        return True
+    if isinstance(tenant_label, str):
+        return rec_label == tenant_label
+    return rec_label in tuple(tenant_label)
+
+
 def current_key() -> str:
     return str(getattr(_ctx, "key", "") or "")
 
@@ -657,15 +677,17 @@ def attach(session: Any, key: str) -> Any:
     return session
 
 
-def attach_client(client: Any, key: str, label: Optional[str] = None) -> Any:
+def attach_client(client: Any, key: str, label: Any = None) -> Any:
     """Stamp an SDK client with its tenant key (and the tenant label the
     deployment log uses), and give its request executor a session that
     reports ZIA's answers (attach). A client with no executor to hook (the
     legacy one) is only stamped."""
     with contextlib.suppress(Exception):
         setattr(client, "_zia_rate_key", key)
-        if label:
-            setattr(client, "_zia_rate_label", label)
+        labels = (label,) if isinstance(label, str) else tuple(x for x in (label or ()) if x)
+        if labels:
+            setattr(client, "_zia_rate_label", labels[0])
+            setattr(client, "_zia_rate_labels", labels)
     ex = getattr(client, "_request_executor", None)
     if ex is not None and hasattr(ex, "set_session"):
         with contextlib.suppress(Exception):
@@ -751,7 +773,7 @@ def _view(key: Optional[str], use_recent: bool, now: float) -> Tuple[Dict[str, L
     return sent, held, refused, server, unkeyed
 
 
-def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[float, str]]:
+def _deployment_refusals(now: float, tenant_label: Any) -> List[Tuple[float, str]]:
     """Runs of this tenant in the deployment log of the last week that ZIA
     refused for its rate: (when, what it answered)."""
     try:
@@ -761,7 +783,7 @@ def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[
         return []
     out = []
     for r in rows:
-        if tenant_label and r.get("tenant_label") not in (None, tenant_label):
+        if not _label_ok(r.get("tenant_label"), tenant_label):
             continue
         for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
                               ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
@@ -779,7 +801,7 @@ def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[
     return sorted(out)
 
 
-def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
+def _track_record(now: float, tenant_label: Any) -> Dict[str, Any]:
     """This tenant's deploys and removals in the deployment log of the last
     week, and how many finished without ZIA refusing a request for its rate."""
     try:
@@ -789,7 +811,7 @@ def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
         rows = []
     runs = clean = 0
     for r in rows:
-        if tenant_label and r.get("tenant_label") not in (None, tenant_label):
+        if not _label_ok(r.get("tenant_label"), tenant_label):
             continue
         for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
                               ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
@@ -806,7 +828,7 @@ def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
 
 
 def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[str] = None,
-             tenant_label: Optional[str] = None) -> Dict[str, Any]:
+             tenant_label: Any = None) -> Dict[str, Any]:
     """Will a run of `counts` requests per bucket succeed at ZIA's limits,
     for tenant `key`? Simulated, nothing is sent, against what the app
     executed for that tenant: its requests of the last hour (reads too),

@@ -121,11 +121,26 @@ def _plain(obj: Any) -> Dict[str, Any]:
     return {_snake(k): v for k, v in (d or {}).items()} if isinstance(d, dict) else {}
 
 
-def _strip_mark(text: Any) -> str:
-    """A description without the provenance tag a deploy added (whatever
-    assessor it names, or the old "[DLP-Check ...]" form)."""
+_KNOWN_CACHE: Dict[str, Any] = {"at": 0.0, "ids": frozenset()}
+
+
+def _known_packs() -> frozenset:
+    """The library's pack ids (an assessor's tag is recognised only for
+    these), read at most every few seconds rather than once per object."""
+    import time
     import pack_deploy
-    return pack_deploy.strip_mark(text)
+    now = time.monotonic()
+    if now - _KNOWN_CACHE["at"] > 5.0:
+        _KNOWN_CACHE.update(at=now, ids=frozenset(pack_deploy.library_ids()))
+    return _KNOWN_CACHE["ids"]
+
+
+def _strip_mark(text: Any, known: Any = None) -> str:
+    """A description without the provenance tag a deploy added: the old
+    "[DLP-Check ...]" form, or an assessor's tag for a pack in the library.
+    A customer's own bracketed text ("[Q3 pack review]") is kept."""
+    import pack_deploy
+    return pack_deploy.strip_mark(text, known=_known_packs() if known is None else known)
 
 
 def _names(items: Any) -> Tuple[List[str], List[str]]:

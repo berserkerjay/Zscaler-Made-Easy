@@ -1000,15 +1000,18 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
 
 def _assessor(req: Any) -> str:
     """The assessor's name for a pack deploy: the request's, else the saved
-    profile's, else blank (the tag then says DLP-Check)."""
-    name = str(getattr(req, "assessor", "") or "").strip()
+    profile's, else blank (the tag then says DLP-Check). Sanitized as the
+    tag carries it (pack_deploy.assessor_name: no brackets or line breaks,
+    at most 40 bytes), so the deployment record names the same person."""
+    import pack_deploy
+    name = pack_deploy.assessor_name(getattr(req, "assessor", "") or "")
     if name:
         return name
     pid = getattr(req, "profile_id", "") or ""
     if pid:
         try:
             import tenant_profiles
-            return str((tenant_profiles.get(pid) or {}).get("assessor") or "").strip()
+            return pack_deploy.assessor_name((tenant_profiles.get(pid) or {}).get("assessor") or "")
         except Exception:  # noqa: BLE001 — a missing profile only loses the name
             return ""
     return ""
@@ -1088,7 +1091,10 @@ def _build_sdk_client(creds: Dict[str, str]):
     # The tenant's API client, for ZIA's rate limits: its requests, holds and
     # refusals are counted apart from any other tenant's.
     rate_key = zia_rate.key_for(cloud, vd or c.get("username"), cid or c.get("username"))
-    rate_label = f"{vd or '?'} ({cloud or 'production'})"   # as the deployment log names the tenant
+    # As the deployment log names the tenant (tenant_auth.record_label: never
+    # the classic API's admin login or a stale vanity domain), then the
+    # labels older records carry, so the rate forecast still counts them.
+    rate_label = tenant_auth.record_labels(c)
     if c["auth_method"] == tenant_auth.LEGACY:
         try:
             return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key, rate_label)
@@ -1702,7 +1708,7 @@ async def rate_check(req: RateCheckRequest):
     try:
         c = _validate_creds(_tenant_creds(req))
         key = zia_rate.key_for(c["cloud"], c["vanity_domain"] or c.get("username"), c["client_id"] or c.get("username"))
-        label = f"{c['vanity_domain'] or '?'} ({c['cloud'] or 'production'})"
+        label = tenant_auth.record_labels(c)
     except HTTPException:
         pass   # no tenant to tell apart: the unkeyed record still applies
     counts = {k: max(0, min(int(v or 0), 5000)) for k, v in (req.counts or {}).items() if k in zia_rate.DEFAULTS and k != "read"}
@@ -2293,11 +2299,11 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
     gap: Dict[str, int] = {}
     if client is not None:
         mode = "gap"
-        _log(f"Gap mode: reading {tenant_auth.label(creds)} so the workspace imports what already exists and creates only the rest.")
+        _log(f"Gap mode: reading {tenant_auth.record_label(creds)} so the workspace imports what already exists and creates only the rest.")
         full = pack_deploy.preflight(client, packs, use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
                                      channel_targets=req.channel_targets or None, log=_log)
         report = pack_deploy.public_report(full)
-        report["tenant_label"] = tenant_auth.label(creds)
+        report["tenant_label"] = tenant_auth.record_label(creds)
         for it in report.get("items") or []:
             if it.get("kind") == "tweak":
                 continue
@@ -2319,7 +2325,7 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
     name = f"dlp-check-terraform-{mode}-{'-'.join(req.pack_ids)[:60]}.zip"
     _log(f"Ready: {name} ({len(data) // 1024} KB).")
     return {"status": "ready", "mode": mode, "filename": name, "bytes": len(data), "packs": list(workspaces), "gap": gap,
-            "tenant_label": tenant_auth.label(creds) if client is not None else "", "logs": logs,
+            "tenant_label": tenant_auth.record_label(creds) if client is not None else "", "logs": logs,
             "artifact": (name, "application/zip", data)}
 
 
@@ -2355,7 +2361,8 @@ def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, sele
     import pack_export
     c = tenant_auth.normalize(creds)
     # The pack names the tenant, never the admin who signed in (the classic API's label is its username).
-    label = f"{c['vanity_domain']} ({c['cloud'] or 'production'})" if c["vanity_domain"] else f"a {c['cloud'] or 'production'} tenant (classic API)"
+    # The classic API's label is 'classic API (cloud)' (tenant_auth.record_label), never a stale vanity domain.
+    label = tenant_auth.record_label(c)
     log(f"Exporting from {label}: the rules, the engines they use and the dictionaries those engines use. Nothing is written to the tenant.")
     res = pack_export.export_pack(client, selection=selection, name=req.pack_name[:120], tenant_label=label, log=log, cancel=cancel)
     if res["status"] != "ready":
@@ -2389,7 +2396,7 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
-                          label=req.pack_name[:60] or tenant_auth.label(creds), actor=_actor(request))
+                          label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -4498,7 +4505,7 @@ async def assess_stream(req: AssessRequest):
                         except asyncio.TimeoutError:
                             yield ": keepalive\n\n"
                     journey = task.result()
-                    journey["tenant_label"] = f"{vd} ({cloud})"
+                    journey["tenant_label"] = tenant_auth.record_label(creds)
                 except Exception as ex:  # noqa: BLE001
                     journey = {"status": "error", "error": tenant_auth.mask_secrets(str(ex), creds)[:200]}
                 report["journey"] = journey
