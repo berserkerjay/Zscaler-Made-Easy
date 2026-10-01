@@ -909,6 +909,10 @@ class TenantCredsRequest(BaseModel):
     # Saved tenant profile: blanks above are filled from it (including a
     # remembered secret), so the operator can switch tenants without retyping.
     profile_id: str = ""
+    # The assessor's name (Scope assessment). A pack deploy names only this
+    # in the provenance tag it writes and in its deployment record; blank
+    # falls back to the saved profile's assessor.
+    assessor: str = ""
 
 
 class DLPPackImportRequest(TenantCredsRequest):
@@ -992,6 +996,22 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
             except Exception:
                 pass
     return tenant_auth.normalize(creds)
+
+
+def _assessor(req: Any) -> str:
+    """The assessor's name for a pack deploy: the request's, else the saved
+    profile's, else blank (the tag then says DLP-Check)."""
+    name = str(getattr(req, "assessor", "") or "").strip()
+    if name:
+        return name
+    pid = getattr(req, "profile_id", "") or ""
+    if pid:
+        try:
+            import tenant_profiles
+            return str((tenant_profiles.get(pid) or {}).get("assessor") or "").strip()
+        except Exception:  # noqa: BLE001 — a missing profile only loses the name
+            return ""
+    return ""
 
 
 def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]:
@@ -1247,7 +1267,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     )
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -1284,7 +1304,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
         report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
     except Exception as e:  # noqa: BLE001
         report["proposals"] = {"error": str(e)[:200]}
-    rid = _remember_report("health", report, f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})")
+    rid = _remember_report("health", report, tenant_auth.record_label(creds))
     return _REPORTS[rid]
 
 
@@ -1658,8 +1678,8 @@ def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) ->
     rec = deployments.get(req.deployment_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Deployment not found.")
-    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
-    if rec.get("tenant_label") and rec["tenant_label"] != label:
+    label = tenant_auth.record_label(creds)
+    if rec.get("tenant_label") and rec["tenant_label"] not in tenant_auth.record_labels(creds):
         raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
     return rec
 
@@ -1716,7 +1736,7 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     else:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
     out["writes_enabled"] = writes_enabled()
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -1733,7 +1753,7 @@ async def dlp_pack_removal_inventory(req: TenantCredsRequest):
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(pack_removal.inventory, client)
     out["writes_enabled"] = writes_enabled()
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -2164,7 +2184,7 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -2292,7 +2312,7 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
             return {"status": "stopped", "stopped": "You clicked Stop.", "mode": mode, "packs": list(workspaces), "logs": logs}
         _log(f"Generating the Terraform workspace for {p.get('name') or p['id']}…")
         files = pack_terraform.generate(p, report=pack_terraform.split_report(report, p["id"]) if report else None,
-                                        channel_targets=(req.channel_targets or {}).get(p["id"]))
+                                        channel_targets=(req.channel_targets or {}).get(p["id"]), assessor=_assessor(req))
         workspaces[p["id"]] = files
         _log(f"  {len(files)} files" + (", imports.tf included" if "imports.tf" in files else "") + ".")
     data = pack_terraform.zip_workspaces(workspaces)
@@ -2430,17 +2450,17 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
 
     result = pack_deploy.apply(client, packs, plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
                                verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
-                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel)
+                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel, assessor=_assessor(req))
     result["logs"] = logs
     if result.get("status") in ("plan_changed", "blocked"):
         return result
     # Remember what was created so the deployment can be undone later.
     try:
         import deployments
-        rec = deployments.from_apply(result, tenant_label=f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})",
+        rec = deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds),
                                      packs=list(req.pack_ids), options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks,
                                                                         "restore_drift": req.restore_drift},
-                                     channel_targets=req.channel_targets or {})
+                                     channel_targets=req.channel_targets or {}, by=_assessor(req))
         if rec:
             deployments.add(rec)
             result["deployment_id"] = rec["id"]
@@ -2500,8 +2520,8 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     creds = _tenant_creds(req)
-    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
-    if rec.get("tenant_label") and rec["tenant_label"] != label:
+    label = tenant_auth.record_label(creds)
+    if rec.get("tenant_label") and rec["tenant_label"] not in tenant_auth.record_labels(creds):
         raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
@@ -2535,14 +2555,15 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
     logs: list = []
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
-                                                               log=logs.append))
+                                                               log=logs.append, assessor=_assessor(req)))
     result["logs"] = logs
     if result.get("status") == "applied" and result.get("summary", {}).get("created"):
         try:
             import deployments
             creds = _tenant_creds(req)
-            deployments.add(deployments.from_apply(result, tenant_label=f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})", packs=[pack["id"]],
-                                                   options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={}))
+            deployments.add(deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds), packs=[pack["id"]],
+                                                   options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={},
+                                                   by=_assessor(req)))
         except Exception as e:  # noqa: BLE001 — the deployment happened; only the record failed
             result.setdefault("warnings", []).append(f"The deployment was not recorded for undo: {e}")
     return result

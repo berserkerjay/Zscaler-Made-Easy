@@ -27,12 +27,11 @@ import pack_deploy as pd
 import pack_ops as ops
 from dlp_importer import _load_json, _resolve_configs, heal_predefined_names
 
-# The in-app deploy tags baseline objects with BASELINE_MARK; the Terraform
-# hand-off tags every object with "[DLP-Check baseline <id>]" or
-# "[DLP-Check pack <id>]". Match either, scoped to the pack id.
-_BASELINE_MARK = pd.BASELINE_MARK            # "[DLP-Check baseline"
-_PACK_MARK = pd.PACK_MARK                    # "[DLP-Check pack"
-_ANY_MARKS = (_BASELINE_MARK, _PACK_MARK)    # any DLP-Check provenance, whatever the pack id
+# The in-app deploy and the Terraform hand-off tag every object with
+# "[<assessor> baseline <id> ...]" or "[<assessor> pack <id> ...]" at the end
+# of its description ("[DLP-Check ...]" before the assessor's name was used,
+# or when none was given). pack_deploy.has_mark / tag_pack recognise both,
+# scoped to the pack id.
 
 # Objects earlier versions of the shipped packs created under names no
 # current pack defines (Fed 1.1 CUI objects, the retired endpoint and CUI
@@ -64,8 +63,9 @@ _DICT_ID_RE = re.compile(r"D(\d+)\.S")
 UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
 
 
-def _pack_marks(pack_id: str) -> Tuple[str, str]:
-    return (f"{_BASELINE_MARK} {pack_id}", f"{_PACK_MARK} {pack_id}")
+def _tagged(desc: Any) -> bool:
+    """Whether a description ends in a deploy's provenance tag (any assessor)."""
+    return pd.tag_pack(desc) is not None
 
 
 def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -76,12 +76,11 @@ def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, An
     return dicts, engines, policies
 
 
-def _matched(desc: Any, name: str, marks: Tuple[str, str], def_names: set) -> Optional[str]:
+def _matched(desc: Any, name: str, pack_ids: Sequence[str], def_names: set) -> Optional[str]:
     """How a tenant object maps to a pack: by its provenance tag, or by a
     name the pack defines. Tag wins; a name-only match is flagged so the
     operator sees it was not tool-tagged."""
-    d = str(desc or "")
-    if any(m in d for m in marks):
+    if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
         return "tag"
     if name in def_names:
         return "name"
@@ -105,15 +104,15 @@ def _read_summary(snap: Dict[str, Any]) -> Dict[str, Any]:
     read (and what was not) instead of leaving the operator guessing."""
     dicts = snap.get("dictionaries") or {}
     custom = [d for d in dicts.values() if pd._field(d, "custom", "customDictionary", default=False)]
-    tagged = [d for d in dicts.values() if any(m in str(pd._field(d, "description", default="") or "") for m in _ANY_MARKS)]
+    tagged = [d for d in dicts.values() if _tagged(pd._field(d, "description", default=""))]
     engines = snap.get("engines") or {}
-    tagged_engines = [e for e in engines.values() if any(m in str(pd._field(e, "description", default="") or "") for m in _ANY_MARKS)]
+    tagged_engines = [e for e in engines.values() if _tagged(pd._field(e, "description", default=""))]
     rules = {pc.WEB: len(snap.get("rules") or [])}
     for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items():
         rules[ch] = len(rs or [])
-    tagged_rules = sum(1 for r in (snap.get("rules") or []) if any(m in str(r.get("description") or "") for m in _ANY_MARKS))
+    tagged_rules = sum(1 for r in (snap.get("rules") or []) if _tagged(r.get("description")))
     for rs in ((snap.get("channels") or {}).get("rules") or {}).values():
-        tagged_rules += sum(1 for r in (rs or []) if any(m in str(r.get("description") or "") for m in _ANY_MARKS))
+        tagged_rules += sum(1 for r in (rs or []) if _tagged(r.get("description")))
     return {"dictionaries": len(dicts), "custom_dictionaries": len(custom), "tagged_dictionaries": len(tagged),
             "engines": len(engines), "tagged_engines": len(tagged_engines), "rules": rules, "tagged_rules": tagged_rules,
             "unreadable": dict(snap.get("unreadable") or {}), "channel_errors": dict(((snap.get("channels") or {}).get("errors") or {})),
@@ -180,11 +179,9 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
 
     # Pack definitions and provenance marks.
     def_dicts, def_engines, def_policies = set(), set(), set()
-    marks: List[Tuple[str, str]] = []
     pack_ids: List[str] = []
     for p in packs:
         pack_ids.append(p["id"])
-        marks.append(_pack_marks(p["id"]))
         d, e, pol = _defs(p)
         def_dicts |= {x["name"] for x in d if x.get("name")}
         def_engines |= {x["name"] for x in e if x.get("name")}
@@ -198,12 +195,13 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     def_policies |= LEGACY_NAMES["policy"]
 
     def any_match(desc: Any, name: str, def_names: set) -> Optional[str]:
-        d = str(desc or "")
-        if everything and any(mk in d for mk in _ANY_MARKS):
+        # "Everything" still means the packs in the library: an assessor's
+        # tag is matched by its pack id, so a customer's own "[x pack y]"
+        # text never qualifies an object for removal.
+        if everything and pd.has_mark(desc):
             return "tag"
-        for m in marks:
-            if any(mk in d for mk in m):
-                return "tag"
+        if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
+            return "tag"
         return "name" if name in def_names else None
 
     # ---- rules across every channel ----------------------------------------
@@ -534,13 +532,8 @@ def _all_need() -> Dict[str, Any]:
 
 
 def _tag_pack(desc: Any) -> Optional[str]:
-    """The pack id inside a DLP-Check provenance tag, or None."""
-    d = str(desc or "")
-    for mk in _ANY_MARKS:
-        if mk in d:
-            rest = d.split(mk, 1)[1].strip()
-            return rest.split("]", 1)[0].split(" v")[0].strip() or None
-    return None
+    """The pack id inside a provenance tag (any assessor), or None."""
+    return pd.tag_pack(desc)
 
 
 def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:

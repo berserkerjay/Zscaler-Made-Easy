@@ -64,7 +64,6 @@ ONE_CHANNEL_NOTE = ("Install one channel at a time. Deploy Web DLP first, check 
 
 _TERM_RE = re.compile(r"D(\d+)\.S")
 _CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
-_MARK_RE = re.compile(r"\s*\[DLP-Check (?:baseline|pack) [^\]]*\].*$", re.S)
 
 # Fields a rule carries that say nothing about what it does.
 _HOUSEKEEPING = {"id", "name", "order", "rank", "state", "action", "description", "dlp_engines", "access_control", "last_modified_by",
@@ -123,8 +122,10 @@ def _plain(obj: Any) -> Dict[str, Any]:
 
 
 def _strip_mark(text: Any) -> str:
-    """A description without the provenance tag a DLP-Check deploy added."""
-    return _MARK_RE.sub("", str(text or "")).strip()
+    """A description without the provenance tag a deploy added (whatever
+    assessor it names, or the old "[DLP-Check ...]" form)."""
+    import pack_deploy
+    return pack_deploy.strip_mark(text)
 
 
 def _names(items: Any) -> Tuple[List[str], List[str]]:

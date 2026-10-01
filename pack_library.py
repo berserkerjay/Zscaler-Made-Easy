@@ -333,7 +333,8 @@ RULE_CHANNEL_BY_RESOURCE = {
     "zia_ssl_inspection_rules": pc.SSL,
 }
 _SKIP_RULE_ATTRS = {"order", "rank", "lifecycle", "depends_on", "provider", "_labels", "timeouts"}
-_PROVENANCE_RE = re.compile(r"\s*\[DLP-Check (?:baseline|pack) [^\]]*\] Terraform-managed\.?\s*$")
+# "[<assessor> pack <id> v1] Terraform-managed." ("[DLP-Check ...]" when no assessor was named).
+_PROVENANCE_RE = re.compile(r"\s*\[[^\[\]\r\n]{1,60}? (?:baseline|pack) [^\]]*\] Terraform-managed\.?\s*$")
 _ID_REF_RE = re.compile(r"D\$\{([^}]+)\}\.S")
 _NUMERIC_REF_RE = re.compile(r"\bD(\d+)\.S\b")
 
