@@ -2319,9 +2319,64 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
+class PackExportRequest(TenantCredsRequest):
+    """Body of Export from tenant as a pack: which rules (rule ids per
+    channel, or "all"; empty means every DLP rule on every channel) and
+    the name the pack gets."""
+    customer_id: str = ""
+    rules: Dict[str, Any] = {}
+    pack_name: str = ""
+
+
+def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, selection, log, cancel) -> Dict[str, Any]:
+    """Read the tenant and build the pack (pack_export), zipped. The zip
+    travels as the result's `artifact`; the JSON result says what is in it
+    and what could not be exported."""
+    import pack_export
+    c = tenant_auth.normalize(creds)
+    # The pack names the tenant, never the admin who signed in (the classic API's label is its username).
+    label = f"{c['vanity_domain']} ({c['cloud'] or 'production'})" if c["vanity_domain"] else f"a {c['cloud'] or 'production'} tenant (classic API)"
+    log(f"Exporting from {label}: the rules, the engines they use and the dictionaries those engines use. Nothing is written to the tenant.")
+    res = pack_export.export_pack(client, selection=selection, name=req.pack_name[:120], tenant_label=label, log=log, cancel=cancel)
+    if res["status"] != "ready":
+        return dict(res, tenant_label=label)
+    pack = res["pack"]
+    name, data = pack_export.zip_pack(pack)
+    log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
+    v = res["validation"]
+    return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "pack_name": pack["meta"]["name"],
+            "counts": pack["meta"]["counts"], "not_exported": pack["meta"]["not_exported"], "warnings": pack["warnings"],
+            "validation": {"ok": v["ok"], "problems": v["problems"], "warnings": v["warnings"]},
+            "artifact": (name, "application/zip", data)}
+
+
+@app.post("/api/dlp-packs/export/start")
+async def dlp_packs_export_start(req: PackExportRequest, request: Request):
+    """Export from tenant as a pack, as a background job: the tenant's DLP
+    rules (all of them, or the ones picked per channel) with every engine
+    they use and every dictionary those engines use, in the layout Deploy
+    Policy Packs and the pack library read. Read-only, so it needs neither
+    write mode nor the writer check. Poll GET /api/dlp-packs/jobs/{job_id}
+    for the log; the finished job's `download` path serves the zip."""
+    import pack_export
+    import pack_jobs
+    try:
+        selection = pack_export.normalize_selection(req.rules or None)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
+                          label=req.pack_name[:60] or tenant_auth.label(creds), actor=_actor(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
 @app.get("/api/dlp-packs/jobs/{job_id}/download")
 async def dlp_pack_job_download(job_id: str):
-    """The file a finished job produced (a Terraform workspace zip)."""
+    """The file a finished job produced (a Terraform workspace zip, or an
+    exported pack)."""
     import pack_jobs
     job = pack_jobs.get(job_id)
     if job is None:
@@ -2592,7 +2647,7 @@ async def pack_library_preview(req: PackLibraryUploadRequest):
     except ValueError as e:
         return {"ok": False, "problems": [str(e)], "warnings": [], "counts": {}, "channels": []}
     v = pl.validate_pack(pack)
-    slug = pl.slugify(req.pack_id or pack["meta"].get("name") or "")
+    slug = pl.pack_slug(req.pack_id or pack["meta"].get("name") or "")
     if slug and pl._pack_id_taken(slug, PACKS_ROOT):
         v["ok"] = False
         v["problems"].append(f"a pack with id '{slug}' already exists; choose another id or remove that pack first")

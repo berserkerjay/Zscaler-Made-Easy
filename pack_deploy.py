@@ -726,6 +726,14 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
                 item["reason"] = ("Exists in the tenant but references dictionaries the policy pack is about to create. Kept as-is; "
                                   "point it at the new dictionaries in the portal once they exist, or re-run in converge mode.")
                 item["warnings"].append("customized in tenant")
+            elif ten_expr and deps_changing:
+                # The tenant's engine cannot use a dictionary that is not in
+                # the tenant yet, so its expression certainly differs.
+                item["status"] = REUSE_DIFFERS
+                item["reason"] = ("Already in the tenant, but its expression cannot match the pack's (it does not use "
+                                  + ", ".join(deps_changing) + ", which this deploy creates). The tenant's engine is kept and used by "
+                                  "the rules below; the pack's expression is NOT applied.")
+                item["warnings"].append("tenant version differs from pack")
             else:
                 item["status"] = REUSE
                 item["reason"] = "Already in the tenant; existing engine will be used (expression not compared)."
@@ -2116,7 +2124,20 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             policy_ids.setdefault(r["name"], r.get("id"))
     for r in tenant["rules"]:
         policy_ids.setdefault(r["name"], r.get("id"))
-    for item in sorted(merged["policy"].values(), key=lambda i: 1 if i["definition"].get("parent_rule") else 0):
+    # Web, Endpoint and Email DLP insert a new rule at order 1 and move the
+    # others down, so rules created in pack order would end up reversed.
+    # Create those top-level rules last-first so the first pack rule ends up
+    # on top; SaaS rules take the next free order and keep pack order, and
+    # sub-rules still come after their parents. The results are put back in
+    # pack order below so the report reads the same way as the plan.
+    in_pack_order = sorted(merged["policy"].values(), key=lambda i: 1 if i["definition"].get("parent_rule") else 0)
+    top_level = [i for i in in_pack_order if not i["definition"].get("parent_rule")]
+    inserted_on_top = [i for i in top_level if (i.get("channel") or pc.channel_of(i["definition"])) != pc.SAAS]
+    on_top_ids = {id(i) for i in inserted_on_top}
+    creation_order = (list(reversed(inserted_on_top)) + [i for i in top_level if id(i) not in on_top_ids]
+                      + [i for i in in_pack_order if i["definition"].get("parent_rule")])
+    first_policy_result = len(results)
+    for item in creation_order:
         if item["status"] in (REUSE, REUSE_DIFFERS):
             record(item, "reused", id=(item.get("tenant") or {}).get("id"))
             continue
@@ -2185,6 +2206,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 record(item, "failed", outcome=out, channel=channel, error=out.as_error() or "the API returned no id")
         except Exception as ex:  # noqa: BLE001
             record(item, "failed", error=str(ex)[:200], channel=channel)
+    pack_position = {i["name"]: n for n, i in enumerate(in_pack_order)}
+    results[first_policy_result:] = sorted(results[first_policy_result:], key=lambda r: pack_position.get(r["name"], len(pack_position)))
 
     if apply_tweaks:
         _log("Phase 4: confidence tweaks")
