@@ -119,8 +119,8 @@ def test_read_page_uses_the_article_and_falls_back_to_the_page():
     get = lambda u, verify_tls=None: (b"<html>oops</html>", 200, "") if alias(u) else (SHELL, 200, "")
     content, q, code, err = zu.read_page(url, get)
     assert q["basis"] == "page" and not q["ok"] and "no readable content" in q["reason"]
-    # fetch-data failing and the page 404: no verdict, the status is passed on.
-    get = lambda u, verify_tls=None: (None, 0, "connection error") if alias(u) else (b"gone", 404, "")
+    # fetch-data answering an HTTP error and the page 404: no verdict, the status is passed on.
+    get = lambda u, verify_tls=None: (None, 500, "") if alias(u) else (b"gone", 404, "")
     assert zu.read_page(url, get) == (b"gone", None, 404, "")
     # Another host never asks the help center.
     asked = []
@@ -208,7 +208,7 @@ def api_fetch(gone=(), changed_key=None, maintenance=()):
 
 
 def shell_fetch(url):
-    return (None, "not in this fake") if alias(url) else (SHELL.decode(), "")
+    return (None, "HTTP 404") if alias(url) else (SHELL.decode(), "")
 
 
 def test_beacon_reads_each_page_through_the_article():
@@ -271,3 +271,56 @@ def test_crawler_titles_come_from_the_article(monkeypatch):
     assert by[other]["title"] == "Blog post title" and by[other]["titled"]
     # Help-center pages are read through fetch-data only; their shell is never fetched.
     assert new not in get.calls and moved not in get.calls and n == len(get.calls) == 3
+
+
+# ── Review fixes (PR #40) ─────────────────────────────────────────────
+
+def test_a_network_error_on_the_article_is_not_retried_on_the_page():
+    """A timeout (status 0) on fetch-data is reported as is; the page, on
+    the same host, is not fetched too (that only doubled the wait)."""
+    calls = []
+
+    def down(url, verify_tls=None):
+        calls.append(url)
+        return None, 0, "read timeout to help.zscaler.com (8s)"
+    assert zu.read_page(SRC["url"], down) == (None, None, 0, "read timeout to help.zscaler.com (8s)")
+    assert len(calls) == 1 and alias(calls[0]) == "/zia/about-dlp-engines"
+    # Beacon: a fetcher's network error stops there; an HTTP error still falls back to the page.
+    asked = []
+    e = beacon._page_entry(SRC, lambda u: asked.append(u) or (None, "connection error: getaddrinfo failed"))
+    assert len(asked) == 1 and e["hash"] is None and "getaddrinfo" in e["reason"]
+    asked.clear()
+    e = beacon._page_entry(SRC, lambda u: asked.append(u) or ((None, "HTTP 502") if alias(u) else (SHELL.decode(), "")))
+    assert len(asked) == 2 and e["basis"] == "page" and not e["ok"]
+
+
+def _snap(i, *entries):
+    return {"id": str(i), "online": True, "api": {"pages": list(entries)}}
+
+
+def _entry(answer):
+    return beacon._page_entry(SRC, lambda u: (answer.decode(), "") if alias(u) else (SHELL.decode(), ""))
+
+
+def _doc_changes(cur, history):
+    return [(c["kind"], c.get("key")) for c in beacon.diff(cur, history)["changes"] if c["kind"].startswith("doc_")]
+
+
+def test_a_page_back_from_maintenance_unchanged_is_not_a_change():
+    ok, locked = _entry(article()), _entry(article(status=403))
+    assert _doc_changes(_snap(2, locked), [_snap(1, ok)]) == [("doc_gone", "dlp_engines_bp")]
+    assert _doc_changes(_snap(3, _entry(article())), [_snap(1, ok), _snap(2, locked)]) == [],         "readable again with the same text: compared with the last readable read, not the maintenance notice"
+    assert _doc_changes(_snap(3, _entry(article(content=BODY + "<p>New.</p>"))), [_snap(1, ok), _snap(2, locked)]) ==         [("doc_changed", "dlp_engines_bp")]
+    # Still in maintenance: said once, not on every run.
+    assert _doc_changes(_snap(3, _entry(article(status=403))), [_snap(1, ok), _snap(2, locked)]) == []
+
+
+def test_one_failed_read_does_not_hide_the_next_change():
+    ok = _entry(article())
+    shell = beacon._page_entry(SRC, lambda u: (None, "HTTP 500") if alias(u) else (SHELL.decode(), ""))
+    unread = beacon._page_entry(SRC, lambda u: (None, "read timeout"))
+    assert shell["basis"] == "page" and unread["hash"] is None
+    new = _entry(article(content=BODY + "<p>New.</p>"))
+    for between in (shell, unread):
+        assert _doc_changes(_snap(2, between), [_snap(1, ok)]) == []
+        assert _doc_changes(_snap(3, new), [_snap(1, ok), _snap(2, between)]) == [("doc_changed", "dlp_engines_bp")]

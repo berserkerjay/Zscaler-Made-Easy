@@ -80,7 +80,7 @@ def fake_fetch(changed_key=None):
     def fetch(url):
         src = next((s for s in HTML_SOURCES if s["url"] == url), None)
         if not src:
-            return None, "not in this fake"
+            return None, "HTTP 404"  # e.g. help.zscaler.com's fetch-data: this fake site has none
         return PAGE_TEXT.format(t=src["name"], extra="A new section." if src["key"] == changed_key else ""), ""
     return fetch
 

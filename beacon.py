@@ -157,7 +157,12 @@ def _page_entry(source: Dict[str, Any], fetch: Fetch) -> Dict[str, Any]:
 
     def get(url: str):
         text, err = fetch(url)
-        return (text.encode("utf-8", "ignore"), 200, "") if text else (None, 0, err or "no answer")
+        if text:
+            return text.encode("utf-8", "ignore"), 200, ""
+        # Keep an HTTP status the fetcher reports ("HTTP 404"): the site
+        # answered. Status 0 is a network error (read_page then stops).
+        m = re.match(r"HTTP (\d{3})\b", err or "")
+        return None, int(m.group(1)) if m else (0 if err else 200), err or "no answer"
     content, q, _code, err = zu.read_page(source["url"], get)
     if q is None:
         e["reason"] = err or "no answer"
@@ -442,20 +447,33 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
                 add(watcher, "drift_new", f"New drift: {after[k]['text']}")
             for k in sorted(before.keys() - after.keys()):
                 add(watcher, "drift_cleared", f"Cleared: {before[k]['text']}")
-        # Help-center pages
-        prev_pages = {p["key"]: p for p in (up.get("api") or {}).get("pages") or []}
+        # Help-center pages. A page is only compared with earlier reads
+        # taken the same way at the same address (the first run that reads
+        # help.zscaler.com's article instead of its empty shell is a new
+        # baseline, not a change on every page), and that were read at all:
+        # a run where the page could not be fetched, or was read another way
+        # once (the article answer failed and the shell was read), is
+        # skipped, not a baseline that hides the next change.
+        earlier = [s for s in reversed(history)
+                   if bool(s.get("online")) == bool(cur.get("online")) and s.get("id") != cur.get("id")]
         for p in (cur.get("api") or {}).get("pages") or []:
-            q = prev_pages.get(p["key"])
-            # A page read another way, or at another address, is a new
-            # baseline (the first run that reads help.zscaler.com's article
-            # instead of its empty shell is not a change on every page).
-            if not q or q.get("basis", "page") != p.get("basis", "page") or q.get("url") != p.get("url"):
+            if not p.get("hash"):
                 continue
+            same = [e for s in earlier for e in (s.get("api") or {}).get("pages") or []
+                    if e.get("key") == p["key"] and e.get("hash") and e.get("basis", "page") == p.get("basis", "page")
+                    and e.get("url") == p.get("url")]
+            if not same:
+                continue
+            q = same[0]
             # Gone first: a page that went away also hashes differently.
-            if q.get("ok") and p.get("hash") and not p.get("ok"):
+            if q.get("ok") and not p.get("ok"):
                 add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
-            elif p.get("hash") and q.get("hash") and p["hash"] != q["hash"]:
-                add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
+            elif p.get("ok"):
+                # Changed against the last time it was readable: a page back
+                # from maintenance (or a 404) with the same text is not a change.
+                last_ok = next((e for e in same if e.get("ok")), None)
+                if last_ok and last_ok["hash"] != p["hash"]:
+                    add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
 
     tb = None
     ct = cur.get("tenant")

@@ -481,10 +481,16 @@ def read_page(url: str, get: Callable[[str], Tuple[Optional[bytes], int, str]]) 
     help.zscaler.com article through its fetch-data answer, anything else
     (or an article whose answer is unusable) as the page itself. The
     verdict is None when nothing usable answered; then content is the
-    error body (if any) and status the HTTP status."""
+    error body (if any) and status the HTTP status.
+
+    The page is only tried when the help center answered: after a network
+    error (timeout, proxy, TLS; status 0) the page, on the same host,
+    would fail the same way and only double the wait."""
     api = help_api_url(url)
     if api:
         body, code, err = get(api)
+        if err and not code:
+            return None, None, 0, err
         art = help_article(body) if not err and code == 200 and body else None
         if art:
             return art[0], art[1], 200, ""
