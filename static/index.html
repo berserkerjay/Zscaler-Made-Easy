@@ -2581,6 +2581,7 @@ async function runAssessment() {
 
   const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
   assessAbort = ctl;
+  let watchdog = null;
   try {
     const resp = await fetch('/api/assess', {
       method: 'POST',
@@ -2609,7 +2610,7 @@ async function runAssessment() {
     // a keepalive). If nothing arrives for 45 s, say so instead of sitting
     // on a frozen bar; after 3 minutes of silence give up and show what we have.
     let lastByte = Date.now();
-    const watchdog = setInterval(() => {
+    watchdog = setInterval(() => {
       const quiet = Math.round((Date.now() - lastByte) / 1000);
       if (quiet >= 180) { clearInterval(watchdog); reader.cancel().catch(() => {}); return; }
       if (quiet >= 45) document.getElementById('progressDetail').textContent = `No answer from the server for ${quiet}s — still waiting (the tenant may be slow to answer a listing).`;
@@ -2634,7 +2635,23 @@ async function runAssessment() {
       buildPartialReport();
     }
   } catch(e) {
+    if (watchdog) clearInterval(watchdog);
     const stopped = !!(ctl && ctl.signal.aborted);
+    if (reportData) {
+      // Every check was in and the server's report is on screen: Stop (or a
+      // lost connection) only ended the journey measurement. The report stays.
+      if (reportData.journey && reportData.journey.status === 'pending') {
+        reportData.journey = { status: 'error', error: stopped ? 'the measurement was stopped before it finished' : 'the connection was lost before it finished' };
+        if (typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(reportData.journey); } catch (e2) {} }
+        try { refreshBenchmarkJourney(reportData.journey); } catch (e2) {}
+      }
+      setStatus(stopped ? 'Stopped. Every check had finished; only the data governance journey measurement was stopped.'
+                        : 'Connection lost while measuring the journey: ' + e.message + '. The assessment results are complete.', stopped ? 'success' : 'error');
+      btn.disabled = false;
+      btn.textContent = 'Run assessment';
+      prog.classList.remove('active');
+      return;
+    }
     setStatus(stopped ? 'Stopped. The checks still queued were cancelled; showing the checks that finished.'
                       : 'Connection lost: ' + e.message + '. Showing partial results.', 'error');
     btn.disabled = false;
@@ -4155,6 +4172,7 @@ function stopAssessment() {
 
 function resetForm() {
   stopAssessment();   // a new assessment never leaves the previous one reading the tenant
+  partialResults = [];   // nor redraws the previous run's checks once its stream ends
   document.getElementById('results').style.display = 'none';
   reportData = null;
   forgetResults();

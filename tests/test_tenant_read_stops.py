@@ -605,6 +605,63 @@ def test_stop_aborts_the_running_assessment():
     assert "stopAssessment();" in _fn(html, "function resetForm()", "}\n")
 
 
+def test_stop_during_the_journey_keeps_the_servers_complete_report(tmp_path):
+    # Every check is in and the complete report is shown; the stream stays
+    # open for the journey. Stop then ends only the journey measurement:
+    # no browser-built PARTIAL report, no "queued checks were cancelled",
+    # and the run's watchdog timer is cleared.
+    html = _read("static/index.html")
+    code = (_fn(html, "async function runAssessment()", "function buildPartialReport()")
+            + _fn(html, "// The server's reason for refusing a run", "function resetForm()"))
+    harness = """
+const vm = require('vm');
+const els = {};
+const el = id => els[id] || (els[id] = {id, value: 'x', textContent: '', disabled: false, style: {}, className: '',
+  classList: {add(){}, remove(){}}});
+const status = [], calls = [], cards = [];
+const timers = new Set();
+const ctx = {
+  document: {getElementById: el}, window: {__dbRunStarted(){}, __dbRunRefused(){}},
+  profileHasSecret: () => false, popMissingCredsAlert(){}, getSelectedScopes: () => ['dlp'],
+  setStatus: (m, t) => status.push([m, t]), setStep(){}, migrateCredBody: () => ({}), alert(){}, confirm: () => true,
+  AbortController, console, TextDecoder,
+  setInterval: (f, ms) => { const t = setInterval(f, ms); timers.add(t); return t; },
+  clearInterval: t => { timers.delete(t); clearInterval(t); },
+  _gdJourneyCard: j => cards.push(j), refreshBenchmarkJourney(){},
+  buildPartialReport(){ calls.push('buildPartialReport'); },
+  handleEvent(evt){ if (evt.score !== undefined) { ctx.reportData = evt; calls.push('complete-report'); } else if (evt.id) ctx.partialResults.push(evt); },
+};
+ctx.fetch = async (url, opts) => {
+  let n = 0;
+  const chunk = 'data: ' + JSON.stringify({id: '1.1', label: 'x', status: 'PASS'}) + '\\n\\n'
+              + 'data: ' + JSON.stringify({score: 80, journey: {status: 'pending'}}) + '\\n\\n';
+  return {ok: true, body: {getReader: () => ({
+    read: () => n++ === 0 ? Promise.resolve({done: false, value: new TextEncoder().encode(chunk)})
+      : new Promise((res, rej) => opts.signal.addEventListener('abort', () => rej(new Error('The operation was aborted.')))),
+    cancel: async () => {},
+  })}};
+};
+vm.createContext(ctx);
+vm.runInContext(CODE + '\\nthis.__run = runAssessment; this.__stop = stopAssessment;', ctx);
+const run = ctx.__run();
+setTimeout(() => { calls.push('Stop clicked'); ctx.__stop(); }, 50);
+run.then(() => { process.stdout.write(JSON.stringify({status, calls, cards, score: ctx.reportData.score, timers: timers.size})); process.exit(0); });
+""".replace("CODE", json.dumps(code))
+    f = tmp_path / "h.js"
+    f.write_text(harness, encoding="utf-8")
+    out = json.loads(subprocess.run(["node", str(f)], capture_output=True, text=True, check=True, timeout=30).stdout)
+    assert out["calls"] == ["complete-report", "Stop clicked"], out["calls"]
+    assert out["score"] == 80
+    assert "Every check had finished" in out["status"][-1][0] and "queued" not in out["status"][-1][0], out["status"]
+    assert out["cards"] and out["cards"][-1]["status"] == "error", out["cards"]
+    assert out["timers"] == 0, "the watchdog keeps ticking after Stop"
+
+
+def test_a_new_assessment_never_redraws_the_previous_runs_checks():
+    html = _read("static/index.html")
+    assert "partialResults = [];" in _fn(html, "function resetForm()", "}\n")
+
+
 def test_a_path_analyzer_link_never_runs_by_itself():
     page = _read("static/report_path.html")
     assert "tenantChoices().then(run)" not in page and "q.get('run')" not in page
