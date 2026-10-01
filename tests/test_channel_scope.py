@@ -60,9 +60,11 @@ def test_alternative_and_gap_channels_take_checks_out_of_scope_and_the_order_is_
     assert [m["id"] for m in merged] == ["A.1", "B.1", "5.1", "5.10", "B.2", "E.1"], "the findings keep their section order"
     # Nothing declared (an MCP / CLI caller): everything runs. Only zscaler: everything runs.
     assert cs.partition(checks, {})[1] == [] and cs.partition(checks, "nonsense")[1] == []
-    assert cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "genai_security": "zscaler"})[1] == []
-    # A gap is not read either.
-    assert [r["id"] for r in cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "gap"})[1]] == ["B.1", "5.1", "B.2"]
+    # E.1 also reads the Cloud App Control rules: that channel must be ticked too.
+    assert [r["id"] for r in cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "genai_security": "zscaler"})[1]] == ["E.1"]
+    assert cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "genai_security": "zscaler", "cloud_app_control": "zscaler"})[1] == []
+    # A gap is not read either, nor a channel the declaration leaves out (GenAI here).
+    assert [r["id"] for r in cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "gap"})[1]] == ["B.1", "5.1", "B.2", "E.1"]
 
 
 def test_a_check_shared_with_a_zscaler_channel_still_runs():
@@ -87,10 +89,13 @@ def test_coverage_says_what_was_declared_and_what_it_did():
     assert cov["declared"] and cov["not_in_scope"] == 2
     gap_cov = cs.coverage(channels, skipped + [{"channel": "email_dlp"}])
     assert gap_cov["not_in_scope"] == 3 and gap_cov["gaps"][0]["checks_not_in_scope"] == 1
-    assert "(Endpoint DLP (Purview); 2 checks not in scope); 1 gap (Email DLP; 1 checks not in scope, not read)." in gap_cov["note"]
-    assert [c["name"] for c in cov["zscaler"]] == ["Inline Web DLP"] and [c["name"] for c in cov["gaps"]] == ["Email DLP"]
+    # Every channel the declaration leaves out is a gap too, after the declared ones.
+    assert "(Endpoint DLP (Purview); 2 checks not in scope); 9 gaps (Email DLP, SaaS Security (CASB), " in gap_cov["note"]
+    assert gap_cov["note"].endswith("Workflow Automation; 1 checks not in scope, not read).")
+    assert [c["name"] for c in cov["zscaler"]] == ["Inline Web DLP"] and [c["id"] for c in cov["gaps"]] == ["email_dlp"] + [
+        c for c in cs.CHANNELS if c not in ("web_dlp", "endpoint_dlp", "email_dlp")]
     assert cov["alternative"][0] == {"id": "endpoint_dlp", "name": "Endpoint DLP", "note": "Purview", "checks_not_in_scope": 2}
-    assert "1 on Zscaler (Inline Web DLP); 1 covered by an alternative solution (Endpoint DLP (Purview); 2 checks not in scope); 1 gap (Email DLP)." in cov["note"]
+    assert "1 on Zscaler (Inline Web DLP); 1 covered by an alternative solution (Endpoint DLP (Purview); 2 checks not in scope); 9 gaps (Email DLP, " in cov["note"]
     assert cs.coverage({})["declared"] is False and "every check" in cs.coverage({})["note"]
     # normalize: unknown choices are gaps, custom ids keep their name, strings are choices.
     n = cs.normalize({"web_dlp": "weird", "custom_1": {"choice": "alternative", "name": "Print DLP"}, "": "zscaler", 5: 7})

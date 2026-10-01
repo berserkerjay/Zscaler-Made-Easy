@@ -46,14 +46,15 @@ def test_the_pages_say_what_the_percentage_is():
 def test_digest_says_when_the_loop_runs_and_what_it_covers():
     c = _client()
     d = c.get("/report/digest").text
-    assert "Digest</span> — the six-hour loop" in d and "While this app's server is running" in d
+    assert "Digest</span> — the evaluation loop" in d and "When you click Run the loop now" in d
+    assert "off by default, so starting the server reads no tenant" in d
     assert "does not run the assessment checks or re-score the tenant" in d and "stops when the server stops" in d
     assert "No tenant was evaluated: no tenant profile remembers its secret" in d and "tile('Tenants evaluated'" in d
     assert "always-on" not in d
     html = c.get("/").text
     assert "always-on loop" not in html and "It does not re-run the assessment." in html
     ex = c.get("/static/explain.js").text
-    assert "Digest — the six-hour loop" in ex and "does not re-run the assessment checks" in ex and "always-on" not in ex
+    assert "Digest — the evaluation loop" in ex and "off by default" in ex and "does not re-run the assessment checks" in ex and "always-on" not in ex
     assert "always-on" not in open("GETTING_STARTED.md", encoding="utf-8").read().split("## 4i.")[1].split("\n")[0]
     # A manual run keeps the same bookkeeping as the scheduled one.
     src = open("dlp_api_server.py", encoding="utf-8").read()

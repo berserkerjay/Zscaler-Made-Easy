@@ -402,11 +402,19 @@ def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict
 # Tenant snapshot
 # ---------------------------------------------------------------------------
 
-def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None) -> Dict[str, Any]:
+class _NotInScope(Exception):
+    """A read left out because its channel is not in scope."""
+
+
+def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None,
+                 only_channels: bool = False) -> Dict[str, Any]:
     """Read everything the plan needs from the tenant: dictionaries,
     engines and web DLP rules always; other channels' rules and their
     prerequisites (SaaS tenants, notification templates, labels) only
     when `need` (see pack_channels.needs) says the packs use them.
+    `only_channels` (the assessment's journey, limited to the channels in
+    scope) reads the Web DLP rules only when `need` names the web channel:
+    an unticked channel is never read.
     Never raises: each failure is recorded and `reachable` reflects it.
     `log` gets one line per read (a full read is many API calls and can
     take a minute; it must never look like a hang)."""
@@ -462,8 +470,13 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
         snap["unreadable"]["engines"] = str(e)[:200]
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
-    _log("Reading the tenant: Web DLP rules…")
+    skip_web = bool(only_channels and need is not None and pc.WEB not in (need.get("channels") or ()))
+    if skip_web:
+        _log("Web DLP is not in scope: its rules are not read.")
     try:
+        if skip_web:
+            raise _NotInScope()
+        _log("Reading the tenant: Web DLP rules…")
         rules, err = _nx(zia.dlp_web_rules.list_rules())
         if err:
             raise RuntimeError(str(err))
@@ -483,6 +496,8 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
                 "description": _field(r, "description"),
             })
         snap["rules"].sort(key=lambda r: r["order"])
+    except _NotInScope:
+        snap["not_read"] = ["web DLP rules"]
     except Exception as e:  # noqa: BLE001
         snap["unreadable"]["web DLP rules"] = str(e)[:200]
         snap["errors"].append(f"web DLP rules: {str(e)[:200]}")
@@ -1416,7 +1431,8 @@ def preflight(
     if tenant_cache is not None:
         import copy
         if tenant_cache.get("snapshot") is None:
-            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need, log=log)
+            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need, log=log,
+                                                    only_channels=bool(tenant_cache.get("only_channels")))
         tenant = copy.deepcopy(tenant_cache["snapshot"])
     else:
         tenant = fetch_tenant(client, need, log=log)

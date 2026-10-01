@@ -22,7 +22,7 @@
     what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
     why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does nothing else: it reads nothing from the tenant, because every read counts against the tenant\'s ZIA API rate limit. The tenant is read only when you run an assessment, and only for what you put in scope.',
     when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
-    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection, missing role).',
+    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Signing in reads nothing, so a role that cannot read DLP shows up only when the assessment runs, as checks the client was not permitted to run.',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {
@@ -90,8 +90,8 @@
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
   X.digest = {
-    group: 'Find the gaps', name: 'Digest — the six-hour loop', href: '/report/digest',
-    what: 'While this app\'s server is running, every six hours it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
+    group: 'Find the gaps', name: 'Digest — the evaluation loop', href: '/report/digest',
+    what: 'When you click Run the loop now (or every N hours, only if you opt in with DLP_CHECK_CONTINUOUS_EVAL_HOURS; off by default, so starting the server reads no tenant), it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
     why: 'While the server is up, nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence. For a schedule that outlives the server, use Task Scheduler or cron (the Digest tab says how).',
     when: 'Read it when it arrives; open the tab to run the loop now, to see which sources are stale, or to check what is notified where.',
     get: 'The latest digest with counts, the full text, the watched sources with their state, the SaaS capability matrix, the schedule and the notification settings.',

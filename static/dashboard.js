@@ -138,7 +138,7 @@
     if (!signedIn()) {
       note('Sign in first: click Authenticate in Connect to the tenant, then click Run assessment again. Signing in reads nothing from the tenant.', 'warn');
       say('Sign in first. Click Authenticate, then click Run assessment again.');
-      goConnect();
+      goConnect('authBtn');   // focus lands on the button just named, never on <body>
       return;
     }
     startRun();
@@ -187,6 +187,12 @@
   // run always behaves the same way.
   window.__dbRunFromSidebar = runFromSidebar;
   window.__dbNote = note;
+  // A successful Authenticate replaces a "Sign in first" warning (guide.js
+  // _gdAuthVerdict calls this); it never starts a run.
+  window.__dbSignedIn = function () {
+    const n = $('dbRunNote');
+    if (n && !n.hidden) note('Signed in. Click Run assessment to assess what is in scope.');
+  };
 
   // ── Scope: one combined page for everything that decides what the
   // assessment covers — which Zscaler data-security channels the

@@ -16,8 +16,13 @@ Endpoint DLP, Email DLP, ...) and the operator marks each one:
   report lists the channel as a gap.
 
 A check that belongs to several channels runs when any of them is on
-Zscaler. With no declaration at all (an MCP or CLI caller that sends no
-`channels`) nothing is narrowed: every check in the selected scopes runs.
+Zscaler. A check that *reads* a channel's own configuration (its rules,
+`CHANNEL_READS`) runs only when that channel is on Zscaler, whatever
+section it sits in: an unticked channel is never read. Once any channel
+is declared, a channel left out of the declaration (or sent with a value
+that cannot be read) counts as a gap. With no declaration at all (an MCP
+or CLI caller that sends no `channels`) nothing is narrowed: every check
+in the selected scopes runs.
 
 The declaration travels with the assessment request (`channels`), is
 saved on the tenant profile, and comes back in the report as
@@ -56,7 +61,7 @@ PACK_CHANNELS: Dict[str, str] = {"web_dlp": "web", "endpoint_dlp": "endpoint", "
 # Discovery) is recorded in the report but changes nothing that runs.
 CHANNEL_CHECKS: Dict[str, Dict[str, Sequence[str]]] = {
     "web_dlp": {"sections": ("Ch.A — Inline Web",), "ids": ("MC.1", "8.5")},
-    "endpoint_dlp": {"sections": ("Ch.B — Endpoint",), "ids": ("5.1", "MC.2", "MC.8", "8.1", "8.2", "8.3")},
+    "endpoint_dlp": {"sections": ("Ch.B — Endpoint",), "ids": ("3.2", "5.1", "5.4", "9.1", "10.1", "MC.2", "MC.8", "8.1", "8.2", "8.3")},
     "email_dlp": {"sections": ("Ch.D — Email DLP",), "ids": ("MC.4", "MC.9", "8.9")},
     "saas_casb": {"sections": ("Ch.C — SaaS Security",), "ids": ("MC.3", "MC.10", "8.10")},
     "genai_security": {"sections": ("Ch.E — GenAI", "GenAI —"), "ids": ("MC.7", "8.8")},
@@ -67,6 +72,62 @@ CHANNEL_CHECKS: Dict[str, Dict[str, Sequence[str]]] = {
     "device_control": {"sections": (), "ids": ("8.1",)},
     "workflow_automation": {"sections": (), "ids": ("12.4", "12.5", "12.7")},
 }
+
+
+# The tenant endpoints that hold a channel's own configuration, and the
+# channels each belongs to (any of them on Zscaler lets it be read: the
+# SaaS tenant list serves both SaaS Security and Email DLP; the Endpoint
+# DLP rules hold Device Control too; the DLP global
+# options serve the three DLP channels). Shared objects (dictionaries,
+# engines, URL categories, ...) are not a channel's and stay readable.
+ENDPOINT_CHANNELS: Dict[str, Tuple[str, ...]] = {
+    "/zia/webDlpRules": ("web_dlp",),
+    "/zia/webDlpGlobalOptions": ("web_dlp", "endpoint_dlp", "email_dlp"),
+    "/zia/endPointDlpRules": ("endpoint_dlp", "device_control"),
+    "/zia/emailDlpRules": ("email_dlp",),
+    "/zia/casbDlpRules": ("saas_casb",),
+    "/zia/casbTenant": ("saas_casb", "email_dlp"),
+    "/zia/sslInspectionRules": ("ssl_inspection",),
+    "/zia/cloudApplicationRules": ("cloud_app_control",),
+    "/zia/tenancyRestrictionProfile": ("cloud_app_control",),
+}
+
+# Which checks read each of those endpoints. tests/test_channel_scope.py
+# runs every check against a recording client and fails when a check
+# reads one of them without being listed here, so this cannot drift.
+CHANNEL_READS: Dict[str, Sequence[str]] = {
+    "/zia/webDlpRules": ("4.8", "5.3", "5.7", "5.9", "5.13", "5.16", "5.17", "5.19", "5.20", "MC.1", "MC.12", "8.5", "8.6",
+                         "8.8", "8.12", "12.1", "12.3", "12.6", "12.12", "12.15", "A.1", "A.3", "A.4", "A.5", "A.8", "A.9",
+                         "A.10", "A.14", "B.10", "E.4", "E.5", "E.6", "E.7", "AI.1", "AI.7", "AI.8", "AI.9", "AI.10", "AI.17",
+                         "AI.18", "AUTO-TF-01", "AUTO-TF-02", "AUTO-TF-03", "AUTO-TF-04", "AUTO-TF-05"),
+    "/zia/webDlpGlobalOptions": ("5.17", "5.19", "5.20", "8.12", "A.9", "B.10", "D.9"),
+    "/zia/endPointDlpRules": ("MC.2", "8.1", "8.2", "8.3", "8.4", "8.6", "12.1", "12.3", "12.12", "A.14", "B.5", "B.6", "B.7",
+                              "B.8", "B.9", "B.11", "B.16"),
+    "/zia/emailDlpRules": ("MC.4", "8.9", "D.2", "D.3", "D.4", "D.5", "D.6", "D.7", "D.8", "D.9"),
+    "/zia/casbDlpRules": ("MC.3", "8.10", "C.2", "C.3", "C.4", "C.5", "C.6", "C.7", "C.8"),
+    "/zia/casbTenant": ("C.1", "C.3", "D.1", "D.6"),
+    "/zia/sslInspectionRules": ("4.1", "4.3", "4.4", "4.5", "4.6", "4.10", "4.11", "4.13", "4.14", "5.5", "MC.12", "6.4", "6.5",
+                                "7.2", "7.3", "9.2", "9.3", "A.2", "E.2", "CA.3", "AI.1", "AI.5", "AI.6", "AUTO-TF-01"),
+    "/zia/cloudApplicationRules": ("3.7", "4.7", "5.18", "MC.5", "A.6", "A.7", "A.17", "E.1", "E.3", "E.8", "E.9", "E.13", "CA.1",
+                                   "CA.2", "CA.3", "CA.4", "AI.3", "AI.8", "AI.14", "AI.15", "AI.20"),
+    "/zia/tenancyRestrictionProfile": ("5.18", "A.7", "CA.2", "AI.14"),
+}
+
+
+def endpoint_channels(ep: Any) -> Tuple[str, ...]:
+    """The channels whose configuration `ep` (a GET path) holds, else ()."""
+    path = str(ep or "").split("?", 1)[0]
+    if path.startswith("raw:"):
+        path = path[4:]
+    for prefix, chans in ENDPOINT_CHANNELS.items():
+        if path == prefix or path.startswith(prefix + "/"):
+            return chans
+    return ()
+
+
+def channels_read_by(check_id: str) -> List[Tuple[str, ...]]:
+    """The channel groups a check reads (one per CHANNEL_READS endpoint)."""
+    return [ENDPOINT_CHANNELS[ep] for ep, ids in CHANNEL_READS.items() if str(check_id) in ids]
 
 
 def normalize(channels: Any) -> Dict[str, Dict[str, str]]:
@@ -82,13 +143,26 @@ def normalize(channels: Any) -> Dict[str, Dict[str, str]]:
         if isinstance(v, str):
             v = {"choice": v}
         if not isinstance(v, dict):
-            continue
+            if cid not in CHANNELS:
+                continue
+            v = {}   # a Scope-page channel sent as null or junk: a gap, never dropped (it would be read)
         choice = str(v.get("choice") or "gap").strip().lower()
         if choice not in CHOICES:
             choice = "gap"
         out[cid] = {"choice": choice, "note": str(v.get("note") or "").strip()[:200],
                     "name": str(v.get("name") or CHANNELS.get(cid) or cid).strip()[:80]}
     return out
+
+
+def effective(channels: Any) -> Dict[str, Dict[str, str]]:
+    """normalize(), and once anything is declared, every Scope-page channel
+    the declaration leaves out counts as a gap: only channels marked
+    Zscaler are read. An empty declaration stays empty (nothing narrowed)."""
+    ch = normalize(channels)
+    if ch:
+        for cid, name in CHANNELS.items():
+            ch.setdefault(cid, {"choice": "gap", "note": "", "name": name})
+    return ch
 
 
 def _matches(spec: Dict[str, Sequence[str]], check_id: str, section: str) -> bool:
@@ -148,7 +222,7 @@ def partition(checks: Sequence[Tuple], channels: Any) -> Tuple[List[Tuple], List
     and the results of the ones out of scope (alternative or gap), plus
     the order to merge them back in (`merge`) so the findings keep their
     section order. A check of a Zscaler channel always runs."""
-    ch = normalize(channels)
+    ch = effective(channels)
     out = {k: v for k, v in ch.items() if v["choice"] != "zscaler"}
     on = {k: v for k, v in ch.items() if v["choice"] == "zscaler"}
     to_run: List[Tuple] = []
@@ -157,13 +231,47 @@ def partition(checks: Sequence[Tuple], channels: Any) -> Tuple[List[Tuple], List
     for chk in checks:
         check_id, section, label = str(chk[0]), str(chk[1]), str(chk[2])
         cid = channel_of_check(check_id, section, out) if out else None
-        if cid and not channel_of_check(check_id, section, on):
+        if cid and channel_of_check(check_id, section, on):
+            cid = None
+        if not cid and out:
+            # It reads a channel's own configuration: that channel must be on Zscaler.
+            for group in channels_read_by(check_id):
+                if not any(c in on for c in group):
+                    cid = next(c for c in group if c in out)
+                    break
+        if cid:
             order.append(("skip", len(skipped)))
             skipped.append(skipped_result(check_id, section, label, cid, out[cid]))
         else:
             order.append(("run", len(to_run)))
             to_run.append(chk)
     return to_run, skipped, order
+
+
+class ScopedClient:
+    """The assessment client as the checks see it: a GET of a channel's
+    own configuration whose channel is not on Zscaler is refused without
+    touching the tenant (the backstop to partition(): an unticked channel
+    is never read, even by a code path the check map missed). Everything
+    else goes to the real client. With no declaration nothing is refused."""
+
+    def __init__(self, client: Any, channels: Any):
+        ch = effective(channels)
+        self._client = client
+        self._declared = bool(ch)
+        self._on = {k for k, v in ch.items() if v["choice"] == "zscaler"}
+        self.refused: List[str] = []
+
+    def get(self, ep, *a, **k):
+        chans = endpoint_channels(ep)
+        if self._declared and chans and not any(c in self._on for c in chans):
+            self.refused.append(str(ep))
+            return ({"error": "not in scope",
+                     "message": "This channel was not ticked on the Scope page; the tenant was not read."}, 0)
+        return self._client.get(ep, *a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
 
 
 def merge(order: Iterable[Tuple[str, int]], run_results: Sequence[Dict[str, Any]], skipped: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -174,7 +282,7 @@ def coverage(channels: Any, skipped: Iterable[Dict[str, Any]] = ()) -> Dict[str,
     """What was declared and what it did, for the report: the channels on
     Zscaler, the ones covered elsewhere and the gaps (each with how many
     checks that took out of scope), and one sentence that says it."""
-    ch = normalize(channels)
+    ch = effective(channels)
     skipped = list(skipped)
     per: Dict[str, int] = {}
     for r in skipped:

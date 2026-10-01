@@ -481,7 +481,12 @@ def test_the_connection_check_only_signs_in_and_reads_nothing(monkeypatch):
 
     touched = []
 
+    closed = []
+
     class NoReads:
+        def close(self):   # ending the sign-in session is not a read
+            closed.append(1)
+
         def __getattr__(self, name):
             touched.append(name)
             raise AssertionError(f"the sign-in check read the tenant: .{name}")
@@ -491,7 +496,7 @@ def test_the_connection_check_only_signs_in_and_reads_nothing(monkeypatch):
     r = TestClient(srv.app).post("/api/tenant/check", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert built == ["acme"] and touched == []
+    assert built == ["acme"] and touched == [] and closed == [1]
     assert set(body) == {"ok", "tenant_label", "auth_method", "problems"} and body["ok"] is True
     for key in ("dictionaries", "engines", "web_rules", "endpoint_rules", "saas_rules", "email_rules"):
         assert key not in body

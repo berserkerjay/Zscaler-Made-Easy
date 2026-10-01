@@ -151,9 +151,9 @@ def test_preflight_reads_the_tenant_once_per_journey(monkeypatch):
     real = pd.fetch_tenant
     calls = []
 
-    def counting(cl, need=None, log=None):
+    def counting(cl, need=None, log=None, **kw):
         calls.append(need)
-        return real(cl, need)
+        return real(cl, need, **kw)
 
     monkeypatch.setattr(pd, "fetch_tenant", counting)
     out = srv._journey_for(client, packs, progress=lambda i, n, pid: None)
@@ -238,9 +238,9 @@ def test_the_preflight_reads_only_the_channels_in_scope(monkeypatch):
     real = pd.fetch_tenant
     calls = []
 
-    def counting(cl, need=None, log=None):
+    def counting(cl, need=None, log=None, **kw):
         calls.append(need)
-        return real(cl, need)
+        return real(cl, need, **kw)
 
     monkeypatch.setattr(pd, "fetch_tenant", counting)
     srv._journey_for(client, packs, channel_targets=targets, progress=lambda i, n, pid: None)

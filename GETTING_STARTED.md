@@ -344,10 +344,14 @@ Dictionary and engine tuning proposals are made in the ZIA portal; the
 queue tracks them and says so. Every decision and every apply is in
 `audit.log`.
 
-## 4i. The six-hour digest (while the app runs)
+## 4i. The digest (when you run it, or on a timer you opt in to)
 
-Toolbar › *Find the gaps › Digest*. Every six hours while the app runs, for
-every tenant profile that remembers its secret, the loop:
+Toolbar › *Find the gaps › Digest*. The loop reads tenants, and every read
+counts against the ZIA API rate limit, so it is off by default: it runs when
+you click *Run the loop now* (or run `python continuous_eval.py --once`).
+To run it on a timer while the app runs, set
+`DLP_CHECK_CONTINUOUS_EVAL_HOURS` (for example `6`) in `local_settings.bat`.
+For every tenant profile that remembers its secret, the loop:
 
 1. re-reads the guidance sources (Zscaler's own and the integration
    partners, Proofpoint first) and turns a new article on a mapped topic

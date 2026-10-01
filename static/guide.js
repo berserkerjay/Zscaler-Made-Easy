@@ -486,6 +486,7 @@ function _gdAuthVerdict(conn) {
   if (!conn) return;
   if (conn.ok) {
     if (typeof announce === 'function') announce(`Signed in to ${conn.label || conn.vd || 'the tenant'}. Nothing in the tenant was read. Next: choose what to assess on the Scope page and click Run assessment.`);
+    if (typeof window.__dbSignedIn === 'function') window.__dbSignedIn();   // clears the sidebar's "Sign in first"
     const card = document.querySelector('.gd-conn.ok');
     if (card) { card.setAttribute('tabindex', '-1'); try { card.focus({ preventScroll: false }); } catch (e) {} }
     return;

@@ -34,8 +34,12 @@ REM %LOCALAPPDATA%\ZscalerAssessment\beacon_state.json unless this moves it.
 REM set DLP_CHECK_BEACON_HOURS=24
 REM set DLP_CHECK_BEACON_STATE=C:\DLP-Check-data\beacon_state.json
 
-REM Continuous evaluation digest (every 6 hours while the app runs, or from
-REM RUN_Continuous_Evaluation.bat in Task Scheduler). E-mail needs an SMTP
+REM Continuous evaluation digest. It reads tenants (every read counts against
+REM the ZIA API rate limit), so it is off by default: it runs when you click
+REM Run the loop now, or from RUN_Continuous_Evaluation.bat in Task Scheduler.
+REM Set a number of hours to opt in to a timer while the app runs (0 or unset: off).
+REM set DLP_CHECK_CONTINUOUS_EVAL_HOURS=0
+REM E-mail needs an SMTP
 REM relay; the webhook is a Teams or Slack incoming webhook (https only).
 REM set DLP_CHECK_SMTP_HOST=smtp.example.com
 REM set DLP_CHECK_SMTP_PORT=587

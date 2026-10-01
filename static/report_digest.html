@@ -34,8 +34,8 @@
 <body class="report-page df-page">
   <div class="rp-page">
     <header class="hero rp-hero">
-      <h1><span class="accent">Digest</span> — the six-hour loop</h1>
-      <p>While this app's server is running, every six hours it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs' drift, for every tenant profile that remembers its secret, and writes a digest. It does not run the assessment checks or re-score the tenant (run the assessment for that), and it stops when the server stops; for a schedule that survives the server, use Task Scheduler or cron as described below. Nothing is written to any tenant.</p>
+      <h1><span class="accent">Digest</span> — the evaluation loop</h1>
+      <p>When you click Run the loop now (or every N hours while the server runs, only if you opt in with <code>DLP_CHECK_CONTINUOUS_EVAL_HOURS</code>; off by default, so starting the server reads no tenant), it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs' drift, for every tenant profile that remembers its secret, and writes a digest. It does not run the assessment checks or re-score the tenant (run the assessment for that), and it stops when the server stops; for a schedule that survives the server, use Task Scheduler or cron as described below. Nothing is written to any tenant.</p>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
@@ -101,7 +101,7 @@
       const latest = (data.digests || [])[0];
       if (!latest) {
         $('dgVerdict').className = 'dg-verdict';
-        $('dgVerdict').innerHTML = '<strong>No digest yet.</strong> The loop runs 30 seconds after the server starts and every six hours after that, while the server runs, for every tenant profile that remembers its secret. Click Run the loop now to make one.';
+        $('dgVerdict').innerHTML = '<strong>No digest yet.</strong> The loop is off by default (set DLP_CHECK_CONTINUOUS_EVAL_HOURS to run it on a timer). Click Run the loop now to make one.';
         $('dgTiles').innerHTML = ''; $('dgFull').textContent = '';
       } else {
         const s = latest.summary || {};
