@@ -115,13 +115,16 @@ def test_read_page_uses_the_article_and_falls_back_to_the_page():
     content, q, code, err = zu.read_page(url, get)
     assert (code, err, q["ok"], q["basis"]) == (200, "", True, "article") and b"Real guidance" in content
     assert len(get.calls) == 1, "the shell is not fetched when the article answered"
-    # An unusable fetch-data answer: the page itself is read (and here, is the shell).
-    get = lambda u, verify_tls=None: (b"<html>oops</html>", 200, "") if alias(u) else (SHELL, 200, "")
-    content, q, code, err = zu.read_page(url, get)
-    assert q["basis"] == "page" and not q["ok"] and "no readable content" in q["reason"]
-    # fetch-data answering an HTTP error and the page 404: no verdict, the status is passed on.
-    get = lambda u, verify_tls=None: (None, 500, "") if alias(u) else (b"gone", 404, "")
-    assert zu.read_page(url, get) == (b"gone", None, 404, "")
+    # An unusable fetch-data answer: no verdict, and the shell is not read
+    # (it would only look like a page with no content, i.e. gone).
+    get = site({})
+    get2 = lambda u, verify_tls=None: get.calls.append(u) or ((b"<html>oops</html>", 200, "") if alias(u) else (SHELL, 200, ""))
+    content, q, code, err = zu.read_page(url, get2)
+    assert q is None and code == 200 and "not an article" in err and len(get.calls) == 1
+    # fetch-data answering an HTTP error: no verdict, its status is passed on, one request.
+    get.calls.clear()
+    get3 = lambda u, verify_tls=None: get.calls.append(u) or ((None, 500, "") if alias(u) else (b"gone", 404, ""))
+    assert zu.read_page(url, get3) == (None, None, 500, "") and len(get.calls) == 1
     # Another host never asks the help center.
     asked = []
     content, q, code, err = zu.read_page("https://www.zscaler.com/x", lambda u: asked.append(u) or (b"<html><title>T</title>" + b"word " * 200 + b"</html>", 200, ""))
@@ -156,10 +159,10 @@ def test_check_html_says_moved_or_maintenance(monkeypatch):
     # /oneapi is its own section: the link stays on the page, and the note says why it is not readable.
     assert r["status"] == "unreadable" and r["link"] == one["url"] and not r["link_fallback"]
     assert "Maintenance" in r["link_note"] and "section index" not in r["link_note"]
-    # fetch-data unusable and the page itself 404s: an error that still links to the section.
+    # fetch-data unusable: an error on the page's own link (the page itself, the shell, is not read).
     monkeypatch.setattr(zu, "_safe_get", lambda u, verify_tls=None: (b"junk", 200, "") if alias(u) else (b"", 404, ""))
     r = zu._check_html(SRC, {})
-    assert r["status"] == "error" and r["link"] == "https://help.zscaler.com/zia" and "no longer exists" in r["link_note"]
+    assert r["status"] == "error" and r["link"] == SRC["url"] and "not an article" in r["error"] and "link_note" not in r
 
 
 def test_the_first_article_read_is_a_new_baseline_not_a_change(monkeypatch, tmp_path):
@@ -221,9 +224,10 @@ def test_beacon_reads_each_page_through_the_article():
     gone, locked = by["genai_bp"], by["oneapi_reference"]
     assert gone["hash"] and not gone["ok"] and gone["article_status"] == 404 and "no longer exists" in gone["reason"]
     assert locked["hash"] and not locked["ok"] and locked["article_status"] == 403 and "Maintenance" in locked["reason"]
-    # Read the old way (the shell only), every page has no readable content.
+    # When the article API answers only the shell, a help-center page is not read at all
+    # (not hashed as an empty page that would later look gone).
     old = beacon.watch_pages(shell_fetch)
-    assert all(p["basis"] == "page" and not p["ok"] and "no readable content" in p["reason"] for p in old)
+    assert all(not p["hash"] and not p["ok"] and "HTTP 404" in p["reason"] for p in old if zu.help_api_url(p["url"]))
 
 
 def test_beacon_diff_rebaselines_once_then_reports_changes_and_gone_pages(beacon_state):
@@ -285,13 +289,13 @@ def test_a_network_error_on_the_article_is_not_retried_on_the_page():
         return None, 0, "read timeout to help.zscaler.com (8s)"
     assert zu.read_page(SRC["url"], down) == (None, None, 0, "read timeout to help.zscaler.com (8s)")
     assert len(calls) == 1 and alias(calls[0]) == "/zia/about-dlp-engines"
-    # Beacon: a fetcher's network error stops there; an HTTP error still falls back to the page.
+    # Beacon: a fetcher's network error stops there; so does an HTTP error (the shell is not read).
     asked = []
     e = beacon._page_entry(SRC, lambda u: asked.append(u) or (None, "connection error: getaddrinfo failed"))
     assert len(asked) == 1 and e["hash"] is None and "getaddrinfo" in e["reason"]
     asked.clear()
     e = beacon._page_entry(SRC, lambda u: asked.append(u) or ((None, "HTTP 502") if alias(u) else (SHELL.decode(), "")))
-    assert len(asked) == 2 and e["basis"] == "page" and not e["ok"]
+    assert len(asked) == 1 and e["hash"] is None and not e["ok"] and "502" in e["reason"]
 
 
 def _snap(i, *entries):
@@ -308,7 +312,7 @@ def _doc_changes(cur, history):
 
 def test_a_page_back_from_maintenance_unchanged_is_not_a_change():
     ok, locked = _entry(article()), _entry(article(status=403))
-    assert _doc_changes(_snap(2, locked), [_snap(1, ok)]) == [("doc_gone", "dlp_engines_bp")]
+    assert _doc_changes(_snap(2, locked), [_snap(1, ok)]) == [("doc_unreadable", "dlp_engines_bp")]
     assert _doc_changes(_snap(3, _entry(article())), [_snap(1, ok), _snap(2, locked)]) == [],         "readable again with the same text: compared with the last readable read, not the maintenance notice"
     assert _doc_changes(_snap(3, _entry(article(content=BODY + "<p>New.</p>"))), [_snap(1, ok), _snap(2, locked)]) ==         [("doc_changed", "dlp_engines_bp")]
     # Still in maintenance: said once, not on every run.
@@ -319,7 +323,7 @@ def test_one_failed_read_does_not_hide_the_next_change():
     ok = _entry(article())
     shell = beacon._page_entry(SRC, lambda u: (None, "HTTP 500") if alias(u) else (SHELL.decode(), ""))
     unread = beacon._page_entry(SRC, lambda u: (None, "read timeout"))
-    assert shell["basis"] == "page" and unread["hash"] is None
+    assert shell["hash"] is None and unread["hash"] is None
     new = _entry(article(content=BODY + "<p>New.</p>"))
     for between in (shell, unread):
         assert _doc_changes(_snap(2, between), [_snap(1, ok)]) == []
@@ -340,13 +344,13 @@ def _down(answer):
 
 @pytest.mark.parametrize("answer", [(None, 0, "Connection timeout to help.zscaler.com."), (b"Too Many Requests", 429, "")])
 def test_crawler_titles_do_not_fetch_the_page_after_a_network_error_or_429(monkeypatch, answer):
-    """The crawler reads titles through read_page: a timeout or a 429 on
-    fetch-data costs one request per article, not two."""
+    """The crawler reads titles through read_page: a timeout on fetch-data
+    costs one request per article, not two; a 429 stops the lookups."""
     monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
     entries = [{"url": f"https://help.zscaler.com/zia/a{i}", "title": f"a{i}", "via": "sitemap"} for i in range(bc.MAX_TITLE_FETCHES + 10)]
     get = _down(answer)
     n = bc._resolve_titles(entries, get, False, None)
-    assert n == len(get.calls) == bc.MAX_TITLE_FETCHES and all(alias(u) for u in get.calls)
+    assert n == len(get.calls) == (1 if answer[1] == 429 else bc.MAX_TITLE_FETCHES) and all(alias(u) for u in get.calls)
     assert all(not e.get("titled") and e["title"].startswith("a") for e in entries)
     get = _down(answer)
     assert zu.read_page(SRC["url"], get)[1] is None and len(get.calls) == 1
@@ -393,3 +397,96 @@ def test_the_word_report_fallback_cites_the_live_guides_page():
     import report_docx
     text = report_docx._resolve_best_practice("zzz-no-such-label", "zzz", "ZZZ.0")
     assert "https://help.zscaler.com/zscaler-deployments-operations " in text
+
+
+# ── Review fixes, round 3 (PR #40) ────────────────────────────────────
+
+DLP_EVAL = next(s for s in HTML_SOURCES if s["url"].startswith("https://help.zscaler.com/"))
+
+
+@pytest.mark.parametrize("api", [(b"<html><body>502 Bad Gateway</body></html>", 502, ""),
+                                 (b"<html>Service Temporarily Unavailable</html>", 503, ""),
+                                 (b"<html>Blocked by your proxy</html>", 200, "")])
+def test_a_failed_article_api_call_is_an_error_not_a_gone_page(monkeypatch, api):
+    calls = []
+
+    def get(u, verify_tls=None):
+        calls.append(u)
+        return api if alias(u) else (SHELL, 200, "")
+    monkeypatch.setattr(zu, "_safe_get", get)
+    r = zu._check_html(DLP_EVAL, {"hash": "abc", "basis": "article", "url": DLP_EVAL["url"]})
+    assert r["status"] == "error" and r["link"] == DLP_EVAL["url"] and not r.get("link_fallback")
+    assert "link_note" not in r and len(calls) == 1
+    if api[1] != 200:
+        assert r["error"] == f"HTTP {api[1]}"
+
+
+@pytest.mark.parametrize("body", [b'{"data":{"info":{"status":1e999},"body":{}}}',
+                                  b'{"data":{"info":{"status":Infinity},"body":{}}}',
+                                  b"[" * 200000 + b"]" * 200000], ids=["1e999", "Infinity", "deep"])
+def test_help_article_returns_none_for_any_malformed_answer(monkeypatch, body):
+    assert zu.help_article(body) is None
+    monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
+    entries = [{"url": f"https://help.zscaler.com/zia/b{i}", "title": f"b{i}", "via": "sitemap"} for i in range(2)]
+    assert bc._resolve_titles(entries, lambda u, verify_tls=None: (body, 200, ""), False, None) == 2
+    assert [e["title"] for e in entries] == ["b0", "b1"]
+
+
+def test_a_lone_surrogate_in_an_article_does_not_raise(monkeypatch):
+    body = json.dumps({"data": {"info": {"status": 200}, "body": {"title": "About DLP " + chr(0xD83D),
+                                                                  "content": "<p>" + "Real guidance. " * 40 + "</p>"}}}).encode()
+    content, q = zu.help_article(body)
+    assert q["ok"] and b"Real guidance" in content
+    monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
+    entries = [{"url": f"https://help.zscaler.com/zia/c{i}", "title": f"c{i}", "via": "sitemap"} for i in range(3)]
+    assert bc._resolve_titles(entries, lambda u, verify_tls=None: (body, 200, ""), False, None) == 3
+    assert all(e.get("titled") and e["title"].startswith("About DLP") for e in entries)
+
+
+def test_one_title_lookup_that_raises_does_not_stop_the_crawl(monkeypatch):
+    monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
+    monkeypatch.setattr(zu, "read_page", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    entries = [{"url": "https://help.zscaler.com/zia/d0", "title": "d0", "via": "sitemap"}]
+    bc._resolve_titles(entries, lambda u, verify_tls=None: (b"", 200, ""), False, None)
+    assert entries[0]["title"] == "d0" and not entries[0].get("titled")
+
+
+def test_title_lookups_stop_on_a_host_that_answers_429(monkeypatch):
+    monkeypatch.setattr(bc, "CRAWL_POLITE_DELAY", 0)
+    entries = [{"url": f"https://help.zscaler.com/zia/a{i}", "title": f"a{i}", "via": "sitemap"} for i in range(5)]
+    entries.append({"url": "https://other.example.com/x", "title": "x", "via": "sitemap"})
+    asked = []
+
+    def get(u, verify_tls=None):
+        asked.append(u)
+        if "help.zscaler.com" in u:
+            return b"", 429, ""
+        return b"<html><title>Other page</title></html>", 200, ""
+    assert bc._resolve_titles(entries, get, False, None) == 2
+    assert entries[-1]["title"] == "Other page" and all(not e.get("titled") for e in entries[:5])
+
+
+def test_other_sites_are_titled_from_the_raw_page():
+    pages = {
+        "https://support.atlassian.com/a/": b'<!-- built 2026-10-01T15:48:27.304Z\n--><html><head><title>Allow OAuth access | Jira Cloud | Atlassian Support</title></head><body><h1>Allow OAuth access</h1></body></html>',
+        "https://example.com/r": b"<html><head><title>Release 2025-01-02T10:00:00Z notes</title></head></html>",
+        "https://example.com/h": b"<html><body><h1>Heading ?v=12 only</h1></body></html>",
+    }
+    entries = [{"url": u, "title": "slug", "via": "sitemap"} for u in pages]
+    bc._resolve_titles(entries, lambda u, verify_tls=None: (pages[u], 200, ""), False, None)
+    want = [bc.page_title(b.decode()) for b in pages.values()]
+    assert [e["title"] for e in entries] == want
+    assert "Jira Cloud" in want[0] and "2025-01-02T10:00:00Z" in want[1] and "?v=12" in want[2]
+
+
+def test_beacon_says_not_readable_for_maintenance_and_gone_after_it():
+    ok, locked, gone = _entry(article()), _entry(article(status=403)), _entry(article(status=404))
+    ch = beacon.diff(_snap(2, locked), [_snap(1, ok)])["changes"]
+    assert [c["kind"] for c in ch] == ["doc_unreadable"] and "no longer reads as a page" not in ch[0]["text"]
+    # Removed after maintenance: reported gone.
+    assert _doc_changes(_snap(3, gone), [_snap(1, ok), _snap(2, locked)]) == [("doc_gone", "dlp_engines_bp")]
+    assert _doc_changes(_snap(2, gone), [_snap(1, ok)]) == [("doc_gone", "dlp_engines_bp")]
+    # Still gone: said once.
+    assert _doc_changes(_snap(4, gone), [_snap(1, ok), _snap(2, locked), _snap(3, gone)]) == []
+    js = open("static/beacon.js", encoding="utf-8").read()
+    assert "doc_unreadable: 'not readable'" in js

@@ -410,6 +410,17 @@ def _usable(w: Optional[Dict[str, Any]]) -> bool:
     return bool(w) and w.get("status") in ("ok", "offline")
 
 
+def _page_state(p: Dict[str, Any]) -> str:
+    """"ok", "unreadable" (the help center answered a status other than
+    200/404/410, e.g. 403 "Help Article in Maintenance": the page is still
+    there) or "gone" (404/410, or no readable content). The same split as
+    the page table's chip in static/beacon.js and the Updates tab."""
+    if p.get("ok"):
+        return "ok"
+    st = p.get("article_status")
+    return "unreadable" if st is not None and st not in (200, 404, 410) else "gone"
+
+
 def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
     """What changed between `cur` and the snapshots before it. Upstream
     changes are measured against the latest earlier run of the same kind
@@ -452,7 +463,7 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
         # help.zscaler.com's article instead of its empty shell is a new
         # baseline, not a change on every page), and that were read at all:
         # a run where the page could not be fetched, or was read another way
-        # once (the article answer failed and the shell was read), is
+        # once (an earlier run that read the shell), is
         # skipped, not a baseline that hides the next change.
         earlier = [s for s in reversed(history)
                    if bool(s.get("online")) == bool(cur.get("online")) and s.get("id") != cur.get("id")]
@@ -466,9 +477,18 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
                 continue
             q = same[0]
             # Gone first: a page that went away also hashes differently.
-            if q.get("ok") and not p.get("ok"):
-                add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
-            elif p.get("ok"):
+            # Said when the page's state differs from the read before it, so
+            # a page in maintenance (403, still there: "not readable") that
+            # is later removed (404) is still reported gone.
+            if not p.get("ok"):
+                state = _page_state(p)
+                if state != _page_state(q):
+                    if state == "unreadable":
+                        add("api", "doc_unreadable", f"{p['name']} cannot be read right now ({p.get('reason')}); "
+                            f"the page is still there and is read again next run: {p['url']}", key=p["key"], url=p["url"])
+                    else:
+                        add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
+            else:
                 # Changed against the last time it was readable: a page back
                 # from maintenance (or a 404) with the same text is not a change.
                 last_ok = next((e for e in same if e.get("ok")), None)

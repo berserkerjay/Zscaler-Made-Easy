@@ -6,7 +6,7 @@
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = id => document.getElementById(id);
   const WATCHER = { sdk: 'SDK', api: 'API', terraform: 'Terraform', tenant: 'Tenant' };
-  const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', endpoint_status: 'endpoint' };
+  const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', doc_unreadable: 'not readable', endpoint_status: 'endpoint' };
   let polling = null;
 
   function say(kind, html) {

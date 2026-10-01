@@ -446,8 +446,8 @@ def _help_index_html(categories: List[Any]) -> str:
 
 def help_article(body: Optional[bytes]) -> Optional[Tuple[bytes, Dict[str, Any]]]:
     """(content to hash, page_quality-shaped verdict) from a fetch-data
-    answer; None when the answer is not one (the caller then falls back
-    to the page itself). A missing or locked article answers 200 with its
+    answer; None when the answer is not one (the caller then reports a
+    failed read, never raises). A missing or locked article answers 200 with its
     own status inside: 404 "Page Not Found", 403 "Help Article in
     Maintenance". The verdict carries basis "article" and the article's
     status, so a hash is only ever compared with one read the same way."""
@@ -455,7 +455,9 @@ def help_article(body: Optional[bytes]) -> Optional[Tuple[bytes, Dict[str, Any]]
         data = json.loads(body.decode("utf-8", errors="ignore") if isinstance(body, bytes) else (body or ""))["data"]
         info, art = data["info"], data.get("body") or {}
         status = int(info["status"])
-    except (ValueError, KeyError, TypeError, AttributeError):
+    except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError):
+        # Not an article answer: junk, a status of 1e999 / Infinity, JSON
+        # nested too deep to parse. One bad answer never stops a crawl.
         return None
     if not isinstance(art, dict):
         return None
@@ -478,31 +480,37 @@ def help_article(body: Optional[bytes]) -> Optional[Tuple[bytes, Dict[str, Any]]
     # searched for "not found" / "error" wording (an article titled
     # "Viewing Removed Devices" or "About Error Codes" is real). Only the
     # body is judged.
-    q = page_quality(f"<html><body><main>{content}</main></body></html>".encode("utf-8"), 200)
-    return _strip_volatile(f"{title}\n{content}".encode("utf-8")), {**q, "title": title, "basis": "article", "article_status": 200}
+    # errors="replace": a lone surrogate escape in the JSON (half an emoji,
+    # a title cut short) cannot be encoded as UTF-8 and is not worth a raise.
+    q = page_quality(f"<html><body><main>{content}</main></body></html>".encode("utf-8", errors="replace"), 200)
+    return _strip_volatile(f"{title}\n{content}".encode("utf-8", errors="replace")), {**q, "title": title, "basis": "article", "article_status": 200}
 
 
 def read_page(url: str, get: Callable[[str], Tuple[Optional[bytes], int, str]]) -> Tuple[Optional[bytes], Optional[Dict[str, Any]], int, str]:
     """(content to hash, verdict, status, error) for a watched page: a
     help.zscaler.com article through its fetch-data answer, anything else
-    (or an article whose answer is unusable) as the page itself. The
-    verdict is None when nothing usable answered; then content is the
-    error body (if any) and status the HTTP status.
+    as the page itself. The verdict is None when nothing usable answered;
+    then content is the error body (if any), status the HTTP status and
+    error what went wrong.
 
-    The page is only tried when the help center answered: after a network
-    error (timeout, proxy, TLS; status 0) the page, on the same host,
-    would fail the same way and only double the wait; after a 429 a second
-    request to the same host would only add to the rate limit."""
+    A help.zscaler.com page is never read as the page itself: every URL
+    there answers the same empty browser shell, so after a fetch-data
+    answer that is not an article (a 5xx, a 429, a proxy's block page, a
+    network error) the shell would only read as "no readable content" and
+    the page would look gone. The failed read is passed on as it is: no
+    verdict, the page's own link kept, and no second request to a host
+    that just failed."""
     api = help_api_url(url)
     if api:
         body, code, err = get(api)
         if err and not code:
             return None, None, 0, err
-        if code == 429:
-            return body, None, 429, err
         art = help_article(body) if not err and code == 200 and body else None
         if art:
             return art[0], art[1], 200, ""
+        if code == 200 and not err:
+            err = "the help center's article API answered something that is not an article"
+        return body, None, code, err
     body, code, err = get(url)
     if err or code != 200 or not body:
         return body, None, code, err

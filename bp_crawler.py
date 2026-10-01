@@ -462,9 +462,13 @@ def _resolve_titles(entries: List[Dict[str, Any]], safe_get, skip_tls_verify: bo
     help.zscaler.com pages are an empty browser shell with no title; the
     article (title included) comes from the help center's fetch-data
     answer, so that is read instead (zscaler_update_check.read_page). An
-    article that answers 404/403 keeps its slug title. Only an unusable
-    answer falls back to the page; a network error or a 429 on the
-    article API does not, so each entry costs at most one wait."""
+    article that answers 404/403, or an answer that is not an article,
+    keeps its slug title; each entry costs one request. Every other page
+    is titled from its own raw body, as it always was.
+
+    A host that answers 429 is asked no more in this run (its remaining
+    entries keep their slug titles): more requests only add to the rate
+    limit. One entry that cannot be read never stops the crawl."""
     import zscaler_update_check as zu
     verify = False if skip_tls_verify else None
     fetched = 0
@@ -477,19 +481,28 @@ def _resolve_titles(entries: List[Dict[str, Any]], safe_get, skip_tls_verify: bo
         return safe_get(url, verify_tls=verify)
 
     todo = [e for e in entries if e.get("via") == "sitemap" and not e.get("titled")]
+    limited: Set[str] = set()
     for e in todo[:MAX_TITLE_FETCHES]:
         t = ""
-        body, q, _code, _err = zu.read_page(e["url"], get)
-        if q and q.get("basis") == "article":
-            if q.get("article_status") == 200:
-                t = q.get("title") or ""
-        elif q and body:
+        host = (urlparse(e["url"]).hostname or "").lower()
+        if host not in limited:
             try:
-                t = page_title(body.decode("utf-8", errors="ignore"))
+                if zu.help_api_url(e["url"]):
+                    _body, q, code, _err = zu.read_page(e["url"], get)
+                    if q and q.get("basis") == "article" and q.get("article_status") == 200:
+                        t = _clean_title(q.get("title") or "")
+                else:
+                    # The raw page, not read_page's hash-normalised body: that
+                    # drops ISO timestamps and "?v=N" and can eat the <title>.
+                    body, code, err = get(e["url"])
+                    if not err and code == 200 and body:
+                        t = page_title(body.decode("utf-8", errors="ignore"))
+                if code == 429:
+                    limited.add(host)
             except Exception:
                 t = ""
         if t:
-            e["title"] = _clean_title(t) or e["title"]
+            e["title"] = t
             e["titled"] = True
         if progress:
             progress({"phase": "titles", "source": e.get("source_name", ""), "pages": fetched,
