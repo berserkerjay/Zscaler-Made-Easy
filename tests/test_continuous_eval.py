@@ -46,9 +46,13 @@ def _client(tenants):
     return c
 
 
-def _profile(remember=True):
-    p = tp.upsert({"name": "Acme", "cloud": "production", "vanity_domain": "acme", "client_id": "abc123456789", "baseline_packs": []},
-                  client_secret="secret-secret-secret", remember_secret=remember)
+IN_SCOPE = {"scopes": ["dlp"], "channels": {"saas_casb": "zscaler", "email_dlp": "zscaler"}}
+
+
+def _profile(remember=True, name="Acme", **fields):
+    base = {"name": name, "cloud": "production", "vanity_domain": name.lower(), "client_id": "abc123456789", "baseline_packs": []}
+    base.update(IN_SCOPE if not fields else fields)
+    p = tp.upsert(base, client_secret="secret-secret-secret", remember_secret=remember)
     return p["id"]
 
 
@@ -156,3 +160,138 @@ def test_guidance_approval_lands_in_checks_config_over_http(tmp_path, monkeypatc
     r = c.post(f"/api/proposals/app/{p['id']}/decide", json={"decision": "approve", "by": "jane"})
     assert r.status_code == 200 and r.json()["status"] == "applied", r.text
     assert guidance.references_for("12.8")[0]["url"] == art["url"]
+
+
+# ── Off by default, and only what is in scope ────────────────────────
+# Every tenant read counts against the ZIA API rate limit: nothing reads a
+# tenant until the operator runs it, and then only what the profile's Scope
+# page puts in scope.
+
+def _state(monkeypatch):
+    st = {"enabled": False, "interval_seconds": None, "interval_hours": None, "last_run_at": None, "next_run_at": None,
+          "last_status": None, "profiles": {}}
+    monkeypatch.setattr(srv, "_DH_REFRESH_STATE", st)
+    started = []
+    monkeypatch.setattr(srv.asyncio, "create_task", lambda coro: started.append(coro) or coro.close())
+    return st, started
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "abc", "-6", "nan"])
+def test_the_timer_is_off_unless_the_operator_opts_in(monkeypatch, value):
+    import asyncio
+    if value is None:
+        monkeypatch.delenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", raising=False)
+    else:
+        monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", value)
+    st, started = _state(monkeypatch)
+    asyncio.run(srv._start_dh_refresh())
+    assert started == [] and st["enabled"] is False and st["next_run_at"] is None and st["interval_hours"] == 0
+    assert ce.notification_settings()["interval_hours"] == 0
+
+
+def test_the_timer_starts_when_the_operator_sets_hours(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", "6")
+    st, started = _state(monkeypatch)
+    asyncio.run(srv._start_dh_refresh())
+    assert len(started) == 1 and st["enabled"] is True and st["interval_seconds"] == 6 * 3600
+    assert ce.notification_settings()["interval_hours"] == 6
+
+
+def test_a_bad_value_is_logged(monkeypatch, capsys):
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", "six")
+    assert ce.interval_hours() == 0
+    assert "DLP_CHECK_CONTINUOUS_EVAL_HOURS='six' is not a number" in capsys.readouterr().out
+
+
+class _Recorder:
+    """Records every tenant read the loop makes."""
+
+    def __init__(self, monkeypatch):
+        self.calls = []
+        rec = self.calls
+        monkeypatch.setattr("detection_health.generate", lambda client, days=30, settings=None, log=None: rec.append(("detection_health",)) or dict(REPORT, incident_count=1, summary={}))
+        monkeypatch.setattr("saas_matrix.list_tenants", lambda client: rec.append(("list_tenants",)) or ([], None))
+
+        def _preflight(client, packs, **kw):
+            rec.append(("preflight", sorted(p["id"] for p in packs), kw.get("channel_targets")))
+            return {"items": [], "summary": {}}
+        monkeypatch.setattr("pack_deploy.preflight", _preflight)
+        monkeypatch.setattr("pack_deploy.journey", lambda rep: {"baselines": []})
+        monkeypatch.setattr("zscaler_best_practices.list_all", lambda service="": [])
+
+    def build(self, creds):
+        self.calls.append(("connect",))
+        return object()
+
+    def kinds(self):
+        return [c[0] for c in self.calls]
+
+
+def test_a_profile_with_no_scope_saved_is_not_read(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    _profile(scopes=[], channels={}, baseline_packs=["healthcare_phi_baseline"])
+    d = ce.run_once(build_client=rec.build, notify=False)
+    t = d["tenants"][0]
+    assert rec.calls == [], "nothing in scope: no client is built and nothing is read"
+    assert t["note"].startswith("nothing in scope") and t["errors"] == [] and t["detection_health"] is None and t["drift"] is None
+    assert "Nothing in scope" in ce.to_markdown(d)
+
+
+def test_only_the_saas_channel_in_scope_reads_only_the_saas_tenants(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    _profile(scopes=["zia_extras"], channels={"saas_casb": "zscaler", "web_dlp": "zscaler"}, baseline_packs=["healthcare_phi_baseline"])
+    d = ce.run_once(build_client=rec.build, notify=False)
+    assert rec.kinds() == ["connect", "list_tenants"], rec.calls
+    t = d["tenants"][0]
+    assert t["detection_health"] is None and t["drift"] is None and any("DLP is not in" in x for x in t["skipped"])
+
+
+@pytest.mark.parametrize("choice", ["alternative", "gap", None])
+def test_saas_not_on_zscaler_is_never_read(tmp_path, monkeypatch, choice):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    chans = {"web_dlp": "zscaler", "email_dlp": "alternative"}
+    if choice:
+        chans["saas_casb"] = choice
+    _profile(scopes=["dlp"], channels=chans, baseline_packs=["healthcare_phi_baseline"])
+    d = ce.run_once(build_client=rec.build, notify=False)
+    assert "list_tenants" not in rec.kinds(), rec.calls
+    assert rec.kinds() == ["connect", "detection_health", "preflight"], rec.calls
+    # Only the ticked pack, only on the DLP channels the Scope page puts on Zscaler.
+    assert rec.calls[-1] == ("preflight", ["healthcare_phi_baseline"], {"healthcare_phi_baseline": ["web"]})
+    assert any("SaaS Security" in x for x in d["tenants"][0]["skipped"])
+
+
+def test_pack_drift_never_defaults_to_every_pack_or_every_channel(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    _profile(name="NoPacks", scopes=["dlp"], channels={"web_dlp": "zscaler"}, baseline_packs=[])
+    _profile(name="NoChannels", scopes=["dlp"], channels={"web_dlp": "gap", "endpoint_dlp": "alternative"}, baseline_packs=["healthcare_phi_baseline"])
+    d = ce.run_once(build_client=rec.build, notify=False)
+    assert "preflight" not in rec.kinds(), rec.calls
+    by = {t["profile_id"]: t for t in d["tenants"]}
+    assert by["nopacks"]["drift"]["note"].startswith("no packs ticked")
+    assert "drift not measured" in by["nochannels"]["drift"]["note"]
+
+
+def test_dlp_without_saas_or_dlp_scope_reads_nothing(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    _profile(scopes=["zpa", "zcc"], channels={"web_dlp": "zscaler", "saas_casb": "alternative"}, baseline_packs=["healthcare_phi_baseline"])
+    d = ce.run_once(build_client=rec.build, notify=False)
+    assert rec.calls == [] and d["tenants"][0]["note"].startswith("nothing in scope for the loop")
+
+
+def test_manual_run_honours_scope_over_http(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    monkeypatch.setattr(srv, "_build_sdk_client", rec.build)
+    _profile(scopes=[], channels={})
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    r = c.post("/api/digests/run", json={"notify": False})
+    assert r.status_code == 200 and rec.calls == [], (r.text, rec.calls)
+    assert srv._DH_REFRESH_STATE["profiles"]["acme"]["status"] == "not in scope"

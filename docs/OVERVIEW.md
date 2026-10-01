@@ -97,11 +97,15 @@ what you get, what to do next.
   production, measured from Workflow Automation incidents and analyst
   verdicts, turned into proposals you approve, preview, apply with a
   read-back, and roll back.
-- **Digest — the six-hour loop** — while the server runs, every six hours
-  it re-reads the guidance sources, the FP/TP ratio, the SaaS tenants and
-  the packs' drift for every profile that remembers its secret, and
-  writes a digest (e-mail or a Teams/Slack webhook when there is
-  something to decide). It never writes to a tenant.
+- **Digest — the evaluation loop** — when you click *Run the loop now*
+  (or run `continuous_eval.py --once`) it re-reads the guidance sources
+  and, for every profile that remembers its secret, only what that
+  profile's Scope page puts in scope (the FP/TP ratio and the ticked
+  packs' drift when DLP is in scope, the SaaS tenants when SaaS Security
+  runs on Zscaler), and writes a digest (e-mail or a Teams/Slack webhook
+  when there is something to decide). Every tenant read counts against
+  the ZIA API rate limit, so the timer is off unless the operator sets
+  `DLP_CHECK_CONTINUOUS_EVAL_HOURS`. It never writes to a tenant.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.
@@ -285,7 +289,7 @@ The same code runs without the browser:
 - **Mac and Linux**, after `./install.sh`: `.venv/bin/dlp-check` (the
   server), `.venv/bin/dlp-check-assess --config tenant.json --output
   report.json` (the assessment from a JSON file), and
-  `.venv/bin/dlp-check-evaluate` (one run of the six-hour loop, for cron).
+  `.venv/bin/dlp-check-evaluate` (one run of the evaluation loop, for cron).
 - **Windows**: `python dlp_assessment_full_auto.py --config tenant.json
   --output report.json`, and `RUN_Continuous_Evaluation.bat` for Task
   Scheduler.
