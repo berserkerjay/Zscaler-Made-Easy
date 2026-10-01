@@ -617,8 +617,8 @@
           <span aria-hidden="true">🩺</span> FP/TP detection ratio
         </button>
         <button class="btn btn-ghost" onclick="openDigestTab()"
-                aria-label="Open the Digest: what the six-hour loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
-                title="While this server runs, every six hours the app re-reads guidance, FP/TP detection ratio, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, and writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
+                aria-label="Open the Digest: what the evaluation loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
+                title="When you click Run the loop now (the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS), the app re-reads guidance and, for every tenant profile that remembers its secret, only what its Scope page puts in scope: FP/TP detection ratio, the SaaS tenants and the ticked packs' drift. It writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
           <span aria-hidden="true">🔁</span> Digest
         </button>
       </div>

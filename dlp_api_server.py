@@ -1556,8 +1556,8 @@ async def report_digest_page():
 
 @app.get("/api/detection-health/schedule")
 async def detection_health_schedule():
-    """State of the 6-hour FP/TP Detection Ratio refresh for tenant profiles
-    that remember their secret."""
+    """State of the opt-in FP/TP Detection Ratio refresh (the continuous
+    evaluation timer, DLP_CHECK_CONTINUOUS_EVAL_HOURS; off by default)."""
     return dict(_DH_REFRESH_STATE)
 
 
@@ -1594,17 +1594,27 @@ async def report_health_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
-# Every 6 hours while this server process runs, for each tenant profile that
-# remembers its secret, continuous_eval.run_once reads FP/TP Detection Ratio,
-# the SaaS tenants and the packs' drift (never the assessment checks or the
-# score) and writes a digest. Same cadence as the best-practices refresh;
-# nothing is written to any tenant. The loop dies with the process: a
-# schedule that must survive it is Task Scheduler / cron running
-# continuous_eval.py --once.
-_DH_REFRESH_INTERVAL_SECONDS = 6 * 3600
-_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": True, "interval_seconds": _DH_REFRESH_INTERVAL_SECONDS, "last_run_at": None,
+# Off unless the operator opts in: every tenant read counts against the
+# ZIA API rate limit, and nothing reads a tenant until the operator runs it.
+# With DLP_CHECK_CONTINUOUS_EVAL_HOURS > 0 (unset or 0: off), every N hours
+# while this server process runs, continuous_eval.run_once reads, for each
+# tenant profile that remembers its secret and only what that profile's
+# Scope page puts in scope, FP/TP Detection Ratio, the SaaS tenants and the
+# ticked packs' drift (never the assessment checks or the score) and writes
+# a digest. Run the loop now (POST /api/digests/run) and
+# continuous_eval.py --once are the explicit runs. Nothing is written to any
+# tenant. The loop dies with the process: a schedule that must survive it
+# is Task Scheduler / cron running continuous_eval.py --once.
+_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": False, "interval_seconds": None, "interval_hours": None, "last_run_at": None,
                                      "next_run_at": None, "last_status": None, "profiles": {},
-                                     "runs_while": "this server process is running"}
+                                     "runs_while": "this server process is running",
+                                     "setting": "DLP_CHECK_CONTINUOUS_EVAL_HOURS (unset or 0: off; runs only when you click Run the loop now)"}
+
+
+def _continuous_eval_hours() -> float:
+    """DLP_CHECK_CONTINUOUS_EVAL_HOURS as hours; 0 (the default) is off."""
+    import continuous_eval
+    return continuous_eval.interval_hours()
 
 
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
@@ -1615,7 +1625,7 @@ def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
     d = continuous_eval.run_once(build_client=_build_sdk_client, notify=notify)
     for t in d.get("tenants") or []:
         dh = t.get("detection_health") or {}
-        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else "ok",
+        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else ("not in scope" if t.get("note") else "ok"),
                                                           "incidents": dh.get("incidents"), "errors": len(t.get("errors") or []),
                                                           "error": "; ".join(t.get("errors") or [])[:200] or None}
     _DH_REFRESH_STATE["last_digest"] = d.get("id")
@@ -1624,8 +1634,13 @@ def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
 
 
 async def _dh_auto_refresh_loop() -> None:
-    await asyncio.sleep(30)
-    while _DH_REFRESH_STATE.get("enabled", True):
+    interval = _DH_REFRESH_STATE["interval_seconds"]
+    _DH_REFRESH_STATE["next_run_at"] = time.time() + 30
+    try:
+        await asyncio.sleep(30)
+    except asyncio.CancelledError:
+        return
+    while _DH_REFRESH_STATE.get("enabled"):
         try:
             await asyncio.to_thread(_continuous_eval_once)
             _DH_REFRESH_STATE["last_status"] = "ok"
@@ -1633,18 +1648,24 @@ async def _dh_auto_refresh_loop() -> None:
             _DH_REFRESH_STATE["last_status"] = "error"
             _DH_REFRESH_STATE["last_error"] = str(e)[:200]
         _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        _DH_REFRESH_STATE["next_run_at"] = time.time() + _DH_REFRESH_INTERVAL_SECONDS
+        _DH_REFRESH_STATE["next_run_at"] = time.time() + interval
         try:
-            await asyncio.sleep(_DH_REFRESH_INTERVAL_SECONDS)
+            await asyncio.sleep(interval)
         except asyncio.CancelledError:
             break
 
 
 @app.on_event("startup")
 async def _start_dh_refresh() -> None:
+    hours = _continuous_eval_hours()
+    _DH_REFRESH_STATE["interval_hours"] = hours
+    if hours <= 0:
+        _DH_REFRESH_STATE.update({"enabled": False, "interval_seconds": None, "next_run_at": None, "last_status": _DH_REFRESH_STATE.get("last_status") or "off"})
+        return
     try:
         import detection_health  # noqa: F401
         import tenant_profiles  # noqa: F401
+        _DH_REFRESH_STATE.update({"enabled": True, "interval_seconds": hours * 3600})
         asyncio.create_task(_dh_auto_refresh_loop())
     except Exception:
         _DH_REFRESH_STATE["enabled"] = False

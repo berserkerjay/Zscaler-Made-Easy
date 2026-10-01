@@ -1,10 +1,13 @@
 @echo off
-REM One run of the continuous evaluation without the browser: guidance,
-REM Detection Health, SaaS tenants and drift for every tenant profile that
-REM remembers its secret, then the digest (and the e-mail / webhook when
-REM configured in local_settings.bat). Schedule this file in Windows Task
-REM Scheduler (for example every 6 hours) so the loop runs while the app
-REM is not open. Nothing is written to any tenant.
+REM One run of the continuous evaluation without the browser: guidance and,
+REM for every tenant profile that remembers its secret, only what its Scope
+REM page puts in scope (Detection Health and pack drift when DLP is in scope,
+REM SaaS tenants when SaaS Security runs on Zscaler; nothing when no scope is
+REM saved), then the digest (and the e-mail / webhook when configured in
+REM local_settings.bat). Every tenant read counts against the ZIA API rate
+REM limit, so nothing schedules this for you: schedule it in Windows Task
+REM Scheduler yourself if you want it to run unattended. Nothing is written
+REM to any tenant.
 setlocal
 cd /d "%~dp0"
 if exist "%~dp0local_settings.bat" call "%~dp0local_settings.bat"
