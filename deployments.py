@@ -66,7 +66,7 @@ def _write(data: Dict[str, Any]) -> None:
 
 
 def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], options: Dict[str, Any],
-               channel_targets: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+               channel_targets: Optional[Dict[str, Any]] = None, by: str = "") -> Optional[Dict[str, Any]]:
     """Build a record from an apply() result. None when nothing was created."""
     created: List[Dict[str, Any]] = []
     other: List[Dict[str, Any]] = []
@@ -83,6 +83,7 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
         "id": f"dep-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
         "at": _now(),
         "tenant_label": tenant_label,
+        "by": by or "",          # the assessor's name, nothing else about who signed in
         "packs": list(packs),
         "options": dict(options or {}),
         "channel_targets": dict(channel_targets or {}),
@@ -124,7 +125,7 @@ def summary(r: Dict[str, Any]) -> Dict[str, Any]:
     for c in created:
         by_kind[c["kind"]] = by_kind.get(c["kind"], 0) + 1
     return {
-        "id": r["id"], "at": r.get("at"), "tenant_label": r.get("tenant_label"), "packs": r.get("packs") or [],
+        "id": r["id"], "at": r.get("at"), "tenant_label": r.get("tenant_label"), "by": r.get("by") or "", "packs": r.get("packs") or [],
         "channel_targets": r.get("channel_targets") or {}, "status": r.get("status"),
         "created": len(created), "created_by_kind": by_kind, "remaining": len(remaining),
         "undone_at": r.get("undone_at"), "undo": r.get("undo"),

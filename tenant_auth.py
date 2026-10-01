@@ -137,6 +137,31 @@ def label(creds: Dict[str, Any]) -> str:
     return f"{c['vanity_domain'] or '?'} ({cloud})"
 
 
+def record_label(creds: Dict[str, Any]) -> str:
+    """How a pack deployment names its tenant on screen and in the
+    deployment record: 'acme (zscalerten)' for OneAPI, 'classic API
+    (zscalerten)' for the legacy sign-in. The classic API signs in with an
+    admin login and no vanity domain, so neither appears here (a stale
+    vanity domain left in the form or profile included)."""
+    c = normalize(creds)
+    cloud = c["cloud"] or "production"
+    if c["auth_method"] == LEGACY:
+        return f"classic API ({cloud})"
+    return f"{c['vanity_domain'] or '?'} ({cloud})"
+
+
+def record_labels(creds: Dict[str, Any]) -> Tuple[str, ...]:
+    """Every label a deployment of this tenant may carry: record_label and,
+    for the classic API, the '<vanity or ?> (cloud)' form records were
+    written with before."""
+    c = normalize(creds)
+    cloud = c["cloud"] or "production"
+    out = [record_label(c)]
+    if c["auth_method"] == LEGACY:
+        out.append(f"{c['vanity_domain'] or '?'} ({cloud})")
+    return tuple(out)
+
+
 def identity(creds: Dict[str, Any]) -> str:
     """The masked identity for an error message."""
     c = normalize(creds)

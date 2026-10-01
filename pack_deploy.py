@@ -106,6 +106,68 @@ WRITE_STATUSES = {CREATE, MODIFY, RESTORE}
 BASELINE_MARK = "[DLP-Check baseline"
 PACK_MARK = "[DLP-Check pack"          # provenance tag for packs without a baseline section
 
+# The tag names the assessor who deployed the pack ("[Jane Doe pack pci v2]"),
+# not the tool. DEFAULT_BY is used only when no assessor name is given, and
+# is what every tag written before the assessor name was used says, so the
+# recognisers below match both. A tag is always the END of a description
+# (the deploy appends it; fit_description keeps it whole), which is what
+# keeps "[Q3 baseline review]" in a customer's own text from matching.
+DEFAULT_BY = "DLP-Check"
+BY_MAX = 40
+_BY_BAD = re.compile(r"[\[\]\r\n\t]+")
+_TAG_SUFFIX = r"(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?(?: Terraform-managed\.?)?"
+MARK_RE = re.compile(r"\s*\[(?P<by>[^\[\]\r\n]{1,60}?) (?P<kind>baseline|pack) (?P<pack>[^\s\]]+)(?: v[^\]\s]*)?\]" + _TAG_SUFFIX + r"\s*$")
+
+
+def attribution(assessor: Any) -> str:
+    """The name a provenance tag carries: the assessor's name, cleaned so it
+    cannot break the tag (no brackets or line breaks, at most BY_MAX
+    characters), or DEFAULT_BY when there is none."""
+    s = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())[:BY_MAX].strip()
+    return s or DEFAULT_BY
+
+
+def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = None) -> bool:
+    """Whether a description carries a deploy's provenance tag, optionally
+    for one pack id and/or kind ("baseline" / "pack"). With neither given,
+    only the tool's own "[DLP-Check ..." tags count: a tag naming an
+    assessor is recognised once the pack or kind it must name is known."""
+    d = str(desc or "")
+    m = MARK_RE.search(d)
+    if m and (kind is None or m.group("kind") == kind) and (pack_id is None or m.group("pack") == pack_id):
+        if pack_id is not None or kind is not None or m.group("by") == DEFAULT_BY:
+            return True
+    legacy = [BASELINE_MARK] if kind == "baseline" else [PACK_MARK] if kind == "pack" else [BASELINE_MARK, PACK_MARK]
+    if pack_id is not None:
+        return any(f"{mk} {pack_id}" in d for mk in legacy)
+    return any(mk in d for mk in legacy)
+
+
+def tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
+    """The pack id inside a provenance tag, or None. A tag naming an
+    assessor counts only when its pack id is one of `known` (when given)."""
+    d = str(desc or "")
+    m = MARK_RE.search(d)
+    if m and (known is None or m.group("by") == DEFAULT_BY or m.group("pack") in set(known)):
+        return m.group("pack")
+    for mk in (BASELINE_MARK, PACK_MARK):
+        if mk in d:
+            rest = d.split(mk, 1)[1].strip()
+            return rest.split("]", 1)[0].split(" v")[0].strip() or None
+    return None
+
+
+def strip_mark(base: Any) -> str:
+    """A description without its provenance tag (new or old form)."""
+    s = str(base or "")
+    m = MARK_RE.search(s)
+    if m:
+        s = s[:m.start()]
+    for mk in (PACK_MARK, BASELINE_MARK):
+        if mk in s:
+            s = s.split(mk, 1)[0]
+    return s.strip()
+
 LogFn = Optional[Callable[[str], None]]
 
 
@@ -151,39 +213,36 @@ def baseline_meta(meta: Dict[str, Any], pack_id: str) -> Optional[Dict[str, Any]
     }
 
 
-def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None) -> str:
+def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None, by: Any = None) -> str:
     """Description with the provenance tag appended (idempotent). `limit`
-    clamps the total length (dictionaries: 255) without losing the tag."""
+    clamps the total length (dictionaries: 255) without losing the tag.
+    `by` is the assessor's name the tag carries (DEFAULT_BY when blank)."""
     b = item.get("baseline") or {}
-    tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Measured on every journey check, never overwritten."
+    tag = f"[{attribution(by)} baseline {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Measured on every journey check, never overwritten."
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
-    base = (base or "").strip()
-    if BASELINE_MARK in base:
-        base = base.split(BASELINE_MARK, 1)[0].strip()
+    base = strip_mark(base)
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
 
 
-def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None) -> str:
+def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None, by: Any = None) -> str:
     """Provenance tag for a pack that is not a baseline, so a removal can
-    find its objects by tag instead of by name alone (idempotent)."""
+    find its objects by tag instead of by name alone (idempotent). `by` is
+    the assessor's name the tag carries (DEFAULT_BY when blank)."""
     ver = str(item.get("pack_version") or "")
-    tag = f"{PACK_MARK} {item.get('pack', '?')}{(' v' + ver) if ver else ''}]"
+    tag = f"[{attribution(by)} pack {item.get('pack', '?')}{(' v' + ver) if ver else ''}]"
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
-    base = (base or "").strip()
-    for mark in (PACK_MARK, BASELINE_MARK):
-        if mark in base:
-            base = base.split(mark, 1)[0].strip()
+    base = strip_mark(base)
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
 
 
 def _has_mark(obj: Any) -> bool:
-    return BASELINE_MARK in str(_field(obj, "description", default="") or "")
+    return has_mark(_field(obj, "description", default=""), kind="baseline")
 
 
 # ---------------------------------------------------------------------------
@@ -815,7 +874,7 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             item["tenant"] = existing
             baseline = item.get("baseline")
             if baseline:
-                item["adopt"] = BASELINE_MARK not in str(existing.get("description") or "")
+                item["adopt"] = not has_mark(existing.get("description"), kind="baseline")
                 drift = _policy_drift(p, channel, existing, engine_items, tenant, pack_action=pack_action,
                                       resolved=item.get("resolved") or {})
                 if drift and restore:
@@ -1886,8 +1945,10 @@ def apply(
     log: LogFn = None,
     settle_seconds: float = 45.0,
     cancel: Optional[threading.Event] = None,
+    assessor: str = "",
 ) -> Dict[str, Any]:
-    """Execute a previously approved plan.
+    """Execute a previously approved plan. `assessor` is the name the
+    provenance tag in each created object's description carries.
 
     The preflight is recomputed first; if its hash differs from
     `plan_hash` the tenant or selection changed after the user approved,
@@ -1909,13 +1970,13 @@ def apply(
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
         run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
                                writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                               activate=activate, log=log, settle_seconds=settle_seconds)
+                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor)
         return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
            writes_enabled: Optional[bool], restore_drift: bool, channel_targets: Optional[Dict[str, Sequence[str]]],
-           activate: bool, log: LogFn, settle_seconds: float) -> Dict[str, Any]:
+           activate: bool, log: LogFn, settle_seconds: float, assessor: str = "") -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
     _log("Checking the approved plan against the tenant as it is now…")
@@ -1965,9 +2026,9 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
         (clamped to the API limit for dictionaries)."""
         limit = {"dictionary": DICT_DESCRIPTION_MAX, "engine": ENGINE_DESCRIPTION_MAX}.get(item["kind"])
         if item.get("baseline"):
-            return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit))
+            return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit, by=assessor))
         if item.get("pack"):
-            return dict(definition, description=pack_description(item, definition.get("description") or fallback, limit=limit))
+            return dict(definition, description=pack_description(item, definition.get("description") or fallback, limit=limit, by=assessor))
         return definition
 
     # Say up front what the channel selection left out, so a missing

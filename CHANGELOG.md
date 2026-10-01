@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-01
 
+### Pack deploys name only the assessor; the classic API's vanity domain and login stay out
+- **What you saw.** Every object a pack deploy creates said `[DLP-Check pack <id> v1]` in its description, and the deployment record and on-screen tenant label were built from the vanity domain even when you signed in with the classic API (admin login, no vanity domain).
+- **Now.** The tag names the assessor from Scope assessment: `[Jane Doe pack <id> v1]` (baselines: `[Jane Doe baseline <id> v4] Measured on every journey check…`; Terraform: `… Terraform-managed.`). With no assessor name it still says DLP-Check. The name is cleaned so it cannot break the tag (no brackets or line breaks, at most 40 characters). Every pack path uses it: Deploy policy packs, the single-pack import and the Terraform hand-off.
+- **Records and labels.** A deployment record keeps the assessor's name ("by Jane Doe" in the history) and nothing else about who signed in. With the classic API the tenant is shown and recorded as *classic API (cloud)*: no vanity domain, no admin login.
+- **Nothing already deployed is orphaned.** Removal, export, the journey check and the pack library recognise both the new tag and the old `[DLP-Check …]` one, so packs deployed before still remove cleanly, and a deployment recorded under the old label can still be undone. A tag is recognised only at the end of a description and, for an assessor's tag, only for the pack being removed, so a customer's own bracketed text never qualifies an object for removal.
+
 ### The Path analyzer shows the DLP chain live, with bits that stop where the path breaks
 - **What you asked for.** A live motion visual on the Path analyzer, with moving bits that follow the flows in the Data Security Architect reference (*The chain, end to end*).
 - **Now.** Above the result, *The DLP chain, live* draws every stage: content captured on a channel (inline web, endpoint, email, SaaS at rest) → dictionaries → the DLP engine (Channels gate, at most four engines per rule) → the channel rule (Web, Endpoint, Email or SaaS API DLP; DSPM beside them with its own alert flow) → the lanes out of a rule: the evidence lane (Incident Receiver or cloud-to-cloud → customer storage → storage event → the WA integration → Workflow Automation), the telemetry lane (logs → NSS → SIEM, which never feeds Workflow Automation), auditor email and third-party ICAP beside them.
