@@ -1,12 +1,13 @@
 // Beacon tab: what changed in the Zscaler SDK, the API and the Terraform
-// provider since the last run, the tenant API watch (GET only) and the
-// history. Talks only to /api/beacon, /api/beacon/run and, for the tenant
-// choices, /api/tenant-profiles.
+// provider since the last run, the tenant API watch (GET only, and only
+// the endpoints in scope on the Scope page) and the history. Talks only to
+// /api/beacon, /api/beacon/run, /api/beacon/scope (what the watch would
+// read; no tenant call) and, for the tenant choices, /api/tenant-profiles.
 (function () {
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = id => document.getElementById(id);
   const WATCHER = { sdk: 'SDK', api: 'API', terraform: 'Terraform', tenant: 'Tenant' };
-  const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', endpoint_status: 'endpoint' };
+  const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', endpoint_status: 'endpoint', scope_changed: 'scope' };
   let polling = null;
 
   function say(kind, html) {
@@ -99,7 +100,11 @@
     const changed = new Set(((diff || {}).changes || []).filter(c => c.watcher === 'tenant').map(c => c.endpoint));
     const counts = Object.entries(t.counts || {}).map(([k, v]) => chip(`${v} ${k}`, k === 'OK' ? 'ok' : k === 'skipped' || k === 'not probed' ? '' : 'warn')).join(' ');
     const cls = s => s === 'OK' ? 'ok' : s === 'skipped' || s === 'not probed' ? '' : 'warn';
-    $('bcTenantBody').innerHTML = `<p>${chip(t.label)} ${counts} <span class="dim">${E(t.requests)} GET requests in ${E(t.seconds)} s${t.stopped ? ` · stopped: ${E(t.stopped)}` : ''}</span></p>
+    const sc = t.scope;
+    const out = sc ? (sc.not_in_scope || []).concat(sc.unmapped || []) : [];
+    const scopeLine = sc ? `<p>Read only what is in scope: ${E(sc.summary)}${sc.source ? ` <span class="dim">(from ${E(sc.source)})</span>` : ''}.${out.length ? ` <details class="bc-out"><summary>${E(out.length)} endpoint${out.length === 1 ? '' : 's'} not in scope or unmapped, never read</summary><p class="dim mono">${E(out.join(', '))}</p></details>` : ''}</p>`
+      : '<p class="dim">This watch ran before Beacon followed the Scope page: it read every endpoint the app uses.</p>';
+    $('bcTenantBody').innerHTML = `${scopeLine}<p>${chip(t.label)} ${counts} <span class="dim">${E(t.requests)} GET requests in ${E(t.seconds)} s${t.stopped ? ` · stopped: ${E(t.stopped)}` : ''}</span></p>
       <div class="tw"><table class="bp-table adv-table" aria-label="Tenant endpoints and what they answered"><thead><tr><th scope="col">Endpoint</th><th scope="col">Answer</th><th scope="col">Items</th><th scope="col">Read by</th><th scope="col">Permission</th></tr></thead><tbody>
       ${(t.endpoints || []).map(e => `<tr${changed.has(e.endpoint) ? ' class="bc-changed"' : ''}><td class="mono">${E(e.endpoint)}${changed.has(e.endpoint) ? ' ' + chip('changed', 'warn') : ''}</td><td>${chip(e.status, cls(e.status))}${e.http && e.status !== 'OK' ? ` <span class="dim">HTTP ${E(e.http)}</span>` : ''}${e.error ? `<div class="dim">${E(e.error)}</div>` : ''}</td><td class="num">${e.items == null ? '' : E(e.items)}</td><td class="dim">${E((e.used_by || []).join(', '))}</td><td class="dim">${E(e.permission || '')}</td></tr>`).join('')}
       </tbody></table></div>`;
@@ -120,7 +125,7 @@
 
   // ---- History -------------------------------------------------------------
   function renderHistory(rows) {
-    $('bcHist').querySelector('tbody').innerHTML = (rows || []).map(r => `<tr><td>${when(r.at)}</td><td>${r.online ? 'online' : 'offline'}</td><td>${E(r.trigger || '')}</td><td>${E(r.tenant || '—')}</td><td class="num">${E(r.drift)}</td><td class="num">${E(r.changes)}</td><td class="adv-sbd-ev">${E(r.summary)}</td></tr>`).join('')
+    $('bcHist').querySelector('tbody').innerHTML = (rows || []).map(r => `<tr><td>${when(r.at)}</td><td>${r.online ? 'online' : 'offline'}</td><td>${E(r.trigger || '')}</td><td>${E(r.tenant || '—')}${r.tenant_scope ? `<div class="dim">${E(r.tenant_scope)}</div>` : ''}</td><td class="num">${E(r.drift)}</td><td class="num">${E(r.changes)}</td><td class="adv-sbd-ev">${E(r.summary)}</td></tr>`).join('')
       || '<tr><td colspan="7" class="dim">No runs yet.</td></tr>';
   }
 
@@ -131,7 +136,7 @@
     if (l) { renderSdk(l.sdk); renderApi(l.api); renderTf(l.terraform); }
     renderTenant(l && l.tenant, d.diff);
     renderHistory(d.history);
-    $('bcRun').disabled = !!d.running; $('bcRunTenant').disabled = !!d.running;
+    $('bcRun').disabled = !!d.running; $('bcRunTenant').disabled = !!d.running || !scopeOk;
   }
   async function load() {
     try {
@@ -171,24 +176,82 @@
     return {};
   }
 
+  // ---- What is in scope: the Scope page's selection -------------------------
+  // The tenant API watch reads only the endpoints of the ticked scopes and
+  // of the channels marked Zscaler (every GET counts against the tenant's
+  // ZIA API rate limit). Read live from the assessment tab that opened this
+  // one, else from what the Scope page keeps in this browser (the same
+  // localStorage keys). Only declared channels are sent; with nothing here
+  // the server uses the chosen profile's saved scopes and channels.
+  function readJson(key, fallback) {
+    try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+  }
+  function declared(state) {
+    const out = {};
+    Object.entries(state || {}).forEach(([id, v]) => {
+      const choice = v && typeof v === 'object' ? v.choice : v;
+      if (choice === 'zscaler' || choice === 'alternative') out[id] = { choice, note: String((v && v.note) || '') };
+    });
+    return out;
+  }
+  function scopeSelection() {
+    let scopes = null, channels = null;
+    const op = window.opener && !window.opener.closed ? window.opener : null;
+    try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+    try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+    if (!Array.isArray(scopes)) {
+      const cfg = readJson('zscaler_assessment_config', {});
+      scopes = Array.isArray(cfg.scopes) ? cfg.scopes : [];
+    }
+    if (!channels) {
+      channels = declared(readJson('zassess_channels_v1', {}));
+      const extra = readJson('zassess_channels_v1_extra', []);
+      (Array.isArray(extra) ? extra : []).forEach(c => { if (c && channels[c.id]) channels[c.id].name = String(c.name || c.id); });
+    }
+    return { scopes: scopes.map(String), channels };
+  }
+  let scopeOk = false;
+  async function previewScope() {
+    const el = $('bcScope');
+    const sc = scopeSelection();
+    const cb = credBody();
+    try {
+      const d = await api('/api/beacon/scope', { scopes: sc.scopes, channels: sc.channels, profile_id: cb.profile_id || '' });
+      scopeOk = !!d.ok;
+      el.innerHTML = d.ok
+        ? `The watch will read <strong>${E(d.summary)}</strong> <span class="dim">(from ${E(d.source)}; ${E((d.not_in_scope || []).length + (d.unmapped || []).length)} endpoints not in scope are never read)</span>.`
+        : `<span class="chip warn">${E(d.detail)}</span>`;
+    } catch (e) {
+      scopeOk = false;
+      el.textContent = `Could not work out what is in scope: ${e.message}`;
+    }
+    $('bcRunTenant').disabled = !scopeOk || $('bcRun').disabled;
+    return sc;
+  }
+
   async function run(withTenant) {
     const online = $('bcOnline').checked;
-    const body = Object.assign(withTenant ? credBody() : {}, { online, tenant_watch: !!withTenant });
+    const sc = scopeSelection();
+    const body = Object.assign(withTenant ? credBody() : {}, { online, tenant_watch: !!withTenant },
+      withTenant ? { scopes: sc.scopes, channels: sc.channels } : {});
     $('bcRun').disabled = true; $('bcRunTenant').disabled = true;
     say('', withTenant ? 'Signing in to the tenant…' : 'Starting…');
     try {
       const d = await api('/api/beacon/run', body);
-      say('', `Running${online ? ' online' : ' offline'}${d.tenant ? `, with the tenant API watch on ${E(d.tenant)} (${E(d.endpoints)} endpoints, GET only, about one a second)` : ''}. This page updates when it finishes.`);
+      say('', `Running${online ? ' online' : ' offline'}${d.tenant ? `, with the tenant API watch on ${E(d.tenant)}: only what is in scope, ${E(d.scope ? d.scope.summary : `${d.endpoints} endpoints`)} (GET only, about one a second)` : ''}. This page updates when it finishes.`);
       $('rpMeta').textContent = 'Running…';
       poll();
     } catch (e) {
       say('bad', `Could not start: ${E(e.message)}`);
-      $('bcRun').disabled = false; $('bcRunTenant').disabled = false;
+      $('bcRun').disabled = false; $('bcRunTenant').disabled = !scopeOk;
     }
   }
 
   $('bcRun').addEventListener('click', () => run(false));
   $('bcRunTenant').addEventListener('click', () => run(true));
-  tenantChoices();
+  $('bcTenant').addEventListener('change', previewScope);
+  window.addEventListener('focus', previewScope);
+  window.addEventListener('storage', e => { if (!e.key || e.key.startsWith('zassess_channels_v1') || e.key === 'zscaler_assessment_config') previewScope(); });
+  tenantChoices().then(previewScope);
   load().then(d => { if (d && d.running) poll(); });
 })();

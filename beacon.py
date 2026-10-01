@@ -13,8 +13,11 @@ Three watchers make one snapshot:
     API reference answers, and the help-center / OneAPI pages
     zscaler_update_check watches, hashed the same way. Optionally, the
     tenant API watch: a GET-only probe, about one request a second, of
-    every endpoint the app's checks and features read, recording what
-    each answered (OK, 403, 404, 429, timeout, error) and how many items.
+    the endpoints that belong to what is in scope on the Scope page (the
+    ticked scopes and the channels marked Zscaler; beacon_scope.py picks
+    them), recording what each answered (OK, 403, 404, 429, timeout,
+    error) and how many items. Every GET counts against the tenant's
+    ZIA API rate limit, so nothing out of scope is ever read.
   - Terraform: the zscaler/zia provider pin against the registry's
     latest, attribute drift against the provider's schema and docs, and
     the provider's changelog head.
@@ -22,8 +25,9 @@ Three watchers make one snapshot:
 Each snapshot is kept (the last 30) in beacon_state.json in the same
 per-user cache folder zscaler_update_check uses, and compared with the
 previous one: versions that moved, drift that is new or cleared, doc
-pages whose content changed, tenant endpoints whose answer changed. The
-comparison is in plain words.
+pages whose content changed, tenant endpoints whose answer changed (only
+the endpoints read both times; a changed scope is said). The comparison
+is in plain words.
 
 Nothing here writes anywhere but that state file. Every upstream fetch
 goes through zscaler_update_check._safe_get's host allowlist (via
@@ -249,7 +253,9 @@ def run_upstream(online: bool, fetch: Optional[Fetch] = None, upstream: Optional
 def tenant_endpoints(root: str = ROOT) -> Dict[str, List[str]]:
     """endpoint -> the modules that read it, from the literal GET calls in
     TENANT_WATCH_MODULES. Read from the code each time, so a new check
-    is watched without a list to keep in step."""
+    is watched without a list to keep in step. This is everything the
+    watch could read; beacon_scope.select narrows it to what is in scope,
+    and only that is ever read."""
     out: Dict[str, List[str]] = {}
     for name in TENANT_WATCH_MODULES:
         try:
@@ -330,15 +336,19 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
                  gap: float = PROBE_GAP_SECONDS, budget: float = PROBE_BUDGET_SECONDS,
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.time,
                  on_progress: Optional[Callable[[int, int], None]] = None) -> Dict[str, Any]:
-    """GET every endpoint the app reads, one about every `gap` seconds.
-    A ZPA path without a ZPA customer id, and anything but ZIA on the
-    classic ZIA API sign-in, is skipped (the client would answer for it
-    without asking the tenant)."""
+    """GET each of `endpoints` (the ones in scope, from
+    beacon_scope.select), one about every `gap` seconds. There is no
+    default: without a list nothing is read. A ZPA path without a ZPA
+    customer id, and anything but ZIA on the classic ZIA API sign-in, is
+    skipped (the client would answer for it without asking the tenant)."""
     if str(method or "").upper() != "GET":
         raise ValueError(f"Beacon's tenant watch only sends GET; {method!r} was refused.")
+    if endpoints is None:
+        import beacon_scope
+        raise ValueError(beacon_scope.NOTHING_IN_SCOPE)
     import permissions
     ro = ReadOnlyClient(client)
-    eps = endpoints if endpoints is not None else tenant_endpoints()
+    eps = endpoints
     legacy, customer_id = bool(ro.legacy), str(ro.customer_id or "")
     started = clock()
     rows: List[Dict[str, Any]] = []
@@ -397,11 +407,29 @@ def _usable(w: Optional[Dict[str, Any]]) -> bool:
     return bool(w) and w.get("status") in ("ok", "offline")
 
 
+def _scope_change(prev: Dict[str, Any], cur: Dict[str, Any], prev_eps: Dict[str, Dict[str, Any]]) -> str:
+    """One sentence when the tenant watch read a different set of
+    endpoints than the last watch of the same tenant (the Scope page
+    changed); only the endpoints read both times are compared."""
+    now = {e["endpoint"] for e in cur.get("endpoints") or []}
+    before = set(prev_eps)
+    ps, cs = (prev.get("scope") or {}).get("summary"), (cur.get("scope") or {}).get("summary")
+    if now == before and (not ps or ps == cs):
+        return ""
+    both, added, gone = len(now & before), len(now - before), len(before - now)
+    was = ps or f"{len(before)} endpoints, before the watch followed the Scope page"
+    now_words = cs or f"{len(now)} endpoints"
+    return (f"The scope changed since the last watch of this tenant (was {was}; now {now_words}): "
+            f"only the {both} endpoint{'' if both == 1 else 's'} read both times {'is' if both == 1 else 'are'} compared; "
+            f"{added} newly in scope, {gone} no longer read.")
+
+
 def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
     """What changed between `cur` and the snapshots before it. Upstream
     changes are measured against the latest earlier run of the same kind
     (online against online, offline against offline); tenant endpoints
-    against the latest earlier watch of the same tenant."""
+    against the latest earlier watch of the same tenant, endpoint by
+    endpoint for the endpoints both watches read (the scope may differ)."""
     changes: List[Dict[str, Any]] = []
 
     def add(watcher: str, kind: str, text: str, **extra: Any) -> None:
@@ -451,6 +479,9 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
         tb = _baseline(history, lambda s: bool(s.get("tenant")) and (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id"))
         if tb:
             prev_eps = {e["endpoint"]: e for e in (tb.get("tenant") or {}).get("endpoints") or []}
+            sc = _scope_change(tb.get("tenant") or {}, ct, prev_eps)
+            if sc:
+                add("tenant", "scope_changed", sc)
             for e in ct.get("endpoints") or []:
                 q = prev_eps.get(e["endpoint"])
                 skip = ("skipped", "not probed")
@@ -471,8 +502,9 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
         when = (up or tb or {}).get("at", "")
         summary.append(f"Nothing changed since the last run ({when}).")
     else:
-        n = {k: sum(1 for c in changes if c["watcher"] == k) for k in ("sdk", "api", "terraform", "tenant")}
-        parts = [f"{v} {({'sdk': 'SDK', 'api': 'API', 'terraform': 'Terraform', 'tenant': 'tenant endpoint'})[k]} change{'s' if v != 1 else ''}"
+        key = lambda c: "scope" if c["kind"] == "scope_changed" else c["watcher"]  # noqa: E731
+        n = {k: sum(1 for c in changes if key(c) == k) for k in ("sdk", "api", "terraform", "tenant", "scope")}
+        parts = [f"{v} {({'sdk': 'SDK', 'api': 'API', 'terraform': 'Terraform', 'tenant': 'tenant endpoint', 'scope': 'tenant scope'})[k]} change{'s' if v != 1 else ''}"
                  for k, v in n.items() if v]
         summary.append(f"{len(changes)} change{'s' if len(changes) != 1 else ''} since the last run: {', '.join(parts)}.")
         summary.extend(c["text"] for c in changes)
@@ -498,10 +530,18 @@ def headline(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any = None, tenant_label: str = "", *,
         upstream: Optional[Callable[..., Dict[str, Any]]] = None, trigger: str = "manual", path: Optional[str] = None,
-        save: bool = True, probe: Optional[Callable[..., Dict[str, Any]]] = None) -> Dict[str, Any]:
+        save: bool = True, probe: Optional[Callable[..., Dict[str, Any]]] = None,
+        tenant_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """One Beacon snapshot: the three upstream watchers, the tenant API
     watch when a client is given, and what changed since the last run.
-    Saved to the history unless `save` is False."""
+    Saved to the history unless `save` is False.
+
+    The tenant API watch reads only `tenant_scope["endpoints"]` (a
+    beacon_scope.select result, with an optional "source"); with a client
+    and nothing in scope it refuses (ValueError) before anything is read."""
+    import beacon_scope
+    if tenant_client is not None and not (tenant_scope or {}).get("endpoints"):
+        raise ValueError(beacon_scope.NOTHING_IN_SCOPE)
     started = time.time()
     snap: Dict[str, Any] = {"id": f"beacon-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.urandom(2).hex()}", "at": _now(),
                             "online": bool(online), "trigger": trigger}
@@ -512,12 +552,13 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
     snap["tenant"] = None
     if tenant_client is not None:
         try:
-            t = (probe or probe_tenant)(tenant_client)
+            t = (probe or probe_tenant)(tenant_client, endpoints=tenant_scope["endpoints"])
         except PermissionError:
             raise
         except Exception as e:  # noqa: BLE001
             t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET"}
         t["label"] = tenant_label or "tenant"
+        t["scope"] = beacon_scope.describe(tenant_scope, str(tenant_scope.get("source") or ""))
         snap["tenant"] = t
     snap["drift"] = headline(snap)
     snap["seconds"] = round(time.time() - started, 1)
@@ -537,7 +578,8 @@ def history_rows(history: List[Dict[str, Any]], limit: int = HISTORY_KEEP) -> Li
     for s in reversed(history[-limit:]):
         d = s.get("diff") or {}
         rows.append({"id": s.get("id"), "at": s.get("at"), "online": s.get("online"), "trigger": s.get("trigger"),
-                     "tenant": (s.get("tenant") or {}).get("label"), "drift": len(s.get("drift") or []),
+                     "tenant": (s.get("tenant") or {}).get("label"),
+                     "tenant_scope": ((s.get("tenant") or {}).get("scope") or {}).get("summary"), "drift": len(s.get("drift") or []),
                      "changes": len(d.get("changes") or []), "summary": (d.get("summary") or [""])[0]})
     return rows
 
