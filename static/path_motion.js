@@ -222,6 +222,17 @@ function _pmEdgeD(key) {
   return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
 }
 
+// Where on an edge a stop is marked (and where its bits pop). A rule's
+// forwarding edges share the vertical bus, so a mark at the middle of
+// r_web>evid would sit on the stretch it shares with r_web>auditor, right
+// at the auditor's junction, and read as if that live link were broken.
+// Those stops go on the edge's own last stretch into its target instead.
+function _pmStopLen(key, L) {
+  const [a, b] = key.split('>').map(_pmNode);
+  if (a.key.startsWith('r_') && a.key !== 'r_dspm' && a.y !== b.y) return Math.max(L / 2, L - (b.x - PM_BUS) / 2);
+  return L / 2;
+}
+
 function _pmSvg() {
   const cols = PM_COLS.map(([x, l]) => `<text class="pm-col" x="${x + 2}" y="14">${_pmE(l.toUpperCase())}</text>`).join('');
   const edges = PM_EDGES.map(e => `<path class="pm-edge lane-${_pmLane(e)}" data-edge="${_pmE(e)}" d="${_pmEdgeD(e)}" marker-end="url(#pmArrow)"/>`).join('');
@@ -251,7 +262,7 @@ function renderPathMotion(container) {
   container.innerHTML = `<div class="pm-head">
       <span class="pm-mode" id="pmMode">Reference chain</span>
       <span class="sep"></span>
-      <button type="button" class="rp-btn" id="pmToggle" aria-pressed="false" aria-controls="pmStage">Pause motion</button>
+      <button type="button" class="rp-btn" id="pmToggle" aria-controls="pmStage">Pause motion</button>
     </div>
     <div class="pm-wrap" id="pmStage">${_pmSvg()}</div>
     <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence lane (feeds Workflow Automation)</span><span><i class="lane-tel"></i>telemetry and parallel paths (never feed it)</span><span><b class="pm-x">✕</b>where it stops</span></div>
@@ -266,12 +277,13 @@ function renderPathMotion(container) {
   const lenOf = k => (lens[k] != null ? lens[k] : (lens[k] = paths[k].getTotalLength()));
   const reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   const SPEED = 120, MAX_BITS = 90;
-  let routes = [], bits = [], raf = 0, last = 0, chosen = null, onScreen = true;
+  let routes = [], bits = [], raf = 0, last = 0, chosen = null, onScreen = true, destroyed = false;
 
   function playing() { return chosen != null ? chosen : !reduce.matches; }
   function setNote() {
+    // The label says what a press does, so no aria-pressed: a toggle whose
+    // label also flips would be read as "Play motion, pressed" while paused.
     btn.textContent = playing() ? 'Pause motion' : 'Play motion';
-    btn.setAttribute('aria-pressed', playing() ? 'false' : 'true');
     note.textContent = playing() ? 'Bits move along each lane; a ✕ marks where this path stops and why (hover it, or read the list below).'
       : (reduce.matches && chosen == null ? 'Motion is off because your system asks for reduced motion: the arrows show each lane\'s direction. Play motion starts it anyway.'
         : 'Motion paused: the arrows show each lane\'s direction.');
@@ -316,7 +328,7 @@ function renderPathMotion(container) {
     });
     raf = requestAnimationFrame(frame);
   }
-  function start() { if (!raf && playing() && onScreen && !document.hidden) { last = 0; raf = requestAnimationFrame(frame); } }
+  function start() { if (!destroyed && !raf && playing() && onScreen && !document.hidden) { last = 0; raf = requestAnimationFrame(frame); } }
   function halt() { if (raf) cancelAnimationFrame(raf); raf = 0; }
   function sync() { setNote(); if (playing()) start(); else { halt(); clearBits(); } }
 
@@ -350,7 +362,7 @@ function renderPathMotion(container) {
       g.querySelector('.tag').textContent = tag === 'enforce' ? 'ENFORCE' : tag === 'monitor' ? 'MONITOR' : '';
     });
     m.stops.forEach(s => {
-      const p = paths[s.edge], L = lenOf(s.edge), pt = p.getPointAtLength(L / 2);
+      const p = paths[s.edge], pt = p.getPointAtLength(_pmStopLen(s.edge, lenOf(s.edge)));
       const g = document.createElementNS(PM_SVGNS, 'g');
       g.setAttribute('class', `pm-stop tone-${s.tone}`);
       g.setAttribute('transform', `translate(${pt.x.toFixed(1)},${pt.y.toFixed(1)})`);
@@ -359,7 +371,7 @@ function renderPathMotion(container) {
     });
     routes = m.routes.map(r => {
       const ls = r.edges.map(lenOf), total = ls.reduce((a, b) => a + b, 0);
-      const end = r.stop == null ? total : ls.slice(0, r.stop).reduce((a, b) => a + b, 0) + ls[r.stop] / 2;
+      const end = r.stop == null ? total : ls.slice(0, r.stop).reduce((a, b) => a + b, 0) + _pmStopLen(r.edges[r.stop], ls[r.stop]);
       // Stagger the first bits so the lanes do not pulse in step.
       return Object.assign({}, r, { lens: ls, end, acc: Math.random(), lane: _pmLane(r.edges[0]) });
     });
@@ -369,8 +381,10 @@ function renderPathMotion(container) {
     return m;
   }
 
-  btn.addEventListener('click', () => { chosen = !playing(); sync(); });
-  if (reduce.addEventListener) reduce.addEventListener('change', () => { if (chosen == null) sync(); });
+  const onClick = () => { chosen = !playing(); sync(); };
+  const onReduce = () => { if (chosen == null) sync(); };
+  btn.addEventListener('click', onClick);
+  if (reduce.addEventListener) reduce.addEventListener('change', onReduce);
   const onVis = () => { if (document.hidden) halt(); else start(); };
   document.addEventListener('visibilitychange', onVis);
   let io = null;
@@ -381,7 +395,14 @@ function renderPathMotion(container) {
   update(null);
   return {
     update,
-    destroy() { halt(); clearBits(); document.removeEventListener('visibilitychange', onVis); if (io) io.disconnect(); },
+    // After destroy nothing may start the loop again: not the button, not a
+    // reduced-motion change, not visibility or scrolling.
+    destroy() {
+      destroyed = true; halt(); clearBits();
+      btn.removeEventListener('click', onClick);
+      if (reduce.removeEventListener) reduce.removeEventListener('change', onReduce);
+      document.removeEventListener('visibilitychange', onVis); if (io) io.disconnect();
+    },
   };
 }
 window.renderPathMotion = renderPathMotion;

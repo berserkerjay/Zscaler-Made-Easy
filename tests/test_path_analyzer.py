@@ -251,7 +251,7 @@ def test_the_page_draws_the_dlp_chain_live_and_honours_reduced_motion():
     r = t.get("/static/path_motion.js")
     assert r.status_code == 200
     js = r.text
-    for needle in ("requestAnimationFrame", "cancelAnimationFrame", "(prefers-reduced-motion: reduce)", "aria-pressed", 'role="img"',
+    for needle in ("requestAnimationFrame", "cancelAnimationFrame", "(prefers-reduced-motion: reduce)", 'aria-controls="pmStage"', 'role="img"',
                    'aria-labelledby="pmTitle"', 'aria-describedby="pmSummary"', 'marker-end="url(#pmArrow)"', "visibilitychange", "IntersectionObserver",
                    "Incident Receiver", "Customer storage", "Storage event", "WA integration", "Workflow Automation", "NSS / Cloud NSS", "SIEM",
                    "Auditor email", "3rd-party ICAP", "DSPM alerts", "never feeds WA", "Dictionaries", "DLP engine", "Channels gate", "≤ 4 engines per rule",
@@ -320,3 +320,51 @@ def test_the_bits_follow_the_analyzed_path_and_stop_where_it_breaks():
     assert any("Workflow Automation stays empty" in s for s in m["monitor"]["summary"])
     ep = next(r for r in m["monitor"]["routes"] if r["edges"][0] == "cap_ep>dict")
     assert ep["stop"] == 0, "macOS: Endpoint DLP is not installed, so its content never reaches a dictionary"
+
+
+def test_the_motion_toggle_is_not_announced_as_pressed_and_destroy_stops_everything():
+    """The Pause / Play button's label already says what a press does, so it
+    carries no aria-pressed (paused, it would read "Play motion, pressed").
+    destroy() must leave nothing that can restart the loop: the button, the
+    reduced-motion listener and visibility are all let go."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    js = open(os.path.join(root, "static", "path_motion.js"), encoding="utf-8").read()
+    toggle = js[js.index('id="pmToggle"') - 40:js.index("</button>", js.index('id="pmToggle"'))]
+    assert "aria-pressed" not in toggle and "setAttribute('aria-pressed'" not in js
+    destroy = js[js.index("destroy() {"):js.index("window.renderPathMotion")]
+    for needle in ("destroyed = true", "btn.removeEventListener('click', onClick)", "reduce.removeEventListener('change', onReduce)",
+                   "document.removeEventListener('visibilitychange', onVis)", "io.disconnect()"):
+        assert needle in destroy, needle
+    assert "function start() { if (!destroyed &&" in js
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+def test_a_stop_on_the_evidence_lane_is_marked_off_the_shared_forwarding_bus():
+    """r_web>auditor and r_web>evid run down the same bus. When only the
+    evidence lane breaks, its mark (and where its bits pop) must sit on its
+    own last stretch into Evidence forwarding, not on the bus beside the
+    auditor's live junction."""
+    import json
+    import os
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script = (
+        "const vm=require('vm'),fs=require('fs');const ctx={window:{}};vm.createContext(ctx);"
+        f"vm.runInContext(fs.readFileSync({json.dumps(os.path.join(root, 'static', 'path_motion.js'))},'utf8'),ctx);"
+        # A walker for the bus edges' M x,y H V H paths.
+        "function pt(d,len){const t=d.match(/[MHV][^MHV]*/g);let [x,y]=t[0].slice(1).split(',').map(Number);const seg=[];"
+        "for(const c of t.slice(1)){const v=+c.slice(1);if(c[0]==='H'){seg.push([x,y,v,y]);x=v}else{seg.push([x,y,x,v]);y=v}}"
+        "const L=seg.reduce((a,s)=>a+Math.abs(s[2]-s[0])+Math.abs(s[3]-s[1]),0);if(len==null)return L;"
+        "for(const s of seg){const l=Math.abs(s[2]-s[0])+Math.abs(s[3]-s[1]);if(len<=l){const f=l?len/l:0;return [s[0]+(s[2]-s[0])*f,s[1]+(s[3]-s[1])*f]}len-=l}}"
+        "const out={};for(const e of ['r_web>evid','r_web>auditor','r_web>icap']){const d=ctx._pmEdgeD(e),L=pt(d);out[e]={L,at:pt(d,ctx._pmStopLen(e,L)),end:pt(d,L)};}"
+        "out.bus=ctx._pmEdgeD('r_web>evid').match(/H(\d+)/)[1];"
+        "process.stdout.write(JSON.stringify(out));")
+    p = subprocess.run(["node", "-e", script], capture_output=True, text=True, encoding="utf-8")
+    assert p.returncode == 0, p.stderr
+    m = json.loads(p.stdout)
+    bus = int(m["bus"])
+    for e in ("r_web>evid", "r_web>auditor", "r_web>icap"):
+        x, y = m[e]["at"]
+        assert x > bus + 9 and y == m[e]["end"][1], (e, m[e])  # off the bus by more than the mark's radius, on its own row
+
