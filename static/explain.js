@@ -173,7 +173,7 @@
     group: 'Close the gaps', name: 'Terraform hand-off', href: '/report/view?tool=terraform',
     what: 'The same policy pack as a Terraform workspace for the official zscaler/zia provider. Static mode needs no credentials; gap mode reads the tenant and imports what exists so the customer\'s first plan is exactly the gap.',
     why: 'Some customers only change Zscaler through code review and a pipeline. This gives their platform team the pack in their language.',
-    when: 'When the customer says "we manage Zscaler as code" or refuses to let a tool write to the tenant.',
+    when: 'Only when the customer\'s platform team manages Zscaler as code (a pipeline, code review). Gap mode: the tenant already has DLP dictionaries, engines or rules, so existing objects are imported and the first plan creates only the gap; it reads the pack\'s objects from the tenant. Static: a new or empty tenant, no credentials, or a reference to review; the team imports anything that already exists before applying. If the customer changes Zscaler in the portal, use Deploy policy packs instead.',
     get: 'A ZIP with main.tf, variables and import blocks, plus the README for the platform team.',
     next: 'Hand the ZIP over; they run terraform plan and see the gap.',
   };
