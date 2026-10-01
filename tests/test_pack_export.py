@@ -892,3 +892,84 @@ def test_a_same_named_tenant_engine_whose_dictionaries_the_plan_creates_is_repor
     rep = pd.preflight(target, packs, writes_enabled=True)
     eng = items_by(rep, "engine")["Project Leak"]
     assert eng["status"] == pd.REUSE_DIFFERS, (eng["status"], eng.get("reason"))
+
+
+# ---------------------------------------------------------------------------
+# Independent review of PR #39
+# ---------------------------------------------------------------------------
+
+# What zscaler-sdk-python returns (RetryTooLong) when ZIA's Retry-After is
+# longer than the app lets it wait: the hourly limit is reached.
+HOURLY = "Retry wait time 3600 seconds exceeds configured maxRetrySeconds 30."
+
+
+def test_the_sdks_hourly_limit_refusal_on_a_rule_read_fails_the_export_instead_of_a_ready_pack_without_that_channel(monkeypatch):
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    client = _source()
+    calls = _refuse_n(client.zia.dlp_web_rules, "list_rules", HOURLY, times=99)
+    later = _refuse_n(client.zia.endpoint_dlp_rules, "list_rules", "unused", times=0)
+    res = pe.export_pack(client, tenant_label="acme")
+    assert res["status"] == "error" and "pack" not in res, res.get("status")
+    assert "hour" in res["error"] and "nothing was exported" in res["error"].lower(), res["error"]
+    assert calls == [1], "read again although ZIA's hourly limit was reached"
+    assert later == [], "kept sending reads to a client ZIA had just refused"
+
+
+def test_the_sdks_hourly_limit_refusal_on_the_dictionary_read_is_reported_as_the_rate_limit():
+    client = _source()
+    _refuse(client.zia.dlp_dictionary, "list_dicts", HOURLY)
+    res = pe.export_pack(client, tenant_label="acme")
+    assert res["status"] == "error" and "hour" in res["error"] and "role" not in res["error"], res["error"]
+
+
+def test_stop_while_the_pack_is_built_produces_no_pack(monkeypatch, tmp_path):
+    import threading
+    import dlp_api_server as srv
+    import pack_jobs
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": SECRET}
+
+    def fn(log, cancel):
+        def log_and_stop(line):
+            log(line)
+            if line.startswith("Pack built"):   # every read is done; Stop arrives now
+                pack_jobs.cancel(pack_jobs.current().id)
+        return srv._run_pack_export(_source(), creds, srv.PackExportRequest(pack_name="x"), None, log_and_stop, cancel)
+    job = pack_jobs.start("export", fn)
+    for _ in range(500):
+        if job.status != pack_jobs.RUNNING:
+            break
+        time.sleep(0.01)
+    assert any(l.startswith("Stop requested") and "no pack is produced" in l for l in job.logs)
+    assert job.status == pack_jobs.CANCELLED and job.artifact is None, (job.status, (job.result or {}).get("status"))
+
+    # The same promise when Stop arrives after the pack is built, while it is zipped.
+    cancel = threading.Event()
+    real_zip = pe.zip_pack
+    monkeypatch.setattr(pe, "zip_pack", lambda pack: (cancel.set(), real_zip(pack))[1])
+    res = srv._run_pack_export(_source(), creds, srv.PackExportRequest(pack_name="x"), None, lambda m: None, cancel)
+    assert res["status"] == "stopped" and "artifact" not in res
+
+
+def test_a_pick_of_no_rule_reads_nothing_and_says_so(monkeypatch):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    ro = ReadOnly(_source())
+    reads = []
+    real = ro.zia.dlp_dictionary.list_dicts
+    ro.zia._t.dlp_dictionary.list_dicts = lambda *a, **k: (reads.append(1), real(*a, **k))[1]
+    res = pe.export_pack(ro, selection={"web": [], "email": [None]}, tenant_label="acme")
+    assert res["status"] == "error" and "no rule was picked" in res["error"].lower(), res
+    assert "has no DLP rules" not in res["error"] and reads == [], "read the tenant for an empty pick"
+
+    built = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or ro)
+    c = TestClient(srv.app, raise_server_exceptions=False)
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20}
+    r = c.post("/api/dlp-packs/export/start", json=dict(creds, rules={"web": []}))
+    assert r.status_code == 400 and "no rule was picked" in r.text.lower(), (r.status_code, r.text[:200])
+    assert built == [], "signed in to the tenant for an empty pick"
+    # A channel left empty beside one with picks still exports the picks.
+    assert pe.export_pack(_source(), selection={"web": [], "email": "all"}, tenant_label="acme")["status"] == "ready"

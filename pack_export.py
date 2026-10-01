@@ -205,7 +205,12 @@ def _list_rules(zia, channel: str) -> Tuple[List[Dict[str, Any]], Optional[str]]
 # after that the export stops reading and fails, rather than hand out a
 # pack with a channel missing.
 READ_RETRIES = 2
-_RATE_WORDS = ("429", "too many requests", "rate limit", "resource access blocked")
+_RATE_WORDS = ("429", "too many requests", "rate limit", "ratelimit", "resource access blocked", "retry wait time")
+# The SDK's answer when ZIA's Retry-After is longer than the client will
+# wait (RetryTooLong: "Retry wait time 3600 seconds exceeds configured
+# maxRetrySeconds 30"): the hourly limit is reached, so waiting a few
+# seconds and reading again only sends more requests ZIA refuses.
+_HOURLY_WORDS = ("retry wait time",)
 STOP_READS = "Stop requested: no more reads are sent."
 
 
@@ -219,6 +224,11 @@ def _is_rate(err_text: Any) -> bool:
     pack_ops.is_rate_refusal and zia_rate._is_rate_answer use)."""
     low = str(err_text or "").lower()
     return any(w in low for w in _RATE_WORDS)
+
+
+def _is_hourly(err_text: Any) -> bool:
+    low = str(err_text or "").lower()
+    return any(w in low for w in _HOURLY_WORDS)
 
 
 def _stopped(cancel: Any) -> bool:
@@ -257,7 +267,7 @@ def _read(what: str, fn: Callable[[], Tuple[Any, Optional[str]]], log: Callable[
             data, err = [], str(e)[:200]
         if not err or not _is_rate(err):
             return data, err, False
-        if attempt >= READ_RETRIES or _stopped(cancel):
+        if attempt >= READ_RETRIES or _stopped(cancel) or _is_hourly(err):
             return data, err, True
         attempt += 1
         secs = _rate_wait(str(err), attempt)
@@ -275,6 +285,11 @@ def _one_line(text: Any) -> str:
 
 
 def _rate_error(what: str, err: str) -> str:
+    if _is_hourly(err):
+        import pack_ops
+        why = pack_ops.fatal_reason(err) or "ZIA's request limit for this hour is reached."
+        return (f"ZIA refused the read of the tenant's {what}: {why.split(' Run this again')[0]} Nothing was exported. "
+                f"ZIA answered: {_one_line(err)}. Try again after that.")
     return (f"ZIA refused the read of the tenant's {what} for its rate limit (Resource Access Blocked / 429), and still did after "
             f"waiting and trying again; nothing was exported. ZIA answered: {_one_line(err)}. Another tool or session may be using "
             "the same API client, or ZIA blocked it for a while. Try again later.")
@@ -378,6 +393,15 @@ def normalize_selection(selection: Any) -> Optional[Dict[str, Optional[set]]]:
             raise ValueError(f"rules for '{ch}' must be \"all\" or a list of rule ids")
         out[ch] = {str(i) for i in ids if i is not None}
     return out
+
+
+NOTHING_PICKED = "No rule was picked: tick at least one rule (or pick \"all\" for a channel) to export."
+
+
+def nothing_picked(sel: Optional[Dict[str, Optional[set]]]) -> bool:
+    """True for a selection that names channels but no rule on any of them
+    ({"web": []}): there is nothing to read the tenant for."""
+    return sel is not None and all(v is not None and not v for v in sel.values())
 
 
 # ---------------------------------------------------------------------------
@@ -913,6 +937,9 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     _log = log or (lambda m: None)
     stopped = {"status": "stopped", "stopped": "You clicked Stop."}
     sel = normalize_selection(selection)
+    if nothing_picked(sel):
+        _log(NOTHING_PICKED)
+        return {"status": "error", "error": NOTHING_PICKED}
     channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel)
     snap = read_tenant(client, channels, log=_log, cancel=cancel)
     if snap.get("stopped") or _stopped(cancel):
@@ -947,6 +974,8 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
          f"; {c['not_exported']} item(s) could not be exported (listed in pack.json).")
     for w in pack["warnings"]:
         _log(f"Note: {w}")
+    if _stopped(cancel):   # Stop while the pack was built: the job promised no pack
+        return stopped
     return {"status": "ready", "pack": pack, "validation": validation}
 
 
