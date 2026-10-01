@@ -349,7 +349,8 @@ ZIA API rate limit, so the loop never runs on its own by default: it runs
 when you click *Run the loop now* (or run `RUN_Continuous_Evaluation.bat` /
 `python continuous_eval.py --once`). To have it run on a timer while the
 app runs, set `DLP_CHECK_CONTINUOUS_EVAL_HOURS` to a number of hours in
-`local_settings.bat` (unset or 0, the default: off). Each tenant profile
+`local_settings.bat` (unset or 0, the default: off; 1 to 8784, anything
+else is logged once at startup and leaves the timer off). Each tenant profile
 that remembers its secret is read only for what its Scope page puts in
 scope; a profile with no scope saved is not read at all. The loop:
 
@@ -359,7 +360,8 @@ scope; a profile with no scope saved is not read at all. The loop:
    that stops answering for seven days is flagged as stale;
 2. refreshes Zscaler's SaaS tenant capability matrix and compares it with
    the customer's onboarded tenants (not active, at the limit, not
-   onboarded at all);
+   onboarded at all) when SaaS Security (CASB) is marked as run on Zscaler
+   on the Scope page;
 3. runs FP/TP Detection Ratio and refreshes the proposals queue (when DLP
    is in the profile's scopes);
 4. measures the ticked packs' journey on the DLP channels the Scope page

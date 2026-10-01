@@ -330,8 +330,11 @@ Being honest about the edges:
   caches, and a built-in pack rebuilt from the tenant, which is kept in
   the pack library under its own id (remove it there to go back to the
   shipped pack).
-- The **Digest** loop runs while the server runs; for a schedule that
-  outlives it, use Task Scheduler or cron.
+- The **Digest** loop is off by default: it runs when you click *Run the
+  loop now* or run `continuous_eval.py --once`, and on a timer only while
+  the server runs and only when `DLP_CHECK_CONTINUOUS_EVAL_HOURS` is set
+  (1 to 8784 hours); for a schedule that outlives the server, use Task
+  Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client
   Connector and ZDX that affect data protection; they are not a full
   audit of those products.

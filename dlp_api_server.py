@@ -17,7 +17,7 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, re, sys, tempfile, time
+import json, asyncio, os, re, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from starlette.background import BackgroundTask
@@ -1494,25 +1494,30 @@ async def digests_list():
     import continuous_eval
     import guidance
     health = guidance.source_health()
-    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": continuous_eval.notification_settings(),
+    notifications = continuous_eval.notification_settings()
+    if _DH_REFRESH_STATE.get("interval_hours") is not None:   # what the timer started with, decided (and logged) once at startup
+        notifications["interval_hours"] = _DH_REFRESH_STATE["interval_hours"]
+    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": notifications,
             "sources": {"watched": sum(1 for h in health if h["watched"]), "stale": [h for h in health if h["stale"]]},
             "checks_config": guidance.config_summary(), "guidance_queue": __import__("proposals").summary(guidance.APP_TENANT)}
 
 
 @app.post("/api/digests/run")
 async def digests_run(req: DigestRunRequest):
-    """Run the loop now (the same run the schedule makes)."""
+    """Run the loop now (the same run the schedule makes). One run at a
+    time: a second click, another tab or the timer firing meanwhile gets
+    409, so the tenants are not read twice against the API rate limit."""
     try:
         d = await asyncio.to_thread(_continuous_eval_once, req.notify)
+    except LoopRunInProgress as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:  # noqa: BLE001
         _DH_REFRESH_STATE["last_status"] = "error"
         _DH_REFRESH_STATE["last_error"] = str(e)[:200]
         _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         raise HTTPException(status_code=500, detail=f"the evaluation failed: {type(e).__name__}: {str(e)[:200]}")
-    # The same bookkeeping the scheduled run does, so the Digest tab's
-    # "Last run" and its status are right after a manual run too.
-    _DH_REFRESH_STATE["last_status"] = "ok"
-    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # The same bookkeeping the scheduled run does (_continuous_eval_once), so
+    # the Digest tab's "Last run" and its status are right after a manual run too.
     return {"ok": True, "digest": d}
 
 
@@ -1617,10 +1622,29 @@ def _continuous_eval_hours() -> float:
     return continuous_eval.interval_hours()
 
 
+class LoopRunInProgress(RuntimeError):
+    """A run of the loop is already reading the tenants."""
+
+
+_LOOP_RUN_LOCK = threading.Lock()
+
+
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
     """One run of the continuous evaluation (guidance, FP/TP Detection Ratio,
     SaaS tenants, drift, digest, notifications). Keeps the per-profile
-    state the FP/TP Detection Ratio tab shows."""
+    state the FP/TP Detection Ratio tab shows, and the run's status: "ok"
+    only when nothing failed, "partial" when a section or a tenant read did
+    (a 429, say). Only one run at a time: every tenant read counts against
+    the ZIA API rate limit, so an overlapping run raises LoopRunInProgress."""
+    if not _LOOP_RUN_LOCK.acquire(blocking=False):
+        raise LoopRunInProgress("a run of the loop is already in progress; wait for it to finish")
+    try:
+        return _continuous_eval_locked(notify)
+    finally:
+        _LOOP_RUN_LOCK.release()
+
+
+def _continuous_eval_locked(notify: bool) -> Dict[str, Any]:
     import continuous_eval
     d = continuous_eval.run_once(build_client=_build_sdk_client, notify=notify)
     for t in d.get("tenants") or []:
@@ -1630,6 +1654,10 @@ def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
                                                           "error": "; ".join(t.get("errors") or [])[:200] or None}
     _DH_REFRESH_STATE["last_digest"] = d.get("id")
     _DH_REFRESH_STATE["last_noteworthy"] = d.get("noteworthy")
+    errors = continuous_eval.run_errors(d)
+    _DH_REFRESH_STATE["last_status"] = "partial" if errors else "ok"
+    _DH_REFRESH_STATE["last_error"] = (f"{errors} error(s) in the run; see the digest" if errors else None)
+    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return d
 
 
@@ -1642,12 +1670,13 @@ async def _dh_auto_refresh_loop() -> None:
         return
     while _DH_REFRESH_STATE.get("enabled"):
         try:
-            await asyncio.to_thread(_continuous_eval_once)
-            _DH_REFRESH_STATE["last_status"] = "ok"
+            await asyncio.to_thread(_continuous_eval_once)   # sets last_status / last_run_at
+        except LoopRunInProgress:
+            pass   # a manual run is reading the tenants right now: this pass is skipped
         except Exception as e:  # noqa: BLE001
             _DH_REFRESH_STATE["last_status"] = "error"
             _DH_REFRESH_STATE["last_error"] = str(e)[:200]
-        _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         _DH_REFRESH_STATE["next_run_at"] = time.time() + interval
         try:
             await asyncio.sleep(interval)
@@ -1657,7 +1686,10 @@ async def _dh_auto_refresh_loop() -> None:
 
 @app.on_event("startup")
 async def _start_dh_refresh() -> None:
-    hours = _continuous_eval_hours()
+    try:
+        hours = _continuous_eval_hours()   # logs a value it cannot use, once
+    except Exception:  # noqa: BLE001  # a setting that cannot be read leaves the timer off; it never stops the app
+        hours = 0.0
     _DH_REFRESH_STATE["interval_hours"] = hours
     if hours <= 0:
         _DH_REFRESH_STATE.update({"enabled": False, "interval_seconds": None, "next_run_at": None, "last_status": _DH_REFRESH_STATE.get("last_status") or "off"})

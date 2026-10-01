@@ -295,3 +295,156 @@ def test_manual_run_honours_scope_over_http(tmp_path, monkeypatch):
     r = c.post("/api/digests/run", json={"notify": False})
     assert r.status_code == 200 and rec.calls == [], (r.text, rec.calls)
     assert srv._DH_REFRESH_STATE["profiles"]["acme"]["status"] == "not in scope"
+
+
+# ── Round 1 fixes: bounded timer, one run at a time, honest status ───
+
+def _http():
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    return c
+
+
+@pytest.mark.parametrize("value", ["1e306", "1e308", "inf", "-inf", "9000", "0.0001", "1e-9", "0.5"])
+def test_an_unusable_number_of_hours_leaves_the_timer_off_and_the_digest_tab_loads(tmp_path, monkeypatch, capsys, value):
+    import asyncio
+    _env(tmp_path, monkeypatch)
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", value)
+    st, started = _state(monkeypatch)
+    asyncio.run(srv._start_dh_refresh())
+    assert started == [] and st["enabled"] is False and st["interval_seconds"] is None and st["interval_hours"] == 0
+    assert "the timer stays off" in capsys.readouterr().out
+    c = _http()
+    for path in ("/api/digests", "/api/detection-health/schedule"):
+        r = c.get(path)
+        assert r.status_code == 200, (path, r.text)
+
+
+@pytest.mark.parametrize("value,hours", [("1", 1.0), ("6", 6.0), ("8784", 8784.0)])
+def test_the_timer_accepts_one_hour_to_a_year(monkeypatch, value, hours):
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", value)
+    assert ce.interval_hours() == hours
+
+
+def test_a_bad_value_is_logged_once_at_startup_not_on_every_page_load(tmp_path, monkeypatch, capsys):
+    import asyncio
+    _env(tmp_path, monkeypatch)
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", "six")
+    st, _ = _state(monkeypatch)
+    asyncio.run(srv._start_dh_refresh())
+    assert capsys.readouterr().out.count("is not a number") == 1
+    c = _http()
+    for _ in range(3):
+        r = c.get("/api/digests")
+        assert r.status_code == 200 and r.json()["notifications"]["interval_hours"] == 0
+    assert "DLP_CHECK_CONTINUOUS_EVAL_HOURS" not in capsys.readouterr().out
+    # The page shows what the timer started with, not what the environment says now.
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", "6")
+    assert c.get("/api/digests").json()["notifications"]["interval_hours"] == 0
+
+
+def test_a_non_ascii_value_never_stops_the_server_on_a_cp1252_log(monkeypatch):
+    import asyncio
+    import io
+    import sys
+    monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", "6\u0447")
+    buf = io.BytesIO()
+    out = io.TextIOWrapper(buf, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", out)
+    st, started = _state(monkeypatch)
+    asyncio.run(srv._start_dh_refresh())
+    out.flush()
+    assert started == [] and st["enabled"] is False and b"\u0447" in buf.getvalue()
+
+
+@pytest.mark.parametrize("scopes,read", [(5, False), (True, False), ({"dlp": 1}, False), ("dlp", True)])
+def test_a_malformed_scopes_value_does_not_stop_the_run(tmp_path, monkeypatch, scopes, read):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    _profile(name="Good", scopes=["dlp"], channels={"web_dlp": "zscaler"})
+    _profile(name="Odd", scopes=scopes, channels={"web_dlp": "zscaler"})
+    d = ce.run_once(build_client=rec.build, notify=False)
+    by = {t["profile_id"]: t for t in d["tenants"]}
+    assert by["good"]["detection_health"] is not None
+    assert (by["odd"]["detection_health"] is not None) is read, by["odd"]
+    if not read:
+        assert by["odd"]["note"].startswith("nothing in scope")
+
+
+def test_a_second_run_while_one_is_in_progress_is_refused(tmp_path, monkeypatch):
+    import asyncio
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    monkeypatch.setattr(srv, "_build_sdk_client", rec.build)
+    _profile(scopes=["dlp"], channels={"web_dlp": "zscaler"})
+    c = _http()
+    assert srv._LOOP_RUN_LOCK.acquire(blocking=False)
+    try:
+        r = c.post("/api/digests/run", json={"notify": False})
+        assert r.status_code == 409 and "already in progress" in r.text, r.text
+        assert rec.calls == []
+        # The timer's pass is skipped too, without an error.
+        st, _ = _state(monkeypatch)
+        st.update({"enabled": True, "interval_seconds": 3600})
+
+        async def _go():
+            sleeps = []
+
+            async def _sleep(s):
+                sleeps.append(s)
+                if len(sleeps) > 1:
+                    st["enabled"] = False
+            monkeypatch.setattr(srv.asyncio, "sleep", _sleep)
+            await srv._dh_auto_refresh_loop()
+        asyncio.run(_go())
+        assert rec.calls == [] and st["last_status"] is None
+    finally:
+        srv._LOOP_RUN_LOCK.release()
+    r = c.post("/api/digests/run", json={"notify": False})
+    assert r.status_code == 200 and "detection_health" in rec.kinds()
+
+
+def test_a_run_whose_tenant_reads_failed_is_not_reported_as_ok(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+
+    def _limited(client, days=30, settings=None, log=None):
+        raise RuntimeError("429 Too Many Requests: rate limit exceeded")
+    monkeypatch.setattr("detection_health.generate", _limited)
+    monkeypatch.setattr(srv, "_build_sdk_client", rec.build)
+    _profile(scopes=["dlp"], channels={"web_dlp": "zscaler"})
+    st, _ = _state(monkeypatch)
+    r = _http().post("/api/digests/run", json={"notify": False})
+    assert r.status_code == 200
+    assert st["last_status"] == "partial" and st["last_run_at"], st
+    assert ce.main(["--once", "--no-notify"]) == 1
+
+
+def test_a_clean_run_is_ok(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    monkeypatch.setattr(srv, "_build_sdk_client", rec.build)
+    _profile(scopes=["dlp"], channels={"web_dlp": "zscaler"})
+    st, _ = _state(monkeypatch)
+    assert _http().post("/api/digests/run", json={"notify": False}).status_code == 200
+    assert st["last_status"] == "ok"
+
+
+def test_a_profile_not_read_is_not_counted_as_evaluated(tmp_path, monkeypatch):
+    _env(tmp_path, monkeypatch)
+    rec = _Recorder(monkeypatch)
+    _profile(scopes=[], channels={})
+    d = ce.run_once(build_client=rec.build, notify=False)
+    assert rec.calls == [] and d["summary"]["tenants"] == 0 and d["summary"]["tenants_not_in_scope"] == 1
+    page = open(os.path.join(ce.ROOT, "static", "report_digest.html"), encoding="utf-8").read()
+    assert "s.tenants_not_in_scope" in page and "not in scope, not read" in page
+
+
+def test_digest_tile_text_wraps_and_the_docs_say_off_by_default():
+    page = open(os.path.join(ce.ROOT, "static", "report_digest.html"), encoding="utf-8").read()
+    assert ".dg-tile .d { font-size: 0.8rem; color: var(--dim); overflow-wrap: anywhere; }" in page
+    ov = open(os.path.join(ce.ROOT, "docs", "OVERVIEW.md"), encoding="utf-8").read()
+    assert "loop runs while the server runs" not in ov and "The **Digest** loop is off by default" in ov
+    gs = open(os.path.join(ce.ROOT, "GETTING_STARTED.md"), encoding="utf-8").read()
+    step2 = gs.split("2. refreshes Zscaler's SaaS tenant capability matrix")[1].split("3. runs")[0]
+    assert "when SaaS Security (CASB) is marked as run on Zscaler" in step2
