@@ -275,7 +275,33 @@ def read_zia(client) -> Dict[str, Any]:
         diagnostics.append({"section": "URL categories", "endpoint": "/zia/urlCategories", "error_type": type(e).__name__, "error": str(e)[:200]})
     for r in z["dlp"] + z["url"] + z["cac"] + z["ftc"] + z["ssl"]:
         r.setdefault("order", None)
+    z["unread"] = unread_sections(diagnostics)
     return z
+
+
+# A rule list that failed to read (HTTP 429, 403, a timeout) is not an empty
+# rule list: the trace says "could not read" for it, never "no rule".
+_SECTION_KEYS = {"SSL inspection rules": "ssl", "Web DLP rules": "dlp", "URL filtering rules": "url", "Cloud App Control rules": "cac",
+                 "File Type Control rules": "ftc", "Endpoint DLP rules": "endpoint", "SaaS Security API DLP rules": "saas",
+                 "Outbound Email DLP rules": "email"}
+
+
+def unread_sections(diagnostics: Any) -> Dict[str, str]:
+    """{zia key: why} for each rule section whose read failed, from the
+    read's diagnostics."""
+    out: Dict[str, str] = {}
+    for d in diagnostics or []:
+        if not isinstance(d, dict):
+            continue
+        key = _SECTION_KEYS.get(str(d.get("section") or ""))
+        if key and key not in out:
+            why = " ".join(str(x) for x in (d.get("error_type"), d.get("error")) if x).strip()
+            out[key] = why[:200] or "the read failed"
+    return out
+
+
+def _unread_why(unread: Dict[str, str], key: str, label: str) -> str:
+    return f"The {label} could not be read ({unread[key]}), so whether one applies here is unknown; run the analysis again once the API answers."
 
 
 # ── Destination resolution ────────────────────────────────────────────
@@ -356,6 +382,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     """Pure: destination + context + tenant snapshot → hops, channels, packs."""
     hops: List[Dict[str, Any]] = []
     host = dest.get("host") or ""
+    unread = zia.get("unread") or {}
     reaches_zscaler = True
     decrypted = False
     ends = None
@@ -505,6 +532,8 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 hops.append(_hop("cac", "Cloud App Control", "warn" if allows else "pass", {"name": r["name"], "id": r["id"]},
                                  f"'{r['name']}' (matched on {m}) allows {', '.join(a.replace('ALLOW_', '').lower() for a in allows) or 'the actions it lists'}: uploads are not stopped here, so content inspection is the last line. Cloud App Control can also gate on a user risk profile (risk score levels).",
                                  _weak("medium", "Uploads allowed by app control", "Block upload/share on personal instances of this application, or use tenancy restrictions.") if allows else None, actions=r["actions"]))
+        elif "cac" in unread:
+            hops.append(_hop("cac", "Cloud App Control", "unknown", None, _unread_why(unread, "cac", "Cloud App Control rules"), None))
         else:
             hops.append(_hop("cac", "Cloud App Control", "none", None, "No Cloud App Control rule targets this application, so URL Filtering decides; every action is allowed unless URL filtering or DLP stops it. Cloud App Control is a data security control: it can block upload/share/post per application, and can gate on a user risk profile (risk score levels).",
                              _weak("medium", "No app-level control", "Add a Cloud App Control rule for this application class (block upload/share on unsanctioned instances); it can also gate on a user risk profile.") if dest["app_classes"] or dest["applications"] else None))
@@ -527,12 +556,17 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                     hops.append(_hop("url", "URL filtering", "pass" if r["action"] in ("ALLOW",) else "warn", {"name": r["name"], "id": r["id"], "order": r["order"]},
                                      f"'{r['name']}' → {r['action'] or 'ALLOW'} (matched on {m}; first matching rule in order)" + (f", methods {', '.join(r['request_methods'])}" if r["request_methods"] else "") + ".",
                                      None))
+            elif "url" in unread:
+                hops.append(_hop("url", "URL filtering", "unknown", None, _unread_why(unread, "url", "URL filtering rules"), None))
             else:
                 hops.append(_hop("url", "URL filtering", "pass", None, "No URL filtering rule matches; the default action applies (ALLOW unless the default rule was changed). URL Filtering is a data security control too: it can block or caution posts to a category, and can gate on a user risk profile.", None))
 
         # 7. SSL inspection
         if ends != "url":
-            if decided is None:
+            if decided is None and "ssl" in unread:
+                hops.append(_hop("ssl", "SSL inspection", "unknown", None, _unread_why(unread, "ssl", "SSL inspection rules")
+                                 + " Until then it is not known whether this traffic is decrypted.", None))
+            elif decided is None:
                 hops.append(_hop("ssl", "SSL inspection", "blind", None, "No enabled SSL inspection rule matches: the traffic is passed through encrypted and inline DLP cannot see its content.",
                                  _weak("high", "Not decrypted", "Add a DECRYPT rule for this traffic (or a catch-all decrypt rule after Zscaler Recommended Exemptions).")))
             elif decided["decision"] == "inspected":
@@ -557,6 +591,8 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                 r, m = ftc[0]
                 hops.append(_hop("ftc", "File Type Control", "blocked" if r["action"] in BLOCK_ACTIONS else "warn", {"name": r["name"], "id": r["id"]},
                                  f"'{r['name']}' → {r['action']} for {', '.join(t.replace('FTCATEGORY_', '').lower() for t in r['file_types'][:6])}{'…' if len(r['file_types']) > 6 else ''} on upload (matched on {m}).", None))
+            elif "ftc" in unread:
+                hops.append(_hop("ftc", "File Type Control", "unknown", None, _unread_why(unread, "ftc", "File Type Control rules"), None))
             else:
                 hops.append(_hop("ftc", "File Type Control", "none", None, "No File Type Control rule limits uploads here; bulk formats (spreadsheets, archives, databases) rely on DLP alone. File Type Control is a data security control: allow, caution or block whole file categories on upload/download.", None))
 
@@ -568,10 +604,20 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
                     continue
                 if r["catch_all"] or (set(r["url_categories"]) & set(cats)) or (set(r["cloud_applications"]) & set(apps)):
                     covering.append(r)
-            if not decrypted:
+            ssl_unread = decided is None and "ssl" in unread
+            if not covering and "dlp" in unread and (decrypted or ssl_unread):
+                hops.append(_hop("dlp", "Inline Web DLP", "unknown", None, _unread_why(unread, "dlp", "Web DLP rules"),
+                                 _weak("medium", "Web DLP rules could not be read", "Check that the API role can read Web DLP rules (and is not rate-limited), then run the analysis again.")))
+            elif ssl_unread:
+                hops.append(_hop("dlp", "Inline Web DLP", "unknown", None,
+                                 f"{len(covering)} enabled Web DLP rule(s) would apply, but the SSL inspection rules could not be read, so whether the engines see the content is unknown." if covering
+                                 else "The SSL inspection rules could not be read, so whether this content is decrypted, and so inspected, is unknown.", None))
+            elif not decrypted:
                 hops.append(_hop("dlp", "Inline Web DLP", "blind", None,
-                                 f"{len(covering)} enabled Web DLP rule(s) would apply, but the content is encrypted: engines never see it." if covering else "Encrypted, and no Web DLP rule applies either.",
-                                 _weak("high", "Inline DLP is blind here", "Decrypt this traffic first; the DLP rules are in place but cannot run.") if covering else _weak("high", "Blind and ungoverned", "Decrypt this traffic and deploy a policy pack so a Web DLP rule covers it.")))
+                                 f"{len(covering)} enabled Web DLP rule(s) would apply, but the content is encrypted: engines never see it." if covering
+                                 else ("Encrypted: engines never see this content (the Web DLP rules could not be read either)." if "dlp" in unread else "Encrypted, and no Web DLP rule applies either."),
+                                 _weak("high", "Inline DLP is blind here", "Decrypt this traffic first; the DLP rules are in place but cannot run.") if covering
+                                 else _weak("high", "Inline DLP is blind here", "Decrypt this traffic first, then run the analysis again so the Web DLP rules can be read.") if "dlp" in unread else _weak("high", "Blind and ungoverned", "Decrypt this traffic and deploy a policy pack so a Web DLP rule covers it.")))
             elif not covering:
                 hops.append(_hop("dlp", "Inline Web DLP", "none", None, "Decrypted, but no enabled Web DLP rule targets this traffic.",
                                  _weak("medium", "Ungoverned", "Deploy a policy pack (Deploy Policy Packs) or scope a Web DLP rule to this traffic; start in monitor mode.")))
@@ -590,7 +636,10 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
         # 13. After the match: logs, the incident receiver and Workflow Automation
         if ends not in ("ssl", "url"):
             dlp_hop = next((h for h in hops if h["key"] == "dlp"), None)
-            if not dlp_hop or dlp_hop["status"] in ("blind", "none"):
+            if dlp_hop and dlp_hop["status"] == "unknown":
+                hops.append(_hop("incident", "Logs & incidents", "unknown", None,
+                                 "Unknown: the rules this depends on could not be read, so whether a DLP rule logs or forwards a match here is not known.", None))
+            elif not dlp_hop or dlp_hop["status"] in ("blind", "none"):
                 hops.append(_hop("incident", "Logs & incidents", "none", None,
                                  "Only the web transaction log is written (Nanolog → Web Insights, and NSS / Cloud NSS feeds to your SIEM): no DLP rule fires here, so there is no DLP log line, no copy to the Incident Receiver and no Workflow Automation incident.", None))
             else:
@@ -608,19 +657,32 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     channels = {}
     ep = [r for r in zia.get("endpoint", []) if r["state"] == "ENABLED"]
     edlp_on = bool(prof and prof.get("endpoint_dlp"))
+    def _unread_channel(key: str, label: str, rules_label: str) -> Optional[Dict[str, Any]]:
+        if key not in unread:
+            return None
+        return {"label": label, "status": "unknown", "detail": _unread_why(unread, key, rules_label),
+                "weak_point": _weak("low", f"{rules_label[0].upper() + rules_label[1:]} could not be read", f"Check that the API role can read {rules_label}, then run the analysis again."),
+                "rules": []}
     channels["endpoint"] = {"label": "Endpoint DLP (on the device)", "status": ("enforce" if any(r["action"] in ("BLOCK", "CONFIRM") for r in ep) else "monitor") if (ep and edlp_on) else ("none" if not ep else "off"),
                             "detail": (f"{len(ep)} enabled rule(s)" + ("; the app profile installs Endpoint DLP." if edlp_on else "; but the app profile does not install Endpoint DLP, so they never run on this device.")) if ep else "No enabled Endpoint DLP rules.",
                             "weak_point": None if (ep and edlp_on) else _weak("high" if not reaches_zscaler else "medium", "Endpoint DLP not active on this device" if ep else "No Endpoint DLP rules",
                                                                             "Enable 'Install Endpoint DLP' on the app profile" if ep else "Deploy a pack with Endpoint DLP rules; it is the only control that sees bypassed traffic."),
                             "rules": [r["name"] for r in ep]}
+    if not ep and "endpoint" in unread:
+        channels["endpoint"] = _unread_channel("endpoint", "Endpoint DLP (on the device)", "Endpoint DLP rules")
     sa = [r for r in zia.get("saas", []) if r["state"] == "ENABLED"]
     channels["saas"] = {"label": "SaaS Security API (at rest)", "status": "monitor" if sa and all("REPORT" in r["action"] or r["action"] == "OFLCASB_DLP_ALLOW" for r in sa) else ("enforce" if sa else "none"),
                         "detail": f"{len(sa)} enabled rule(s) scan onboarded tenants at rest." if sa else "No enabled SaaS Security API DLP rules: data already in sanctioned SaaS is not scanned.",
                         "weak_point": None if sa else _weak("low", "No at-rest scanning", "Onboard the corporate SaaS tenants and deploy a pack with a SaaS file rule."), "rules": [r["name"] for r in sa]}
+    if not sa and "saas" in unread:
+        channels["saas"] = _unread_channel("saas", "SaaS Security API (at rest)", "SaaS Security API DLP rules")
     em = [r for r in zia.get("email", []) if r["state"] == "ENABLED"]
     channels["email"] = {"label": "Outbound Email DLP", "status": "enforce" if any(r["action"] in ("BLOCK", "CUSTOMHEADERINSERTION") for r in em) else ("monitor" if em else "none"),
                          "detail": f"{len(em)} enabled rule(s) on outbound mail." if em else "No enabled Email DLP rules: mail leaves uninspected.",
                          "weak_point": None if em else _weak("medium", "Email not covered", "Onboard the Microsoft 365 / Gmail tenant and deploy a pack with an email rule."), "rules": [r["name"] for r in em]}
+
+    if not em and "email" in unread:
+        channels["email"] = _unread_channel("email", "Outbound Email DLP", "Outbound Email DLP rules")
 
     # Policy pack overlay
     pack_rows = []
@@ -673,6 +735,7 @@ def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any]
     sev_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     weak_points.sort(key=lambda w: sev_order.get(w["severity"], 9))
     outcome = ("bypassed" if not reaches_zscaler else "blocked" if ends in ("ssl", "url") else
+               "unknown" if any(h["key"] == "dlp" and h["status"] == "unknown" for h in hops) else
                "blind" if not decrypted else next((h["status"] for h in hops if h["key"] == "dlp"), "none"))
     return {"destination": dest, "network": network, "platform": platform, "hops": hops, "channels": channels, "packs": pack_rows,
             "weak_points": weak_points, "outcome": outcome, "reaches_zscaler": reaches_zscaler, "decrypted": decrypted}
@@ -740,6 +803,7 @@ def trace_from_report(report: Dict[str, Any], destination: str, network: str, pl
     """Trace a destination the user typed against a stored report (no tenant call)."""
     zia = dict(report["snapshot"]["zia"])
     zia["categories"] = report["snapshot"].get("categories") or {}
+    zia.setdefault("unread", unread_sections(report.get("diagnostics")))
     for r in zia.get("dlp", []):
         r.setdefault("enforcing", str(r.get("action", "")).upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE"))
         r.setdefault("without_content_inspection", False)

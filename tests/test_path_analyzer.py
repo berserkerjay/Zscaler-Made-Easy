@@ -544,7 +544,9 @@ def test_the_stop_cases_the_changelog_names_are_drawn_where_they_break():
                   "process.stdout.write(JSON.stringify(r));", {"none": none, "no_engine": no_engine, "icap": icap})
 
     def web(k):
-        return [r for r in out[k]["routes"] if r["edges"][0] == "cap_web>dict"]
+        # The ChatGPT result also has a Cloud App Control upload block: its ■
+        # is a one-edge route of its own (tested below).
+        return [r for r in out[k]["routes"] if r["edges"][0] == "cap_web>dict" and r["tone"] != "blocked"]
 
     n = web("none")
     assert len(n) == 1 and n[0]["stop"] == 2 and n[0]["edges"][2] == "engine>r_web" and n[0]["tone"] == "broken"
@@ -614,6 +616,116 @@ def test_the_chain_text_is_never_scaled_below_legible_sizes():
     min_w = int(re.search(r"\.pm-svg \{[^}]*min-width: (\d+)px", pm).group(1))
     assert not re.search(r"@media[^{]*\{[^}]*\.pm-svg \{[^}]*min-width", pm), "no narrower minimum on small screens"
     scale = min_w / 1310
-    for sel in (".pm-col", ".pm-node .lbl", ".pm-node .sub", ".pm-note"):
+    for sel in (".pm-col", ".pm-node .lbl", ".pm-node .sub", ".pm-note", ".pm-node .tag", ".pm-stop text", ".pm-stop.tone-blocked text", ".pm-x"):
         size = float(re.search(re.escape(sel) + r" \{[^}]*font-size: ([\d.]+)px", pm).group(1))
         assert size * scale >= 11, (sel, size, scale)
+
+
+# ── No read on page load; unread rules are not "no rule" ──────────────
+class _FailingReads(LookupCl):
+    """The fixture tenant, but Web DLP answers 429 (rate limited) and
+    Endpoint DLP 403: reads that failed, not empty rule lists."""
+    FAIL = {"/zia/webDlpRules": ({"error": "rate limited"}, 429), "/zia/endPointDlpRules": ({"error": "forbidden"}, 403)}
+
+    def get(self, ep, p=None):
+        if ep in self.FAIL:
+            self.reads += 1
+            return self.FAIL[ep]
+        return super().get(ep, p)
+
+
+def test_a_link_fills_the_form_in_but_never_starts_a_tenant_read():
+    """?d=<host>&run=1 may pre-fill the destination; the analysis (and with
+    it the tenant read) starts only from the Analyze button or Enter."""
+    import os
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    html = open(os.path.join(root, "static", "report_path.html"), encoding="utf-8").read()
+    script = html[html.rindex("<script"):]
+    starters = [ln.strip() for ln in script.splitlines()
+                if re.search(r"\brun\(\)|\(run\)|, run\)", ln) and "async function run" not in ln]
+    assert starters and all("addEventListener('click', run)" in ln or "e.key === 'Enter'" in ln for ln in starters), starters
+    assert "q.get('run')" in script and "paDest').value = q.get('d')" in script
+
+
+def test_rules_that_could_not_be_read_are_never_reported_as_no_rule():
+    """A 429 on the Web DLP rules and a 403 on the Endpoint DLP rules give
+    'could not read' (status 'unknown') on the hop, the channel and the
+    verdict, never 'no enabled rule', and no mitigation tells the user to
+    deploy a rule that may already exist. A reused read keeps the answer."""
+    c = _FailingReads(ROUTES, CATALOGUE)
+    r = pa.analyze(c, "chat.openai.com", "off", "windows")
+    v, t = r["verdict"], r["trace"]
+    assert v["outcome"] == "unknown" and "could not be read" in v["headline"] and "no DLP rule" not in v["headline"]
+    dlp = _pm_hop(r, "dlp")
+    assert dlp["status"] == "unknown" and "HTTP 429" in dlp["detail"] and "no enabled" not in dlp["detail"]
+    assert _pm_hop(r, "incident")["status"] == "unknown"
+    ep = t["channels"]["endpoint"]
+    assert ep["status"] == "unknown" and "HTTP 403" in ep["detail"] and "No enabled" not in ep["detail"]
+    assert t["channels"]["email"]["status"] == "none", "a read that worked still says none"
+    assert any(i["status"] == "unknown" and i["hop"] == "dlp" for i in v["impacts"])
+    assert not any(m["action"].startswith("Deploy a Web DLP rule") for m in v["mitigations"])
+    again = pa.analyze(c, "chat.openai.com", "off", "windows", snapshot=r["snapshot_for_cache"])
+    assert again["verdict"]["outcome"] == "unknown" and again["trace"]["channels"]["endpoint"]["status"] == "unknown"
+    # Encrypted traffic with unread rules: still blind, but it does not claim "no rule applies".
+    b = pa.analyze(c, "mail.example.com", "off", "windows")
+    assert b["verdict"]["outcome"] == "blind" and "could not be read" in _pm_hop(b, "dlp")["detail"]
+    assert b["verdict"]["mitigations"][0]["action"] == "Read the Endpoint DLP rules again"
+    # The same tenant with every read answering is unchanged.
+    ok = pa.analyze(_lookup_client(), "chat.openai.com", "off", "windows")
+    assert ok["verdict"]["outcome"] == "enforce" and ok["trace"]["channels"]["endpoint"]["status"] != "unknown"
+
+
+@_needs_node
+def test_the_motion_marks_unread_rules_with_a_question_mark_never_a_break():
+    import json
+    res = pa.analyze(_FailingReads(ROUTES, CATALOGUE), "chat.openai.com", "off", "windows")
+    res.pop("snapshot_for_cache", None)
+    res = json.loads(json.dumps(res, default=str))
+    out = _pm_run("const w=H.load(PM),c=w.container(),m=w.ctx.renderPathMotion(c);const mo=m.update(D);"
+                  "const stops=c.querySelectorAll('.pm-stop').map(g=>({cls:g.getAttribute('class'),mark:g.querySelectorAll('text')[0].textContent}));"
+                  "const e=k=>c.querySelectorAll('.pm-edge').find(p=>p.dataset.edge===k).getAttribute('class');"
+                  "process.stdout.write(JSON.stringify({stops:mo.stops,marks:stops,web:e('engine>r_web'),ep:e('engine>r_ep'),summary:mo.summary,"
+                  "legend:c.querySelectorAll('.pm-legend')[0].textContent}));", res)
+    by = {s["edge"]: s for s in out["stops"]}
+    assert by["engine>r_web"]["tone"] == "unread" and "Could not be read" in by["engine>r_web"]["reason"]
+    assert by["engine>r_ep"]["tone"] == "unread" and "could not be read" in by["engine>r_ep"]["reason"]
+    assert "is-unread" in out["web"] and "is-broken" not in out["web"] and "is-unread" in out["ep"]
+    unread_marks = [m for m in out["marks"] if "tone-unread" in m["cls"]]
+    assert len(unread_marks) == 2 and all(m["mark"] == "?" for m in unread_marks)
+    assert not any("no enabled" in s.lower() for s in out["summary"] if s.startswith(("Inline web", "Endpoint DLP")))
+    assert "rules that could not be read" in out["legend"]
+
+
+@_needs_node
+def test_a_cloud_app_control_upload_block_gets_its_policy_mark_whatever_the_dlp_outcome():
+    """ChatGPT: Cloud App Control 'AI no upload' blocks uploads before DLP.
+    With DLP enforcing and with no DLP rule at all, the chain shows a ■ on
+    the way in and the text alternative names the rule."""
+    enforce = _pm_result("chat.openai.com", "windows")
+    none = _pm_result("chat.openai.com", "windows")
+    none["verdict"]["outcome"] = "none"
+    out = _pm_run("const w=H.load(PM);const r={};for(const k of Object.keys(D)){const m=w.ctx.pmModel(D[k]);r[k]={stops:m.stops,summary:m.summary};}"
+                  "process.stdout.write(JSON.stringify(r));", {"enforce": enforce, "none": none})
+    for k in ("enforce", "none"):
+        blocks = [s for s in out[k]["stops"] if s["tone"] == "blocked"]
+        assert len(blocks) == 1 and blocks[0]["edge"] == "cap_web>dict" and "AI no upload" in blocks[0]["reason"], (k, out[k]["stops"])
+        assert any(s.startswith("On the way: Cloud App Control 'AI no upload' blocks") for s in out[k]["summary"]), k
+
+
+@_needs_node
+def test_bits_at_a_policy_block_pop_in_the_block_tone_and_amber_is_explained():
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    css = open(os.path.join(root, "static", "reports.css"), encoding="utf-8").read()
+    assert ".pm-bit.pop.tone-blocked { fill: var(--text); }" in css and ".pm-legend i.lane-assumed { background: var(--warn); }" in css
+    res = _pm_result("casino.example", "windows")
+    for ch in res["trace"]["channels"].values():   # only the URL filtering block stops bits here
+        ch["status"] = "enforce"
+    out = _pm_run("const w=H.load(PM),c=w.container(),m=w.ctx.renderPathMotion(c);m.update(D);w.frames(400);"
+                  "process.stdout.write(JSON.stringify({bits:c.querySelectorAll('circle').map(b=>b.getAttribute('class')||''),"
+                  "legend:c.querySelectorAll('.pm-legend')[0].textContent}));", res)
+    pops = [b for b in out["bits"] if "pop" in b]
+    assert pops and all("tone-blocked" in b for b in pops), out["bits"]
+    assert "assumed, not confirmed" in out["legend"]
+

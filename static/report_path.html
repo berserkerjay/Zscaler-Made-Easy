@@ -288,7 +288,10 @@
     if (q.get('n') && NET_LABEL[q.get('n')]) document.getElementById('paNet').value = q.get('n');
     if (q.get('p') && PLATFORMS.includes(q.get('p'))) document.getElementById('paPlat').value = q.get('p');
     if (q.get('id') && q.get('id').startsWith('dataflow-')) lastReport = q.get('id');
-    if (q.get('d') && q.get('run') === '1') tenantChoices().then(run);
+    // A link may fill the form in, never start it: the tenant is read only
+    // when the user clicks Analyze (or presses Enter). An old ?run=1 link
+    // gets the form filled and a pointer to the button.
+    if (q.get('d') && q.get('run') === '1') { document.getElementById('paRun').focus(); say('The destination is filled in from the link. Click Analyze to read the tenant.'); }
   })();
   </script>
 </body>

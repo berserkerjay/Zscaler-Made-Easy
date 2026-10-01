@@ -28,7 +28,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
-from data_flow import NETWORKS, PLATFORMS, load_packs, read_client_connector, read_zia, resolve_destination, trace
+from data_flow import NETWORKS, PLATFORMS, load_packs, read_client_connector, read_zia, resolve_destination, trace, unread_sections
 
 LogFn = Optional[Callable[[str], None]]
 
@@ -118,6 +118,7 @@ def lookup_categories(client, host: str) -> Dict[str, Any]:
 def _snapshot_zia(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     zia = dict(snapshot["snapshot"]["zia"])
     zia["categories"] = snapshot["snapshot"].get("categories") or {}
+    zia.setdefault("unread", unread_sections(snapshot.get("diagnostics")))
     for r in zia.get("dlp", []):
         r.setdefault("enforcing", str(r.get("action", "")).upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE"))
         r.setdefault("without_content_inspection", False)
@@ -191,7 +192,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
 
 
 _STOP = ("bypass", "blocked")
-_IMPACT = ("bypass", "blocked", "blind", "warn", "assumed")
+_IMPACT = ("bypass", "blocked", "blind", "warn", "assumed", "unknown")
 
 
 def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> Dict[str, Any]:
@@ -219,6 +220,10 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
         n = len((dlp or {}).get("rules") or [])
         headline = f"Reaches {host} decrypted; {n} DLP rule(s) inspect the content and can block it."
         summary = (dlp or {}).get("detail", "")
+    elif outcome == "unknown":
+        unread = [h["label"] for h in hops if h["status"] == "unknown" and h["key"] != "incident"]
+        headline = f"Reaches {host}; whether DLP inspects it is unknown: the {' and '.join(unread) or 'policy'} rules could not be read."
+        summary = "A failed or rate-limited read is not an empty rule list, so this is not reported as 'no DLP rule'. Run the analysis again (Refresh) once the API answers."
     elif outcome == "monitor":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         n = len((dlp or {}).get("rules") or [])
@@ -231,7 +236,7 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     if lk.get("security_alerts"):
         impacts.append({"hop": "lookup", "label": "URL lookup", "status": "alert", "severity": "high", "rule": None,
                         "detail": f"ZIA flags {host} with a security alert ({', '.join(lk['security_alerts'])}); threat protection normally blocks it before any data control runs."})
-    order = {"bypass": 0, "blocked": 1, "blind": 2, "warn": 3, "assumed": 4}
+    order = {"bypass": 0, "blocked": 1, "blind": 2, "warn": 3, "assumed": 4, "unknown": 5}
     for h in sorted((h for h in hops if h["status"] in _IMPACT), key=lambda h: order.get(h["status"], 9)):
         w = h.get("weak_point") or {}
         impacts.append({"hop": h["key"], "label": h["label"], "status": h["status"], "rule": rule(h), "detail": h["detail"],
@@ -270,7 +275,11 @@ def recommend_mitigations(t: Dict[str, Any], v: Dict[str, Any]) -> List[Dict[str
     blind_here = not v["reaches_zscaler"] or not v["decrypted"]   # bypassed or encrypted: the network path sees nothing
     if blind_here:
         reason = "never reaches Zscaler" if not v["reaches_zscaler"] else "reaches Zscaler encrypted, so the content can never be inspected here"
-        if ep.get("status") in ("none", "off"):
+        if ep.get("status") == "unknown":
+            out.append({"rank": 1, "channel": "endpoint", "action": "Read the Endpoint DLP rules again",
+                        "why": f"This traffic {reason}, so Endpoint DLP is the only control that could see it, but its rules could not be read: run the analysis again once the API answers.",
+                        "severity": "medium"})
+        elif ep.get("status") in ("none", "off"):
             why = "the app profile does not install it on this device" if ep.get("status") == "off" else "no Endpoint DLP rule is enabled"
             out.append({"rank": 1, "channel": "endpoint", "action": "Enable Endpoint DLP for this device",
                         "why": f"This traffic {reason}: Endpoint DLP is the only control that ever sees it, and {why}.",
