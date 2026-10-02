@@ -66,7 +66,7 @@ def _write(data: Dict[str, Any]) -> None:
 
 
 def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], options: Dict[str, Any],
-               channel_targets: Optional[Dict[str, Any]] = None, by: str = "", tenant_key: str = "") -> Optional[Dict[str, Any]]:
+               channel_targets: Optional[Dict[str, Any]] = None, by: str = "", tenant_key: str = "", tenant_fp: str = "") -> Optional[Dict[str, Any]]:
     """Build a record from an apply() result. None when nothing was created."""
     created: List[Dict[str, Any]] = []
     other: List[Dict[str, Any]] = []
@@ -93,11 +93,14 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
         "undone_at": None,
         "undo": None,
     }
-    # The tenant's opaque rate key (zia_rate.key_for: a hash, the one the
-    # rate state already keeps), so classic-API tenants on one cloud, which
-    # share the label 'classic API (cloud)', keep their history apart.
-    # Never shown; it names no tenant and no admin.
-    if tenant_key:
+    # What tells the tenant apart, never shown (summary leaves both out):
+    # a classic-API tenant's keyed fingerprint (tenant_fingerprint: every
+    # classic-API tenant on a cloud shares the label 'classic API (cloud)',
+    # and the fingerprint names neither the admin login nor the domain),
+    # or a OneAPI tenant's opaque rate key (zia_rate.key_for).
+    if tenant_fp:
+        rec["tenant_fp"] = str(tenant_fp)
+    elif tenant_key:
         rec["tenant_key"] = str(tenant_key)
     return rec
 

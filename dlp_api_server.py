@@ -1032,21 +1032,38 @@ def _require_assessor(req: Any) -> str:
 
 
 def _tenant_key(c: Dict[str, Any]) -> str:
-    """The tenant's API client as zia_rate's opaque key (a hash): the rate
-    state's key, and what a deployment record keeps so classic-API tenants
-    on one cloud (one label, 'classic API (cloud)') stay apart."""
-    import zia_rate
-    c = tenant_auth.normalize(c)
-    return zia_rate.key_for(c["cloud"], c["vanity_domain"] or c.get("username"), c["client_id"] or c.get("username"))
+    """The tenant's key in zia_rate's state (opaque): the vanity domain and
+    API client's hash for OneAPI, the keyed fingerprint for the classic API
+    (tenant_fingerprint), so classic-API tenants on one cloud (one label,
+    'classic API (cloud)') stay apart. Never shown."""
+    import tenant_fingerprint
+    return tenant_fingerprint.tenant_key(c)
+
+
+def _record_ids(c: Dict[str, Any]) -> Dict[str, str]:
+    """What a deployment record keeps to tell its tenant apart (never shown):
+    the classic API's fingerprint, or OneAPI's opaque key."""
+    import tenant_fingerprint
+    return tenant_fingerprint.record_ids(c)
 
 
 def _same_tenant(rec: Dict[str, Any], creds: Dict[str, Any]) -> bool:
     """Whether a deployment record was made in the tenant these credentials
-    point at: its label (current or older form) and, when recorded, its
-    opaque tenant key."""
-    if rec.get("tenant_label") and rec["tenant_label"] not in tenant_auth.record_labels(creds):
-        return False
-    return not rec.get("tenant_key") or rec["tenant_key"] == _tenant_key(creds)
+    point at (tenant_fingerprint.same_tenant): its label (current or older
+    form), then its fingerprint or opaque key when it has one."""
+    import tenant_fingerprint
+    return tenant_fingerprint.same_tenant(rec, creds)
+
+
+def _require_same_tenant(rec: Dict[str, Any], creds: Dict[str, Any]) -> None:
+    """409 when the record was made in another tenant (undo and removal)."""
+    if _same_tenant(rec, creds):
+        return
+    label = tenant_auth.record_label(creds)
+    where = rec.get("tenant_label") or "another tenant"
+    if where == label:
+        where = f"another {label} tenant"
+    raise HTTPException(status_code=409, detail=f"This deployment was made in {where}, but the current credentials are for {label}. Switch tenant first.")
 
 
 def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]:
@@ -1771,12 +1788,7 @@ def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) ->
     rec = deployments.get(req.deployment_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Deployment not found.")
-    label = tenant_auth.record_label(creds)
-    if not _same_tenant(rec, creds):
-        where = rec.get("tenant_label") or "another tenant"
-        if where == label:
-            where = f"another {label} tenant"
-        raise HTTPException(status_code=409, detail=f"This deployment was made in {where}, but the current credentials are for {label}. Switch tenant first.")
+    _require_same_tenant(rec, creds)
     return rec
 
 
@@ -2562,7 +2574,7 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
         rec = deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds),
                                      packs=list(req.pack_ids), options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks,
                                                                         "restore_drift": req.restore_drift},
-                                     channel_targets=req.channel_targets or {}, by=by, tenant_key=_tenant_key(creds))
+                                     channel_targets=req.channel_targets or {}, by=by, **_record_ids(creds))
         if rec:
             deployments.add(rec)
             result["deployment_id"] = rec["id"]
@@ -2623,12 +2635,7 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     creds = _tenant_creds(req)
-    label = tenant_auth.record_label(creds)
-    if not _same_tenant(rec, creds):
-        where = rec.get("tenant_label") or "another tenant"
-        if where == label:
-            where = f"another {label} tenant"
-        raise HTTPException(status_code=409, detail=f"This deployment was made in {where}, but the current credentials are for {label}. Switch tenant first.")
+    _require_same_tenant(rec, creds)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.undo(client, rec, writes_enabled=True, log=logs.append))
@@ -2671,7 +2678,7 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
             creds = _tenant_creds(req)
             deployments.add(deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds), packs=[pack["id"]],
                                                    options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={},
-                                                   by=by, tenant_key=_tenant_key(creds)))
+                                                   by=by, **_record_ids(creds)))
         except Exception as e:  # noqa: BLE001 — the deployment happened; only the record failed
             result.setdefault("warnings", []).append(f"The deployment was not recorded for undo: {e}")
     return result
