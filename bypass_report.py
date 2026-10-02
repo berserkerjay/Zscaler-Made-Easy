@@ -31,7 +31,7 @@ the bypass. This is READ-ONLY: no writes to the tenant.
 """
 from __future__ import annotations
 
-import csv
+import csv_safe
 import io
 import json
 from datetime import datetime, timezone
@@ -751,7 +751,7 @@ def to_csv(report: Dict[str, Any]) -> str:
     filter / pivot this in Excel directly.
     """
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = csv_safe.writer(buf)
     w.writerow([
         "Section", "Rule Source", "Rule ID", "Rule Name", "Action", "State",
         "Scope", "Bypassed Dimension", "Bypassed Value",

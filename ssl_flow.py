@@ -17,7 +17,7 @@ camelCase (raw API) — every field read here accepts both.
 """
 from __future__ import annotations
 
-import csv
+import csv_safe
 import io
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -615,7 +615,7 @@ def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> 
 
 def to_csv(report: Dict[str, Any]) -> str:
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = csv_safe.writer(buf)
     w.writerow(["class", "decision", "decided_by", "ssl_action", "ssl_order", "dlp_rules", "dlp_status", "gap_severity", "gap", "fix"])
     for c in report.get("classes", []):
         d = c.get("decided_by") or {}
