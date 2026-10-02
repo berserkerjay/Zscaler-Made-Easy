@@ -81,10 +81,11 @@ def test_vulnerability_classes_doc_covers_every_class():
     assert "pip-audit" in vc and "trivy" in vc and "hash" in vc
 
 
-def test_license_and_readme_note_the_repo_is_public_but_not_for_redistribution():
+def test_license_and_readme_note_the_repo_is_private_and_not_for_redistribution():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     lic = open(os.path.join(root, "LICENSE"), encoding="utf-8").read()
-    assert "not for redistribution" in lic.lower() and "public" in lic.lower()
+    # The repository is private on GitHub; the LICENSE says so (not "public").
+    assert "not for redistribution" in lic.lower() and "repository is private" in lic.lower()
     readme = open(os.path.join(root, "README.md"), encoding="utf-8").read()
     assert "not for redistribution" in readme.lower()
 
