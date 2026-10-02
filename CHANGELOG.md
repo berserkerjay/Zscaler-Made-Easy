@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### Classic-API tenants: Stop and ZIA's rate limits hold for every request
+- **What you saw.** With the classic ZIA API sign-in, the SDK's helper answered a 429 itself: it slept ZIA's whole Retry-After (close to an hour on the hourly limit) with no cap, ignored Stop during that wait, then sent the request again — a write could reach the tenant after Stop. Its requests also bypassed the app's pacing, so classic-API reads and writes were not held to ZIA's read and write limits.
+- **Now.** Every classic-API request goes through the app's paced session (the same read and write buckets as OneAPI) and is checked against Stop before it is sent and during any wait. A short 429 is waited out at most twice, up to 30 seconds each, in steps Stop ends; a longer Retry-After is not waited for inside the request but answered like OneAPI's (*Retry wait time … exceeds configured maxRetrySeconds 30*), so a deployment or export waits it out in its own stoppable steps or stops with the reason.
+
 ### A classic-API user can run the assessment
 - **What you saw.** With the classic ZIA API sign-in filled in, *Run assessment* did nothing but ask for the vanity domain, client ID and client secret: fields the classic sign-in hides. The guide's *Connect* step focused the hidden vanity domain.
 - **Now.** The run asks for the chosen sign-in's own fields (admin username, password and API key for the classic API), and no vanity domain is sent.

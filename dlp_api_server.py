@@ -1149,7 +1149,9 @@ def _build_sdk_client(creds: Dict[str, str]):
     rate_label = tenant_auth.record_labels(c)
     if c["auth_method"] == tenant_auth.LEGACY:
         try:
-            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key, rate_label)
+            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT, max_retries=SDK_MAX_RETRIES,
+                                                                             max_retry_seconds=SDK_MAX_RETRY_SECONDS),
+                                          rate_key, rate_label)
         except ImportError:
             raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
         except Exception as e:  # noqa: BLE001 — the helper signs in as it is built

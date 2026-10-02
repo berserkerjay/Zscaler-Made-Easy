@@ -745,8 +745,9 @@ def attach(session: Any, key: str) -> Any:
 def attach_client(client: Any, key: str, label: Any = None) -> Any:
     """Stamp an SDK client with its tenant key (and the tenant label the
     deployment log uses), and give its request executor a session that
-    reports ZIA's answers (attach). A client with no executor to hook (the
-    legacy one) is only stamped."""
+    reports ZIA's answers (attach). The classic-API client
+    (tenant_auth.LegacyZiaClient) takes its paced session through its own
+    set_session: its requests are paced and stoppable the same way."""
     with contextlib.suppress(Exception):
         setattr(client, "_zia_rate_key", key)
         labels = (label,) if isinstance(label, str) else tuple(x for x in (label or ()) if x)
@@ -754,6 +755,8 @@ def attach_client(client: Any, key: str, label: Any = None) -> Any:
             setattr(client, "_zia_rate_label", labels[0])
             setattr(client, "_zia_rate_labels", labels)
     ex = getattr(client, "_request_executor", None)
+    if ex is None and callable(getattr(client, "set_session", None)):
+        ex = client   # the classic API: tenant_auth.LegacyZiaClient
     if ex is not None and hasattr(ex, "set_session"):
         with contextlib.suppress(Exception):
             import requests
