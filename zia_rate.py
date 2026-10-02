@@ -117,21 +117,26 @@ def key_for(cloud: str, who: str, client: str) -> str:
 
 
 def key_of(client: Any) -> str:
-    """The key stamped on an SDK client by the app (attach_client), or ""."""
-    return str(getattr(client, "_zia_rate_key", "") or "")
+    """The key stamped on an SDK client by the app (attach_client), or "".
+    Only a string the app attached counts: an object that answers every
+    attribute (a proxy, a test double) has no key."""
+    key = getattr(client, "_zia_rate_key", "")
+    return key if isinstance(key, str) else ""
 
 
 def label_of(client: Any) -> Optional[str]:
     """The tenant label stamped on an SDK client, as the deployment log has it."""
-    return getattr(client, "_zia_rate_label", None) or None
+    label = getattr(client, "_zia_rate_label", None)
+    return label if isinstance(label, str) and label else None
 
 
 def labels_of(client: Any) -> Optional[Tuple[str, ...]]:
     """Every label this client's tenant may carry in the deployment log
-    (the current one first, then older forms), or None."""
+    (the current one first, then older forms), or None. Only the tuple of
+    strings attach_client stamps counts."""
     labels = getattr(client, "_zia_rate_labels", None)
-    if labels:
-        return tuple(labels)
+    if isinstance(labels, tuple) and labels and all(isinstance(x, str) and x for x in labels):
+        return labels
     one = label_of(client)
     return (one,) if one else None
 
