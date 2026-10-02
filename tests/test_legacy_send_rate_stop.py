@@ -167,3 +167,57 @@ def test_the_server_builds_the_classic_client_with_the_oneapi_caps(monkeypatch):
     client = srv._build_sdk_client(CREDS)
     assert seen["max_retry_seconds"] == srv.SDK_MAX_RETRY_SECONDS and seen["max_retries"] == srv.SDK_MAX_RETRIES
     assert getattr(client._helper._dlp_check_session, "_zia_rate_paced", False)
+
+
+# B2-2: after Stop (or a fatal stop) the run still activates what was
+# already written and reads it back ("activation and the read-back still
+# run", pack_jobs.cancel), as on OneAPI. Only a write path's own hook
+# (pack_ops.call binds zia_rate.stopping_on) stops a classic request; the
+# run's stop state alone never does.
+
+ACTIVATED = (200, {}, b'{"status":"ACTIVE"}')
+
+
+def _stop_by_user(cancel):
+    cancel.set()
+    assert ops._stopped_now() == ops.CANCELLED_REASON
+
+
+def _stop_by_403(cancel):
+    ops._stop("403 Forbidden: the API client may not change DLP policy", lambda m: None)
+    assert ops._stopped_now()
+
+
+@pytest.mark.parametrize("stop", [_stop_by_user, _stop_by_403], ids=["user-stop", "fatal-stop"])
+def test_after_stop_the_activation_and_the_read_back_still_go_out(monkeypatch, stop):
+    wire = Wire(monkeypatch, ACTIVATED, ACTIVATED, OK, OK)
+    client = _client()
+    cancel = threading.Event()
+    with ops.run_scope(cancel):
+        stop(cancel)
+        act = ops.activate_once(client.zia, lambda m: None)
+        resp, _info = client.zia._helper.send("GET", "/api/v1/dlpDictionaries")   # the read-back
+        # ...while a write is still not sent: pack_ops.call refuses it.
+        out = ops.call(lambda: client.zia._helper.send("POST", "/api/v1/dlpDictionaries", json={"name": "d"}),
+                       op="create", kind="dictionary", name="d")
+    assert act.get("activated"), act
+    assert resp.status_code == 200
+    assert not out.ok and out.code == ops.STOPPED
+    # The activation (its status read, then POST /status/activate) and the
+    # read-back went out; the stopped write did not.
+    assert [(m, u.rsplit("/api/v1", 1)[-1]) for m, u in wire.sent] == [
+        ("GET", "/status"), ("POST", "/status/activate"), ("GET", "/dlpDictionaries")]
+
+
+def test_stop_pressed_during_a_write_s_rate_wait_still_blocks_that_write(monkeypatch):
+    """The write path's hook (bound by pack_ops.call) still ends a classic
+    write's 429 wait on Stop: nothing is sent again."""
+    wire = Wire(monkeypatch, SHORT_429, OK)
+    cancel = threading.Event()
+    monkeypatch.setattr(tenant_auth, "_sleep", lambda s: cancel.set())
+    helper = _client()._helper
+    with ops.run_scope(cancel):
+        out = ops.call(lambda: helper.send("PUT", "/api/v1/dlpDictionaries/1", json={"name": "d"}),
+                       op="update", kind="dictionary", name="d")
+    assert [m for m, _ in wire.sent] == ["PUT"]
+    assert not out.ok and out.code == ops.STOPPED

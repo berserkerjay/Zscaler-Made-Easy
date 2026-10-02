@@ -330,7 +330,9 @@ def build_legacy_sdk_client(creds: Dict[str, Any], *, timeout: int = 90, max_ret
 # no cap and no Stop check, then sends again; and it calls the module-level
 # requests.request, so no paced session (zia_rate.attach) ever sees it. The
 # helper's send is replaced by _legacy_send, which:
-#   - checks Stop before every request and during every wait (user rule 4);
+#   - checks the thread's Stop hook (zia_rate.stopping_on, bound by
+#     pack_ops.call around every pack write) before every request and during
+#     every wait (user rule 4); the activation and read-back after Stop go out;
 #   - sends through a requests.Session that zia_rate.attach_client paces at
 #     ZIA's read and write limits, like the OneAPI client's session;
 #   - waits a short 429 out (Retry-After up to max_retry_seconds) at most
@@ -345,19 +347,16 @@ _sleep = time.sleep   # patched by tests
 
 
 def _legacy_stop_requested() -> bool:
-    """Stop for a classic-API request: the thread's stop hook (zia_rate.
-    stopping_on) or the current pack run's Stop (pack_ops.run_scope)."""
+    """Stop for a classic-API request: only the thread's stop hook
+    (zia_rate.stopping_on), exactly as the OneAPI client's paced session.
+    pack_ops.call binds that hook around every pack write, so a write is not
+    sent (nor sent again after a 429 wait) once the run is stopped. The
+    run's stop state alone never refuses a request: after Stop or a fatal
+    stop the run still activates what was written and reads it back
+    (pack_jobs.cancel: "activation and the read-back still run"), which
+    would otherwise stay pending in the tenant (B2-2)."""
     import zia_rate
-    if zia_rate.stop_requested():
-        return True
-    import sys
-    ops = sys.modules.get("pack_ops")
-    if ops is not None:
-        try:
-            return bool(ops.in_run() and ops._stopped_now())
-        except Exception:  # noqa: BLE001 — a broken hook never stops a request by itself
-            return False
-    return False
+    return zia_rate.stop_requested()
 
 
 def _legacy_not_sent() -> Exception:
