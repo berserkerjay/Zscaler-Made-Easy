@@ -349,3 +349,14 @@ def test_page_says_a_run_in_progress_is_not_a_failure():
                 click=True)
     assert res["status"].startswith("A run of the loop is already in progress") and "nothing failed" in res["status"], res
     assert not res["bad"] and res["warn"] and res["live"] == "A run is already in progress" and not res["disabled"]
+
+
+def test_a_client_that_answers_every_attribute_has_no_rate_key_or_label():
+    """zia_rate reads only the strings attach_client stamped: a proxy or
+    test double that answers every attribute is not mistaken for a label."""
+    import zia_rate
+    c = _Reads([])
+    assert zia_rate.key_of(c) == "" and zia_rate.label_of(c) is None and zia_rate.labels_of(c) is None
+    zia_rate.attach_client(c, "k1", ("classic API (production)", "? (production)"))
+    assert zia_rate.labels_of(c) == ("classic API (production)", "? (production)")
+    assert zia_rate.key_of(c) == "k1" and zia_rate.label_of(c) == "classic API (production)"

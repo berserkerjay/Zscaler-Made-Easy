@@ -117,21 +117,26 @@ def key_for(cloud: str, who: str, client: str) -> str:
 
 
 def key_of(client: Any) -> str:
-    """The key stamped on an SDK client by the app (attach_client), or ""."""
-    return str(getattr(client, "_zia_rate_key", "") or "")
+    """The key stamped on an SDK client by the app (attach_client), or "".
+    Only a string the app attached counts: an object that answers every
+    attribute (a proxy, a test double) has no key."""
+    key = getattr(client, "_zia_rate_key", "")
+    return key if isinstance(key, str) else ""
 
 
 def label_of(client: Any) -> Optional[str]:
     """The tenant label stamped on an SDK client, as the deployment log has it."""
-    return getattr(client, "_zia_rate_label", None) or None
+    label = getattr(client, "_zia_rate_label", None)
+    return label if isinstance(label, str) and label else None
 
 
 def labels_of(client: Any) -> Optional[Tuple[str, ...]]:
     """Every label this client's tenant may carry in the deployment log
-    (the current one first, then older forms), or None."""
+    (the current one first, then older forms), or None. Only the tuple of
+    strings attach_client stamps counts."""
     labels = getattr(client, "_zia_rate_labels", None)
-    if labels:
-        return tuple(labels)
+    if isinstance(labels, tuple) and labels and all(isinstance(x, str) and x for x in labels):
+        return labels
     one = label_of(client)
     return (one,) if one else None
 
@@ -147,11 +152,13 @@ def _label_ok(rec_label: Any, tenant_label: Any) -> bool:
 
 
 def _record_ok(r: Dict[str, Any], tenant_label: Any, key: Optional[str]) -> bool:
-    """Whether a deployment record belongs to the tenant: by its opaque
-    tenant key when both sides have one (classic-API tenants on a cloud
-    share one label), else by label."""
-    if key and r.get("tenant_key"):
-        return r.get("tenant_key") == key
+    """Whether a deployment record belongs to the tenant: by its classic-API
+    fingerprint or opaque tenant key when both sides have one (classic-API
+    tenants on a cloud share one label; their key here is the fingerprint,
+    tenant_fingerprint.tenant_key), else by label."""
+    rk = r.get("tenant_fp") or r.get("tenant_key")
+    if key and rk:
+        return rk == key
     return _label_ok(r.get("tenant_label"), tenant_label)
 
 
