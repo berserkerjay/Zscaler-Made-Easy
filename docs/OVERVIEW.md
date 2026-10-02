@@ -61,8 +61,8 @@ what you get, what to do next.
   the customer's cloud, vanity domain, API client ID and secret, or the
   classic ZIA API sign-in (admin username, password, API key); tenant
   profiles save those details and the run history per customer.
-  Authenticate answers "Connected: N dictionaries, N engines, N rules" or
-  a plain reason why not.
+  Authenticate only signs in (it reads nothing from the tenant) and
+  answers "Signed in" or a plain reason why not.
 - **Assessment results** — the full results in their own tab: Summary
   (score and maturity), Scores by section, Best practices and
   benchmarks, Regulatory alignment, the Data governance journey, and
@@ -80,7 +80,9 @@ what you get, what to do next.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks
-  or impacts it, each with a fix.
+  or impacts it, each with a fix. It reads only what is in scope on the
+  Scope page (a part out of scope says "not in scope"), and Stop ends the
+  read at once.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
   15 seconds: who, what triggered, where it was going, enforced or
   monitor-only, with a running tally. It covers DLP incidents only, not
@@ -97,11 +99,15 @@ what you get, what to do next.
   production, measured from Workflow Automation incidents and analyst
   verdicts, turned into proposals you approve, preview, apply with a
   read-back, and roll back.
-- **Digest — the six-hour loop** — while the server runs, every six hours
-  it re-reads the guidance sources, the FP/TP ratio, the SaaS tenants and
-  the packs' drift for every profile that remembers its secret, and
-  writes a digest (e-mail or a Teams/Slack webhook when there is
-  something to decide). It never writes to a tenant.
+- **Digest — the evaluation loop** — when you click *Run the loop now*
+  (or run `continuous_eval.py --once`) it re-reads the guidance sources
+  and, for every profile that remembers its secret, only what that
+  profile's Scope page puts in scope (the FP/TP ratio and the ticked
+  packs' drift when DLP is in scope, the SaaS tenants when SaaS Security
+  runs on Zscaler), and writes a digest (e-mail or a Teams/Slack webhook
+  when there is something to decide). Every tenant read counts against
+  the ZIA API rate limit, so the timer is off unless the operator sets
+  `DLP_CHECK_CONTINUOUS_EVAL_HOURS`. It never writes to a tenant.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.
@@ -117,6 +123,16 @@ what you get, what to do next.
   (Inline Web, Endpoint, SaaS Security API, Outbound Email). Every
   deployment is recorded and can be undone; rules can also be removed
   selectively, with a usage check before anything goes.
+- **Export from tenant as a pack** — the tenant's DLP rules on every
+  channel (all of them, or the ones you tick), with every engine they use
+  and every dictionary those engines use, as a pack zip the library
+  accepts and Deploy policy packs can deploy into another tenant. Scope
+  that only exists in the source tenant (users, groups, locations, ...)
+  is left out and listed in the pack. Read-only; an empty pick is refused
+  before any read, an hourly rate refusal fails the export, and Stop gives
+  no pack. Where: Deploy policy
+  packs, under the pack list; also Step 2 of the Evaluate All Rules
+  migration wizard, for its Inline Web DLP rules.
 - **Deploy flow diagram** — the plan a preflight produced as a picture:
   which dictionaries feed which engines, which engines feed which rules,
   on which channels. Where: inside Deploy policy packs, on the review step.
@@ -167,8 +183,8 @@ what you get, what to do next.
   zscaler/zia Terraform provider, on a timer (every 24 hours by default,
   `DLP_CHECK_BEACON_HOURS`) and on demand, with what changed since the
   last run and the last 30 runs. Optionally a read-only (GET) watch of
-  every tenant endpoint the app uses, which says which ones now answer
-  differently.
+  the tenant endpoints in scope on the Scope page (nothing else), which
+  says which ones now answer differently.
 - **Update app** — fetches the latest build of this app from GitHub,
   installs the pinned dependencies and restarts; the Branch dropdown
   tries a fix on QA or Development before it is promoted to Stable.
@@ -285,7 +301,7 @@ The same code runs without the browser:
 - **Mac and Linux**, after `./install.sh`: `.venv/bin/dlp-check` (the
   server), `.venv/bin/dlp-check-assess --config tenant.json --output
   report.json` (the assessment from a JSON file), and
-  `.venv/bin/dlp-check-evaluate` (one run of the six-hour loop, for cron).
+  `.venv/bin/dlp-check-evaluate` (one run of the evaluation loop, for cron).
 - **Windows**: `python dlp_assessment_full_auto.py --config tenant.json
   --output report.json`, and `RUN_Continuous_Evaluation.bat` for Task
   Scheduler.
@@ -326,8 +342,11 @@ Being honest about the edges:
   caches, and a built-in pack rebuilt from the tenant, which is kept in
   the pack library under its own id (remove it there to go back to the
   shipped pack).
-- The **Digest** loop runs while the server runs; for a schedule that
-  outlives it, use Task Scheduler or cron.
+- The **Digest** loop is off by default: it runs when you click *Run the
+  loop now* or run `continuous_eval.py --once`, and on a timer only while
+  the server runs and only when `DLP_CHECK_CONTINUOUS_EVAL_HOURS` is set
+  (1 to 8784 hours); for a schedule that outlives the server, use Task
+  Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client
   Connector and ZDX that affect data protection; they are not a full
   audit of those products.

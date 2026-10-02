@@ -18,6 +18,39 @@
   }
   function clearSay() { const el = $('advStatus'); el.hidden = true; el.innerHTML = ''; }
 
+  // A Terraform download names the assessor in every provenance tag, as
+  // Deploy policy packs does: this page's field, else the assessment tab's
+  // Scope assessment name (when this tab was opened from it).
+  const assessorField = $('advAssessor');
+  try {
+    const o = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor');
+    if (assessorField && o && !assessorField.value) assessorField.value = String(o.value || '').trim();
+  } catch (e) { /* cross-window: the field stays as typed */ }
+  document.addEventListener('click', e => {
+    const a = e.target && e.target.closest ? e.target.closest('a[href*="/terraform.zip"]') : null;
+    if (!a) return;
+    const u = new URL(a.getAttribute('href'), location.href);
+    const who = advAssessorName();
+    if (!who) {
+      // Every object in the workspace names the assessor, never DLP-Check: no name, no download.
+      e.preventDefault();
+      const f = document.getElementById('advAssessor');
+      alert("Enter the assessor's name first: every object the pack creates names the assessor in its description.");
+      if (f) f.focus();
+      return;
+    }
+    if (/dlp[\W_]*check/i.test(who)) {
+      // The tool's own name, in any spelling, is refused here as on the server (pack_deploy.TOOL_NAME_PATTERN).
+      e.preventDefault();
+      alert("Name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\").");
+      const f = document.getElementById('advAssessor');
+      if (f) f.focus();
+      return;
+    }
+    u.searchParams.set('assessor', who);
+    a.setAttribute('href', u.pathname + u.search);
+  }, true);
+
   async function api(path, body) {
     const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' });
     const data = await r.json().catch(() => ({}));
@@ -287,12 +320,17 @@
 })();
 
 
+// The assessor a Terraform download names (Advanced settings' field).
+function advAssessorName() {
+  return String((document.getElementById('advAssessor') || {}).value || '').trim();
+}
+
 // Terraform workspace for one pack, static mode: no tenant read, no
 // credentials, no import blocks — the pack transcribed as HCL.
 async function advTerraform(id) {
   try {
     const r = await fetch('/api/dlp-packs/terraform', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [id], mode: 'static', client_id: '', client_secret: '', vanity_domain: '' }) });
+      body: JSON.stringify({ pack_ids: [id], mode: 'static', client_id: '', client_secret: '', vanity_domain: '', assessor: advAssessorName() }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`); }
     const blob = await r.blob();
     const m = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');

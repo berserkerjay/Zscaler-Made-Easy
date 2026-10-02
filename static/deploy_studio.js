@@ -146,14 +146,33 @@ function _dzTargetsSummary(ids) {
 }
 
 function _dzCreds() {
-  if (typeof migrateCredBody === 'function') {
-    const b = migrateCredBody(); delete b.customer_id; return b;
-  }
+  // The assessor's name goes with every pack request: a deploy names only
+  // the assessor in the provenance tag and the deployment record.
   const v = id => (document.getElementById(id) || {}).value || '';
+  if (typeof migrateCredBody === 'function') {
+    const b = migrateCredBody(); delete b.customer_id; b.assessor = v('assessor').trim(); return b;
+  }
   return { cloud: v('cloud') || 'production', vanity_domain: v('vd'), client_id: v('cid'), client_secret: v('csec'),
-           auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey') };
+           auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey'),
+           assessor: v('assessor').trim() };
+}
+// What is in scope on the Scope page: the rule picker and Export from tenant
+// read only the DLP channels marked Zscaler there (user rule 1).
+function _dzScope() {
+  try { return (typeof scopePageSelection === 'function') ? scopePageSelection() : {}; } catch (e) { return {}; }
 }
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
+// A pack push (deploy or Terraform hand-off) names the assessor in every
+// object it creates, never DLP-Check, so it needs the name first.
+const DZ_ASSESSOR_REQUIRED = "Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. Every object a pack creates names the assessor in its description, never DLP-Check.";
+const DZ_ASSESSOR_NOT_TOOL = "The assessor's name must name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\" in any spelling): it is part of every pushed object's description.";
+function _dzNeedAssessor() {
+  const who = String((_dzCreds() || {}).assessor || '').trim();
+  // Same rule as the server and the Terraform CLI (pack_deploy.TOOL_NAME_PATTERN).
+  if (/dlp[\W_]*check/i.test(who)) throw new Error(DZ_ASSESSOR_NOT_TOOL);
+  if (who) return;
+  throw new Error(DZ_ASSESSOR_REQUIRED);
+}
 const _dzN = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
 
 function _ensureDlpPacksModal() {
@@ -190,7 +209,7 @@ async function openDlpPacksModal() {
   const m = document.getElementById('dlpDeployModal');
   m.classList.add('is-open');
   document.body.style.overflow = 'hidden';
-  DZ.step = 1; DZ.report = null; DZ.result = null; DZ.consent = false; DZ.error = ''; DZ.removal = null;
+  DZ.step = 1; DZ.report = null; DZ.result = null; DZ.consent = false; DZ.error = ''; DZ.removal = null; DZ.exportPack = null;
   _dzLoadChannels();
   _dzRender();
   _dzLoadWriteMode();
@@ -309,6 +328,7 @@ function closeDlpPacksModal() {
 
 function _dzRender() {
   if (DZ.removal) return _dzRemovalRender();
+  if (DZ.exportPack) return _dzExportRender();
   // The sheet's chrome is the deploy wizard's again (a removal renames it while it runs).
   document.getElementById('dzTitle').textContent = 'Deploy policy packs';
   const steps = document.getElementById('dzSteps');
@@ -429,6 +449,10 @@ function _dzRenderSelect() {
         <div class="dz-option">
           <div><div class="t">Remove rules from this tenant</div><div class="d">The one way to remove: lists every DLP rule in the tenant on every channel — with its state, its engines and whether DLP-Check created it — and you tick the ones to remove (filters select a pack's rules in one click). The check that follows removes only those rules, plus each engine and dictionary that nothing else uses; anything another rule or engine still uses is kept and named. You approve the exact list, confirm once more, the usage is checked again right before each engine or dictionary goes, and a fresh read verifies the result. Needs write mode.</div></div>
           <button type="button" class="dz-btn" onclick="_dzRemovePick()" ${(DZ.remove || {})[RM_PICK] === 'busy' ? 'disabled' : ''}>${(DZ.remove || {})[RM_PICK] === 'busy' ? 'Listing…' : 'Remove rules…'}</button>
+        </div>
+        <div class="dz-option">
+          <div><div class="t">Export from tenant as a pack</div><div class="d">Read-only: lists every DLP rule in the tenant on every channel, you tick the ones to export (all of them to start with), and you get a zip in the policy pack layout with those rules, every engine they use and every dictionary those engines use. Add it to the library under Advanced settings → Add a pack, then deploy it here into this tenant or another one. Users, groups, locations and other scope that exists only in this tenant are left out and listed in the pack. Needs no write mode.</div></div>
+          <button type="button" class="dz-btn" onclick="_dzExportPick()" ${DZ.exportBusy ? 'disabled' : ''}>${DZ.exportBusy ? 'Listing…' : 'Export as a pack…'}</button>
         </div>
       </div>
       ${_dzDeploymentsHtml()}`;
@@ -552,8 +576,9 @@ async function _dzTerraform(ids, mode) {
   if (DZ.step === 1) _dzRenderSelect();
   TF.last = null;
   try {
+    _dzNeedAssessor();
     // Static mode sends no credentials at all, so the server never reads the tenant.
-    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', username: '', password: '', api_key: '', cloud: (_dzCreds() || {}).cloud || 'production' } : _dzCreds();
+    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', username: '', password: '', api_key: '', cloud: (_dzCreds() || {}).cloud || 'production', assessor: (_dzCreds() || {}).assessor || '' } : _dzCreds();
     const snap = await _dzRunJob('/api/dlp-packs/terraform/start', { pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '', ...creds });
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The hand-off ended without a result.');
     if (snap.result.status === 'stopped' || !snap.download) throw new Error(snap.result.stopped || 'The hand-off was stopped before the workspace was built.');
@@ -855,8 +880,10 @@ function _dzUntickedChannels(ids) {
 // the page polls GET /api/dlp-packs/jobs/{id} for new log lines and the
 // elapsed time, and gets the result when the job finishes. Stop asks the
 // server to send nothing more after the write in flight.
-async function _dzStartJob(url, body) {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+async function _dzStartJob(url, body, startToken) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (startToken) headers['X-Start-Token'] = startToken;   // lets a Stop pressed before the id arrives reach the job
+  const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
   if (!data.job_id) throw new Error('The server did not start the run (no job id).');
@@ -937,9 +964,35 @@ function _dzJobTick() {
   if (el) el.textContent = _dzMMSS((Date.now() - J.startedAt) / 1000);
   if (J.pausedEnd) { const ph = document.getElementById('dzJobPhase'); if (ph) ph.textContent = _dzJobPhase(J); }
 }
+// A random name for one job start, sent as X-Start-Token.
+function _dzNewStartToken() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+  let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+  return t;
+}
+// Stop was asked for the job on screen, also before its id arrived.
+function _dzStopAsked() {
+  return !!((DZ.job && DZ.job.cancelRequested) || (DZ.pendingStart && DZ.pendingStart.stop));
+}
 async function _dzCancelJob() {
-  const J = DZ.job; if (!J || !J.id) return;
+  const J = DZ.job;
   const btn = document.getElementById('dzJobStop');
+  if (!J || !J.id) {
+    // The start request is still signing in, so there is no job id yet.
+    // The server is told by the start's token: the job begins stopped (or
+    // is cancelled the moment it exists), so nothing is read or written.
+    const P = DZ.pendingStart;
+    if (!P || P.stop) return;
+    P.stop = true;
+    if (J) J.cancelRequested = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Stopping…'; }
+    try {
+      await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: P.token }) });
+    } catch (e) { /* the job is cancelled by id as soon as it arrives */ }
+    announce('Stop requested before the run started. Nothing is read or written.');
+    return;
+  }
+  if (J.cancelRequested) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Stopping…'; }
   try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(J.id)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
   J.cancelRequested = true;
@@ -947,8 +1000,21 @@ async function _dzCancelJob() {
 }
 // Run a job end to end: start it, follow it, return the finished snapshot.
 async function _dzRunJob(startUrl, body) {
-  const id = await _dzStartJob(startUrl, body);
-  DZ.job = { id, logs: [], startedAt: Date.now(), status: 'running' };
+  const pending = { token: _dzNewStartToken(), stop: false };
+  DZ.pendingStart = pending;
+  if (DZ.job && DZ.job.id) DZ.job = { logs: [] };   // a finished job's id must not take this run's Stop
+  let id;
+  try {
+    id = await _dzStartJob(startUrl, body, pending.token);
+  } finally {
+    if (DZ.pendingStart === pending) DZ.pendingStart = null;
+  }
+  // A Stop pressed while the start was signing in carries over to the job,
+  // which is also cancelled by id (the server may have started it already).
+  DZ.job = { id, logs: [], startedAt: Date.now(), status: 'running', cancelRequested: pending.stop };
+  if (pending.stop) {
+    try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+  }
   const tick = setInterval(_dzJobTick, 1000);
   try {
     return await _dzFollowJob(id, _dzJobUpdate);
@@ -1017,6 +1083,7 @@ async function _dzApply() {
   DZ.step = 4; DZ.busy = true; DZ.result = null; DZ.error = ''; DZ.job = null;
   _dzRender();
   try {
+    _dzNeedAssessor();
     const body = { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() };
     const snap = await _dzRunJob('/api/dlp-packs/apply/start', body);
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The run ended without a result.');
@@ -1045,7 +1112,7 @@ function _dzRenderDeploy() {
       <div class="dz-progress"><div class="bar"></div></div>
       <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What is happening</div><div class="d">Dictionaries first, then engines, then rules on every channel — one answer from the tenant per line below. Then ZIA activates the changes, the app waits until ZIA reports ACTIVE (up to 45 seconds) and reads the tenant back to prove everything is there. A pack of 70 objects takes several minutes; each item is isolated, so one refusal never stops the rest. If the tenant refuses everything (someone holds the portal's edit lock, the hourly request limit is reached) the run stops at once and says why.</div></div></div>
       ${_dzJobLiveHtml('Deployment log')}`;
-    foot.innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Send nothing more after the write in flight; what was written is activated and recorded">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button><button class="dz-btn primary" disabled>Deploying…</button></div>`;
+    foot.innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''} title="Send nothing more after the write in flight; what was written is activated and recorded">${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button><button class="dz-btn primary" disabled>Deploying…</button></div>`;
     return;
   }
   if (DZ.error) {
@@ -1214,7 +1281,7 @@ async function _dzRemovePick() {
   DZ.remove = DZ.remove || {}; DZ.remove[RM_PICK] = 'busy'; _dzRenderSelect();
   let inv;
   try {
-    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds(), ..._dzScope() }) });
     inv = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
   } catch (e) {
@@ -1260,7 +1327,7 @@ function _dzRemovalSelect() {
     <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${rules.length} DLP rule(s) in the tenant${nOrph ? `, plus ${_dzN(nOrph, 'orphan')} (an engine no rule uses, or a dictionary no engine uses)` : ''}</div>
       <div class="d">Tick the leftovers to remove. The plan then adds the engines and dictionaries only those rules use; anything an unticked rule or a surviving engine still uses is kept and listed. Orphan engines and dictionaries are listed at the bottom so a leftover with no rule can go too. Predefined objects are never touched.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
     <div class="dz-pick-tools">
-      <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="DZ.removal.filter=this.value;_dzRemovalRender()" aria-label="Filter rules">
+      <input type="search" class="dz-input" placeholder="Filter by rule, engine or pack" value="${_dzE(R.filter || '')}" oninput="_dzRefilter(DZ.removal, this, _dzRemovalRender)" aria-label="Filter rules">
       <button type="button" class="dz-link" onclick="_dzPickSet(r => r.tagged)">Select DLP-Check rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(r => String(r.state).toUpperCase() !== 'ENABLED')">Select disabled rules</button>
       <button type="button" class="dz-link" onclick="_dzPickSet(() => true)">Select all shown</button>
@@ -1278,6 +1345,18 @@ function _dzRemovalSelect() {
     </div>`;
 }
 
+// A rule filter re-renders the whole sheet, which replaces the box being
+// typed in. Put focus and the caret back in the new box so typing goes on.
+function _dzRefilter(state, input, render) {
+  if (!state) return;
+  const at = input.selectionStart;
+  state.filter = input.value;
+  render();
+  const box = document.querySelector('#dzBody input[aria-label="Filter rules"]');
+  if (!box) return;
+  box.focus();
+  try { const n = at == null ? box.value.length : at; box.setSelectionRange(n, n); } catch (e) { /* some input types refuse a selection */ }
+}
 function _dzPickToggle(k, on) { const R = DZ.removal; if (!R) return; if (on) R.selected.add(k); else R.selected.delete(k); _dzRemovalRender(); }
 function _dzPickSet(pred) {
   const R = DZ.removal; if (!R) return;
@@ -1389,7 +1468,7 @@ function _dzRemovalBusy() {
       <div class="t">What is happening</div>
       <div class="d">Rules first, then activate; engines, then activate; dictionaries, then activate — waiting for ZIA to report ACTIVE after each activation (up to 45 seconds), because ZIA refuses to delete an engine while a rule that uses it is only pending deletion. When the last activation has settled the tenant is read again to prove nothing of the pack is left. Each line below is one answer from the tenant; a few minutes is normal.</div></div></div>
     ${_dzJobLiveHtml('Removal log')}`;
-  document.getElementById('dzFoot').innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button><button class="dz-btn danger" disabled>Removing…</button></div>`;
+  document.getElementById('dzFoot').innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button><button class="dz-btn danger" disabled>Removing…</button></div>`;
 }
 
 function _dzRemovalDone() {
@@ -1543,7 +1622,7 @@ function _dzDeploymentsHtml() {
     const res = DZ.undoResult && DZ.undoResult.id === d.id ? DZ.undoResult : null;
     return `<div class="dz-row ${done ? 'st-reuse' : 'st-ok'}">
       <span class="ic" aria-hidden="true">${done ? '↺' : '✓'}</span>
-      <div><div class="nm">${_dzE(fmt(d.at))} · ${_dzE(d.tenant_label || '')} · ${_dzE((d.packs || []).join(', '))}</div>
+      <div><div class="nm">${_dzE(fmt(d.at))} · ${_dzE(d.tenant_label || '')} · ${_dzE((d.packs || []).join(', '))}${d.by ? ` · by ${_dzE(d.by)}` : ''}</div>
         <div class="rs">${_dzE(kinds(d.created_by_kind))} created${d.remaining !== d.created ? ` · ${d.created - d.remaining} already undone` : ''}${d.channel_targets && Object.keys(d.channel_targets).length ? ` · ${chans(d.channel_targets)}` : ''}${done ? ` · undone ${_dzE(fmt(d.undone_at))}` : ''}</div>
         ${res ? `<div class="rs">${_dzE(res.text)}</div>` : ''}</div>
       <div class="tags">${done ? '<span class="dz-chip">Undone</span>' : `<button type="button" class="dz-btn quiet dz-btn-sm" ${busy || !writeOn ? 'disabled' : ''} title="${writeOn ? 'Delete what this deployment created' : 'Enable write mode to undo'}" onclick="event.stopPropagation(); _dzUndo('${_dzE(d.id)}')">${busy ? 'Undoing…' : `Undo (${d.remaining})`}</button>`}</div>
@@ -1861,6 +1940,132 @@ function _dzFlowKey(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.prevent
 })();
 
 
+// ── Export from tenant as a pack ────────────────────────────────────
+// The rules the operator ticks (every DLP rule to start with) with every
+// engine they use and every dictionary those engines use, as a zip in the
+// policy pack layout. The tenant is only read: the rule list comes from
+// the same inventory the removal picker uses, the export runs as a
+// background job the page follows, and the zip comes from the finished job.
+async function _dzExportPick() {
+  DZ.exportBusy = true; _dzRenderSelect();
+  let inv;
+  try {
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds(), ..._dzScope() }) });
+    inv = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
+  } catch (e) {
+    DZ.exportBusy = false; _dzRenderSelect();
+    alert(`Could not list the tenant's DLP rules: ${e.message}`);
+    return;
+  }
+  DZ.exportBusy = false;
+  if (inv.status === 'blocked') { alert((inv.blockers || ['Could not read the tenant.']).join('\n')); _dzRenderSelect(); return; }
+  // Endpoint sub-rules travel with their parent rule, so only top-level rules are listed.
+  const rules = (inv.rules || []).filter(r => r.parent_id == null);
+  DZ.exportPack = { inventory: inv, rules, selected: new Set(rules.map(r => `${r.channel}:${r.id}`)), filter: '', name: '', result: null, running: false };
+  _dzExportRender();
+}
+function _dzExportClose() { DZ.exportPack = null; DZ.step = 1; _dzRender(); }
+function _dzExportToggle(k, on) { const X = DZ.exportPack; if (!X) return; if (on) X.selected.add(k); else X.selected.delete(k); _dzExportRender(); }
+function _dzExportShown() {
+  const X = DZ.exportPack, q = (X.filter || '').toLowerCase();
+  return X.rules.filter(r => !q || (r.name || '').toLowerCase().includes(q) || (r.engines || []).join(' ').toLowerCase().includes(q));
+}
+function _dzExportSet(on) {
+  const X = DZ.exportPack; if (!X) return;
+  _dzExportShown().forEach(r => { const k = `${r.channel}:${r.id}`; if (on) X.selected.add(k); else X.selected.delete(k); });
+  _dzExportRender();
+}
+function _dzExportRender() {
+  const X = DZ.exportPack; if (!X) return;
+  const label = (X.inventory && X.inventory.tenant_label) || 'the tenant';
+  document.getElementById('dzTitle').textContent = 'Export from tenant as a pack';
+  const steps = document.getElementById('dzSteps');
+  steps.setAttribute('aria-label', 'Export steps');
+  const at = X.result || X.running ? 1 : 0;
+  steps.innerHTML = ['Pick rules', 'Download'].map((s, i) => `<div class="dz-step ${i === at ? 'is-active' : (i < at ? 'is-done' : '')}" ${i === at ? 'aria-current="step"' : ''}><span class="n">${i < at ? '✓' : i + 1}</span>${s}</div>`).join('');
+  document.getElementById('dzSub').textContent = at === 0
+    ? `Every DLP rule in ${label} on every channel. Tick the rules to export; their engines and dictionaries come with them. Nothing is written to the tenant.`
+    : 'Reading the tenant and building the pack. Nothing is written to the tenant.';
+  const body = document.getElementById('dzBody');
+  if (at === 1) {
+    const R = X.result || {};
+    const c = R.counts || {};
+    const left = R.not_exported || [];
+    const v = R.validation || { ok: true, problems: [] };
+    body.innerHTML = `
+      ${X.running ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t" id="dzJobPhase">${_dzE(_dzJobPhase(DZ.job))}</div><div class="d">Elapsed <span id="dzJobElapsed">${_dzMMSS((DZ.job || {}).elapsed_seconds)}</span></div></div></div>` : ''}
+      ${R.error ? `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">The export did not finish</div><div class="d">${_dzE(R.error)}</div></div></div>` : ''}
+      ${R.status === 'ready' ? `<div class="dz-card sev-info"><div class="bar"></div><div><div class="t">Downloaded ${_dzE(R.filename || 'the pack')}</div>
+        <div class="d">${_dzN(c.rules || 0, 'rule')}, ${_dzN(c.engines || 0, 'custom engine')}, ${_dzN(c.dictionaries || 0, 'dictionary', 'dictionaries')} (${_dzN(c.clones || 0, 'clone')}) from ${_dzE(R.tenant_label || label)}. Add it to the library under Advanced settings → Add a pack; it then shows here as a pack. Deploying it creates every rule DISABLED and monitor-only; the pack keeps each rule's action and state as the tenant has them.</div></div></div>` : ''}
+      ${R.status === 'ready' && !v.ok ? `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">The pack library would refuse this pack as it is</div><div class="d">${_dzE((v.problems || []).slice(0, 5).join('; '))}</div></div></div>` : ''}
+      ${left.length ? `<div class="dz-h">Not in the pack<span class="count">${left.length}</span></div><div class="dz-rows">${left.map(d => `<div class="dz-row st-differs"><span class="ic" aria-hidden="true">!</span><div><div class="nm">${_dzE(d.name)}${d.channel ? ` <span class="dz-chip kind-channel">${_dzE(_dzChan(d.channel))}</span>` : ''}${d.field ? ` <span class="dz-chip">${_dzE(d.field)}</span>` : ''}</div><div class="rs">${_dzE(d.reason)}${(d.values || []).length ? ` (${_dzE(d.values.slice(0, 6).join(', '))}${d.values.length > 6 ? '…' : ''})` : ''}</div></div></div>`).join('')}</div>` : ''}
+      <div class="dz-h">Export log</div>${_dzJobLiveHtml('Export log')}`;
+    document.getElementById('dzFoot').innerHTML = `
+      <div class="dz-summary">${X.running ? 'Reading the tenant, then building the pack…' : 'The list above is also in pack.json under not_exported.'}</div>
+      <div class="dz-actions">
+        ${X.running ? `<button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''}>${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button>` : `<button type="button" class="dz-btn" onclick="DZ.exportPack.result=null;_dzExportRender()">← Pick again</button><button type="button" class="dz-btn primary" onclick="_dzExportClose()">Done</button>`}
+      </div>`;
+    return;
+  }
+  const shown = _dzExportShown();
+  const byChan = {};
+  shown.forEach(r => { (byChan[r.channel] = byChan[r.channel] || []).push(r); });
+  const row = r => { const k = `${r.channel}:${r.id}`; return `<label class="dz-row dz-pick ${X.selected.has(k) ? 'on' : ''}">
+      <input type="checkbox" ${X.selected.has(k) ? 'checked' : ''} onchange="_dzExportToggle('${_dzE(k)}', this.checked)" aria-label="Export ${_dzE(r.name)}">
+      <div><div class="nm">${_dzE(r.name)} <span class="dz-chip ${String(r.state).toUpperCase() === 'ENABLED' ? 'kind-policy' : ''}">${_dzE(String(r.state || '').toLowerCase() || 'state ?')}</span></div>
+        <div class="rs">${(r.engines || []).length ? `engines: ${_dzE(r.engines.slice(0, 4).join(', '))}${r.engines.length > 4 ? '…' : ''}` : 'no engines'}${r.action ? ` · ${_dzE(String(r.action).toLowerCase())}` : ''}</div></div>
+    </label>`; };
+  const groups = Object.keys(byChan).map(ch => `<div class="dz-h" style="margin-top:0.8rem;">${_dzE(_dzChan(ch))}<span class="count">${byChan[ch].length}</span></div><div class="dz-rows">${byChan[ch].map(row).join('')}</div>`).join('');
+  const errs = Object.entries(X.inventory.errors || {}).filter(([, v]) => v);
+  body.innerHTML = `
+    <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">${_dzN(X.rules.length, 'DLP rule')} in the tenant</div>
+      <div class="d">The pack gets the ticked rules in the tenant's order, every engine they use and every dictionary those engines use: custom dictionaries in full, clones as clones, predefined dictionaries and engines by name. Endpoint sub-rules come with their parent rule.${errs.length ? ` Not listed: ${_dzE(errs.map(([k, v]) => `${_dzChan(k)} (${v})`).join('; '))}.` : ''}</div></div></div>
+    <div class="dz-pick-tools">
+      <input type="text" class="dz-input" placeholder="Pack name (optional)" maxlength="120" value="${_dzE(X.name || '')}" oninput="DZ.exportPack.name=this.value" aria-label="Pack name">
+    </div>
+    <div class="dz-pick-tools">
+      <input type="search" class="dz-input" placeholder="Filter by rule or engine" value="${_dzE(X.filter || '')}" oninput="_dzRefilter(DZ.exportPack, this, _dzExportRender)" aria-label="Filter rules">
+      <button type="button" class="dz-link" onclick="_dzExportSet(true)">Select all shown</button>
+      <button type="button" class="dz-link" onclick="_dzExportSet(false)">Clear</button>
+    </div>
+    ${groups || '<div class="dz-empty">No rules match the filter.</div>'}`;
+  document.getElementById('dzFoot').innerHTML = `
+    <div class="dz-summary">${X.selected.size ? `<strong style="color:var(--text);">${_dzN(X.selected.size, 'rule')}</strong> ticked. The export reads the tenant and writes nothing.` : 'Tick at least one rule to export.'}</div>
+    <div class="dz-actions">
+      <button type="button" class="dz-btn quiet" onclick="_dzExportClose()">Cancel</button>
+      <button type="button" class="dz-btn primary" onclick="_dzExportRun()" ${X.selected.size ? '' : 'disabled'}>Download pack (${X.selected.size})</button>
+    </div>`;
+}
+async function _dzExportRun() {
+  const X = DZ.exportPack; if (!X || !X.selected.size || X.running) return;
+  // Every rule ticked: the whole tenant (every channel); otherwise the ids per channel.
+  const rules = {};
+  if (X.selected.size !== X.rules.length) {
+    X.rules.forEach(r => { if (X.selected.has(`${r.channel}:${r.id}`)) (rules[r.channel] = rules[r.channel] || []).push(r.id); });
+  }
+  X.running = true; X.result = null; DZ.job = { logs: [] }; _dzExportRender();
+  try {
+    const snap = await _dzRunJob('/api/dlp-packs/export/start', { rules, pack_name: X.name || '', ..._dzCreds(), ..._dzScope() });
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The export ended without a result.');
+    if (snap.result.status !== 'ready' || !snap.download) throw new Error(snap.result.error || snap.result.stopped || 'The export did not produce a pack.');
+    const r = await fetch(snap.download, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`The pack could not be fetched (HTTP ${r.status}).`);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = snap.filename || snap.result.filename || 'exported_pack.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    X.result = snap.result;
+    announce(`Pack downloaded: ${(snap.result.counts || {}).rules || 0} rule(s) with their engines and dictionaries.`);
+  } catch (e) {
+    X.result = { status: 'failed', error: e.message };
+  } finally {
+    X.running = false;
+    if (DZ.exportPack === X) _dzExportRender();
+  }
+}
+
 // ── Terraform hand-off ──────────────────────────────────────────────
 // The same pack as a Terraform workspace for the official zscaler/zia
 // provider, for customers whose platform team manages Zscaler as code.
@@ -1916,17 +2121,22 @@ async function _tfToggle(id, on) {
   _tfRender();
 }
 // Gap mode needs tenant credentials; static never does. The operator
-// picks either (TF.mode); with no pick, gap is used when credentials
-// are there and static otherwise.
+// picks either (TF.mode); with no pick, static is used.
 function _tfCanGap() {
   const c = _dzCreds();
-  const prof = (window.GD && GD.profile && GD.profileHasSecret);
-  return !!((c.client_id && (c.client_secret || prof)) || (c.client_id && prof));
+  const prof = !!(window.GD && GD.profile && GD.profileHasSecret);
+  const has = k => !!String(c[k] || '').trim();
+  // The chosen sign-in: the classic API needs the admin login plus its
+  // password and API key (or a profile that remembers them); OneAPI the
+  // client id plus its secret (or a remembered one). migrateCredBody blanks
+  // the other method's fields, so client_id alone never decides it.
+  if (c.auth_method === 'legacy') return has('username') && ((has('password') && has('api_key')) || prof);
+  return has('client_id') && (has('client_secret') || prof);
 }
+// Static unless the operator picks gap: gap reads the tenant, and a
+// tenant read is never chosen for them just because credentials are there.
 function _tfMode() {
-  if (TF.mode === 'static') return 'static';
-  if (TF.mode === 'gap' && _tfCanGap()) return 'gap';
-  return _tfCanGap() ? 'gap' : 'static';
+  return TF.mode === 'gap' && _tfCanGap() ? 'gap' : 'static';
 }
 function _tfSetMode(m) {
   if (m === 'gap' && !_tfCanGap()) { alert('Gap mode needs the tenant details on the assessment page (or a profile with a remembered secret). Static mode needs nothing.'); return; }
@@ -1953,32 +2163,44 @@ function _tfRender() {
     const ch = Object.entries(s.counts.channels || {}).map(([k, v]) => `${v} ${_dzChan(k)}`).join(', ');
     const files = (s.files || []).filter(f => !f.name.startsWith('.')).map(f => `<li><code>${_dzE(f.name)}</code> <span class="d">${_dzE(f.purpose)}</span></li>`).join('');
     return `<div class="tf-sum"><div class="tf-sum-h"><b>${_dzE(s.name)}</b> <span class="d">${s.counts.dictionaries} dictionaries · ${s.counts.engines} engines · ${s.counts.rules} rules (${_dzE(ch)})${s.counts.app_groups ? ` · ${s.counts.app_groups} app group(s)` : ''}</span></div>
-      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
+      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Those files name no assessor: <code>terraform apply</code> asks for the required <code>assessor</code> variable, the name every object's description carries. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
       <details class="dz-fold"><summary>What is in the workspace (${(s.files || []).length} files)</summary><ul class="tf-files">${files}</ul></details></div>`;
   }).join('');
   host.innerHTML = `
     ${TF.error ? `<div class="dz-card sev-error"><div class="bar"></div><div><div class="t">Could not load packs</div><div class="d">${_dzE(TF.error)}</div></div></div>` : ''}
     <div class="dz-h">1 · Which packs</div>
     <div class="tf-packs">${packs || '<span class="d">Loading packs…</span>'}</div>
-    <div class="dz-h">2 · Which mode</div>
+    <div class="dz-h">2 · Which hand-off</div>
+    <div class="tf-choose-wrap"><table class="tf-choose">
+      <caption>Pick by the customer's situation, not by what is quickest for you.</caption>
+      <thead><tr><th scope="col">The customer…</th><th scope="col">Use</th><th scope="col">Why</th></tr></thead>
+      <tbody>
+        <tr><td>changes Zscaler in the ZIA portal, has no Terraform pipeline, and lets this tool write to the tenant</td><td><b>Deploy policy packs</b> (not this page)</td><td>The tool creates the objects directly, disabled and monitor-only. A Terraform workspace nobody runs is shelfware.</td></tr>
+        <tr><td>manages Zscaler as code <em>and</em> the tenant already has DLP dictionaries, engines or rules (most production tenants)</td><td><b>Gap mode</b></td><td>Existing objects are imported, so the first <code>terraform plan</code> creates only what is missing instead of duplicates. Costs one read of the pack's objects on every channel in it (counts against the ZIA API rate limit).</td></tr>
+        <tr><td>manages Zscaler as code on a new or empty tenant (nothing from these packs exists yet)</td><td><b>Static</b></td><td>There is nothing to import, so a tenant read buys nothing.</td></tr>
+        <tr><td>will not share credentials, or you have no API access yet</td><td><b>Static</b></td><td>No tenant access at all. Tell the platform team to import any objects that already exist before their first apply, or Terraform creates duplicates.</td></tr>
+        <tr><td>wants a design to review or a reference to diff against, not something to apply</td><td><b>Static</b></td><td>The workspace is the whole pack as written: easy to read in a pull request, independent of any tenant's state.</td></tr>
+        <tr><td>uploaded their own pack and wants it transcribed as is</td><td><b>Static</b></td><td>Their pack, unchanged, in the provider's resources.</td></tr>
+        <tr><td>edits DLP in the portal day to day and also wants Terraform</td><td><b>Neither yet</b></td><td>Agree who owns the objects first. Terraform reverts portal edits on the next apply unless they are folded back into the code.</td></tr>
+      </tbody></table></div>
     <div class="tf-modes" role="radiogroup" aria-label="Terraform mode">
       <label class="tf-mode ${mode === 'gap' ? 'on' : ''}"><input type="radio" name="tfMode" value="gap" ${mode === 'gap' ? 'checked' : ''} ${_tfCanGap() ? '' : 'disabled'} onchange="_tfSetMode('gap')"> <span><span class="t">Gap mode ${mode === 'gap' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
-        <span class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
+        <span class="d">Uses the tenant details from the assessment page. DLP-Check reads the tenant first and writes an <code>imports.tf</code> that adopts every object that already exists, so the platform team's first <code>terraform plan</code> is exactly the gap: creates only what is missing, imports the rest.<br><b>Use when</b> the tenant already has DLP objects and the team will apply this workspace. <b>Not when</b> the tenant is empty, credentials are off limits, or you only need a reference.${_tfCanGap() ? '' : ' Needs the tenant details (or a profile with a remembered secret) on the assessment page.'}</span></span></label>
       <label class="tf-mode ${mode === 'static' ? 'on' : ''}"><input type="radio" name="tfMode" value="static" ${mode === 'static' ? 'checked' : ''} onchange="_tfSetMode('static')"> <span><span class="t">Static ${mode === 'static' ? '<span class="dz-chip kind-baseline">selected</span>' : ''}</span>
-        <span class="d">No tenant access, no credentials sent, no import blocks. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. Choose this to hand over a reference, or to transcribe an uploaded pack as it is.</span></span></label>
+        <span class="d">No tenant access, no credentials sent, no import blocks. The workspace describes the whole pack; on a tenant that already has some of it, the platform team imports those objects first or Terraform will try to create duplicates. <br><b>Use when</b> the tenant is new or empty, credentials cannot be shared, you are handing over a reference or design for review, or transcribing an uploaded pack as it is. <b>Not when</b> the tenant already has these objects and nobody will import them first.</span></span></label>
     </div>
     <div class="dz-h">3 · What you get</div>
     ${sums || '<div class="d">Select at least one pack.</div>'}
     <div class="dz-h">4 · Download and hand over</div>
     <div class="tf-actions">
       <button type="button" class="dz-btn primary" ${sel.length && !TF.busy ? '' : 'disabled'} onclick="_tfDownload()">${TF.busy ? 'Working…' : `Download workspace (${mode} mode, ${_dzN(sel.length, 'pack')})`}</button>
-      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.${mode === 'gap' ? ' Gap mode reads the whole tenant first (dictionaries, engines, the rules on every channel): a minute or two, shown step by step below.' : ''}</span>
+      <span class="d">One zip, one folder per pack. Give it to the customer's platform team with the note below.${mode === 'gap' ? ' Gap mode reads the tenant first (dictionaries, engines, the rules on every channel the pack uses): a minute or two, shown step by step below, and those reads count against the ZIA API rate limit.' : ''}</span>
     </div>
     ${TF.busy ? `
     <div class="dz-hero" style="margin-top:0.6rem;"><span class="dz-status busy">Working</span><div><div class="lead">${mode === 'gap' ? 'Reading the tenant, then building the workspace…' : 'Building the workspace…'}</div><div class="sub" id="dzJobPhase">${_dzE(_dzJobPhase(DZ.job || {}))}</div></div><div class="dz-elapsed" id="dzJobElapsed" aria-label="Elapsed">${_dzMMSS((DZ.job || {}).startedAt ? (Date.now() - DZ.job.startedAt) / 1000 : 0)}</div></div>
     <div class="dz-progress"><div class="bar"></div></div>
     ${_dzJobLiveHtml('Hand-off log')}
-    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" title="Stop reading the tenant; nothing is downloaded">Stop</button></div>` : ''}
+    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''} title="Stop reading the tenant; nothing is downloaded">${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button></div>` : ''}
     ${!TF.busy && TF.last ? (TF.last.status === 'ready'
       ? `<div class="dz-card sev-info" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">Downloaded ${_dzE(TF.last.filename || 'the workspace')}</div><div class="d">${TF.last.mode === 'gap' ? `Gap mode against ${_dzE(TF.last.tenant_label || 'the tenant')}: ${_dzE(Object.entries(TF.last.gap || {}).map(([k, v]) => `${v} ${k}`).join(', ') || 'plan built')}. Objects the tenant already has are imported; the first terraform plan creates only the rest.` : 'Static mode: the whole pack, no tenant read.'} ${TF.last.elapsed_seconds ? `Took ${_dzMMSS(TF.last.elapsed_seconds)} min.` : ''}</div>
           ${(TF.last.logs || []).length ? `<details class="dz-fold"><summary>Log</summary><div class="dz-log">${_dzE(TF.last.logs.join('\n'))}</div></details>` : ''}</div></div>`

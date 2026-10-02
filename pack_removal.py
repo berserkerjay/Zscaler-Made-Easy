@@ -20,19 +20,18 @@ import hashlib
 import json
 import re
 import threading
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pack_channels as pc
 import pack_deploy as pd
 import pack_ops as ops
 from dlp_importer import _load_json, _resolve_configs, heal_predefined_names
 
-# The in-app deploy tags baseline objects with BASELINE_MARK; the Terraform
-# hand-off tags every object with "[DLP-Check baseline <id>]" or
-# "[DLP-Check pack <id>]". Match either, scoped to the pack id.
-_BASELINE_MARK = pd.BASELINE_MARK            # "[DLP-Check baseline"
-_PACK_MARK = pd.PACK_MARK                    # "[DLP-Check pack"
-_ANY_MARKS = (_BASELINE_MARK, _PACK_MARK)    # any DLP-Check provenance, whatever the pack id
+# The in-app deploy and the Terraform hand-off tag every object with
+# "[<assessor> baseline <id> ...]" or "[<assessor> pack <id> ...]" at the end
+# of its description ("[DLP-Check ...]" before the assessor's name was used,
+# or when none was given). pack_deploy.has_mark / tag_pack recognise both,
+# scoped to the pack id.
 
 # Objects earlier versions of the shipped packs created under names no
 # current pack defines (Fed 1.1 CUI objects, the retired endpoint and CUI
@@ -64,8 +63,12 @@ _DICT_ID_RE = re.compile(r"D(\d+)\.S")
 UNDO_ORDER = pd.UNDO_ORDER   # ("policy", "app_group", "engine", "dictionary")
 
 
-def _pack_marks(pack_id: str) -> Tuple[str, str]:
-    return (f"{_BASELINE_MARK} {pack_id}", f"{_PACK_MARK} {pack_id}")
+def _tagged(desc: Any, known: Optional[Iterable[str]] = None) -> bool:
+    """Whether a description carries a deploy's provenance tag: the tool's
+    own "[DLP-Check ..." form, or an assessor's tag at the end for a pack
+    id in `known` (the library) or one carrying a version or the deploy's
+    sentence, so a customer's "[Q3 pack review]" never counts."""
+    return pd.tag_pack(desc, known=known if known is not None else ()) is not None
 
 
 def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -76,12 +79,11 @@ def _defs(pack: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, An
     return dicts, engines, policies
 
 
-def _matched(desc: Any, name: str, marks: Tuple[str, str], def_names: set) -> Optional[str]:
+def _matched(desc: Any, name: str, pack_ids: Sequence[str], def_names: set) -> Optional[str]:
     """How a tenant object maps to a pack: by its provenance tag, or by a
     name the pack defines. Tag wins; a name-only match is flagged so the
     operator sees it was not tool-tagged."""
-    d = str(desc or "")
-    if any(m in d for m in marks):
+    if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
         return "tag"
     if name in def_names:
         return "name"
@@ -103,17 +105,18 @@ def _is_custom_dictionary(d: Any, how: Optional[str] = None) -> bool:
 def _read_summary(snap: Dict[str, Any]) -> Dict[str, Any]:
     """What the preview could see, so "nothing to remove" can say what was
     read (and what was not) instead of leaving the operator guessing."""
+    known = pd.library_ids()
     dicts = snap.get("dictionaries") or {}
     custom = [d for d in dicts.values() if pd._field(d, "custom", "customDictionary", default=False)]
-    tagged = [d for d in dicts.values() if any(m in str(pd._field(d, "description", default="") or "") for m in _ANY_MARKS)]
+    tagged = [d for d in dicts.values() if _tagged(pd._field(d, "description", default=""), known)]
     engines = snap.get("engines") or {}
-    tagged_engines = [e for e in engines.values() if any(m in str(pd._field(e, "description", default="") or "") for m in _ANY_MARKS)]
+    tagged_engines = [e for e in engines.values() if _tagged(pd._field(e, "description", default=""), known)]
     rules = {pc.WEB: len(snap.get("rules") or [])}
     for ch, rs in ((snap.get("channels") or {}).get("rules") or {}).items():
         rules[ch] = len(rs or [])
-    tagged_rules = sum(1 for r in (snap.get("rules") or []) if any(m in str(r.get("description") or "") for m in _ANY_MARKS))
+    tagged_rules = sum(1 for r in (snap.get("rules") or []) if _tagged(r.get("description"), known))
     for rs in ((snap.get("channels") or {}).get("rules") or {}).values():
-        tagged_rules += sum(1 for r in (rs or []) if any(m in str(r.get("description") or "") for m in _ANY_MARKS))
+        tagged_rules += sum(1 for r in (rs or []) if _tagged(r.get("description"), known))
     return {"dictionaries": len(dicts), "custom_dictionaries": len(custom), "tagged_dictionaries": len(tagged),
             "engines": len(engines), "tagged_engines": len(tagged_engines), "rules": rules, "tagged_rules": tagged_rules,
             "unreadable": dict(snap.get("unreadable") or {}), "channel_errors": dict(((snap.get("channels") or {}).get("errors") or {})),
@@ -147,7 +150,7 @@ def _with_rate(plan: Dict[str, Any], client: Any = None) -> Dict[str, Any]:
     app sent in the last hour: its deletes plus the one activation."""
     import zia_rate
     n = int(plan.get("remove_count") or 0)
-    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client), tenant_label=zia_rate.label_of(client)) if n and not plan.get("blockers") else None
+    f = zia_rate.forecast({"delete": n, "activate": 1}, key=zia_rate.key_of(client), tenant_label=zia_rate.labels_of(client)) if n and not plan.get("blockers") else None
     if f:
         f["detail"] = zia_rate.history_text(f)
         if f["severity"] != "ok":
@@ -180,11 +183,9 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
 
     # Pack definitions and provenance marks.
     def_dicts, def_engines, def_policies = set(), set(), set()
-    marks: List[Tuple[str, str]] = []
     pack_ids: List[str] = []
     for p in packs:
         pack_ids.append(p["id"])
-        marks.append(_pack_marks(p["id"]))
         d, e, pol = _defs(p)
         def_dicts |= {x["name"] for x in d if x.get("name")}
         def_engines |= {x["name"] for x in e if x.get("name")}
@@ -198,12 +199,14 @@ def plan_removal(client, packs: Sequence[Dict[str, Any]], *, tenant_cache: Optio
     def_policies |= LEGACY_NAMES["policy"]
 
     def any_match(desc: Any, name: str, def_names: set) -> Optional[str]:
-        d = str(desc or "")
-        if everything and any(mk in d for mk in _ANY_MARKS):
+        # "Everything" is every object carrying a deploy's tag at the end of
+        # its description, whoever deployed it and whether or not its pack is
+        # still in the library (pack_deploy._counts: a version or the deploy's
+        # sentence), so a customer's own "[x pack y]" never qualifies.
+        if everything and pd.has_mark(desc):
             return "tag"
-        for m in marks:
-            if any(mk in d for mk in m):
-                return "tag"
+        if any(pd.has_mark(desc, pack_id=pid) for pid in pack_ids):
+            return "tag"
         return "name" if name in def_names else None
 
     # ---- rules across every channel ----------------------------------------
@@ -423,7 +426,7 @@ def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_
     """Undo one recorded deployment through the guided path: the plan
     previewed by plan_removal_deployment, tiered deletes with activation,
     then the same read-back verification as a pack removal."""
-    return _execute(client, lambda: plan_removal_deployment(client, record),
+    return _execute(client, lambda c=client: plan_removal_deployment(c, record),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
@@ -533,14 +536,11 @@ def _all_need() -> Dict[str, Any]:
     return need
 
 
-def _tag_pack(desc: Any) -> Optional[str]:
-    """The pack id inside a DLP-Check provenance tag, or None."""
-    d = str(desc or "")
-    for mk in _ANY_MARKS:
-        if mk in d:
-            rest = d.split(mk, 1)[1].strip()
-            return rest.split("]", 1)[0].split(" v")[0].strip() or None
-    return None
+def _tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
+    """The pack id inside a provenance tag, or None: the tool's own
+    "[DLP-Check ..." form, or an assessor's tag for a pack id in `known`
+    (the library)."""
+    return pd.tag_pack(desc, known=known if known is not None else ())
 
 
 def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -549,19 +549,39 @@ def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
     return web + others
 
 
-def inventory(client) -> Dict[str, Any]:
+def _scoped_need(channels: Iterable[str]) -> Dict[str, Any]:
+    """The reads for the rules of `channels` only (web / endpoint / saas /
+    email): no other channel's rules, no SaaS application tenants, no
+    endpoint application groups."""
+    chans = {str(c) for c in channels} & set(pc.DLP_CHANNELS)
+    need = pc.needs([])
+    need["channels"] = chans
+    need["web_rules"] = pc.WEB in chans
+    return need
+
+
+def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
     """Every DLP rule the tenant has, on every channel, with its engines
-    and provenance, so an operator can pick the leftovers to remove."""
-    snap = pd.fetch_tenant(client, _all_need())
+    and provenance, so an operator can pick the leftovers to remove.
+    `channels` (pack channels: web / endpoint / saas / email) limits the
+    read to those channels' rules plus the shared dictionaries and
+    engines, for a caller that may read only an in-scope part: an
+    unlisted channel's rules, the SaaS tenants and the endpoint
+    application groups are not read. None reads every channel."""
+    if channels is None:
+        snap = pd.fetch_tenant(client, _all_need())
+    else:
+        snap = pd.fetch_tenant(client, _scoped_need(channels), only_channels=True)
     if not snap.get("reachable", True):
         return {"status": "blocked", "rules": [], "blockers": ["Could not read the tenant. Check credentials and permissions."],
                 "errors": snap.get("errors", [])}
     engines = snap.get("engines") or {}
+    known = pd.library_ids()
     eng_name = {str(pd._field(e, "id")): n for n, e in engines.items()}
     rules = []
     for r in _tenant_rules(snap):
         desc = r.get("description")
-        pack = _tag_pack(desc)
+        pack = _tag_pack(desc, known)
         rules.append({"channel": r["channel"], "id": r.get("id"), "name": r.get("name"), "state": r.get("state"),
                       "action": r.get("action"), "parent_id": r.get("parent_id"), "type": r.get("type"),
                       "engine_ids": [str(x) for x in (r.get("engine_ids") or [])],
@@ -590,7 +610,7 @@ def inventory(client) -> Dict[str, Any]:
         eid = str(pd._field(e, "id"))
         if eid in used_engines or pd._field(e, "predefined_engine", default=False) or pd._field(e, "custom_dlp_engine", default=True) is False:
             continue
-        pack = _tag_pack(pd._field(e, "description"))
+        pack = _tag_pack(pd._field(e, "description"), known)
         orphan_engines.append({"kind": "engine", "id": pd._field(e, "id"), "name": name, "tagged": pack is not None, "pack": pack,
                                "dictionaries": sorted(n for n, d in (snap.get("dictionaries") or {}).items() if str(pd._field(d, "id")) in _engine_dict_ids(e))})
     used_dicts: set = set()
@@ -601,11 +621,11 @@ def inventory(client) -> Dict[str, Any]:
         did = str(pd._field(d, "id"))
         if did in used_dicts or not pd._field(d, "custom", "customDictionary", default=False):
             continue
-        pack = _tag_pack(pd._field(d, "description"))
+        pack = _tag_pack(pd._field(d, "description"), known)
         orphan_dicts.append({"kind": "dictionary", "id": pd._field(d, "id"), "name": name, "tagged": pack is not None, "pack": pack})
     orphan_engines.sort(key=lambda x: str(x["name"]).lower()); orphan_dicts.sort(key=lambda x: str(x["name"]).lower())
     return {"status": "ready", "rules": rules, "dictionaries": dicts, "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},
-            "errors": (snap.get("channels") or {}).get("errors") or {}}
+            "errors": (snap.get("channels") or {}).get("errors") or {}, "unreadable": dict(snap.get("unreadable") or {})}
 
 
 def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -724,7 +744,7 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     anything of the pack is still there. `cancel` (the operator's Stop)
     and a refusal no later delete can get past stop the remaining deletes;
     the result's `stopped` says why."""
-    return _execute(client, lambda: plan_removal(client, packs, everything=everything),
+    return _execute(client, lambda c=client: plan_removal(c, packs, everything=everything),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
@@ -732,7 +752,7 @@ def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: st
                     log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal_selected: the chosen
     rules, then the engines and dictionaries only they used."""
-    return _execute(client, lambda: plan_removal_selected(client, selected),
+    return _execute(client, lambda c=client: plan_removal_selected(c, selected),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
@@ -743,15 +763,38 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
     run's summary go to the audit log (pack_ops.audited_run)."""
     import zia_rate
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
-        run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+        run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds,
+                                     cancel=cancel)
         return run["result"]
 
 
-def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float) -> Dict[str, Any]:
+def _plan_with(planner, client: Any) -> Dict[str, Any]:
+    """planner() on `client` when it takes a client (remove, remove_selected,
+    remove_deployment pass one), else on the client it was built with."""
+    import inspect
+    try:
+        takes = bool(inspect.signature(planner).parameters)
+    except (TypeError, ValueError):
+        takes = False
+    return planner(client) if takes else planner()
+
+
+def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
+                 cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
-    plan = planner()
+    # Stop also ends the plan's tenant read: nothing more is read, nothing is deleted.
+    try:
+        plan = _plan_with(planner, pd.stop_reads(client, cancel))
+    except pd.ReadsStopped:
+        plan = None
+    if plan is None or (cancel is not None and cancel.is_set()):
+        _log(f"STOPPED — {pd.STOPPED_READ}")
+        return {"status": "stopped", "stopped": pd.STOPPED_READ, "summary": {}, "results": [], "events": [], "complete": False,
+                "kept": [], "gone": [], "activation": None, "activations": [], "activation_required": False, "run_again": False,
+                "verification": {"read": False, "clean": False, "remaining": [], "kept": [], "activation_status": None, "plan": None,
+                                 "blockers": ["not read: the run stopped before the plan was read"]}}
     if plan["status"] == "blocked":
         return {"status": "blocked", "blockers": plan["blockers"], "results": []}
     if plan_hash and plan["plan_hash"] != plan_hash:
@@ -906,8 +949,14 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     # VERIFY BY READING: run the same discovery the preview ran, against
     # the tenant as it is now. Anything of the pack still there is
     # reported as still present, and the removal is not called complete.
-    _log("Re-reading the tenant to verify the removal…")
-    verify = planner()
+    if not sent_any and ops.stop_reason():
+        # Stopped before any delete was sent: nothing to verify, and Stop
+        # means no further read either.
+        _log("No delete was sent before the run stopped, so the tenant is not read again.")
+        verify = {"status": "blocked", "items": [], "blockers": ["not read: the run stopped before any delete was sent"]}
+    else:
+        _log("Re-reading the tenant to verify the removal…")
+        verify = _plan_with(planner, client)
     remaining = [it for it in verify.get("items", []) if it["status"] == "remove"]
     remaining_keys = {(it["kind"], it.get("channel"), str(it["id"])) for it in remaining}
     # Also look for every object this run deleted, by id and name: a plan

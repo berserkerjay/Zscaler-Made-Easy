@@ -6,13 +6,18 @@ Checks upstream Zscaler sources for new APIs, SDK releases, and
 updated best-practice documentation, and reports which items have
 changed since the last check.
 
-Sources monitored:
+Sources monitored (SOURCES below):
   - zscaler-sdk-python on PyPI           → version bumps
   - help.zscaler.com/oneapi              → OneAPI reference drift
   - help.zscaler.com/zia (API overview)  → ZIA API surface changes
-  - help.zscaler.com/zpa (API overview)  → ZPA API surface changes
-  - help.zscaler.com/zscaler-deployments-operation  → BP updates
-  - DLP-specific best-practice pages     → Evaluate-All-Rules guidance
+  - help.zscaler.com/zpa (API key management) → ZPA API surface changes
+  - help.zscaler.com/zscaler-deployments-operations  → BP updates
+  - DLP / GenAI pages (Evaluate All Rules, DLP engines, AI/ML rules)
+
+help.zscaler.com renders its pages in the browser: every URL answers
+the same empty shell, and the article comes from /zapi/fetch-data. So a
+help.zscaler.com page is read through that answer (help_api_url,
+help_article, read_page), and its title and body are what get hashed.
 
 Design notes
 ------------
@@ -20,7 +25,7 @@ Design notes
   domains only. No arbitrary URLs. No content is executed — only
   hashed.
 - Parallel fetches via ThreadPoolExecutor so the whole check
-  completes in ~2-5 seconds even with 6 sources.
+  completes in ~2-5 seconds even with 8 sources.
 - A JSON cache file stores the last-seen hash/version per source.
   Next call reports what CHANGED, not the full content.
 - Gracefully degrades when offline: each source reports its own
@@ -42,6 +47,7 @@ Security
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -49,8 +55,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import quote, unquote, urlparse
 
 # ── Sources to monitor ───────────────────────────────────────────────
 
@@ -83,7 +89,7 @@ SOURCES: List[Dict[str, Any]] = [
         "key": "zpa_api_overview",
         "name": "ZPA API Overview",
         "type": "html_hash",
-        "url": "https://help.zscaler.com/zpa/about-api",
+        "url": "https://help.zscaler.com/zpa/about-api-key-management",
         "importance": "medium",
         "why": "ZPA-specific API surface.",
     },
@@ -99,7 +105,7 @@ SOURCES: List[Dict[str, Any]] = [
         "key": "dlp_eval_all",
         "name": "DLP — First Match Wins vs Evaluate All Rules",
         "type": "html_hash",
-        "url": "https://help.zscaler.com/zia/about-first-match-wins-and-evaluate-all-rules-for-dlp",
+        "url": "https://help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled",
         "importance": "high",
         "why": "Directly governs the Inline Web DLP migration wizard. Any policy change to this doc affects the recommended migration flow.",
     },
@@ -115,7 +121,7 @@ SOURCES: List[Dict[str, Any]] = [
         "key": "genai_bp",
         "name": "GenAI / AI Security Best Practices",
         "type": "html_hash",
-        "url": "https://help.zscaler.com/zia/about-ai-ml-controls",
+        "url": "https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control",
         "importance": "high",
         "why": "GenAI guidance is changing fast. Keeping the GenAI checks aligned with upstream best practice matters.",
     },
@@ -403,21 +409,142 @@ def section_root(url: str) -> str:
     return f"{u.scheme}://{u.netloc}/{parts[0]}" if parts else f"{u.scheme}://{u.netloc}/"
 
 
+# ── help.zscaler.com renders in the browser ──────────────────────────
+# Every help.zscaler.com URL answers the same empty JavaScript shell; the
+# page reads its article from /zapi/fetch-data. So do we: the article's
+# title and body are what gets checked and hashed, not the shell.
+HELP_HOST = "help.zscaler.com"
+
+
+def help_api_url(url: str) -> Optional[str]:
+    """The /zapi/fetch-data URL that carries a help.zscaler.com page's
+    article, or None for any other host."""
+    u = urlparse(url)
+    if (u.hostname or "").lower() != HELP_HOST:
+        return None
+    # unquote first: a URL that is already percent-encoded keeps its octets.
+    alias = quote(unquote(u.path.rstrip("/") or "/"), safe="/")
+    return (f"https://{HELP_HOST}/zapi/fetch-data?url_alias={alias}&view_type=full&cloud=null&domain=zscaler"
+            "&applicable_category=&applicable_version=&applicable_parent_version=&applicable_product=&keyword=&language=en&_format=json")
+
+
+def _help_index_html(categories: List[Any]) -> str:
+    """A documentation index's categories and their articles as HTML: a
+    heading per category, a link per article, in the order given."""
+    parts = []
+    for c in categories:
+        if not isinstance(c, dict):
+            continue
+        parts.append(f"<h2>{html.escape(str(c.get('title') or ''))}</h2><ul>")
+        articles = c.get("articles")
+        for a in articles if isinstance(articles, list) else []:
+            if isinstance(a, dict):
+                parts.append(f"<li><a href=\"{html.escape(str(a.get('url') or ''))}\">{html.escape(str(a.get('title') or ''))}</a></li>")
+        parts.append("</ul>")
+    return "".join(parts)
+
+
+def help_article(body: Optional[bytes]) -> Optional[Tuple[bytes, Dict[str, Any]]]:
+    """(content to hash, page_quality-shaped verdict) from a fetch-data
+    answer; None when the answer is not one (the caller then reports a
+    failed read, never raises). A missing or locked article answers 200 with its
+    own status inside: 404 "Page Not Found", 403 "Help Article in
+    Maintenance". The verdict carries basis "article" and the article's
+    status, so a hash is only ever compared with one read the same way."""
+    try:
+        data = json.loads(body.decode("utf-8", errors="ignore") if isinstance(body, bytes) else (body or ""))["data"]
+        info, art = data["info"], data.get("body") or {}
+        status = int(info["status"])
+    except (ValueError, KeyError, TypeError, AttributeError, OverflowError, RecursionError):
+        # Not an article answer: junk, a status of 1e999 / Infinity, JSON
+        # nested too deep to parse. One bad answer never stops a crawl.
+        return None
+    if not isinstance(art, dict):
+        return None
+    title = re.sub(r"\s+", " ", str(art.get("title") or "")).strip()
+    if status != 200:
+        if status in (404, 410):
+            why = f'HTTP {status}: the page no longer exists (the help center says "{title or "Page Not Found"}")'
+        else:
+            msg = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(art.get("message") or ""))).strip()
+            msg = re.split(r"(?<=[.!?])\s", msg, maxsplit=1)[0][:200]
+            why = f'HTTP {status}: the help center says "{title or "not available"}"' + (f" ({msg})" if msg else "")
+        return b"", {"ok": False, "reason": why, "title": title, "text_chars": 0, "basis": "article", "article_status": status}
+    content = str(art.get("content") or "")
+    if not content.strip() and isinstance(art.get("categories"), list):
+        # A documentation index (e.g. /zscaler-deployments-operations) has no
+        # body of its own: its content is the list of guides under it, so a
+        # guide added, renamed or removed is what changes.
+        content = _help_index_html(art["categories"])
+    # The help center said 200, so the article is there: its title is not
+    # searched for "not found" / "error" wording (an article titled
+    # "Viewing Removed Devices" or "About Error Codes" is real). Only the
+    # body is judged.
+    # errors="replace": a lone surrogate escape in the JSON (half an emoji,
+    # a title cut short) cannot be encoded as UTF-8 and is not worth a raise.
+    q = page_quality(f"<html><body><main>{content}</main></body></html>".encode("utf-8", errors="replace"), 200)
+    return _strip_volatile(f"{title}\n{content}".encode("utf-8", errors="replace")), {**q, "title": title, "basis": "article", "article_status": 200}
+
+
+def read_page(url: str, get: Callable[[str], Tuple[Optional[bytes], int, str]]) -> Tuple[Optional[bytes], Optional[Dict[str, Any]], int, str]:
+    """(content to hash, verdict, status, error) for a watched page: a
+    help.zscaler.com article through its fetch-data answer, anything else
+    as the page itself. The verdict is None when nothing usable answered;
+    then content is the error body (if any), status the HTTP status and
+    error what went wrong.
+
+    A help.zscaler.com page is never read as the page itself: every URL
+    there answers the same empty browser shell, so after a fetch-data
+    answer that is not an article (a 5xx, a 429, a proxy's block page, a
+    network error) the shell would only read as "no readable content" and
+    the page would look gone. The failed read is passed on as it is: no
+    verdict, the page's own link kept, and no second request to a host
+    that just failed."""
+    api = help_api_url(url)
+    if api:
+        body, code, err = get(api)
+        if err and not code:
+            return None, None, 0, err
+        art = help_article(body) if not err and code == 200 and body else None
+        if art:
+            return art[0], art[1], 200, ""
+        if code == 200 and not err:
+            err = "the help center's article API answered something that is not an article"
+        return body, None, code, err
+    body, code, err = get(url)
+    if err or code != 200 or not body:
+        return body, None, code, err
+    return _strip_volatile(body), {**page_quality(body, code), "basis": "page"}, code, ""
+
+
+def _gone_note(url: str, name: str, reason: str) -> Tuple[str, str]:
+    """(link, note) for a page that is not there: the section index when
+    there is one above the page, else the page itself."""
+    root = section_root(url)
+    if root.rstrip("/") == url.rstrip("/"):
+        return url, f"{url} — {reason}."
+    return root, f"{url} — {reason}. The link opens the section index instead; search there for \"{name}\"."
+
+
 def _check_html(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Optional[bool] = None) -> Dict[str, Any]:
     url = source["url"]
-    body, code, err = _safe_get(url, verify_tls=verify_tls)
-    if err or code != 200 or not body:
+    normalized, q, code, err = read_page(url, lambda u: _safe_get(u, verify_tls=verify_tls))
+    if q is None:
         res = {**_base_result(source, cached), "status": "error", "error": err or f"HTTP {code}", "link": url}
         if code in (403, 404, 410):
-            q = page_quality(body, code)
-            res.update({"link": section_root(url), "link_fallback": True, "page": q,
-                        "link_note": f"{url} — {q['reason']}. The link opens the section index instead; search there for \"{source['name']}\"."})
+            q = page_quality(normalized, code)
+            link, note = _gone_note(url, source["name"], q["reason"])
+            res.update({"link": link, "link_fallback": link != url, "page": q, "link_note": note})
         return res
-    q = page_quality(body, code)
-    normalized = _strip_volatile(body)
+    normalized = normalized or b""
     digest = _hash(normalized)
     size = len(normalized)
-    prev_digest = cached.get("hash")
+    basis = q.get("basis") or "page"
+    # A hash is only compared with one taken the same way from the same
+    # URL: the first read of a help.zscaler.com article (or of a page
+    # whose URL moved) is a new baseline, not a change.
+    same_way = cached.get("basis", "page") == basis and cached.get("url", url) == url
+    prev_digest = cached.get("hash") if same_way else None
     status = "new" if prev_digest is None else ("changed" if prev_digest != digest else "unchanged")
     res = {
         **_base_result(source, cached),
@@ -426,12 +553,24 @@ def _check_html(source: Dict[str, Any], cached: Dict[str, Any], verify_tls: Opti
         "previous": prev_digest,
         "size_bytes": size,
         "link": url,
+        "url": url,
+        "basis": basis,
         "page": q,
         "action_hint": "Open the link and review the updated section." if status == "changed" else None,
     }
+    if cached.get("hash") and not same_way:
+        res["action_hint"] = ("First reading of this page as it is now read (the help center's article, or a new address): "
+                              "a new baseline, not a change. Later checks compare against it.")
     if not q["ok"]:
-        res.update({"status": "dead_link", "link": section_root(url), "link_fallback": True, "action_hint": None,
-                    "link_note": f"{url} — {q['reason']}. The link opens the section index instead; search there for \"{source['name']}\"."})
+        if basis == "article" and q.get("article_status") not in (200, 404, 410):
+            # A locked article (403 "Help Article in Maintenance") is still
+            # there and comes back: not readable now, its own link kept.
+            res.update({"status": "unreadable", "link": url, "link_fallback": False, "action_hint": None,
+                        "link_note": f"{url} — {q['reason']}. The page is still there but cannot be read right now; "
+                                     "the next check reads it again."})
+            return res
+        link, note = _gone_note(url, source["name"], q["reason"])
+        res.update({"status": "dead_link", "link": link, "link_fallback": link != url, "action_hint": None, "link_note": note})
     return res
 
 
@@ -503,6 +642,8 @@ def check_for_updates(force: bool = False, only: Optional[List[str]] = None, ski
                                     entry["hash"] = res["current"]
                             else:
                                 entry["hash"] = res["current"]
+                    if res.get("basis"):  # how the hash was taken, and of what (html_hash only)
+                        entry["basis"], entry["url"] = res["basis"], res.get("url")
                 cache[key] = entry
             except Exception as e:
                 results.append({"key": "?", "name": "?", "status": "error",

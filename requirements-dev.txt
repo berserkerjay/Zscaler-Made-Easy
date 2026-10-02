@@ -1,0 +1,6 @@
+# Test and lint tools for CI and `make dev` (pyproject's dev extra pins the
+# same versions). Compiled against requirements.lock so the shared packages
+# keep the app's pins: make lock-dev
+pytest>=8
+pyflakes>=3
+httpx

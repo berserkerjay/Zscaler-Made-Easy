@@ -156,6 +156,19 @@ def test_the_readme_and_the_getting_started_guide_agree_with_the_install_guide()
     assert "Activation is never done by the tool" not in STARTED, "a deploy or removal activates; the guide says what does and what does not"
 
 
+def test_no_top_level_doc_or_the_licence_claims_the_repository_is_public():
+    # The repository is private (SECURITY.md, README.md, GitHub). LICENSE once
+    # said "This repository is public", which the README-only check missed.
+    names = sorted(n for n in os.listdir(ROOT) if n == "LICENSE" or n.lower().endswith(".md"))
+    assert "LICENSE" in names and "README.md" in names and "SECURITY.md" in names, names
+    for name in names:
+        text = " ".join(_read(name).split()).lower()
+        for claim in ("this repository is public", "the repository is public", "being publicly readable"):
+            assert claim not in text, f"{name} says {claim!r}; the repository is private"
+    licence = " ".join(_read("LICENSE").split())
+    assert "private" in licence and "apply unchanged" in licence, "LICENSE states the real visibility, conditionally, like README"
+
+
 def test_the_unlock_dialog_and_the_update_help_do_not_assume_a_windows_console():
     for name in ("ui_auth.js", "report_theme.js"):
         assert "server console" not in _read("static", name), name

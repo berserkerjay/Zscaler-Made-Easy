@@ -20,9 +20,9 @@
   X.connect = {
     group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
     what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
-    why: 'Nothing works until the app can read the tenant. Authenticate proves the credentials work and shows what the app can see, so a "no results" later is never a mystery.',
+    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does nothing else: it reads nothing from the tenant, because every read counts against the tenant\'s ZIA API rate limit. The tenant is read only when you run an assessment, and only for what you put in scope.',
     when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
-    get: 'Connected: N dictionaries, N engines, N rules, or a plain reason why not (wrong secret, TLS inspection, missing role).',
+    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Signing in reads nothing, so a role that cannot read DLP shows up only when the assessment runs, as checks the client was not permitted to run.',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {
@@ -43,7 +43,7 @@
   };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
-    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named.',
+    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
     why: 'When a customer asks "what happens if a user goes to this site?" the honest answer is in a dozen policies. This page reads them all and answers in one line, naming the rule or profile that decides it.',
     when: 'While troubleshooting a "Zscaler blocks my site" or "DLP did not catch it" ticket, before promising a control will apply, and when showing a customer where a destination is blind.',
     get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), the objects that block or impact it with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export.',
@@ -90,9 +90,9 @@
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
   X.digest = {
-    group: 'Find the gaps', name: 'Digest — the six-hour loop', href: '/report/digest',
-    what: 'While this app\'s server is running, every six hours it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
-    why: 'While the server is up, nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence. For a schedule that outlives the server, use Task Scheduler or cron (the Digest tab says how).',
+    group: 'Find the gaps', name: 'Digest — the evaluation loop', href: '/report/digest',
+    what: 'When you click Run the loop now, it re-reads the guidance sources and, for every tenant profile that remembers its secret, only what that profile\'s Scope page puts in scope (FP/TP detection ratio and the ticked packs\' drift when DLP is in scope, the SaaS tenants when SaaS Security runs on Zscaler), writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
+    why: 'Nothing reads the tenant on its own: every read counts against the ZIA API rate limit, so the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS. When it is on, nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence. For a schedule that outlives the server, use Task Scheduler or cron (the Digest tab says how).',
     when: 'Read it when it arrives; open the tab to run the loop now, to see which sources are stale, or to check what is notified where.',
     get: 'The latest digest with counts, the full text, the watched sources with their state, the SaaS capability matrix, the schedule and the notification settings.',
     next: 'Decide the new proposals in FP/TP detection ratio; a stale source or a missing notification setting is fixed in local_settings.bat.',
@@ -173,7 +173,7 @@
     group: 'Close the gaps', name: 'Terraform hand-off', href: '/report/view?tool=terraform',
     what: 'The same policy pack as a Terraform workspace for the official zscaler/zia provider. Static mode needs no credentials; gap mode reads the tenant and imports what exists so the customer\'s first plan is exactly the gap.',
     why: 'Some customers only change Zscaler through code review and a pipeline. This gives their platform team the pack in their language.',
-    when: 'When the customer says "we manage Zscaler as code" or refuses to let a tool write to the tenant.',
+    when: 'Only when the customer\'s platform team manages Zscaler as code (a pipeline, code review). Gap mode: the tenant already has DLP dictionaries, engines or rules, so existing objects are imported and the first plan creates only the gap; it reads the pack\'s objects from the tenant. Static: a new or empty tenant, no credentials, or a reference to review; the team imports anything that already exists before applying. If the customer changes Zscaler in the portal, use Deploy policy packs instead.',
     get: 'A ZIP with main.tf, variables and import blocks, plus the README for the platform team.',
     next: 'Hand the ZIP over; they run terraform plan and see the gap.',
   };
@@ -219,7 +219,7 @@
   };
   X.beacon = {
     group: 'Reference', name: 'Beacon: SDK, API & Terraform changes', href: '/report/beacon',
-    what: 'A watch on the three things outside this app that can silently break it: the Zscaler Python SDK (a new release, and whether it changes a module the app calls), the ZIA API (the SDK\'s machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now, and says what changed since the last run. Optionally it reads every endpoint the app uses from one tenant, GET only, and says which ones now answer differently.',
+    what: 'A watch on the three things outside this app that can silently break it: the Zscaler Python SDK (a new release, and whether it changes a module the app calls), the ZIA API (the SDK\'s machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now, and says what changed since the last run. Optionally it reads from one tenant only the endpoints that belong to what is in scope on the Scope page (the ticked scopes; for every scope only the channels marked Zscaler, exactly as the assessment reads them; every request counts against the tenant\'s ZIA API rate limit), GET only, and says which ones now answer differently.',
     why: 'When Zscaler moves an endpoint, renames a field or ships an SDK that changes a request body, a deploy or a check fails in front of the customer. Beacon says so first, in plain words, with what to do.',
     when: 'Glance at it before an engagement and after a Zscaler release; run the tenant API watch when a check starts answering 403 or 404 and you want to know whether the endpoint or the permission moved.',
     get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',

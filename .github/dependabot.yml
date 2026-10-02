@@ -1,7 +1,8 @@
 version: 2
 updates:
   # Python: one grouped PR a month. requirements.lock must be regenerated with
-  # the same tooling after merging (pip-compile --generate-hashes --allow-unsafe).
+  # the same tooling after merging (make lock: uv pip compile --universal --generate-hashes; it also re-pins
+  # requirements-dev.lock, and pyproject's dev extra must follow it).
   - package-ecosystem: "pip"
     directory: "/"
     schedule:

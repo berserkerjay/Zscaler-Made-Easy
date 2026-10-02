@@ -1,7 +1,7 @@
 """Channel ownership from the Scope page drives the assessment
-(channel_scope): a channel covered by an alternative solution has its
-checks reported as Not in scope and never read; Zscaler and gap channels
-run as before. The declaration rides the assess request, is saved on the
+(channel_scope): only a channel marked Zscaler is read. A channel covered
+by an alternative solution, or left unticked (a gap), has its checks
+reported as Not in scope and never read; the report still lists the gaps. The declaration rides the assess request, is saved on the
 tenant profile, and returns as channel_coverage in the report."""
 from __future__ import annotations
 
@@ -41,23 +41,45 @@ def test_every_mapped_check_and_section_exists_in_the_registries():
     assert "5.1" in cs.CHANNEL_CHECKS["endpoint_dlp"]["ids"]
 
 
-def test_only_an_alternative_channel_takes_checks_out_of_scope_and_the_order_is_kept():
+def test_alternative_and_gap_channels_take_checks_out_of_scope_and_the_order_is_kept():
     checks = [("A.1", "Ch.A — Inline Web", "web rule", None), ("B.1", "Ch.B — Endpoint", "endpoint rule", None),
               ("5.1", "5 — Endpoint DLP", "ZDP install", None), ("5.10", "5 — Endpoint DLP", "Dictionaries", None),
               ("B.2", "Ch.B — Endpoint", "another", None), ("E.1", "GenAI — Discovery", "genai", None)]
     channels = {"endpoint_dlp": {"choice": "alternative", "note": "Purview"}, "web_dlp": {"choice": "zscaler"}, "genai_security": "gap"}
     run, skipped, order = cs.partition(checks, channels)
-    assert [c[0] for c in run] == ["A.1", "5.10", "E.1"]
-    assert [r["id"] for r in skipped] == ["B.1", "5.1", "B.2"]
-    for r in skipped:
+    assert [c[0] for c in run] == ["A.1", "5.10"]
+    assert [r["id"] for r in skipped] == ["B.1", "5.1", "B.2", "E.1"]
+    for r in skipped[:3]:
         assert r["out_of_scope"] is True and r["status"] == "INFO" and r["channel"] == "endpoint_dlp"
         assert "Not in scope: Endpoint DLP is covered by an alternative solution (Purview)" in r["detail"]
         assert r["plain"]["found"].startswith("Not read: Endpoint DLP")
+    gap = skipped[3]
+    assert gap["out_of_scope"] is True and gap["gap"] is True and gap["status"] == "INFO" and gap["channel"] == "genai_security"
+    assert "Not in scope: GenAI Security was not ticked on the Scope page" in gap["detail"] and "not read" in gap["detail"]
     merged = cs.merge(order, [{"id": c[0]} for c in run], skipped)
     assert [m["id"] for m in merged] == ["A.1", "B.1", "5.1", "5.10", "B.2", "E.1"], "the findings keep their section order"
-    # Nothing declared, or only zscaler / gap: everything runs.
-    assert cs.partition(checks, {})[1] == [] and cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "gap"})[1] == []
-    assert cs.partition(checks, "nonsense")[1] == []
+    # Nothing declared (an MCP / CLI caller): everything runs. Only zscaler: everything runs.
+    assert cs.partition(checks, {})[1] == [] and cs.partition(checks, "nonsense")[1] == []
+    # E.1 also reads the Cloud App Control rules: that channel must be ticked too.
+    assert [r["id"] for r in cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "genai_security": "zscaler"})[1]] == ["E.1"]
+    assert cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "genai_security": "zscaler", "cloud_app_control": "zscaler"})[1] == []
+    # A gap is not read either, nor a channel the declaration leaves out (GenAI here).
+    assert [r["id"] for r in cs.partition(checks, {"web_dlp": "zscaler", "endpoint_dlp": "gap"})[1]] == ["B.1", "5.1", "B.2", "E.1"]
+
+
+def test_a_check_shared_with_a_zscaler_channel_still_runs():
+    # 8.1 belongs to Endpoint DLP and Device Control.
+    checks = [("8.1", "8 — Endpoint", "USB", None)]
+    assert cs.partition(checks, {"endpoint_dlp": "zscaler", "device_control": "gap"})[1] == []
+    assert cs.partition(checks, {"endpoint_dlp": "gap", "device_control": "zscaler"})[1] == []
+    assert [r["channel"] for r in cs.partition(checks, {"endpoint_dlp": "alternative", "device_control": "gap"})[1]] == ["endpoint_dlp"]
+
+
+def test_in_scope_and_pack_targets_are_the_zscaler_channels_only():
+    ch = {"web_dlp": "zscaler", "endpoint_dlp": "gap", "saas_casb": "alternative", "email_dlp": "zscaler", "ssl_inspection": "zscaler"}
+    assert cs.in_scope(ch) == ["web_dlp", "email_dlp", "ssl_inspection"]
+    assert cs.pack_targets(ch) == ["web", "email"]
+    assert cs.pack_targets({}) == [] and cs.in_scope("nonsense") == []
 
 
 def test_coverage_says_what_was_declared_and_what_it_did():
@@ -65,9 +87,15 @@ def test_coverage_says_what_was_declared_and_what_it_did():
     skipped = [{"channel": "endpoint_dlp"}, {"channel": "endpoint_dlp"}]
     cov = cs.coverage(channels, skipped)
     assert cov["declared"] and cov["not_in_scope"] == 2
-    assert [c["name"] for c in cov["zscaler"]] == ["Inline Web DLP"] and [c["name"] for c in cov["gaps"]] == ["Email DLP"]
+    gap_cov = cs.coverage(channels, skipped + [{"channel": "email_dlp"}])
+    assert gap_cov["not_in_scope"] == 3 and gap_cov["gaps"][0]["checks_not_in_scope"] == 1
+    # Every channel the declaration leaves out is a gap too, after the declared ones.
+    assert "(Endpoint DLP (Purview); 2 checks not in scope); 9 gaps (Email DLP, SaaS Security (CASB), " in gap_cov["note"]
+    assert gap_cov["note"].endswith("Workflow Automation; 1 checks not in scope, not read).")
+    assert [c["name"] for c in cov["zscaler"]] == ["Inline Web DLP"] and [c["id"] for c in cov["gaps"]] == ["email_dlp"] + [
+        c for c in cs.CHANNELS if c not in ("web_dlp", "endpoint_dlp", "email_dlp")]
     assert cov["alternative"][0] == {"id": "endpoint_dlp", "name": "Endpoint DLP", "note": "Purview", "checks_not_in_scope": 2}
-    assert "1 on Zscaler (Inline Web DLP); 1 covered by an alternative solution (Endpoint DLP (Purview); 2 checks not in scope); 1 gap (Email DLP)." in cov["note"]
+    assert "1 on Zscaler (Inline Web DLP); 1 covered by an alternative solution (Endpoint DLP (Purview); 2 checks not in scope); 9 gaps (Email DLP, " in cov["note"]
     assert cs.coverage({})["declared"] is False and "every check" in cs.coverage({})["note"]
     # normalize: unknown choices are gaps, custom ids keep their name, strings are choices.
     n = cs.normalize({"web_dlp": "weird", "custom_1": {"choice": "alternative", "name": "Print DLP"}, "": "zscaler", 5: 7})
@@ -146,10 +174,11 @@ def test_the_page_and_the_dashboard_carry_the_declaration_and_the_class():
     assert "channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {}" in html
     assert "if (c && c.out_of_scope) return 'not_in_scope';" in html and "not_in_scope_ids" in html
     assert 'id="notScopeStat"' in html and "NOTSCOPE:'Not in scope'" in html and 'data-filter="NOTSCOPE"' in html and ".status-NOTSCOPE {" in html
-    assert "not in scope (channels covered outside Zscaler, per the Scope page)" in html
+    assert "not in scope (channels covered outside Zscaler or left unticked, per the Scope page)" in html
     js = c.get("/static/dashboard.js").text
     assert "window.__dbChannelScope = function" in js and "window.__dbChannelsSet = function" in js
     assert "data.channel_coverage" in js and "not in scope" in js and "reported as <em>Not in scope</em>" in js
+    assert "the assessment still reads the tenant" not in js and "a gap, not in scope; the tenant is not read for it" in js
     guide = c.get("/static/guide.js").text
     assert "channels: typeof window.__dbChannelScope === 'function' ? window.__dbChannelScope() : {}" in guide
     assert "window.__dbChannelsSet(p.channels)" in guide

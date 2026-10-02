@@ -141,9 +141,17 @@ def refresh(safe_get, *, pages: Sequence[str] = PAGES) -> Dict[str, Any]:
     seed = load()
     found: Dict[str, Dict[str, Any]] = {}
     errors: List[str] = []
+    import zscaler_update_check as zu
     for url in pages:
         try:
-            body, status, err = safe_get(url)
+            if zu.help_api_url(url):
+                # help.zscaler.com pages are an empty browser shell: the table
+                # is in the article the help center's fetch-data answer carries.
+                body, q, status, err = zu.read_page(url, safe_get)
+                if q is None or q.get("article_status") != 200:
+                    body, status, err = None, (q or {}).get("article_status") or status, (q or {}).get("reason") or err
+            else:
+                body, status, err = safe_get(url)
         except Exception as e:  # noqa: BLE001
             body, status, err = None, 0, str(e)
         if not body or status != 200:

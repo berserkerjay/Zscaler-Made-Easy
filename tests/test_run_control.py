@@ -336,7 +336,7 @@ def test_deploy_and_removal_run_as_jobs_the_browser_can_follow(monkeypatch, tmp_
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     c = TestClient(srv.app)
-    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "assessor": "Jane Doe"}
     plan = c.post("/api/dlp-packs/preflight", json=dict(creds, pack_ids=["zbp_enterprise_baseline"])).json()
     assert c.post("/api/dlp-packs/apply/start", json=dict(creds, pack_ids=["zbp_enterprise_baseline"], plan_hash=plan["plan_hash"])).status_code == 400, "confirm is required"
     r = c.post("/api/dlp-packs/apply/start", json=dict(creds, pack_ids=["zbp_enterprise_baseline"], plan_hash=plan["plan_hash"], confirm=True, verify=False))
