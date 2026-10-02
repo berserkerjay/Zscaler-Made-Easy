@@ -11,6 +11,10 @@ lists what each batch of changes did, newest first.
 - **What you saw.** After *Authenticate* with the classic ZIA API sign-in, the guide kept the admin login in the browser's storage across restarts, and a failure the server answered without a tenant label (a rate limit, for example) was titled *Could not connect to <admin login>*. The sidebar's *Tenant* line showed a vanity domain left in the hidden OneAPI field.
 - **Now.** The guide matches the tenant on a one-way key of cloud and login, names it *classic API (<cloud>)*, and drops an old record that held the login. The sidebar shows *classic API · <cloud>*.
 
+### CI runs only pinned tooling
+- **What you saw.** CI installed `pytest` and `httpx` unpinned on top of the hash-verified lock (and `httpx2` with failures hidden), upgraded pip to whatever was newest, ran `aquasec/trivy:latest` and referenced every GitHub Action by a movable tag, so a new release or a moved tag changed what CI ran without anyone noticing.
+- **Now.** The test tools come from the new hash-pinned `requirements-dev.lock` (compiled against `requirements.lock`; `make lock-dev`, and `make lock` runs it too), which CI checks for staleness like the app's lock. pip is pinned by version, Trivy by version and image digest, and every action by full commit SHA (Dependabot keeps them current). pyproject's `dev` extra carries the same pins.
+
 ### Smaller fixes
 - The Terraform hand-off offers gap mode for a complete classic-API sign-in (it only looked at the OneAPI client ID).
 - Best practices opened in its own tab stops its 30-second refresh when the tab is closed.
