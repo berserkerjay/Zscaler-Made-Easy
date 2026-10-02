@@ -85,3 +85,14 @@ variable "email_tenant_ids_default" {
   nullable    = false
 }
 
+variable "assessor" {
+  description = "The assessor's name each object's description carries ([<assessor> pack <id> v<version>]). Required: name the person who assesses and deploys the pack, never the tool."
+  type        = string
+  nullable    = false
+
+  validation {
+    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\[\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp[\\W_]*check", var.assessor)) == 0
+    error_message = "Name the assessor (at most 40 characters, no brackets, not the tool): it is part of every object's description."
+  }
+}
+

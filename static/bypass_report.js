@@ -34,6 +34,10 @@ window.renderBypassReport = function renderBypassReport(data, container) {
       <details><summary style="cursor:pointer;color:var(--accent);font-size:0.82rem;">Show details</summary>
       <ul style="margin:0.4rem 0 0 1.1rem;font-size:0.8rem;color:var(--dim);">${data.diagnostics.map(d => `<li><strong>${E(d.section)}</strong>: <code>${E(d.error_type || '?')}</code> ${E(d.error || '')}</li>`).join('')}</ul></details></div>` : '';
 
+  // A section the Scope page left out was not read: it says so, never "Nothing here".
+  const outOf = Object.values(data.not_in_scope || {}).filter((t, i, a) => a.indexOf(t) === i);
+  const scopeNote = outOf.length ? `<div class="bp-card info"><div class="t">Read only what is in scope on the Scope page</div><ul style="margin:0.3rem 0 0 1.1rem;font-size:0.8rem;color:var(--dim);">${outOf.map(t => `<li>${E(t)}</li>`).join('')}</ul></div>` : '';
+  const notRead = sec => `<div class="bp-none">${E(sec.not_in_scope)}</div>`;
   const table = (items, cols, opts = {}) => {
     if (!items || !items.length) return '<div class="bp-none">Nothing here.</div>';
     const cls = c => (opts.mono || []).includes(c) ? ' class="mono"' : ((opts.num || []).includes(c) ? ' class="num"' : '');
@@ -53,17 +57,17 @@ window.renderBypassReport = function renderBypassReport(data, container) {
   let rulesHtml = '<div class="bp-h">Rules that skip inspection</div>';
   for (const [key, label] of [['ssl_bypass_rules', 'SSL inspection bypass rules'], ['url_filter_allow', 'URL Filtering allow rules'], ['firewall_allow', 'Firewall allow rules'], ['dlp_allow', 'DLP allow / bypass rules']]) {
     const sec = secs[key] || {};
-    rulesHtml += section(label, sec.count, table(sec.items, ruleCols, ruleOpts), ofTotal(sec));
+    rulesHtml += section(label, sec.count, sec.not_in_scope ? notRead(sec) : table(sec.items, ruleCols, ruleOpts), ofTotal(sec));
   }
   const exm = secs.ssl_exemptions || {};
-  rulesHtml += section('SSL exemptions and Do-Not-Inspect categories', exm.count, table(exm.items, ['source', 'field', 'value'], { mono: ['value'] }));
+  rulesHtml += section('SSL exemptions and Do-Not-Inspect categories', exm.count, exm.not_in_scope ? notRead(exm) : table(exm.items, ['source', 'field', 'value'], { mono: ['value'] }));
 
   const zcc = secs.zcc || {};
   let zccHtml = '<div class="bp-h">Client Connector bypasses</div>';
   for (const [key, label, cols] of [['apps', 'App bypass', ['profile', 'name', 'path', 'os']], ['processes', 'Process bypass', ['profile', 'name']],
                                     ['ips', 'IP bypass', ['profile', 'value']], ['domains', 'Domain bypass', ['profile', 'value']], ['trusted_networks', 'Trusted networks', ['profile', 'value']]]) {
     const sec = zcc[key] || {};
-    zccHtml += section(label, sec.count, table(sec.items, cols, { mono: ['value', 'path'] }));
+    zccHtml += section(label, sec.count, zcc.not_in_scope ? notRead(zcc) : table(sec.items, cols, { mono: ['value', 'path'] }));
   }
   if (zcc.endpoints_probed && zcc.endpoints_probed.length) {
     const rows = zcc.endpoints_probed.map(p => `<tr><td class="mono">${E(p.endpoint)}</td><td style="color:${p.status === 200 ? 'var(--pass)' : (p.status === 0 ? 'var(--fail)' : 'var(--warn)')};font-weight:600;">${p.status}</td><td class="dim">${p.item_count != null ? p.item_count + ' profile(s)' : (p.error ? E(p.error) : '—')}</td></tr>`).join('');
@@ -110,7 +114,7 @@ window.renderBypassReport = function renderBypassReport(data, container) {
 
   const guidance = (data.guidance || []).length ? `<div class="bp-card info bp-guide" style="margin-top:1rem;"><div class="t">Guidance</div><ul>${data.guidance.map(g => `<li>${E(g)}</li>`).join('')}</ul></div>` : '';
 
-  (container || document.getElementById('bypassResult')).innerHTML = top + diag + risky + rulesHtml + zccHtml + aggHtml + catHtml + guidance;
+  (container || document.getElementById('bypassResult')).innerHTML = top + diag + scopeNote + risky + rulesHtml + zccHtml + aggHtml + catHtml + guidance;
 };
 
 

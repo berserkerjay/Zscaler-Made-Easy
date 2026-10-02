@@ -19,6 +19,7 @@ const SF_DLP = {
   none:      { label: 'No inline DLP rule',   cls: 'warn' },
   blind:     { label: 'DLP blind (encrypted)', cls: 'bad' },
   blocked:   { label: 'Traffic blocked',      cls: 'mute' },
+  not_in_scope: { label: 'Web DLP not in scope', cls: 'mute' },
 };
 const SF_REL = { high: 'HIGH', medium: 'MEDIUM', privacy: 'PRIVACY', low: 'LOW' };
 
@@ -47,17 +48,18 @@ function _sfSvg(data) {
     const curve = (x1, x2, k) => { const dx = (x2 - x1) * 0.5; return `<path class="sf-edge ${k}" d="M${x1},${cy} C${x1 + dx},${cy} ${x2 - dx},${cy} ${x2},${cy}"/>`; };
     edges += curve(xA + W.a, xB, zTotal ? 'bad' : 'mute') + curve(xB + W.b, xC, zTotal ? 'bad' : 'mute');
     const cc = zcc.counts || {};
-    const meta = zcc.available ? `${cc.apps || 0} apps · ${cc.domains || 0} domains · ${cc.ips || 0} IPs · ${cc.trusted_networks || 0} trusted nets` : 'Client Connector profiles not readable';
+    const out = !!zcc.not_in_scope;   // ZCC not in scope on the Scope page: not read, never "unknown"
+    const meta = zcc.available ? `${cc.apps || 0} apps · ${cc.domains || 0} domains · ${cc.ips || 0} IPs · ${cc.trusted_networks || 0} trusted nets` : out ? 'not in scope on the Scope page' : 'Client Connector profiles not readable';
     nodes += `<g class="sf-node sev-${zTotal ? 'high' : 'none'}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xA},${y})" tabindex="0" role="button" aria-label="Client Connector bypasses">
       <rect class="box" width="${W.a}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
       <text class="name" x="14" y="21">Bypasses Client Connector</text><text class="sub" x="14" y="38">${E(meta)}</text>
       ${zTotal ? `<g transform="translate(${W.a - 46},-8)"><rect class="sf-badge high" width="44" height="16" rx="8"/><text class="sf-badge-t" x="22" y="11.5" text-anchor="middle">GAP</text></g>` : ''}</g>`;
     nodes += `<g class="sf-node dec-${cls}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xB},${y})" tabindex="0" role="button">
       <rect class="box" width="${W.b}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
-      <text class="st" x="14" y="20">${zTotal ? 'NEVER REACHES ZSCALER' : (zcc.available ? 'NO BYPASSES' : 'UNKNOWN')}</text><text class="sub" x="14" y="37">${zTotal ? `${zTotal} bypass entr${zTotal === 1 ? 'y' : 'ies'} in ${zcc.profiles || 0} profile(s)` : (zcc.available ? 'every device sends traffic through ZIA' : 'read the Bypass report')}</text></g>`;
+      <text class="st" x="14" y="20">${zTotal ? 'NEVER REACHES ZSCALER' : (zcc.available ? 'NO BYPASSES' : out ? 'NOT IN SCOPE' : 'UNKNOWN')}</text><text class="sub" x="14" y="37">${zTotal ? `${zTotal} bypass entr${zTotal === 1 ? 'y' : 'ies'} in ${zcc.profiles || 0} profile(s)` : (zcc.available ? 'every device sends traffic through ZIA' : out ? 'Client Connector was not read' : 'read the Bypass report')}</text></g>`;
     nodes += `<g class="sf-node dec-${cls}${SF.selected === 'zcc' ? ' is-sel' : ''}" data-key="zcc" transform="translate(${xC},${y})" tabindex="0" role="button">
       <rect class="box" width="${W.c}" height="${H}" rx="10"/><rect class="bar" x="0" y="0" width="4" height="${H}" rx="2"/>
-      <text class="st" x="14" y="20">${zTotal ? 'DLP blind (bypassed)' : (zcc.available ? 'Nothing bypassed' : 'Unknown')}</text><text class="sub" x="14" y="37">${zTotal ? 'no SSL rule, no DLP rule ever sees it' : ''}</text></g>`;
+      <text class="st" x="14" y="20">${zTotal ? 'DLP blind (bypassed)' : (zcc.available ? 'Nothing bypassed' : out ? 'Not in scope' : 'Unknown')}</text><text class="sub" x="14" y="37">${zTotal ? 'no SSL rule, no DLP rule ever sees it' : ''}</text></g>`;
   }
   classes.forEach((c, i0) => {
     const i = i0 + 1;
@@ -73,6 +75,7 @@ function _sfSvg(data) {
     const ruleLine = d.name ? `${_sfTrim(d.name, 30)}${d.order != null ? ` · order ${d.order}` : ''}` : 'nothing matched';
     const dlpLine = c.dlp_status === 'blind' ? (c.dlp_rules.length ? `${c.dlp_rules.length} rule(s) cannot see content` : 'content is encrypted')
       : c.dlp_status === 'blocked' ? 'blocked before DLP'
+      : c.dlp_status === 'not_in_scope' ? 'Web DLP not in scope'
       : c.dlp_rules.length ? _sfTrim(c.dlp_rules.map(r => r.name).join(', '), 34) : 'add a Web DLP rule';
     const meta = c.catch_all ? 'everything else (catch-all)' : `${c.url_categories.length} categor${c.url_categories.length === 1 ? 'y' : 'ies'}${c.application_count ? ` · ${c.application_count} apps` : ''}`;
     const gapBadge = worst && worst !== 'info' ? `<g transform="translate(${W.a - 46},-8)"><rect class="sf-badge ${worst}" width="44" height="16" rx="8"/><text class="sf-badge-t" x="22" y="11.5" text-anchor="middle">${worst === 'high' ? 'GAP' : worst === 'medium' ? 'CHECK' : 'TUNE'}</text></g>` : '';
@@ -101,7 +104,7 @@ function _sfZccDetail(z) {
   return `
     <div class="sf-detail-head"><div><div class="sf-detail-t">Bypasses Client Connector <span class="bp-chip">live</span></div>
       <div class="dim">App and forwarding profiles can send applications, processes, domains and IP ranges around the Zscaler tunnel, and trusted networks switch the tunnel off. That traffic never reaches ZIA: no SSL inspection rule and no inline DLP rule ever sees it, whatever the rows below say.</div></div>
-      <div class="sf-detail-dec dec-${z.total ? 'bad' : (z.available ? 'ok' : 'mute')}">${z.total ? 'NEVER REACHES ZSCALER' : (z.available ? 'NO BYPASSES' : 'UNKNOWN')}<small>${z.available ? `${z.total} entr${z.total === 1 ? 'y' : 'ies'} across ${z.profiles || 0} profile(s)` : E(z.error || 'Client Connector profiles could not be read')}</small></div></div>
+      <div class="sf-detail-dec dec-${z.total ? 'bad' : (z.available ? 'ok' : 'mute')}">${z.total ? 'NEVER REACHES ZSCALER' : (z.available ? 'NO BYPASSES' : z.not_in_scope ? 'NOT IN SCOPE' : 'UNKNOWN')}<small>${z.available ? `${z.total} entr${z.total === 1 ? 'y' : 'ies'} across ${z.profiles || 0} profile(s)` : E(z.not_in_scope || z.error || 'Client Connector profiles could not be read')}</small></div></div>
     <div class="sf-kvs"><div class="sf-kv"><div class="k">Counts</div><div class="v">${['apps', 'processes', 'domains', 'ips', 'trusted_networks'].map(k => `<span class="bp-code">${c[k] || 0} ${k.replace('_', ' ')}</span>`).join('')}</div></div>
       <div class="sf-kv"><div class="k">Full report</div><div class="v"><a class="rp-btn" href="#" id="sfOpenBypass">Open the Bypass &amp; Non-Inspected report in a new tab</a> <span class="dim">every SSL bypass, allow rule and Client Connector exemption, with exports</span></div></div></div>
     ${rows ? `<div class="bp-h">Bypass entries (${(z.items || []).length}${(z.items || []).length > 60 ? ', first 60 shown' : ''})</div><div class="max"><table class="bp-table"><thead><tr><th>Kind</th><th>Profile</th><th>Value</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div>` : (z.available ? '<div class="bp-none">No bypass entries in any profile.</div>' : '')}
@@ -159,6 +162,9 @@ window.renderSslFlow = function renderSslFlow(data, container) {
   const gaps = data.gaps || [];
   const stat = (n, label, cls) => `<div class="sf-stat ${cls || ''}"><div class="n">${n || 0}</div><div class="k">${E(label)}</div></div>`;
   const diag = (data.diagnostics || []).length ? `<div class="bp-card warn"><div class="t">${data.diagnostics.length} source${data.diagnostics.length === 1 ? '' : 's'} could not be read fully</div><ul style="margin:0.3rem 0 0 1.1rem;font-size:0.8rem;color:var(--dim);">${data.diagnostics.map(d => `<li><strong>${E(d.section)}</strong>: <code>${E(d.error_type || '?')}</code> ${E(d.error || '')}</li>`).join('')}</ul></div>` : '';
+  // What the Scope page left out was not read: said once, never as "could not be read".
+  const outOf = Object.values(data.not_in_scope || {});
+  const scopeNote = outOf.length ? `<div class="bp-card info"><div class="t">Read only what is in scope on the Scope page</div><ul style="margin:0.3rem 0 0 1.1rem;font-size:0.8rem;color:var(--dim);">${outOf.map(t => `<li>${E(t)}</li>`).join('')}</ul></div>` : '';
   const ex = (data.zscaler_exemptions || []);
   const gapList = gaps.length ? gaps.map(g => `<li class="sev-${E(g.severity)}"><span class="bp-chip ${g.severity === 'high' ? 'act' : ''}">${E(g.severity)}</span><a href="#" data-class="${E(g.class)}" class="sf-gap-link">${E(g.title)}</a><span class="why">${E(g.detail)}<br><b>Fix:</b> ${E(g.fix)}</span></li>`).join('') : '<li class="sev-none"><span class="why">No gaps: every DLP-relevant traffic class is decrypted and covered by an inline DLP rule.</span></li>';
   const sslRows = (data.ssl_rules || []).map(r => {
@@ -169,9 +175,9 @@ window.renderSslFlow = function renderSslFlow(data, container) {
   container.innerHTML = `
     <div class="sf-hero">
       ${stat(s.inspected, 'classes decrypted', 'ok')}${stat(s.not_inspected, 'classes not decrypted', s.not_inspected ? 'bad' : '')}${stat(s.blocked, 'classes blocked', 'mute')}
-      ${stat(s.dlp_covered, 'decrypted and DLP-covered', s.dlp_covered ? 'ok' : '')}${stat(s.zcc_bypasses || 0, 'Client Connector bypasses', (s.zcc_bypasses || 0) ? 'bad' : ((data.zcc || {}).available ? 'ok' : 'mute'))}${stat(s.gaps, 'gaps', s.high ? 'bad' : s.gaps ? 'warn' : 'ok')}${stat(s.high, 'high severity', s.high ? 'bad' : '')}
+      ${stat(s.dlp_covered == null ? '–' : s.dlp_covered, s.dlp_covered == null ? 'Web DLP not in scope' : 'decrypted and DLP-covered', s.dlp_covered ? 'ok' : '')}${stat(s.zcc_bypasses || 0, 'Client Connector bypasses', (s.zcc_bypasses || 0) ? 'bad' : ((data.zcc || {}).available ? 'ok' : 'mute'))}${stat(s.gaps, 'gaps', s.high ? 'bad' : s.gaps ? 'warn' : 'ok')}${stat(s.high, 'high severity', s.high ? 'bad' : '')}
     </div>
-    ${diag}
+    ${diag}${scopeNote}
     <div class="sf-flow">
       <div class="sf-flow-bar">
         <div class="sf-legend"><span><i class="sw ok"></i>decrypted, DLP sees content</span><span><i class="sw warn"></i>decrypted, DLP gap</span><span><i class="sw bad"></i>encrypted, DLP blind</span><span><i class="sw mute"></i>blocked</span></div>

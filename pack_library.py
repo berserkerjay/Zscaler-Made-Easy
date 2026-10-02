@@ -26,6 +26,7 @@ Accepted layouts
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
@@ -61,6 +62,17 @@ def user_packs_dir(root: Optional[str] = None) -> str:
 
 def slugify(name: str) -> str:
     return _SLUG_RE.sub("_", (name or "").lower().strip()).strip("_")[:64]
+
+
+def pack_slug(name: str) -> str:
+    """The id a pack gets from its name: slugify(name), or, for a name with
+    no Latin letters or digits ("名前", "..."), 'pack_' and a short hash of
+    the name, so such a pack still gets an id and the same name always the
+    same one. Empty only for an empty name."""
+    slug = slugify(name)
+    if slug or not (name or "").strip():
+        return slug
+    return "pack_" + hashlib.sha1(name.strip().encode("utf-8")).hexdigest()[:10]
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +333,8 @@ RULE_CHANNEL_BY_RESOURCE = {
     "zia_ssl_inspection_rules": pc.SSL,
 }
 _SKIP_RULE_ATTRS = {"order", "rank", "lifecycle", "depends_on", "provider", "_labels", "timeouts"}
-_PROVENANCE_RE = re.compile(r"\s*\[DLP-Check (?:baseline|pack) [^\]]*\] Terraform-managed\.?\s*$")
+# "[<assessor> pack <id> v1] Terraform-managed." ("[DLP-Check ...]" when no assessor was named).
+_PROVENANCE_RE = re.compile(r"\s*\[[^\[\]\r\n]{1,60}? (?:baseline|pack) [^\]]*\] Terraform-managed\.?\s*$")
 _ID_REF_RE = re.compile(r"D\$\{([^}]+)\}\.S")
 _NUMERIC_REF_RE = re.compile(r"\bD(\d+)\.S\b")
 
@@ -727,6 +740,19 @@ def assemble_pack(files: List[Dict[str, Any]], *, pack_name: str = "", descripti
 _REF_NAME_RE = re.compile(r"D:(.+?)(?=\s*(?:[<>=]|\bAND\b|\bOR\b|\)\s*(?:AND\b|OR\b|\)|$)|$))")   # find_refs is the paren-aware reader
 
 
+def _without_known_refs(expr: str, names: Any) -> Tuple[str, List[str]]:
+    """(the expression with every D:<name> reference to one of `names` taken
+    out, the names found). Longest names first, as the deploy resolves
+    them, and only where the name ends as a reference ends."""
+    found: List[str] = []
+    for name in sorted(names, key=len, reverse=True):
+        pat = re.compile(re.escape(f"D:{name}") + r"(?=\s*(?:[<>=+)]|AND\b|OR\b|$))")
+        if pat.search(expr):
+            expr = pat.sub("\x00", expr)
+            found.append(name)
+    return expr, found
+
+
 def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
     """Problems block the upload; warnings are shown and allowed."""
     problems: List[str] = []
@@ -767,6 +793,11 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(d, dict) and d.get("dict_template_name"):
             known_predefined.update(template_candidates(d["dict_template_name"]))
 
+    ref_names = {x for x in dict_names | known_predefined if isinstance(x, str) and x.strip()}
+    meta_predefined = (pack.get("meta") or {}).get("predefined_dictionaries")
+    if isinstance(meta_predefined, list):
+        ref_names.update(x for x in meta_predefined if isinstance(x, str) and x.strip())
+
     eng_seen: set = set()
     for e in engines:
         if not isinstance(e, dict) or not str(e.get("name") or "").strip():
@@ -782,12 +813,16 @@ def validate_pack(pack: Dict[str, Any]) -> Dict[str, Any]:
             continue
         for msg in ops.validate("engine", e):
             problems.append(f"engine '{n}': {msg}")
-        if expr.count("(") != expr.count(")"):
+        # A dictionary name ZIA accepts may hold a lone parenthesis or a
+        # "D7.S"; the references to names the pack knows are taken out
+        # before the checks that read the expression as a whole.
+        rest, named = _without_known_refs(expr, ref_names)
+        if rest.count("(") != rest.count(")"):
             problems.append(f"engine '{n}': unbalanced parentheses in expression")
-        for m in _NUMERIC_REF_RE.finditer(expr):
+        for m in _NUMERIC_REF_RE.finditer(rest):
             problems.append(f"engine '{n}': references dictionary id {m.group(1)}; use D:<dictionary name> so the pack works on any tenant")
         from dlp_importer import find_refs
-        refs = set(find_refs(expr))
+        refs = set(named) | set(find_refs(rest))
         if not refs and "D:" not in expr and not _NUMERIC_REF_RE.search(expr):
             problems.append(f"engine '{n}': expression references no dictionary (expected D:<name> terms)")
         for r in refs:
@@ -858,7 +893,7 @@ def save_pack(pack: Dict[str, Any], *, pack_id: str = "", root: Optional[str] = 
     v = validate_pack(pack)
     if not v["ok"]:
         raise ValueError("; ".join(v["problems"][:5]))
-    slug = slugify(pack_id or pack["meta"].get("name") or "")
+    slug = pack_slug(pack_id or pack["meta"].get("name") or "")
     if not slug:
         raise ValueError("the pack needs a name")
     if slug == USER_PACKS_DIRNAME or _pack_id_taken(slug, root):

@@ -101,14 +101,13 @@ def test_the_mirrored_results_tab_is_styled_like_the_page():
         assert bad not in css, f"{bad} would style the page only, never the mirrored tab"
 
 
-def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
+def test_run_from_the_sidebar_asks_to_sign_in_first_and_lands_on_this_page():
     """Clicking Run assessment on the Scope assessment page: a missing
     organisation or assessor stays on that page (Report details); missing
-    sign-in details open the Connect step on the first blank field and
-    queue the run; a tenant not yet authenticated is authenticated, then
-    assessed; a successful Authenticate starts a queued run. The run
-    happens on this page (no pop-out tab), so the dashboard is where you
-    land."""
+    sign-in details, or a tenant not yet authenticated, open the Connect
+    step and say to sign in, then click Run again. Nothing is queued:
+    Authenticate never starts an assessment. The run happens on this page
+    (no pop-out tab), so the dashboard is where you land."""
     js = _read("dashboard.js")
     assert "function runFromSidebar()" in js and "sec.querySelector('#dbScopeRun').addEventListener('click', () => { runFromSidebar(); });" in js
     assert "if (k === 'run')" not in js
@@ -118,10 +117,16 @@ def test_run_from_the_sidebar_signs_in_first_and_lands_on_this_page():
     assert "function missingFields()" in js and "['org', 'assessor'].concat(legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec'])" in js
     assert "remembered && (id === 'csec' || id === 'zpass' || id === 'zkey')" in js, "a profile's remembered secret counts"
     assert "function signedIn()" in js and "GD.conn" in js
-    assert "pendingRun = true" in js and "goConnect(missing[0])" in js and "await authenticateTenant()" in js
-    assert "window._gdTest = async function" in js and "if (pendingRun && signedIn()) startRun()" in js
+    # Signed out, a Run click says to sign in and goes to the form; signing
+    # in never starts the run (every read counts against ZIA's rate limit).
+    assert "goConnect(missing[0])" in js and "then click Run assessment again" in js
+    assert "pendingRun" not in js and "window._gdTest =" not in js and "await authenticateTenant()" not in js
+    assert "starts by itself" not in js and "the assessment starts right after" not in js
     assert "runAssessment();" in js and "openToolTab('results'" not in js, "the sidebar run stays on this page"
-    assert "Sign in first" in js and "starts by itself right after" in js
+    assert "Sign in first" in js
+    # Enter in a field never starts an assessment: only a Run button does.
+    html = open(os.path.join(ROOT, "static", "index.html"), encoding="utf-8").read()
+    assert "activeEl.tagName === 'INPUT') runAssessment()" not in html and "No Enter-to-run" in html
     css = _read("dashboard.css")
     assert ".db-note" in css and ".db-note.warn" in css
 

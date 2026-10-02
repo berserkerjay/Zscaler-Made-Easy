@@ -15,7 +15,11 @@
 
 const TOOL_TABS = {
   updates:       { title: 'Zscaler update check',   open: 'openUpdateModal',        modal: 'updateModal' },
-  bestpractices: { title: 'Best practices',         open: 'openBestPracticesModal', modal: 'bestPracticesModal' },
+  // `stop` ends what the tool keeps running while its dialog is open (here
+  // the 30 s re-fetch, which only closeBestPracticesModal cleared): called
+  // when its tab is closed, and before the tool is opened in a tab again.
+  bestpractices: { title: 'Best practices',         open: 'openBestPracticesModal', modal: 'bestPracticesModal',
+                   stop: () => { if (typeof _bestPracticesPoll !== 'undefined' && _bestPracticesPoll) { clearInterval(_bestPracticesPoll); _bestPracticesPoll = null; } } },
   efficacy:      { title: 'DLP efficacy',           open: 'openDlpEfficacyModal',   modal: 'dlpEffModal' },
   zcc:           { title: 'ZCC endpoint diagnostics', open: 'diagnoseZcc',          modal: 'zccDiagModal' },
   permissions:   { title: 'Required API access',    open: 'openPermissionsModal',   modal: 'permissionsModal' },
@@ -25,7 +29,7 @@ const TOOL_TABS = {
   // here explicitly or the mirrored tab loses the rings and pillars.
   results:       { title: 'Assessment results',     open: '_openResultsPanel',      panels: ['dbHero', 'progressCard', 'results'], keep: true },
 };
-const _TT = {};   // kind -> { win, observers, timer, poll }
+const _TT = {};   // kind -> { win, observers, timer, poll, watch }
 
 function _ttE(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function _ttVisible(el) { return !!el && getComputedStyle(el).display !== 'none'; }
@@ -64,8 +68,10 @@ function _ttStop(kind) {
   const t = _TT[kind];
   if (!t) return;
   for (const o of t.observers || []) o.disconnect();
-  clearInterval(t.poll);
+  clearInterval(t.poll); clearInterval(t.watch); clearTimeout(t.timer);
   delete _TT[kind];
+  const spec = TOOL_TABS[kind];
+  if (spec && typeof spec.stop === 'function') { try { spec.stop(); } catch (e) { /* best effort */ } }
 }
 function _ttHideModal(kind) {
   const spec = TOOL_TABS[kind];
@@ -87,7 +93,7 @@ async function openToolTab(kind, arg) {
   const panels = _ttPanels(kind, true);
   if (!panels.length) { win.close(); return; }
   _ttHideModal(kind);
-  const t = _TT[kind] = { win, observers: [], timer: null, poll: null };
+  const t = _TT[kind] = { win, observers: [], timer: null, poll: null, watch: null };
   // Wait for the tab to load, then push styles, title and content; keep it in sync.
   const styleEl = document.querySelector('style');
   const ready = () => {
@@ -106,7 +112,12 @@ async function openToolTab(kind, arg) {
   };
   t.poll = setInterval(() => {
     if (win.closed) return _ttStop(kind);
-    if (ready()) { clearInterval(t.poll); t.poll = null; _ttSync(kind); }
+    if (ready()) {
+      clearInterval(t.poll); t.poll = null; _ttSync(kind);
+      // A closed tab is noticed even when the tool's content never changes
+      // again (no mutation, so no _ttSync), and whatever it runs is stopped.
+      t.watch = setInterval(() => { if (win.closed) _ttStop(kind); }, 1000);
+    }
   }, 120);
   for (const panel of panels) {
     const o = new MutationObserver(() => { clearTimeout(t.timer); t.timer = setTimeout(() => _ttSync(kind), 80); });

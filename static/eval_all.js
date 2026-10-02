@@ -2,8 +2,11 @@
 // Rendered into #evalAllFlow inside the Inline DLP Rule migration modal
 // and on the /report/evalall reference tab. Pure DOM, no tenant call.
 //
-// What ZIA does (Zscaler: "About First Match Wins and Evaluate All Rules
-// for DLP", help.zscaler.com/zia/about-first-match-wins-and-evaluate-all-rules-for-dlp):
+// What ZIA does (Zscaler: "Configuring DLP Policy Rules with Evaluate All
+// Rules Mode Enabled", help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled.
+// It replaced "About First Match Wins and Evaluate All Rules for DLP",
+// which the help center no longer has; the Isolate step and the channel
+// list below come from that older article):
 //   Rule Order (first match wins): rules are walked by order; the first
 //     rule whose criteria match decides, and nothing below it is looked at.
 //   Evaluate All Rules: every enabled rule is evaluated; among the rules
@@ -16,7 +19,7 @@
 // Settings switch is on), Endpoint DLP and Outbound Email DLP. SaaS
 // Security API DLP rules are the exception: they are walked in order per
 // rule type and the first match decides, so no tie is possible there.
-const EA_SOURCE = 'https://help.zscaler.com/zia/about-first-match-wins-and-evaluate-all-rules-for-dlp';
+const EA_SOURCE = 'https://help.zscaler.com/zia/configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled';
 
 function _eaRender() {
   const host = document.getElementById('evalAllFlow'); if (!host) return;
@@ -40,7 +43,7 @@ function _eaRender() {
         <div class="ea-box dim">DLP log → Incident Receiver → Workflow Automation</div>
       </div>
     </div>
-    <p class="ea-note">Source: Zscaler, <a href="${EA_SOURCE}" target="_blank" rel="noopener noreferrer">About First Match Wins and Evaluate All Rules for DLP</a>. <strong>Channels:</strong> Inline Web DLP (with the Advanced Settings switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the exception, walked in order per rule type with the first match deciding. Rule order still matters in Evaluate All Rules: it is the tie-breaker among rules that carry the same action, and the winning rule is the one whose notification and incident settings are used. A Monitor (Allow) rule placed above a Block rule shadows it only in Rule Order mode; Evaluate All Rules removes that shadowing.</p>
+    <p class="ea-note">Source: Zscaler, <a href="${EA_SOURCE}" target="_blank" rel="noopener noreferrer">Configuring DLP Policy Rules with Evaluate All Rules Mode Enabled</a>. <strong>Channels:</strong> Inline Web DLP (with the Advanced Settings switch on), Endpoint DLP and Outbound Email DLP evaluate all rules; SaaS Security API DLP rules are the exception, walked in order per rule type with the first match deciding. Rule order still matters in Evaluate All Rules: it is the tie-breaker among rules that carry the same action, and the winning rule is the one whose notification and incident settings are used. A Monitor (Allow) rule placed above a Block rule shadows it only in Rule Order mode; Evaluate All Rules removes that shadowing.</p>
   </details>`;
 }
 

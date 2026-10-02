@@ -571,7 +571,9 @@ highest one with all earlier stages reached.
 | 5 Enforcement | DLP rules use an enforcing action |
 
 The score is the share of required objects in place, averaged over the
-stages. The **assessment** runs this for every policy pack and shows a
+stages. The **assessment** runs this, when DLP is in scope, for the policy packs
+ticked on the tenant profile (only on their channels marked Zscaler on
+the Scope page; no pack ticked, no journey) and shows a
 *Data governance journey* card; each policy pack card in Deploy Studio has a
 *Where is this tenant?* action; and the API exposes the same thing:
 
@@ -590,9 +592,19 @@ curl -s -X POST http://localhost:8000/api/dlp-packs/journey \
 
 It runs without the write gate (nothing is written). `next_steps` names
 the exact rules to enable or harden, and where in the ZIA Admin Portal.
-Every object a policy pack creates carries a provenance tag in its
-description (`[DLP-Check baseline <pack> v<version>]`), so admins can see
-which policy pack version it came from.
+Every object a policy pack creates carries a provenance tag at the end of
+its description (`[<assessor> baseline <pack> v<version>]`, or
+`[<assessor> pack <pack> v<version>]` for a pack without a baseline), so
+admins can see which policy pack version it came from and who deployed it.
+The tag names only the assessor (Scope assessment, else the saved
+profile's assessor; no brackets or line breaks, at most 40 bytes). The
+assessor's name is required: every pack push without one, or with the
+tool's own name in any spelling (`DLP-Check`, `dlp check`, `DLPCheck`, ...),
+is refused before the tenant is signed in to, so no new tag says `DLP-Check`; that name is
+found only in tags written by earlier deploys. Removal, export, the journey
+and the inventory recognise both this form and the older
+`[DLP-Check ...]` tag; an assessor's tag counts only for a pack in the
+library, so a customer's own text such as `[Q3 pack review]` never does.
 
 **Dynamic application scope.** A web rule may carry
 `"cloud_app_classes": ["AI_ML"]` instead of a fixed `cloud_applications`
@@ -674,6 +686,15 @@ python pack_terraform.py --out terraform          # all packs
 python pack_terraform.py zbp_enterprise_baseline --out terraform
 ```
 
+The committed workspaces name no assessor: each description's tag is
+`[${var.assessor} pack …]` and `variable "assessor"` is required (no default,
+never the tool's name: the same `(?i)dlp[\W_]*check` rule as the app and the CLI), so `terraform plan` and `apply` refuse until you name
+the assessor (`-var 'assessor=Jane Doe'`, `terraform.tfvars` or
+`TF_VAR_assessor`). To bake the name in instead, generate the workspace with
+`python pack_terraform.py <pack_id> --out <dir> --assessor "Jane Doe"`, or
+download it from the app with the assessor named. Nothing a workspace pushes
+is tagged DLP-Check.
+
 **Gap mode (assess, then close the gap with Terraform).** From Deploy
 Studio, run preflight and click *Export Terraform*, or call the API with
 tenant credentials:
@@ -711,8 +732,8 @@ card) returns the static workspace.
 | `imports.tf` | gap mode only |
 | `README.md`, `.gitignore`, `terraform.tfvars.example` | requirements, inputs, outputs, state and lock-file guidance, verify and review steps; state and secrets kept out of git |
 
-Every object carries a `[DLP-Check baseline|pack <id> v<ver>] Terraform-managed.`
-description tag. Every file is written the way `terraform fmt` lays it out
+Every object carries a `[<assessor> baseline|pack <id> v<ver>] Terraform-managed.`
+description tag. The assessor's name is required: a workspace generated without one tags `[${var.assessor} ...]`, and `terraform apply` needs `var.assessor` set; `DLP-Check` appears only in tags written by earlier deploys, which are still recognised. Every file is written the way `terraform fmt` lays it out
 (`pack_terraform.hcl_fmt`); CI regenerates the committed workspaces, fails
 on any drift or new file, runs `terraform fmt -check`, and `terraform init`
 + `validate` against the real provider schema.

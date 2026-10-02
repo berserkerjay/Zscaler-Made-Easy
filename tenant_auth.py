@@ -19,6 +19,7 @@ key obfuscation the classic sign-in needs and the SDK legacy client.
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -129,19 +130,60 @@ def from_env(environ: Optional[Dict[str, str]] = None) -> Dict[str, str]:
 
 def label(creds: Dict[str, Any]) -> str:
     """How the tenant is named in messages: 'acme (zscalerten)' for OneAPI,
-    'admin@acme.com (zscalerten, classic API)' for the legacy sign-in."""
+    'classic API (zscalerten)' for the legacy sign-in. The same as
+    record_label: a label is shown, returned and often kept (a Beacon
+    snapshot, a report), so the classic API's admin login and any vanity
+    domain left in the form are never part of it (user rule 3)."""
+    return record_label(creds)
+
+
+# The form label() gave a classic-API tenant before it stopped naming the
+# admin login: '<login> (<cloud>, classic API)'. Only used to find and
+# scrub it in what was kept before (scrub_classic_login).
+_OLD_CLASSIC_LABEL = re.compile(r"[^\s()\[\]{}\"']+ \(([^(),]+), classic API\)")
+
+
+def scrub_classic_login(text: Any) -> Any:
+    """`text` with every '<admin login> (<cloud>, classic API)' label the
+    app wrote before replaced by 'classic API (<cloud>)'. Anything that is
+    not a string is returned as it is."""
+    if not isinstance(text, str) or ", classic API)" not in text:
+        return text
+    return _OLD_CLASSIC_LABEL.sub(lambda m: f"classic API ({m.group(1).strip()})", text)
+
+
+def record_label(creds: Dict[str, Any]) -> str:
+    """How a pack deployment names its tenant on screen and in the
+    deployment record: 'acme (zscalerten)' for OneAPI, 'classic API
+    (zscalerten)' for the legacy sign-in. The classic API signs in with an
+    admin login and no vanity domain, so neither appears here (a stale
+    vanity domain left in the form or profile included)."""
     c = normalize(creds)
     cloud = c["cloud"] or "production"
     if c["auth_method"] == LEGACY:
-        return f"{c['username'] or '?'} ({cloud}, classic API)"
+        return f"classic API ({cloud})"
     return f"{c['vanity_domain'] or '?'} ({cloud})"
 
 
+def record_labels(creds: Dict[str, Any]) -> Tuple[str, ...]:
+    """Every label a deployment of this tenant may carry: record_label and,
+    for the classic API, the '<vanity or ?> (cloud)' form records were
+    written with before."""
+    c = normalize(creds)
+    cloud = c["cloud"] or "production"
+    out = [record_label(c)]
+    if c["auth_method"] == LEGACY:
+        out.append(f"{c['vanity_domain'] or '?'} ({cloud})")
+    return tuple(out)
+
+
 def identity(creds: Dict[str, Any]) -> str:
-    """The masked identity for an error message."""
+    """The masked identity for an error message. The classic API's admin
+    login is masked like a client id: an error message can end up in a
+    job log or a report, where the login never appears (user rule 3)."""
     c = normalize(creds)
     if c["auth_method"] == LEGACY:
-        return f"username={c['username'] or '?'}"
+        return f"username={_mask(c['username']) if c['username'] else '?'}"
     return f"client_id={_mask(c['client_id'])}"
 
 
@@ -245,6 +287,11 @@ class LegacyZiaClient:
             ensure()
         return True
 
+    def set_session(self, session: Any) -> None:
+        """The requests.Session every classic-API request is sent on
+        (zia_rate.attach_client gives it a paced one)."""
+        self._helper._dlp_check_session = session
+
     def close(self) -> None:
         end = getattr(self._helper, "deauthenticate", None)
         if callable(end):
@@ -258,16 +305,142 @@ class LegacyZiaClient:
         raise AttributeError(f"{name} is not available with the classic ZIA API sign-in; it covers ZIA only")
 
 
-def build_legacy_sdk_client(creds: Dict[str, Any], *, timeout: int = 90) -> LegacyZiaClient:
+def build_legacy_sdk_client(creds: Dict[str, Any], *, timeout: int = 90, max_retries: int = 2,
+                            max_retry_seconds: int = 30) -> LegacyZiaClient:
     """Sign in to the classic ZIA API through the Zscaler SDK's legacy
-    helper (it signs in as it is built, so a bad password raises here)."""
+    helper (it signs in as it is built, so a bad password raises here).
+    Every request it then sends goes through _legacy_send: paced, stoppable
+    and with the same bounded 429 waits as the OneAPI client."""
     from zscaler.zia.legacy import LegacyZIAClientHelper
     import zscaler_clouds
     c = normalize(creds)
     helper = LegacyZIAClientHelper(cloud=zscaler_clouds.legacy_cloud_name(c["cloud"]), timeout=timeout,
                                    username=c["username"], password=c["password"], api_key=c["api_key"],
                                    override_url=zscaler_clouds.legacy_api_base(c["cloud"]))
+    install_legacy_send(helper, max_retries=max_retries, max_retry_seconds=max_retry_seconds)
     return LegacyZiaClient(helper)
+
+
+# ---------------------------------------------------------------------------
+# The classic API's requests: paced, stoppable, bounded 429 waits
+# ---------------------------------------------------------------------------
+#
+# The SDK's own LegacyZIAClientHelper.send retries a 429 by itself up to five
+# times, sleeping ZIA's whole Retry-After (an hour on the hourly limit) with
+# no cap and no Stop check, then sends again; and it calls the module-level
+# requests.request, so no paced session (zia_rate.attach) ever sees it. The
+# helper's send is replaced by _legacy_send, which:
+#   - checks the thread's Stop hook (zia_rate.stopping_on, bound by
+#     pack_ops.call around every pack write) before every request and during
+#     every wait (user rule 4); the activation and read-back after Stop go out;
+#   - sends through a requests.Session that zia_rate.attach_client paces at
+#     ZIA's read and write limits, like the OneAPI client's session;
+#   - waits a short 429 out (Retry-After up to max_retry_seconds) at most
+#     max_retries times, and answers a longer one with the SDK's RetryTooLong
+#     ("Retry wait time N seconds exceeds configured maxRetrySeconds M."),
+#     exactly as the OneAPI client does, so pack_ops / pack_export wait it
+#     out in their own stoppable steps or stop the run with the reason.
+
+LEGACY_NETWORK_RETRY_SECONDS = 5.0
+_STOP_STEP = 0.5
+_sleep = time.sleep   # patched by tests
+
+
+def _legacy_stop_requested() -> bool:
+    """Stop for a classic-API request: only the thread's stop hook
+    (zia_rate.stopping_on), exactly as the OneAPI client's paced session.
+    pack_ops.call binds that hook around every pack write, so a write is not
+    sent (nor sent again after a 429 wait) once the run is stopped. The
+    run's stop state alone never refuses a request: after Stop or a fatal
+    stop the run still activates what was written and reads it back
+    (pack_jobs.cancel: "activation and the read-back still run"), which
+    would otherwise stay pending in the tenant (B2-2)."""
+    import zia_rate
+    return zia_rate.stop_requested()
+
+
+def _legacy_not_sent() -> Exception:
+    import zia_rate
+    return zia_rate.Cancelled("stopped before it went out; the request was not sent")
+
+
+def _legacy_wait(seconds: float) -> None:
+    """Sleep `seconds` in short steps; Stop ends the wait (Cancelled)."""
+    left = max(0.0, float(seconds))
+    while left > 0:
+        if _legacy_stop_requested():
+            raise _legacy_not_sent()
+        step = min(_STOP_STEP, left)
+        _sleep(step)
+        left -= step
+
+
+def _retry_after_seconds(headers: Any) -> int:
+    """ZIA's Retry-After ('3300 seconds', '0 seconds' or '12'), at least 1."""
+    raw = ""
+    try:
+        raw = str((headers or {}).get("Retry-After") or "")
+    except Exception:  # noqa: BLE001
+        raw = ""
+    m = re.search(r"\d+(?:\.\d+)?", raw)
+    return max(1, int(float(m.group(0)))) if m else 2
+
+
+def install_legacy_send(helper: Any, *, max_retries: int = 2, max_retry_seconds: int = 30) -> Any:
+    """Replace `helper.send` (the one door every SDK service on the classic
+    client goes through) with _legacy_send, and give the helper the session
+    it sends on (LegacyZiaClient.set_session swaps in the paced one)."""
+    import types
+    import requests
+    helper._dlp_check_session = requests.Session()
+    helper._dlp_check_limits = (max(0, int(max_retries)), max(0, int(max_retry_seconds)))
+    helper.send = types.MethodType(_legacy_send, helper)
+    return helper
+
+
+def _legacy_send(helper: Any, method: str, path: str, json: Optional[Dict[str, Any]] = None,
+                 params: Optional[Dict[str, Any]] = None, data: Any = None,
+                 headers: Optional[Dict[str, str]] = None) -> Tuple[Any, Dict[str, Any]]:
+    """LegacyZIAClientHelper.send, with Stop, pacing and bounded 429 waits
+    (see above). Returns (response, request info) like the SDK's."""
+    import requests
+    from zscaler.errors.response_checker import check_response_for_error
+    session = getattr(helper, "_dlp_check_session", None) or requests.Session()
+    max_retries, max_retry_seconds = getattr(helper, "_dlp_check_limits", (2, 30))
+    url = f"{helper.url}/{path.lstrip('/')}"
+    retries = 0
+    while True:
+        if _legacy_stop_requested():
+            raise _legacy_not_sent()
+        helper.ensure_valid_session()
+        sent_headers = dict(helper.headers or {})
+        sent_headers.update(headers or {})
+        sent_headers["Cookie"] = f"JSESSIONID={helper.session_id}"
+        kwargs: Dict[str, Any] = {"method": method, "url": url, "data": data, "params": params,
+                                  "headers": sent_headers, "timeout": helper.timeout}
+        if "/pacFiles/validate" not in path:   # PAC validation is sent as raw data (as the SDK does)
+            kwargs["json"] = json
+        try:
+            resp = session.request(**kwargs)
+        except requests.RequestException:
+            if retries >= max_retries:
+                raise
+            retries += 1
+            _legacy_wait(LEGACY_NETWORK_RETRY_SECONDS)
+            continue
+        if resp.status_code == 429:
+            secs = _retry_after_seconds(resp.headers)
+            if secs > max_retry_seconds:
+                from zscaler.exceptions.exceptions import RetryTooLong
+                raise RetryTooLong(f"Retry wait time {secs} seconds exceeds configured maxRetrySeconds {max_retry_seconds}.")
+            if retries < max_retries:
+                retries += 1
+                _legacy_wait(secs)
+                continue
+        _, err = check_response_for_error(url, resp, resp.text)
+        if err:
+            raise err
+        return resp, {"method": method, "url": url, "params": params or {}, "headers": sent_headers, "json": json or {}}
 
 
 def describe(method: str) -> str:

@@ -64,9 +64,9 @@ def test_the_hand_off_runs_as_a_job_and_the_zip_comes_from_it(monkeypatch):
     client = add_control_services(make_client(casb_tenants=TENANTS))
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
     c = TestClient(srv.app)
-    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "assessor": "Jane Doe"}
     # Static: no tenant read, the whole pack.
-    r = c.post("/api/dlp-packs/terraform/start", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "static"})
+    r = c.post("/api/dlp-packs/terraform/start", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "static", "assessor": "Jane Doe"})
     assert r.status_code == 200 and r.json()["kind"] == "terraform", r.text
     snap = _wait(c, r.json()["job_id"])
     assert snap["status"] == "done" and snap["result"]["status"] == "ready" and snap["result"]["mode"] == "static"
@@ -87,10 +87,10 @@ def test_the_hand_off_runs_as_a_job_and_the_zip_comes_from_it(monkeypatch):
     names = zipfile.ZipFile(io.BytesIO(c.get(snap["download"]).content)).namelist()
     assert any(n.endswith("imports.tf") for n in names)
     # A gap request without credentials is refused before any job starts; a running or unknown job has no download.
-    assert c.post("/api/dlp-packs/terraform/start", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "gap"}).status_code == 400
+    assert c.post("/api/dlp-packs/terraform/start", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "gap", "assessor": "Jane Doe"}).status_code == 400
     assert c.get("/api/dlp-packs/jobs/nope/download").status_code == 404
     # The waiting endpoint still answers with the zip itself.
-    z = c.post("/api/dlp-packs/terraform", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "static"})
+    z = c.post("/api/dlp-packs/terraform", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "static", "assessor": "Jane Doe"})
     assert z.status_code == 200 and z.headers["x-dlp-check-mode"] == "static" and zipfile.ZipFile(io.BytesIO(z.content)).namelist()
 
 
