@@ -132,7 +132,17 @@ def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) ->
     tmp = f"{p}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"version": 1, "snapshots": _scrub(snapshots[-HISTORY_KEEP:])}, f, indent=1)
-    os.replace(tmp, p)
+    # On Windows the move fails while another thread (GET /api/beacon's
+    # load_history) has the file open: retry briefly, so a run's snapshot is
+    # not lost to a poll that happened to read at the same moment.
+    for attempt in range(20):
+        try:
+            os.replace(tmp, p)
+            break
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
     return p
 
 

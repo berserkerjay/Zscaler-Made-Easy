@@ -473,3 +473,21 @@ def test_the_terraform_cli_names_the_assessor_or_leaves_it_to_apply(tmp_path):
     assert "[${var.assessor} pack cjis_policy_pack" in rules and "DLP-Check pack" not in rules
     with pytest.raises(SystemExit):
         pt.main(["cjis_policy_pack", "--out", str(tmp_path / "c"), "--assessor", "DLP-Check"])
+
+
+def test_a_snapshot_is_kept_when_a_poll_holds_the_history_file_open(monkeypatch, tmp_path):
+    # Windows refuses the move while GET /api/beacon reads the file: the save retries
+    # instead of losing the run's snapshot (the Beacon tab then showed no result).
+    import os as _os
+    real, calls = _os.replace, []
+
+    def flaky(src, dst):
+        calls.append(dst)
+        if len(calls) == 1:
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return real(src, dst)
+    monkeypatch.setattr(beacon.os, "replace", flaky)
+    monkeypatch.setattr(beacon.time, "sleep", lambda s: None)
+    p = str(tmp_path / "beacon_state.json")
+    beacon.save_history([{"at": "x"}], p)
+    assert len(calls) == 2 and beacon.load_history(p)[-1]["at"] == "x"
