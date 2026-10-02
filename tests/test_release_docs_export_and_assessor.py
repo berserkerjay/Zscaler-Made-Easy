@@ -38,6 +38,23 @@ def test_changelog_names_the_export_rate_limit_changes():
     assert "full_reset" in entry          # no longer waits for the hour's window
 
 
+def test_changelog_names_every_export_retry_wait_the_code_uses():
+    """Each wait _rate_wait gives a retried read is named in the entry: a
+    short 429, a RetryTooLong under the hourly threshold (the time ZIA asks
+    for), and Resource Access Blocked (the deploy's schedule)."""
+    import pack_ops
+    entry = _export_entry()
+    blocked = [pack_export._rate_wait("Resource Access Blocked", a)
+               for a in range(1, pack_export.READ_RETRIES + 1)]
+    assert blocked == list(pack_ops.BLOCKED_WAIT_SECONDS[:pack_export.READ_RETRIES])
+    assert "Resource Access Blocked" in entry
+    assert " then ".join(f"{w:g} s" for w in blocked) in entry
+    asked = "Retry wait time 120 seconds exceeds configured maxRetrySeconds 30."
+    assert pack_export._rate_wait(asked, 1) == 121.0
+    assert f"under {pack_export.HOURLY_WAIT_MIN:g} s" in entry
+    assert "the time ZIA asks for" in entry
+
+
 def test_changelog_names_the_empty_pick_refusal_before_any_read():
     entry = _export_entry()
     assert pack_export.NOTHING_PICKED.split(":")[0] in entry   # "No rule was picked"
