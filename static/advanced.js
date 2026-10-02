@@ -31,7 +31,15 @@
     if (!a) return;
     const u = new URL(a.getAttribute('href'), location.href);
     const who = advAssessorName();
-    if (who) u.searchParams.set('assessor', who); else u.searchParams.delete('assessor');
+    if (!who) {
+      // Every object in the workspace names the assessor, never DLP-Check: no name, no download.
+      e.preventDefault();
+      const f = document.getElementById('advAssessor');
+      alert("Enter the assessor's name first: every object the pack creates names the assessor in its description.");
+      if (f) f.focus();
+      return;
+    }
+    u.searchParams.set('assessor', who);
     a.setAttribute('href', u.pathname + u.search);
   }, true);
 
