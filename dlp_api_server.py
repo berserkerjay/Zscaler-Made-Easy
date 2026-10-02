@@ -2320,7 +2320,7 @@ async def tenant_profile_save(req: TenantProfileRequest):
     remember_secret=true (owner-only local file); a blank secret keeps the
     one already remembered, remember_secret=false forgets it."""
     import tenant_profiles
-    if not (req.name or req.org_name or req.vanity_domain):
+    if not (req.name or req.org_name or req.vanity_domain or req.username):
         raise HTTPException(status_code=400, detail="A profile needs at least a name, an organisation or a vanity domain.")
     cloud = validate_cloud(req.cloud or "production")
     vd = validate_vanity(req.vanity_domain) if req.vanity_domain else ""
@@ -2340,12 +2340,18 @@ async def tenant_profile_save(req: TenantProfileRequest):
         # The classic API signs in with an admin login and no vanity domain:
         # one left in the form is not kept, and neither it nor the login
         # names the profile (user rule 3).
-        vd = ""
         default_name = tenant_auth.record_label({"auth_method": method, "cloud": cloud})
+        # A name (or organisation) that is the admin login or the discarded
+        # vanity domain is replaced too, as the guide may still pre-fill it.
+        leaks = {"username": user, "vanity_domain": req.vanity_domain or ""}
+        name = req.name if not tenant_profiles.classic_name_leaks(leaks, req.name) else ""
+        org_name = req.org_name if not tenant_profiles.classic_name_leaks(leaks, req.org_name) else ""
+        vd = ""
     else:
         default_name = vd or user
+        name, org_name = req.name, req.org_name
     fields = {
-        "name": req.name or req.org_name or default_name, "org_name": req.org_name, "assessor": req.assessor,
+        "name": name or org_name or default_name, "org_name": org_name, "assessor": req.assessor,
         "cloud": cloud, "vanity_domain": vd, "client_id": cid, "customer_id": cust,
         "auth_method": method, "username": user,
         "industry": req.industry, "baseline_packs": [str(b) for b in req.baseline_packs],

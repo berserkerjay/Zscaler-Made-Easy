@@ -751,14 +751,17 @@ async function _gdProfileSelect(id) {
   if (p) { _gdProfileFill(p); if (typeof setStatus === 'function') setStatus(`Profile "${p.name}" loaded${p.has_secret ? ' (secret remembered on this laptop)' : (p.auth_method === 'legacy' ? ' — paste the admin password and the API key' : ' — paste the client secret')}.`, 'success'); }
   _gdRender();
 }
+function _gdLegacy() { return typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy'; }
 function _gdProfileFormValues() {
   const sel = _gdProfileSel() || {};
   const q = id => document.getElementById(id);
   return {
     id: GD.profile || '',
-    name: (q('gdProfName') || {}).value || sel.name || _gdVal('org') || _gdVal('vd'),
+    // A classic-API sign-in has no vanity domain: one left in the hidden
+    // OneAPI field never names the profile (user rule 3).
+    name: (q('gdProfName') || {}).value || sel.name || _gdVal('org') || (_gdLegacy() ? '' : _gdVal('vd')),
     org_name: _gdVal('org'), assessor: _gdVal('assessor'), cloud: _gdVal('cloud') || 'production',
-    vanity_domain: _gdVal('vd'), client_id: _gdVal('cid'), client_secret: _gdVal('csec'),
+    vanity_domain: _gdLegacy() ? '' : _gdVal('vd'), client_id: _gdVal('cid'), client_secret: _gdVal('csec'),
     auth_method: typeof currentAuthMethod === 'function' ? currentAuthMethod() : 'oneapi',
     username: _gdVal('zuser'), password: _gdVal('zpass'), api_key: _gdVal('zkey'),
     remember_secret: !!((q('gdProfRemember') || {}).checked),
@@ -774,7 +777,7 @@ function _gdProfileFormValues() {
 async function _gdProfileSave(asNew) {
   const body = _gdProfileFormValues();
   if (asNew) { body.id = ''; body.name = prompt('Profile name (usually the customer name):', body.org_name || body.name || '') || ''; if (!body.name) return; }
-  if (!(body.name || body.org_name || body.vanity_domain)) { alert('Give the profile a name, or fill in the organisation or vanity domain first.'); return; }
+  if (!(body.name || body.org_name || body.vanity_domain || (body.auth_method === 'legacy' && body.username))) { alert('Give the profile a name, or fill in the organisation or vanity domain first.'); return; }
   GD.profileBusy = true; _gdProfilesRender();
   try {
     const r = await fetch('/api/tenant-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
