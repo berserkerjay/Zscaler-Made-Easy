@@ -47,8 +47,12 @@ docker-run:
 	docker compose up --build
 
 # Re-pin the dependencies (after editing requirements.txt / pyproject.toml, or
-# when CI reports the lock stale). --upgrade is what makes pip-compile refresh
-# existing pins to what the index offers now, the way CI's fresh compile does.
+# when CI reports the lock stale). The lock is resolved for every platform at
+# once (--universal), so it also pins the Windows-only dependencies (pywin32,
+# colorama) behind sys_platform markers; pip-compile resolves only for the
+# machine it runs on and drops them, and every installer uses --no-deps, so a
+# dependency missing from the lock is never installed. --upgrade refreshes
+# existing pins to what the index offers now.
 lock:
-	$(PY) -m pip install --quiet pip-tools
-	$(PY) -m piptools compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt
+	$(PY) -m pip install --quiet uv
+	$(PY) -m uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt

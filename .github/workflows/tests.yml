@@ -117,16 +117,18 @@ jobs:
 
       - name: Lock file matches requirements.txt (hash-pinned)
         run: |
-          python -m pip install --upgrade pip pip-tools
-          # Compile on top of the committed lock: pip-compile keeps every pin that
-          # still satisfies requirements.txt, so this fails when requirements.txt
+          python -m pip install --upgrade pip uv
+          # Compile on top of the committed lock: uv keeps every pin that still
+          # satisfies requirements.txt, so this fails when requirements.txt
           # changed without a re-lock, not whenever a dependency publishes a new
           # version (new versions are picked up by `make lock`; known
           # vulnerabilities in the pinned set are caught by pip-audit below).
+          # --universal: the lock covers Windows and macOS too (pywin32 and
+          # colorama behind sys_platform markers), not only this Linux runner.
           cp requirements.lock requirements.check
-          pip-compile --quiet --generate-hashes --allow-unsafe --output-file=requirements.check requirements.txt
+          uv pip compile --quiet --universal --python-version 3.11 --generate-hashes --output-file requirements.check requirements.txt
           # Only the pinned package set must match; hashes are refreshed by the same tool.
-          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale (a dependency published a new version); run: make lock  (pip-compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt) and commit the result"; exit 1; }
+          diff <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.lock | sort) <(grep -E '^[a-zA-Z0-9_.-]+==' requirements.check | sort)             || { echo "::error::requirements.lock is stale (a dependency published a new version); run: make lock  (uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt) and commit the result"; exit 1; }
 
       - name: Install from the lock (hash-verified)
         run: pip install --require-hashes --no-deps -r requirements.lock
@@ -139,11 +141,31 @@ jobs:
       - name: Software bill of materials (CycloneDX)
         run: |
           pip install cyclonedx-bom
-          cyclonedx-py requirements requirements.lock -o sbom.cdx.json
+          # Same command as docs/SBOM.md; the committed docs/sbom.cdx.json must match the lock.
+          cyclonedx-py requirements --pyproject pyproject.toml --mc-type application --output-reproducible --of JSON -o sbom.cdx.json requirements.lock
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
           path: sbom.cdx.json
+
+  windows-lock:
+    # The Windows installer (INSTALL_Zscaler_Assessment.bat) installs the lock
+    # with --no-deps, so every Windows-only dependency must be pinned in it.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install from the lock on Windows (hash-verified, no resolver)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --no-deps -r requirements.lock
+          python -m pip check
+          python -c "import dlp_api_server, dlp_mcp_server"
 
   container:
     runs-on: ubuntu-latest

@@ -19,6 +19,10 @@ lists what each batch of changes did, newest first.
 - **What you saw.** Both read every section of the tenant (SSL inspection, Web DLP, URL filtering, firewall rules and Client Connector) whatever the Scope page said, and the SSL flow's auto-refresh repeated that every two minutes.
 - **Now.** They take the Scope page's selection, else the chosen profile's saved one, and read only the parts in scope; the rest say *not in scope*. The SSL flow needs SSL inspection on Zscaler; the firewall rules come with the ZIA platform scope. With nothing in scope, each refuses before signing in.
 
+### The Windows install can start the MCP server; PyJWT 2.15.0
+- **What you saw.** On Windows, `python dlp_mcp_server.py` failed with *No module named 'pywintypes'*: `requirements.lock` was compiled on Linux and left out the Windows-only `pywin32` (needed by `mcp`) and `colorama` (needed by `typer`), and the installer's `--no-deps` install never added them. CI's `pip-audit --strict` also failed on the lock's PyJWT 2.14.0 (CVE-2026-101918, a RecursionError on unverified decodes; the app's signature-verified SSO decode does not reach it).
+- **Now.** The lock is resolved for every platform at once (`make lock` runs `uv pip compile --universal`), so `pywin32` and `colorama` are pinned by hash behind `sys_platform == 'win32'` markers and Linux, macOS and the container skip them. PyJWT is at 2.15.0 (floor raised in `requirements.txt` and `pyproject.toml`); no other pin moved. CI's lock check uses the same universal compile, a new `windows-lock` job installs the lock on Windows with `--no-deps` and runs `pip check` and the MCP server import, and the CycloneDX SBOM is committed as `docs/sbom.cdx.json` (`docs/SBOM.md` says how to regenerate it).
+
 ### Wording
 - The Beacon button says the optional tenant watch reads only the endpoints in scope on the Scope page, GET only, about one request a second.
 - Advanced settings says the assessor's name is required for a Terraform download, never replaced by DLP-Check.

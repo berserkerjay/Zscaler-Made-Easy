@@ -12,7 +12,7 @@ license = {text = "Internal tooling. Not for redistribution."}
 # The runtime dependencies. Installs pin every wheel by hash from
 # requirements.lock (install.sh, INSTALL_Zscaler_Assessment.bat and the
 # Dockerfile all install from that file); this list is the source it is
-# compiled from (make lock): pip-compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt
+# compiled from (make lock): uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt
 dependencies = [
     "requests>=2.28.0",
     "fastapi>=0.115.0",
@@ -22,9 +22,11 @@ dependencies = [
     "zscaler-sdk-python>=1.9.0",
     "mcp[cli]>=1.2.0",
     "python-docx>=1.0.0",
-    "pyjwt[crypto]>=2.10.1",
+    "pyjwt[crypto]>=2.15.0",
     "msgpack>=1.2.1",
     "setuptools>=78.1.1",
+    'pywin32>=311; sys_platform == "win32"',
+    'colorama>=0.4.6; sys_platform == "win32"',
 ]
 
 [project.optional-dependencies]
