@@ -4955,7 +4955,11 @@ function openBeaconTab() {
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 async function openDetectionHealthTab() {
+  // Check the sign-in and the pop-up before the tenant is read: a blocked
+  // tab used to read incidents and rules, then throw, with nothing shown.
+  if (!migrateValidateCreds()) return;
   const w = window.open('/report/health?pending=1', '_blank');
+  if (!w) { alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.'); return; }
   try {
     const id = await window.__detectionHealthGenerate(30);
     w.location = `/report/health?id=${encodeURIComponent(id)}`;
