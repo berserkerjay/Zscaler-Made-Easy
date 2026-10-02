@@ -128,7 +128,9 @@ what you get, what to do next.
   and every dictionary those engines use, as a pack zip the library
   accepts and Deploy policy packs can deploy into another tenant. Scope
   that only exists in the source tenant (users, groups, locations, ...)
-  is left out and listed in the pack. Read-only. Where: Deploy policy
+  is left out and listed in the pack. Read-only; an empty pick is refused
+  before any read, an hourly rate refusal fails the export, and Stop gives
+  no pack. Where: Deploy policy
   packs, under the pack list; also Step 2 of the Evaluate All Rules
   migration wizard, for its Inline Web DLP rules.
 - **Deploy flow diagram** — the plan a preflight produced as a picture:

@@ -597,8 +597,10 @@ its description (`[<assessor> baseline <pack> v<version>]`, or
 `[<assessor> pack <pack> v<version>]` for a pack without a baseline), so
 admins can see which policy pack version it came from and who deployed it.
 The tag names only the assessor (Scope assessment, else the saved
-profile's assessor; no brackets or line breaks, at most 40 bytes); it says
-`DLP-Check` only when no assessor is named. Removal, export, the journey
+profile's assessor; no brackets or line breaks, at most 40 bytes). The
+assessor's name is required: every pack push without one is refused before
+the tenant is signed in to, so no new tag says `DLP-Check`; that name is
+found only in tags written by earlier deploys. Removal, export, the journey
 and the inventory recognise both this form and the older
 `[DLP-Check ...]` tag; an assessor's tag counts only for a pack in the
 library, so a customer's own text such as `[Q3 pack review]` never does.
@@ -721,7 +723,7 @@ card) returns the static workspace.
 | `README.md`, `.gitignore`, `terraform.tfvars.example` | requirements, inputs, outputs, state and lock-file guidance, verify and review steps; state and secrets kept out of git |
 
 Every object carries a `[<assessor> baseline|pack <id> v<ver>] Terraform-managed.`
-description tag (`DLP-Check` in place of the assessor when none is named). Every file is written the way `terraform fmt` lays it out
+description tag. The assessor's name is required: a workspace generated without one tags `[${var.assessor} ...]`, and `terraform apply` needs `var.assessor` set; `DLP-Check` appears only in tags written by earlier deploys, which are still recognised. Every file is written the way `terraform fmt` lays it out
 (`pack_terraform.hcl_fmt`); CI regenerates the committed workspaces, fails
 on any drift or new file, runs `terraform fmt -check`, and `terraform init`
 + `validate` against the real provider schema.
