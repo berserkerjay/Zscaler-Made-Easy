@@ -196,26 +196,80 @@ def _nap(seconds, stop=None):
         time.sleep(min(0.5, left))
 
 
-class _RateLimiter:
-    """One request pacer shared by every thread of a Client: keeps a minimum
-    gap between requests (the API's rate limit is per tenant, not per
-    thread) and, after a 429, holds every thread until Retry-After has
-    passed instead of letting them each hit the limit in turn."""
-    def __init__(s, min_gap):
+class _TenantGate:
+    """The pacing state of one tenant: the next free send slot and the end
+    of a 429 hold. Every Client of the same tenant (same rate_key) shares
+    one, so concurrent jobs on a tenant are paced together and a 429 seen
+    by one holds them all."""
+    def __init__(s):
         import threading
-        s.min_gap = float(min_gap); s._lock = threading.Lock(); s._next = 0.0; s._pause_until = 0.0
+        s.lock = threading.Lock(); s.next = 0.0; s.pause_until = 0.0
+
+
+_GATES = {}
+_GATES_LOCK = __import__("threading").Lock()
+
+
+def _tenant_gate(key):
+    """The one _TenantGate for tenant `key` (a fresh, unshared one when
+    there is no key)."""
+    if not key:
+        return _TenantGate()
+    with _GATES_LOCK:
+        g = _GATES.get(key)
+        if g is None:
+            g = _GATES[key] = _TenantGate()
+        return g
+
+
+def _reset_tenant_gates():
+    """Forget every tenant's pacing state (tests)."""
+    with _GATES_LOCK:
+        _GATES.clear()
+
+
+def _retry_after(headers, default=5, cap=30):
+    """Seconds a 429 asks to wait: Retry-After as ZIA sends it ("0
+    seconds", "12") or plain, at least 1 and at most `cap`; `default`
+    when it is missing or unreadable."""
+    raw = str((headers or {}).get("Retry-After", "") or "").strip().lower()
+    for suffix in ("seconds", "second", "secs", "sec", "s"):
+        if raw.endswith(suffix):
+            raw = raw[: -len(suffix)].strip()
+            break
+    try:
+        wait = float(raw)
+    except (TypeError, ValueError):
+        wait = float(default)
+    if wait != wait:   # NaN
+        wait = float(default)
+    return max(1.0, min(float(cap), wait))
+
+
+class _RateLimiter:
+    """One request pacer per tenant: keeps a minimum gap between requests
+    (the API's rate limit is per tenant, not per thread or per job) and,
+    after a 429, holds every thread of every Client on the tenant until
+    Retry-After has passed instead of letting them each hit the limit in
+    turn. Clients of the same tenant pass the same `key` and so share
+    one gate; `min_gap` is this pacer's own (a tenant watch may raise it
+    for its Client alone)."""
+    def __init__(s, min_gap, key=None):
+        s.min_gap = float(min_gap)
+        s._gate = _tenant_gate(key)
     def wait(s, stop=None):
         """Wait for this request's turn. With `stop` (a callable: the run's
         Stop), a stop seen while waiting, also during a long 429 pause,
         ends the wait at once: False, and the request must not be sent."""
+        g = s._gate
         while True:
             if stop is not None and stop():
                 return False
-            with s._lock:
+            with g.lock:
                 now = time.time()
-                at = max(now, s._next, s._pause_until)
+                at = max(now, g.next, g.pause_until)
                 if at - now < 5:            # short waits are booked inside the lock
-                    s._next = at + s.min_gap
+                    g.next = at + s.min_gap
                     delay = at - now
                     break
             if not _nap(1, stop):           # long pause (429): re-check every second
@@ -224,8 +278,9 @@ class _RateLimiter:
             return False
         return True
     def pause(s, seconds):
-        with s._lock:
-            s._pause_until = max(s._pause_until, time.time() + float(seconds))
+        g = s._gate
+        with g.lock:
+            g.pause_until = max(g.pause_until, time.time() + float(seconds))
 
 
 class Client:
@@ -271,7 +326,7 @@ class Client:
         s._c = OrderedDict()
         # Checks run on several threads at once: the cache and the token are shared.
         s._lock = threading.RLock()
-        s._limiter = _RateLimiter(s.MIN_GAP)
+        s._limiter = _RateLimiter(s.MIN_GAP, s.rate_key)   # shared with every Client of this tenant
         s.requests_made = 0
         # The run's Stop. One predicate, _stopped(), is what every read and
         # write consults (before sending, inside the pacer's waits, in
@@ -402,8 +457,7 @@ class Client:
                 res = ([], 204)
             elif r.status_code == 429:
                 # Self-healing: honor Retry-After with cap, and hold every thread for it
-                try: wait = min(int(r.headers.get("Retry-After", 5)), 30)
-                except ValueError: wait = 5
+                wait = _retry_after(r.headers)
                 s._limiter.pause(wait)
                 if _retry < 3: return s.get(ep, p, _retry+1)
                 res = ({"error":"rate limited","status":429}, 429)
@@ -490,10 +544,13 @@ class Client:
                 kwargs["json"] = body
             import zia_rate
             with zia_rate.stopping_on(s._stopped):   # a Stop also ends a wait for ZIA's rate limit: Cancelled, nothing sent
-                if ep.startswith("/zia/"):
-                    zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
+                # The client's own pacer first, ZIA's write limits last: wait()
+                # counts the write and marks it paced, and the mark must still
+                # be fresh when the session sends it, or it is counted twice.
                 if not s._limiter.wait(s._stopped):
                     return _STOPPED
+                if ep.startswith("/zia/"):
+                    zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
                 s.requests_made += 1   # every request sent, answered or not
                 r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
             if r.status_code in (200, 201):
@@ -501,8 +558,12 @@ class Client:
                 except Exception: return ({}, r.status_code)
             if r.status_code == 204:
                 return ({}, 204)
-            if r.status_code == 429 and _retry < 3:
-                if not _nap(min(int(r.headers.get("Retry-After", 5)), 30), s._stopped):
+            if r.status_code == 429:
+                wait = _retry_after(r.headers)
+                s._limiter.pause(wait)   # hold every thread and job on this tenant, not just this one
+                if _retry >= 3:
+                    return ({"error": "rate limited", "status": 429}, 429)
+                if not _nap(wait, s._stopped):
                     return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             if r.status_code == 401 and _retry < 2:

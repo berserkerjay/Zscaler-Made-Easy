@@ -499,19 +499,50 @@ class _Answer:
 
 
 @pytest.mark.parametrize("code", [429, 503])
-def test_a_partly_unanswered_fan_out_read_is_could_not_be_checked(code):
+def test_a_partly_unanswered_fan_out_read_is_could_not_be_checked(code, monkeypatch):
     # /zia/cloudApplicationRules is read one rule type at a time: one type
     # the tenant did not answer makes the whole read unanswered, never a
-    # partial "no rules" list reported as HTTP 200.
+    # partial "no rules" list reported as HTTP 200. Nothing after the
+    # unanswered part is asked for: a rate-limited or unavailable tenant is
+    # not sent the remaining parts, and the unanswered part itself is only
+    # retried the client's bounded number of times.
     import dlp_assessment_full_auto as full
     import zscaler_full_checks as zf
+    monkeypatch.setattr(full, "_nap", lambda seconds, stop=None: True)
     c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
     c.token, c.exp, c._limiter.min_gap = "t", time.time() + 3600, 0
-    c.sess.get = lambda url, params=None, timeout=None: _Answer(code if url.endswith("/webApplicationRules/AI_ML") else 200)
+    sent = []
+
+    def get(url, params=None, timeout=None):
+        sent.append(url)
+        return _Answer(code if url.endswith("/webApplicationRules/AI_ML") else 200)
+
+    c.sess.get = get
     sc = cs.ScopedClient(c, {"cloud_app_control": "zscaler"})
     sc.begin()
     r = srv._unanswered_result(zf.capp_1(sc), "Cloud app control", sc.unanswered())
     assert str(r.status) == "ERROR" and "Could not be checked" in r.detail, (r.status, r.detail)
+    parts = [u for u in sent if "/webApplicationRules/" in u]
+    first = next(i for i, u in enumerate(parts) if u.endswith("/AI_ML"))
+    assert all(u.endswith("/AI_ML") for u in parts[first:]), parts[first:]
+    # the first try and its bounded retries (three for a 429, two for a 5xx)
+    assert len(parts) - first == (4 if code == 429 else 3), parts[first:]
+
+
+def test_an_all_unanswered_fan_out_read_asks_for_one_part_only(monkeypatch):
+    import dlp_assessment_full_auto as full
+    monkeypatch.setattr(full, "_nap", lambda seconds, stop=None: True)
+    c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
+    c.token, c.exp, c._limiter.min_gap = "t", time.time() + 3600, 0
+    sent = []
+
+    def get(url, params=None, timeout=None):
+        sent.append(url)
+        return _Answer(503)
+
+    c.sess.get = get
+    assert c.get("/zia/cloudApplicationRules")[1] == 503
+    assert len(set(sent)) == 1 and len(sent) == 3, sent
 
 
 def test_a_fan_out_part_the_tenant_refuses_is_still_left_out():
