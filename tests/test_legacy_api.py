@@ -312,12 +312,16 @@ def test_the_connection_test_and_the_assessment_accept_the_classic_sign_in(store
     log = tmp_path / "audit.log"
     monkeypatch.setenv("DLP_CHECK_AUDIT", str(log))
     c = TestClient(srv.app)
-    r = c.post("/api/tenant/check", json=LEGACY)
+    r = c.post("/api/tenant/check", json=dict(LEGACY, vanity_domain="acmecorp"))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["auth_method"] == "legacy" and body["tenant_label"] == "classic API (zscalerten)" and any("ZIA only" in p for p in body["problems"])
     entry = json.loads(log.read_text().splitlines()[-1])
     assert entry["body"]["password"] == "[redacted]" and entry["body"]["api_key"] == "[redacted]" and "Pa55word!" not in log.read_text()
+    # User rule 3: the audit log is a record, so neither the admin login nor
+    # a stale vanity domain is written in clear.
+    assert entry["body"]["username"] == "[redacted]" and entry["body"]["vanity_domain"] == "[redacted]"
+    assert "api-admin@acme.com" not in log.read_text() and "acmecorp" not in log.read_text()
     # The assessment builds the raw client with the classic sign-in.
     made = {}
 
@@ -370,3 +374,21 @@ def test_the_page_offers_the_sign_in_method_and_sends_every_credential_field():
         assert needle in guide, needle
     studio = open(os.path.join(ROOT, "static", "deploy_studio.js"), encoding="utf-8").read()
     assert "auth_method: v('authMethod')" in studio
+
+
+def test_the_audit_log_never_keeps_the_classic_admin_login_or_vanity_domain():
+    """User rule 3: audit.redact drops the classic API's admin login and any
+    vanity domain sent with it, wherever the credentials sit in the body,
+    while a OneAPI tenant's vanity domain (its real name) stays readable."""
+    import audit
+    stale = dict(LEGACY, vanity_domain="acmecorp")
+    out = audit.redact(stale)
+    assert out["username"] == "[redacted]" and out["vanity_domain"] == "[redacted]" and out["cloud"] == "zscalerten"
+    # No auth_method stated: a username without a client id is the classic API.
+    implied = {k: v for k, v in stale.items() if k != "auth_method"}
+    assert audit.redact(implied)["vanity_domain"] == "[redacted]"
+    nested = audit.redact({"creds": stale, "tenants": [stale], "pack": "cjis"})
+    assert "api-admin@acme.com" not in json.dumps(nested) and "acmecorp" not in json.dumps(nested) and nested["pack"] == "cjis"
+    one = audit.redact(ONEAPI)
+    assert one["vanity_domain"] == "acme" and one["client_secret"] == "[redacted]"
+
