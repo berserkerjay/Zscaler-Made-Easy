@@ -108,7 +108,8 @@
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
       report = data; rid = id;
-      meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · read ' + new Date(data.generated_at).toLocaleTimeString() : ''}`;
+      meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · read ' + new Date(data.generated_at).toLocaleTimeString() : ''}${data.scope ? ' · only what is in scope' : ''}`;
+      meta.title = data.scope ? (data.scope.summary || '') : '';
       const ctl = document.getElementById('rpControls'); ctl.hidden = false;
       document.getElementById('dfLive').hidden = !(window.opener && !window.opener.closed);
       document.getElementById('dfNet').innerHTML = data.networks.map(n => `<option value="${E(n.key)}">${E(n.label)}</option>`).join('');

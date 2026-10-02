@@ -39,8 +39,16 @@ SITEMAP_2 = """<urlset><url><loc>https://help.zscaler.com/zscaler-deployments-op
 BLOG_INDEX = """<sitemapindex><sitemap><loc>https://www.zscaler.com/sitemap-blogs.xml</loc></sitemap>
 <sitemap><loc>https://www.zscaler.com/sitemap-products.xml</loc></sitemap></sitemapindex>"""
 BLOG_SITEMAP = """<urlset><url><loc>https://www.zscaler.com/blogs/product-insights/best-practices-for-ssl-everywhere</loc></url></urlset>"""
-PAGE_NEW = "<html><head><title>Best Practices: Brand New Guide | Zscaler</title></head><body><h1>x</h1></body></html>"
-PAGE_ZPA = "<html><head><title></title></head><body><h1>ZPA Leading Practices Guide (new)</h1></body></html>"
+
+
+def _art(title):
+    """A help-center fetch-data answer carrying an article with this title:
+    help.zscaler.com pages are an empty shell, their titles come from it."""
+    return json.dumps({"data": {"info": {"status": 200}, "body": {"title": title, "content": "<p>" + "Guidance. " * 60 + "</p>"}}})
+
+
+PAGE_NEW = _art("Best Practices: Brand New Guide")
+PAGE_ZPA = _art("ZPA Leading Practices Guide (new)")
 HUB = """<html><body><a href="/zia/best-practices-from-hub">Hub linked guide ›</a><a href="/zia/other">Other</a>
 <a href="https://www.zscaler.com/blogs/x-best-practice">off host</a><a href="/zia/deep">Deep</a></body></html>"""
 DEEP = '<html><body><a href="/zia/best-practices-deep-guide">Deep guide</a></body></html>'
@@ -79,8 +87,8 @@ def test_sitemaps_are_read_first_and_titles_fetched(env, monkeypatch):
         "https://help.zscaler.com/sitemap.xml": SITEMAP_INDEX,
         "https://help.zscaler.com/sitemap.xml?page=1": SITEMAP_1,
         "https://help.zscaler.com/sitemap.xml?page=2": SITEMAP_2,
-        "https://help.zscaler.com/zia/best-practices-brand-new-guide": PAGE_NEW,
-        "https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new": PAGE_ZPA,
+        zuc.help_api_url("https://help.zscaler.com/zia/best-practices-brand-new-guide"): PAGE_NEW,
+        zuc.help_api_url("https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new"): PAGE_ZPA,
         "https://www.zscaler.com/sitemap.xml": BLOG_INDEX,
         "https://www.zscaler.com/sitemap-blogs.xml": BLOG_SITEMAP,
         "https://www.zscaler.com/blogs/product-insights/best-practices-for-ssl-everywhere": "<html><title>SSL everywhere - Zscaler Blog</title></html>",
@@ -98,7 +106,7 @@ def test_sitemaps_are_read_first_and_titles_fetched(env, monkeypatch):
     # The products sitemap child was filtered out; the blog child was read.
     assert "https://www.zscaler.com/sitemap-products.xml" not in fake.calls
     assert "https://www.zscaler.com/blogs/product-insights/best-practices-for-ssl-everywhere" in urls
-    # Titles: <title> with the site suffix stripped, <h1> fallback, slug as last resort.
+    # Titles: the article's title (help.zscaler.com), <title> with the site suffix stripped, slug as last resort.
     assert urls["https://help.zscaler.com/zia/best-practices-brand-new-guide"]["title"] == "Best Practices: Brand New Guide"
     assert urls["https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new"]["title"] == "ZPA Leading Practices Guide (new)"
     assert urls["https://www.zscaler.com/blogs/product-insights/best-practices-for-ssl-everywhere"]["title"] == "SSL everywhere"
@@ -141,7 +149,7 @@ def test_page_walk_when_no_sitemap_can_be_read(env, monkeypatch):
 
 def test_failed_crawl_is_not_cached_and_is_reported(env, monkeypatch):
     good = Fake({"https://help.zscaler.com/sitemap.xml": SITEMAP_2,
-                 "https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new": PAGE_ZPA})
+                 zuc.help_api_url("https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new"): PAGE_ZPA})
     monkeypatch.setattr(bp_sources, "crawlable_sources", lambda: [HELP])
     _wire(monkeypatch, good)
     first = bc.crawl(force=True)
@@ -168,7 +176,7 @@ def test_failed_crawl_is_not_cached_and_is_reported(env, monkeypatch):
 def test_discoveries_persist_and_are_not_refetched(env, monkeypatch):
     monkeypatch.setattr(bp_sources, "crawlable_sources", lambda: [HELP])
     fake = Fake({"https://help.zscaler.com/sitemap.xml": SITEMAP_2,
-                 "https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new": PAGE_ZPA})
+                 zuc.help_api_url("https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new"): PAGE_ZPA})
     _wire(monkeypatch, fake)
     out = bc.crawl(force=True)
     assert zbp.save_discovered(out["new_entries"]) == 1
@@ -200,7 +208,7 @@ def test_update_endpoints(env, monkeypatch):
     import dlp_api_server as srv
     monkeypatch.setattr(bp_sources, "crawlable_sources", lambda: [HELP])
     fake = Fake({"https://help.zscaler.com/sitemap.xml": SITEMAP_2,
-                 "https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new": PAGE_ZPA})
+                 zuc.help_api_url("https://help.zscaler.com/zscaler-deployments-operations/zpa-leading-practices-guide-new"): PAGE_ZPA})
     _wire(monkeypatch, fake)
     c = TestClient(srv.app)
     r = c.post("/api/best-practices/crawl", json={"force": True})
@@ -238,15 +246,16 @@ def test_update_check_never_links_to_an_empty_page(monkeypatch):
     assert not zuc.page_quality(shell, 200)["ok"] and "no readable content" in zuc.page_quality(shell, 200)["reason"]
     assert not zuc.page_quality(None, 404)["ok"]
     assert zuc.section_root("https://help.zscaler.com/zia/about-dlp-engines") == "https://help.zscaler.com/zia"
-    src = {"key": "k", "name": "DLP Engines Best Practices", "type": "html_hash", "url": "https://help.zscaler.com/zia/about-dlp-engines"}
+    src = {"key": "k", "name": "DLP Engines Best Practices", "type": "html_hash", "url": "https://docs.example.com/zia/about-dlp-engines"}
+    # A site read as the page itself (help.zscaler.com is read through its article API: see test_help_center).
     monkeypatch.setattr(zuc, "_safe_get", lambda url, verify_tls=None: (good, 200, ""))
     r = zuc._check_html(src, {})
     assert r["status"] == "new" and r["link"] == src["url"] and r["page"]["ok"] and "link_note" not in r
     monkeypatch.setattr(zuc, "_safe_get", lambda url, verify_tls=None: (gone, 200, ""))
     r = zuc._check_html(src, {})
-    assert r["status"] == "dead_link" and r["link"] == "https://help.zscaler.com/zia" and r["link_fallback"] and "could not be found" in r["link_note"] or "Page not found" in r["link_note"]
+    assert r["status"] == "dead_link" and r["link"] == "https://docs.example.com/zia" and r["link_fallback"] and "could not be found" in r["link_note"] or "Page not found" in r["link_note"]
     monkeypatch.setattr(zuc, "_safe_get", lambda url, verify_tls=None: (b"", 404, ""))
     r = zuc._check_html(src, {})
-    assert r["status"] == "error" and r["link"] == "https://help.zscaler.com/zia" and "no longer exists" in r["link_note"]
+    assert r["status"] == "error" and r["link"] == "https://docs.example.com/zia" and "no longer exists" in r["link_note"]
     # The deployments & operations root uses the real slug.
     assert any(s.get("url") == "https://help.zscaler.com/zscaler-deployments-operations" for s in zuc.SOURCES)

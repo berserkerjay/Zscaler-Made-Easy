@@ -39,6 +39,14 @@
       if (f) f.focus();
       return;
     }
+    if (/dlp[\W_]*check/i.test(who)) {
+      // The tool's own name, in any spelling, is refused here as on the server (pack_deploy.TOOL_NAME_PATTERN).
+      e.preventDefault();
+      alert("Name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\").");
+      const f = document.getElementById('advAssessor');
+      if (f) f.focus();
+      return;
+    }
     u.searchParams.set('assessor', who);
     a.setAttribute('href', u.pathname + u.search);
   }, true);

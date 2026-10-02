@@ -4,7 +4,7 @@
 
 resource "zia_dlp_web_rules" "z_cjis_markings_monitor" {
   name                       = "Z-CJIS Markings-Monitor"
-  description                = "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 0
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -19,7 +19,7 @@ resource "zia_dlp_web_rules" "z_cjis_markings_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_identifier_monitor" {
   name                       = "Z-CJIS Identifier-Monitor"
-  description                = "Monitor structured CJIS identifiers — NCIC ORI, FBI UCN, SID, NCIC Purpose Code. Any such identifier leaving the tenant is logged for review. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor structured CJIS identifiers — NCIC ORI, FBI UCN, SID, NCIC Purpose Code. Any such identifier leaving the tenant is logged for review. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 1
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -34,7 +34,7 @@ resource "zia_dlp_web_rules" "z_cjis_identifier_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_criminal_history_monitor" {
   name                       = "Z-CJIS Criminal History-Monitor"
-  description                = "Monitor transmission of criminal-history records (RAP sheets, booking reports, incident reports) when they co-occur with subject PII. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor transmission of criminal-history records (RAP sheets, booking reports, incident reports) when they co-occur with subject PII. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 2
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -49,7 +49,7 @@ resource "zia_dlp_web_rules" "z_cjis_criminal_history_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_ncic_iii_data_monitor" {
   name                       = "Z-CJIS NCIC III Data-Monitor"
-  description                = "Monitor NCIC / III query results (wanted persons, stolen property, missing persons) correlated with subject PII. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor NCIC / III query results (wanted persons, stolen property, missing persons) correlated with subject PII. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 3
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -64,7 +64,7 @@ resource "zia_dlp_web_rules" "z_cjis_ncic_iii_data_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_warrants_monitor" {
   name                       = "Z-CJIS Warrants-Monitor"
-  description                = "Monitor wanted-person / warrant content near subject PII — flags accidental or intentional exfil of active-warrant data. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor wanted-person / warrant content near subject PII — flags accidental or intentional exfil of active-warrant data. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 4
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -79,7 +79,7 @@ resource "zia_dlp_web_rules" "z_cjis_warrants_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_biometric_monitor" {
   name                       = "Z-CJIS Biometric-Monitor"
-  description                = "Monitor biometric references (fingerprint, palm, AFIS/IAFIS/NGI, booking photo) that co-occur with CJIS markings or structured identifiers. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor biometric references (fingerprint, palm, AFIS/IAFIS/NGI, booking photo) that co-occur with CJIS markings or structured identifiers. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 5
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -94,7 +94,7 @@ resource "zia_dlp_web_rules" "z_cjis_biometric_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_nics_firearms_monitor" {
   name                       = "Z-CJIS NICS Firearms-Monitor"
-  description                = "Monitor NICS / firearm background-check terminology — ATF Form 4473, NICS denials, prohibited-person content. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor NICS / firearm background-check terminology — ATF Form 4473, NICS denials, prohibited-person content. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 6
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -109,7 +109,7 @@ resource "zia_dlp_web_rules" "z_cjis_nics_firearms_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_info_sharing_monitor" {
   name                       = "Z-CJIS Info-Sharing-Monitor"
-  description                = "Monitor egress of content derived from LE info-sharing portals (N-DEx, LEEP, Nlets, RISS) when coupled with subject identifiers. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor egress of content derived from LE info-sharing portals (N-DEx, LEEP, Nlets, RISS) when coupled with subject identifiers. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 7
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -124,7 +124,7 @@ resource "zia_dlp_web_rules" "z_cjis_info_sharing_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_any_signal_monitor" {
   name                       = "Z-CJIS Any-Signal-Monitor"
-  description                = "Broad catch-all — any high-signal CJIS marking or structured identifier. Useful as a safety net while tuning the narrower policies above. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Broad catch-all — any high-signal CJIS marking or structured identifier. Useful as a safety net while tuning the narrower policies above. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 8
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -139,7 +139,7 @@ resource "zia_dlp_web_rules" "z_cjis_any_signal_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_markings_medium_confidence_monitor" {
   name                       = "Z-CJIS Markings Medium Confidence-Monitor"
-  description                = "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. One rule per engine: this rule carries CJIS Markings Medium Confidence only. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Monitor outbound content with explicit CJIS / CHRI / LES markings. Covers banner and portion markings anywhere in the document. One rule per engine: this rule carries CJIS Markings Medium Confidence only. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 9
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -154,7 +154,7 @@ resource "zia_dlp_web_rules" "z_cjis_markings_medium_confidence_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_us_pii_monitor" {
   name                       = "Z-CJIS US PII-Monitor"
-  description                = "Inline Web DLP: US PII (SSN, TIN, driver's licence, alien registration, date of birth) leaving without a CJI marking. State breach law applies to it even when it is not CJI. Monitor-only. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Inline Web DLP: US PII (SSN, TIN, driver's licence, alien registration, date of birth) leaving without a CJI marking. State breach law applies to it even when it is not CJI. Monitor-only. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 10
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -169,7 +169,7 @@ resource "zia_dlp_web_rules" "z_cjis_us_pii_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_tlp_red_monitor" {
   name                       = "Z-CJIS TLP Red-Monitor"
-  description                = "Inline Web DLP: content marked TLP:RED (recipients only). Monitor-only. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Inline Web DLP: content marked TLP:RED (recipients only). Monitor-only. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 11
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -184,7 +184,7 @@ resource "zia_dlp_web_rules" "z_cjis_tlp_red_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_tlp_amber_strict_monitor" {
   name                       = "Z-CJIS TLP Amber Strict-Monitor"
-  description                = "Inline Web DLP: content marked TLP:AMBER+STRICT (recipient organisation only). Monitor-only. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Inline Web DLP: content marked TLP:AMBER+STRICT (recipient organisation only). Monitor-only. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 12
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -199,7 +199,7 @@ resource "zia_dlp_web_rules" "z_cjis_tlp_amber_strict_monitor" {
 
 resource "zia_dlp_web_rules" "z_cjis_tlp_amber_monitor" {
   name                       = "Z-CJIS TLP Amber-Monitor"
-  description                = "Inline Web DLP: content marked TLP:AMBER (need to know). Monitor-only. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Inline Web DLP: content marked TLP:AMBER (need to know). Monitor-only. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 13
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -214,7 +214,7 @@ resource "zia_dlp_web_rules" "z_cjis_tlp_amber_monitor" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_markings_endpoint" {
   name                       = "Z-CJIS Markings [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 0
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -232,7 +232,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_markings_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_markings_saas" {
   name                       = "Z-CJIS Markings [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 0
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -257,7 +257,7 @@ resource "zia_casb_dlp_rules" "z_cjis_markings_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_markings_email" {
   name                       = "Z-CJIS Markings [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Markings-Monitor\" (CJIS Markings High Confidence). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 0
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -276,7 +276,7 @@ resource "zia_outbound_email_dlp" "z_cjis_markings_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_identifier_endpoint" {
   name                       = "Z-CJIS Identifier [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Identifier-Monitor\" (CJIS Identifier Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Identifier-Monitor\" (CJIS Identifier Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 1
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -294,7 +294,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_identifier_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_identifier_saas" {
   name                       = "Z-CJIS Identifier [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Identifier-Monitor\" (CJIS Identifier Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Identifier-Monitor\" (CJIS Identifier Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 1
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -319,7 +319,7 @@ resource "zia_casb_dlp_rules" "z_cjis_identifier_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_identifier_email" {
   name                       = "Z-CJIS Identifier [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Identifier-Monitor\" (CJIS Identifier Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Identifier-Monitor\" (CJIS Identifier Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 1
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -338,7 +338,7 @@ resource "zia_outbound_email_dlp" "z_cjis_identifier_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_criminal_history_endpoint" {
   name                       = "Z-CJIS Criminal History [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 2
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -356,7 +356,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_criminal_history_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_criminal_history_saas" {
   name                       = "Z-CJIS Criminal History [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 2
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -381,7 +381,7 @@ resource "zia_casb_dlp_rules" "z_cjis_criminal_history_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_criminal_history_email" {
   name                       = "Z-CJIS Criminal History [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Criminal History-Monitor\" (Criminal History - RAP Sheet Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 2
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -400,7 +400,7 @@ resource "zia_outbound_email_dlp" "z_cjis_criminal_history_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_ncic_iii_data_endpoint" {
   name                       = "Z-CJIS NCIC III Data [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 3
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -418,7 +418,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_ncic_iii_data_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_ncic_iii_data_saas" {
   name                       = "Z-CJIS NCIC III Data [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 3
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -443,7 +443,7 @@ resource "zia_casb_dlp_rules" "z_cjis_ncic_iii_data_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_ncic_iii_data_email" {
   name                       = "Z-CJIS NCIC III Data [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS NCIC III Data-Monitor\" (NCIC - III Data Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 3
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -462,7 +462,7 @@ resource "zia_outbound_email_dlp" "z_cjis_ncic_iii_data_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_warrants_endpoint" {
   name                       = "Z-CJIS Warrants [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 4
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -480,7 +480,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_warrants_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_warrants_saas" {
   name                       = "Z-CJIS Warrants [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 4
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -505,7 +505,7 @@ resource "zia_casb_dlp_rules" "z_cjis_warrants_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_warrants_email" {
   name                       = "Z-CJIS Warrants [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Warrants-Monitor\" (Warrant - Wanted-Person Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 4
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -524,7 +524,7 @@ resource "zia_outbound_email_dlp" "z_cjis_warrants_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_biometric_endpoint" {
   name                       = "Z-CJIS Biometric [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Biometric-Monitor\" (Biometric CJI Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Biometric-Monitor\" (Biometric CJI Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 5
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -542,7 +542,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_biometric_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_biometric_saas" {
   name                       = "Z-CJIS Biometric [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Biometric-Monitor\" (Biometric CJI Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Biometric-Monitor\" (Biometric CJI Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 5
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -567,7 +567,7 @@ resource "zia_casb_dlp_rules" "z_cjis_biometric_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_biometric_email" {
   name                       = "Z-CJIS Biometric [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Biometric-Monitor\" (Biometric CJI Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Biometric-Monitor\" (Biometric CJI Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 5
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -586,7 +586,7 @@ resource "zia_outbound_email_dlp" "z_cjis_biometric_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_nics_firearms_endpoint" {
   name                       = "Z-CJIS NICS Firearms [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS NICS Firearms-Monitor\" (NICS Firearms Background Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS NICS Firearms-Monitor\" (NICS Firearms Background Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 6
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -604,7 +604,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_nics_firearms_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_nics_firearms_saas" {
   name                       = "Z-CJIS NICS Firearms [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS NICS Firearms-Monitor\" (NICS Firearms Background Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS NICS Firearms-Monitor\" (NICS Firearms Background Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 6
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -629,7 +629,7 @@ resource "zia_casb_dlp_rules" "z_cjis_nics_firearms_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_nics_firearms_email" {
   name                       = "Z-CJIS NICS Firearms [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS NICS Firearms-Monitor\" (NICS Firearms Background Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS NICS Firearms-Monitor\" (NICS Firearms Background Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 6
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -648,7 +648,7 @@ resource "zia_outbound_email_dlp" "z_cjis_nics_firearms_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_info_sharing_endpoint" {
   name                       = "Z-CJIS Info-Sharing [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Info-Sharing-Monitor\" (Info-Sharing Portal Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Info-Sharing-Monitor\" (Info-Sharing Portal Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 7
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -666,7 +666,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_info_sharing_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_info_sharing_saas" {
   name                       = "Z-CJIS Info-Sharing [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Info-Sharing-Monitor\" (Info-Sharing Portal Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Info-Sharing-Monitor\" (Info-Sharing Portal Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 7
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -691,7 +691,7 @@ resource "zia_casb_dlp_rules" "z_cjis_info_sharing_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_info_sharing_email" {
   name                       = "Z-CJIS Info-Sharing [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Info-Sharing-Monitor\" (Info-Sharing Portal Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Info-Sharing-Monitor\" (Info-Sharing Portal Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 7
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -710,7 +710,7 @@ resource "zia_outbound_email_dlp" "z_cjis_info_sharing_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_any_signal_endpoint" {
   name                       = "Z-CJIS Any-Signal [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Any-Signal-Monitor\" (CJIS Any-Signal Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Any-Signal-Monitor\" (CJIS Any-Signal Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 8
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -728,7 +728,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_any_signal_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_any_signal_saas" {
   name                       = "Z-CJIS Any-Signal [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Any-Signal-Monitor\" (CJIS Any-Signal Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Any-Signal-Monitor\" (CJIS Any-Signal Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 8
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -753,7 +753,7 @@ resource "zia_casb_dlp_rules" "z_cjis_any_signal_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_any_signal_email" {
   name                       = "Z-CJIS Any-Signal [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Any-Signal-Monitor\" (CJIS Any-Signal Engine). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Any-Signal-Monitor\" (CJIS Any-Signal Engine). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 8
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -772,7 +772,7 @@ resource "zia_outbound_email_dlp" "z_cjis_any_signal_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_markings_medium_confidence_endpoint" {
   name                       = "Z-CJIS Markings Medium Confidence [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 9
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -790,7 +790,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_markings_medium_confidence_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_markings_medium_saas" {
   name                       = "Z-CJIS Markings Medium [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 9
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -815,7 +815,7 @@ resource "zia_casb_dlp_rules" "z_cjis_markings_medium_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_markings_medium_confidence_email" {
   name                       = "Z-CJIS Markings Medium Confidence [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS Markings Medium Confidence-Monitor\" (CJIS Markings Medium Confidence). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 9
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -834,7 +834,7 @@ resource "zia_outbound_email_dlp" "z_cjis_markings_medium_confidence_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_us_pii_endpoint" {
   name                       = "Z-CJIS US PII [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 10
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -852,7 +852,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_us_pii_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_us_pii_saas" {
   name                       = "Z-CJIS US PII [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 10
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -877,7 +877,7 @@ resource "zia_casb_dlp_rules" "z_cjis_us_pii_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_us_pii_email" {
   name                       = "Z-CJIS US PII [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS US PII-Monitor\" (CJIS US PII). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 10
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -896,7 +896,7 @@ resource "zia_outbound_email_dlp" "z_cjis_us_pii_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_tlp_red_endpoint" {
   name                       = "Z-CJIS TLP Red [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 11
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -914,7 +914,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_tlp_red_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_tlp_red_saas" {
   name                       = "Z-CJIS TLP Red [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 11
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -939,7 +939,7 @@ resource "zia_casb_dlp_rules" "z_cjis_tlp_red_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_tlp_red_email" {
   name                       = "Z-CJIS TLP Red [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Red-Monitor\" (CJIS TLP Red). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 11
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -958,7 +958,7 @@ resource "zia_outbound_email_dlp" "z_cjis_tlp_red_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_tlp_amber_strict_endpoint" {
   name                       = "Z-CJIS TLP Amber Strict [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 12
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -976,7 +976,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_tlp_amber_strict_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_tlp_amber_strict_saas" {
   name                       = "Z-CJIS TLP Amber Strict [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 12
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -1001,7 +1001,7 @@ resource "zia_casb_dlp_rules" "z_cjis_tlp_amber_strict_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_tlp_amber_strict_email" {
   name                       = "Z-CJIS TLP Amber Strict [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Amber Strict-Monitor\" (CJIS TLP Amber Strict). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 12
   state                      = "DISABLED"
   action                     = "ALLOW"
@@ -1020,7 +1020,7 @@ resource "zia_outbound_email_dlp" "z_cjis_tlp_amber_strict_email" {
 
 resource "zia_endpoint_dlp_rules" "z_cjis_tlp_amber_endpoint" {
   name                       = "Z-CJIS TLP Amber [Endpoint]"
-  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Endpoint DLP: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 13
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -1038,7 +1038,7 @@ resource "zia_endpoint_dlp_rules" "z_cjis_tlp_amber_endpoint" {
 
 resource "zia_casb_dlp_rules" "z_cjis_tlp_amber_saas" {
   name                       = "Z-CJIS TLP Amber [SaaS]"
-  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "SaaS Security API: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 13
   rank                       = var.policy_rank
   state                      = "DISABLED"
@@ -1063,7 +1063,7 @@ resource "zia_casb_dlp_rules" "z_cjis_tlp_amber_saas" {
 
 resource "zia_outbound_email_dlp" "z_cjis_tlp_amber_email" {
   name                       = "Z-CJIS TLP Amber [Email]"
-  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents. [DLP-Check pack cjis_policy_pack v1.2] Terraform-managed."
+  description                = "Email DLP: the same detection as the inline rule \"Z-CJIS TLP Amber-Monitor\" (CJIS TLP Amber). Monitor-only; enable after reviewing incidents. [${var.assessor} pack cjis_policy_pack v1.2] Terraform-managed."
   order                      = var.rule_starting_order + 13
   state                      = "DISABLED"
   action                     = "ALLOW"

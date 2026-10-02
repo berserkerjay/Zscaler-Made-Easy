@@ -294,7 +294,7 @@ def test_every_pack_screen_names_a_classic_api_tenant_without_vanity_or_login(mo
     monkeypatch.setattr(pd, "preflight", lambda *a, **kw: {})
     monkeypatch.setattr(pd, "public_report", lambda rep: {"items": []})
     monkeypatch.setattr(pr, "plan_removal", lambda *a, **kw: {"items": []})
-    monkeypatch.setattr(pr, "inventory", lambda client: {"rules": []})
+    monkeypatch.setattr(pr, "inventory", lambda client, channels=None: {"rules": []})
     monkeypatch.setattr(srv, "_journey_for", lambda *a, **kw: {"status": "ok"})
     seen = {}
 
@@ -306,7 +306,7 @@ def test_every_pack_screen_names_a_classic_api_tenant_without_vanity_or_login(mo
     c = TestClient(srv.app)
     for path, body in (("/api/dlp-packs/preflight", {"pack_ids": ["alpha"]}),
                        ("/api/dlp-packs/removal/preflight", {"pack_ids": ["alpha"]}),
-                       ("/api/dlp-packs/removal/inventory", {}),
+                       ("/api/dlp-packs/removal/inventory", {"scopes": ["dlp"], "channels": {"web_dlp": "zscaler"}, "from_page": True}),
                        ("/api/dlp-packs/journey", {"pack_ids": ["alpha"]})):
         r = c.post(path, json=_legacy_body(**body))
         assert r.status_code == 200, (path, r.text)
@@ -332,6 +332,8 @@ def test_the_assessment_journey_names_a_classic_api_tenant_without_vanity_or_log
     monkeypatch.setattr(srv, "_journey_packs", lambda ids: [{"id": "p1", "dir": "x"}])
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: object())
     monkeypatch.setattr(srv, "_journey_for", lambda sdk, packs, progress=None, **kw: {"status": "in_progress"})
+    # The journey runs only for a pack ticked on the profile, on its channels marked Zscaler.
+    monkeypatch.setattr(srv, "_journey_scope", lambda ids, channels: ([{"id": "p1", "dir": "x"}], {"p1": ["web"]}))
     events, kind = [], None
     with TestClient(srv.app).stream("POST", "/api/assess", json=_legacy_body(scopes=["dlp"])) as r:
         assert r.status_code == 200

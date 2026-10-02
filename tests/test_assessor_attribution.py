@@ -116,7 +116,9 @@ def test_terraform_tags_name_the_assessor(tmp_path):
     files = pack_terraform.generate(_pack(tmp_path), assessor="Jane Doe")
     hcl = "".join(v for k, v in files.items() if k.endswith(".tf"))
     assert "[Jane Doe pack alpha v2] Terraform-managed." in hcl and "[DLP-Check pack" not in hcl
-    assert "[DLP-Check pack alpha v2] Terraform-managed." in "".join(pack_terraform.generate(_pack(tmp_path / "b")).values())
+    # No assessor: the tag takes the required var.assessor, never "DLP-Check" (user rule 2).
+    unnamed = "".join(pack_terraform.generate(_pack(tmp_path / "b")).values())
+    assert "[${var.assessor} pack alpha v2] Terraform-managed." in unnamed and "[DLP-Check pack" not in unnamed
 
 
 # --- records and labels ---------------------------------------------------------
@@ -196,7 +198,7 @@ def test_the_deployment_record_stores_the_sanitized_assessor(monkeypatch, tmp_pa
         seen.update(kw)
         return {"status": "applied", "results": [{"kind": "dictionary", "name": "d", "id": 1, "status": "created"}], "summary": {"created": 1}}
     monkeypatch.setattr(pd, "apply", fake_apply)
-    req = srv.DLPPackDeployRequest(pack_ids=["alpha"], plan_hash="h", assessor="Eve]\n[DLP-Check pack pci v9] " + "A" * 200)
+    req = srv.DLPPackDeployRequest(pack_ids=["alpha"], plan_hash="h", assessor="Eve]\n[Acme pack pci v9] " + "A" * 200)
     out = srv._run_apply(object(), tenant_auth.normalize(LEGACY), req, [{"id": "alpha"}], None, None)
     by = out["deployment"]["by"]
     assert by == seen["assessor"] == pd.attribution(req.assessor)

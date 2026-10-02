@@ -29,7 +29,7 @@ def _unlink_quietly(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -169,7 +169,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -318,13 +318,16 @@ class AssessRequest(BaseModel):
     username: str = ""         # classic ZIA API sign-in
     password: str = ""
     api_key: str = ""
-    scope: str = "full"  # legacy single scope, kept for compatibility
-    scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
+    # Legacy single scope, kept for MCP / CLI callers that set it on purpose.
+    # Left unset with no `scopes`, the request is refused: nothing is assessed
+    # unless it was put in scope.
+    scope: str = "full"
+    scopes: list[str] = []  # list of scope keys (dlp, zia_extras, zpa, zcc, ...): the Scope page's choice
     customer_id: str = ""  # Optional ZPA customer ID
     profile_id: str = ""   # Saved tenant profile: fills blanks, records history
     # The Scope page's channel ownership: {id: {choice: zscaler|alternative|gap, note, name}}.
-    # A channel covered by an alternative solution has its checks reported as
-    # not in scope instead of read from the tenant (channel_scope).
+    # Only a Zscaler channel is read; an alternative or a gap has its checks
+    # reported as not in scope instead of read from the tenant (channel_scope).
     channels: Dict[str, Any] = {}
 
 
@@ -605,6 +608,14 @@ class MigrateRequest(BaseModel):
     # Cloud App) have different best-practice ordering rules and are
     # out of scope here.
     rule_type: str = "web_dlp"
+    # What is in scope (user rule 1): the Scope page's ticked `scopes` and
+    # channel declaration (`channels`), else (nothing sent and `from_page`
+    # false) the chosen profile's saved selection (_scope_selection). Every
+    # endpoint that reads the tenant with this body checks it before sign-in
+    # (_require_in_scope); nothing in scope is refused (400).
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
 def _raw_client(creds: Dict[str, str]):
@@ -638,7 +649,9 @@ def _build_client(req: "MigrateRequest"):
 async def diagnose_zcc(req: MigrateRequest):
     """Probe every ZCC endpoint the assessment relies on and return
     per-endpoint HTTP status + response-key count + a likely-cause
-    hint. Lets users see what's readable vs blocked vs not-exposed."""
+    hint. Lets users see what's readable vs blocked vs not-exposed.
+    Only when ZCC is in scope on the Scope page (else 400, nothing read)."""
+    _require_in_scope(req, "zcc", "ZCC endpoint diagnostics")
     client = await asyncio.to_thread(_build_client, req)
     ZCC_ENDPOINTS = [
         ("/zcc/companyInfo",         "Company info"),
@@ -1019,12 +1032,28 @@ def _assessor(req: Any) -> str:
 
 ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. "
                      "Every object a pack creates names the assessor in its description, never DLP-Check.")
+ASSESSOR_NOT_TOOL = ("The assessor's name must name the person who assesses and deploys the pack, not the tool "
+                     "(no \"DLP-Check\" in any spelling): it is part of every pushed object's description.")
 
 
 def _require_assessor(req: Any) -> str:
     """The assessor's name, or a 400 before anything is read or written:
     a pack push (deploy, single-pack import, Terraform hand-off) always
     names the assessor in the objects it creates, never DLP-Check."""
+    import pack_deploy
+    given = getattr(req, "assessor", "") or ""
+    if not str(given).strip():
+        pid = getattr(req, "profile_id", "") or ""
+        if pid:
+            try:
+                import tenant_profiles
+                given = (tenant_profiles.get(pid) or {}).get("assessor") or ""
+            except Exception:  # noqa: BLE001 — a missing profile only loses the name
+                given = ""
+    if pack_deploy.is_tool_name(given):
+        # The tool's own name, in any spelling (pack_deploy.TOOL_NAME_PATTERN, the
+        # rule the Terraform CLI and var.assessor apply): refused, never rewritten.
+        raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
     name = _assessor(req)
     if not name:
         raise HTTPException(status_code=400, detail=ASSESSOR_REQUIRED)
@@ -1146,7 +1175,9 @@ def _build_sdk_client(creds: Dict[str, str]):
     rate_label = tenant_auth.record_labels(c)
     if c["auth_method"] == tenant_auth.LEGACY:
         try:
-            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key, rate_label)
+            return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT, max_retries=SDK_MAX_RETRIES,
+                                                                             max_retry_seconds=SDK_MAX_RETRY_SECONDS),
+                                          rate_key, rate_label)
         except ImportError:
             raise HTTPException(status_code=503, detail="zscaler-sdk-python is not installed. Run: pip install -r requirements.txt")
         except Exception as e:  # noqa: BLE001 — the helper signs in as it is built
@@ -1328,9 +1359,35 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
 
 # ── FP/TP Detection Ratio (continuous evaluation, phase 1) ──────────────────
 class DetectionHealthRequest(TenantCredsRequest):
-    """Body of a FP/TP Detection Ratio run: the window in days and threshold overrides."""
+    """Body of a FP/TP Detection Ratio run: the window in days, threshold
+    overrides and what is in scope (the Scope page's ticked `scopes` and
+    channel declaration `channels`, else, with neither and `from_page`
+    false, the chosen profile's saved selection)."""
     days: int = 30
     settings: Dict[str, Any] = {}     # threshold overrides, see detection_health.DEFAULTS
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+DH_NOTHING_IN_SCOPE = ("Nothing the FP/TP Detection Ratio reads is in scope — on the Scope page tick DLP and mark at least one DLP "
+                       "channel (Inline Web, Endpoint, SaaS Security, Email) as run on Zscaler, then run it again.")
+DH_WA_ALTERNATIVE = ("Workflow Automation is covered by another product on the Scope page, so its incidents (the FP/TP Detection "
+                     "Ratio's input) are not read and the ratio is not measured.")
+LIVE_NOTHING_IN_SCOPE = ("Nothing the live feed reads is in scope — it shows Workflow Automation's DLP incidents: on the Scope page "
+                         "tick DLP and mark Workflow Automation as run on Zscaler, then start the feed again.")
+
+
+def _dlp_read_scope(req: Any) -> Dict[str, Any]:
+    """What a DLP read started from a page (FP/TP Detection Ratio, live
+    feed) may read: continuous_eval.profile_scope of _scope_selection, as
+    the scheduled loop reads a profile, plus where it came from. Never
+    reads a tenant."""
+    import continuous_eval
+    sc, ch, source = _scope_selection(req)
+    out = continuous_eval.profile_scope({"scopes": sc, "channels": ch})
+    out["source"] = source
+    return out
 
 
 @app.post("/api/detection-health")
@@ -1346,17 +1403,42 @@ async def detection_health_generate(req: DetectionHealthRequest):
         import detection_health
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"detection_health unavailable: {e}")
+    # Only what the Scope page puts in scope is read (user rule 1), as the
+    # scheduled loop reads a profile: the rules of the DLP channels marked
+    # Zscaler, and Workflow Automation's incidents only when it is marked
+    # Zscaler. Nothing in scope is refused here, before signing in.
+    sc = _dlp_read_scope(req)
+    if not sc["dlp"] or not sc["pack_channels"]:
+        raise HTTPException(status_code=400, detail=DH_NOTHING_IN_SCOPE)
+    if not sc["incidents"]:
+        raise HTTPException(status_code=400, detail=DH_WA_ALTERNATIVE)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     days = max(1, min(int(req.days or 30), 180))
     logs: list = []
-    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append))
+    if sc["source"]:
+        logs.append(f"In scope, from {sc['source']}: the DLP rules on {', '.join(sc['pack_channels'])}"
+                    + ("" if sc["read_incidents"] else "; Workflow Automation is not marked as run on Zscaler, so its incidents are not read") + ".")
+    report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append,
+                                                                       channels=list(sc["pack_channels"]), read_incidents=bool(sc["read_incidents"])))
     report["logs"] = logs
-    report["tenant_key"] = creds.get("vanity_domain") or "unknown"
+    report["scope"] = {"scopes": sc["scopes"], "pack_channels": list(sc["pack_channels"]), "read_incidents": bool(sc["read_incidents"]),
+                       "source": sc["source"]}
     report["profile_id"] = getattr(req, "profile_id", "") or ""   # lets the tab apply proposals with the profile's remembered secret
+    # The proposal queue's key: the vanity domain for OneAPI, an opaque
+    # fingerprint key for the classic API (never a vanity domain left in
+    # the form); proposals queued under that stale domain move to it.
+    import continuous_eval
+    report["tenant_key"] = continuous_eval._proposal_key_migrated(creds, report["profile_id"])
     try:
         import proposals
-        report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
+        if (report.get("read") or {}).get("incidents", True) is False:
+            # Incidents not read are not "no incident": as in the loop, only
+            # what the rules alone show is proposed, and nothing raised when
+            # incidents were read is resolved.
+            report["proposals"] = proposals.merge(report["tenant_key"], proposals.build_proposals(report, report["tenant_key"]), resolve_missing=False)
+        else:
+            report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
     except Exception as e:  # noqa: BLE001
         report["proposals"] = {"error": str(e)[:200]}
     rid = _remember_report("health", report, tenant_auth.record_label(creds))
@@ -1377,18 +1459,24 @@ LIVE_FEED_COVERAGE_NOTE = (
 )
 
 
-def _live_rule_actions(client, tenant_key: str) -> Dict[str, str]:
-    """rule name -> configured action, cached briefly per tenant so a
-    poll every few seconds does not re-read the whole rule inventory
-    every time; rule actions do not change that often."""
+def _live_rule_actions(client, tenant_key: str, channels: Optional[List[str]] = None) -> Dict[str, str]:
+    """rule name -> configured action, cached briefly per tenant and per
+    set of in-scope channels so a poll every few seconds does not re-read
+    the rule inventory every time (rule actions do not change that often)
+    and a changed Scope page is read afresh. Only the rules of `channels`
+    (the DLP channels in scope) are read; none in scope reads nothing."""
     import time as _time
     import detection_health
+    chans = sorted({str(c) for c in (channels or [])})
+    if not chans:
+        return {}
+    key = f"{tenant_key}|{','.join(chans)}"
     now = _time.time()
-    cached = _live_rules_cache.get(tenant_key)
+    cached = _live_rules_cache.get(key)
     if cached and cached[0] > now:
         return cached[1]
-    m = detection_health.rule_actions(client)
-    _live_rules_cache[tenant_key] = (now + _LIVE_RULES_TTL_SECONDS, m)
+    m = detection_health.rule_actions(client, channels=chans)
+    _live_rules_cache[key] = (now + _LIVE_RULES_TTL_SECONDS, m)
     return m
 
 
@@ -1400,6 +1488,9 @@ class LiveFeedRequest(TenantCredsRequest):
     stateless between polls."""
     since: str = ""
     stats: Dict[str, Any] = {}
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
 @app.post("/api/live-feed")
@@ -1413,17 +1504,28 @@ async def live_feed_poll(req: LiveFeedRequest):
         import detection_health
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"detection_health unavailable: {e}")
-    creds = _tenant_creds(req)
-    client = await asyncio.to_thread(_build_sdk_client, creds)
-    label = tenant_auth.label(creds)
     since = None
     if req.since:
         try:
             since = datetime.fromisoformat(req.since.replace("Z", "+00:00"))
         except ValueError:
             raise HTTPException(status_code=400, detail="'since' is not a valid timestamp; leave it blank to start a new feed.")
+    # Only what the Scope page puts in scope is read (user rule 1): the
+    # incidents only with DLP ticked and Workflow Automation marked
+    # Zscaler, the rule actions only of the DLP channels marked Zscaler.
+    # Nothing in scope is refused here, before signing in.
+    sc = _dlp_read_scope(req)
+    if not sc["dlp"] or not sc["read_incidents"]:
+        raise HTTPException(status_code=400, detail=LIVE_NOTHING_IN_SCOPE)
+    creds = _tenant_creds(req)
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)
     poll = await asyncio.to_thread(detection_health.poll_incidents, client, since)
-    rules_by_name = await asyncio.to_thread(_live_rule_actions, client, creds.get("vanity_domain") or label)
+    import tenant_fingerprint
+    # The rule cache's key names no classic-API tenant by a vanity domain or
+    # its admin login (an opaque fingerprint key), and keeps two classic
+    # tenants on one cloud apart.
+    rules_by_name = await asyncio.to_thread(_live_rule_actions, client, tenant_fingerprint.proposal_key(creds, label), list(sc["pack_channels"]))
     for i in poll["incidents"]:
         i["enforcement"] = detection_health.incident_action(i, rules_by_name)   # "enforced" | "monitor" | "unknown", from the rule's real action
     stats = detection_health.live_stats(req.stats or None, poll["incidents"], rules_by_name)
@@ -1495,10 +1597,19 @@ class ProposalApplyRequest(TenantCredsRequest):
     confirm: bool = False
 
 
-def _proposal_client(req: ProposalApplyRequest):
+def _proposal_client(req: ProposalApplyRequest, tenant: str):
+    """The SDK client for previewing, applying or rolling back a proposal
+    queued under `tenant`, or an error before anything is read: 400 without
+    complete credentials (OneAPI or the classic API), 409 when the signed-in
+    tenant is not the one the proposal was raised for (its proposal key)."""
+    import proposals
+    import tenant_fingerprint
     creds = _tenant_creds(req)
-    if not (creds.get("client_id") and creds.get("client_secret")):
-        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open FP/TP Detection Ratio from the assessment page (its credentials are used), or select a tenant profile that remembers its secret.")
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open FP/TP Detection Ratio from the assessment page (its sign-in is used, OneAPI or classic API), or select a tenant profile that remembers its secret.")
+    mine = proposals.tenant_key(tenant_fingerprint.proposal_key(creds, getattr(req, "profile_id", "") or ""))
+    if proposals.tenant_key(tenant) != mine:
+        raise HTTPException(status_code=409, detail=f"This proposal was raised for another tenant, but the current credentials are for {tenant_auth.record_label(creds)}. Switch tenant first.")
     return _build_sdk_client(creds)
 
 
@@ -1507,7 +1618,7 @@ async def proposals_preview(tenant: str, pid: str, req: ProposalApplyRequest, di
     """Re-read the rules an approved proposal touches and show exactly what
     would change (or what a rollback would restore). Read-only."""
     import proposal_apply
-    client = await asyncio.to_thread(_proposal_client, req)
+    client = await asyncio.to_thread(_proposal_client, req, tenant)
     try:
         return await asyncio.to_thread(proposal_apply.preview, client, tenant, pid, direction="rollback" if direction == "rollback" else "apply")
     except ValueError as e:
@@ -1524,7 +1635,7 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
-    client = await asyncio.to_thread(_proposal_client, req)
+    client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
     try:
@@ -1545,7 +1656,7 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
-    client = await asyncio.to_thread(_proposal_client, req)
+    client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
     try:
@@ -1848,18 +1959,31 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     return out
 
 
+class ScopedTenantCredsRequest(TenantCredsRequest):
+    """Tenant credentials plus what is in scope: the Scope page's ticked
+    `scopes` and channel declaration (`channels`), else (nothing sent and
+    `from_page` false) the chosen profile's saved selection."""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
 @app.post("/api/dlp-packs/removal/inventory")
-async def dlp_pack_removal_inventory(req: TenantCredsRequest):
-    """Every DLP rule the tenant has on every channel (web, endpoint, SaaS,
-    email) with its state, engines and DLP-Check provenance, so the
-    operator can pick the leftovers to remove. Read-only."""
+async def dlp_pack_removal_inventory(req: ScopedTenantCredsRequest):
+    """Every DLP rule the tenant has on the DLP channels in scope (DLP
+    ticked and the channel marked Zscaler on the Scope page: web,
+    endpoint, SaaS, email) with its state, engines and provenance, so the
+    operator can pick the leftovers to remove. Read-only; nothing in scope
+    is refused (400) before sign-in (user rule 1)."""
     try:
         import pack_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
+    channels = _pack_channels_in_scope(req, "The rule picker")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(pack_removal.inventory, client)
+    out = await asyncio.to_thread(pack_removal.inventory, client, channels)
+    out["channels_in_scope"] = channels
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
     return out
@@ -1910,7 +2034,7 @@ def _run_removal(client, req: PackRemovalRequest, rec, packs, log, cancel) -> Di
 
     if rec is not None:
         result = pack_removal.remove_deployment(client, rec, plan_hash=req.plan_hash, writes_enabled=True, log=_log, cancel=cancel)
-        if result.get("status") not in ("blocked", "stale"):
+        if result.get("status") not in ("blocked", "stale", "stopped"):
             import deployments
             updated = deployments.mark_undo(rec["id"], result.get("results") or [], complete=bool((result.get("verification") or {}).get("clean")))
             result["deployment"] = deployments.summary(updated) if updated else None
@@ -1945,7 +2069,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
     job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label,
-                           actor=_actor(request))
+                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -1960,6 +2084,30 @@ async def dlp_pack_job(job_id: str, since: int = 0):
     if job is None:
         raise HTTPException(status_code=404, detail="No such job. Jobs are kept for an hour after they finish; start the run again.")
     return pack_jobs.snapshot(job, since=max(0, int(since or 0)))
+
+
+def _start_token(request: Request) -> Optional[str]:
+    """The page's name for a job start (X-Start-Token), so a Stop pressed
+    before the start answers still reaches the job (pack_jobs.stop_before_start)."""
+    import pack_jobs
+    return pack_jobs.valid_start_token(request.headers.get("X-Start-Token"))
+
+
+class StopBeforeStartRequest(BaseModel):
+    start_token: str
+
+
+@app.post("/api/dlp-packs/jobs/stop-before-start")
+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
+    """Stop pressed while a start request (deploy, removal, export,
+    Terraform hand-off, path analysis) is still signing in, so there is no
+    job id yet. The job that start creates begins with its cancel set and
+    reads or writes nothing; one that already exists is cancelled now."""
+    import pack_jobs
+    try:
+        return pack_jobs.stop_before_start(req.start_token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/dlp-packs/jobs/{job_id}/cancel")
@@ -2036,58 +2184,98 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
     return {"cause": cause, "fix": fix, "raw": d[:300]}
 
 
+def _close_quietly(client: Any) -> None:
+    """Close a tenant client (ends a classic ZIA API session); best effort."""
+    close = getattr(client, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+_UNANSWERED_WORDS = {429: "rate limited (HTTP 429)", 502: "unavailable (HTTP 502)", 503: "unavailable (HTTP 503)",
+                     504: "unavailable (HTTP 504)", 0: "no answer (timed out or unreachable)"}
+
+
+def _unanswered_result(r: Any, label: str, unanswered: List[Tuple[str, int]]) -> Any:
+    """A check built on a read the tenant did not answer (rate limited,
+    unavailable, timed out) judged nothing: it is "Could not be checked"
+    (ERROR, outside the score, the run partial), never "Configured", "Not
+    configured" or an empty tenant ("0 devices", "No PAC files")."""
+    if not unanswered or str(getattr(r, "status", "")) == str(R.ERROR):
+        return r
+    codes = sorted({c for _ep, c in unanswered})
+    why = ", ".join(_UNANSWERED_WORDS.get(c, f"HTTP {c}") for c in codes)
+    eps = ", ".join(sorted({ep.split("?", 1)[0] for ep, _c in unanswered}))[:160]
+    return R(R.ERROR, f"{label}: Could not be checked: the tenant did not answer {len(unanswered)} read(s) ({why}; {eps}). "
+                      "Run the assessment again later.")
+
+
+def _close_when_done(client: Any):
+    """A done-callback for the thread still using `client`: ends its
+    session once that thread has stopped (never under a running read)."""
+    def _cb(fut):
+        if not fut.cancelled():
+            fut.exception()   # retrieved, so an error is not logged as unhandled
+        threading.Thread(target=_close_quietly, args=(client,), name="journey-close", daemon=True).start()
+    return _cb
+
+
+def _stop_reads(client: Any) -> None:
+    """Tell the checks' client the run is over: the checks still running
+    send no further request (no next endpoint, no 429 retry). Queued
+    checks are cancelled by the pool itself."""
+    stop = getattr(client, "stop", None)
+    if callable(stop):
+        try:
+            stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _end_checks_session(client: Any, pool: Any, running: set) -> None:
+    """End the assessment checks' session. When no check thread is still
+    using it, at once; otherwise (a check past its timeout, or a stream
+    closed mid-run) in the background once those threads are done, so no
+    running read is cut off and nothing waits on a stuck request."""
+    if client is None:
+        return
+    if pool is None or not running:
+        await asyncio.to_thread(_close_quietly, client)
+        return
+
+    def _later():
+        pool.shutdown(wait=True)
+        _close_quietly(client)
+    threading.Thread(target=_later, name="assess-close", daemon=True).start()
+
+
 @app.post("/api/tenant/check")
 async def tenant_check(req: TenantCredsRequest):
-    """Read-only connection test for the Start-here panel: authenticates,
-    counts DLP dictionaries, engines and the Web, Endpoint, SaaS and Email
-    DLP rules, and explains any
-    failure in plain language with what to do next."""
+    """Sign-in test for Authenticate: obtains the token (or, for the classic
+    ZIA API, the session) and nothing else. It never lists or counts
+    anything in the tenant: every read counts against the tenant's ZIA API
+    rate limit, so the tenant is read only by an assessment the operator
+    runs, for what they put in scope. A failure is explained in plain
+    language with what to do next."""
     creds = _tenant_creds(req)
-    label = tenant_auth.label(creds)
+    label = tenant_auth.record_label(creds)   # never the classic API's admin login (user rule 3)
     method = creds["auth_method"]
     try:
-        client = await asyncio.to_thread(_build_sdk_client, creds)
+        client = await asyncio.to_thread(_build_sdk_client, creds)   # signs in as it is built; no listing
+        # Sign-in only: end the session at once (the classic ZIA API keeps
+        # an admin session open until it idles out otherwise).
+        await asyncio.to_thread(_close_quietly, client)
     except HTTPException as e:
         raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, "auth_method": method, **_explain_connection_error(e.detail, method)})
-
-    def probe() -> Dict[str, Any]:
-        from pack_channels import _nx
-        z = client.zia
-        out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
-        if method == tenant_auth.LEGACY:
-            out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
-        dicts, err = _nx(z.dlp_dictionary.list_dicts())
-        if err:
-            raise RuntimeError(str(err))
-        items = list(dicts or [])
-        custom = sum(1 for d in items if getattr(d, "custom", False) or (isinstance(d, dict) and d.get("custom")))
-        out["dictionaries"] = len(items)
-        out["custom_dictionaries"] = custom
-        out["predefined_dictionaries"] = len(items) - custom
-        engines, err = _nx(z.dlp_engine.list_dlp_engines_lite())
-        out["engines"] = 0 if err else len(engines or [])
-        if err:
-            out["problems"].append("DLP engines could not be listed; the role may lack engine read access.")
-        rules, err = _nx(z.dlp_web_rules.list_rules())
-        out["web_rules"] = 0 if err else len(rules or [])
-        if err:
-            out["problems"].append("Web DLP rules could not be listed; the role may lack DLP policy read access.")
-        # The other DLP channels, so the operator sees the whole DLP policy
-        # before deploying into it. None = could not be read (said in problems).
-        import pack_channels as pc
-        for ch, key, name in ((pc.ENDPOINT, "endpoint_rules", "Endpoint DLP"), (pc.SAAS, "saas_rules", "SaaS Security API DLP"),
-                              (pc.EMAIL, "email_rules", "Email DLP")):
-            n, cerr = pc.count_rules(z, ch)
-            out[key] = n
-            if cerr:
-                out["problems"].append(f"{name} rules could not be listed; the role may lack read access to them or the tenant has no subscription for them.")
-        return out
-
-    try:
-        return await asyncio.to_thread(probe)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
                                                      **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
+    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
+    if method == tenant_auth.LEGACY:
+        out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2180,7 +2368,7 @@ async def tenant_profile_save(req: TenantProfileRequest):
     remember_secret=true (owner-only local file); a blank secret keeps the
     one already remembered, remember_secret=false forgets it."""
     import tenant_profiles
-    if not (req.name or req.org_name or req.vanity_domain):
+    if not (req.name or req.org_name or req.vanity_domain or req.username):
         raise HTTPException(status_code=400, detail="A profile needs at least a name, an organisation or a vanity domain.")
     cloud = validate_cloud(req.cloud or "production")
     vd = validate_vanity(req.vanity_domain) if req.vanity_domain else ""
@@ -2196,8 +2384,22 @@ async def tenant_profile_save(req: TenantProfileRequest):
     api_key = validate_credential("api_key", req.api_key, required=False) if req.api_key else ""
     if not method:
         method = tenant_auth.method_of({"client_id": cid, "username": user, "api_key": api_key})
+    if method == tenant_auth.LEGACY:
+        # The classic API signs in with an admin login and no vanity domain:
+        # one left in the form is not kept, and neither it nor the login
+        # names the profile (user rule 3).
+        default_name = tenant_auth.record_label({"auth_method": method, "cloud": cloud})
+        # A name (or organisation) that is the admin login or the discarded
+        # vanity domain is replaced too, as the guide may still pre-fill it.
+        leaks = {"username": user, "vanity_domain": req.vanity_domain or ""}
+        name = req.name if not tenant_profiles.classic_name_leaks(leaks, req.name) else ""
+        org_name = req.org_name if not tenant_profiles.classic_name_leaks(leaks, req.org_name) else ""
+        vd = ""
+    else:
+        default_name = vd or user
+        name, org_name = req.name, req.org_name
     fields = {
-        "name": req.name or req.org_name or vd or user, "org_name": req.org_name, "assessor": req.assessor,
+        "name": name or org_name or default_name, "org_name": org_name, "assessor": req.assessor,
         "cloud": cloud, "vanity_domain": vd, "client_id": cid, "customer_id": cust,
         "auth_method": method, "username": user,
         "industry": req.industry, "baseline_packs": [str(b) for b in req.baseline_packs],
@@ -2225,27 +2427,106 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
     return [{"id": p["id"], "dir": p["dir"]} for p in discover_packs() if pack_deploy.baseline_meta(p, p["id"])]
 
 
+def _journey_scope(pack_ids: List[str], channels: Any) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
+    """The packs and channels the assessment's journey may measure: only
+    the packs chosen on the profile (never every installed pack), each on
+    its own DLP channels that the Scope page marks Zscaler. A pack with no
+    such channel is left out, so nothing out of scope is read. Reads local
+    pack files only."""
+    import channel_scope
+    import pack_channels as pc
+    import pack_deploy
+    from dlp_importer import discover_packs
+    targets = channel_scope.pack_targets(channels)
+    if not pack_ids or not targets:
+        return [], {}
+    known = {p["id"]: p for p in discover_packs()}
+    packs: List[Dict[str, Any]] = []
+    chosen: Dict[str, List[str]] = {}
+    for pid in pack_ids:
+        if pid not in known or pid in chosen:
+            continue
+        pk = {"id": pid, "dir": known[pid]["dir"]}
+        try:
+            own = {pc.channel_of(p) for p in pack_deploy.load_sources([pk])[0]["policies"]}
+        except Exception:  # noqa: BLE001 — an unreadable pack is not measured
+            continue
+        mine = [c for c in pc.DLP_CHANNELS if c in own and c in targets]
+        if mine:
+            packs.append(pk)
+            chosen[pid] = mine
+    return packs, chosen
+
+
+class JourneyStopped(Exception):
+    """The run the journey belongs to has ended (stream closed, timed out)."""
+
+
+_PLAIN = (str, bytes, int, float, bool, type(None), dict, list, tuple, set)
+
+
+class _StopAware:
+    """Wraps an SDK client so that every call made through it (every
+    tenant read) first checks `stop`: once the run has ended, the next read
+    raises JourneyStopped instead of reaching the tenant."""
+
+    def __init__(self, target: Any, stop: Any):
+        object.__setattr__(self, "_t", target)
+        object.__setattr__(self, "_stop", stop)
+
+    def __getattr__(self, name):
+        val = getattr(self._t, name)
+        if isinstance(val, _PLAIN):
+            return val
+        if callable(val) and not isinstance(val, type):
+            stop = self._stop
+
+            def call(*a, **k):
+                if stop.is_set():
+                    raise JourneyStopped("the run ended; no further tenant read")
+                import zia_rate
+                try:
+                    # A Stop while the read waits for ZIA's read limit: not sent.
+                    with zia_rate.stopping_on(stop.is_set):
+                        out = val(*a, **k)
+                except zia_rate.Cancelled:
+                    raise JourneyStopped("the run ended while a read waited for ZIA's rate limit; it was not sent") from None
+                return out
+            return call
+        return _StopAware(val, self._stop)
+
+    def __setattr__(self, name, value):
+        setattr(self._t, name, value)
+
+
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
                  channel_targets: Optional[Dict[str, List[str]]] = None,
-                 progress: Optional[Any] = None) -> Dict[str, Any]:
+                 progress: Optional[Any] = None, stop: Optional[Any] = None) -> Dict[str, Any]:
     """Read-only journey check: one preflight per policy pack (so each
     pack is measured on its own), rolled up with pack_deploy.journey.
     `channel_targets` measures the pack as the operator chose to deploy
     it (extension rules count, skipped channels do not). The tenant is
     read once for every pack (superset of their needs); `progress(i, n,
-    pack_id)` is called before each pack is measured."""
+    pack_id)` is called before each pack is measured. `stop` (an Event):
+    once set, no further tenant read is made (JourneyStopped)."""
     import pack_deploy
     import pack_channels as pc
+    if stop is not None:
+        client = _StopAware(client, stop)
     rows: List[Dict[str, Any]] = []
     tenant = None
     blockers: List[str] = []
-    cache: Dict[str, Any] = {}
+    # With channel targets (the assessment's journey), only the channels in
+    # scope are read: Web DLP rules too are left alone when web is not one.
+    cache: Dict[str, Any] = {"only_channels": channel_targets is not None}
     try:
-        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, {}))
+        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, channel_targets or {}))
         cache["need"] = pc.needs(i["definition"] for i in merged["policy"].values())
     except Exception:  # noqa: BLE001 — fall back to per-pack needs
-        cache = {}
+        cache.pop("need", None)
     for i, pk in enumerate(packs):
+        if stop is not None and stop.is_set():
+            raise JourneyStopped("the run ended; no further tenant read")
         if progress is not None:
             try:
                 progress(i, len(packs), pk["id"])
@@ -2291,7 +2572,10 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
         raise HTTPException(status_code=404, detail="No policy packs found (pack.json needs a \"policy pack\" section).")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
+    try:
+        out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
+    finally:   # end the session (a classic ZIA API one stays open otherwise)
+        await asyncio.to_thread(_close_quietly, client)
     out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
@@ -2403,8 +2687,12 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
     if client is not None:
         mode = "gap"
         _log(f"Gap mode: reading {tenant_auth.record_label(creds)} so the workspace imports what already exists and creates only the rest.")
+        # Stop also ends this read: nothing more is read (user rule 4).
         full = pack_deploy.preflight(client, packs, use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
-                                     channel_targets=req.channel_targets or None, log=_log)
+                                     channel_targets=req.channel_targets or None, log=_log, cancel=cancel)
+        if full.get("status") == "stopped" or (cancel is not None and cancel.is_set()):
+            _log("Stopped before the workspace was built.")
+            return {"status": "stopped", "stopped": "You clicked Stop.", "mode": mode, "packs": [], "logs": logs}
         report = pack_deploy.public_report(full)
         report["tenant_label"] = tenant_auth.record_label(creds)
         for it in report.get("items") or []:
@@ -2446,14 +2734,15 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
-                           actor=_actor(request))
+                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
-class PackExportRequest(TenantCredsRequest):
+class PackExportRequest(ScopedTenantCredsRequest):
     """Body of Export from tenant as a pack: which rules (rule ids per
-    channel, or "all"; empty means every DLP rule on every channel) and
-    the name the pack gets."""
+    channel, or "all"; empty means every DLP rule on every channel in
+    scope), the name the pack gets and what is in scope on the Scope page
+    (only those channels are read)."""
     customer_id: str = ""
     rules: Dict[str, Any] = {}
     pack_name: str = ""
@@ -2474,6 +2763,8 @@ def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, sele
         return dict(res, tenant_label=label)
     pack = res["pack"]
     name, data = pack_export.zip_pack(pack)
+    if cancel is not None and cancel.is_set():   # Stop said no pack is produced; keep that promise
+        return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
     log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
     v = res["validation"]
     return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "pack_name": pack["meta"]["name"],
@@ -2496,12 +2787,25 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
         selection = pack_export.normalize_selection(req.rules or None)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if pack_export.nothing_picked(selection):   # nothing to read the tenant for
+        raise HTTPException(status_code=400, detail=pack_export.NOTHING_PICKED)
+    # Only the channels in scope on the Scope page are read (user rule 1).
+    in_scope = _pack_channels_in_scope(req, "Export from tenant")
+    if selection is None:
+        selection = {ch: None for ch in in_scope}
+    else:
+        out = sorted(ch for ch, ids in selection.items() if ch not in in_scope and (ids is None or ids))
+        if out:
+            raise HTTPException(status_code=400, detail=f"Not in scope on the Scope page: {', '.join(out)} DLP rules. Mark the channel as Zscaler, "
+                                                        "or leave its rules out of the export. Nothing was read.")
+        selection = {ch: ids for ch, ids in selection.items() if ch in in_scope}
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
-                          label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request))
+                          label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request),
+                          start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2566,7 +2870,7 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
                                verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
                                channel_targets=req.channel_targets or None, log=_log, cancel=cancel, assessor=by)
     result["logs"] = logs
-    if result.get("status") in ("plan_changed", "blocked"):
+    if result.get("status") in ("plan_changed", "blocked", "stopped"):
         return result
     # Remember what was created so the deployment can be undone later.
     try:
@@ -2605,7 +2909,7 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest, request: Request):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
-                           actor=_actor(request))
+                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2954,14 +3258,33 @@ _BEACON_STATE: Dict[str, Any] = {"enabled": False, "interval_hours": None, "last
                                  "runs_while": "this server process is running", "covers": "SDK, API and Terraform (never the tenant API watch)"}
 
 
-def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: str = "") -> Optional[Dict[str, Any]]:
+# The operator's Stop for the tenant API watch (POST /api/beacon/stop):
+# checked before every endpoint and inside a request, so nothing more is
+# read once it is set (user rule 4). Cleared when a run starts.
+_BEACON_STOP = threading.Event()
+
+
+def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: str = "",
+                       scope: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """One Beacon run by a caller that already holds beacon.RUN_LOCK; the
-    lock is released here, whatever happens. Keeps the timer state."""
+    lock is released here, whatever happens. Keeps the timer state. A
+    tenant watch reads only `scope`'s endpoints (beacon_scope.select)."""
     import beacon
     _BEACON_STATE.update({"running": True, "running_since": datetime.now(timezone.utc).isoformat(timespec="seconds"), "running_trigger": trigger})
     try:
-        snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger)
-        _BEACON_STATE.update({"last_status": "error" if snap.get("error") else "ok", "last_error": snap.get("error")})
+        if client is not None:
+            snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger, tenant_scope=scope,
+                              stop=_BEACON_STOP.is_set)
+        else:
+            snap = beacon.run(online=online, tenant_client=None, tenant_label=label, trigger=trigger)
+        problem = beacon.watch_problem(snap.get("tenant"))   # read nothing: error; stopped early: partial
+        if snap.get("error"):
+            status, err = "error", snap["error"]
+        elif problem:
+            status, err = problem
+        else:
+            status, err = "ok", None
+        _BEACON_STATE.update({"last_status": status, "last_error": err})
         return snap
     except Exception as e:  # noqa: BLE001 — a failed run is reported on the tab, never raised into the server
         _BEACON_STATE.update({"last_status": "error", "last_error": f"{type(e).__name__}: {str(e)[:200]}"})
@@ -2985,14 +3308,16 @@ def _beacon_run_blocking(online: bool, trigger: str) -> Optional[Dict[str, Any]]
     return _beacon_run_locked(online, trigger)
 
 
-def _beacon_start_background(online: bool, trigger: str, client: Any = None, label: str = "") -> bool:
+def _beacon_start_background(online: bool, trigger: str, client: Any = None, label: str = "",
+                             scope: Optional[Dict[str, Any]] = None) -> bool:
     """Start a run on its own thread; False when one is already running."""
     import beacon
     import threading
     if not beacon.RUN_LOCK.acquire(blocking=False):
         return False
+    _BEACON_STOP.clear()   # a Stop meant for an earlier run never ends this one
     try:
-        threading.Thread(target=_beacon_run_locked, args=(online, trigger, client, label), name="beacon-run", daemon=True).start()
+        threading.Thread(target=_beacon_run_locked, args=(online, trigger, client, label, scope), name="beacon-run", daemon=True).start()
     except Exception:
         beacon.RUN_LOCK.release()
         raise
@@ -3060,13 +3385,81 @@ def _beacon_timer() -> Dict[str, Any]:
 class BeaconRunRequest(TenantCredsRequest):
     """Body of POST /api/beacon/run. `online` reads PyPI, the Terraform
     registry, the provider's docs and Zscaler's pages (false: the installed
-    SDK and the committed Terraform only). `tenant_watch` also GETs every
-    endpoint the app reads from the tenant the credentials name (blank
-    fields fall back to the saved profile, the environment or
-    tenant_config.json, like every tenant call)."""
+    SDK and the committed Terraform only). `tenant_watch` also GETs, from
+    the tenant the credentials name (blank fields fall back to the saved
+    profile, the environment or tenant_config.json, like every tenant
+    call), only the endpoints that belong to what is in scope: `scopes`
+    (the Scope page's ticked .scope-cb keys) and `channels` (its channel
+    declaration; only "zscaler" counts). When the body carries neither,
+    the profile's saved scopes and channels are used, unless `from_page`
+    says the Scope page's ticks are known (then empty is empty); with
+    nothing in scope the watch is refused (400), never widened to every
+    endpoint."""
     online: bool = True
     tenant_watch: bool = False
     customer_id: str = ""   # ZPA endpoints are probed only with one
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False   # the Scope page's ticks are known: nothing ticked is nothing in scope
+
+
+class BeaconScopeRequest(TenantCredsRequest):
+    """Body of POST /api/beacon/scope: the same selection and credential
+    fields as a run, so the preview judges the sign-in the run will use."""
+    customer_id: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+def _beacon_readable(sel: Dict[str, Any], req: Any) -> None:
+    """400 when the sign-in these credentials resolve to (without signing
+    in) can read none of the endpoints in scope: the classic ZIA API
+    sign-in with only non-ZIA scopes, or only ZPA without a customer id."""
+    import beacon_scope
+    try:
+        creds = _tenant_creds(req)
+    except Exception:  # noqa: BLE001 — bad credentials are refused by the sign-in itself
+        return
+    why = beacon_scope.nothing_readable(sel, creds.get("auth_method") == tenant_auth.LEGACY, creds.get("customer_id") or "")
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+
+
+def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "", from_page: bool = False) -> Dict[str, Any]:
+    """What the tenant API watch would read: the page's selection, else
+    (only when the page sent nothing at all and does not know the Scope
+    page's ticks) the saved profile's. The two are never mixed, so the
+    profile cannot widen what the page chose, and every scope unticked on
+    the Scope page is nothing in scope, not the profile's selection.
+    Raises HTTPException 400 when nothing is in scope. Never reads a
+    tenant."""
+    import beacon_scope
+    import channel_scope
+    src = []
+    sc = beacon_scope.normalize_scopes(scopes)
+    ch = channels if channel_scope.normalize(channels) else {}
+    if sc or ch or from_page:
+        src.append("the Scope page")
+    elif profile_id:
+        try:
+            import tenant_profiles
+            prof = tenant_profiles.get(profile_id) or {}
+        except Exception:  # noqa: BLE001 — an unreadable profile store is no selection
+            prof = {}
+        sc = beacon_scope.normalize_scopes(prof.get("scopes"))
+        ch = prof.get("channels") if channel_scope.normalize(prof.get("channels")) else {}
+        if sc or ch:
+            src.append(f"the saved profile {prof.get('name') or profile_id}")
+    if not sc and not ch:
+        raise HTTPException(status_code=400, detail=beacon_scope.NOTHING_IN_SCOPE)
+    sel = beacon_scope.select(sc, ch)
+    sel["source"] = " and ".join(src)
+    if not sel["endpoints"]:
+        chosen = sel["summary"].split(" for ", 1)[-1] if sel["scopes"] else ""
+        raise HTTPException(status_code=400, detail=beacon_scope.NOTHING_IN_SCOPE + (
+            f" What is chosen ({chosen}) reads no tenant endpoint the watch covers." if chosen else ""))
+    return sel
 
 
 @app.get("/api/beacon")
@@ -3109,22 +3502,58 @@ async def beacon_status(refresh: bool = False):
 @app.post("/api/beacon/run")
 async def beacon_run(req: BeaconRunRequest):
     """Start a Beacon run in the background; GET /api/beacon shows it when
-    it is done. With `tenant_watch`, the credentials are checked and signed
-    in first (a refusal is answered here, secrets masked) and the tenant
-    is then only read: GET, about one request a second."""
+    it is done. With `tenant_watch`, what is in scope is worked out first
+    (nothing in scope: 400, before any sign-in), then the credentials are
+    checked and signed in (a refusal is answered here, secrets masked) and
+    the tenant is only read: GET, about one request a second, and only
+    the endpoints in scope."""
     import beacon
+    import beacon_scope
     if _BEACON_STATE["running"] or beacon.RUN_LOCK.locked():
         raise HTTPException(status_code=409, detail=f"A Beacon run is already in progress (started {_BEACON_STATE.get('running_since') or 'just now'}); wait for it to finish.")
-    client, label = None, ""
+    client, label, sel = None, "", None
     if req.tenant_watch:
+        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id, req.from_page)
+        await asyncio.to_thread(_beacon_readable, sel, req)   # nothing readable with this sign-in: 400, no sign-in
         client = await asyncio.to_thread(_build_client, req)   # validates every field; 400/401 without echoing a secret
-        label = tenant_auth.label(_tenant_creds(req))
-    if not _beacon_start_background(bool(req.online), "manual", client, label):
+        label = tenant_auth.record_label(_tenant_creds(req))   # never the classic API's admin login (user rule 3)
+    if not _beacon_start_background(bool(req.online), "manual", client, label, sel):
         if client is not None:
             client.close()
         raise HTTPException(status_code=409, detail="A Beacon run is already in progress; wait for it to finish.")
     return {"started": True, "online": bool(req.online), "tenant_watch": bool(req.tenant_watch), "tenant": label or None,
-            "endpoints": len(beacon.tenant_endpoints()) if req.tenant_watch else 0}
+            "endpoints": len(sel["endpoints"]) if sel else 0,
+            "scope": beacon_scope.describe(sel, sel["source"]) if sel else None}
+
+
+@app.post("/api/beacon/stop")
+async def beacon_stop():
+    """Stop the running tenant API watch: no further endpoint is read and
+    a request waiting out ZIA's rate limit is not sent. What was read is
+    kept as a watch that stopped early. The upstream watchers are not
+    tenant reads and finish on their own."""
+    import beacon
+    running = bool(_BEACON_STATE["running"] or beacon.RUN_LOCK.locked())
+    if running:
+        _BEACON_STOP.set()
+    return {"stopping": running, "running": running}
+
+
+@app.post("/api/beacon/scope")
+async def beacon_scope_preview(req: BeaconScopeRequest):
+    """What the tenant API watch would read for this selection (the Scope
+    page's, else the profile's): how many endpoints, for which scopes and
+    channels, and which are not in scope. The same checks as a run with
+    the same body, including whether the sign-in it resolves to (typed,
+    profile, environment or tenant_config.json; never signed in to) can
+    read any of it. Reads no tenant."""
+    import beacon_scope
+    try:
+        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id, req.from_page)
+        await asyncio.to_thread(_beacon_readable, sel, req)
+    except HTTPException as e:
+        return {"ok": False, "detail": e.detail, "endpoints": 0}
+    return {"ok": True, **beacon_scope.describe(sel, sel["source"])}
 
 
 @app.get("/report/beacon")
@@ -3680,7 +4109,8 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
             headers={"Content-Disposition": f'attachment; filename="{fname_base}.md"'},
         )
     else:  # CSV (default)
-        import csv, io
+        import io
+        import csv_safe
         buf = io.StringIO()
         # Determine all framework keys
         fw_keys = []
@@ -3689,7 +4119,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
             fw_keys = sorted(FRAMEWORK_DESCRIPTIONS.keys())
         except Exception:
             pass
-        writer = csv.writer(buf)
+        writer = csv_safe.writer(buf)
         writer.writerow(["Check ID", "Section", "Description"] + fw_keys)
         for id, sec, label, _ in all_checks:
             comp = get_compliance_for_check(id)
@@ -3785,8 +4215,9 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
         return JSONResponse(rep, headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.json"'})
     keys = rep.get("frameworks_selected") or list(rep.get("summary") or {})
     if format == "csv":
-        import csv, io
-        buf = io.StringIO(); w = csv.writer(buf)
+        import io
+        import csv_safe
+        buf = io.StringIO(); w = csv_safe.writer(buf)
         w.writerow(["framework", "control", "status", "passing", "failing", "review", "not_applicable", "evidence_check_ids"])
         for k in keys:
             d = (rep.get("drilldown") or {}).get(k) or {}
@@ -4008,8 +4439,10 @@ async def dlp_efficacy(req: MigrateRequest):
     """Score every custom DLP dictionary and engine on the tenant.
 
     Static analysis only — no user content, no outbound calls beyond
-    the three read-only endpoints the assessment already uses
-    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
+    the read-only endpoints the assessment already uses
+    (/zia/dlpDictionaries, /zia/dlpEngines, and /zia/webDlpRules only when
+    Inline Web DLP is marked Zscaler on the Scope page). DLP must be ticked
+    on the Scope page (else 400, nothing read).
 
     Returns per-item 0–100 score + letter grade + specific reasons
     + remediation steps, plus orphan detection and tenant-wide
@@ -4018,8 +4451,9 @@ async def dlp_efficacy(req: MigrateRequest):
         from dlp_efficacy import analyze
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    sel = _require_in_scope(req, "dlp", "DLP efficacy")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(analyze, client)
+    return await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
 
 
 class DlpEfficacyExportRequest(MigrateRequest):
@@ -4040,8 +4474,9 @@ async def dlp_efficacy_export(req: DlpEfficacyExportRequest):
         from dlp_efficacy import analyze, export
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    sel = _require_in_scope(req, "dlp", "DLP efficacy")
     client = await asyncio.to_thread(_build_client, req)
-    analysis = await asyncio.to_thread(analyze, client)
+    analysis = await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
     try:
         body, mime, filename = await asyncio.to_thread(export, analysis, req.format)
     except ValueError as e:
@@ -4062,18 +4497,26 @@ async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
     """Test a user-supplied text sample against every custom
     dictionary's phrases + regex patterns. Runs locally with stdlib
     re — the corpus never leaves this server, never reaches Zscaler,
-    never leaves this machine. 256 KB hard cap on input."""
+    never leaves this machine. 256 KB hard cap on input. The tenant is
+    still signed in to and read for the dictionaries and engines (and the
+    Web DLP rules when Inline Web DLP is marked Zscaler), so DLP must be
+    ticked on the Scope page (else 400, nothing read)."""
     try:
         from dlp_efficacy import corpus_test
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    sel = _require_in_scope(req, "dlp", "The DLP corpus test")
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(
-        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
+        corpus_test, client, req.corpus or "", int(req.max_dicts or 200), "web_dlp" in sel["on_zscaler"]
     )
 
 
 # ── Step 1: Assess Current Status ─────────────────────────────────
+# Every step that signs in reads (or writes) the Inline Web DLP rules: DLP
+# ticked and Inline Web DLP marked Zscaler on the Scope page, else 400.
+MIGRATE_WHAT = "The Evaluate All Rules migration (Inline Web DLP rules)"
+
 @app.post("/api/migrate/status")
 async def migrate_status(req: MigrateRequest):
     """Step 1: Determine whether tenant is in First-Match-Wins or Evaluate All Rules mode."""
@@ -4081,6 +4524,7 @@ async def migrate_status(req: MigrateRequest):
         from rule_migrator import assess_current_status
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(assess_current_status, client)
     result["mode_source"] = "auto_detected" if result.get("found_via") else "api_unknown"
@@ -4105,6 +4549,7 @@ async def migrate_status_manual(req: ManualModeRequest):
     if m not in ("rule_order", "evaluate_all_rules"):
         raise HTTPException(status_code=400,
                             detail="mode must be 'rule_order' or 'evaluate_all_rules'")
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     # Still run the real assessment (to get rule counts, posture) but OVERRIDE the mode.
     base = await asyncio.to_thread(assess_current_status, client)
@@ -4130,6 +4575,7 @@ async def migrate_fetch(req: MigrateRequest):
         from rule_migrator import fetch_current_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     rules = await asyncio.to_thread(fetch_current_rules, client, "web_dlp")
     return {"rule_type": "web_dlp", "count": len(rules), "rules": rules}
@@ -4169,6 +4615,7 @@ async def migrate_enable(req: EnableRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _security.require_writer()
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
 
@@ -4188,6 +4635,7 @@ async def migrate_delete_all(req: DeleteAllRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _security.require_writer()
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
 
@@ -4216,6 +4664,7 @@ async def migrate_post(req: PostRequest):
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     if not req.dry_run:
         _security.require_writer()
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
 
@@ -4333,6 +4782,11 @@ async def migrate_export(request: Request, format: str = "json"):
     )
 
 
+# The legacy single `scope` values _get_checks knows (MCP / CLI callers).
+_LEGACY_SCOPES = frozenset({"full", "all", "automation", "zdx", "zidentity", "rbac", "zia", "zpa", "zcc", "dlp"})
+_LEGACY_DLP_SCOPES = frozenset({"full", "all", "zia", "dlp"})   # legacy scopes whose checks include the DLP ones
+
+
 def _get_checks(scope: str = "dlp", scopes: list = None):
     """Get the check list for the given scope or list of scopes."""
     if scopes:
@@ -4411,24 +4865,52 @@ async def assess_stream(req: AssessRequest):
             profile = None
         if profile:
             req.org_name = req.org_name if req.org_name not in ("", "Unknown") else (profile.get("org_name") or req.org_name)
+    # Nothing is assessed unless it was put in scope: no `scopes` and no
+    # legacy `scope` set on purpose (an MCP or CLI caller) is refused, never
+    # read as "everything".
+    # A legacy `scope` must name a scope, and `scopes` must select a known
+    # one: an empty, blank or unknown choice is refused before any sign-in,
+    # never read as the DLP default.
+    _nothing = "Nothing to assess: choose what to assess on the Scope page, then run the assessment."
+    if not req.scopes and ("scope" not in req.model_fields_set or str(req.scope or "").strip() not in _LEGACY_SCOPES):
+        raise HTTPException(status_code=400, detail=_nothing)
     # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
     creds = _validate_creds(_tenant_creds(req))
     cloud, vd = creds["cloud"], creds["vanity_domain"]
-    checks = _get_checks(req.scope, req.scopes)
-    # The Scope page's channel ownership: a channel covered by an alternative
-    # solution has its checks reported as not in scope instead of read
-    # (channel_scope); the rest run. The findings keep their section order.
+    checks = _get_checks(str(req.scope or "").strip(), req.scopes)
+    if not checks:
+        raise HTTPException(status_code=400, detail=_nothing)
+    # The Scope page's channel ownership: only a channel marked Zscaler is
+    # read; an alternative or a gap has its checks reported as not in scope
+    # (channel_scope). The findings keep their section order.
     import channel_scope as _chs
     checks, skipped_checks, check_order = _chs.partition(checks, req.channels)
+    if not checks:
+        # Every check in the chosen scopes belongs to a channel that is not
+        # ticked: signing in would read nothing, so say what to tick instead.
+        names = sorted({str(r.get("channel_name") or _chs.CHANNELS.get(r.get("channel"), r.get("channel")) or "") for r in skipped_checks} - {""})
+        raise HTTPException(status_code=400, detail=(
+            "Nothing to assess: every check in the chosen scope belongs to a channel that is not ticked as Zscaler on the "
+            f"Scope page ({', '.join(names) or 'none ticked'}). Tick the channel, then run the assessment."))
     total_all = len(checks) + len(skipped_checks)
-    # The journey (pack deficiencies) is measured against the profile's
-    # packs, or the packs of its industry when none are ticked.
+    # The profile's industry: the frameworks and packs the suggestions are limited to.
     import vertical as _vertical
     _scope = _vertical.scope_for(profile, all_packs=[p["id"] for p in __import__("dlp_importer").discover_packs()])
-    journey_pack_ids = list(_scope["packs"]) if _scope["scoped"] else [str(b) for b in (profile or {}).get("baseline_packs") or []]
+    # The journey (pack deficiencies) reads the tenant too, so it runs only
+    # when DLP is in scope, only for the packs ticked on the profile (never
+    # a default set) and only on their channels marked Zscaler.
+    journey_pack_ids = [str(b) for b in (profile or {}).get("baseline_packs") or [] if b]
+    try:
+        dlp_in_scope = ("dlp" in req.scopes) if req.scopes else (str(req.scope or "").strip() in _LEGACY_DLP_SCOPES)
+        journey_packs, journey_targets = _journey_scope(journey_pack_ids, req.channels) if dlp_in_scope else ([], {})
+    except Exception:  # noqa: BLE001 — no journey rather than a failed run
+        journey_packs, journey_targets = [], {}
 
     async def event_generator():
         results = []
+        client = None
+        pool = None
+        running: set = set()   # checks whose thread has started and not yet returned
         try:
             yield _sse("auth", {"status": "authenticating", "auth_method": creds["auth_method"]})
 
@@ -4463,17 +4945,29 @@ async def assess_stream(req: AssessRequest):
             inbox: asyncio.Queue = asyncio.Queue()
             started: Dict[int, float] = {}
 
+            # The checks read through the channel guard: a GET of an unticked
+            # channel's configuration is refused without touching the tenant.
+            scoped_client = _chs.ScopedClient(client, req.channels)
+
             def _run_one(idx, check_id, section, label, fn):
                 started[idx] = time.time()
+                running.add(idx)
                 try:
-                    r = fn(client)
+                    scoped_client.begin()
+                    r = fn(scoped_client)
+                    r = _unanswered_result(r, label, scoped_client.unanswered())
                 except Exception as ex:  # noqa: BLE001
                     r = R(R.ERROR, f"{label}: Could not complete check. {str(ex)[:120]}")  # "Could not be checked", never "Not configured"
+                finally:
+                    running.discard(idx)
                 loop.call_soon_threadsafe(inbox.put_nowait, (idx, r))
 
             pool = ThreadPoolExecutor(max_workers=ASSESS_WORKERS, thread_name_prefix="assess")
             for idx, chk in enumerate(checks):
                 pool.submit(_run_one, idx, *chk)
+            # Whatever ends this stream (results in, the browser gone, Stop),
+            # the checks still queued are cancelled: no tenant read is made
+            # once nobody is listening (the finally around the loop below).
             done: Dict[int, Dict[str, Any]] = {}
             last_keepalive = time.time()
             run_started = time.time()
@@ -4492,44 +4986,51 @@ async def assess_stream(req: AssessRequest):
                 done[idx] = result
                 return result
 
-            while len(done) < len(checks):
-                landed = []
-                try:
-                    landed.append(await asyncio.wait_for(inbox.get(), timeout=1.0))
-                except asyncio.TimeoutError:
-                    pass
-                while not inbox.empty():
-                    landed.append(inbox.get_nowait())
-                now = time.time()
-                fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
-                for idx, t0 in list(started.items()):
-                    if idx not in done and now - t0 > CHECK_TIMEOUT:
-                        fresh.append(_finish(idx, R(R.ERROR, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
-                try:
-                    for result in fresh:
-                        yield _sse("check", result)
-                    if fresh:
-                        yield _sse("progress", {
-                            "total": total_all, "completed": len(done) + len(skipped_checks),
-                            "pct": round((len(done) + len(skipped_checks)) / max(total_all, 1) * 100),
-                            "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
-                            "running": len([i for i in started if i not in done]),
-                            "elapsed": round(now - run_started),
-                        })
-                    if now - last_keepalive > 10:
-                        yield ": keepalive\n\n"
-                        last_keepalive = now
-                except Exception:
-                    # Client disconnected; just keep collecting results
-                    pass
-            pool.shutdown(wait=False, cancel_futures=True)
+            try:
+                while len(done) < len(checks):
+                    landed = []
+                    try:
+                        landed.append(await asyncio.wait_for(inbox.get(), timeout=1.0))
+                    except asyncio.TimeoutError:
+                        pass
+                    while not inbox.empty():
+                        landed.append(inbox.get_nowait())
+                    now = time.time()
+                    fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
+                    for idx, t0 in list(started.items()):
+                        if idx not in done and now - t0 > CHECK_TIMEOUT:
+                            fresh.append(_finish(idx, R(R.ERROR, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
+                    try:
+                        for result in fresh:
+                            yield _sse("check", result)
+                        if fresh:
+                            yield _sse("progress", {
+                                "total": total_all, "completed": len(done) + len(skipped_checks),
+                                "pct": round((len(done) + len(skipped_checks)) / max(total_all, 1) * 100),
+                                "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
+                                "running": len([i for i in started if i not in done]),
+                                "elapsed": round(now - run_started),
+                            })
+                        if now - last_keepalive > 10:
+                            yield ": keepalive\n\n"
+                            last_keepalive = now
+                    except Exception:  # noqa: BLE001 — a failed write; a disconnect closes the generator (finally below)
+                        pass
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
+                _stop_reads(client)   # a check still running (timed out, or Stop) reads nothing more
+            # The checks' own session ends as soon as the checks are in (a
+            # classic ZIA API admin session stays open otherwise).
+            api_requests = getattr(client, "requests_made", None)
+            await _end_checks_session(client, pool, running)
+            client = None
             results = _chs.merge(check_order, [done[i] for i in range(len(checks))], skipped_checks)
 
             # Results first: the report goes out as soon as the checks are
             # in. The data-governance journey (one read-only preflight per
-            # baseline pack) follows as its own event so nobody waits on it.
-            want_journey = bool(_journey_packs(journey_pack_ids)) and (
-                not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"))
+            # chosen pack, on its channels in scope) follows as its own event
+            # so nobody waits on it.
+            want_journey = bool(journey_packs)
 
             try:
                 secs, overall = compute(results)
@@ -4547,7 +5048,7 @@ async def assess_stream(req: AssessRequest):
                     "total_checks": total_all,
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
                     "elapsed_seconds": round(time.time() - run_started, 1),
-                    "api_requests": getattr(client, "requests_made", None),
+                    "api_requests": api_requests,
                 },
                 "score": overall,
                 "maturity": maturity(overall),
@@ -4595,8 +5096,11 @@ async def assess_stream(req: AssessRequest):
 
             if want_journey:
                 journey = None
+                sdk = None
+                task = None
+                stop = threading.Event()   # set when the run ends: the journey makes no further tenant read
                 try:
-                    packs = _journey_packs(journey_pack_ids)
+                    packs = journey_packs
                     yield _sse("progress", {"total": total_all, "completed": total_all, "pct": 100,
                                             "current": f"Data governance journey: measuring the tenant against {len(packs)} policy packs"})
                     sdk = await asyncio.to_thread(_build_sdk_client, creds)
@@ -4605,7 +5109,7 @@ async def assess_stream(req: AssessRequest):
                     def _note(i, n, pack_id):
                         loop.call_soon_threadsafe(notes.put_nowait, (i, n, pack_id))
 
-                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, progress=_note))
+                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, channel_targets=journey_targets, progress=_note, stop=stop))
                     deadline = time.time() + JOURNEY_TIMEOUT
                     while not task.done():
                         if time.time() > deadline:
@@ -4620,6 +5124,17 @@ async def assess_stream(req: AssessRequest):
                     journey["tenant_label"] = tenant_auth.record_label(creds)
                 except Exception as ex:  # noqa: BLE001
                     journey = {"status": "error", "error": tenant_auth.mask_secrets(str(ex), creds)[:200]}
+                finally:
+                    # Timed out, failed or nobody listening: the journey stops
+                    # before its next tenant read, and its session (a classic
+                    # ZIA API one stays open otherwise) is ended only once the
+                    # journey thread has stopped using it.
+                    stop.set()
+                    if sdk is not None:
+                        if task is not None and not task.done():
+                            task.add_done_callback(_close_when_done(sdk))
+                        else:
+                            await asyncio.to_thread(_close_quietly, sdk)
                 report["journey"] = journey
                 report["profile"] = _record_history(report)
                 yield _sse("journey", {"journey": journey, "profile": report["profile"]})
@@ -4627,6 +5142,14 @@ async def assess_stream(req: AssessRequest):
         except Exception as e:
             # Catch-all: never let the generator crash the stream
             yield _sse("error", {"message": f"Server error: {str(e)[:200]}"})
+        finally:
+            # Failed sign-in, error or the browser gone: the checks' session
+            # is still ended (once no check thread is using it).
+            if pool is not None:
+                pool.shutdown(wait=False, cancel_futures=True)
+            if client is not None:
+                _stop_reads(client)
+                await _end_checks_session(client, pool, running)
 
     return StreamingResponse(
         event_generator(),
@@ -4801,21 +5324,70 @@ async def report_bypass_export_cached(report_id: str, format: str = "csv"):
     return await _bypass_export_response(rep, format)
 
 
+def _report_label(req: Any) -> str:
+    """How a kept report names its tenant: tenant_auth.record_label of the
+    resolved sign-in, so a classic-API tenant is 'classic API (cloud)' and
+    neither its admin login nor a vanity domain left in the form (the page
+    sends the field whatever the sign-in) reaches the report or its exports
+    (user rule 3)."""
+    return tenant_auth.record_label(_tenant_creds(req))
+
+
+class ScopedReportRequest(MigrateRequest):
+    """A report that reads the tenant (Bypass, SSL inspection flow): what
+    is in scope, as for the Path analyzer and the Data Flow Map — the Scope
+    page's ticked `scopes` and channel declaration (`channels`), else
+    (nothing sent and `from_page` false) the chosen profile's saved
+    selection. Nothing in scope is refused before sign-in (user rule 1)."""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+def _bypass_report_scope(req: Any) -> Dict[str, Any]:
+    """What the Bypass report may read (bypass_report.bypass_scope of
+    _scope_selection); HTTPException 400 when nothing is in scope. Never
+    reads a tenant."""
+    import bypass_report
+    sc, ch, source = _scope_selection(req)
+    sel = bypass_report.bypass_scope(sc, ch)
+    if not sel["read"]:
+        raise HTTPException(status_code=400, detail=bypass_report.NOTHING_IN_SCOPE)
+    sel["source"] = source
+    return sel
+
+
+def _ssl_flow_scope(req: Any) -> Dict[str, Any]:
+    """What the SSL inspection flow may read (data_flow.path_scope of
+    _scope_selection). It walks the SSL inspection rules, so it is refused
+    (400) unless they are in scope. Never reads a tenant."""
+    import data_flow
+    import ssl_flow
+    sc, ch, source = _scope_selection(req)
+    sel = data_flow.path_scope(sc, ch)
+    if "ssl" not in sel["read"]:
+        raise HTTPException(status_code=400, detail=ssl_flow.NOTHING_IN_SCOPE)
+    sel["source"] = source
+    return sel
+
+
 @app.post("/api/report/bypass")
-async def report_bypass(req: MigrateRequest):
-    """Generate the bypass-inventory report (JSON). Read-only. The response
-    carries report_id for /report/bypass?id=... and the export links."""
+async def report_bypass(req: ScopedReportRequest):
+    """Generate the bypass-inventory report (JSON). Read-only, and only
+    what is in scope on the Scope page is read. The response carries
+    report_id for /report/bypass?id=... and the export links."""
     try:
         from bypass_report import generate_bypass_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    scope = _bypass_report_scope(req)   # refused here, before signing in, when nothing is in scope
     client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_bypass_report, client)
-    rid = _remember_report("bypass", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    report = await asyncio.to_thread(generate_bypass_report, client, scope)
+    rid = _remember_report("bypass", report, _report_label(req))
     return _REPORTS[rid]
 
 
-class BypassExportRequest(MigrateRequest):
+class BypassExportRequest(ScopedReportRequest):
     format: str = "csv"  # csv | markdown | json | docx
 
 
@@ -4856,8 +5428,15 @@ async def _bypass_export_response(report: Dict[str, Any], fmt: str):
 
 # ── Data Flow Map (the exact path a transaction takes through the tenant) ──────
 class DataFlowRequest(MigrateRequest):
+    """Body of the Data Flow Map. What is in scope, as for the Path
+    analyzer: the Scope page's ticked `scopes` and channel declaration
+    (`channels`), else (nothing sent and `from_page` false) the chosen
+    profile's saved selection; nothing in scope is refused before sign-in."""
     destinations: List[str] = []      # traffic-class keys, app names, category ids or hostnames; [] = every traffic class
     platform: str = "windows"
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
 class DataFlowTraceRequest(BaseModel):
@@ -4889,21 +5468,25 @@ async def report_data_flow(req: DataFlowRequest):
     Read-only; carries report_id for /report/dataflow?id=... and the
     exports."""
     try:
+        import data_flow
         from data_flow import generate_data_flow_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"data_flow unavailable: {e}")
+    # Only what the Scope page puts in scope is read (user rule 1); nothing
+    # in scope is refused here, before signing in.
+    scope = _path_scope(req, data_flow.MAP_NOTHING_IN_SCOPE)
     client = await asyncio.to_thread(_build_client, req)
     plat = req.platform if req.platform in ("windows", "macos", "ios", "android", "linux") else "windows"
     dests = [str(d)[:200] for d in (req.destinations or [])][:40]
     try:
-        report = await asyncio.to_thread(generate_data_flow_report, client, dests or None, plat)
+        report = await asyncio.to_thread(lambda: generate_data_flow_report(client, dests or None, plat, scope=scope))
     except Exception as e:  # noqa: BLE001
         # The tracer's own failure is not a secret: name it so the tab can
         # say what went wrong instead of "internal error".
         import traceback
         print(f"[error] data flow map: {type(e).__name__}: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"The tracer failed ({type(e).__name__}: {str(e)[:300]}). The full traceback is in server.log; please report it.")
-    rid = _remember_report("dataflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    rid = _remember_report("dataflow", report, _report_label(req))
     return _REPORTS[rid]
 
 
@@ -4931,18 +5514,99 @@ async def report_path_page():
 
 class PathAnalyzerRequest(MigrateRequest):
     """Body of the Path Analyzer: what the user would type, the network the
-    device is on, the platform, and optionally the id of a tenant read to
-    reuse (a Data Flow Map or an earlier analysis)."""
+    device is on, the platform, optionally the id of a tenant read to
+    reuse (an earlier analysis for the same scope), and what is in scope:
+    the Scope page's ticked `scopes` and its channel declaration
+    (`channels`, {id: choice}). With neither, and `from_page` false, the
+    chosen profile's saved selection is used; with nothing in scope the
+    request is refused before anything is read."""
     destination: str = ""
     network: str = "off"
     platform: str = "windows"
     report_id: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
-def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel) -> Dict[str, Any]:
+def _scope_selection(req: Any) -> Tuple[List[str], Dict[str, Any], str]:
+    """The Scope page selection a tenant read honours: (scopes, channels,
+    source). The page's selection (`scopes`, `channels`, `from_page`),
+    else (only when the page sent nothing at all and does not know the
+    Scope page's ticks) the saved profile's. The two are never mixed, so
+    the profile cannot widen what the page chose. Never reads a tenant."""
+    import channel_scope
+    sc = [str(x) for x in (getattr(req, "scopes", None) or [])]
+    raw = getattr(req, "channels", None)
+    ch = raw if channel_scope.normalize(raw) else {}
+    source = ""
+    pid = getattr(req, "profile_id", "") or ""
+    if sc or ch or getattr(req, "from_page", False):
+        source = "the Scope page"
+    elif pid:
+        try:
+            import tenant_profiles
+            prof = tenant_profiles.get(pid) or {}
+        except Exception:  # noqa: BLE001 — an unreadable profile store is no selection
+            prof = {}
+        sc = [str(x) for x in (prof.get("scopes") or [])]
+        ch = prof.get("channels") if channel_scope.normalize(prof.get("channels")) else {}
+        if sc or ch:
+            source = f"the saved profile {prof.get('name') or pid}"
+    return sc, ch, source
+
+
+def _require_in_scope(req: Any, scope: str, what: str, channel: str = "") -> Dict[str, Any]:
+    """The Scope page selection (_scope_selection) for a tool that reads
+    only when `scope` is ticked and, with `channel`, that channel is marked
+    Zscaler; else HTTPException 400 before anything is signed in to or read
+    (user rule 1). Returns {scopes, channels, source, on_zscaler}."""
+    import channel_scope
+    import data_flow
+    sc, ch, source = _scope_selection(req)
+    on = channel_scope.in_scope(ch)
+    label = data_flow.SCOPE_LABELS.get(scope, scope)
+    if scope not in sc:
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: on the Scope page tick {label}, then run it again. Nothing was read.")
+    if channel and channel not in on:
+        name = channel_scope.CHANNELS.get(channel, channel)
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: on the Scope page mark {name} as Zscaler, then run it again. Nothing was read.")
+    return {"scopes": sc, "channels": ch, "source": source, "on_zscaler": on}
+
+
+def _pack_channels_in_scope(req: Any, what: str) -> List[str]:
+    """The pack channels (web / endpoint / saas / email) the Scope page puts
+    in scope: DLP ticked and the channel marked Zscaler. 400 when none is."""
+    import channel_scope
+    sel = _require_in_scope(req, "dlp", what)
+    targets = channel_scope.pack_targets(sel["channels"])
+    if not targets:
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: on the Scope page mark at least one DLP channel "
+                                                    "(Inline Web, Endpoint, SaaS or Email DLP) as Zscaler. Nothing was read.")
+    return targets
+
+
+def _path_scope(req: Any, nothing: str = "") -> Dict[str, Any]:
+    """What the Path analyzer (or the Data Flow Map, which reads through
+    the same tracer) may read: data_flow.path_scope of _scope_selection.
+    Raises HTTPException 400 (`nothing`, else the analyzer's message) when
+    nothing it reads is in scope. Never reads a tenant."""
+    import data_flow
+    sc, ch, source = _scope_selection(req)
+    sel = data_flow.path_scope(sc, ch)
+    if not sel["read"]:
+        raise HTTPException(status_code=400, detail=nothing or data_flow.NOTHING_IN_SCOPE)
+    sel["source"] = source
+    return sel
+
+
+def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
     """The analysis itself, shared by the job the page follows and the
-    waiting endpoint. A fresh tenant read is remembered as a Data Flow
-    Map report so the next destination reuses it (`report_id`)."""
+    waiting endpoint. Reads only what `scope` puts in scope. A fresh
+    tenant read is remembered as a Data Flow Map report, stamped with its
+    scope, so the next destination reuses it only for the same scope
+    (`report_id`). Stop (`cancel`) ends the job as stopped: nothing more
+    is read, nothing is kept and no partial result is returned."""
     import path_analyzer
     logs: list = []
 
@@ -4951,13 +5615,23 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
         if log:
             log(line)
 
-    out = path_analyzer.analyze(client, req.destination, req.network, req.platform, snapshot=snapshot, log=_log,
-                                cancel=(lambda: cancel.is_set()) if cancel is not None else None)
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: {scope['summary']}")
+    try:
+        out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel)
+    except path_analyzer.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        # Stop arrived as the last step finished: the run still ends as
+        # stopped, and the read is not kept for the next destination.
+        _log("STOPPED — you clicked Stop; the analysis was abandoned and its read is not kept.")
+        return {"stopped": path_analyzer.STOPPED_REASON, "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     cache = out.pop("snapshot_for_cache", None)
     if cache is not None:
         rid = _remember_report("dataflow", {"summary": {}, "platform": out["platform"], "networks": path_analyzer.NETWORKS, "platforms": path_analyzer.PLATFORMS,
                                             "destinations": [], "traces": [], "packs": [], "diagnostics": cache.get("diagnostics") or [],
-                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {}}, label)
+                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {},
+                                            "path_scope": cache.get("path_scope")}, label)
         out["report_id"] = rid
     else:
         out["report_id"] = req.report_id
@@ -4972,29 +5646,34 @@ async def _path_analysis_inputs(req: PathAnalyzerRequest):
         path_analyzer.parse_destination(req.destination)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
     snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
+    if snapshot is not None and not path_analyzer.reusable(snapshot, scope):
+        snapshot = None        # a read for another scope is never reused (analyze says so in the log)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_client, req)
-    return client, snapshot, tenant_auth.label(creds)
+    return client, snapshot, tenant_auth.record_label(creds), scope   # never the classic API's admin login (user rule 3)
 
 
 @app.post("/api/path-analyzer/start")
-async def path_analyzer_start(req: PathAnalyzerRequest):
+async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
     """Start the Path Analyzer as a job the page follows (the first run
-    reads the tenant, a minute of API calls; later runs reuse that read
-    through `report_id` and only look the destination up). Poll
-    GET /api/dlp-packs/jobs/{job_id}."""
+    reads the tenant, only what is in scope on the Scope page; later runs
+    for the same scope reuse that read through `report_id` and only look
+    the destination up). Stop ends the job as cancelled with nothing more
+    read. Poll GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
-    client, snapshot, label = await _path_analysis_inputs(req)
-    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel), label=req.destination[:80])
+    client, snapshot, label, scope = await _path_analysis_inputs(req)
+    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel, scope), label=req.destination[:80],
+                          start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
 @app.post("/api/path-analyzer")
 async def path_analyzer_run(req: PathAnalyzerRequest):
     """The same analysis, waited for (for scripts)."""
-    client, snapshot, label = await _path_analysis_inputs(req)
-    return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None)
+    client, snapshot, label, scope = await _path_analysis_inputs(req)
+    return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None, scope)
 
 
 @app.get("/api/report/data-flow/{report_id}")
@@ -5044,17 +5723,20 @@ async def report_sslflow_page():
 
 
 @app.post("/api/report/ssl-flow")
-async def report_ssl_flow(req: MigrateRequest):
+async def report_ssl_flow(req: ScopedReportRequest):
     """Walk the SSL inspection rules per DLP-relevant traffic class, map the
-    inline Web DLP rules over them and list the gaps. Read-only; the
-    response carries report_id for /report/sslflow?id=... and exports."""
+    inline Web DLP rules over them and list the gaps. Read-only, and only
+    what is in scope on the Scope page is read (Web DLP rules and Client
+    Connector bypasses only when in scope); the response carries report_id
+    for /report/sslflow?id=... and exports."""
     try:
         from ssl_flow import generate_ssl_flow_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ssl_flow unavailable: {e}")
+    scope = _ssl_flow_scope(req)   # refused here, before signing in, when the SSL rules are not in scope
     client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_ssl_flow_report, client)
-    rid = _remember_report("sslflow", report, f"{req.vanity_domain or '?'} ({req.cloud or 'production'})")
+    report = await asyncio.to_thread(generate_ssl_flow_report, client, scope)
+    rid = _remember_report("sslflow", report, _report_label(req))
     return _REPORTS[rid]
 
 
@@ -5089,13 +5771,15 @@ async def report_ssl_flow_export(report_id: str, format: str = "csv"):
 
 @app.post("/api/report/bypass/export")
 async def report_bypass_export(req: BypassExportRequest):
-    """Generate and download the bypass report in csv / markdown / json / docx."""
+    """Generate and download the bypass report in csv / markdown / json /
+    docx; only what is in scope on the Scope page is read."""
     try:
         from bypass_report import generate_bypass_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    scope = _bypass_report_scope(req)
     client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_bypass_report, client)
+    report = await asyncio.to_thread(generate_bypass_report, client, scope)
     return await _bypass_export_response(report, req.format)
 
 

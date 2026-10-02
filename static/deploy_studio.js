@@ -156,12 +156,21 @@ function _dzCreds() {
            auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey'),
            assessor: v('assessor').trim() };
 }
+// What is in scope on the Scope page: the rule picker and Export from tenant
+// read only the DLP channels marked Zscaler there (user rule 1).
+function _dzScope() {
+  try { return (typeof scopePageSelection === 'function') ? scopePageSelection() : {}; } catch (e) { return {}; }
+}
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
 // A pack push (deploy or Terraform hand-off) names the assessor in every
 // object it creates, never DLP-Check, so it needs the name first.
 const DZ_ASSESSOR_REQUIRED = "Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. Every object a pack creates names the assessor in its description, never DLP-Check.";
+const DZ_ASSESSOR_NOT_TOOL = "The assessor's name must name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\" in any spelling): it is part of every pushed object's description.";
 function _dzNeedAssessor() {
-  if ((_dzCreds() || {}).assessor) return;
+  const who = String((_dzCreds() || {}).assessor || '').trim();
+  // Same rule as the server and the Terraform CLI (pack_deploy.TOOL_NAME_PATTERN).
+  if (/dlp[\W_]*check/i.test(who)) throw new Error(DZ_ASSESSOR_NOT_TOOL);
+  if (who) return;
   throw new Error(DZ_ASSESSOR_REQUIRED);
 }
 const _dzN = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
@@ -871,8 +880,10 @@ function _dzUntickedChannels(ids) {
 // the page polls GET /api/dlp-packs/jobs/{id} for new log lines and the
 // elapsed time, and gets the result when the job finishes. Stop asks the
 // server to send nothing more after the write in flight.
-async function _dzStartJob(url, body) {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+async function _dzStartJob(url, body, startToken) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (startToken) headers['X-Start-Token'] = startToken;   // lets a Stop pressed before the id arrives reach the job
+  const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${r.status}`);
   if (!data.job_id) throw new Error('The server did not start the run (no job id).');
@@ -953,9 +964,35 @@ function _dzJobTick() {
   if (el) el.textContent = _dzMMSS((Date.now() - J.startedAt) / 1000);
   if (J.pausedEnd) { const ph = document.getElementById('dzJobPhase'); if (ph) ph.textContent = _dzJobPhase(J); }
 }
+// A random name for one job start, sent as X-Start-Token.
+function _dzNewStartToken() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+  let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+  return t;
+}
+// Stop was asked for the job on screen, also before its id arrived.
+function _dzStopAsked() {
+  return !!((DZ.job && DZ.job.cancelRequested) || (DZ.pendingStart && DZ.pendingStart.stop));
+}
 async function _dzCancelJob() {
-  const J = DZ.job; if (!J || !J.id) return;
+  const J = DZ.job;
   const btn = document.getElementById('dzJobStop');
+  if (!J || !J.id) {
+    // The start request is still signing in, so there is no job id yet.
+    // The server is told by the start's token: the job begins stopped (or
+    // is cancelled the moment it exists), so nothing is read or written.
+    const P = DZ.pendingStart;
+    if (!P || P.stop) return;
+    P.stop = true;
+    if (J) J.cancelRequested = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Stopping…'; }
+    try {
+      await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: P.token }) });
+    } catch (e) { /* the job is cancelled by id as soon as it arrives */ }
+    announce('Stop requested before the run started. Nothing is read or written.');
+    return;
+  }
+  if (J.cancelRequested) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Stopping…'; }
   try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(J.id)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
   J.cancelRequested = true;
@@ -963,8 +1000,21 @@ async function _dzCancelJob() {
 }
 // Run a job end to end: start it, follow it, return the finished snapshot.
 async function _dzRunJob(startUrl, body) {
-  const id = await _dzStartJob(startUrl, body);
-  DZ.job = { id, logs: [], startedAt: Date.now(), status: 'running' };
+  const pending = { token: _dzNewStartToken(), stop: false };
+  DZ.pendingStart = pending;
+  if (DZ.job && DZ.job.id) DZ.job = { logs: [] };   // a finished job's id must not take this run's Stop
+  let id;
+  try {
+    id = await _dzStartJob(startUrl, body, pending.token);
+  } finally {
+    if (DZ.pendingStart === pending) DZ.pendingStart = null;
+  }
+  // A Stop pressed while the start was signing in carries over to the job,
+  // which is also cancelled by id (the server may have started it already).
+  DZ.job = { id, logs: [], startedAt: Date.now(), status: 'running', cancelRequested: pending.stop };
+  if (pending.stop) {
+    try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+  }
   const tick = setInterval(_dzJobTick, 1000);
   try {
     return await _dzFollowJob(id, _dzJobUpdate);
@@ -1062,7 +1112,7 @@ function _dzRenderDeploy() {
       <div class="dz-progress"><div class="bar"></div></div>
       <div class="dz-card sev-info"><div class="bar"></div><div><div class="t">What is happening</div><div class="d">Dictionaries first, then engines, then rules on every channel — one answer from the tenant per line below. Then ZIA activates the changes, the app waits until ZIA reports ACTIVE (up to 45 seconds) and reads the tenant back to prove everything is there. A pack of 70 objects takes several minutes; each item is isolated, so one refusal never stops the rest. If the tenant refuses everything (someone holds the portal's edit lock, the hourly request limit is reached) the run stops at once and says why.</div></div></div>
       ${_dzJobLiveHtml('Deployment log')}`;
-    foot.innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Send nothing more after the write in flight; what was written is activated and recorded">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button><button class="dz-btn primary" disabled>Deploying…</button></div>`;
+    foot.innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''} title="Send nothing more after the write in flight; what was written is activated and recorded">${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button><button class="dz-btn primary" disabled>Deploying…</button></div>`;
     return;
   }
   if (DZ.error) {
@@ -1231,7 +1281,7 @@ async function _dzRemovePick() {
   DZ.remove = DZ.remove || {}; DZ.remove[RM_PICK] = 'busy'; _dzRenderSelect();
   let inv;
   try {
-    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds(), ..._dzScope() }) });
     inv = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
   } catch (e) {
@@ -1418,7 +1468,7 @@ function _dzRemovalBusy() {
       <div class="t">What is happening</div>
       <div class="d">Rules first, then activate; engines, then activate; dictionaries, then activate — waiting for ZIA to report ACTIVE after each activation (up to 45 seconds), because ZIA refuses to delete an engine while a rule that uses it is only pending deletion. When the last activation has settled the tenant is read again to prove nothing of the pack is left. Each line below is one answer from the tenant; a few minutes is normal.</div></div></div>
     ${_dzJobLiveHtml('Removal log')}`;
-  document.getElementById('dzFoot').innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${J.cancelRequested ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${J.cancelRequested ? 'Stopping…' : 'Stop'}</button><button class="dz-btn danger" disabled>Removing…</button></div>`;
+  document.getElementById('dzFoot').innerHTML = `<div class="dz-summary">Please keep this window open.</div><div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''} title="Delete nothing more after the delete in flight; what was deleted is activated">${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button><button class="dz-btn danger" disabled>Removing…</button></div>`;
 }
 
 function _dzRemovalDone() {
@@ -1900,7 +1950,7 @@ async function _dzExportPick() {
   DZ.exportBusy = true; _dzRenderSelect();
   let inv;
   try {
-    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds(), ..._dzScope() }) });
     inv = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
   } catch (e) {
@@ -1954,7 +2004,7 @@ function _dzExportRender() {
     document.getElementById('dzFoot').innerHTML = `
       <div class="dz-summary">${X.running ? 'Reading the tenant, then building the pack…' : 'The list above is also in pack.json under not_exported.'}</div>
       <div class="dz-actions">
-        ${X.running ? `<button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()">Stop</button>` : `<button type="button" class="dz-btn" onclick="DZ.exportPack.result=null;_dzExportRender()">← Pick again</button><button type="button" class="dz-btn primary" onclick="_dzExportClose()">Done</button>`}
+        ${X.running ? `<button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''}>${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button>` : `<button type="button" class="dz-btn" onclick="DZ.exportPack.result=null;_dzExportRender()">← Pick again</button><button type="button" class="dz-btn primary" onclick="_dzExportClose()">Done</button>`}
       </div>`;
     return;
   }
@@ -1996,7 +2046,7 @@ async function _dzExportRun() {
   }
   X.running = true; X.result = null; DZ.job = { logs: [] }; _dzExportRender();
   try {
-    const snap = await _dzRunJob('/api/dlp-packs/export/start', { rules, pack_name: X.name || '', ..._dzCreds() });
+    const snap = await _dzRunJob('/api/dlp-packs/export/start', { rules, pack_name: X.name || '', ..._dzCreds(), ..._dzScope() });
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The export ended without a result.');
     if (snap.result.status !== 'ready' || !snap.download) throw new Error(snap.result.error || snap.result.stopped || 'The export did not produce a pack.');
     const r = await fetch(snap.download, { cache: 'no-store' });
@@ -2074,8 +2124,14 @@ async function _tfToggle(id, on) {
 // picks either (TF.mode); with no pick, static is used.
 function _tfCanGap() {
   const c = _dzCreds();
-  const prof = (window.GD && GD.profile && GD.profileHasSecret);
-  return !!((c.client_id && (c.client_secret || prof)) || (c.client_id && prof));
+  const prof = !!(window.GD && GD.profile && GD.profileHasSecret);
+  const has = k => !!String(c[k] || '').trim();
+  // The chosen sign-in: the classic API needs the admin login plus its
+  // password and API key (or a profile that remembers them); OneAPI the
+  // client id plus its secret (or a remembered one). migrateCredBody blanks
+  // the other method's fields, so client_id alone never decides it.
+  if (c.auth_method === 'legacy') return has('username') && ((has('password') && has('api_key')) || prof);
+  return has('client_id') && (has('client_secret') || prof);
 }
 // Static unless the operator picks gap: gap reads the tenant, and a
 // tenant read is never chosen for them just because credentials are there.
@@ -2107,7 +2163,7 @@ function _tfRender() {
     const ch = Object.entries(s.counts.channels || {}).map(([k, v]) => `${v} ${_dzChan(k)}`).join(', ');
     const files = (s.files || []).filter(f => !f.name.startsWith('.')).map(f => `<li><code>${_dzE(f.name)}</code> <span class="d">${_dzE(f.purpose)}</span></li>`).join('');
     return `<div class="tf-sum"><div class="tf-sum-h"><b>${_dzE(s.name)}</b> <span class="d">${s.counts.dictionaries} dictionaries · ${s.counts.engines} engines · ${s.counts.rules} rules (${_dzE(ch)})${s.counts.app_groups ? ` · ${s.counts.app_groups} app group(s)` : ''}</span></div>
-      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
+      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Those files name no assessor: <code>terraform apply</code> asks for the required <code>assessor</code> variable, the name every object's description carries. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
       <details class="dz-fold"><summary>What is in the workspace (${(s.files || []).length} files)</summary><ul class="tf-files">${files}</ul></details></div>`;
   }).join('');
   host.innerHTML = `
@@ -2144,7 +2200,7 @@ function _tfRender() {
     <div class="dz-hero" style="margin-top:0.6rem;"><span class="dz-status busy">Working</span><div><div class="lead">${mode === 'gap' ? 'Reading the tenant, then building the workspace…' : 'Building the workspace…'}</div><div class="sub" id="dzJobPhase">${_dzE(_dzJobPhase(DZ.job || {}))}</div></div><div class="dz-elapsed" id="dzJobElapsed" aria-label="Elapsed">${_dzMMSS((DZ.job || {}).startedAt ? (Date.now() - DZ.job.startedAt) / 1000 : 0)}</div></div>
     <div class="dz-progress"><div class="bar"></div></div>
     ${_dzJobLiveHtml('Hand-off log')}
-    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" title="Stop reading the tenant; nothing is downloaded">Stop</button></div>` : ''}
+    <div class="dz-actions"><button type="button" class="dz-btn" id="dzJobStop" onclick="_dzCancelJob()" ${_dzStopAsked() ? 'disabled' : ''} title="Stop reading the tenant; nothing is downloaded">${_dzStopAsked() ? 'Stopping…' : 'Stop'}</button></div>` : ''}
     ${!TF.busy && TF.last ? (TF.last.status === 'ready'
       ? `<div class="dz-card sev-info" style="margin-top:0.6rem;"><div class="bar"></div><div><div class="t">Downloaded ${_dzE(TF.last.filename || 'the workspace')}</div><div class="d">${TF.last.mode === 'gap' ? `Gap mode against ${_dzE(TF.last.tenant_label || 'the tenant')}: ${_dzE(Object.entries(TF.last.gap || {}).map(([k, v]) => `${v} ${k}`).join(', ') || 'plan built')}. Objects the tenant already has are imported; the first terraform plan creates only the rest.` : 'Static mode: the whole pack, no tenant read.'} ${TF.last.elapsed_seconds ? `Took ${_dzMMSS(TF.last.elapsed_seconds)} min.` : ''}</div>
           ${(TF.last.logs || []).length ? `<details class="dz-fold"><summary>Log</summary><div class="dz-log">${_dzE(TF.last.logs.join('\n'))}</div></details>` : ''}</div></div>`

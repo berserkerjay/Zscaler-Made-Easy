@@ -71,3 +71,18 @@ def test_the_pages_ask_for_the_assessor_before_pushing():
     assert studio.count("_dzNeedAssessor();") == 2, "deploy and the Terraform hand-off both check first"
     assert "never DLP-Check" in studio
     assert "Enter the assessor's name first" in adv and "e.preventDefault()" in adv
+
+
+def test_no_page_promises_a_dlp_check_tag_when_the_assessor_is_blank():
+    # The assessor is required for every push and download: no page may say
+    # a blank name falls back to a DLP-Check tag.
+    import glob
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..", "static")
+    promise = re.compile(r"DLP-Check\s+(only\s+)?(when|if)\b[^.<]*\bblank|blank[^.<]*\b(falls back|defaults?) to\s+DLP-Check", re.I)
+    for path in glob.glob(os.path.join(root, "*.html")) + glob.glob(os.path.join(root, "*.js")):
+        text = open(path, encoding="utf-8").read()
+        m = promise.search(text)
+        assert not m, f"{os.path.basename(path)} promises a DLP-Check fallback: {m.group(0)!r}"
+    adv = open(os.path.join(root, "report_advanced.html"), encoding="utf-8").read()
+    assert "never DLP-Check" in adv and "download is refused" in adv

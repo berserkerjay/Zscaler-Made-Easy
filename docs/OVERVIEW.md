@@ -61,8 +61,8 @@ what you get, what to do next.
   the customer's cloud, vanity domain, API client ID and secret, or the
   classic ZIA API sign-in (admin username, password, API key); tenant
   profiles save those details and the run history per customer.
-  Authenticate answers "Connected: N dictionaries, N engines, N rules" or
-  a plain reason why not.
+  Authenticate only signs in (it reads nothing from the tenant) and
+  answers "Signed in" or a plain reason why not.
 - **Assessment results** — the full results in their own tab: Summary
   (score and maturity), Scores by section, Best practices and
   benchmarks, Regulatory alignment, the Data governance journey, and
@@ -80,7 +80,9 @@ what you get, what to do next.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks
-  or impacts it, each with a fix.
+  or impacts it, each with a fix. It reads only what is in scope on the
+  Scope page (a part out of scope says "not in scope"), and Stop ends the
+  read at once.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
   15 seconds: who, what triggered, where it was going, enforced or
   monitor-only, with a running tally. It covers DLP incidents only, not
@@ -126,7 +128,9 @@ what you get, what to do next.
   and every dictionary those engines use, as a pack zip the library
   accepts and Deploy policy packs can deploy into another tenant. Scope
   that only exists in the source tenant (users, groups, locations, ...)
-  is left out and listed in the pack. Read-only. Where: Deploy policy
+  is left out and listed in the pack. Read-only; an empty pick is refused
+  before any read, an hourly rate refusal fails the export, and Stop gives
+  no pack. Where: Deploy policy
   packs, under the pack list; also Step 2 of the Evaluate All Rules
   migration wizard, for its Inline Web DLP rules.
 - **Deploy flow diagram** — the plan a preflight produced as a picture:
@@ -179,8 +183,8 @@ what you get, what to do next.
   zscaler/zia Terraform provider, on a timer (every 24 hours by default,
   `DLP_CHECK_BEACON_HOURS`) and on demand, with what changed since the
   last run and the last 30 runs. Optionally a read-only (GET) watch of
-  every tenant endpoint the app uses, which says which ones now answer
-  differently.
+  the tenant endpoints in scope on the Scope page (nothing else), which
+  says which ones now answer differently.
 - **Update app** — fetches the latest build of this app from GitHub,
   installs the pinned dependencies and restarts; the Branch dropdown
   tries a fix on QA or Development before it is promoted to Stable.

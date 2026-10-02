@@ -7,14 +7,15 @@
 #   make docker-run start the container (loopback publish, read-only, non-root)
 PY ?= .venv/bin/python
 
-.PHONY: install dev run stop test check docker docker-run lock upstream
+.PHONY: install dev run stop test check docker docker-run lock lock-dev sbom upstream
 
 install:
 	./install.sh
 
-# Test and lint tools into the same environment (pytest, pyflakes, httpx).
+# Test and lint tools into the same environment (pytest, pyflakes, httpx),
+# hash-pinned from requirements-dev.lock, as CI installs them.
 dev: install
-	$(PY) -m pip install --quiet --disable-pip-version-check -e ".[dev]"
+	$(PY) -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r requirements-dev.lock
 
 run:
 	./start.sh
@@ -47,8 +48,27 @@ docker-run:
 	docker compose up --build
 
 # Re-pin the dependencies (after editing requirements.txt / pyproject.toml, or
-# when CI reports the lock stale). --upgrade is what makes pip-compile refresh
-# existing pins to what the index offers now, the way CI's fresh compile does.
+# when CI reports the lock stale). The lock is resolved for every platform at
+# once (--universal), so it also pins the Windows-only dependencies (pywin32,
+# colorama) behind sys_platform markers; pip-compile resolves only for the
+# machine it runs on and drops them, and every installer uses --no-deps, so a
+# dependency missing from the lock is never installed. --upgrade refreshes
+# existing pins to what the index offers now.
 lock:
-	$(PY) -m pip install --quiet pip-tools
-	$(PY) -m piptools compile --upgrade --generate-hashes --allow-unsafe --output-file=requirements.lock requirements.txt
+	$(PY) -m pip install --quiet uv
+	$(PY) -m uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt
+	$(MAKE) lock-dev
+
+# Re-pin the test tools (requirements-dev.txt) against the app's lock, so
+# the packages both need keep requirements.lock's versions. Keep pyproject's
+# dev extra on the same pins (tests/test_ci_pinning.py checks it).
+lock-dev:
+	$(PY) -m pip install --quiet uv
+	$(PY) -m uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade -c requirements.lock --output-file requirements-dev.lock requirements-dev.txt
+
+# Rebuild docs/sbom.cdx.json and THIRD_PARTY_NOTICES.md (docs/SBOM.md); run
+# after make lock or a Terraform provider upgrade. CI fails when they are stale.
+sbom:
+	$(PY) -m pip install --quiet cyclonedx-bom==7.5.0
+	$(PY) -m cyclonedx_py requirements --pyproject pyproject.toml --mc-type application --output-reproducible --of JSON -o docs/sbom.cdx.json requirements.lock
+	$(PY) tools/sbom_enrich.py docs/sbom.cdx.json

@@ -15,10 +15,13 @@ const DF_STATUS = {
   warn: ['Weak', 'warn'], blind: ['Encrypted / blind', 'fail'], bypass: ['Bypassed', 'fail'], none: ['No control', 'warn'],
   unknown: ['Could not read', 'dim'], skipped: ['Not reached', 'dim'], off: ['Not active', 'fail'],
   assumed: ['Assumed tunnel', 'dim'], na: ['Not evaluated', 'dim'], step: ['Step', 'ok'],
+  out_of_scope: ['Not in scope', 'dim'],
 };
 const DF_OUTCOME = {
   bypassed: ['Never reaches Zscaler', 'fail'], blocked: ['Blocked before content', 'block'], blind: ['Reaches ZIA encrypted: DLP blind', 'fail'],
   enforce: ['Inspected and enforced', 'ok'], monitor: ['Inspected, monitor only', 'warn'], none: ['Inspected, no DLP rule', 'warn'],
+  unknown: ['Could not read the rules', 'dim'],
+  out_of_scope: ['Not in scope: not assessed', 'dim'],
 };
 const DF_HOP_ORDER = ['device', 'zcc', 'forwarding', 'pac', 'cac', 'url', 'ssl', 'ftc', 'dlp', 'incident'];
 

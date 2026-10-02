@@ -33,6 +33,19 @@ def _no_backoff_sleep(monkeypatch, tmp_path_factory):
     # The classic-API fingerprint key: never one next to the repo's own files.
     monkeypatch.setenv("DLP_CHECK_FINGERPRINT_KEY", str(tmp_path_factory.getbasetemp() / "tenant_fingerprint.key"))
     zia_rate.reset()
+    full = sys.modules.get("dlp_assessment_full_auto")
+    if full is not None and hasattr(full, "_reset_tenant_gates"):
+        full._reset_tenant_gates()   # one tenant's pacing and 429 hold never carry into the next test
+
+
+@pytest.fixture(autouse=True)
+def _no_real_credential_store(monkeypatch):
+    """keyring is a pinned dependency on Windows and macOS, so it is installed
+    where the tests run. A test that remembers a profile secret must never
+    write it to this machine's real Credential Manager or Keychain: keyring
+    is unimportable here, the owner-only file is used, and a test that wants
+    the credential store installs its own fake in sys.modules."""
+    monkeypatch.setitem(sys.modules, "keyring", None)
 
 
 @pytest.fixture(autouse=True)

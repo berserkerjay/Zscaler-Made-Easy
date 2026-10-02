@@ -189,18 +189,39 @@ def activation_status(zia) -> Tuple[Optional[str], Optional[str]]:
 def wait_active(zia, seconds: float = 45.0, log=None) -> Optional[str]:
     """Poll the activation status until ZIA reports ACTIVE (or `seconds`
     pass, or the status cannot be read), so a verification read sees the
-    saved configuration. Returns the last status seen."""
+    saved configuration. Returns the last status seen.
+
+    Inside a deploy / removal run the operator has stopped it does not
+    poll: Stop ends the reads too, and a Stop pressed while it polls ends
+    the polling within half a second."""
     import time as _t
     _log = log or (lambda m: None)
     deadline = _t.monotonic() + max(0.0, float(seconds or 0))
+    status: Optional[str] = None
     while True:
+        if _run_stopped():
+            _log("The run stopped, so ZIA is not asked again whether the activation is ACTIVE.")
+            return status
         status, err = activation_status(zia)
         if err or status in (None, "ACTIVE"):
             return status
         if _t.monotonic() >= deadline:
             _log(f"Activation still {status} after {int(seconds)}s; reading anyway.")
             return status
-        _t.sleep(3)
+        for _ in range(6):   # 3 s between polls, in steps, so a Stop is seen
+            if _run_stopped():
+                break
+            _t.sleep(0.5)
+
+
+def _run_stopped() -> bool:
+    """Whether the operator pressed Stop on the pack run this thread is in
+    (pack_ops.run_scope with a cancel event)."""
+    import pack_ops   # lazy: pack_ops imports this module
+    if not pack_ops.in_run():
+        return False
+    ev = getattr(pack_ops._run, "cancel", None)
+    return bool(ev is not None and ev.is_set())
 
 
 def activate(zia) -> Dict[str, Any]:
