@@ -171,6 +171,28 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         return f"/zpa/mgmtconfig/{version}/" + suffix
     return ep
 
+# What a request answers when the run was stopped before it was sent (the
+# operator's Stop). Never cached: the same request asked again is read.
+_STOPPED = ({"error": "stopped: you clicked Stop, so the request was not sent", "status": 0, "stopped": True}, 0)
+
+
+def _nap(seconds, stop=None):
+    """Sleep `seconds`, in steps of at most half a second when `stop()` can
+    end it early. True when it slept the whole time, False when stopped."""
+    end = time.time() + max(0.0, float(seconds))
+    if stop is None:
+        if seconds > 0:
+            time.sleep(seconds)
+        return True
+    while True:
+        if stop():
+            return False
+        left = end - time.time()
+        if left <= 0:
+            return True
+        time.sleep(min(0.5, left))
+
+
 class _RateLimiter:
     """One request pacer shared by every thread of a Client: keeps a minimum
     gap between requests (the API's rate limit is per tenant, not per
@@ -179,8 +201,13 @@ class _RateLimiter:
     def __init__(s, min_gap):
         import threading
         s.min_gap = float(min_gap); s._lock = threading.Lock(); s._next = 0.0; s._pause_until = 0.0
-    def wait(s):
+    def wait(s, stop=None):
+        """Wait for this request's turn. With `stop` (the run's Stop), a
+        stop seen while waiting, also during a long 429 pause, ends the
+        wait at once: False, and the request must not be sent."""
         while True:
+            if stop is not None and stop():
+                return False
             with s._lock:
                 now = time.time()
                 at = max(now, s._next, s._pause_until)
@@ -188,9 +215,11 @@ class _RateLimiter:
                     s._next = at + s.min_gap
                     delay = at - now
                     break
-            time.sleep(1)                   # long pause (429): re-check every second
-        if delay > 0:
-            time.sleep(delay)
+            if not _nap(1, stop):           # long pause (429): re-check every second
+                return False
+        if delay > 0 and not _nap(delay, stop):
+            return False
+        return True
     def pause(s, seconds):
         with s._lock:
             s._pause_until = max(s._pause_until, time.time() + float(seconds))
@@ -239,6 +268,16 @@ class Client:
         s._lock = threading.RLock()
         s._limiter = _RateLimiter(s.MIN_GAP)
         s.requests_made = 0
+        # The run's Stop (a callable), set by whoever runs a stoppable read
+        # (data_flow.stop_on): once it answers True nothing more is sent.
+        s.stop_check = None
+
+    def _stopped(s):
+        fn = s.stop_check
+        try:
+            return bool(fn and fn())
+        except Exception:  # noqa: BLE001 — a broken hook never stops a run by itself
+            return False
 
     def _cache_set(s, k, v):
         with s._lock:
@@ -310,6 +349,8 @@ class Client:
             res = None
             for cand in candidates:
                 res = s.get("raw:" + cand, p)
+                if res is _STOPPED:
+                    return _STOPPED
                 tried.append(f"{cand} -> HTTP {res[1]}")
                 if res[1] not in (400, 404, 405):
                     break
@@ -323,12 +364,15 @@ class Client:
             if k in s._c:
                 s._c.move_to_end(k)
                 return s._c[k]
+        if s._stopped():
+            return _STOPPED
         # Self-healing: re-auth if token is stale or missing
         bad = s._ensure_token()
         if bad:
             return bad
         try:
-            s._limiter.wait()
+            if not s._limiter.wait(s._stopped if s.stop_check else None):
+                return _STOPPED
             r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
             s.requests_made += 1
             if r.status_code == 200:
@@ -352,7 +396,8 @@ class Client:
             elif r.status_code in (502, 503, 504):
                 # Self-healing: transient server error, retry with backoff
                 if _retry < 2:
-                    time.sleep(2 ** _retry)
+                    if not _nap(2 ** _retry, s._stopped if s.stop_check else None):
+                        return _STOPPED
                     return s.get(ep, p, _retry+1)
                 res = ({"error":"service unavailable","status":r.status_code}, r.status_code)
             else:
@@ -363,10 +408,14 @@ class Client:
             res = ({"error":"request timeout","status":0,"path":real_ep}, 0)
         except requests.exceptions.ConnectionError as e:
             if _retry < 2:
-                time.sleep(2 ** _retry)
+                if not _nap(2 ** _retry, s._stopped if s.stop_check else None):
+                    return _STOPPED
                 return s.get(ep, p, _retry+1)
             res = ({"error":f"connection error: {str(e)[:100]}","status":0}, 0)
         except Exception as e:
+            import zia_rate
+            if isinstance(e, zia_rate.Cancelled):   # stopped while the request waited for ZIA's rate limit
+                return _STOPPED
             res = ({"error":str(e)[:200],"status":0}, 0)
         s._cache_set(k, res); return res
 
@@ -381,7 +430,12 @@ class Client:
                 return s._c[k]
         items, answered, first = [], False, None
         for part, params, tag in _FAN_OUT[ep]:
-            d, c = s.get(part, dict(p or {}, **params))
+            if s._stopped():
+                return _STOPPED          # a list cut short is never kept as the whole list
+            res_part = s.get(part, dict(p or {}, **params))
+            if res_part is _STOPPED:
+                return _STOPPED
+            d, c = res_part
             if first is None:
                 first = (d, c)
             if c in (200, 204):
@@ -399,6 +453,8 @@ class Client:
         real_ep = _resolve_ep(ep, s.customer_id, s.legacy)
         if real_ep is None:
             return _LEGACY_ZIA_ONLY
+        if s._stopped():
+            return _STOPPED
         bad = s._ensure_token()
         if bad:
             return bad
@@ -409,7 +465,8 @@ class Client:
             if ep.startswith("/zia/"):
                 import zia_rate
                 zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
-            s._limiter.wait()
+            if not s._limiter.wait(s._stopped if s.stop_check else None):
+                return _STOPPED
             r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
             s.requests_made += 1
             if r.status_code in (200, 201):
@@ -418,13 +475,15 @@ class Client:
             if r.status_code == 204:
                 return ({}, 204)
             if r.status_code == 429 and _retry < 3:
-                time.sleep(min(int(r.headers.get("Retry-After", 5)), 30))
+                if not _nap(min(int(r.headers.get("Retry-After", 5)), 30), s._stopped if s.stop_check else None):
+                    return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             if r.status_code == 401 and _retry < 2:
                 s.token = None
                 return s._write(method, ep, body, _retry + 1)
             if r.status_code in (502, 503, 504) and _retry < 2:
-                time.sleep(2 ** _retry)
+                if not _nap(2 ** _retry, s._stopped if s.stop_check else None):
+                    return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             return ({"error": r.text[:200] if r.text else "error", "status": r.status_code}, r.status_code)
         except requests.exceptions.Timeout:
@@ -432,10 +491,14 @@ class Client:
             return ({"error": "request timeout", "status": 0}, 0)
         except requests.exceptions.ConnectionError as e:
             if _retry < 2:
-                time.sleep(2 ** _retry)
+                if not _nap(2 ** _retry, s._stopped if s.stop_check else None):
+                    return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             return ({"error": f"connection error: {str(e)[:100]}", "status": 0}, 0)
         except Exception as e:
+            import zia_rate
+            if isinstance(e, zia_rate.Cancelled):   # stopped while the request waited for ZIA's rate limit
+                return _STOPPED
             return ({"error": str(e)[:200], "status": 0}, 0)
 
     def post(s, ep, body=None):   return s._write("POST", ep, body)

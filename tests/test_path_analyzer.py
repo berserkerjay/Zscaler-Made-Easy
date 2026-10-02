@@ -42,6 +42,21 @@ def _lookup_client():
     return LookupCl(ROUTES, CATALOGUE)
 
 
+FULL = pa.full_path_scope()
+
+
+def _analyze(*a, **kw):
+    """analyze with every part the path reads in scope, unless a test says otherwise."""
+    kw.setdefault("scope", FULL)
+    return pa.analyze(*a, **kw)
+
+
+# The Scope page's selection with every part the path reads in scope.
+SCOPE_ALL = {"scopes": ["dlp", "zia_extras", "zcc"],
+             "channels": {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "email_dlp": "zscaler", "saas_casb": "zscaler",
+                          "ssl_inspection": "zscaler", "cloud_app_control": "zscaler"}}
+
+
 def test_what_the_user_types_is_understood_or_refused_in_words():
     d = pa.parse_destination("https://drive.google.com/file/d/abc?x=1")
     assert d["host"] == "drive.google.com" and d["kind"] == "url" and d["path"] == "/file/d/abc" and not d["is_ip"]
@@ -71,7 +86,7 @@ def test_the_verdict_names_what_blocks_or_impacts_the_traffic():
     c = _lookup_client()
     logs = []
     # Gambling: URL filtering blocks it before SSL; the rule is named.
-    r = pa.analyze(c, "https://casino.example/play", "off", "windows", log=logs.append)
+    r = _analyze(c, "https://casino.example/play", "off", "windows", log=logs.append)
     v = r["verdict"]
     assert v["outcome"] == "blocked" and v["blocked_by"] == "Block gambling" and v["stops_at"] == "URL filtering"
     assert v["headline"] == "Blocked by URL filtering rule 'Block gambling'." and "no content leaves" in v["summary"]
@@ -80,35 +95,35 @@ def test_the_verdict_names_what_blocks_or_impacts_the_traffic():
     assert any(l.startswith("Reading Client Connector") for l in logs) and any(l.startswith("Asking ZIA which categories") for l in logs) and logs[-1].startswith("Verdict:")
     assert r["assumptions"] and all(a.endswith(".") for a in r["assumptions"])
     # Webmail: left encrypted by the exemption → blind, the SSL rule named as the impact.
-    w = pa.analyze(c, "mail.example.com", "off", "windows")["verdict"]
+    w = _analyze(c, "mail.example.com", "off", "windows")["verdict"]
     assert w["outcome"] == "blind" and not w["content_inspected"] and w["headline"].startswith("Reaches mail.example.com encrypted")
     assert any(i["hop"] == "ssl" and i["rule"] == "No decrypt webmail" and i["status"] == "blind" for i in w["impacts"])
     # ChatGPT: decrypted, app control blocks upload, DLP enforces.
-    a = pa.analyze(c, "chat.openai.com", "off", "windows")["verdict"]
+    a = _analyze(c, "chat.openai.com", "off", "windows")["verdict"]
     assert a["outcome"] == "enforce" and a["content_inspected"] and a["headline"].startswith("Reaches chat.openai.com decrypted; 2 DLP rule(s) inspect the content and can block it")
     assert any(i["hop"] == "cac" and i["status"] == "blocked" and i["rule"] == "AI no upload" for i in a["impacts"]) and "CHATGPT_AI" in a["applications"]
     # A host the app profile bypasses never reaches Zscaler.
-    b = pa.analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
+    b = _analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
     assert b["outcome"] == "bypassed" and not b["reaches_zscaler"] and b["headline"].startswith("Never reaches Zscaler") and b["stops_at"] == "Client Connector app profile"
     # A security alert from the lookup comes first among the impacts.
-    e = pa.analyze(c, "evil.example", "off", "windows")["verdict"]
+    e = _analyze(c, "evil.example", "off", "windows")["verdict"]
     assert e["impacts"][0]["status"] == "alert" and "security alert" in e["impacts"][0]["detail"]
     # An IP address is a destination too.
-    ip = pa.analyze(c, "203.0.113.10", "off", "windows")
+    ip = _analyze(c, "203.0.113.10", "off", "windows")
     assert ip["destination"]["is_ip"] and ip["verdict"]["outcome"] in ("enforce", "monitor", "none", "blind")
 
 
 def test_a_second_destination_reuses_the_tenant_read_and_only_looks_the_host_up():
     c = _lookup_client()
-    first = pa.analyze(c, "casino.example", "off", "windows")
+    first = _analyze(c, "casino.example", "off", "windows")
     snap = first["snapshot_for_cache"]
     reads_before, lookups_before = c.reads, len(c.lookups)
-    second = pa.analyze(c, "mail.example.com", "off", "macos", snapshot=snap)
+    second = _analyze(c, "mail.example.com", "off", "macos", snapshot=snap)
     assert c.reads == reads_before and len(c.lookups) == lookups_before + 1, "no tenant read, one lookup"
     assert not second["fresh_read"] and "snapshot_for_cache" not in second and second["network"] == "off" and second["platform"] == "macos"
     assert second["verdict"]["outcome"] == "blind"
     # On the trusted network the forwarding profile sends it direct: the same read, a different answer.
-    on_net = pa.analyze(c, "mail.example.com", "on", "macos", snapshot=snap)["verdict"]
+    on_net = _analyze(c, "mail.example.com", "on", "macos", snapshot=snap)["verdict"]
     assert on_net["outcome"] == "bypassed" and on_net["stops_at"] == "Forwarding profile" and c.reads == reads_before
 
 
@@ -118,7 +133,7 @@ def test_the_endpoint_runs_as_a_job_and_the_next_run_reuses_the_read(monkeypatch
     c = _lookup_client()
     monkeypatch.setattr(srv, "_build_client", lambda req: c)
     t = TestClient(srv.app)
-    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    creds = dict({"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}, **SCOPE_ALL)
     assert t.post("/api/path-analyzer/start", json=dict(creds, destination="not a host")).status_code == 400
     r = t.post("/api/path-analyzer/start", json=dict(creds, destination="https://casino.example/x"))
     assert r.status_code == 200 and r.json()["kind"] == "path", r.text
@@ -190,10 +205,10 @@ def test_stop_is_honoured_between_read_steps_and_said_in_words():
     c = _lookup_client()
     logs = []
     with pytest.raises(pa.Stopped, match="You clicked Stop"):
-        pa.analyze(c, "casino.example", "off", "windows", log=logs.append, cancel=lambda: True)
+        _analyze(c, "casino.example", "off", "windows", log=logs.append, cancel=lambda: True)
     assert logs[-1].startswith("STOPPED") and not c.lookups, "stopped before the lookup; nothing else was asked"
     # Not cancelled: the same call completes.
-    assert pa.analyze(c, "casino.example", "off", "windows", cancel=lambda: False)["verdict"]["outcome"] == "blocked"
+    assert _analyze(c, "casino.example", "off", "windows", cancel=lambda: False)["verdict"]["outcome"] == "blocked"
 
 
 def test_the_mitigation_recommendation_reasons_across_every_channel():
@@ -206,27 +221,27 @@ def test_the_mitigation_recommendation_reasons_across_every_channel():
     c = _lookup_client()
 
     # Bypassed: endpoint already covers the device (it's on in this fixture) — informational, not an action.
-    b = pa.analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
+    b = _analyze(c, "updates.vendor.com", "off", "windows")["verdict"]
     assert b["mitigations"][0] == {"rank": 1, "channel": "endpoint", "action": "Endpoint DLP already covers this device",
                                     "why": "This traffic never reaches Zscaler, but Endpoint DLP runs locally regardless of the network path and is already monitor.", "severity": "info"}
 
     # Blind (SSL exempted): same endpoint reasoning, plus webmail brings in Email DLP since it is off.
-    w = pa.analyze(c, "mail.example.com", "off", "windows")["verdict"]
+    w = _analyze(c, "mail.example.com", "off", "windows")["verdict"]
     assert w["mitigations"][0]["channel"] == "endpoint" and w["mitigations"][0]["severity"] == "info"
     email = next(m for m in w["mitigations"] if m["channel"] == "email")
     assert email["action"] == "Onboard Email DLP for this traffic" and "Web Mail" in email["why"] and email["severity"] == "medium"
 
     # Enforced and decrypted: the web path already covers it; only the low-priority SaaS onboarding is offered.
-    e = pa.analyze(c, "chat.openai.com", "off", "windows")["verdict"]
+    e = _analyze(c, "chat.openai.com", "off", "windows")["verdict"]
     assert e["mitigations"] == [{"rank": 1, "channel": "saas", "action": "Onboard CHATGPT_AI to SaaS Security API",
                                   "why": "ZIA recognises this as a sanctioned cloud application, but no SaaS Security API rule scans it at rest, so data already stored there is never checked.", "severity": "low"}]
 
     # Blocked outright: nothing to mitigate.
-    blocked = pa.analyze(c, "https://casino.example/play", "off", "windows")["verdict"]
+    blocked = _analyze(c, "https://casino.example/play", "off", "windows")["verdict"]
     assert blocked["mitigations"] == []
 
     # Monitor-only web rule (macOS drops Endpoint DLP, so the web rule is the whole story): promote it.
-    m = pa.analyze(c, "updates.vendor.com", "off", "macos")["verdict"]
+    m = _analyze(c, "updates.vendor.com", "off", "macos")["verdict"]
     assert m["outcome"] == "monitor" and m["mitigations"] == [{"rank": 1, "channel": "web", "action": "Promote 'Bank-Customer PII (Global)-Monitor' from monitor to block",
         "why": "The content is inspected but only logged; once the incidents look right, blocking stops the leak instead of recording it.", "severity": "medium"}]
 
@@ -279,7 +294,7 @@ def test_the_bits_follow_the_analyzed_path_and_stop_where_it_breaks():
     for key, dest, plat in (("bypassed", "updates.vendor.com", "windows"), ("blind", "mail.example.com", "windows"),
                             ("enforce", "chat.openai.com", "windows"), ("blocked", "https://casino.example/play", "windows"),
                             ("monitor", "updates.vendor.com", "macos")):
-        r = pa.analyze(c, dest, "off", plat)
+        r = _analyze(c, dest, "off", plat)
         r.pop("snapshot_for_cache", None)
         results[key] = r
     script = (
@@ -388,7 +403,7 @@ def _pm_run(script, data=None):
 
 def _pm_result(dest, plat):
     import json
-    r = pa.analyze(_lookup_client(), dest, "off", plat)
+    r = _analyze(_lookup_client(), dest, "off", plat)
     r.pop("snapshot_for_cache", None)
     return json.loads(json.dumps(r, default=str))
 
@@ -654,7 +669,7 @@ def test_rules_that_could_not_be_read_are_never_reported_as_no_rule():
     verdict, never 'no enabled rule', and no mitigation tells the user to
     deploy a rule that may already exist. A reused read keeps the answer."""
     c = _FailingReads(ROUTES, CATALOGUE)
-    r = pa.analyze(c, "chat.openai.com", "off", "windows")
+    r = _analyze(c, "chat.openai.com", "off", "windows")
     v, t = r["verdict"], r["trace"]
     assert v["outcome"] == "unknown" and "could not be read" in v["headline"] and "no DLP rule" not in v["headline"]
     dlp = _pm_hop(r, "dlp")
@@ -665,21 +680,21 @@ def test_rules_that_could_not_be_read_are_never_reported_as_no_rule():
     assert t["channels"]["email"]["status"] == "none", "a read that worked still says none"
     assert any(i["status"] == "unknown" and i["hop"] == "dlp" for i in v["impacts"])
     assert not any(m["action"].startswith("Deploy a Web DLP rule") for m in v["mitigations"])
-    again = pa.analyze(c, "chat.openai.com", "off", "windows", snapshot=r["snapshot_for_cache"])
+    again = _analyze(c, "chat.openai.com", "off", "windows", snapshot=r["snapshot_for_cache"])
     assert again["verdict"]["outcome"] == "unknown" and again["trace"]["channels"]["endpoint"]["status"] == "unknown"
     # Encrypted traffic with unread rules: still blind, but it does not claim "no rule applies".
-    b = pa.analyze(c, "mail.example.com", "off", "windows")
+    b = _analyze(c, "mail.example.com", "off", "windows")
     assert b["verdict"]["outcome"] == "blind" and "could not be read" in _pm_hop(b, "dlp")["detail"]
     assert b["verdict"]["mitigations"][0]["action"] == "Read the Endpoint DLP rules again"
     # The same tenant with every read answering is unchanged.
-    ok = pa.analyze(_lookup_client(), "chat.openai.com", "off", "windows")
+    ok = _analyze(_lookup_client(), "chat.openai.com", "off", "windows")
     assert ok["verdict"]["outcome"] == "enforce" and ok["trace"]["channels"]["endpoint"]["status"] != "unknown"
 
 
 @_needs_node
 def test_the_motion_marks_unread_rules_with_a_question_mark_never_a_break():
     import json
-    res = pa.analyze(_FailingReads(ROUTES, CATALOGUE), "chat.openai.com", "off", "windows")
+    res = _analyze(_FailingReads(ROUTES, CATALOGUE), "chat.openai.com", "off", "windows")
     res.pop("snapshot_for_cache", None)
     res = json.loads(json.dumps(res, default=str))
     out = _pm_run("const w=H.load(PM),c=w.container(),m=w.ctx.renderPathMotion(c);const mo=m.update(D);"

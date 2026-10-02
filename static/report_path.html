@@ -114,6 +114,39 @@
       return {};
     }
 
+    // What is in scope: the Scope page's selection. The analyzer reads only
+    // the parts of the tenant in scope (the ticked scopes and the channels
+    // marked Zscaler); every other hop says "not in scope". Read live from
+    // the assessment tab that opened this one, else from the ticks the
+    // Scope page publishes (localStorage), never guessed. Without either,
+    // nothing is sent and the server uses the chosen profile's saved
+    // selection, or refuses. Only each channel's choice is sent: the Scope
+    // page's free-text notes never leave this browser.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const live = readJson('zassess_scopes_live_v1', null);
+        scopes = live && Array.isArray(live.scopes) ? live.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+
     // ── the live job ────────────────────────────────────────────────
     function mmss(s) { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
     function phase(logs) {
@@ -173,7 +206,7 @@
       const t0 = Date.now();
       const tick = setInterval(() => { const el = document.getElementById('paElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
       try {
-        const payload = Object.assign({}, credBody(), { destination: dest, network: net, platform: plat, report_id: fresh ? '' : lastReport });
+        const payload = Object.assign({}, credBody(), scopeSelection(), { destination: dest, network: net, platform: plat, report_id: fresh ? '' : lastReport });
         const r = await fetch('/api/path-analyzer/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
@@ -231,6 +264,10 @@
       const appProf = (zccHop && zccHop.decided_by && zccHop.decided_by.name) || (zccHop && zccHop.profile) || '—';
       const fwdProf = (fwdHop && fwdHop.decided_by && fwdHop.decided_by.name) || '—';
       const fwdMode = (fwdHop && fwdHop.mode) ? ` (${E(fwdHop.mode)})` : '';
+      // A part out of scope was not read: it is said, never shown as "no".
+      const outOf = k => (t.hops || []).some(h => h.key === k && h.status === 'out_of_scope');
+      const notInScope = v.not_in_scope || [];
+      const fact = (k, b, yes, no) => (outOf(k) ? '<span class="v">not in scope</span>' : yesno(b, yes, no));
       meta.textContent = `${res.tenant_label || ''} · ${res.fresh_read ? 'tenant read just now' : 'tenant read reused'} · ${new Date((res.read_at || Date.now() / 1000) * 1000).toLocaleTimeString()}`;
       body.innerHTML = `
         <section class="pa-verdict st-${ocls}" aria-labelledby="paHeadline">
@@ -240,21 +277,25 @@
           <div class="pa-facts">
             <span class="df-prof"><span class="k">Stops at</span><span class="v">${E(v.stops_at || 'reaches the destination')}</span></span>
             <span class="df-prof"><span class="k">Decided by</span><span class="v">${E(v.blocked_by || (v.stops_at ? 'the profile named below' : '—'))}</span></span>
-            <span class="df-prof"><span class="k">Reaches Zscaler</span>${yesno(v.reaches_zscaler, 'yes', 'no')}</span>
-            <span class="df-prof"><span class="k">Decrypted</span>${yesno(v.decrypted, 'yes', 'no')}</span>
-            <span class="df-prof"><span class="k">Content inspected</span>${yesno(v.content_inspected, 'yes', 'no')}</span>
-            <span class="df-prof"><span class="k">ZIA categories</span><span class="v">${E((v.categories || []).join(', ') || (lk.error ? `lookup failed: ${lk.error}` : 'none returned'))}</span></span>
+            <span class="df-prof"><span class="k">Reaches Zscaler</span>${outOf('zcc') ? '<span class="v">assumed (Client Connector not in scope)</span>' : yesno(v.reaches_zscaler, 'yes', 'no')}</span>
+            <span class="df-prof"><span class="k">Decrypted</span>${fact('ssl', v.decrypted, 'yes', 'no')}</span>
+            <span class="df-prof"><span class="k">Content inspected</span>${fact('dlp', v.content_inspected, 'yes', 'no')}</span>
+            <span class="df-prof"><span class="k">ZIA categories</span><span class="v">${E((v.categories || []).join(', ') || (lk.not_in_scope ? 'not in scope (URL lookup not asked)' : lk.error ? `lookup failed: ${lk.error}` : 'none returned'))}</span></span>
             ${(v.applications || []).length ? `<span class="df-prof"><span class="k">Cloud app</span><span class="v">${E(v.applications.join(', '))}</span></span>` : ''}
           </div>
           <div class="df-profiles">
-            <span class="df-prof"><span class="k">Assigned Client Connector app profile</span><span class="v">${E(appProf)}</span></span>
-            <span class="df-prof"><span class="k">Assigned forwarding profile</span><span class="v">${E(fwdProf)}${E(fwdMode)}</span></span>
+            <span class="df-prof"><span class="k">Assigned Client Connector app profile</span><span class="v">${outOf('zcc') ? 'not in scope' : E(appProf)}</span></span>
+            <span class="df-prof"><span class="k">Assigned forwarding profile</span><span class="v">${outOf('forwarding') ? 'not in scope' : `${E(fwdProf)}${E(fwdMode)}`}</span></span>
           </div>
+          ${res.scope && res.scope.summary ? `<div class="df-hint pa-scope">${E(res.scope.summary)}</div>` : ''}
         </section>
         <h2 class="df-h">What blocks this traffic</h2>
         ${blockers.length ? `<ol class="pa-impacts">${blockers.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">Nothing blocks it: the traffic reaches the destination.</div>'}
         <h2 class="df-h">What impacts it on the way</h2>
         ${others.length ? `<ol class="pa-impacts">${others.map(item).join('')}</ol>` : '<div class="df-hop-d pa-none">No blind spot, weak point or assumption changes the answer on this path.</div>'}
+        ${notInScope.length ? `<h2 class="df-h">Not in scope</h2>
+        <div class="df-hint">Left out on the Scope page, so not read and not assessed: not "no rule", and not a failed read. Put a part in scope there and analyze again to assess it.</div>
+        <ul class="pa-impacts pa-scope-list">${notInScope.map(i => `<li class="pa-impact sev-info"><div class="df-hop-h">${chip('out_of_scope')}<strong>${E(i.label)}</strong></div><div class="df-hop-d">${E(i.detail)}</div></li>`).join('')}</ul>` : ''}
         <h2 class="df-h">What to do about it, across every channel</h2>
         <div class="df-hint">Reasoned across Web, Endpoint, SaaS Security API and Email DLP together: Endpoint DLP is weighed first whenever the network path itself sees nothing (bypassed or encrypted), because it is the one control that runs on the device regardless of where the traffic goes; Email and SaaS coverage are suggested only when this destination is actually shaped like webmail or a sanctioned cloud app.</div>
         ${mitigationsHtml(v.mitigations)}

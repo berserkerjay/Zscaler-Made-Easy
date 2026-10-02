@@ -484,10 +484,11 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pm-edge.is-broken { stroke: var(--fail); stroke-dasharray: 3 5; opacity: 1; stroke-width: 2.2; }
 .pm-edge.is-blocked { stroke: var(--text); stroke-dasharray: 3 5; opacity: 1; stroke-width: 2.2; }
 .pm-edge.is-unread { stroke: var(--dim); stroke-dasharray: 1 4; opacity: 1; stroke-width: 2.2; }
+.pm-edge.is-scope { stroke: var(--dim); stroke-dasharray: 8 6; opacity: 0.7; stroke-width: 2; }
 .pm-edge.is-assumed { stroke: var(--warn); stroke-dasharray: 6 4; }
 /* A broken edge that shares the bus with live ones: its own stretch is drawn
    by .pm-own (path_motion.js _pmOwnD); the full path only carries the bits. */
-.pm-edge.is-split, .pm-edge.is-split.is-broken, .pm-edge.is-split.is-blocked, .pm-edge.is-split.is-unread { stroke: none; }
+.pm-edge.is-split, .pm-edge.is-split.is-broken, .pm-edge.is-split.is-blocked, .pm-edge.is-split.is-unread, .pm-edge.is-split.is-scope { stroke: none; }
 .pm-arrow { fill: var(--dim); }
 .pm-never path { fill: none; stroke: var(--dim); stroke-dasharray: 2 4; }
 .pm-x { fill: var(--fail); font-size: 12px; font-weight: 800; }
@@ -497,15 +498,16 @@ body.theme-light .df-gap-h.st-fail { color: var(--fail); } body.theme-light .df-
 .pm-bit.lane-tel, .pm-bit.lane-par, .pm-bit.lane-dspm { fill: var(--dim); }
 .pm-bit.assumed { fill: var(--warn); }
 .pm-bit.pop { r: 9px; opacity: 0; fill: var(--fail); }
-.pm-bit.pop.tone-blocked { fill: var(--text); } .pm-bit.pop.tone-unread { fill: var(--dim); }
+.pm-bit.pop.tone-blocked { fill: var(--text); } .pm-bit.pop.tone-unread, .pm-bit.pop.tone-scope { fill: var(--dim); }
 .pm-stop circle { fill: var(--card-solid); stroke: var(--fail); stroke-width: 2; }
 .pm-stop text { font-size: 11.5px; font-weight: 800; fill: var(--fail); }
 .pm-stop.tone-blocked circle { stroke: var(--text); } .pm-stop.tone-blocked text { fill: var(--text); font-size: 11.5px; }
 .pm-stop.tone-unread circle { stroke: var(--dim); } .pm-stop.tone-unread text { fill: var(--dim); }
+.pm-stop.tone-scope circle { stroke: var(--dim); stroke-dasharray: 3 2; } .pm-stop.tone-scope text { fill: var(--dim); }
 .pm-legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; margin-top: 0.5rem; font-size: 0.74rem; color: var(--dim); }
 .pm-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
 .pm-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
-.pm-legend i.lane-ev { background: var(--pass); } .pm-legend i.lane-tel { background: var(--dim); } .pm-legend .pm-x { color: var(--fail); } .pm-legend .pm-sq { color: var(--text); } .pm-legend .pm-q { color: var(--dim); } .pm-legend i.lane-assumed { background: var(--warn); }
+.pm-legend i.lane-ev { background: var(--pass); } .pm-legend i.lane-tel { background: var(--dim); } .pm-legend .pm-x { color: var(--fail); } .pm-legend .pm-sq { color: var(--text); } .pm-legend .pm-q { color: var(--dim); } .pm-legend .pm-o { color: var(--dim); } .pm-legend i.lane-assumed { background: var(--warn); }
 .pm-summary { margin: 0.6rem 0 0; padding-left: 1.2rem; font-size: 0.84rem; line-height: 1.5; display: grid; gap: 0.25rem; max-width: 110ch; }
 @media (prefers-reduced-motion: reduce) { .pm-bit, .pm-node .box, .pm-edge { transition: none; } }
 @media (max-width: 760px) { .pa-motion { padding: 0.7rem 0.6rem; } }

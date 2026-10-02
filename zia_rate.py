@@ -154,6 +154,44 @@ def using_client(client: Any) -> Iterator[None]:
         yield
 
 
+class Cancelled(RuntimeError):
+    """The run on this thread was stopped (the operator's Stop) while a
+    request waited for ZIA's rate limit: the request is not sent."""
+
+
+# A wait() that honours a stop sleeps in steps no longer than this, so a
+# Stop pressed during a long rate-limit wait is seen within a second.
+CANCEL_STEP = 0.5
+
+
+def stop_requested() -> bool:
+    """Whether the stop hook of this thread (stopping_on) says stop."""
+    fn = getattr(_ctx, "stop", None)
+    if fn is None:
+        return False
+    try:
+        return bool(fn())
+    except Exception:  # noqa: BLE001 — a broken hook never stops a run by itself
+        return False
+
+
+@contextlib.contextmanager
+def stopping_on(should_stop: Optional[Callable[[], bool]]) -> Iterator[None]:
+    """While inside, a request this thread would pace (wait(), and every
+    ZIA request a paced session sends) is not sent once `should_stop()` is
+    true: Cancelled is raised instead, also in the middle of a rate-limit
+    wait. None leaves the thread as it is."""
+    if should_stop is None:
+        yield
+        return
+    before = getattr(_ctx, "stop", None)
+    _ctx.stop = should_stop
+    try:
+        yield
+    finally:
+        _ctx.stop = before
+
+
 def _t(key: Optional[str]) -> _Tenant:
     """A tenant's state. Called with _lock held."""
     k = current_key() if key is None else key
@@ -448,7 +486,11 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
     total = 0.0
     told_hold = False
     slept_until = 0.0
+    stoppable = getattr(_ctx, "stop", None) is not None
+    told_wait = False
     while True:
+        if stoppable and stop_requested():
+            raise Cancelled(f"stopped while waiting for ZIA's rate limit{' (' + what + ')' if what else ''}; the request was not sent")
         with _lock:
             _load()
             t = _t(key)
@@ -472,12 +514,17 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
             slept_until = hold_end
             step = held
         else:
-            if log and d >= 5 and binding:
+            if log and d >= 5 and binding and not told_wait:
+                told_wait = stoppable   # a wait slept in steps is announced once
                 at = (datetime.now() + timedelta(seconds=d)).strftime("%H:%M")
                 n, w = binding
                 log(f"{what + ': ' if what else ''}ZIA allows {n} {_WORDS[bucket]}{'s' if n != 1 else ''} {_PER.get(w, f'per {w:.0f}s')}; "
                     f"waiting {_human(d)} (next at {at}).")
             step = d
+        if stoppable:   # a Stop during a long wait is seen within CANCEL_STEP
+            step = min(step, CANCEL_STEP)
+            if held > 0 and step < held:
+                slept_until = 0.0   # the hold is not over yet: sleep it again in the next step
         _sleep(step)
         total += step
 
@@ -621,6 +668,8 @@ def _pace_session(session: Any, key: str) -> None:
 
     def send(request, **kwargs):
         path = _zia_path(getattr(request, "url", ""))
+        if path is not None and stop_requested():
+            raise Cancelled("stopped before the request was sent")
         if path is not None and "authenticatedsession" not in path.lower():
             mark = getattr(_ctx, "prepaced", None)
             _ctx.prepaced = None

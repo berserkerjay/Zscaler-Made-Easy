@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from bypass_report import _fetch_url_category_lookup, _rules_to_list
 
@@ -253,10 +253,13 @@ def _fetch_rules(client, endpoint: str, diagnostics: List[Dict[str, Any]], label
     return [r for r in _rules_to_list(data) if isinstance(r, dict)]
 
 
-def _fetch_app_catalogue(client, classes: Iterable[str], diagnostics: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+def _fetch_app_catalogue(client, classes: Iterable[str], diagnostics: List[Dict[str, Any]],
+                         cancel: Optional[Callable[[], bool]] = None) -> Dict[str, List[str]]:
     """Cloud application identifiers per application class, from the
     tenant's Cloud App Control catalogue. Missing catalogue → {} and a
-    diagnostic (matching then relies on URL categories only)."""
+    diagnostic (matching then relies on URL categories only). `cancel()`
+    is asked before each class's page: once true nothing more is asked
+    (the caller says the read stopped)."""
     out: Dict[str, List[str]] = {}
     zs = getattr(client, "_zs", None)
     svc = getattr(getattr(zs, "zia", None), "cloud_applications", None) if zs is not None else None
@@ -265,6 +268,8 @@ def _fetch_app_catalogue(client, classes: Iterable[str], diagnostics: List[Dict[
                             "error_type": "unavailable", "error": "the SDK client does not expose cloud_applications; rules were matched on URL categories only"})
         return out
     for cls in sorted(set(classes)):
+        if cancel is not None and cancel():
+            break
         try:
             res = svc.list_cloud_app_policy(query_params={"app_class": cls, "page_size": 1000})
             data, err = (res[0], res[2]) if isinstance(res, tuple) and len(res) == 3 else (res, None)

@@ -71,9 +71,10 @@ const PM_LANE = {
   ev: ['evid>storage', 'storage>event', 'event>waint', 'waint>wa'],
 };
 // How a stop is marked, by tone: a break, a policy block, a rule list that
-// could not be read (a failed or rate-limited read is not "no rule").
-const PM_MARK = { broken: '✕', blocked: '■', unread: '?' };
-const PM_CUT_CLS = ['is-broken', 'is-blocked', 'is-unread'];
+// could not be read (a failed or rate-limited read is not "no rule"), and a
+// part left out of scope on the Scope page (not read, so neither of those).
+const PM_MARK = { broken: '✕', blocked: '■', unread: '?', scope: '–' };
+const PM_CUT_CLS = ['is-broken', 'is-blocked', 'is-unread', 'is-scope'];
 const PM_W_TOTAL = 1150 + PM_W + 10, PM_H_TOTAL = PM_TOP + 340 + PM_H + 22;
 
 function _pmNode(k) { return PM_NODES.find(n => n.key === k); }
@@ -156,6 +157,14 @@ function pmModel(res) {
     const why = `Could not be read: ${(sslUnread ? ssl.detail : dlp && dlp.detail) || 'the Web DLP rules could not be read, so whether a rule covers this traffic is unknown.'}`;
     stopRoute(web, sslUnread ? 0 : 2, 'unread', why, 0.6);
     summary.push(`Inline web: ${why}`);
+  } else if (out === 'out_of_scope') {
+    // Left out on the Scope page: not read, so not "no rule" and not
+    // "could not read". Marked where the part out of scope sits.
+    const ssl = hop('ssl'), dlp = hop('dlp');
+    const sslOut = !!(ssl && ssl.status === 'out_of_scope');
+    const why = `Not in scope: ${(sslOut ? ssl.detail : dlp && dlp.detail) || 'the Web DLP rules are not in scope on the Scope page, so this part of the chain is not assessed.'}`.replace(/^Not in scope: Not in scope: /, 'Not in scope: ');
+    stopRoute(web, sslOut ? 0 : 2, 'scope', why, 0.6);
+    summary.push(`Inline web: ${why}`);
   } else if (out === 'none') {
     const why = 'Decrypted, but no enabled Web DLP rule targets this traffic: no engine verdict is ever acted on, logged as a DLP match or forwarded.';
     stopRoute(web, 2, 'broken', why, 0.6);
@@ -225,6 +234,10 @@ function pmModel(res) {
     } else if (c.status === 'unknown') {
       const why = `${label}: could not be read. ${c.detail || ''}`.replace(/\s+/g, ' ').trim();
       stopRoute(base, 2, 'unread', why, 0.22);
+      summary.push(why);
+    } else if (c.status === 'out_of_scope') {
+      const why = `${label}: ${c.detail || 'not in scope on the Scope page, so not read.'}`.replace(/\s+/g, ' ').trim();
+      stopRoute(base, 2, 'scope', why, 0.22);
       summary.push(why);
     } else if (c.status === 'off') {
       const why = `${label}: ${c.detail || 'rules exist but the channel is not active on this device.'}`;
@@ -317,7 +330,7 @@ function renderPathMotion(container) {
       <button type="button" class="rp-btn" id="pmToggle" aria-controls="pmStage">Pause motion</button>
     </div>
     <div class="pm-wrap" id="pmStage">${_pmSvg()}</div>
-    <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence lane (feeds Workflow Automation)</span><span><i class="lane-tel"></i>telemetry and parallel paths (never feed it)</span><span><b class="pm-x">✕</b>where the chain breaks</span><span><b class="pm-sq">■</b>where policy blocks it</span><span><b class="pm-q">?</b>rules that could not be read</span><span><i class="lane-assumed"></i>evidence path assumed, not confirmed (ICAP only)</span></div>
+    <div class="pm-legend" aria-hidden="true"><span><i class="lane-main"></i>content and verdict</span><span><i class="lane-ev"></i>evidence lane (feeds Workflow Automation)</span><span><i class="lane-tel"></i>telemetry and parallel paths (never feed it)</span><span><b class="pm-x">✕</b>where the chain breaks</span><span><b class="pm-sq">■</b>where policy blocks it</span><span><b class="pm-q">?</b>rules that could not be read</span><span><b class="pm-o">–</b>not in scope (not read)</span><span><i class="lane-assumed"></i>evidence path assumed, not confirmed (ICAP only)</span></div>
     <div class="df-hint" id="pmMotionNote"></div>
     <ul class="pm-summary" id="pmSummary"></ul>`;
   const svg = container.querySelector('.pm-svg');
@@ -336,7 +349,7 @@ function renderPathMotion(container) {
     // The label says what a press does, so no aria-pressed: a toggle whose
     // label also flips would be read as "Play motion, pressed" while paused.
     btn.textContent = playing() ? 'Pause motion' : 'Play motion';
-    note.textContent = playing() ? 'Bits move along each lane; a ✕ marks where the chain breaks and a ■ where policy blocks the traffic; a ? marks rules that could not be read (hover any of them, or read the list below).'
+    note.textContent = playing() ? 'Bits move along each lane; a ✕ marks where the chain breaks and a ■ where policy blocks the traffic; a ? marks rules that could not be read and a – a part not in scope on the Scope page (hover any of them, or read the list below).'
       : (reduce.matches && chosen == null ? 'Motion is off because your system asks for reduced motion: the arrows show each lane\'s direction. Play motion starts it anyway.'
         : 'Motion paused: the arrows show each lane\'s direction.');
   }
@@ -400,6 +413,7 @@ function renderPathMotion(container) {
       p.classList.toggle('is-broken', !!c && !live.has(k) && c.endsWith('|broken'));
       p.classList.toggle('is-blocked', !!c && !live.has(k) && c.endsWith('|blocked'));
       p.classList.toggle('is-unread', !!c && !live.has(k) && c.endsWith('|unread'));
+      p.classList.toggle('is-scope', !!c && !live.has(k) && c.endsWith('|scope'));
       p.classList.toggle('is-assumed', !!(m.extra.assumed || []).includes(k));
     });
     // Dimmed edges first, live ones over them, the broken link on top:

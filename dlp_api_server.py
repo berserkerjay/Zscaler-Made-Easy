@@ -4736,18 +4736,58 @@ async def report_path_page():
 
 class PathAnalyzerRequest(MigrateRequest):
     """Body of the Path Analyzer: what the user would type, the network the
-    device is on, the platform, and optionally the id of a tenant read to
-    reuse (a Data Flow Map or an earlier analysis)."""
+    device is on, the platform, optionally the id of a tenant read to
+    reuse (an earlier analysis for the same scope), and what is in scope:
+    the Scope page's ticked `scopes` and its channel declaration
+    (`channels`, {id: choice}). With neither, and `from_page` false, the
+    chosen profile's saved selection is used; with nothing in scope the
+    request is refused before anything is read."""
     destination: str = ""
     network: str = "off"
     platform: str = "windows"
     report_id: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
-def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel) -> Dict[str, Any]:
+def _path_scope(req: PathAnalyzerRequest) -> Dict[str, Any]:
+    """What the analysis may read: the page's selection, else (only when
+    the page sent nothing at all and does not know the Scope page's ticks)
+    the saved profile's. The two are never mixed, so the profile cannot
+    widen what the page chose. Raises HTTPException 400 when nothing the
+    analyzer reads is in scope. Never reads a tenant."""
+    import channel_scope
+    import data_flow
+    sc = [str(x) for x in (req.scopes or [])]
+    ch = req.channels if channel_scope.normalize(req.channels) else {}
+    source = ""
+    if sc or ch or req.from_page:
+        source = "the Scope page"
+    elif req.profile_id:
+        try:
+            import tenant_profiles
+            prof = tenant_profiles.get(req.profile_id) or {}
+        except Exception:  # noqa: BLE001 — an unreadable profile store is no selection
+            prof = {}
+        sc = [str(x) for x in (prof.get("scopes") or [])]
+        ch = prof.get("channels") if channel_scope.normalize(prof.get("channels")) else {}
+        if sc or ch:
+            source = f"the saved profile {prof.get('name') or req.profile_id}"
+    sel = data_flow.path_scope(sc, ch)
+    if not sel["read"]:
+        raise HTTPException(status_code=400, detail=data_flow.NOTHING_IN_SCOPE)
+    sel["source"] = source
+    return sel
+
+
+def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, log, cancel, scope: Dict[str, Any]) -> Dict[str, Any]:
     """The analysis itself, shared by the job the page follows and the
-    waiting endpoint. A fresh tenant read is remembered as a Data Flow
-    Map report so the next destination reuses it (`report_id`)."""
+    waiting endpoint. Reads only what `scope` puts in scope. A fresh
+    tenant read is remembered as a Data Flow Map report, stamped with its
+    scope, so the next destination reuses it only for the same scope
+    (`report_id`). Stop (`cancel`) ends the job as stopped: nothing more
+    is read, nothing is kept and no partial result is returned."""
     import path_analyzer
     logs: list = []
 
@@ -4756,13 +4796,23 @@ def _run_path_analysis(client, req: PathAnalyzerRequest, snapshot, label: str, l
         if log:
             log(line)
 
-    out = path_analyzer.analyze(client, req.destination, req.network, req.platform, snapshot=snapshot, log=_log,
-                                cancel=(lambda: cancel.is_set()) if cancel is not None else None)
+    if scope.get("source"):
+        _log(f"In scope, from {scope['source']}: {scope['summary']}")
+    try:
+        out = path_analyzer.analyze(client, req.destination, req.network, req.platform, scope=scope, snapshot=snapshot, log=_log, cancel=cancel)
+    except path_analyzer.Stopped as e:
+        return {"stopped": str(e), "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
+    if cancel is not None and cancel.is_set():
+        # Stop arrived as the last step finished: the run still ends as
+        # stopped, and the read is not kept for the next destination.
+        _log("STOPPED — you clicked Stop; the analysis was abandoned and its read is not kept.")
+        return {"stopped": path_analyzer.STOPPED_REASON, "status": "stopped", "tenant_label": label, "destination": req.destination, "logs": logs}
     cache = out.pop("snapshot_for_cache", None)
     if cache is not None:
         rid = _remember_report("dataflow", {"summary": {}, "platform": out["platform"], "networks": path_analyzer.NETWORKS, "platforms": path_analyzer.PLATFORMS,
                                             "destinations": [], "traces": [], "packs": [], "diagnostics": cache.get("diagnostics") or [],
-                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {}}, label)
+                                            "client_connector": cache["client_connector"], "snapshot": cache["snapshot"], "sources": {},
+                                            "path_scope": cache.get("path_scope")}, label)
         out["report_id"] = rid
     else:
         out["report_id"] = req.report_id
@@ -4777,29 +4827,33 @@ async def _path_analysis_inputs(req: PathAnalyzerRequest):
         path_analyzer.parse_destination(req.destination)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    scope = _path_scope(req)   # before signing in: nothing in scope reads nothing
     snapshot = _REPORTS.get(req.report_id) if req.report_id and req.report_id.startswith("dataflow-") else None
+    if snapshot is not None and not path_analyzer.reusable(snapshot, scope):
+        snapshot = None        # a read for another scope is never reused (analyze says so in the log)
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_client, req)
-    return client, snapshot, tenant_auth.label(creds)
+    return client, snapshot, tenant_auth.label(creds), scope
 
 
 @app.post("/api/path-analyzer/start")
 async def path_analyzer_start(req: PathAnalyzerRequest):
     """Start the Path Analyzer as a job the page follows (the first run
-    reads the tenant, a minute of API calls; later runs reuse that read
-    through `report_id` and only look the destination up). Poll
-    GET /api/dlp-packs/jobs/{job_id}."""
+    reads the tenant, only what is in scope on the Scope page; later runs
+    for the same scope reuse that read through `report_id` and only look
+    the destination up). Stop ends the job as cancelled with nothing more
+    read. Poll GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
-    client, snapshot, label = await _path_analysis_inputs(req)
-    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel), label=req.destination[:80])
+    client, snapshot, label, scope = await _path_analysis_inputs(req)
+    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel, scope), label=req.destination[:80])
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
 @app.post("/api/path-analyzer")
 async def path_analyzer_run(req: PathAnalyzerRequest):
     """The same analysis, waited for (for scripts)."""
-    client, snapshot, label = await _path_analysis_inputs(req)
-    return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None)
+    client, snapshot, label, scope = await _path_analysis_inputs(req)
+    return await asyncio.to_thread(_run_path_analysis, client, req, snapshot, label, None, None, scope)
 
 
 @app.get("/api/report/data-flow/{report_id}")
