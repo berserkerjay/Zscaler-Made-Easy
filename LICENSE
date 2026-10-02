@@ -1,0 +1,26 @@
+DLP-Check — Proprietary, internal use
+
+Copyright (c) 2026 the repository owner. All rights reserved.
+
+This software and its policy packs are provided to the organisation that
+operates this repository for its own assessments and engagements. They may
+be run, copied and modified within that organisation. They may not be
+redistributed, sublicensed or made available to third parties, in source
+or binary form, without written permission from the repository owner.
+
+Third-party components keep their own licences. THIRD_PARTY_NOTICES.md
+lists every one (the Python packages pinned in requirements.lock and the
+Zscaler Terraform provider pinned in the Terraform lockfiles) with its SPDX
+licence, and third_party_licenses/ holds the full texts of the copyleft
+licences among them. The same data, machine-readable, is in the CycloneDX
+SBOM docs/sbom.cdx.json.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. It reads and, when the operator enables writes, changes a Zscaler
+tenant's configuration; the operator remains responsible for reviewing
+every plan before approving it.
+
+This repository is public so its code can be reviewed and vulnerabilities
+can be reported and disclosed responsibly (see SECURITY.md). Being
+publicly readable does not change the terms above: it is still not for redistribution,
+still not for sublicensing, and still not for third-party use.

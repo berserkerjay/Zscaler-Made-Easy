@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What does everything do? — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .hp-sec { padding: 0.2rem 0.2rem 1rem; }
+  .hp-sec h2 { font-size: 1.1rem; margin: 1.2rem 0 0.5rem; }
+  .hp-sec h3 { font-size: 1rem; margin: 0; }
+  .hp-first { counter-reset: step; list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  .hp-first li { counter-increment: step; display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.6rem; align-items: start; background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
+  .hp-first li::before { content: counter(step); font-weight: 800; color: var(--accent); font-size: 1.2rem; line-height: 1.2; }
+  .hp-first li a { color: var(--accent); font-weight: 600; }
+  .hp-first li span { display: block; color: var(--dim); font-size: 0.85rem; }
+  .hp-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); padding: 0.9rem 1rem; margin: 0.6rem 0; scroll-margin-top: 4rem; }
+  .hp-card .g { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  .hp-card .xp-dl { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 0.3rem 0.9rem; margin: 0.5rem 0 0.4rem; font-size: 0.9rem; line-height: 1.5; }
+  .hp-card .xp-dl dt { font-weight: 600; color: var(--dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.15rem; }
+  .hp-card .xp-dl dd { margin: 0; }
+  .hp-toc { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.4rem 0 0.8rem; }
+  .hp-toc a { font-size: 0.8rem; color: var(--accent); border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.6rem; text-decoration: none; }
+  .hp-toc a:hover, .hp-toc a:focus-visible { border-color: var(--accent); }
+  dl.hp-gl dt { font-weight: 600; margin-top: 0.6rem; }
+  dl.hp-gl dd { margin: 0.1rem 0 0; color: var(--dim); font-size: 0.9rem; line-height: 1.5; }
+  .hp-dim { color: var(--dim); font-size: 0.9rem; }
+  @media (max-width: 600px) { .hp-card .xp-dl { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="report-page df-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">What does everything do?</span></h1>
+      <p>Every function of this app, in plain English: what it is, why the customer cares, when you click it, what you get back and what to do with it. Written for your first week. No prior Zscaler knowledge needed.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <a class="rp-btn" href="#glossary">Words you will hear</a>
+      <a class="rp-btn" href="#trouble">When something goes wrong</a>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <section class="hp-sec" aria-labelledby="hpFirstH">
+        <h2 id="hpFirstH">Your first engagement, in order</h2>
+        <p class="hp-dim">Do these seven things in this order. Each page you open has a box at the top that explains itself; if you have hidden those boxes you can turn them back on from any of them.</p>
+        <ol class="hp-first" id="hpFirst"></ol>
+      </section>
+      <section class="hp-sec" aria-labelledby="hpAllH">
+        <h2 id="hpAllH">Every function</h2>
+        <nav class="hp-toc" id="hpToc" aria-label="Jump to a function"></nav>
+        <div id="hpAll"></div>
+      </section>
+      <section class="hp-sec" aria-labelledby="hpGlH" id="glossary">
+        <h2 id="hpGlH">Words you will hear</h2>
+        <dl class="hp-gl" id="hpGl"></dl>
+      </section>
+      <section class="hp-sec" aria-labelledby="hpTrH" id="trouble">
+        <h2 id="hpTrH">When something goes wrong</h2>
+        <dl class="hp-gl" id="hpTr"></dl>
+        <p class="hp-dim">Full walkthrough: GETTING_STARTED.md in the project folder. Security and privacy: SECURITY.md. Accessibility: docs/ACCESSIBILITY.md.</p>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const X = window.DLP_EXPLAIN || {};
+    document.getElementById('hpFirst').innerHTML = (window.DLP_FIRST_DAY || []).map(([t, k, s]) => `<li><div><a href="#${E(k)}">${E(t)}</a><span>${E(s)}</span></div></li>`).join('');
+    const groups = window.DLP_EXPLAIN_GROUPS || [];
+    const order = (window.DLP_EXPLAIN_ORDER || Object.keys(X));
+    let all = '', toc = '';
+    for (const g of groups) {
+      const keys = order.filter(k => X[k] && X[k].group === g);
+      if (!keys.length) continue;
+      all += `<h3 style="margin:1rem 0 0.2rem;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--dim);">${E(g)}</h3>`;
+      for (const k of keys) {
+        const x = X[k];
+        toc += `<a href="#${E(k)}">${E(x.name)}</a>`;
+        all += `<article class="hp-card" id="${E(k)}" aria-labelledby="hpN-${E(k)}"><div class="g">${E(g)}</div><h3 id="hpN-${E(k)}" style="font-size:1rem;margin:0.1rem 0 0;">${E(x.name)}</h3>${window.DLP_EXPLAIN_CARD(k, true)}</article>`;
+      }
+    }
+    document.getElementById('hpToc').innerHTML = toc;
+    document.getElementById('hpAll').innerHTML = all;
+    document.getElementById('hpGl').innerHTML = (window.DLP_GLOSSARY || []).map(([t, d]) => `<dt>${E(t)}</dt><dd>${E(d)}</dd>`).join('');
+    document.getElementById('hpTr').innerHTML = (window.DLP_TROUBLE || []).map(([t, d]) => `<dt>${E(t)}</dt><dd>${E(d)}</dd>`).join('');
+    if (location.hash) { const el = document.getElementById(location.hash.slice(1)); if (el) { el.setAttribute('tabindex', '-1'); el.focus(); el.scrollIntoView(); } }
+  })();
+  </script>
+</body>
+</html>

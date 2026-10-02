@@ -1,0 +1,63 @@
+# docker compose up --build
+# Publishes on the host's loopback only; the container is read-only, runs
+# as a non-root user, drops every capability and cannot gain privileges.
+# Credentials: either type them in the GUI, or put ZSCALER_* in a local
+# .env file next to this compose file (git-ignored). SSO is off by
+# default; turn it on with ZSCALER_SSO_ENABLED=1 plus the ZSCALER_SSO_*
+# settings (ZSCALER_SSO_ISSUER / _CLIENT_ID / _CLIENT_SECRET /
+# _REDIRECT_URL) in that .env file. It is required only if you publish
+# the container beyond this machine's loopback (DLP_CHECK_HOST_BIND);
+# see SECURITY.md.
+services:
+  dlp-check:
+    build:
+      context: .
+      # Which commit the image is built from, so the app can say whether
+      # GitHub has a newer one. update_container.sh / .ps1 set these; a plain
+      # docker compose up --build leaves them "unknown" / "main".
+      args:
+        DLP_CHECK_BUILD_COMMIT: "${DLP_CHECK_BUILD_COMMIT:-unknown}"
+        DLP_CHECK_BUILD_BRANCH: "${DLP_CHECK_BUILD_BRANCH:-main}"
+    image: dlp-check:local
+    container_name: dlp-check
+    ports:
+      # Host port: 8001, so the container runs beside a local install that has
+      # 8000; set DLP_CHECK_HOST_PORT in .env for another one. The app inside
+      # the container always listens on 8000. Host address: the host's
+      # loopback (127.0.0.1) unless DLP_CHECK_HOST_BIND in .env says otherwise;
+      # change it here only through that variable, because the app reads the
+      # same value (below) to decide whether Enable write mode may be offered
+      # in the browser. Publishing beyond loopback turns that switch off.
+      - "${DLP_CHECK_HOST_BIND:-127.0.0.1}:${DLP_CHECK_HOST_PORT:-8001}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ZSCALER_BIND_HOST: 0.0.0.0        # inside the container only; the publish above is loopback
+      # What decides who can reach the app is DLP_CHECK_HOST_BIND (below and in
+      # ports: above). Loopback (the default, 127.0.0.1:8001 on the host) starts
+      # as is. Publish beyond the host's loopback and the app refuses to start
+      # unless SSO is configured (ZSCALER_SSO_ENABLED=1 plus the ZSCALER_SSO_*
+      # settings; see SECURITY.md).
+      ZSCALER_PORT: "8000"
+      DLP_CHECK_HOST_PORT: "${DLP_CHECK_HOST_PORT:-8001}"   # so the printed address uses the host port
+      DLP_CHECK_HOST_BIND: "${DLP_CHECK_HOST_BIND:-127.0.0.1}"   # the address ports: publishes on; loopback lets the browser enable writes
+      DLP_CHECK_USER_PACKS: /data/user_packs   # packs added from Advanced settings persist on the volume
+      # The Digest's timer reads every in-scope tenant profile and counts against
+      # the ZIA API rate limit: off (0) unless you opt in with a number of hours in .env.
+      DLP_CHECK_CONTINUOUS_EVAL_HOURS: "${DLP_CHECK_CONTINUOUS_EVAL_HOURS:-0}"
+    volumes:
+      - dlpcheck-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    restart: unless-stopped
+
+volumes:
+  dlpcheck-data:

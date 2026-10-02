@@ -1,0 +1,72 @@
+[
+  {
+    "name": "SRC-CSharp",
+    "description": "C# (C-Sharp) source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-CSharp Signal > 4) AND (D:SRC-CSharp Anchor > 0))"
+  },
+  {
+    "name": "SRC-CPlusPlus",
+    "description": "C++ source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-CPlusPlus Signal > 4) AND (D:SRC-CPlusPlus Anchor > 0))"
+  },
+  {
+    "name": "SRC-Go",
+    "description": "Go source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-Go Signal > 4) AND (D:SRC-Go Anchor > 0))"
+  },
+  {
+    "name": "SRC-HTML",
+    "description": "HTML source code: the Anchor fingerprint is present AND more than 3 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-HTML Signal > 3) AND (D:SRC-HTML Anchor > 0))"
+  },
+  {
+    "name": "SRC-Java",
+    "description": "Java source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-Java Signal > 4) AND (D:SRC-Java Anchor > 0))"
+  },
+  {
+    "name": "SRC-JavaScript",
+    "description": "JavaScript source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-JavaScript Signal > 4) AND (D:SRC-JavaScript Anchor > 0))"
+  },
+  {
+    "name": "SRC-Kotlin",
+    "description": "Kotlin source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-Kotlin Signal > 4) AND (D:SRC-Kotlin Anchor > 0))"
+  },
+  {
+    "name": "SRC-Python",
+    "description": "Python source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-Python Signal > 4) AND (D:SRC-Python Anchor > 0))"
+  },
+  {
+    "name": "SRC-Rust",
+    "description": "Rust source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-Rust Signal > 4) AND (D:SRC-Rust Anchor > 0))"
+  },
+  {
+    "name": "SRC-SQL",
+    "description": "SQL source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-SQL Signal > 4) AND (D:SRC-SQL Anchor > 0))"
+  },
+  {
+    "name": "SRC-Swift",
+    "description": "Swift source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-Swift Signal > 4) AND (D:SRC-Swift Anchor > 0))"
+  },
+  {
+    "name": "SRC-TypeScript",
+    "description": "TypeScript source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-TypeScript Signal > 4) AND (D:SRC-TypeScript Anchor > 0))"
+  },
+  {
+    "name": "SRC-VBNet",
+    "description": "Visual Basic (.NET) source code: the Anchor fingerprint is present AND more than 4 Signal matches accumulate (All/AND), which is what removes cousin-language false positives.",
+    "expression": "((D:SRC-VBNet Signal > 4) AND (D:SRC-VBNet Anchor > 0))"
+  },
+  {
+    "name": "SRC-Private Keys",
+    "description": "From the Fed pack's Private Keys engine. Plaintext private keys, JWK private keys, PGP and Bouncy Castle key exports and Zscaler's credential-leakage clone: the secrets that ride along with source code.",
+    "expression": "((D:SRC-Private Keys-Plaintext Regex > 0) OR (D:SRC-JWK Private Key > 0) OR (D:SRC-Private Key > 0) OR (D:SRC-Encrypted or ASCII Armored PGP Keys > 0) OR (D:SRC-Encrypted Bouncy Castle Key Exports > 0))"
+  }
+]

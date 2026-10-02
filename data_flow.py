@@ -1,0 +1,1096 @@
+"""Data Flow Map: the exact path a transaction takes through the tenant.
+
+For a destination (a cloud application, a URL category or a hostname) and
+a device context (platform, on or off a trusted network), the tracer walks
+every hop the tenant's configuration puts in the way and says what
+happens at each one, using the same objects the portal uses:
+
+  device ─ Client Connector app profile (bypasses, Endpoint DLP, cert)
+         ─ forwarding profile for that network (tunnel / PAC / none)
+         ─ PAC file (DIRECT statements)
+         ─ ZIA SSL inspection (decrypt / leave encrypted / block)
+         ─ URL filtering (allow / block / caution / isolate)
+         ─ Cloud App Control (per-action controls for the app)
+         ─ File Type Control (upload of bulk formats)
+         ─ Inline Web DLP (which rules see the content, monitor or enforce)
+
+and, beside it, the channels that do not ride the tunnel: Endpoint DLP on
+the device, SaaS Security API at rest, Outbound Email DLP.
+
+Every hop carries the rule that decided it and, when it weakens the
+policy set, a weak point with a severity and a fix. Policy packs are
+overlaid: for each pack, which of its rules sit on the path and whether
+they are enforcing, monitoring, disabled or missing.
+
+Read-only. The schema of Client Connector profiles varies by tenant and
+version, so the profile readers are keyword based (like bypass_report)
+and the raw value is kept next to every interpretation.
+"""
+from __future__ import annotations
+
+import contextlib
+import fnmatch
+import json
+import re
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+
+from bypass_report import _fetch_url_category_lookup, _rules_to_list
+from ssl_flow import (TRAFFIC_CLASSES, _fetch_app_catalogue, _fetch_rules, _matches, _names, _scope, _sort_key,
+                      _upper, normalize_dlp_rule, normalize_ssl_rule)
+
+# ── Contexts ──────────────────────────────────────────────────────────
+NETWORKS = [
+    {"key": "off", "label": "Off network (remote)", "what": "Not on a trusted network and no VPN: the forwarding profile's off-trusted-network action applies."},
+    {"key": "on", "label": "On trusted network (office)", "what": "The device sees a trusted network: the on-trusted-network action applies (often tunnel, sometimes none with a GRE/IPsec site tunnel)."},
+    {"key": "vpn", "label": "On VPN", "what": "A VPN trusted network is detected: the VPN action applies."},
+]
+PLATFORMS = ["windows", "macos", "ios", "android", "linux"]
+
+DECRYPT_ACTIONS = {"DECRYPT"}
+NO_DECRYPT_ACTIONS = {"DO_NOT_DECRYPT", "DO_NOT_INSPECT", "BYPASS"}
+BLOCK_ACTIONS = {"BLOCK", "BLOCK_RESET", "DROP"}
+
+UPLOAD_VERBS = ("UPLOAD", "SHARE", "SEND", "ATTACHMENT_SEND", "POST", "EDIT", "CREATE")
+
+
+# ── What is in scope ──────────────────────────────────────────────────
+# The app never reads the tenant implicitly, and reads only what the Scope
+# page puts in scope: the ticked scopes (dlp, zia_extras, zcc, ...) and the
+# channels marked Zscaler. Each part of the tenant the path is traced
+# through, with the scopes that put it in scope (any one of them) and the
+# Scope page channel that must be on Zscaler for it (None: the scope is
+# enough). A part out of scope is not read, and its hop says "not in
+# scope" — never "no rule", never "could not read".
+PATH_SECTIONS: Dict[str, Tuple[str, Tuple[str, ...], Optional[str]]] = {
+    "zcc": ("Client Connector app and forwarding profiles", ("zcc",), None),
+    "pac": ("PAC files", ("zcc",), None),
+    "cac": ("Cloud App Control rules", ("dlp", "zia_extras"), "cloud_app_control"),
+    "url": ("URL filtering rules", ("dlp", "zia_extras"), None),
+    "ssl": ("SSL inspection rules", ("dlp", "zia_extras"), "ssl_inspection"),
+    "ftc": ("File Type Control rules", ("dlp", "zia_extras"), None),
+    "dlp": ("Web DLP rules", ("dlp",), "web_dlp"),
+    "endpoint": ("Endpoint DLP rules", ("dlp",), "endpoint_dlp"),
+    "saas": ("SaaS Security API DLP rules", ("dlp",), "saas_casb"),
+    "email": ("Outbound Email DLP rules", ("dlp",), "email_dlp"),
+}
+# The ZIA policy sections that place the destination: the URL categories
+# list and ZIA's URL lookup are read only when one of them is in scope.
+_PLACING = ("cac", "url", "ssl", "ftc", "dlp")
+SCOPE_KEYS = ("dlp", "zia_extras", "zpa", "zcc", "genai", "automation", "zdx", "zidentity", "rbac")
+SCOPE_LABELS = {"dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc": "ZCC", "genai": "GenAI & prompts",
+                "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC"}
+NOTHING_IN_SCOPE = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
+                    "and mark the channels you run on Zscaler, then analyze again.")
+MAP_NOTHING_IN_SCOPE = ("Nothing the Data Flow Map reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
+                        "and mark the channels you run on Zscaler, then run the map again.")
+
+
+def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
+    """What the Path analyzer may read for the Scope page's selection:
+    `scopes` (the ticked scope keys) and `channels` (the channel
+    declaration, {id: choice or {choice, note, name}}). A channel counts
+    only when marked Zscaler; one left as a gap or not declared is out of
+    scope like one covered by an alternative solution. Returns {scopes,
+    channels, read: [section keys], not_in_scope: {key: why}, lookup,
+    key, summary}. `key` names what is read, so a cached read is reused
+    only for the same scope. Pure: never reads a tenant."""
+    import channel_scope
+    given = {str(s).strip() for s in scopes} if isinstance(scopes, (list, tuple, set)) else set()
+    sc = [k for k in SCOPE_KEYS if k in given]
+    ch = channel_scope.normalize(channels)
+    read: List[str] = []
+    out: Dict[str, str] = {}
+    for key, (what, need, cid) in PATH_SECTIONS.items():
+        if not any(s in sc for s in need):
+            names = " or ".join(SCOPE_LABELS[s] for s in need)
+            out[key] = f"Not in scope: {names} is not ticked on the Scope page, so the {what} were not read."
+            continue
+        if cid:
+            decl = ch.get(cid) or {}
+            name = decl.get("name") or channel_scope.CHANNELS.get(cid, cid)
+            if decl.get("choice") == "alternative":
+                note = f" ({decl['note']})" if decl.get("note") else ""
+                out[key] = f"Not in scope: {name} is covered by an alternative solution{note}, as declared on the Scope page, so the {what} were not read."
+                continue
+            if decl.get("choice") != "zscaler":
+                out[key] = f"Not in scope: {name} is not marked Zscaler on the Scope page, so the {what} were not read."
+                continue
+        read.append(key)
+    lookup = any(k in read for k in _PLACING)
+    if read:
+        summary = ("Reads only what is in scope on the Scope page: " + ", ".join(PATH_SECTIONS[k][0] for k in read)
+                   + (", the URL categories and ZIA's URL lookup" if lookup else "") + ".")
+    else:
+        summary = NOTHING_IN_SCOPE
+    return {"scopes": sc, "channels": {k: v["choice"] for k, v in ch.items()}, "read": read, "not_in_scope": out,
+            "lookup": lookup, "key": ",".join(sorted(read)), "summary": summary}
+
+
+def full_path_scope() -> Dict[str, Any]:
+    """Every part in scope (a caller that declared every channel on
+    Zscaler and ticked every scope the path reads): for tests and tools."""
+    return path_scope(**{k: v for k, v in full_path_scope_request().items() if k != "from_page"})
+
+
+def full_path_scope_request() -> Dict[str, Any]:
+    """The Scope page selection (a request body's scopes, channels and
+    from_page) that puts every part the path reads in scope."""
+    return {"scopes": ["dlp", "zia_extras", "zcc"], "channels": {cid: "zscaler" for _, _, cid in PATH_SECTIONS.values() if cid},
+            "from_page": True}
+
+
+# ── Stop ──────────────────────────────────────────────────────────────
+class ReadStopped(RuntimeError):
+    """The operator clicked Stop: the read ended between two requests and
+    nothing more is sent."""
+
+
+def stop_requested(cancel: Any) -> bool:
+    """True once `cancel` (a threading.Event, or a callable answering
+    whether to stop) says so."""
+    if cancel is None:
+        return False
+    is_set = getattr(cancel, "is_set", None)
+    try:
+        return bool(is_set() if callable(is_set) else cancel())
+    except Exception:  # noqa: BLE001 — a broken cancel hook never stops a read by itself
+        return False
+
+
+def _stop_point(cancel: Any) -> None:
+    if stop_requested(cancel):
+        raise ReadStopped("stopped before the read finished")
+
+
+@contextlib.contextmanager
+def stop_on(client: Any, cancel: Any) -> Iterator[None]:
+    """While inside, `cancel` also stops what happens inside one request:
+    the client (its `stop_check`, honoured by the assessment Client between
+    paged calls, in its 429 pauses and retries) and ZIA's rate-limit pacing
+    on this thread (zia_rate.stopping_on) send nothing more once it is
+    set. None changes nothing."""
+    if cancel is None:
+        yield
+        return
+    import zia_rate
+
+    def should_stop() -> bool:
+        return stop_requested(cancel)
+
+    bound, before = False, None
+    try:
+        before = getattr(client, "stop_check", None)
+        client.stop_check = should_stop
+        bound = True
+    except Exception:  # noqa: BLE001 — a client that takes no hook is still stopped between steps
+        pass
+    try:
+        with zia_rate.stopping_on(should_stop):
+            yield
+    finally:
+        if bound:
+            try:
+                client.stop_check = before
+            except Exception:  # noqa: BLE001
+                pass
+
+
+# ── Client Connector readers ──────────────────────────────────────────
+def _hostname_of(dest: str) -> str:
+    d = (dest or "").strip().lower()
+    d = re.sub(r"^[a-z]+://", "", d)
+    return d.split("/")[0].split(":")[0]
+
+
+def _domain_hit(patterns: Iterable[str], host: str) -> Optional[str]:
+    if not host:
+        return None
+    for p in patterns:
+        pat = str(p or "").strip().lower()
+        if not pat:
+            continue
+        pat_host = _hostname_of(pat)
+        if fnmatch.fnmatch(host, pat_host) or host == pat_host.lstrip("*.") or host.endswith("." + pat_host.lstrip("*.")):
+            return str(p)
+    return None
+
+
+_MODE_RULES = [
+    (re.compile(r"tunnel.*2|z ?tunnel ?2|packet|ztunnel2|tunnel2", re.I), "Z-Tunnel 2.0", "tunnel"),
+    (re.compile(r"local ?proxy|twlp|tunnel.*proxy", re.I), "Tunnel with local proxy", "tunnel"),
+    (re.compile(r"tunnel.*1|ztunnel1|tunnel1|^tunnel$", re.I), "Z-Tunnel 1.0", "tunnel"),
+    (re.compile(r"enforce.*proxy|proxy.*enforce|\bpac\b", re.I), "Enforce proxy (PAC)", "pac"),
+    (re.compile(r"^none$|^off$|disable|no ?forward|direct", re.I), "None (direct)", "none"),
+]
+# Numeric codes seen in the Client Connector portal API.
+_MODE_CODES = {"0": ("None (direct)", "none"), "1": ("Z-Tunnel 1.0", "tunnel"), "2": ("Enforce proxy (PAC)", "pac"),
+               "3": ("Tunnel with local proxy", "tunnel"), "4": ("Z-Tunnel 2.0", "tunnel")}
+
+
+def classify_mode(raw: Any) -> Tuple[str, str]:
+    """('Z-Tunnel 2.0', 'tunnel') from whatever the profile says."""
+    s = str(raw if raw is not None else "").strip()
+    if s in _MODE_CODES:
+        return _MODE_CODES[s]
+    for rx, label, kind in _MODE_RULES:
+        if rx.search(s):
+            return label, kind
+    return (f"unknown ({s})" if s else "not set"), "unknown"
+
+
+_NET_RULES = [(re.compile(r"vpn", re.I), "vpn"), (re.compile(r"off|untrust|not ?trust", re.I), "off"), (re.compile(r"on|trust", re.I), "on")]
+_NET_CODES = {"0": "off", "1": "on", "2": "vpn"}
+
+
+def classify_network(raw: Any) -> str:
+    s = str(raw if raw is not None else "").strip()
+    if s in _NET_CODES:
+        return _NET_CODES[s]
+    for rx, key in _NET_RULES:
+        if rx.search(s):
+            return key
+    return "any"
+
+
+def forwarding_actions(profile: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """{network key: {mode_label, mode_kind, raw}} from a forwarding
+    profile, reading any list of dicts that pairs a network type with a
+    tunnel/action/proxy setting. A profile with a single top-level mode
+    applies it to every network."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for k, v in profile.items():
+        # The ZPA action list (forwardingProfileZpaActions) describes the
+        # private-access tunnel, not how web traffic reaches ZIA: skip it.
+        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v) and re.search(r"action|forward|network|tunnel", str(k), re.I) and not re.search(r"zpa", str(k), re.I):
+            for entry in v:
+                net_raw = next((entry[kk] for kk in entry if re.search(r"network", str(kk), re.I)), None)
+                mode_raw = next((entry[kk] for kk in entry if re.search(r"tunnel|action|forward|proxy|mode", str(kk), re.I) and not re.search(r"network|dns|timeout|port|id$", str(kk), re.I)), None)
+                if mode_raw is None:
+                    continue
+                label, kind = classify_mode(mode_raw)
+                out[classify_network(net_raw)] = {"mode_label": label, "mode_kind": kind, "raw": {"network": net_raw, "mode": mode_raw}}
+    if not out:
+        for kk in profile:
+            if re.search(r"tunnel|forward|mode", str(kk), re.I) and not isinstance(profile[kk], (list, dict)) and profile[kk] not in (None, ""):
+                label, kind = classify_mode(profile[kk])
+                if kind != "unknown":
+                    out["any"] = {"mode_label": label, "mode_kind": kind, "raw": {"field": kk, "mode": profile[kk]}}
+                    break
+    return out
+
+
+def read_client_connector(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = None) -> Dict[str, Any]:
+    """App profiles, forwarding profiles, trusted networks and PAC files in
+    one normalised structure. Errors are recorded, never raised. With a
+    `scope` (path_scope) only what is in scope is read; the rest is
+    recorded in `not_in_scope`. `cancel` (the operator's Stop) is checked
+    before every request: once set, ReadStopped is raised and nothing more
+    is sent."""
+    out: Dict[str, Any] = {"app_profiles": [], "forwarding_profiles": [], "trusted_networks": [], "pac_files": [], "errors": [], "not_in_scope": {}}
+    nis = (scope or {}).get("not_in_scope") or {}
+    for k in ("zcc", "pac"):
+        if k in nis:
+            out["not_in_scope"][k] = nis[k]
+    if "zcc" not in nis:
+        _stop_point(cancel)
+        try:
+            data, code = client.get("/zcc/webPolicies")
+            if code != 200:
+                out["errors"].append(f"/zcc/webPolicies: HTTP {code}")
+            for p in _rules_to_list(data) if code == 200 else []:
+                if not isinstance(p, dict):
+                    continue
+                plat = str(p.get("os") or p.get("platform") or p.get("osType") or p.get("device_type") or p.get("deviceType") or "").lower()
+                # The Client Connector API numbers the platforms: 1 iOS, 2 Android, 3 Windows, 4 macOS, 5 Linux.
+                plat = {"win": "windows", "windows": "windows", "mac": "macos", "macos": "macos", "osx": "macos", "ios": "ios", "android": "android", "linux": "linux",
+                        "1": "ios", "2": "android", "3": "windows", "4": "macos", "5": "linux"}.get(plat, plat or "all")
+                domains, apps, processes, ips, vpn = [], [], [], [], []
+                for k, v in p.items():
+                    kl = str(k).lower()
+                    if not isinstance(v, list) or not v:
+                        continue
+                    vals = [x.get("name") or x.get("url") or x.get("domain") or x.get("ip") or x.get("path") or json.dumps(x)[:80] if isinstance(x, dict) else str(x) for x in v]
+                    if re.search(r"vpn", kl):
+                        vpn += vals
+                    elif re.search(r"process", kl):
+                        processes += vals
+                    elif re.search(r"bypassapp|appbypass|applicationbypass|predefinedbypass|custombypass", kl):
+                        apps += vals
+                    elif re.search(r"ipexclu|excludeip|bypassip|ipbypass|destinationexclu|nonzscaler", kl):
+                        ips += vals
+                    elif re.search(r"domain|hostname|bypassurl|url|tunnelbypass", kl) and re.search(r"bypass|exclu|exempt", kl):
+                        domains += vals
+                out["app_profiles"].append({
+                    "id": p.get("id"), "name": p.get("name") or p.get("policyName") or f"Profile {p.get('id', '?')}",
+                    "platform": plat, "active": bool(p.get("active", True)), "priority": p.get("ruleOrder") or p.get("priority"),
+                    "forwarding_profile": p.get("forwardingProfileName") or p.get("forwardingProfileId") or p.get("forwardingProfile"),
+                    "pac_url": p.get("pacUrl") or p.get("customPacUrl") or p.get("pac_url"),
+                    "strict_enforcement": bool(p.get("strictEnforcement") or p.get("strictMode")),
+                    "endpoint_dlp": bool(p.get("installEndpointDlp") or p.get("endpointDlpEnabled") or p.get("zdpEnabled")),
+                    "ssl_cert": bool(p.get("sslCertInstall") or p.get("installSslCert") or p.get("sslCertificateEnabled")),
+                    "bypass": {"domains": domains, "apps": apps, "processes": processes, "ips": ips, "vpn_gateways": vpn},
+                    "groups": _names(p.get("groups") or p.get("groupNames") or []),
+                })
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(f"/zcc/webPolicies: {e}")
+        _stop_point(cancel)
+        try:
+            data, code = client.get("/zcc/forwardingProfiles")
+            if code != 200:
+                out["errors"].append(f"/zcc/forwardingProfiles: HTTP {code}")
+            for p in _rules_to_list(data) if code == 200 else []:
+                if isinstance(p, dict):
+                    out["forwarding_profiles"].append({"id": p.get("id"), "name": p.get("name") or f"Forwarding profile {p.get('id', '?')}",
+                                                       "actions": forwarding_actions(p),
+                                                       "trusted_networks": _names(p.get("trustedNetworks") or p.get("trustedNetworkNames") or []),
+                                                       "pac_url": p.get("pacUrl") or p.get("customPacUrl") or p.get("forwardingProfilePacUrl")})
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(f"/zcc/forwardingProfiles: {e}")
+        _stop_point(cancel)
+        try:
+            data, code = client.get("/zcc/trustedNetworks")
+            for t in _rules_to_list(data) if code == 200 else []:
+                if isinstance(t, dict):
+                    out["trusted_networks"].append({"id": t.get("id"), "name": t.get("name") or t.get("networkName"),
+                                                    "conditions": {k: v for k, v in t.items() if re.search(r"dns|ssid|ip|hostname|server|condition", str(k), re.I) and v}})
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(f"/zcc/trustedNetworks: {e}")
+    if "pac" not in nis:
+        _stop_point(cancel)
+        try:
+            data, code = client.get("/zia/pacFiles")
+            for f in _rules_to_list(data) if code in (200, 204) else []:
+                if isinstance(f, dict):
+                    content = str(f.get("pacContent") or f.get("content") or f.get("pacScript") or "")
+                    out["pac_files"].append({"id": f.get("id"), "name": f.get("name"), "url": f.get("pacUrl") or f.get("url"),
+                                             "direct_hosts": _pac_direct_hosts(content), "has_content": bool(content)})
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append(f"/zia/pacFiles: {e}")
+    return out
+
+
+_PAC_LINE = re.compile(r"(shExpMatch|dnsDomainIs|localHostOrDomainIs|isInNet)\s*\(\s*\w+\s*,\s*[\"']([^\"']+)[\"']", re.I)
+
+
+def _pac_direct_hosts(content: str) -> List[str]:
+    """Hostname patterns a PAC file sends DIRECT (never to Zscaler)."""
+    out: List[str] = []
+    if not content:
+        return out
+    for block in re.split(r"\breturn\b", content):
+        pass
+    for m in re.finditer(r"if\s*\((?P<cond>[^{]*)\)\s*\{?\s*return\s+[\"']DIRECT[\"']", content, re.I | re.S):
+        for h in _PAC_LINE.finditer(m.group("cond")):
+            out.append(h.group(2))
+    return sorted(set(out))
+
+
+# ── ZIA readers ───────────────────────────────────────────────────────
+def _norm_generic(r: Dict[str, Any]) -> Dict[str, Any]:
+    """URL filtering / File Type Control / Cloud App Control rule → common shape."""
+    action = r.get("action")
+    if isinstance(action, dict):
+        action = action.get("type") or action.get("name")
+    actions = [str(a).upper() for a in (r.get("actions") or [])]
+    state = str(r.get("state") or "ENABLED").upper()
+    return {
+        "id": r.get("id"), "name": r.get("name") or f"rule {r.get('id')}", "order": r.get("order"), "rank": r.get("rank"),
+        "state": state, "enabled": state == "ENABLED",
+        "action": str(action or r.get("filteringAction") or r.get("filtering_action") or "").upper(), "actions": actions,
+        "url_categories": _upper(_names(r.get("urlCategories") or r.get("url_categories") or [])),
+        "cloud_applications": _upper(_names(r.get("applications") or r.get("cloudApplications") or r.get("cloud_applications") or [])),
+        "app_classes": _upper(_names(r.get("cloudAppClasses") or r.get("cloud_app_classes") or [])),
+        "type": str(r.get("type") or "").upper(),
+        "file_types": _upper(_names(r.get("fileTypes") or r.get("file_types") or [])),
+        "operation": str(r.get("operation") or "").upper(),
+        "request_methods": _upper(_names(r.get("requestMethods") or r.get("request_methods") or [])),
+        "scope": _scope(r), "scoped": bool(_scope(r)),
+        "protocols": _upper(_names(r.get("protocols") or [])),
+    }
+
+
+def read_zia(client, *, scope: Optional[Dict[str, Any]] = None, cancel: Any = None) -> Dict[str, Any]:
+    """The ZIA policy the path runs through. With a `scope` (path_scope)
+    only the sections in scope are read: a section out of scope is an
+    empty list recorded in `not_in_scope` with the reason, never an
+    unread (failed) section. `scope` None reads every section (the Data
+    Flow Map). `cancel` (the operator's Stop) is checked before every
+    section and every catalogue page, and while a request waits out ZIA's
+    rate limit: once set, ReadStopped is raised and nothing more is sent."""
+    diagnostics: List[Dict[str, Any]] = []
+    nis = dict((scope or {}).get("not_in_scope") or {})
+    z: Dict[str, Any] = {"diagnostics": diagnostics, "not_in_scope": {k: v for k, v in nis.items() if k not in ("zcc", "pac")}}
+
+    def rules(key: str, endpoint: str, label: str) -> List[Dict[str, Any]]:
+        if key in nis:
+            return []
+        _stop_point(cancel)
+        return _fetch_rules(client, endpoint, diagnostics, label)
+
+    z["ssl"] = sorted((normalize_ssl_rule(r) for r in rules("ssl", "/zia/sslInspectionRules", "SSL inspection rules")), key=_sort_key)
+    z["dlp"] = [normalize_dlp_rule(r) for r in rules("dlp", "/zia/webDlpRules", "Web DLP rules")]
+    z["url"] = [_norm_generic(r) for r in rules("url", "/zia/urlFilteringRules", "URL filtering rules")]
+    z["cac"] = [_norm_generic(r) for r in rules("cac", "/zia/cloudApplicationRules", "Cloud App Control rules")]
+    z["ftc"] = [_norm_generic(r) for r in rules("ftc", "/zia/fileTypeRules", "File Type Control rules")]
+    for key, ep, label in (("endpoint", "/zia/endPointDlpRules", "Endpoint DLP rules"), ("saas", "/zia/casbDlpRules/all", "SaaS Security API DLP rules"),
+                           ("email", "/zia/emailDlpRules", "Outbound Email DLP rules")):
+        z[key] = [{"id": r.get("id"), "name": r.get("name"), "state": str(r.get("state") or "ENABLED").upper(),
+                   "action": str((r.get("action") or {}).get("type") if isinstance(r.get("action"), dict) else r.get("action") or "").upper(),
+                   "engines": _names(r.get("dlpEngines") or r.get("dlp_engines") or r.get("engines") or [])} for r in rules(key, ep, label) if isinstance(r, dict)]
+    # The application catalogue serves Cloud App Control only; the URL
+    # categories place the destination for the ZIA policy sections.
+    if "cac" not in nis:
+        classes = {cls for k in TRAFFIC_CLASSES for cls in k["app_classes"]}
+        _stop_point(cancel)
+        z["catalogue"] = _fetch_app_catalogue(client, classes, diagnostics, cancel=lambda: stop_requested(cancel))
+    else:
+        z["catalogue"] = {}
+    if scope is None or any(k not in nis for k in _PLACING):
+        _stop_point(cancel)
+        try:
+            z["categories"] = _fetch_url_category_lookup(client)
+        except Exception as e:  # noqa: BLE001
+            z["categories"] = {}
+            diagnostics.append({"section": "URL categories", "endpoint": "/zia/urlCategories", "error_type": type(e).__name__, "error": str(e)[:200]})
+    else:
+        z["categories"] = {}
+    _stop_point(cancel)   # a read cut short by Stop is never handed on as a finished one
+    for r in z["dlp"] + z["url"] + z["cac"] + z["ftc"] + z["ssl"]:
+        r.setdefault("order", None)
+    z["unread"] = unread_sections(diagnostics)
+    return z
+
+
+# A rule list that failed to read (HTTP 429, 403, a timeout) is not an empty
+# rule list: the trace says "could not read" for it, never "no rule".
+_SECTION_KEYS = {"SSL inspection rules": "ssl", "Web DLP rules": "dlp", "URL filtering rules": "url", "Cloud App Control rules": "cac",
+                 "File Type Control rules": "ftc", "Endpoint DLP rules": "endpoint", "SaaS Security API DLP rules": "saas",
+                 "Outbound Email DLP rules": "email"}
+
+
+def unread_sections(diagnostics: Any) -> Dict[str, str]:
+    """{zia key: why} for each rule section whose read failed, from the
+    read's diagnostics."""
+    out: Dict[str, str] = {}
+    for d in diagnostics or []:
+        if not isinstance(d, dict):
+            continue
+        key = _SECTION_KEYS.get(str(d.get("section") or ""))
+        if key and key not in out:
+            why = " ".join(str(x) for x in (d.get("error_type"), d.get("error")) if x).strip()
+            out[key] = why[:200] or "the read failed"
+    return out
+
+
+def _unread_why(unread: Dict[str, str], key: str, label: str) -> str:
+    return f"The {label} could not be read ({unread[key]}), so whether one applies here is unknown; run the analysis again once the API answers."
+
+
+# ── Destination resolution ────────────────────────────────────────────
+def resolve_destination(dest: str, zia: Dict[str, Any]) -> Dict[str, Any]:
+    """A cloud app name, a URL category id/name, a traffic class key or a
+    hostname → {label, kind, categories, applications, app_classes, host}."""
+    d = (dest or "").strip()
+    du = d.upper().replace(" ", "_")
+    for k in TRAFFIC_CLASSES:
+        if d.lower() == k["key"] or d.lower() == k["label"].lower():
+            apps = sorted({a for cls in k["app_classes"] for a in zia.get("catalogue", {}).get(cls, [])})
+            return {"label": k["label"], "kind": "class", "categories": list(k["url_categories"]), "applications": apps,
+                    "app_classes": list(k["app_classes"]), "host": "", "why": k.get("why", ""), "class": k["key"]}
+    cats = zia.get("categories") or {}
+    if du in cats or d in cats:
+        c = cats.get(du) or cats.get(d)
+        cid = c.get("id") or du
+        return {"label": c.get("configured_name") or c.get("name") or du, "kind": "category", "categories": [str(cid).upper()],
+                "applications": [], "app_classes": [], "host": "", "class": ""}
+    for cls, apps in (zia.get("catalogue") or {}).items():
+        if du in apps:
+            return {"label": d, "kind": "application", "categories": [], "applications": [du], "app_classes": [cls], "host": "", "class": ""}
+    if "." in d:
+        host = _hostname_of(d)
+        matched_cats = []
+        for key, c in cats.items():
+            if not isinstance(c, dict):
+                continue
+            if _domain_hit(list(c.get("urls") or []) + list(c.get("db_categorized_urls") or c.get("dbCategorizedUrls") or []), host):
+                matched_cats.append(str(c.get("id") or key).upper())
+        return {"label": host, "kind": "host", "categories": sorted(set(matched_cats)), "applications": [], "app_classes": [], "host": host, "class": ""}
+    return {"label": d, "kind": "unknown", "categories": [du] if du else [], "applications": [du] if du else [], "app_classes": [], "host": "", "class": ""}
+
+
+# ── Matching helpers ──────────────────────────────────────────────────
+def _generic_matches(rule: Dict[str, Any], dest: Dict[str, Any]) -> Optional[str]:
+    cats = set(dest["categories"]); apps = set(dest["applications"]); classes = set(dest["app_classes"])
+    if rule["cloud_applications"] and apps & set(rule["cloud_applications"]):
+        return "application"
+    if rule["app_classes"] and classes & set(rule["app_classes"]):
+        return "application class"
+    if rule["url_categories"]:
+        if cats & set(rule["url_categories"]):
+            return "URL category"
+        if "ANY" in rule["url_categories"] or "ALL" in rule["url_categories"]:
+            return "any category"
+        return None
+    if not rule["cloud_applications"] and not rule["app_classes"] and not rule["url_categories"]:
+        return "catch-all"
+    return None
+
+
+def _cac_matches(rule: Dict[str, Any], dest: Dict[str, Any]) -> Optional[str]:
+    apps = set(dest["applications"]); classes = set(dest["app_classes"])
+    if rule["cloud_applications"] and apps & set(rule["cloud_applications"]):
+        return "application"
+    if rule["app_classes"] and classes & set(rule["app_classes"]):
+        return "application class"
+    if rule["type"] and rule["type"] in classes and not rule["cloud_applications"]:
+        return "application type"
+    return None
+
+
+def _hop(key: str, label: str, status: str, decided_by: Optional[Dict[str, Any]], detail: str,
+         weak: Optional[Dict[str, Any]] = None, **extra) -> Dict[str, Any]:
+    h = {"key": key, "label": label, "status": status, "decided_by": decided_by, "detail": detail, "weak_point": weak}
+    h.update(extra)
+    return h
+
+
+def _weak(severity: str, title: str, fix: str) -> Dict[str, Any]:
+    return {"severity": severity, "title": title, "fix": fix}
+
+
+# ── The trace ─────────────────────────────────────────────────────────
+def trace(dest: Dict[str, Any], network: str, platform: str, zcc: Dict[str, Any], zia: Dict[str, Any],
+          packs: Optional[List[Dict[str, Any]]] = None, scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Pure: destination + context + tenant snapshot → hops, channels, packs.
+    `scope` (path_scope) says what was put out of scope on the Scope page;
+    without it, what the snapshot itself recorded as not in scope. A part
+    out of scope is drawn as "not in scope" (status out_of_scope), never
+    as "no rule" and never as "could not read"."""
+    hops: List[Dict[str, Any]] = []
+    host = dest.get("host") or ""
+    unread = zia.get("unread") or {}
+    if scope is not None:
+        nis: Dict[str, str] = dict(scope.get("not_in_scope") or {})
+    else:
+        nis = dict(zcc.get("not_in_scope") or {})
+        nis.update(zia.get("not_in_scope") or {})
+    unread = {k: v for k, v in unread.items() if k not in nis}
+    reaches_zscaler = True
+    decrypted = False
+    ends = None
+
+    # 1. Client Connector app profile
+    profiles = [p for p in zcc.get("app_profiles", []) if p.get("active", True) and (p["platform"] in (platform, "all", ""))]
+    prof = sorted(profiles, key=lambda p: (p.get("priority") is None, p.get("priority") or 0))[0] if profiles else None
+    zcc_out = "zcc" in nis
+    if zcc_out:
+        prof = None
+        hops.append(_hop("zcc", "Client Connector app profile", "out_of_scope", None,
+                         nis["zcc"] + " Whether the client bypasses this destination is not assessed; the hops below assume it reaches Zscaler.",
+                         None, why="not in scope"))
+    elif not prof:
+        hops.append(_hop("zcc", "Client Connector app profile", "warn", None,
+                         f"No app profile found for {platform}; either Client Connector is not deployed to this platform or the profile list could not be read"
+                         + (f" ({'; '.join(zcc.get('errors') or [])})" if zcc.get("errors") else "") + ".",
+                         _weak("medium", "No Client Connector profile for this platform", "Deploy Client Connector with an app profile for this platform, or confirm the device reaches ZIA another way (GRE/IPsec site, PAC)."),
+                         why=f"no app profile for {platform}" + (": profile list could not be read" if zcc.get("errors") else "")))
+    else:
+        b = prof["bypass"]
+        hit_domain = _domain_hit(b["domains"], host) if host else None
+        hit_app = next((a for a in b["apps"] if dest["label"].lower() in str(a).lower() or str(a).lower() in dest["label"].lower()), None) if dest["kind"] in ("application", "unknown") else None
+        notes = []
+        if not prof["strict_enforcement"]:
+            notes.append("strict enforcement off (a user can disable the client)")
+        if not prof["ssl_cert"]:
+            notes.append("Zscaler root certificate not pushed by this profile (decryption fails unless deployed by MDM)")
+        if hit_domain or hit_app:
+            reaches_zscaler = False
+            ends = "zcc"
+            hops.append(_hop("zcc", "Client Connector app profile", "bypass", {"name": prof["name"], "id": prof["id"]},
+                             f"'{prof['name']}' bypasses this destination ({'domain ' + hit_domain if hit_domain else 'application ' + str(hit_app)}): the traffic leaves the device directly and never reaches Zscaler.",
+                             _weak("high", "Bypassed at the client", "Remove the bypass from the app profile, or accept that only Endpoint DLP can see this traffic and make sure it is enabled."),
+                             profile=prof["name"], notes=notes))
+        else:
+            n_bypass = sum(len(v) for v in b.values())
+            hops.append(_hop("zcc", "Client Connector app profile", "pass", {"name": prof["name"], "id": prof["id"]},
+                             f"'{prof['name']}' ({prof['platform']}) forwards this destination; {n_bypass} bypass entries on the profile do not match it."
+                             + (" Notes: " + "; ".join(notes) + "." if notes else ""),
+                             _weak("medium", "Client can be disabled by the user", "Turn on strict enforcement (and a tamper/uninstall password) so a user cannot switch the client off.") if not prof["strict_enforcement"] else None,
+                             profile=prof["name"], notes=notes))
+
+    # 2. Forwarding profile
+    fwd = None
+    if prof:
+        ref = prof.get("forwarding_profile")
+        fps = zcc.get("forwarding_profiles", [])
+        fwd = next((f for f in fps if ref is not None and (str(f.get("id")) == str(ref) or str(f.get("name")) == str(ref))), None) or (fps[0] if len(fps) == 1 else None)
+    mode_kind = "tunnel"
+    if reaches_zscaler and zcc_out:
+        hops.append(_hop("forwarding", "Forwarding profile", "out_of_scope", None,
+                         nis["zcc"] + " How the device forwards this traffic is not assessed; a tunnel to ZIA is assumed.", None, why="not in scope"))
+    elif reaches_zscaler:
+        if not fwd:
+            fps_n = len(zcc.get("forwarding_profiles", []))
+            if prof:
+                text = (f"The app profile '{prof['name']}' does not name a forwarding profile the tool could match"
+                        + (f" (the tenant has {fps_n} forwarding profiles, so none can be assumed)" if fps_n > 1 else (" and the forwarding profile list could not be read" if fps_n == 0 else ""))
+                        + "; assuming a tunnel. Check the app profile's Forwarding Profile field in the Client Connector portal.")
+                why = "no forwarding profile linked" if fps_n else "forwarding profiles not readable"
+            else:
+                text = (f"No app profile for {platform}, so no forwarding profile can be linked"
+                        + (f" (the tenant has {fps_n} forwarding profile(s))" if fps_n else " and the forwarding profile list could not be read")
+                        + "; assuming a tunnel.")
+                why = f"no app profile for {platform}"
+            hops.append(_hop("forwarding", "Forwarding profile", "assumed", None, text, None, why=why))
+        else:
+            act = fwd["actions"].get(network) or fwd["actions"].get("any") or {}
+            mode_kind = act.get("mode_kind", "unknown")
+            label = act.get("mode_label", "not set")
+            net_label = next(n["label"] for n in NETWORKS if n["key"] == network)
+            if mode_kind == "none":
+                reaches_zscaler = False; ends = "forwarding"
+                hops.append(_hop("forwarding", "Forwarding profile", "bypass", {"name": fwd["name"], "id": fwd["id"]},
+                                 f"'{fwd['name']}' sets '{label}' for {net_label}: web traffic is not forwarded by the client on this network. Unless the site has a GRE/IPsec tunnel or a system PAC, it goes direct.",
+                                 _weak("high" if network == "off" else "medium", f"No forwarding on {net_label.lower()}",
+                                       "Set the forwarding action to Z-Tunnel 2.0 (or Tunnel with local proxy) for this network, or confirm the site tunnel covers it."),
+                                 mode=label, raw=act.get("raw")))
+            elif mode_kind == "pac":
+                hops.append(_hop("forwarding", "Forwarding profile", "warn", {"name": fwd["name"], "id": fwd["id"]},
+                                 f"'{fwd['name']}' sets '{label}' for {net_label}: only proxied traffic reaches Zscaler; anything the PAC returns DIRECT for, and non-browser traffic, does not.",
+                                 _weak("medium", "PAC-based forwarding", "Move to Z-Tunnel 2.0 so every port and protocol is forwarded, not just what the PAC catches."),
+                                 mode=label, raw=act.get("raw")))
+            elif mode_kind == "unknown":
+                hops.append(_hop("forwarding", "Forwarding profile", "assumed", {"name": fwd["name"], "id": fwd["id"]},
+                                 f"'{fwd['name']}': the forwarding mode for {net_label} is '{label}', which this tool does not recognise as tunnel, PAC or none; assuming a tunnel. Raw value kept for review.",
+                                 None, mode=label, raw=act.get("raw"), why=f"mode '{label}' not recognised for {net_label.lower()}"))
+            else:
+                hops.append(_hop("forwarding", "Forwarding profile", "pass", {"name": fwd["name"], "id": fwd["id"]},
+                                 f"'{fwd['name']}' sets '{label}' for {net_label}: all traffic is tunnelled to ZIA.", None, mode=label, raw=act.get("raw")))
+
+    # 3. PAC file DIRECT statements
+    if reaches_zscaler and "pac" in nis and not zcc_out and (mode_kind == "pac" or (prof and prof.get("pac_url")) or (fwd and fwd.get("pac_url"))):
+        hops.append(_hop("pac", "PAC file", "out_of_scope", None, nis["pac"] + " Whether the PAC file sends this destination DIRECT is not assessed.", None, why="not in scope"))
+    elif reaches_zscaler and (mode_kind == "pac" or (prof and prof.get("pac_url")) or (fwd and fwd.get("pac_url"))):
+        direct = []
+        for f in zcc.get("pac_files", []):
+            hit = _domain_hit(f.get("direct_hosts") or [], host) if host else None
+            if hit:
+                direct.append((f, hit))
+        if direct:
+            reaches_zscaler = False; ends = "pac"
+            f, hit = direct[0]
+            hops.append(_hop("pac", "PAC file", "bypass", {"name": f.get("name"), "id": f.get("id")},
+                             f"PAC '{f.get('name')}' returns DIRECT for {hit}: the browser connects without Zscaler.",
+                             _weak("high", "PAC sends this destination DIRECT", "Remove the DIRECT clause or narrow it; Zscaler recommends returning the ZIA proxy for everything except RFC1918 and explicit local hosts.")))
+        else:
+            pacs = zcc.get("pac_files", [])
+            hops.append(_hop("pac", "PAC file", "pass", None,
+                             f"{len(pacs)} PAC file(s) read; none sends this destination DIRECT" + (" (host-level check needs a hostname)." if not host else "."), None))
+
+    if not reaches_zscaler:
+        hops.append(_hop("zia", "ZIA", "skipped", None, "Never reached: nothing below applies to this traffic.", None))
+    else:
+        # Inside ZIA the order follows Zscaler's "Understanding Policy
+        # Enforcement" for a web request: Browser Control, FTP Control,
+        # URL & Cloud App Control (Cloud App Control takes precedence), SSL
+        # inspection, Malware Protection and Advanced Threat Protection,
+        # upload File Type Control, upload Bandwidth Control, DLP and
+        # finally Firewall & DNS Control; the response walks the same list
+        # in reverse. Only the data security controls are traced here
+        # (app control, URL filtering, SSL, file type control, DLP); the
+        # others are not data-leak controls and this tool does not read
+        # them, so they are left out of the path rather than drawn as
+        # unreadable boxes. The reference diagram in the report shows the
+        # full order. The first violation ends the transaction.
+        cats = dest["categories"]; apps = dest["applications"]
+        klass = {"catch_all": dest["kind"] == "class" and dest.get("class") == "general", "key": dest.get("class") or "custom"}
+
+        # The SSL decision is known from the rules before it is applied:
+        # it decides what the app and URL controls can see (domain only
+        # until decryption) and whether content inspection is possible.
+        matching = [(r, _matches(r, klass, cats, apps)) for r in zia["ssl"] if r["enabled"]]
+        matching = [(r, h) for r, h in matching if h]
+        decided = next((r for r, h in matching if not r["scoped"]), None)
+        exceptions = [r for r, h in matching if r["scoped"] and r is not decided]
+        decrypted = decided is not None and decided["decision"] == "inspected"
+        ssl_out = "ssl" in nis
+
+        # 5. Cloud App Control: evaluated with URL Filtering before SSL
+        # inspection; when a rule matches the application, URL Filtering
+        # is not applied.
+        cac = [(r, _cac_matches(r, dest)) for r in zia["cac"] if r["enabled"]]
+        cac = [(r, m) for r, m in cac if m]
+        cac_hit = cac[0][0] if cac else None
+        if "cac" in nis:
+            hops.append(_hop("cac", "Cloud App Control", "out_of_scope", None,
+                             nis["cac"] + " Whether an app control blocks or allows this application is not assessed; URL filtering is traced as if none matched.", None, why="not in scope"))
+        elif not decrypted and cac and not ssl_out:
+            hops.append(_hop("cac", "Cloud App Control", "blind", {"name": cac[0][0]["name"], "id": cac[0][0]["id"]},
+                             f"{len(cac)} rule(s) target this application ('{cac[0][0]['name']}' …) but without decryption Zscaler sees only the domain and cannot tell upload from browse: the per-action controls do not apply.",
+                             _weak("high", "App controls need decryption", "Decrypt this application class so upload/share/post controls take effect.")))
+        elif cac:
+            r, m = cac[0]
+            ssl_note = (" Per-action controls apply only to decrypted traffic, and SSL inspection is not in scope on the Scope page, so whether they take effect is not assessed."
+                        if ssl_out else "")
+            blocks = [a for a in r["actions"] if any(v in a for v in UPLOAD_VERBS) and (a.startswith("BLOCK") or a.startswith("ISOLATE"))]
+            allows = [a for a in r["actions"] if any(v in a for v in UPLOAD_VERBS) and a.startswith("ALLOW")]
+            if blocks:
+                hops.append(_hop("cac", "Cloud App Control", "blocked", {"name": r["name"], "id": r["id"]},
+                                 f"'{r['name']}' (matched on {m}) blocks {', '.join(b.replace('BLOCK_', '').lower() for b in blocks)}; other actions allowed." + ssl_note, None, actions=r["actions"]))
+            else:
+                hops.append(_hop("cac", "Cloud App Control", "warn" if allows else "pass", {"name": r["name"], "id": r["id"]},
+                                 f"'{r['name']}' (matched on {m}) allows {', '.join(a.replace('ALLOW_', '').lower() for a in allows) or 'the actions it lists'}: uploads are not stopped here, so content inspection is the last line. Cloud App Control can also gate on a user risk profile (risk score levels)." + ssl_note,
+                                 _weak("medium", "Uploads allowed by app control", "Block upload/share on personal instances of this application, or use tenancy restrictions.") if allows else None, actions=r["actions"]))
+        elif "cac" in unread:
+            hops.append(_hop("cac", "Cloud App Control", "unknown", None, _unread_why(unread, "cac", "Cloud App Control rules"), None))
+        else:
+            hops.append(_hop("cac", "Cloud App Control", "none", None, "No Cloud App Control rule targets this application, so URL Filtering decides; every action is allowed unless URL filtering or DLP stops it. Cloud App Control is a data security control: it can block upload/share/post per application, and can gate on a user risk profile (risk score levels).",
+                             _weak("medium", "No app-level control", "Add a Cloud App Control rule for this application class (block upload/share on unsanctioned instances); it can also gate on a user risk profile.") if dest["app_classes"] or dest["applications"] else None))
+
+        # 6. URL filtering: first matching rule in order; skipped when Cloud
+        # App Control already matched the application.
+        if cac_hit:
+            hops.append(_hop("url", "URL filtering", "na", {"name": cac_hit["name"], "id": cac_hit["id"]},
+                             f"Not evaluated: Cloud App Control rule '{cac_hit['name']}' matched this application, and Cloud App Control takes precedence over URL Filtering for the transaction.", None))
+        elif "url" in nis:
+            hops.append(_hop("url", "URL filtering", "out_of_scope", None,
+                             nis["url"] + " Whether URL filtering blocks or cautions this destination is not assessed.", None, why="not in scope"))
+        else:
+            url_rules = sorted([r for r in zia["url"] if r["enabled"]], key=lambda r: (r.get("order") is None, r.get("order") or 0))
+            hit = next(((r, m) for r in url_rules for m in [_generic_matches(r, dest)] if m and not r["scoped"]), None)
+            if hit:
+                r, m = hit
+                if r["action"] in BLOCK_ACTIONS:
+                    ends = "url"
+                    hops.append(_hop("url", "URL filtering", "blocked", {"name": r["name"], "id": r["id"], "order": r["order"]},
+                                     f"'{r['name']}' blocks it (matched on {m}); first matching rule in order.", None))
+                else:
+                    hops.append(_hop("url", "URL filtering", "pass" if r["action"] in ("ALLOW",) else "warn", {"name": r["name"], "id": r["id"], "order": r["order"]},
+                                     f"'{r['name']}' → {r['action'] or 'ALLOW'} (matched on {m}; first matching rule in order)" + (f", methods {', '.join(r['request_methods'])}" if r["request_methods"] else "") + ".",
+                                     None))
+            elif "url" in unread:
+                hops.append(_hop("url", "URL filtering", "unknown", None, _unread_why(unread, "url", "URL filtering rules"), None))
+            else:
+                hops.append(_hop("url", "URL filtering", "pass", None, "No URL filtering rule matches; the default action applies (ALLOW unless the default rule was changed). URL Filtering is a data security control too: it can block or caution posts to a category, and can gate on a user risk profile.", None))
+
+        # 7. SSL inspection
+        if ends != "url":
+            if ssl_out:
+                hops.append(_hop("ssl", "SSL inspection", "out_of_scope", None,
+                                 nis["ssl"] + " Whether this traffic is decrypted, and so whether DLP can see its content, is not assessed.", None, why="not in scope"))
+            elif decided is None and "ssl" in unread:
+                hops.append(_hop("ssl", "SSL inspection", "unknown", None, _unread_why(unread, "ssl", "SSL inspection rules")
+                                 + " Until then it is not known whether this traffic is decrypted.", None))
+            elif decided is None:
+                hops.append(_hop("ssl", "SSL inspection", "blind", None, "No enabled SSL inspection rule matches: the traffic is passed through encrypted and inline DLP cannot see its content.",
+                                 _weak("high", "Not decrypted", "Add a DECRYPT rule for this traffic (or a catch-all decrypt rule after Zscaler Recommended Exemptions).")))
+            elif decided["decision"] == "inspected":
+                hops.append(_hop("ssl", "SSL inspection", "pass", {"name": decided["name"], "id": decided["id"], "order": decided["order"]},
+                                 f"'{decided['name']}' (order {decided['order']}) decrypts this traffic." + (f" Scoped exemptions ahead of it: {', '.join(e['name'] for e in exceptions)}." if exceptions else ""),
+                                 _weak("medium", "Some users are exempt from decryption", "Confirm each exempted group is intended; Endpoint DLP should cover them.") if exceptions else None))
+            elif decided["decision"] == "blocked":
+                ends = "ssl"
+                hops.append(_hop("ssl", "SSL inspection", "blocked", {"name": decided["name"], "id": decided["id"], "order": decided["order"]},
+                                 f"'{decided['name']}' blocks this traffic at the TLS handshake; nothing leaves.", None))
+            else:
+                hops.append(_hop("ssl", "SSL inspection", "blind", {"name": decided["name"], "id": decided["id"], "order": decided["order"]},
+                                 f"'{decided['name']}' (order {decided['order']}, {decided['action']}) leaves this traffic encrypted: inline DLP sees only the destination, not the content.",
+                                 _weak("high" if dest.get("class") not in ("privacy",) else "info", "Left encrypted",
+                                       "Move a DECRYPT rule above this exemption, or narrow the exemption to the categories it is meant for.")))
+
+        # 9. File Type Control
+        if ends not in ("ssl", "url"):
+            ftc = [(r, _generic_matches(r, dest)) for r in zia["ftc"] if r["enabled"] and r["operation"] in ("UPLOAD", "", "ANY")]
+            ftc = [(r, m) for r, m in ftc if m]
+            if "ftc" in nis:
+                hops.append(_hop("ftc", "File Type Control", "out_of_scope", None,
+                                 nis["ftc"] + " Whether a file type rule limits uploads here is not assessed.", None, why="not in scope"))
+            elif ftc:
+                r, m = ftc[0]
+                hops.append(_hop("ftc", "File Type Control", "blocked" if r["action"] in BLOCK_ACTIONS else "warn", {"name": r["name"], "id": r["id"]},
+                                 f"'{r['name']}' → {r['action']} for {', '.join(t.replace('FTCATEGORY_', '').lower() for t in r['file_types'][:6])}{'…' if len(r['file_types']) > 6 else ''} on upload (matched on {m}).", None))
+            elif "ftc" in unread:
+                hops.append(_hop("ftc", "File Type Control", "unknown", None, _unread_why(unread, "ftc", "File Type Control rules"), None))
+            else:
+                hops.append(_hop("ftc", "File Type Control", "none", None, "No File Type Control rule limits uploads here; bulk formats (spreadsheets, archives, databases) rely on DLP alone. File Type Control is a data security control: allow, caution or block whole file categories on upload/download.", None))
+
+        # 11. Inline Web DLP
+        covering: List[Dict[str, Any]] = []
+        if ends not in ("ssl", "url"):
+            for r in zia["dlp"]:
+                if not r["enabled"]:
+                    continue
+                if r["catch_all"] or (set(r["url_categories"]) & set(cats)) or (set(r["cloud_applications"]) & set(apps)):
+                    covering.append(r)
+            ssl_unread = decided is None and "ssl" in unread
+            if "dlp" in nis:
+                hops.append(_hop("dlp", "Inline Web DLP", "out_of_scope", None,
+                                 nis["dlp"] + " Whether a DLP rule inspects this content is not assessed.", None, why="not in scope"))
+            elif ssl_out:
+                hops.append(_hop("dlp", "Inline Web DLP", "out_of_scope", None,
+                                 (f"{len(covering)} enabled Web DLP rule(s) would apply" if covering else "No enabled Web DLP rule targets this traffic")
+                                 + ", but SSL inspection is not in scope on the Scope page, so whether the engines ever see the content is not assessed.",
+                                 None, why="SSL inspection not in scope"))
+            elif not covering and "dlp" in unread and (decrypted or ssl_unread):
+                hops.append(_hop("dlp", "Inline Web DLP", "unknown", None, _unread_why(unread, "dlp", "Web DLP rules"),
+                                 _weak("medium", "Web DLP rules could not be read", "Check that the API role can read Web DLP rules (and is not rate-limited), then run the analysis again.")))
+            elif ssl_unread:
+                hops.append(_hop("dlp", "Inline Web DLP", "unknown", None,
+                                 f"{len(covering)} enabled Web DLP rule(s) would apply, but the SSL inspection rules could not be read, so whether the engines see the content is unknown." if covering
+                                 else "The SSL inspection rules could not be read, so whether this content is decrypted, and so inspected, is unknown.", None))
+            elif not decrypted:
+                hops.append(_hop("dlp", "Inline Web DLP", "blind", None,
+                                 f"{len(covering)} enabled Web DLP rule(s) would apply, but the content is encrypted: engines never see it." if covering
+                                 else ("Encrypted: engines never see this content (the Web DLP rules could not be read either)." if "dlp" in unread else "Encrypted, and no Web DLP rule applies either."),
+                                 _weak("high", "Inline DLP is blind here", "Decrypt this traffic first; the DLP rules are in place but cannot run.") if covering
+                                 else _weak("high", "Inline DLP is blind here", "Decrypt this traffic first, then run the analysis again so the Web DLP rules can be read.") if "dlp" in unread else _weak("high", "Blind and ungoverned", "Decrypt this traffic and deploy a policy pack so a Web DLP rule covers it.")))
+            elif not covering:
+                hops.append(_hop("dlp", "Inline Web DLP", "none", None, "Decrypted, but no enabled Web DLP rule targets this traffic.",
+                                 _weak("medium", "Ungoverned", "Deploy a policy pack (Deploy Policy Packs) or scope a Web DLP rule to this traffic; start in monitor mode.")))
+            else:
+                enforcing = [r for r in covering if r["enforcing"]]
+                content = [r for r in covering if not r["without_content_inspection"]]
+                status = "enforce" if enforcing else "monitor"
+                hops.append(_hop("dlp", "Inline Web DLP", status, {"name": covering[0]["name"], "id": covering[0]["id"]},
+                                 f"{len(covering)} rule(s) see this content: " + ", ".join(f"{r['name']} ({r['action']})" for r in covering[:5]) + ("…" if len(covering) > 5 else "")
+                                 + (" None inspects content (without-content-inspection set)." if not content else "")
+                                 + " Rules are evaluated in order and the first match applies, unless 'Evaluate all DLP rules' is on, in which case the most restrictive action wins and order only breaks ties.",
+                                 _weak("low", "Monitor only", "Once tuned, move the high-confidence rules to BLOCK.") if not enforcing else (_weak("medium", "Rules run without content inspection", "Clear the without-content-inspection flag on at least one rule with an engine.") if not content else None),
+                                 rules=[{"name": r["name"], "action": r["action"], "enforcing": r["enforcing"], "engines": r.get("engines") or [],
+                                         "incident_receiver": bool(r.get("incident_receiver")), "icap_server": r.get("icap_server"), "notification_template": r.get("notification_template")} for r in covering]))
+
+        # 13. After the match: logs, the incident receiver and Workflow Automation
+        if ends not in ("ssl", "url"):
+            dlp_hop = next((h for h in hops if h["key"] == "dlp"), None)
+            if dlp_hop and dlp_hop["status"] == "out_of_scope":
+                hops.append(_hop("incident", "Logs & incidents", "out_of_scope", None,
+                                 "Not assessed: the hops this depends on are not in scope on the Scope page, so whether a DLP match is logged or forwarded here is not traced.", None))
+            elif dlp_hop and dlp_hop["status"] == "unknown":
+                hops.append(_hop("incident", "Logs & incidents", "unknown", None,
+                                 "Unknown: the rules this depends on could not be read, so whether a DLP rule logs or forwards a match here is not known.", None))
+            elif not dlp_hop or dlp_hop["status"] in ("blind", "none"):
+                hops.append(_hop("incident", "Logs & incidents", "none", None,
+                                 "Only the web transaction log is written (Nanolog → Web Insights, and NSS / Cloud NSS feeds to your SIEM): no DLP rule fires here, so there is no DLP log line, no copy to the Incident Receiver and no Workflow Automation incident.", None))
+            else:
+                forwarders = [r for r in covering if r.get("incident_receiver") or r.get("icap_server")]
+                notifiers = [r for r in covering if r.get("notification_template") or r.get("auditor") or r.get("external_auditor_email")]
+                hops.append(_hop("incident", "Logs & incidents", "pass" if forwarders else "warn",
+                                 {"name": forwarders[0]["name"], "id": forwarders[0]["id"]} if forwarders else None,
+                                 f"A match writes a DLP log (rule, engine, dictionaries and counts, user, URL, file) to Nanolog, visible in Web Insights and streamed by NSS / Cloud NSS to your SIEM. "
+                                 f"{len(forwarders)} of {len(covering)} rule(s) also forward the match and the file — cloud-to-cloud to the Zscaler Incident Receiver, or over ICAP to an on-premises Incident Receiver — which is what Workflow Automation turns into an incident (triage, notifications, resolution); "
+                                 f"{len(notifiers)} notify an auditor through a notification template.",
+                                 None if forwarders else _weak("medium", "Incidents stay in the logs", "Enable 'Zscaler Incident Receiver' (cloud-to-cloud forwarding) or an ICAP server (on-premises Incident Receiver) on the rule so the match and the file reach Workflow Automation for triage, and attach an auditor notification template."),
+                                 forwarders=[r["name"] for r in forwarders], notifiers=[r["name"] for r in notifiers]))
+
+    # Parallel channels
+    channels = {}
+    ep = [r for r in zia.get("endpoint", []) if r["state"] == "ENABLED"]
+    # Without the app profile (Client Connector not in scope) whether the
+    # device runs Endpoint DLP is not known: its rules are taken as running.
+    edlp_on = bool(prof and prof.get("endpoint_dlp")) or zcc_out
+
+    def _out_channel(key: str, label: str) -> Dict[str, Any]:
+        return {"label": label, "status": "out_of_scope", "detail": nis[key], "weak_point": None, "rules": []}
+    def _unread_channel(key: str, label: str, rules_label: str) -> Optional[Dict[str, Any]]:
+        if key not in unread:
+            return None
+        return {"label": label, "status": "unknown", "detail": _unread_why(unread, key, rules_label),
+                "weak_point": _weak("low", f"{rules_label[0].upper() + rules_label[1:]} could not be read", f"Check that the API role can read {rules_label}, then run the analysis again."),
+                "rules": []}
+    channels["endpoint"] = {"label": "Endpoint DLP (on the device)", "status": ("enforce" if any(r["action"] in ("BLOCK", "CONFIRM") for r in ep) else "monitor") if (ep and edlp_on) else ("none" if not ep else "off"),
+                            "detail": (f"{len(ep)} enabled rule(s)" + ("; whether the app profile installs Endpoint DLP on this device is not assessed (Client Connector is not in scope)." if zcc_out
+                                                                       else "; the app profile installs Endpoint DLP." if edlp_on else "; but the app profile does not install Endpoint DLP, so they never run on this device.")) if ep else "No enabled Endpoint DLP rules.",
+                            "weak_point": None if (ep and edlp_on) else _weak("high" if not reaches_zscaler else "medium", "Endpoint DLP not active on this device" if ep else "No Endpoint DLP rules",
+                                                                            "Enable 'Install Endpoint DLP' on the app profile" if ep else "Deploy a pack with Endpoint DLP rules; it is the only control that sees bypassed traffic."),
+                            "rules": [r["name"] for r in ep]}
+    if not ep and "endpoint" in unread:
+        channels["endpoint"] = _unread_channel("endpoint", "Endpoint DLP (on the device)", "Endpoint DLP rules")
+    if "endpoint" in nis:
+        channels["endpoint"] = _out_channel("endpoint", "Endpoint DLP (on the device)")
+    sa = [r for r in zia.get("saas", []) if r["state"] == "ENABLED"]
+    channels["saas"] = {"label": "SaaS Security API (at rest)", "status": "monitor" if sa and all("REPORT" in r["action"] or r["action"] == "OFLCASB_DLP_ALLOW" for r in sa) else ("enforce" if sa else "none"),
+                        "detail": f"{len(sa)} enabled rule(s) scan onboarded tenants at rest." if sa else "No enabled SaaS Security API DLP rules: data already in sanctioned SaaS is not scanned.",
+                        "weak_point": None if sa else _weak("low", "No at-rest scanning", "Onboard the corporate SaaS tenants and deploy a pack with a SaaS file rule."), "rules": [r["name"] for r in sa]}
+    if not sa and "saas" in unread:
+        channels["saas"] = _unread_channel("saas", "SaaS Security API (at rest)", "SaaS Security API DLP rules")
+    if "saas" in nis:
+        channels["saas"] = _out_channel("saas", "SaaS Security API (at rest)")
+    em = [r for r in zia.get("email", []) if r["state"] == "ENABLED"]
+    channels["email"] = {"label": "Outbound Email DLP", "status": "enforce" if any(r["action"] in ("BLOCK", "CUSTOMHEADERINSERTION") for r in em) else ("monitor" if em else "none"),
+                         "detail": f"{len(em)} enabled rule(s) on outbound mail." if em else "No enabled Email DLP rules: mail leaves uninspected.",
+                         "weak_point": None if em else _weak("medium", "Email not covered", "Onboard the Microsoft 365 / Gmail tenant and deploy a pack with an email rule."), "rules": [r["name"] for r in em]}
+
+    if not em and "email" in unread:
+        channels["email"] = _unread_channel("email", "Outbound Email DLP", "Outbound Email DLP rules")
+    if "email" in nis:
+        channels["email"] = _out_channel("email", "Outbound Email DLP")
+
+    # Policy pack overlay
+    pack_rows = []
+    for pk in packs or []:
+        rows = []
+        for pol in pk.get("policies", []):
+            ch = pol.get("channel", "web")
+            name = pol["name"]
+            found = None
+            pool = {"web": zia["dlp"], "endpoint": zia.get("endpoint", []), "saas": zia.get("saas", []), "email": zia.get("email", []),
+                    "ssl": zia["ssl"], "url": zia["url"], "cloud_app": zia["cac"], "file_type": zia["ftc"]}.get(ch, [])
+            for r in pool:
+                if str(r.get("name")) == name:
+                    found = r; break
+            if _PACK_SECTION.get(ch) in nis:
+                state = "not_in_scope"   # not read: never reported as missing
+            elif not found:
+                state = "missing"
+            else:
+                st = str(found.get("state") or "").upper()
+                if st != "ENABLED":
+                    state = "disabled"
+                else:
+                    act = str(found.get("action") or "").upper()
+                    if ch == "web":
+                        state = "enforcing" if found.get("enforcing") else "monitoring"
+                    elif ch == "ssl":
+                        state = "enforcing" if found.get("decision") == "inspected" else "monitoring"
+                    elif ch == "cloud_app":
+                        state = "enforcing" if any(a.startswith(("BLOCK", "ISOLATE")) for a in found.get("actions", [])) else "monitoring"
+                    else:
+                        state = "enforcing" if act in ("BLOCK", "CONFIRM", "CAUTION", "ISOLATE", "CUSTOMHEADERINSERTION") or (act.startswith("OFLCASB") and "REPORT" not in act and "ALLOW" not in act) else "monitoring"
+            on_path = any(h["key"] in ("dlp", "ssl", "url", "cac", "ftc", "incident") and h.get("decided_by") and h["decided_by"].get("name") == name for h in hops) \
+                or (ch == "web" and any(name == rr["name"] for h in hops if h["key"] == "dlp" for rr in h.get("rules", []))) \
+                or (ch in ("endpoint", "saas", "email") and name in channels[ch]["rules"])
+            rows.append({"name": name, "channel": ch, "state": state, "on_path": on_path and state != "not_in_scope"})
+        counts = {}
+        for r in rows:
+            counts[r["state"]] = counts.get(r["state"], 0) + 1
+        weak = None
+        if counts.get("missing"):
+            weak = f"{counts['missing']} rule(s) not deployed"
+        elif counts.get("disabled"):
+            weak = f"{counts['disabled']} rule(s) still disabled"
+        elif not any(r["on_path"] for r in rows if r["channel"] == "web") and reaches_zscaler and decrypted:
+            weak = "no rule of this pack sees this traffic"
+        pack_rows.append({"id": pk["id"], "name": pk.get("name") or pk["id"], "rules": rows, "counts": counts, "weak_point": weak,
+                          "coverage": "not_in_scope" if rows and counts.get("not_in_scope") == len(rows) else
+                                      "enforcing" if counts.get("enforcing") and not counts.get("missing") else ("monitoring" if counts.get("monitoring") and not counts.get("missing") else ("partial" if counts.get("enforcing") or counts.get("monitoring") else ("deployed" if not counts.get("missing") else "missing")))})
+
+    weak_points = [dict(h["weak_point"], hop=h["key"], hop_label=h["label"]) for h in hops if h.get("weak_point")]
+    weak_points += [dict(c["weak_point"], hop=k, hop_label=c["label"]) for k, c in channels.items() if c.get("weak_point")]
+    sev_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
+    weak_points.sort(key=lambda w: sev_order.get(w["severity"], 9))
+    outcome = ("bypassed" if not reaches_zscaler else "blocked" if ends in ("ssl", "url") else
+               "unknown" if any(h["key"] == "dlp" and h["status"] == "unknown" for h in hops) else
+               "out_of_scope" if any(h["key"] == "dlp" and h["status"] == "out_of_scope" for h in hops) else
+               "blind" if not decrypted else next((h["status"] for h in hops if h["key"] == "dlp"), "none"))
+    return {"destination": dest, "network": network, "platform": platform, "hops": hops, "channels": channels, "packs": pack_rows,
+            "weak_points": weak_points, "outcome": outcome, "reaches_zscaler": reaches_zscaler, "decrypted": decrypted,
+            "not_in_scope": nis}
+
+
+# A policy pack rule's channel → the section of the read it would be found in.
+_PACK_SECTION = {"web": "dlp", "endpoint": "endpoint", "saas": "saas", "email": "email", "ssl": "ssl", "url": "url",
+                 "cloud_app": "cac", "file_type": "ftc"}
+
+
+# ── Report ────────────────────────────────────────────────────────────
+def load_packs() -> List[Dict[str, Any]]:
+    try:
+        from dlp_importer import discover_packs
+        out = []
+        for p in discover_packs():
+            try:
+                pols = json.load(open(f"{p['dir']}/configs/dlp_policies.json", encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                pols = []
+            out.append({"id": p["id"], "name": p.get("name") or p["id"], "policies": [{"name": x.get("name"), "channel": x.get("channel", "web")} for x in pols]})
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = None, platform: str = "windows", *,
+                              scope: Optional[Dict[str, Any]] = None, cancel: Any = None) -> Dict[str, Any]:
+    """Read the tenant once, trace every traffic class (or the given
+    destinations) for every network context, and summarise. With a
+    `scope` (path_scope: the Scope page's selection) only what is in scope
+    is read, and every part out of scope is drawn "not in scope"; None
+    reads every section (tests and tools only, the server always passes
+    the Scope page's). `cancel` (Stop) ends the read between requests."""
+    with stop_on(client, cancel):
+        zcc = read_client_connector(client, scope=scope, cancel=cancel)
+        zia = read_zia(client, scope=scope, cancel=cancel)
+    packs = load_packs()
+    dests = list(destinations) if destinations else [k["key"] for k in TRAFFIC_CLASSES]
+    traces = []
+    failed: List[Dict[str, Any]] = []
+    for d in dests:
+        rd = resolve_destination(d, zia)
+        for net in NETWORKS:
+            # One destination the tracer cannot handle must not take the
+            # whole map down: it is reported in the diagnostics instead.
+            try:
+                traces.append(trace(rd, net["key"], platform, zcc, zia, packs, scope=scope))
+            except Exception as e:  # noqa: BLE001
+                failed.append({"section": f"trace {rd.get('label') or d} ({net['key']})", "error_type": type(e).__name__, "error": str(e)[:200]})
+    if not traces and failed:
+        raise RuntimeError(f"no path could be traced: {failed[0]['error_type']}: {failed[0]['error']}")
+    summary = {
+        "destinations": len(dests), "traces": len(traces),
+        "bypassed": sum(1 for t in traces if not t["reaches_zscaler"]),
+        "blind": sum(1 for t in traces if t["reaches_zscaler"] and not t["decrypted"] and t["outcome"] not in ("blocked",)),
+        "enforced": sum(1 for t in traces if t["outcome"] == "enforce"),
+        "monitored": sum(1 for t in traces if t["outcome"] == "monitor"),
+        "high": sum(1 for t in traces for w in t["weak_points"] if w["severity"] == "high"),
+        "app_profiles": len(zcc["app_profiles"]), "forwarding_profiles": len(zcc["forwarding_profiles"]),
+        "trusted_networks": len(zcc["trusted_networks"]), "pac_files": len(zcc["pac_files"]),
+    }
+    return {"summary": summary, "platform": platform, "networks": NETWORKS, "platforms": PLATFORMS,
+            "destinations": [{"key": k["key"], "label": k["label"], "why": k.get("why", "")} for k in TRAFFIC_CLASSES],
+            "traces": traces, "client_connector": zcc, "packs": [{"id": p["id"], "name": p["name"], "rules": len(p["policies"])} for p in packs],
+            "diagnostics": zia.get("diagnostics", []) + [{"section": "Client Connector", "error": e} for e in zcc.get("errors", [])] + failed,
+            # The scope the read was made for: its key (so the Path analyzer
+            # reuses this read only for the same scope) and what it says.
+            "path_scope": (scope or {}).get("key"),
+            "scope": ({"summary": scope.get("summary"), "read": list(scope.get("read") or []), "not_in_scope": dict(scope.get("not_in_scope") or {}),
+                       "source": scope.get("source") or ""} if scope else None),
+            "snapshot": {"zia": dict({k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
+                                     not_in_scope=zia.get("not_in_scope") or {}),
+                         "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"), "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
+                                        for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
+            "sources": {"client_connector": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks", "pac": "/zia/pacFiles",
+                        "zia": "/zia/sslInspectionRules, /zia/urlFilteringRules, /zia/cloudApplicationRules, /zia/fileTypeControlRules, /zia/webDlpRules, /zia/endpointDlpRules, /zia/casbDlpRules, /zia/emailDlpRules, /zia/cloudApplications/policy, /zia/urlCategories",
+                        "order": "Zscaler, Understanding Policy Enforcement (help.zscaler.com/zia/understanding-policy-enforcement): request = Browser Control, FTP Control, URL & Cloud App Control, SSL inspection, Malware Protection, Advanced Threat Protection, upload File Type Control, upload Bandwidth Control, DLP, Firewall & DNS Control; response in reverse; first violation ends the transaction"}}
+
+
+def trace_from_report(report: Dict[str, Any], destination: str, network: str, platform: str) -> Dict[str, Any]:
+    """Trace a destination the user typed against a stored report (no tenant call)."""
+    zia = dict(report["snapshot"]["zia"])
+    zia["categories"] = report["snapshot"].get("categories") or {}
+    zia.setdefault("unread", unread_sections(report.get("diagnostics")))
+    for r in zia.get("dlp", []):
+        r.setdefault("enforcing", str(r.get("action", "")).upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE"))
+        r.setdefault("without_content_inspection", False)
+    rd = resolve_destination(destination, zia)
+    if network not in {n["key"] for n in NETWORKS}:
+        network = "off"
+    return trace(rd, network, platform if platform in PLATFORMS else "windows", report["client_connector"], zia, load_packs())
+
+
+def to_markdown(report: Dict[str, Any], label: str = "") -> str:
+    s = report["summary"]
+    lines = [f"# Data Flow Map{' — ' + label if label else ''}", "",
+             f"{s['traces']} paths traced ({s['destinations']} destinations × {len(report['networks'])} network contexts, {report['platform']}). "
+             f"Bypassed before Zscaler: {s['bypassed']}. Encrypted/blind: {s['blind']}. Enforced: {s['enforced']}. Monitored: {s['monitored']}. High-severity weak points: {s['high']}.", ""]
+    for t in report["traces"]:
+        net = next(n["label"] for n in NETWORKS if n["key"] == t["network"])
+        lines.append(f"## {t['destination']['label']} · {net} → {t['outcome']}")
+        for h in t["hops"]:
+            lines.append(f"- **{h['label']}** [{h['status']}] {h['detail']}")
+            if h.get("weak_point"):
+                lines.append(f"  - Weak point ({h['weak_point']['severity']}): {h['weak_point']['title']} — {h['weak_point']['fix']}")
+        for k, c in t["channels"].items():
+            lines.append(f"- *{c['label']}* [{c['status']}] {c['detail']}")
+        for p in t["packs"]:
+            lines.append(f"- Pack {p['name']}: {p['coverage']}" + (f" — {p['weak_point']}" if p.get("weak_point") else ""))
+        lines.append("")
+    return "\n".join(lines)

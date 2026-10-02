@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a deployment works — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .df-wrap { max-width: 980px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+  .df-head h1 { font-size: 1.6rem; margin: 0 0 0.35rem; }
+  .df-head p { color: var(--dim); max-width: 74ch; margin: 0; line-height: 1.55; }
+  .df-toggle { display: inline-flex; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--border); border-radius: var(--r-lg); margin: 1.25rem 0 1.5rem; background: var(--card, transparent); }
+  .df-toggle button { border: 0; background: transparent; color: var(--dim); font: inherit; font-weight: 600; font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 9px; cursor: pointer; transition: background 0.2s, color 0.2s; }
+  .df-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .df-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .df-flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; counter-reset: step; }
+  .df-step { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card, rgba(127,127,127,0.06)); overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; }
+  .df-step:has(> button[aria-expanded="true"]) { border-color: var(--accent);  }
+  .df-step > button { width: 100%; display: grid; grid-template-columns: 2.4rem 1fr auto; align-items: center; gap: 0.9rem; padding: 0.95rem 1.1rem; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .df-step > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--r-lg); }
+  .df-step .n { width: 2.1rem; height: 2.1rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; background: var(--accent-tint); color: var(--accent); }
+  .df-step .t { font-weight: 650; font-size: 1rem; }
+  .df-step .s { display: block; color: var(--dim); font-size: 0.84rem; margin-top: 0.15rem; font-weight: 400; }
+  .df-step .chev { color: var(--dim); transition: transform 0.25s; font-size: 1.1rem; }
+  .df-step > button[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .df-body { padding: 0 1.1rem 1.1rem 4.4rem; display: grid; gap: 0.8rem; animation: df-in 0.25s ease; }
+  .df-body[hidden] { display: none; }
+  @keyframes df-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .df-body p { margin: 0; line-height: 1.55; }
+  .df-kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 0.9rem; font-size: 0.88rem; }
+  .df-kv dt { color: var(--dim); font-weight: 600; }
+  .df-kv dd { margin: 0; }
+  .df-note { border-left: 3px solid var(--warn); padding: 0.55rem 0.8rem; border-radius: 6px; background: color-mix(in srgb, var(--warn) 16%, transparent); font-size: 0.88rem; }
+  .df-ok { border-left-color: var(--pass); background: color-mix(in srgb, var(--pass) 16%, transparent); }
+  .df-arrow { text-align: center; color: var(--dim); font-size: 1.1rem; line-height: 1; margin: -0.15rem 0; }
+  .df-legend { margin-top: 2rem; display: grid; gap: 0.6rem; font-size: 0.88rem; color: var(--dim); }
+  .df-legend strong { color: inherit; }
+  .df-nav { display: flex; gap: 0.5rem; margin-top: 1.2rem; flex-wrap: wrap; }
+  @media (max-width: 640px) { .df-body { padding-left: 1.1rem; } .df-step > button { grid-template-columns: 2.2rem 1fr auto; } }
+  @media (prefers-reduced-motion: reduce) { .df-body, .df-step .chev, .df-step { animation: none; transition: none; } }
+</style>
+</head>
+<body>
+<main class="df-wrap">
+  <div class="df-head">
+    <h1>How a deployment works</h1>
+    <p>Every policy pack takes the same road into a tenant and the same road out, whatever the pack is called. Click a step to see what happens there, what can stop it, and what you would see on screen. Nothing on this page touches your tenant.</p>
+  </div>
+
+  <div class="df-toggle" role="group" aria-label="Choose the flow to explore">
+    <button type="button" id="tabDeploy" aria-pressed="true" onclick="show('deploy')">Deploying a pack</button>
+    <button type="button" id="tabRemove" aria-pressed="false" onclick="show('remove')">Removing a pack</button>
+  </div>
+
+  <ol class="df-flow" id="flow" aria-live="polite"></ol>
+
+  <div class="df-nav">
+    <button type="button" class="rp-btn" onclick="expandAll(true)">Open every step</button>
+    <button type="button" class="rp-btn" onclick="expandAll(false)">Close every step</button>
+    <a class="rp-btn" href="/" title="Back to the app">Back to the app</a>
+  </div>
+
+  <div class="df-legend">
+    <div><strong>One road for every pack.</strong> The Fed policy pack was the first deployed in production; its way of doing things (dictionaries, then engines, then rules; one rule per engine; every rule created switched off) is now the only way, applied by one piece of code to every pack. A test fails the build if anything tries to go around it.</div>
+    <div><strong>Nothing is ever written without a plan you approved.</strong> The plan is read again just before writing; if the tenant changed in between, nothing is written and you see the new plan.</div>
+    <div><strong>If something fails, the message says what and why.</strong> Each object that could not be created or removed shows ZIA's own answer and, for every answer the app knows, a plain sentence on what it means and what to do.</div>
+  </div>
+</main>
+<script>
+const FLOWS = {
+  deploy: [
+    { t: 'Pick the packs and the channels', s: 'You choose which packs to deploy and on which channels (Web, Endpoint, SaaS, Email).',
+      body: `<p>Each pack card shows what it contains and lets you untick a channel. A channel left unticked is said out loud on the card, in the plan and at the top of the log, so nothing goes missing quietly.</p>
+             <div class="df-note df-ok">Nothing is written at this step.</div>` },
+    { t: 'Plan: read the tenant and compare', s: 'The app reads your tenant once and works out what would be created, what already exists, and what cannot be created.',
+      body: `<p>Every dictionary, engine and rule in the pack is looked up by name. What exists is <strong>reused as it is</strong> (never overwritten). What is missing will be created. Anything ZIA would refuse is stopped here, with the reason in plain words: a name with characters ZIA does not allow, a description over 255 characters, a SaaS rule name over 31 characters, a copy of a predefined dictionary this tenant does not have, and every other limit a real tenant has answered with.</p>
+             <dl class="df-kv"><dt>You see</dt><dd>“Will create”, “Already in place”, “Skipped” and “Blocked” counts, with a line per object and its reason.</dd><dt>Can it fail?</dt><dd>Only if the tenant cannot be read (wrong credentials or no permission). Then the plan says so and stops.</dd></dl>
+             <div class="df-note df-ok">Nothing is written at this step. You can run it as often as you like.</div>` },
+    { t: 'Review and approve', s: 'You read the plan and its warnings and tick the approval box.',
+      body: `<p>The plan carries a fingerprint. Approving is approving <em>that</em> plan: if the tenant changes before the deploy starts, the fingerprint no longer matches and the app stops with the new plan instead of writing something you did not review.</p>
+             <div class="df-note">Deploying needs write mode. Until it is on, the Deploy button stays off and tells you what opens it.</div>` },
+    { t: 'Write, in dependency order', s: 'Dictionaries first, then engines, then endpoint application groups, then rules (a parent rule before its sub-rules).',
+      body: `<p>Each object is one request to ZIA, made through one shared function. If ZIA is busy or rate-limiting (“try again later”), the app waits and tries again, up to three times. If ZIA refuses for a real reason, that object is reported as failed with ZIA's answer and what it means, and everything that depended on it is skipped with a line saying which object failed. The rest of the deployment carries on; one failure never stops the run.</p>
+             <p>Every rule is created <strong>switched off and monitor-only</strong>, whatever the pack says, so a deployment can never block anyone's traffic by itself. A SaaS rule whose position ZIA refuses is placed at a position ZIA accepts after the tenant's rules are re-read.</p>
+             <dl class="df-kv"><dt>You see</dt><dd>A live log: <code>[dictionary] Name: created</code>, <code>[engine] Name: skipped — dependency failed: …</code>, <code>[policy] Name: failed — ZIA's message. What this means: …</code></dd></dl>` },
+    { t: 'Activate and wait', s: 'ZIA saves changes as pending; the app activates them and waits until ZIA reports ACTIVE.',
+      body: `<p>Without activation nothing is live for users. The app activates on your behalf and polls until ZIA says ACTIVE (up to about 45 seconds). If activation cannot run, the log says so and the Done screen tells you to activate in the ZIA portal.</p>` },
+    { t: 'Read the tenant back and verify', s: 'The same plan is run again against the tenant as it is now; every object this deployment created or reused must be found.',
+      body: `<p>This is the only verification there is: the planner that decided what to write checks that it is there. There is no second checker with different rules, so a “verified” never disagrees with the plan.</p>
+             <dl class="df-kv"><dt>You see</dt><dd>“Verified by a fresh read: all N objects are in the tenant”, or the list of what was not found and what to do.</dd></dl>` },
+    { t: 'Done, and recorded for undo', s: 'What was created is recorded so it can be removed later in one step.',
+      body: `<p>The Done screen shows counts per channel, the failures with their meaning, and the next steps (enable rules one at a time in monitor mode, review incidents, measure the journey). The deployment appears under <em>Previous deployments</em> with an Undo button that runs the removal flow on exactly what this deployment created.</p>
+             <div class="df-note df-ok">Deploying the same pack again changes nothing: everything is found by name and reused, nothing is created twice.</div>` },
+  ],
+  remove: [
+    { t: 'Choose what to remove', s: 'One pack, everything every pack put in, a past deployment, or rules you pick yourself.',
+      body: `<p>Whichever you choose, the same removal runs. The app finds a pack's objects by the provenance note the deploy wrote into every description and by name, and lists engines and dictionaries nothing uses any more so leftovers can be picked too.</p>` },
+    { t: 'Preview', s: 'The app reads the tenant and shows exactly what will be deleted and what will be kept, and why.',
+      body: `<p>Anything a rule or engine outside the pack still uses is <strong>kept</strong> and says so. An object whose id now carries a different name than the pack gave it is left alone. The preview also says what it read (how many rules per channel, engines, dictionaries) so “nothing to remove” is never a mystery.</p>
+             <div class="df-note df-ok">Nothing is deleted at this step.</div>` },
+    { t: 'Approve', s: 'You confirm the preview, twice, because deleting cannot be undone.',
+      body: `<p>The preview carries a fingerprint like a deploy plan; if the tenant changes before the removal starts, the app stops and shows the new preview.</p>` },
+    { t: 'Delete, in tiers, with activation between them', s: 'Rules and application groups first, then engines, then dictionaries.',
+      body: `<p>ZIA checks a delete against the <em>activated</em> configuration, so an engine cannot go while a rule that uses it is only pending deletion. After each tier the app activates and waits for ZIA to report ACTIVE, then starts the next tier. A delete refused for a reason time clears (“still in use”, “activation in progress”, a rate limit) is tried again after the tenant settles, up to three passes. A 403 on any delete or create (ZIA blocking the client, or a pending change being applied) is answered by an activation of the tenant's pending configuration, a 15-second wait and another try, up to five times; a 403 still there after that stops the run, because the tenant is refusing the client, not the object. Anything else fails once and is reported with ZIA's answer and what it means.</p>
+             <dl class="df-kv"><dt>You see</dt><dd>A live log per object, the activation waits, and “will retry after the tenant settles” where that applies.</dd></dl>` },
+    { t: 'Read the tenant back and verify', s: 'The preview is run again; anything of the pack still present is listed as a leftover.',
+      body: `<p>The Verify screen says either “nothing of this pack remains in the tenant” or lists what is still there with a <em>Remove leftovers</em> button that runs the same flow on exactly those objects.</p>` },
+  ],
+};
+let current = 'deploy';
+function esc(s) { return String(s); }
+function render() {
+  const ol = document.getElementById('flow');
+  ol.innerHTML = FLOWS[current].map((st, i) => `
+    <li class="df-step">
+      <button type="button" aria-expanded="false" aria-controls="df-b-${current}-${i}" onclick="toggle(this)">
+        <span class="n" aria-hidden="true">${i + 1}</span>
+        <span><span class="t">${esc(st.t)}</span><span class="s">${esc(st.s)}</span></span>
+        <span class="chev" aria-hidden="true">›</span>
+      </button>
+      <div class="df-body" id="df-b-${current}-${i}" hidden>${st.body}</div>
+    </li>${i < FLOWS[current].length - 1 ? '<li class="df-arrow" aria-hidden="true">↓</li>' : ''}`).join('');
+  document.getElementById('tabDeploy').setAttribute('aria-pressed', current === 'deploy');
+  document.getElementById('tabRemove').setAttribute('aria-pressed', current === 'remove');
+}
+function toggle(btn) {
+  const open = btn.getAttribute('aria-expanded') === 'true';
+  btn.setAttribute('aria-expanded', String(!open));
+  document.getElementById(btn.getAttribute('aria-controls')).hidden = open;
+}
+function expandAll(open) {
+  document.querySelectorAll('.df-step > button').forEach(b => { b.setAttribute('aria-expanded', String(open)); document.getElementById(b.getAttribute('aria-controls')).hidden = !open; });
+}
+function show(which) { current = which; render(); const first = document.querySelector('.df-step > button'); if (first) toggle(first); }
+render();
+toggle(document.querySelector('.df-step > button'));
+</script>
+<script src="/static/safety_banner.js"></script>
+</body>
+</html>

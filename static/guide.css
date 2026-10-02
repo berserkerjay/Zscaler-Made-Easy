@@ -1,0 +1,147 @@
+/* Guide add-on: Start-here panel, Guided mode, Help drawer. Uses the page's
+   own tokens (--card, --border, --accent, --text, --dim, --pass, --warn, --fail). */
+.gd-panel {
+  max-width: 1100px; margin: 0 auto var(--sp-5, 20px); padding: var(--sp-5, 20px) var(--sp-6, 24px);
+  background: var(--card, rgba(30,41,59,0.6)); border: 1px solid var(--border, #334155); border-radius: var(--r-lg, 12px);
+}
+.gd-head { display: flex; justify-content: space-between; gap: var(--sp-4, 16px); align-items: flex-start; flex-wrap: wrap; }
+.gd-eyebrow { font-size: var(--fs-caption, 0.6875rem); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--dim, #94a3b8); }
+.gd-title { margin: 2px 0 var(--sp-1, 4px); font-size: var(--fs-title2, 1.125rem); font-weight: 600; }
+.gd-sub { margin: 0; color: var(--dim, #94a3b8); font-size: var(--fs-callout, 0.875rem); max-width: 70ch; }
+.gd-controls { display: flex; align-items: center; gap: var(--sp-3, 12px); flex-wrap: wrap; }
+.gd-progress { height: 6px; background: var(--well-2, rgba(148,163,184,0.2)); border-radius: 999px; margin: var(--sp-3, 12px) 0 var(--sp-4, 16px); overflow: hidden; }
+.gd-progress .bar { height: 100%; background: var(--pass, #10b981); border-radius: 999px; transition: width 300ms ease; }
+
+.gd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2, 8px); }
+.gd-step { display: grid; grid-template-columns: 2.2rem 1fr; gap: var(--sp-3, 12px); padding: var(--sp-3, 12px) var(--sp-4, 16px); border-radius: var(--r-md, 10px);
+  background: var(--well, rgba(148,163,184,0.06)); border: 1px solid var(--border, #334155); }
+.gd-step.is-ready { border-color: var(--accent, #3b82f6); }
+.gd-step.is-done { border-color: var(--pass, #10b981); }
+.gd-step-n span { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; font-weight: 600; font-size: var(--fs-subhead, 0.8125rem);
+  background: var(--well-2, rgba(148,163,184,0.18)); color: var(--text, #e2e8f0); }
+.gd-step.is-ready .gd-step-n span { background: var(--accent, #3b82f6); color: #fff; }
+.gd-step.is-done .gd-step-n span { background: var(--pass, #10b981); color: #fff; }
+.gd-step-top { display: flex; align-items: center; gap: var(--sp-2, 8px); flex-wrap: wrap; }
+.gd-step-top h3 { margin: 0; font-size: var(--fs-headline, 0.9375rem); font-weight: 600; }
+.gd-chip { font-size: var(--fs-caption, 0.6875rem); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; padding: 2px var(--sp-2, 8px); border-radius: 999px;
+  background: var(--well-2, rgba(148,163,184,0.18)); color: var(--dim, #94a3b8); }
+.gd-chip.ready { background: var(--accent-tint, rgba(59,130,246,0.18)); color: var(--accent, #3b82f6); }
+.gd-chip.done { background: color-mix(in srgb, var(--pass, #10b981) 16%, transparent); color: var(--pass, #10b981); }
+.gd-what { margin: 0.35rem 0 0.25rem; font-size: 0.9rem; max-width: 80ch; }
+.gd-need { margin: 0 0 0.35rem; font-size: 0.82rem; color: var(--dim, #94a3b8); max-width: 80ch; }
+.gd-status { font-size: 0.85rem; color: var(--text, #e2e8f0); }
+.gd-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+
+.gd-btn { border-radius: var(--r-md, 10px); min-height: var(--ctl-md, 36px); padding: 0 var(--sp-4, 16px); font-size: var(--fs-subhead, 0.8125rem); font-weight: 600; cursor: pointer; border: 1px solid var(--border, #334155);
+  background: transparent; color: var(--text, #e2e8f0); transition: background 150ms ease, border-color 150ms ease; }
+.gd-btn.primary { background: var(--btn, #2563eb); border-color: transparent; color: #fff; }
+.gd-btn.primary:not(:disabled):hover { background: var(--btn-hover, #1d4ed8); }
+.gd-btn.quiet { color: var(--accent, #3b82f6); border-color: transparent; }
+.gd-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.gd-btn:not(.primary):not(:disabled):hover { background: var(--well, rgba(148,163,184,0.1)); }
+
+.gd-switch { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; }
+.gd-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.gd-switch .track { width: 38px; height: 22px; border-radius: 999px; background: rgba(148,163,184,0.35); position: relative; transition: background 150ms ease; }
+.gd-switch .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform 150ms ease; }
+.gd-switch input:checked + .track { background: var(--pass, #10b981); }
+.gd-switch input:checked + .track .knob { transform: translateX(16px); }
+.gd-switch input:focus-visible + .track { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
+
+.gd-conn { margin: 0.5rem 0 0.2rem; padding: 0.6rem 0.8rem; border-radius: 10px; font-size: 0.85rem; border: 1px solid; }
+.gd-conn.ok { border-color: rgba(16,185,129,0.45); background: rgba(16,185,129,0.08); }
+.gd-conn.bad { border-color: rgba(239,68,68,0.45); background: rgba(239,68,68,0.08); }
+.gd-conn .gd-fix { margin-top: 0.35rem; }
+.gd-conn .gd-warn { margin-top: 0.35rem; color: var(--warn, #f59e0b); }
+.gd-conn details { margin-top: 0.35rem; color: var(--dim, #94a3b8); }
+.gd-conn code { font-size: 0.75rem; word-break: break-all; }
+
+/* Guided mode hides the advanced tools */
+body.gd-guided .gd-advanced { display: none !important; }
+
+/* Help drawer */
+#gdHelpFab { position: fixed; left: 1rem; bottom: 1rem; z-index: 900; }
+#gdHelp { display: none; position: fixed; inset: 0; z-index: 1100; background: rgba(0,0,0,0.45); }
+#gdHelp.is-open { display: block; }
+.gd-help-sheet { position: absolute; top: 0; left: 0; bottom: 0; width: min(560px, 100%); overflow: auto; padding: var(--sp-6, 24px) var(--sp-6, 24px) var(--sp-8, 32px);
+  background: var(--card-solid, #0f172a); color: var(--text, #e2e8f0); border-right: 1px solid var(--border, #334155); box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,0.4)); }
+.gd-help-sheet header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.gd-help-sheet h2 { margin: 0; font-size: 1.2rem; }
+.gd-help-sheet h3 { margin: 1.2rem 0 0.4rem; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim, #94a3b8); }
+.gd-help-sheet p, .gd-help-sheet li { font-size: 0.9rem; line-height: 1.5; }
+.gd-help-sheet dl { margin: 0; display: grid; gap: 0.55rem; }
+.gd-help-sheet dt { font-weight: 700; font-size: 0.9rem; }
+.gd-help-sheet dd { margin: 0 0 0.2rem; font-size: 0.86rem; color: var(--dim, #cbd5e1); line-height: 1.45; }
+.gd-help-sheet ul { padding-left: 1.1rem; }
+.gd-dim { color: var(--dim, #94a3b8); font-size: 0.8rem; }
+@media (prefers-reduced-motion: reduce) { .gd-progress .bar, .gd-switch .knob, .gd-switch .track { transition: none; } }
+@media (max-width: 760px) { .gd-step { grid-template-columns: 1fr; } }
+
+/* Data-governance journey card on the assessment results */
+.gd-journey { margin: 0 0 1rem; }
+.gd-journey h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.gd-journey .gd-sub { margin-bottom: 0.6rem; }
+.gd-journey .dz-journey { margin-top: 0.7rem; font-size: 0.86rem; }
+.gd-journey .dz-journey h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+.gd-journey-mode { font-size: 0.86rem; color: var(--text, #e2e8f0); padding: 0.55rem 0.75rem; border-radius: 10px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.3); }
+.gd-journey-mode b { text-transform: capitalize; }
+
+/* Tenant profiles bar (top of Tenant Configuration) */
+.gd-profiles { margin: 0.2rem 0 1.1rem; padding: 0.9rem 1rem; border-radius: 12px; background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.3); }
+.gd-prof-top { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.gd-prof-title { max-width: 60ch; }
+.gd-prof-controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.gd-prof-controls select { min-width: 260px; max-width: 100%; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border, #334155); background: var(--card-solid, #0f172a); color: var(--text, #e2e8f0); font-size: 0.88rem; }
+.gd-prof-more { margin-top: 0.7rem; }
+.gd-prof-more summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--accent, #3b82f6); }
+.gd-prof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.7rem 1rem; margin-top: 0.7rem; }
+.gd-prof-grid label { display: grid; gap: 0.25rem; font-size: 0.82rem; font-weight: 600; color: var(--text, #e2e8f0); }
+.gd-prof-grid input[type=text], .gd-prof-grid input:not([type]), .gd-prof-grid select, .gd-prof-grid textarea { width: 100%; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border, #334155); background: var(--card-solid, #0f172a); color: var(--text, #e2e8f0); font-size: 0.88rem; font-weight: 400; font-family: inherit; }
+.gd-prof-wide { grid-column: 1 / -1; }
+.gd-prof-packs { display: grid; gap: 0.25rem; font-size: 0.82rem; }
+.gd-prof-packs .lbl, .gd-prof-hist .lbl { font-weight: 600; }
+.gd-prof-pack-l { display: flex !important; align-items: center; gap: 0.4rem; font-weight: 400 !important; }
+.gd-prof-remember { grid-column: 1 / -1; display: block !important; }
+.gd-prof-remember input { margin-right: 0.4rem; }
+.gd-prof-hist { margin-top: 0.8rem; font-size: 0.82rem; }
+.gd-hist { width: 100%; border-collapse: collapse; margin-top: 0.4rem; font-size: 0.8rem; }
+.gd-hist th, .gd-hist td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border, #334155); vertical-align: top; }
+.gd-hist th { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim, #94a3b8); }
+
+.gd-where { font-size: 0.8rem; }
+.gd-where code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; background: rgba(148,163,184,0.15); padding: 0.05rem 0.4rem; border-radius: 4px; }
+
+/* ── Update the app from here ── */
+.gd-btn-sm { min-height: 28px; padding: 0.25rem 0.7rem; font-size: 0.78rem; margin-left: 0.4rem; vertical-align: middle; }
+/* Which branch Update app pulls: Stable (main), QA or Development. */
+.gd-upd-branch { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem; font-size: 0.78rem; color: var(--dim); vertical-align: middle; }
+.gd-upd-branch select { min-height: 28px; padding: 0.15rem 0.4rem; font: inherit; font-size: 0.78rem; color: var(--text); background: var(--well, #0f172a); border: 1px solid var(--border); border-radius: 6px; }
+.gd-upd-branch select:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 1px; }
+.gd-link { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 0.82rem; cursor: pointer; padding: 0; text-decoration: underline; }
+.gd-update { margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: rgba(148,163,184,0.05); font-size: 0.82rem; }
+.gd-update[hidden] { display: none; }
+.gd-upd-line { padding: 0.15rem 0; }
+.gd-upd-line.ok { color: var(--pass); } .gd-upd-line.warn { color: var(--fail); } .gd-upd-line.soft { color: var(--warn); }
+.gd-upd-line .dim { color: var(--dim); }
+.gd-upd-cmd { white-space: pre-wrap; word-break: break-all; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.74rem; padding: 0.5rem 0.7rem; margin: 0.4rem 0; border-radius: 8px; background: rgba(15,23,42,0.5); border: 1px solid var(--border); color: var(--text); }
+body.theme-light .gd-upd-cmd { background: rgba(15,23,42,0.05); }
+
+/* Inline spinner for "still measuring" notes (journey card while it fills in). */
+.gd-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; vertical-align: -2px; margin-right: 0.35rem; animation: gd-spin 0.9s linear infinite; }
+@keyframes gd-spin { to { transform: rotate(360deg); } }
+
+/* Tenant details live inside step 1 (Connect to the tenant). */
+.gd-tenant { margin-top: 0.6rem; border: 1px solid var(--border, #1e293b); border-radius: 10px; background: color-mix(in srgb, var(--well, #0f172a) 60%, transparent); }
+.gd-tenant > summary { cursor: pointer; padding: 0.6rem 0.9rem; font-weight: 600; font-size: 0.9rem; list-style: none; display: flex; align-items: center; gap: 0.5rem; }
+.gd-tenant > summary::before { content: '▸'; color: var(--accent, #3b82f6); transition: transform 0.15s; }
+.gd-tenant[open] > summary::before { transform: rotate(90deg); }
+.gd-tenant > summary::-webkit-details-marker { display: none; }
+.gd-tenant > summary:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; border-radius: 8px; }
+.gd-tenant .gd-dim { font-weight: 400; color: var(--dim, #94a3b8); font-size: 0.8rem; }
+.gd-tenant #configCard { margin: 0; border: 0; border-top: 1px solid var(--border, #1e293b); border-radius: 0 0 10px 10px; box-shadow: none; }
+
+.gd-scope { margin: 0.5rem 0 0.2rem; padding: 0.5rem 0.7rem; border-left: 3px solid var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent); border-radius: 6px; }
+
+/* Every step says which one it is, in words, before its title. */
+.gd-step-label { display: inline-block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent, #3b82f6); margin-right: 0.45rem; vertical-align: middle; }
+.gd-step.is-done .gd-step-label { color: var(--pass, #10b981); }

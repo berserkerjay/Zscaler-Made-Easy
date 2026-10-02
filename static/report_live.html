@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live DLP feed — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page lf-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Live</span> DLP feed <span class="sf-live" id="lfLive" hidden><i></i>live</span></h1>
+      <p>DLP incidents from Workflow Automation, polled live: who was transacting, what triggered, where the data was headed, and whether the matched rule enforced it or only logged it — with a running seen / enforced / monitor / FP:TP tally for the session.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <span class="sep"></span>
+      <label class="df-ctl" id="lfTenantWrap" hidden><span class="lbl">Tenant</span><select id="lfTenant" aria-label="Tenant to read"></select></label>
+      <button type="button" class="rp-btn primary" id="lfStart">▶ Start live feed</button>
+      <button type="button" class="rp-btn" id="lfStop" hidden>■ Stop</button>
+      <button type="button" class="rp-btn" id="lfReset" title="Clear the feed and the tally and start a fresh session">↻ Reset session</button>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+      <div class="lf-coverage" id="lfCoverage">
+        <strong>What this does and does not cover.</strong> This feed shows Workflow Automation's DLP-matched incidents only — the user, the rule and dictionaries that matched, and the destination, live as they land. It does not cover URL Filtering, Cloud App Control or Firewall &amp; DNS Control decisions that never trip a DLP rule; that wider transaction log is Web Insights / Cloud NSS, a feed to your own log store (Splunk, S3, a syslog receiver) that this app does not read. Nothing is written to the tenant.
+      </div>
+      <div id="lfBody">
+        <div class="pa-intro" id="lfHow">
+          <div class="pa-intro-t">How it works</div>
+          <ol class="pa-steps">
+            <li><strong>Start live feed.</strong> The first poll looks back two minutes so it does not dump history; every poll after that only asks for what landed since the last one.</li>
+            <li><strong>Watch it fill.</strong> Every ~15 seconds a new poll runs; new incidents appear at the top of the table with who, the trigger, the destination and whether the matched rule blocked or only logged it.</li>
+            <li><strong>Stop</strong> any time; the tally and the rows stay on screen until you Reset session.</li>
+          </ol>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const body = document.getElementById('lfBody');
+    const meta = document.getElementById('rpMeta');
+    const live = document.getElementById('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const POLL_MS = 15000;
+    let running = false, timer = null, since = '', stats = {}, rows = [], errShown = false;
+    // Each Start opens a new polling chain; Stop ends it. A chain whose
+    // generation is no longer current never polls or re-arms again, so a
+    // Stop (or Stop then Start) while a poll is answering leaves at most
+    // one chain, and none after Stop.
+    let gen = 0;
+    const isCurrent = my => running && gen === my;
+
+    document.getElementById('lfLive').hidden = !(window.opener && !window.opener.closed);
+
+    async function tenantChoices() {
+      const wrap = document.getElementById('lfTenantWrap'), sel = document.getElementById('lfTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = (document.getElementById('lfTenant') || {}).value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+
+    // What is in scope: the Scope page's selection. The feed reads Workflow
+    // Automation's incidents only when Workflow Automation is marked Zscaler
+    // there, and the rule actions only of the DLP channels marked Zscaler.
+    // Read live from the assessment tab that opened this one, else from the
+    // ticks the Scope page publishes (localStorage); without either nothing
+    // is sent and the server uses the chosen profile's saved selection, or
+    // refuses. Only each channel's choice is sent, never its note.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const live = readJson('zassess_scopes_live_v1', null);
+        scopes = live && Array.isArray(live.scopes) ? live.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+
+    const CHAN = { web: 'Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security API', email: 'Email DLP', other: 'Other' };
+    function statTiles() {
+      const s = (stats && stats.seen != null) ? stats : { seen: 0, enforced: 0, monitor: 0, unknown_action: 0, open: 0, real: 0, not_real: 0, fp_tp_ratio: '–' };
+      const tile = (n, l, cls) => `<div class="df-stat ${cls || ''}"><div class="n">${E(n)}</div><div class="l">${E(l)}</div></div>`;
+      return `<div class="df-stats">
+        ${tile(s.seen, 'seen this session')}
+        ${tile(s.enforced, 'enforced (blocked / confirmed)')}
+        ${tile(s.monitor, 'monitor only')}
+        ${tile(s.open, 'no verdict yet')}
+        ${tile(`FP:TP ${s.fp_tp_ratio}`, `${s.not_real} not real, ${s.real} real`)}
+      </div>`;
+    }
+    function rowHtml(i, fresh) {
+      const verdictCls = i.real === true ? 'st-fail' : i.real === false ? 'st-ok' : 'st-dim';
+      const verdictLab = i.real === true ? 'real' : i.real === false ? 'not real' : 'open';
+      const actionCls = { enforced: 'st-fail', monitor: 'st-warn', unknown: 'st-dim' }[i.enforcement] || 'st-dim';
+      const actionLab = { enforced: 'Enforced', monitor: 'Monitor only', unknown: 'Rule not in inventory' }[i.enforcement] || i.enforcement;
+      return `<tr class="${fresh ? 'lf-new' : ''}">
+        <td class="dh-when">${i.created_at ? E(new Date(i.created_at).toLocaleTimeString()) : ''}</td>
+        <td>${E(i.user || '(unknown)')}${i.department ? ` <span class="df-by">${E(i.department)}</span>` : ''}</td>
+        <td>${E(i.rules.join(', ') || '(no rule name)')}${i.dictionaries.length ? `<div class="df-by">${E(i.dictionaries.map(d => d.count ? `${d.name} ×${d.count}` : d.name).join(', '))}</div>` : ''}</td>
+        <td>${E(i.destination || i.application || '(unknown)')}${i.file ? `<div class="df-by">${E(i.file)}</div>` : ''}</td>
+        <td>${E(CHAN[i.channel] || i.channel)}</td>
+        <td><span class="df-chip ${actionCls}">${E(actionLab)}</span></td>
+        <td><span class="df-chip ${verdictCls}">${E(verdictLab)}</span></td>
+      </tr>`;
+    }
+    function render(freshIds) {
+      body.innerHTML = `
+        ${statTiles()}
+        <h2 class="df-h">Feed${rows.length ? ` (${rows.length})` : ''}</h2>
+        ${rows.length
+          ? `<div class="df-tablewrap lf-tablewrap"><table class="df-table"><thead><tr><th>When</th><th>Who</th><th>Trigger</th><th>Sent to</th><th>Channel</th><th>Action</th><th>Verdict</th></tr></thead>
+             <tbody>${rows.map(i => rowHtml(i, freshIds && freshIds.has(i.id))).join('')}</tbody></table></div>`
+          : '<div class="df-hop-d pa-none">No incidents yet. Start the feed and act on the tenant to see one land here.</div>'}
+        ${errShown ? `<div class="df-hint lf-err">${E(errShown)}</div>` : ''}`;
+    }
+
+    async function poll(my) {
+      if (!isCurrent(my)) return;
+      let d;
+      try {
+        const r = await fetch('/api/live-feed', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({}, credBody(), scopeSelection(), { since, stats })) });
+        d = await r.json().catch(() => ({}));
+        if (!isCurrent(my)) return;   // stopped (or restarted) while this poll was answering
+        if (r.status === 400) {
+          // Nothing the feed reads is in scope: polling again would only be refused again.
+          const why = (d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`;
+          stop(); errShown = String(why); render(); say(String(why)); return;
+        }
+        if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
+      } catch (e) {
+        if (!isCurrent(my)) return;
+        errShown = `Poll failed, retrying: ${e.message}`;
+        render(); return;
+      }
+      errShown = (d.errors || [])[0] || false;
+      since = d.next_since; stats = d.stats;
+      meta.textContent = `${d.tenant_label || ''} · read ${new Date(d.read_at).toLocaleTimeString()}`;
+      const freshIds = new Set(d.incidents.map(i => i.id));
+      rows = d.incidents.slice().reverse().concat(rows).slice(0, 500);   // newest first, bounded
+      render(freshIds);
+      if (d.incidents.length) say(`${d.incidents.length} new incident${d.incidents.length === 1 ? '' : 's'}.`);
+    }
+    function schedule(my) { timer = setTimeout(async () => { if (!isCurrent(my)) return; await poll(my); if (isCurrent(my)) schedule(my); }, POLL_MS); }
+    async function start() {
+      if (running) return;
+      running = true;
+      const my = ++gen;
+      document.getElementById('lfStart').hidden = true;
+      document.getElementById('lfStop').hidden = false;
+      say('Live feed started; polling every 15 seconds.');
+      await poll(my);
+      if (isCurrent(my)) schedule(my);   // Stop (or a refusal, or Stop then Start) during the first poll: no further poll from this chain
+    }
+    function stop() {
+      running = false;
+      gen++;
+      clearTimeout(timer); timer = null;
+      document.getElementById('lfStart').hidden = false;
+      document.getElementById('lfStop').hidden = true;
+      say('Live feed stopped.');
+    }
+    function reset() {
+      stop(); since = ''; stats = {}; rows = []; errShown = false;
+      render();
+      say('Session cleared.');
+    }
+    document.getElementById('lfStart').addEventListener('click', start);
+    document.getElementById('lfStop').addEventListener('click', stop);
+    document.getElementById('lfReset').addEventListener('click', reset);
+    tenantChoices();
+  })();
+  </script>
+</body>
+</html>

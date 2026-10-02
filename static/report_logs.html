@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log analyzer — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<style>
+  .la-sec { padding: 0.2rem 0.2rem 1rem; }
+  .la-sec h2 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+  .la-sec h3 { font-size: 0.95rem; margin: 0.8rem 0 0.3rem; }
+  .la-drop { border: 2px dashed var(--border-strong, var(--border)); border-radius: var(--r-lg); padding: 1.2rem; text-align: center; background: var(--well); }
+  .la-drop.is-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--well)); }
+  .la-drop label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+  .la-drop input[type=file] { display: block; margin: 0.4rem auto 0.6rem; max-width: 100%; }
+  .la-drop p { color: var(--dim); font-size: 0.85rem; margin: 0.3rem 0 0; }
+  .la-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.8rem; }
+  .la-status { font-size: 0.88rem; color: var(--dim); min-height: 1.4em; margin-top: 0.5rem; }
+  .la-status.bad { color: var(--fail); }
+  .la-verdict { border-radius: var(--r-lg); padding: 1rem 1.2rem; margin: 0.8rem 0 0.4rem; border: 1px solid var(--border); background: var(--well); }
+  .la-verdict strong { font-size: 1.05rem; display: block; margin-bottom: 0.2rem; }
+  .la-verdict.critical { border-color: var(--fail); } .la-verdict.high { border-color: var(--warn); } .la-verdict.ok { border-color: var(--pass); }
+  .la-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); margin-right: 0.4rem; vertical-align: middle; }
+  .la-chip.critical { color: var(--fail); border-color: var(--fail); } .la-chip.high { color: var(--warn); border-color: var(--warn); }
+  .la-chip.medium { color: var(--accent); border-color: var(--accent); } .la-chip.low, .la-chip.info { color: var(--dim); }
+  .la-find { border: 1px solid var(--border); border-radius: var(--r-lg); margin: 0.6rem 0; background: var(--card); }
+  .la-find > summary { cursor: pointer; padding: 0.7rem 0.9rem; font-weight: 600; list-style: revert; }
+  .la-find > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-lg); }
+  .la-find .body { padding: 0 0.9rem 0.9rem; font-size: 0.88rem; line-height: 1.5; }
+  .la-find .body h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin: 0.7rem 0 0.2rem; }
+  .la-find .body ol { margin: 0.2rem 0 0 1.2rem; }
+  .la-find .ctx { border-left: 3px solid var(--accent); padding: 0.3rem 0.6rem; background: var(--well); border-radius: 0 8px 8px 0; margin-top: 0.5rem; }
+  .la-ev { font-family: var(--mono); font-size: 0.74rem; background: var(--well); border-radius: 8px; padding: 0.5rem 0.6rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0.2rem 0 0; }
+  .la-ev .m { color: var(--dim); }
+  table.la-t { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+  table.la-t th, table.la-t td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.la-t th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+  .la-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.6rem; }
+  .la-fact { background: var(--well); border-radius: var(--r-md); padding: 0.6rem 0.8rem; }
+  .la-fact .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+  .la-fact .v { font-size: 0.9rem; word-break: break-word; }
+  .la-dim { color: var(--dim); font-size: 0.85rem; }
+  .la-cat li { margin: 0.15rem 0; font-size: 0.86rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) { .la-drop { transition: none; } }
+</style>
+</head>
+<body class="report-page df-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Log analyzer</span> for Client Connector logs and PAC files</h1>
+      <p>Drop in the ZIP that Client Connector's <strong>Export Logs</strong> produced (or single .log files, or a PAC file). You get back what happened, what it means for the user, and what to do next, in plain English. Nothing leaves this computer and nothing is stored.</p>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/help" target="_blank" rel="noopener">What does everything do?</a>
+      <span class="sep"></span>
+      <button type="button" class="rp-btn" id="laDownload" disabled aria-disabled="true">Download findings (Markdown)</button>
+      <button type="button" class="rp-btn" id="laCopy" disabled aria-disabled="true">Copy summary</button>
+    </nav>
+    <main class="rp-card" id="main-content">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      <section class="la-sec" aria-labelledby="laUploadH">
+        <h2 id="laUploadH">1. Choose the files</h2>
+        <div class="la-drop" id="laDrop">
+          <label for="laFiles">Client Connector log bundle (.zip), .log files, or a PAC file</label>
+          <input type="file" id="laFiles" multiple accept=".zip,.log,.txt,.tar,.tgz,.gz,.pac,.dat,.js,.out" aria-describedby="laHow laLimit">
+          <p id="laHow">How to get the bundle: on the user's device open the Zscaler tray icon → <strong>More</strong> → <strong>Export Logs</strong>. It saves a ZIP; drop that ZIP here as it is. You can also drop the files in this box.</p>
+          <p id="laLimit">Loading the upload limit…</p>
+        </div>
+        <div class="la-row">
+          <button type="button" class="rp-btn primary" id="laRun" disabled aria-disabled="true">Analyze</button>
+          <span id="laChosen" class="la-dim"></span>
+        </div>
+        <div class="la-status" id="laStatus" aria-live="polite"></div>
+        <p class="la-dim" style="margin-top:0.6rem;">Privacy: the files are read by the app on this computer, analysed in memory and thrown away. The lines shown as evidence have passwords, tokens and cookies blanked out. User names and host names stay, because you need them to follow the story.</p>
+      </section>
+
+      <section class="la-sec" id="laResults" hidden aria-labelledby="laResultsH">
+        <h2 id="laResultsH">2. What the logs say</h2>
+        <div id="laVerdict" class="la-verdict" role="status"></div>
+        <h3>What we read</h3>
+        <div id="laFacts" class="la-facts"></div>
+        <details style="margin-top:0.5rem;"><summary>Files read</summary><div id="laFiles_t" style="overflow-x:auto;margin-top:0.4rem;"></div></details>
+        <div id="laNotes"></div>
+        <h3 id="laFindH">What we found, most urgent first</h3>
+        <div id="laFindings"></div>
+        <div id="laTopErrors"></div>
+        <div id="laPac"></div>
+      </section>
+
+      <section class="la-sec" aria-labelledby="laCatH">
+        <h2 id="laCatH">What this analyzer looks for</h2>
+        <p class="la-dim">Every situation below is recognised from the log lines and explained. If the user's problem is not in this list, the analyzer still shows the most repeated error lines so a senior engineer can look at them.</p>
+        <details><summary>Show the full list</summary><ul class="la-cat" id="laCat"></ul></details>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script>
+  (function () {
+    const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const $ = id => document.getElementById(id);
+    let chosen = [];
+    let last = null;
+    let limitBytes = 7 * 1024 * 1024;
+
+    function announce(t) { const r = $('liveRegion'); if (r) { r.textContent = ''; setTimeout(() => { r.textContent = t; }, 30); } }
+    function status(t, bad) { const s = $('laStatus'); s.textContent = t; s.classList.toggle('bad', !!bad); }
+    function setEnabled(id, on) { const b = $(id); b.disabled = !on; b.setAttribute('aria-disabled', on ? 'false' : 'true'); }
+
+    fetch('/api/logs/catalogue').then(r => r.json()).then(c => {
+      limitBytes = Math.floor((c.max_body_mb || 10) * 1024 * 1024 * 0.72);
+      $('laLimit').textContent = `Up to about ${Math.floor(limitBytes / 1024 / 1024)} MB per upload (a ZIP counts as its zipped size). If the bundle is bigger, unzip it and upload ZSATray.log and ZSATunnel.log first.`;
+      $('laCat').innerHTML = (c.checked || []).map(x => `<li><span class="la-chip ${E(x.severity)}">${E(x.severity)}</span>${E(x.title)}</li>`).join('');
+    }).catch(() => { $('laLimit').textContent = 'Could not read the upload limit from the server; try a bundle under 7 MB.'; });
+
+    function readFile(f) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onerror = () => reject(new Error(`Could not read ${f.name}`));
+        r.onload = () => resolve({ name: f.name, content: String(r.result).split(',')[1] || '', encoding: 'base64' });
+        r.readAsDataURL(f);
+      });
+    }
+    function take(list) {
+      const files = Array.from(list || []);
+      if (!files.length) return;
+      const total = files.reduce((a, f) => a + f.size, 0);
+      chosen = files;
+      $('laChosen').textContent = `${files.length} file${files.length === 1 ? '' : 's'}, ${(total / 1024 / 1024).toFixed(2)} MB: ${files.map(f => f.name).join(', ')}`;
+      if (total > limitBytes) {
+        status(`These files add up to ${(total / 1024 / 1024).toFixed(1)} MB, more than this server accepts in one go. Unzip the bundle and upload the .log files a few at a time (ZSATray.log and ZSATunnel.log first), or start the server with a larger ZSCALER_MAX_BODY_MB.`, true);
+        setEnabled('laRun', false);
+        return;
+      }
+      status('Ready. Click Analyze.');
+      setEnabled('laRun', true);
+    }
+    $('laFiles').addEventListener('change', e => take(e.target.files));
+    const drop = $('laDrop');
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('is-over'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('is-over'); }));
+    drop.addEventListener('drop', e => take(e.dataTransfer && e.dataTransfer.files));
+
+    $('laRun').addEventListener('click', async () => {
+      if (!chosen.length) return;
+      setEnabled('laRun', false);
+      status('Reading the files…');
+      let payload;
+      try { payload = await Promise.all(chosen.map(readFile)); }
+      catch (e) { status(e.message, true); setEnabled('laRun', true); return; }
+      status('Analysing… this takes a few seconds for a full bundle.');
+      announce('Analysing the logs');
+      try {
+        const r = await fetch('/api/logs/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files: payload }) });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 413) throw new Error('The upload is larger than this server accepts. Unzip the bundle and upload fewer files at a time.');
+        if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+        last = data;
+        render(data);
+        status('Done.');
+        announce(`Analysis complete. ${data.verdict ? data.verdict.headline : ''}`);
+        $('laResults').hidden = false;
+        $('laVerdict').focus && $('laVerdict').setAttribute('tabindex', '-1');
+        $('laVerdict').focus();
+      } catch (e) {
+        status(`Could not analyse: ${e.message}`, true);
+        announce('The analysis failed. ' + e.message);
+      } finally { setEnabled('laRun', true); }
+    });
+
+    function chip(sev) { return `<span class="la-chip ${E(sev)}">${E(sev)}</span>`; }
+    function finding(f) {
+      const files = (f.files || []).map(x => `${E(x.name)} (${x.count})`).join(', ');
+      const when = f.first ? `${E(f.first)}${f.last && f.last !== f.first ? ' → ' + E(f.last) : ''}` : '';
+      return `<details class="la-find" open>
+        <summary>${chip(f.severity)}${E(f.title)} <span class="la-dim">· ${f.count} line${f.count === 1 ? '' : 's'}${when ? ' · ' + when : ''}</span></summary>
+        <div class="body">
+          <h4>What happened</h4><div>${E(f.what)}</div>
+          <h4>What it means for the user</h4><div>${E(f.means)}</div>
+          <h4>What to do next</h4><ol>${(f.do || []).map(d => `<li>${E(d)}</li>`).join('')}</ol>
+          ${f.context ? `<div class="ctx">${E(f.context)}</div>` : ''}
+          ${files ? `<h4>Seen in</h4><div class="la-dim">${files}</div>` : ''}
+          ${(f.evidence || []).length ? `<h4>Evidence (redacted)</h4><div class="la-ev">${f.evidence.map(ev => typeof ev === 'string' ? E(ev) : `<span class="m">${E(ev.file)}${ev.ts ? ' ' + E(ev.ts) : ''}</span>\n${E(ev.line)}`).join('\n')}</div>` : ''}
+        </div></details>`;
+    }
+    function render(d) {
+      const v = d.verdict || {};
+      $('laVerdict').className = `la-verdict ${E(v.level || '')}`;
+      $('laVerdict').innerHTML = `<strong>${E(v.headline || '')}</strong><span>${E(v.detail || '')}</span>`;
+      const L = d.logs;
+      const facts = (L && L.facts) || {};
+      const cards = [];
+      if (L) {
+        cards.push(['Period covered', L.period && L.period.first ? `${L.period.first} → ${L.period.last}` : 'no timestamps recognised']);
+        cards.push(['Client Connector version', (facts.client_versions || []).join(', ') || 'not found in these files']);
+        cards.push(['Operating system', (facts.operating_systems || []).join(', ') || 'not found']);
+        cards.push(['User', (facts.users || []).join(', ') || 'not found']);
+        cards.push(['Zscaler cloud', (facts.clouds || []).join(', ') || 'not found']);
+        cards.push(['Tunnel', [(facts.tunnel_versions || []).join(' / '), facts.last_tunnel_state ? `last state ${facts.last_tunnel_state}` : ''].filter(Boolean).join(' · ') || 'not found']);
+        const lv = L.levels || {};
+        cards.push(['Lines by level', ['error', 'warn', 'info', 'debug'].filter(k => lv[k]).map(k => `${lv[k]} ${k}`).join(', ') || 'no level markers']);
+      }
+      if ((d.pac || []).length) cards.push(['PAC files', d.pac.map(p => p.name).join(', ')]);
+      $('laFacts').innerHTML = cards.map(([k, val]) => `<div class="la-fact"><div class="k">${E(k)}</div><div class="v">${E(val)}</div></div>`).join('');
+      const files = ((L && L.files) || []).concat((d.pac || []).map(p => ({ name: p.name, kind: 'pac', lines: (p.summary || {}).lines || '', first: '', last: '' })));
+      $('laFiles_t').innerHTML = `<table class="la-t"><thead><tr><th scope="col">File</th><th scope="col">Kind</th><th scope="col">Lines</th><th scope="col">From</th><th scope="col">To</th></tr></thead><tbody>${files.map(f => `<tr><td>${E(f.name)}</td><td>${E(f.kind)}</td><td>${E(f.lines)}</td><td>${E(f.first)}</td><td>${E(f.last)}</td></tr>`).join('')}</tbody></table>`;
+      $('laNotes').innerHTML = (d.notes || []).length ? `<p class="la-dim">Skipped: ${d.notes.map(E).join('; ')}.</p>` : '';
+      const fs = (L && L.findings) || [];
+      $('laFindings').innerHTML = fs.length ? fs.map(finding).join('') : (L ? '<p class="la-dim">No known problem pattern appears in these logs.</p>' : '');
+      const te = (L && L.top_errors) || [];
+      $('laTopErrors').innerHTML = te.length ? `<h3>Most repeated error lines (for a senior engineer)</h3><p class="la-dim">Numbers are replaced by # so identical messages group together. Redacted.</p><div class="la-ev">${te.map(t => `<span class="m">×${t.count}</span> ${E(t.message)}`).join('\n')}</div>` : '';
+      $('laPac').innerHTML = (d.pac || []).map(p => {
+        const s = p.summary || {};
+        const by = (s.bypasses || []);
+        return `<h3>PAC file: ${E(p.name)}</h3>
+          <div class="la-facts">
+            <div class="la-fact"><div class="k">Default when nothing matches</div><div class="v">${E(s.default === 'direct' ? 'DIRECT (bypasses Zscaler)' : s.default === 'proxy' ? 'Send to Zscaler' : 'none')}</div></div>
+            <div class="la-fact"><div class="k">Gateways</div><div class="v">${E((s.gateways || []).join(', ') || 'none')}</div></div>
+            <div class="la-fact"><div class="k">Zscaler macros used</div><div class="v">${E((s.macros || []).join(', ') || 'none')}</div></div>
+            <div class="la-fact"><div class="k">Bypasses (DIRECT)</div><div class="v">${E(s.bypass_count || 0)}</div></div>
+          </div>
+          ${(p.findings || []).map(finding).join('')}
+          ${by.length ? `<details style="margin-top:0.5rem;"><summary>Every bypass in this PAC (${by.length}). Traffic matched here never reaches Zscaler.</summary><div style="overflow-x:auto;margin-top:0.4rem;"><table class="la-t"><thead><tr><th scope="col">Line</th><th scope="col">Test</th><th scope="col">Value</th><th scope="col">Risk</th></tr></thead><tbody>${by.map(b => `<tr><td>${E(b.line)}</td><td>${E(b.kind)}</td><td>${E(b.value)}</td><td>${E(b.risk === 'ok' ? 'expected' : b.risk === 'data-channel' ? 'data-loss channel' : b.risk === 'broad' ? 'very broad' : 'public range')}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
+      }).join('');
+      setEnabled('laDownload', true); setEnabled('laCopy', true);
+    }
+
+    function markdown(d) {
+      const out = [];
+      const v = d.verdict || {};
+      out.push('# Log analyzer findings', '', `**${v.headline || ''}** ${v.detail || ''}`, '');
+      const L = d.logs;
+      if (L) {
+        out.push('## What we read', '');
+        out.push(`- Period: ${L.period && L.period.first ? `${L.period.first} → ${L.period.last}` : 'no timestamps'}`);
+        const f = L.facts || {};
+        out.push(`- Client Connector: ${(f.client_versions || []).join(', ') || 'unknown'}; OS: ${(f.operating_systems || []).join(', ') || 'unknown'}; user: ${(f.users || []).join(', ') || 'unknown'}; cloud: ${(f.clouds || []).join(', ') || 'unknown'}`);
+        out.push(`- Files: ${(L.files || []).map(x => `${x.name} (${x.lines} lines)`).join(', ')}`, '');
+        out.push('## Findings', '');
+        for (const x of L.findings || []) {
+          out.push(`### [${x.severity.toUpperCase()}] ${x.title} (${x.count} lines${x.first ? `, ${x.first} → ${x.last}` : ''})`, '');
+          out.push(`**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');
+          (x.do || []).forEach((s, i) => out.push(`${i + 1}. ${s}`));
+          if (x.context) out.push('', `> ${x.context}`);
+          if ((x.evidence || []).length) { out.push('', '```'); x.evidence.forEach(ev => out.push(`${ev.file}${ev.ts ? ' ' + ev.ts : ''}: ${ev.line}`)); out.push('```'); }
+          out.push('');
+        }
+        if ((L.top_errors || []).length) { out.push('## Most repeated error lines', '', '```'); L.top_errors.forEach(t => out.push(`x${t.count} ${t.message}`)); out.push('```', ''); }
+      }
+      for (const p of d.pac || []) {
+        const s = p.summary || {};
+        out.push(`## PAC file: ${p.name}`, '', `- Default: ${s.default}; gateways: ${(s.gateways || []).join(', ') || 'none'}; macros: ${(s.macros || []).join(', ') || 'none'}; bypasses: ${s.bypass_count || 0}`, '');
+        for (const x of p.findings || []) {
+          out.push(`### [${x.severity.toUpperCase()}] ${x.title}`, '', `**What happened.** ${x.what}`, '', `**What it means.** ${x.means}`, '', '**What to do next.**');
+          (x.do || []).forEach((st, i) => out.push(`${i + 1}. ${st}`));
+          out.push('');
+        }
+        if ((s.bypasses || []).length) { out.push('| Line | Test | Value | Risk |', '|---|---|---|---|'); s.bypasses.forEach(b => out.push(`| ${b.line} | ${b.kind} | ${b.value} | ${b.risk} |`)); out.push(''); }
+      }
+      if ((d.notes || []).length) out.push('## Skipped', '', ...d.notes.map(n => `- ${n}`), '');
+      return out.join('\n');
+    }
+    $('laDownload').addEventListener('click', () => {
+      if (!last) return;
+      const blob = new Blob([markdown(last)], { type: 'text/markdown' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'log-analyzer-findings.md';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    });
+    $('laCopy').addEventListener('click', async () => {
+      if (!last) return;
+      const v = last.verdict || {};
+      const fs = ((last.logs || {}).findings || []).map(f => `- [${f.severity}] ${f.title}`).join('\n');
+      const text = `${v.headline || ''} ${v.detail || ''}\n${fs}`;
+      try { await navigator.clipboard.writeText(text); status('Summary copied.'); announce('Summary copied to the clipboard'); }
+      catch (e) { status('Could not copy automatically; use Download instead.', true); }
+    });
+  })();
+  </script>
+</body>
+</html>

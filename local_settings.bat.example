@@ -1,0 +1,57 @@
+@echo off
+REM Copy this file to local_settings.bat (same folder). It is git-ignored, so
+REM the settings survive UPDATE_Zscaler_Assessment.bat and fresh clones.
+REM Remove the "REM " in front of a line to activate it.
+
+REM Laptop behind Zscaler Client Connector or another TLS-inspecting proxy:
+REM point Python at your organisation's root CA (export it as .pem).
+REM set REQUESTS_CA_BUNDLE=C:\certs\zscaler-root-ca.pem
+REM set SSL_CERT_FILE=C:\certs\zscaler-root-ca.pem
+
+REM Corporate proxy for outbound HTTPS (api.zsapi.net, *.zslogin.net, pypi.org).
+REM set HTTPS_PROXY=http://proxy.corp.example:8080
+
+REM Default tenant, so the GUI fields can be left blank (secrets are better
+REM kept in a tenant profile with "remember the secret on this laptop").
+REM set ZSCALER_CLOUD=production
+REM set ZSCALER_VANITY_DOMAIN=acme
+REM set ZSCALER_CLIENT_ID=
+REM set ZSCALER_CLIENT_SECRET=
+REM Classic ZIA API instead of a ZIdentity API client (tenants without ZIdentity; ZIA only):
+REM set ZSCALER_AUTH_METHOD=legacy
+REM set ZSCALER_USERNAME=
+REM set ZSCALER_PASSWORD=
+REM set ZSCALER_API_KEY=
+
+REM Start in write mode without the in-app switch.
+REM set ENABLE_WRITE_ACTIONS=YES_I_UNDERSTAND
+
+REM Beacon: how often (in hours) the server re-checks the Zscaler SDK, the
+REM ZIA API and the Terraform provider for changes while it runs. Default 24;
+REM 0 turns the timer off (Run now on the Beacon tab still works). The timer
+REM never reads a tenant. The history is kept in
+REM %LOCALAPPDATA%\ZscalerAssessment\beacon_state.json unless this moves it.
+REM set DLP_CHECK_BEACON_HOURS=24
+REM set DLP_CHECK_BEACON_STATE=C:\DLP-Check-data\beacon_state.json
+
+REM Continuous evaluation digest. It reads tenants (every read counts against
+REM the ZIA API rate limit), so it runs only when you click Run the loop now
+REM on the Digest tab, or run RUN_Continuous_Evaluation.bat (Task Scheduler).
+REM Each profile is read only for what its Scope page puts in scope.
+REM DLP_CHECK_CONTINUOUS_EVAL_HOURS opts in to a timer while the app runs:
+REM unset or 0 (the default) is off; 6 runs it every 6 hours (1 to 8784).
+REM A run already in progress is never started twice, in any process: a
+REM scheduled RUN_Continuous_Evaluation.bat started while the app is running
+REM the loop reads nothing and exits 2 (digests\.loop.lock), and the reverse.
+REM set DLP_CHECK_CONTINUOUS_EVAL_HOURS=0
+REM E-mail needs an SMTP relay; the webhook is a Teams or Slack incoming
+REM webhook (https only).
+REM set DLP_CHECK_SMTP_HOST=smtp.example.com
+REM set DLP_CHECK_SMTP_PORT=587
+REM set DLP_CHECK_SMTP_USER=
+REM set DLP_CHECK_SMTP_PASSWORD=
+REM set DLP_CHECK_DIGEST_FROM=dlp-check@example.com
+REM set DLP_CHECK_DIGEST_TO=soc@example.com
+REM set DLP_CHECK_DIGEST_WEBHOOK=https://example.webhook.office.com/webhookb2/...
+REM Send the digest: noteworthy (default: only when there is something to decide), always, or never.
+REM set DLP_CHECK_NOTIFY=noteworthy

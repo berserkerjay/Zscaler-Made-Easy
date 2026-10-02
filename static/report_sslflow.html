@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSL inspection flow — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">SSL</span> inspection flow <span class="sf-live" id="sfLive" hidden><i></i>live</span></h1>
+      <p>What SSL inspection decrypts, what it leaves encrypted, and where that makes inline Web DLP blind.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Report actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/reference/data-security-architect#inline" target="_blank" rel="noopener" title="Data Security Architect: the reference architecture this flow is measured against (inline web module; opens in a new tab)">Reference architecture ↗</a>
+      <span class="sep"></span>
+      <span id="rpControls" hidden>
+        <label class="sf-auto"><input type="checkbox" id="sfAuto"> auto-refresh (2 min)</label>
+        <a class="rp-btn primary" id="sfRefresh" href="#">↻ Refresh</a>
+        <span class="lbl">Export</span>
+        <a class="rp-btn" id="expCsv">CSV</a>
+        <a class="rp-btn" id="expMd">Markdown</a>
+        <a class="rp-btn" id="expJson">JSON</a>
+      </span>
+    </nav>
+    <main class="rp-card">
+      <div id="rpBody" class="bp-body" style="padding:0;">
+        <div class="rp-wait"><div class="spin"></div>Reading SSL inspection rules, Web DLP rules and the cloud application catalogue… this tab fills in when the report is ready (5–15 seconds). Keep the assessment tab open.</div>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/ssl_flow.js"></script>
+  <script>
+  (function () {
+    const q = new URLSearchParams(location.search);
+    const body = document.getElementById('rpBody');
+    const meta = document.getElementById('rpMeta');
+    let timer = null;
+    const fail = (title, msg) => {
+      body.innerHTML = `<div class="bp-card risk"><div class="t">${_sfE(title)}</div><div>${_sfE(msg)}</div><div style="margin-top:0.5rem;"><a class="rp-btn" href="/">Back to the assessment</a></div></div>`;
+    };
+    async function load(id) {
+      const r = await fetch(`/api/report/ssl-flow/${encodeURIComponent(id)}`, { cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data && data.detail) || `HTTP ${r.status}`);
+      renderSslFlow(data, body);
+      meta.textContent = `${data.tenant_label || ''}${data.generated_at ? ' · refreshed ' + new Date(data.generated_at).toLocaleTimeString() : ''}`;
+      const ctl = document.getElementById('rpControls'); ctl.hidden = false;
+      document.getElementById('sfLive').hidden = !(window.opener && !window.opener.closed);
+      for (const [el, fmt] of [['expCsv', 'csv'], ['expMd', 'markdown'], ['expJson', 'json']]) {
+        document.getElementById(el).href = `/api/report/ssl-flow/export/${encodeURIComponent(id)}?format=${fmt}`;
+      }
+      history.replaceState(null, '', `/report/sslflow?id=${encodeURIComponent(id)}`);
+    }
+    // Live refresh: the assessment tab holds the credentials, so it
+    // generates a fresh report and hands the id back.
+    async function refresh() {
+      const btn = document.getElementById('sfRefresh');
+      if (!window.opener || window.opener.closed || typeof window.opener.__sslFlowGenerate !== 'function') {
+        meta.textContent = 'Open the assessment tab and run the report again to refresh.'; return;
+      }
+      btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Refreshing…';
+      try {
+        const id = await window.opener.__sslFlowGenerate();
+        await load(id);
+      } catch (e) {
+        meta.textContent = `Refresh failed: ${e.message}`;
+      } finally { btn.removeAttribute('aria-disabled'); btn.textContent = '↻ Refresh'; }
+    }
+    document.getElementById('sfRefresh').addEventListener('click', ev => { ev.preventDefault(); refresh(); });
+    document.getElementById('sfAuto').addEventListener('change', ev => {
+      clearInterval(timer); timer = null;
+      if (ev.target.checked) timer = setInterval(refresh, 120000);
+    });
+    if (q.get('error')) { fail('The report could not be generated', q.get('error')); return; }
+    const id = q.get('id');
+    if (!id) return;  // pending: the assessment tab points this tab at the report when it is ready
+    load(id).catch(e => fail('This report is no longer available', `${e.message}. Reports are kept in memory while the server runs; generate it again from the assessment page.`));
+  })();
+  </script>
+</body>
+</html>

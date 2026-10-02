@@ -1,0 +1,15 @@
+{
+  "name": "ZBP Enterprise Policy Pack",
+  "version": "1.1",
+  "description": "Zscaler Best Practice (ZBP) enterprise DLP policy pack: US PII, US PHI, financial information, ITAR, Traffic Light Protocol markings and private keys, as monitor-only web DLP rules with their dictionaries and engines. Immutable: objects that drift from this definition are restored on the next deploy. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "deploy_note": "Install one channel at a time. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).",
+  "confidence_tweaks": [],
+  "source": "mkoyfman/zbp-automation zbp-enterprise-zia (Zscaler Best Practice enterprise pack)",
+  "baseline": {
+    "immutable": true,
+    "prefix": "ZBP-",
+    "version": "1.1"
+  },
+  "audience": "Any commercial enterprise. Zscaler's recommended starting point for US PII, US PHI, financial data, ITAR, TLP markings and private keys.",
+  "when_to_use": "The customer has no DLP policy yet, or wants Zscaler's best-practice monitoring rules as an immutable policy pack. Start here unless a regulation-specific pack applies."
+}

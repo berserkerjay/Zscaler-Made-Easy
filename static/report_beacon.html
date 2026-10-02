@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beacon — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+</head>
+<body class="report-page adv-page bc-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Beacon</span> — SDK, API and Terraform changes</h1>
+      <p>What changed upstream since the last run: the Zscaler Python SDK (new releases and whether they touch the modules this app calls), the Zscaler API (the SDK's machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now. Optionally it also reads, from a tenant, only the endpoints that belong to what is in scope on the Scope page — GET only, about one request a second — and says which ones now answer differently. Nothing is ever written to a tenant.</p>
+      <span class="badge" id="rpMeta">Loading…</span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="#changes">Changed since last run</a>
+      <a class="rp-btn" href="#sdk">SDK</a>
+      <a class="rp-btn" href="#api">API</a>
+      <a class="rp-btn" href="#terraform">Terraform</a>
+      <a class="rp-btn" href="#history">History</a>
+      <span class="sep"></span>
+      <label class="df-ctl"><input type="checkbox" id="bcOnline" checked> <span class="lbl">Online</span></label>
+      <button type="button" class="rp-btn primary" id="bcRun">Run now</button>
+    </nav>
+    <main class="rp-card">
+      <div id="rpBody" class="bp-body" style="padding:0;">
+        <div id="bcStatus" class="adv-status" role="status" aria-live="polite" hidden></div>
+
+        <section id="changes" aria-labelledby="bcChH">
+          <h2 class="df-h" id="bcChH">Changed since last run</h2>
+          <div id="bcChanges" class="adv-sbd"><span class="dim">Loading…</span></div>
+          <div id="bcTimer" class="dim bc-timer"></div>
+        </section>
+
+        <section id="sdk" aria-labelledby="bcSdkH">
+          <h2 class="df-h" id="bcSdkH">SDK — zscaler-sdk-python</h2>
+          <p class="adv-lead">The SDK carries every request body the app sends to ZIA. A new release is only worth acting on when it changes a module the app calls; Beacon downloads it and compares those modules.</p>
+          <div id="bcSdk"><span class="dim">No run yet.</span></div>
+        </section>
+
+        <section id="api" aria-labelledby="bcApiH">
+          <h2 class="df-h" id="bcApiH">API — ZIA operations, the API reference and Zscaler's pages</h2>
+          <p class="adv-lead">The 2.x SDK ships a machine-readable ZIA service definition: an operation must still exist for every endpoint the app writes to, with every field the app sends. The help-center and OneAPI pages are hashed, so a changed page shows up here.</p>
+          <div id="bcApi"><span class="dim">No run yet.</span></div>
+
+          <h3 class="bc-h3" id="bcTenantH">Tenant API watch (optional, read-only)</h3>
+          <p class="adv-lead" id="bcTenantLead">Reads from one tenant only the endpoints that belong to what is in scope on the Scope page: the scopes ticked there. For every scope, only the channels marked Zscaler are read, exactly as the assessment reads them: an alternative or unticked channel is not, so GenAI &amp; prompts reads nothing without GenAI Security on Zscaler, and ZIA platform's Cloud Apps checks need Cloud App Control. Every request counts against the tenant's ZIA API rate limit, so nothing else is read — GET only, about one request a second — and it records what each answered (OK, 403, 404, 429, timeout, error) and how many items. When this page cannot see the Scope page's ticks it uses the selected profile's saved scope; with every scope unticked, or nothing saved, it does not run. The next watch of the same tenant says which endpoints now answer differently (only the endpoints both watches read; a changed scope is said): a 200 that became 404 is an endpoint that moved; a 200 that became 403 is a permission that was taken away. The timer never runs this; only you do, here.</p>
+          <div class="adv-actions" role="group" aria-labelledby="bcTenantH">
+            <label class="df-ctl" for="bcTenant"><span class="lbl">Tenant</span></label>
+            <select id="bcTenant" aria-describedby="bcTenantLead"></select>
+            <button type="button" class="rp-btn" id="bcRunTenant">Run with tenant API watch</button>
+            <button type="button" class="rp-btn" id="bcStop" hidden>Stop</button>
+          </div>
+          <p id="bcScope" class="dim" role="status" aria-live="polite">Working out what is in scope…</p>
+          <div id="bcTenantBody"></div>
+        </section>
+
+        <section id="terraform" aria-labelledby="bcTfH">
+          <h2 class="df-h" id="bcTfH">Terraform — the zscaler/zia provider</h2>
+          <p class="adv-lead">The Terraform hand-off and the committed workspaces are written for a pinned provider. Beacon compares the pin with the registry's latest, every attribute the generator emits with the provider's schema and docs, and shows the provider's newest changelog entry.</p>
+          <div id="bcTf"><span class="dim">No run yet.</span></div>
+        </section>
+
+        <section id="history" aria-labelledby="bcHistH">
+          <h2 class="df-h" id="bcHistH">History</h2>
+          <p class="adv-lead" id="bcHistLead">The last 30 runs on this computer, newest first.</p>
+          <div class="tw"><table class="bp-table adv-table" id="bcHist" aria-describedby="bcHistLead">
+            <thead><tr><th scope="col">When</th><th scope="col">Kind</th><th scope="col">Started by</th><th scope="col">Tenant</th><th scope="col">Drift</th><th scope="col">Changes</th><th scope="col">Summary</th></tr></thead>
+            <tbody><tr><td colspan="7" class="dim">Loading…</td></tr></tbody>
+          </table></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/beacon.js"></script>
+</body>
+</html>

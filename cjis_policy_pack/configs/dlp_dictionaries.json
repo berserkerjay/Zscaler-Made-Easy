@@ -1,0 +1,813 @@
+[
+  {
+    "name": "CJIS Marking Pattern (High Confidence)",
+    "description": "Explicit CJIS / CJI / CHRI portion and banner markings (document header/footer or paragraph portion markings).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:CJIS|CJI|CHRI)\\s*(?:SECURITY\\s+POLICY|INFO(?:RMATION)?|DATA|RECORDS?)?\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\(\\s*(?:CJIS|CJI|CHRI)\\s*\\)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "//(?:CJIS|CJI|CHRI)(?://|\\b)"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "CJIS Marking Pattern (Medium Confidence)",
+    "description": "Looser CJIS marking detection — catches 'CJIS' or 'CJI' in running text without requiring banner syntax.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:CJIS|CHRI)\\b"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "Law Enforcement Sensitive (LES) Markings",
+    "description": "LES banner/portion markings — 'LES', 'Law Enforcement Sensitive', 'FOUO//LES'.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bLAW\\s+ENFORCEMENT\\s+SENSITIVE\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bFOUO\\s*//\\s*LES\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\(\\s*LES\\s*\\)"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "//LES(?://|\\b)"
+      }
+    ],
+    "phrases": []
+  },
+  {
+    "name": "NCIC ORI Pattern",
+    "description": "NCIC Originating Agency Identifier — 9-character alphanumeric (2-letter state + 7 alphanum). Used by every criminal-justice agency that queries NCIC.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 250,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bORI[:\\s=]+[A-Z]{2}[A-Z0-9]{7}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b[A-Z]{2}\\d{7}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "originating agency identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "ORI number"
+      }
+    ]
+  },
+  {
+    "name": "FBI UCN - Universal Control Number",
+    "description": "FBI Universal Control Number (UCN, formerly 'FBI Number') — typically referenced by 'UCN' or 'FBI#' label followed by alphanumeric identifier.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 250,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:UCN|FBI\\s*#|FBI\\s*No\\.?)\\s*[:\\-=]?\\s*[A-Z0-9]{7,12}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "universal control number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "FBI number"
+      }
+    ]
+  },
+  {
+    "name": "State ID Number (SID) Reference",
+    "description": "State Identification Number — phrase-anchored (state-specific formats vary too widely for a single regex).",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 250,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bSID[:\\s=]+[A-Z0-9\\-]{5,15}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "state identification number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "SID number"
+      }
+    ]
+  },
+  {
+    "name": "NCIC Purpose Code Pattern",
+    "description": "NCIC query purpose codes — C (criminal justice), J (criminal justice employment), S (national security), F (firearms), X (exigent), etc. Valid codes appearing in message headers indicate a lawful NCIC lookup result.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 250,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bPurpose\\s*Code[:\\s=]+[CJSFXIDHRW]\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\bPUR[:\\s=]+[CJSFXIDHRW]\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NCIC purpose code"
+      }
+    ]
+  },
+  {
+    "name": "Criminal History - RAP Sheet Phrases",
+    "description": "Terminology that signals transmission of criminal-history record information — RAP sheets, booking reports, wants/warrants, court dispositions.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 0,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "rap sheet"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "criminal history record"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "criminal history information"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "booking record"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "booking photo"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "mugshot"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "arrest record"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "arrest report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "incident report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "offense report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "case file"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "investigation report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "court disposition"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "conviction record"
+      }
+    ]
+  },
+  {
+    "name": "NCIC - III Query Terminology",
+    "description": "Phrases indicating an NCIC or Interstate Identification Index (III) query — wanted-person, stolen-property, missing-person, III hit.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 0,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NCIC hit"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NCIC query"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NCIC response"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "III query"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "III response"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Interstate Identification Index"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "wanted person"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "stolen property"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "stolen vehicle"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "missing person"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "protection order"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "gang file"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "known or appropriately suspected terrorist"
+      }
+    ]
+  },
+  {
+    "name": "Warrant - Wanted-Person Phrases",
+    "description": "Active-warrant and wanted-person terminology. High-signal when seen alongside subject PII.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 0,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "active warrant"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "arrest warrant"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "bench warrant"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "fugitive warrant"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "extradition warrant"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "warrant number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NCIC wanted"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "warrant of arrest"
+      }
+    ]
+  },
+  {
+    "name": "Biometric - AFIS Terminology",
+    "description": "Biometric data referenced in criminal-justice workflows — fingerprints, palm prints, AFIS/IAFIS/NGI identifiers, mugshot booking.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 0,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "fingerprint card"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "ten-print"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "palm print"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "latent print"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "AFIS"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "IAFIS"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Next Generation Identification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NGI"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "biometric identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "booking photo"
+      }
+    ]
+  },
+  {
+    "name": "NICS - Firearms Background Check Phrases",
+    "description": "National Instant Criminal Background Check System (NICS) and firearms-eligibility terminology.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 0,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NICS"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "National Instant Criminal Background"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "firearm denial"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "NICS denial"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "prohibited person"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "ATF Form 4473"
+      }
+    ]
+  },
+  {
+    "name": "N-DEx - Criminal-Justice Info Sharing",
+    "description": "Law Enforcement National Data Exchange (N-DEx) and related info-sharing system references.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "proximity": 0,
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "N-DEx"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "National Data Exchange"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Law Enforcement Enterprise Portal"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "LEEP portal"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nlets"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "RISS"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "regional information sharing"
+      }
+    ]
+  },
+  {
+    "name": "Social Security Numbers (US) - CJIS Prox 500",
+    "description": "Cloned predefined SSN dictionary with 500-char proximity — intended to be used WITH criminal-history/warrant phrases so only subject SSNs in CJI context trigger.",
+    "predefined_clone": true,
+    "dict_template_name": "Social Security Numbers (US)",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH"
+  },
+  {
+    "name": "Drivers License (US) - CJIS Prox 500",
+    "description": "Cloned predefined Driver's License dictionary with 500-char proximity for CJI-context correlation.",
+    "predefined_clone": true,
+    "dict_template_name": "Drivers License (United States)",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "proximity": 500,
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "hierarchical_identifiers": [
+      "USDL_AL",
+      "USDL_AK",
+      "USDL_AZ",
+      "USDL_AR",
+      "USDL_CA",
+      "USDL_CO",
+      "USDL_CT",
+      "USDL_DE",
+      "USDL_DC",
+      "USDL_FL",
+      "USDL_GA",
+      "USDL_HI",
+      "USDL_ID",
+      "USDL_IL",
+      "USDL_IN",
+      "USDL_IA",
+      "USDL_KS",
+      "USDL_KY",
+      "USDL_LA",
+      "USDL_ME",
+      "USDL_MD",
+      "USDL_MA",
+      "USDL_MI",
+      "USDL_MN",
+      "USDL_MS",
+      "USDL_MO",
+      "USDL_MT",
+      "USDL_NE",
+      "USDL_NV",
+      "USDL_NH",
+      "USDL_NJ",
+      "USDL_NM",
+      "USDL_NY",
+      "USDL_NC",
+      "USDL_ND",
+      "USDL_OH",
+      "USDL_OK",
+      "USDL_OR",
+      "USDL_PA",
+      "USDL_RI",
+      "USDL_SC",
+      "USDL_SD",
+      "USDL_TN",
+      "USDL_TX",
+      "USDL_VT",
+      "USDL_VA",
+      "USDL_WV",
+      "USDL_WI",
+      "USDL_WY",
+      "USDL_GU"
+    ]
+  },
+  {
+    "name": "Date of Birth - CJIS Prox 500",
+    "description": "Date-of-birth detection with 500-char proximity — couples with warrant / RAP-sheet phrases to reduce false positives on non-CJI DOB mentions.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:0?[1-9]|1[0-2])[\\/\\-.](?:0?[1-9]|[12]\\d|3[01])[\\/\\-.](?:19|20)\\d{2}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "\\b(?:19|20)\\d{2}[\\/\\-.](?:0?[1-9]|1[0-2])[\\/\\-.](?:0?[1-9]|[12]\\d|3[01])\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "DOB"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-Alien Registration Number - High Confidence",
+    "description": "From the Fed pack (Alien Registration Number - High Confidence).",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ARN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Registration"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'A-Number'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Immigrant data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "USCIS Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Employment Authorization"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-Alien Registration Number - Prox 500",
+    "description": "From the Fed pack (Alien Registration Number - Prox 500).",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ARN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Registration"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'A-Number'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Immigrant data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "USCIS Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Employment Authorization"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-Date of Birth - High Confidence",
+    "description": "From the Fed pack (Date of Birth - High Confidence).",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "year of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "month of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "day of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birthday"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth year"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth month"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "dob"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "d.o.b"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-TLP Red",
+    "description": "From the Fed pack (TLP Red).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "(?i)TLP: ?Red"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-TLP Amber Strict",
+    "description": "From the Fed pack (TLP Amber Strict).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "(?i)TLP: ?Amber[+ ]?Strict"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-TLP Amber",
+    "description": "From the Fed pack (TLP Amber).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_ALL",
+        "pattern": "(?i)TLP: ?Amber\\b"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-Social Security Numbers (US) - High",
+    "description": "Detect leakage of United States Social Security Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "SSN",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ssn"
+      }
+    ]
+  },
+  {
+    "name": "CJIS-Tax Identification Number (US) - High",
+    "description": "Detect Leakage of US Tax Identification Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  },
+  {
+    "name": "CJIS-Tax Identification Number (US) - Prox 500",
+    "description": "Detect Leakage of US Tax Identification Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  },
+  {
+    "name": "CJIS-Drivers License (United States) - High",
+    "description": "Detect leakage of United States Driver’s Licenses",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USDL_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "hierarchical_identifiers": [
+      "USDL_AL",
+      "USDL_AK",
+      "USDL_AZ",
+      "USDL_AR",
+      "USDL_CA",
+      "USDL_CO",
+      "USDL_CT",
+      "USDL_DE",
+      "USDL_DC",
+      "USDL_FL",
+      "USDL_GA",
+      "USDL_HI",
+      "USDL_ID",
+      "USDL_IL",
+      "USDL_IN",
+      "USDL_IA",
+      "USDL_KS",
+      "USDL_KY",
+      "USDL_LA",
+      "USDL_ME",
+      "USDL_MD",
+      "USDL_MA",
+      "USDL_MI",
+      "USDL_MN",
+      "USDL_MS",
+      "USDL_MO",
+      "USDL_MT",
+      "USDL_NE",
+      "USDL_NV",
+      "USDL_NH",
+      "USDL_NJ",
+      "USDL_NM",
+      "USDL_NY",
+      "USDL_NC",
+      "USDL_ND",
+      "USDL_OH",
+      "USDL_OK",
+      "USDL_OR",
+      "USDL_PA",
+      "USDL_RI",
+      "USDL_SC",
+      "USDL_SD",
+      "USDL_TN",
+      "USDL_TX",
+      "USDL_VT",
+      "USDL_VA",
+      "USDL_WV",
+      "USDL_WI",
+      "USDL_WY",
+      "USDL_GU"
+    ],
+    "hierarchical_dictionary": true,
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Driver License"
+      }
+    ]
+  }
+]

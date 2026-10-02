@@ -1,0 +1,1648 @@
+[
+  {
+    "name": "Custom-Medical-Record-Number",
+    "description": "HIPAA identifier 8: an MRN, chart, encounter, visit, account or EMPI label within 50 bytes of a 6-10 digit number (optional 1-3 letter prefix). Both the phrase and the pattern must match.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 50,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{0,3}[-]?\\d{6,10}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medical Record Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medical Record"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Chart"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Chart Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Hospital Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Health Record Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Encounter Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Visit Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Account Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Enterprise Master Patient Index"
+      }
+    ]
+  },
+  {
+    "name": "Custom-Date-of-Birth",
+    "description": "HIPAA identifier 3: a birth-date label within 50 bytes of a date in US, ISO or long form (years 1920-2026). Both the phrase and the pattern must match.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 50,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:0[1-9]|1[0-2])[/\\-.](?:0[1-9]|[12][0-9]|3[01])[/\\-.](?:19[2-9][0-9]|20[01][0-9]|202[0-6])\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:19[2-9][0-9]|20[01][0-9]|202[0-6])-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+(?:0?[1-9]|[12][0-9]|3[01]),?\\s+(?:19[2-9][0-9]|20[01][0-9]|202[0-6])\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of Birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Birth Date"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Birthdate"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Born"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Born on"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient Date of Birth"
+      }
+    ]
+  },
+  {
+    "name": "Custom-Sensitive-Condition-Markers",
+    "description": "Elevated-protection PHI (42 CFR Part 2, GINA, state HIV / mental-health / reproductive statutes): SUD and MAT terms, mental-health markers, HIV markers, genetic-testing terms and gene names, reproductive-health terms. Any phrase or pattern matches; ICD-10 codes for these conditions come from Diseases Information.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(?:BRCA[12]|APOE|MTHFR|CFTR|HLA-[A-Z][0-9]?|MLH1|MSH[26]|PMS2|TP53|PTEN|APC|VHL|RET|JAK2|FLT3|EGFR|ALK|KRAS|NRAS|BRAF|HER2)\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Substance Use Disorder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alcohol Use Disorder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Opioid Use Disorder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Detox"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Rehabilitation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Methadone"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Suboxone"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Buprenorphine"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Naloxone"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medication Assisted Treatment"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Code of Federal Regulations Title 42 Part 2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Withdrawal"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Overdose"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Suicidal Ideation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Self-Harm"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Major Depressive Disorder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Generalized Anxiety Disorder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Post-Traumatic Stress Disorder"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Human Immunodeficiency Virus Positive"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Antiretroviral"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pre-Exposure Prophylaxis"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Cluster of Differentiation 4 Count"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Viral Load"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Seropositive"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Genetic Testing"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Carrier Status"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pathogenic Variant"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Variant of Uncertain Significance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Hereditary"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Twenty-Three and Me"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Invitae"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Myriad"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Genetic Counselor"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Genetic Information Nondiscrimination Act"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Last Menstrual Period"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Estimated Date of Delivery"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Termination of Pregnancy"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Abortion"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Miscarriage"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Intrauterine Device"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Tubal Ligation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "In Vitro Fertilization"
+      }
+    ]
+  },
+  {
+    "name": "Custom-Health-Plan-Member-Identifier",
+    "description": "HIPAA identifier 9: a member, subscriber, policy, group, plan, beneficiary, Medicare/Medicaid or pharmacy-benefit label within 50 bytes of a Medicare Beneficiary Identifier or a 2-3 letter + 6-12 digit member id. Both the phrase and the pattern must match; the generic pattern is loose on purpose (payers vary), the phrase filters it.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 50,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[1-9][AC-HJKMNP-RT-Y][0-9AC-HJKMNP-RT-Y][0-9]-?[A-Z][AC-HJKMNP-RT-Y][0-9]-?[A-Z]{2}[0-9]{2}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b[A-Z]{2,3}[0-9]{6,12}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Member Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Member Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Subscriber Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Subscriber Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Policy Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Policy Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Insurance Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Insurance Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Group Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Plan Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Plan Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Beneficiary Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Beneficiary Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medicare Beneficiary Identifier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Health Insurance Claim Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medicare Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medicaid Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Prescription Bank Identification Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Prescription Processor Control Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Cardholder Identifier"
+      }
+    ]
+  },
+  {
+    "name": "Custom-Insurance-Billing",
+    "description": "Payer names, EDI transaction and billing vocabulary (EOB, remittance, claim, copay, prior authorization). Phrases only; counted per phrase so the claims pathway can require density (> 2).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Aetna"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Anthem"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Blue Cross"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Blue Shield"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Blue Cross Blue Shield"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Cigna"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Humana"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Kaiser Permanente"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "UnitedHealthcare"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medicare"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medicaid"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Tricare"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "WellCare"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Centene"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Molina"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Optum"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Caremark"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Express Scripts"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "OptumRx"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Health Care Claim Professional"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Health Care Claim Institutional"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Health Care Claim Payment Advice"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Eligibility Inquiry"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Health Level Seven"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Fast Healthcare Interoperability Resources"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Electronic Data Interchange"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Accredited Standards Committee X12"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Explanation of Benefits"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Remittance Advice"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Claim Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Copay"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Deductible"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Coinsurance"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Prior Authorization"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Authorization Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Reimbursement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Adjudication"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Allowed Amount"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Billed Amount"
+      }
+    ]
+  },
+  {
+    "name": "Custom-Clinical-Narrative",
+    "description": "Structural markers of clinical documents (chief complaint, history, review of systems, discharge, progress and operative notes, provider roles, admission and discharge dates, medication reconciliation). Phrases only; complements the Medical Document classifier for structured documents it does not score.",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Chief Complaint"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "History of Present Illness"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Past Medical History"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Past Surgical History"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Family History"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Social History"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Review of Systems"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Physical Examination"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Differential Diagnosis"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Discharge Summary"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Discharge Disposition"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Progress Note"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Consultation Note"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Operative Report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pathology Report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Radiology Report"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient presents"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient denies"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient reports"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Admitting Provider"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Attending Physician"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Primary Care Physician"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of Admission"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of Discharge"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Length of Stay"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No Known Drug Allergies"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Current Medications"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Medication Reconciliation"
+      }
+    ]
+  },
+  {
+    "name": "Custom-Address-ZIP",
+    "description": "HIPAA identifier 2: an address label within 50 bytes of a ZIP+4 or a street address. ZIP alone is very noisy; this dictionary is only used beside insurance and billing context.",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 50,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{5}(?:-\\d{4})?\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{1,6}\\s+[A-Za-z0-9\\s]{2,40}\\s+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Circle|Cir|Way|Place|Pl|Parkway|Pkwy|Highway|Hwy)\\b\\.?"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Patient Address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Home Address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Mailing Address"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Street"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "City"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "State"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Zone Improvement Plan Code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Postal Code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Apartment"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Suite"
+      }
+    ]
+  },
+  {
+    "name": "HC-Social Security Numbers (US) - High",
+    "description": "Detect leakage of United States Social Security Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "SSN",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ssn"
+      }
+    ]
+  },
+  {
+    "name": "HC-Social Security Numbers (US) - Prox 500",
+    "description": "Detect leakage of United States Social Security Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "SSN",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ssn"
+      }
+    ]
+  },
+  {
+    "name": "HC-Tax Identification Number (US) - High",
+    "description": "Detect Leakage of US Tax Identification Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  },
+  {
+    "name": "HC-Tax Identification Number (US) - Prox 500",
+    "description": "Detect Leakage of US Tax Identification Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USITIN_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  },
+  {
+    "name": "HC-Drivers License (United States) - High",
+    "description": "Detect leakage of United States Driver’s Licenses",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USDL_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "hierarchical_identifiers": [
+      "USDL_AL",
+      "USDL_AK",
+      "USDL_AZ",
+      "USDL_AR",
+      "USDL_CA",
+      "USDL_CO",
+      "USDL_CT",
+      "USDL_DE",
+      "USDL_DC",
+      "USDL_FL",
+      "USDL_GA",
+      "USDL_HI",
+      "USDL_ID",
+      "USDL_IL",
+      "USDL_IN",
+      "USDL_IA",
+      "USDL_KS",
+      "USDL_KY",
+      "USDL_LA",
+      "USDL_ME",
+      "USDL_MD",
+      "USDL_MA",
+      "USDL_MI",
+      "USDL_MN",
+      "USDL_MS",
+      "USDL_MO",
+      "USDL_MT",
+      "USDL_NE",
+      "USDL_NV",
+      "USDL_NH",
+      "USDL_NJ",
+      "USDL_NM",
+      "USDL_NY",
+      "USDL_NC",
+      "USDL_ND",
+      "USDL_OH",
+      "USDL_OK",
+      "USDL_OR",
+      "USDL_PA",
+      "USDL_RI",
+      "USDL_SC",
+      "USDL_SD",
+      "USDL_TN",
+      "USDL_TX",
+      "USDL_VT",
+      "USDL_VA",
+      "USDL_WV",
+      "USDL_WI",
+      "USDL_WY",
+      "USDL_GU"
+    ],
+    "hierarchical_dictionary": true,
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Driver License"
+      }
+    ]
+  },
+  {
+    "name": "HC-Drivers License (United States) - Prox 500",
+    "description": "Detect leakage of United States Driver’s Licenses",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "USDL_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_HIGH",
+    "hierarchical_identifiers": [
+      "USDL_AL",
+      "USDL_AK",
+      "USDL_AZ",
+      "USDL_AR",
+      "USDL_CA",
+      "USDL_CO",
+      "USDL_CT",
+      "USDL_DE",
+      "USDL_DC",
+      "USDL_FL",
+      "USDL_GA",
+      "USDL_HI",
+      "USDL_ID",
+      "USDL_IL",
+      "USDL_IN",
+      "USDL_IA",
+      "USDL_KS",
+      "USDL_KY",
+      "USDL_LA",
+      "USDL_ME",
+      "USDL_MD",
+      "USDL_MA",
+      "USDL_MI",
+      "USDL_MN",
+      "USDL_MS",
+      "USDL_MO",
+      "USDL_MT",
+      "USDL_NE",
+      "USDL_NV",
+      "USDL_NH",
+      "USDL_NJ",
+      "USDL_NM",
+      "USDL_NY",
+      "USDL_NC",
+      "USDL_ND",
+      "USDL_OH",
+      "USDL_OK",
+      "USDL_OR",
+      "USDL_PA",
+      "USDL_RI",
+      "USDL_SC",
+      "USDL_SD",
+      "USDL_TN",
+      "USDL_TX",
+      "USDL_VT",
+      "USDL_VA",
+      "USDL_WV",
+      "USDL_WI",
+      "USDL_WY",
+      "USDL_GU"
+    ],
+    "hierarchical_dictionary": true,
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500,
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Driver License"
+      }
+    ]
+  },
+  {
+    "name": "HC-Alien Registration Number - High Confidence",
+    "description": "From the Fed pack's US PII set: USCIS alien registration / A-number beside an immigration label",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ARN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Registration"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'A-Number'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Immigrant data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "USCIS Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Employment Authorization"
+      }
+    ]
+  },
+  {
+    "name": "HC-Alien Registration Number - Prox 500",
+    "description": "From the Fed pack's US PII set: USCIS alien registration / A-number beside an immigration label (any pattern within 500 bytes of any phrase)",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\bA?[\\-#]?\\d{3}-?\\d{3}-?\\d{1,3}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "ARN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Registration"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Alien Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "'A-Number'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Immigrant data"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "USCIS Number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Employment Authorization"
+      }
+    ]
+  },
+  {
+    "name": "HC-Date of Birth - High Confidence",
+    "description": "From the Fed pack's US PII set: US, ISO or dotted dates beside a birth-date label",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "year of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "month of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "day of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birthday"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth year"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth month"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "dob"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "d.o.b"
+      }
+    ]
+  },
+  {
+    "name": "HC-Date of Birth - Prox 500",
+    "description": "From the Fed pack's US PII set: US, ISO or dotted dates beside a birth-date label (any pattern within 500 bytes of any phrase)",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b([0-1]?\\d)[\\/.-]([0-3]?\\d)[\\/.-](19|20)?\\d{2}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b(19|20)?\\d{2}[\\/.-]([0-1]?\\d)[\\/.-]([0-3]?\\d)\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Date of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "year of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "month of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "day of birth"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birthday"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth year"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "birth month"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "dob"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "d.o.b"
+      }
+    ]
+  },
+  {
+    "name": "HC-US Passport - High Confidence",
+    "description": "From the Fed pack's US PII set: 8-9 digit or letter+8 digit passport numbers beside a passport label",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{8,9}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\b[A-Z]\\d{8}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport Number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport No"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport#"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PassportID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportno"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportnumber "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. du Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. de Pasaporte"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pasaporte"
+      }
+    ]
+  },
+  {
+    "name": "HC-US Passport - Prox 500",
+    "description": "From the Fed pack's US PII set: 8-9 digit or letter+8 digit passport numbers beside a passport label (any pattern within 500 bytes of any phrase)",
+    "custom_phrase_match_type": "MATCH_CUSTOM_ANY_PATTERN_WITH_ANY_PHRASE",
+    "proximity": 500,
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "\\b\\d{8,9}\\b"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "(?i)\\b[A-Z]\\d{8}\\b"
+      }
+    ],
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport Number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport No"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport#"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "PassportID"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportno"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passportnumber "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. du Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "No. de Pasaporte"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Passeport"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_ALL",
+        "phrase": "Pasaporte"
+      }
+    ]
+  },
+  {
+    "name": "HC-ABA Bank Routing Number - Prox 500",
+    "description": "Detect leakage of ABA Bank Routing Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "ABA_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  },
+  {
+    "name": "HC-Form 1040 and related schedules",
+    "description": "From the Fed pack (Form 1040 and related schedules).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1040"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0074"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " or other tax year beginning"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Was born before January 2, 1959"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "If you checked the HOH or QSS box"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "I have examined this return and accompanying schedules and statements, and to the best of my knowledge"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Do you want to allow another person to discuss this return"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 11320B"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 1 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Additional Income and Adjustments to Income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Foreign earned income exclusion"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Activity not engaged in for profit income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nontaxable amount of Medicaid "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 71479F"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 2 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Alternative minimum tax. Attach Form"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Social security and Medicare tax on unreported tip income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Additional Medicare Tax. Attach Form 8959"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " tax due on installment income from the sale of certain residential lots"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": " Cat. No. 71478U"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Recapture of federal mortgage subsidy"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Compensation you received from a nonqualified deferred"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Tax on non-effectively connected income for any part of"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Section 965 net tax liability installment from Form 965-A"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "'Schedule 3 (Form 1040)'"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Foreign tax credit. Attach Form 1116 if required"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "General business credit. Attach Form 3800"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Mortgage interest credit. Attach Form 8396"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Credit to holders of tax credit bonds. Attach Form 8912"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Attach to Form 1040, 1040-SR, or 1040-NR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Excess social security and tier 1 RRTA tax withheld"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Credit for repayment of amounts included in income from earlier"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Deferred amount of net 965 tax liability"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Add lines 9 through 12 and 14. Enter here and on Form 1040, 1040-SR, or 1040-NR"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1040-ES"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Disclosure, Privacy Act, and Paperwork Reduction Act Notice"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "File only if you are making a payment of estimated tax by check"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Amount of estimated tax you are paying"
+      }
+    ]
+  },
+  {
+    "name": "HC-ABA Bank Routing Number - High",
+    "description": "Detect leakage of ABA Bank Routing Numbers",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "ABA_LEAKAGE",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  },
+  {
+    "name": "HC-Credit Card Magnetic Tracks",
+    "description": "Focuses on track 1 and 2 data, without targeting track 3. As track 3 is less commonly used, and would still be accompanied by track 1 and 2",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "patterns": [
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "[%][B]\\d{12,19}[\\^][a-zA-Z\\/\\s.]{2,26}[\\^](\\d{7})([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+      },
+      {
+        "action": "PATTERN_COUNT_TYPE_UNIQUE",
+        "pattern": "[;]\\d{12,19}[=]([\\dxX])([a-zA-Z\\d*]{1,24})[?][a-zA-Z\\d*]?"
+      }
+    ]
+  },
+  {
+    "name": "HC-Form 1099-MISC and 1099-NEC",
+    "description": "From the Fed pack (Form 1099-MISC and 1099-NEC).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PAYER’S name, street address, city or town, state or province, country, ZIP"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1099-MISC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form 1099-NEC"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Payer made direct sales totaling $5,000 or more of"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Nonqualified deferred compensation"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0115"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Excess golden parachute"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Gross proceeds paid to an"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "PAYER’S TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "RECIPIENT’S TIN"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "File with Form 1096."
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0116"
+      }
+    ]
+  },
+  {
+    "name": "HC-Credit Cards - Prox 500",
+    "description": "Detect leakage of credit card information",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CREDIT_CARD",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true,
+    "proximity": 500
+  },
+  {
+    "name": "HC-W2 or W4 or W9 Forms",
+    "description": "From the Fed pack (W2 or W4 or W9 Forms).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "a Employee’s social security number"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0008 "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-2"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Wage and Tax Statement"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "c Employer’s name, address, and ZIP code"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "e Employee’s first name and initial"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "3 Social security wages"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-9"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Identification Number and Certification"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Name of entity/individual. An entry is required"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "LLC. Enter the tax classification "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Exemptions (codes apply only to"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 10231X"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "List account number(s) here (optional)"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Form W-4"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0074"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Single or Married filing separately"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Other income (not from jobs)."
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "If your total income will be $200,000 or less"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Deductions. If you expect to claim deductions other than the standard deduction "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Cat. No. 10220Q"
+      }
+    ]
+  },
+  {
+    "name": "HC-Credit Cards - High",
+    "description": "Detect leakage of credit card information",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "predefined_clone": true,
+    "dict_template_name": "CREDIT_CARD",
+    "confidence_threshold": "CONFIDENCE_LEVEL_HIGH",
+    "confidence_level_for_predefined_dict": "CONFIDENCE_LEVEL_MEDIUM",
+    "include_bin_numbers": true,
+    "include_ssn_numbers": true
+  },
+  {
+    "name": "HC-Form K-1",
+    "description": "From the Fed pack (Form K-1).",
+    "custom_phrase_match_type": "MATCH_ANY_CUSTOM_PHRASE_PATTERN_DICTIONARY",
+    "phrases": [
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Schedule K-1 "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "OMB No. 1545-0123"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "A Partnership’s employer identification number "
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "F Name, address, city, state, and ZIP code for partner entered in"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Partner’s share of liabilities"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "Partner’s Share of Current Year Income"
+      },
+      {
+        "action": "PHRASE_COUNT_TYPE_UNIQUE",
+        "phrase": "More than one activity for passive activity purposes"
+      }
+    ]
+  }
+]

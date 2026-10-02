@@ -1,0 +1,20 @@
+# Written by DLP-Check. Copy to terraform.tfvars (git-ignored). Credentials may instead be exported:
+#   export ZSCALER_CLIENT_ID="..." ZSCALER_CLIENT_SECRET="..." ZSCALER_VANITY_DOMAIN="acme" ZSCALER_CLOUD=""
+
+# zscaler_client_id     = "..."
+# zscaler_client_secret = "..."
+# zscaler_vanity_domain = "acme"
+# zscaler_cloud         = ""
+
+rule_starting_order = 1
+policy_rank         = 7
+activate            = true
+
+# Onboarded SaaS Security API tenant ids (Administration > SaaS Application Tenants): one list for every SaaS Security API rule, or per rule name.
+# saas_tenant_ids_default = [123456]
+# saas_tenant_ids = { "Rule name" = [123456] }
+
+# Onboarded outbound email tenant ids (Administration > SaaS Application Tenants): one list for every outbound email rule, or per rule name.
+# email_tenant_ids_default = [123456]
+# email_tenant_ids = { "Rule name" = [123456] }
+# assessor = "..."

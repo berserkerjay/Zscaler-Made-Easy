@@ -1,0 +1,25 @@
+{
+  "name": "CJIS Policy Pack",
+  "version": "1.2",
+  "description": "DLP controls aligned to the FBI Criminal Justice Information Services (CJIS) Security Policy. Detects Criminal Justice Information (CJI) including CHRI markings, NCIC/III references, law-enforcement-sensitive content, and criminal-justice PII (FBI UCN, ORI, SID, RAP sheet terminology). Policies are delivered in ALLOW/monitor mode; flip to BLOCK after tuning. All rules ship DISABLED at INFO severity (Zscaler's delivery convention): review, tune, then enable each rule and raise its severity.",
+  "deploy_note": "Install one channel at a time. Deploy Web DLP first, check it, then Endpoint DLP, then SaaS, then Email, one channel per run. A small run is easy to verify and avoids the burst of requests that makes ZIA block the API client (Resource Access Blocked).",
+  "references": [
+    "FBI CJIS Security Policy v5.9.x",
+    "CJIS Division policy-statement catalog"
+  ],
+  "confidence_tweaks": [
+    {
+      "name_patterns": [
+        "MEDICAL",
+        "Medical Information"
+      ],
+      "target_confidence": "CONFIDENCE_LEVEL_LOW",
+      "label": "Medical → Low (reduce FPs on mixed police/medical intake)"
+    }
+  ],
+  "audience": "State and local law enforcement, courts, and any agency or contractor that handles Criminal Justice Information (CJI).",
+  "when_to_use": "The customer must comply with the FBI CJIS Security Policy, or handles criminal history, NCIC/III, warrants, biometrics or firearms background-check data.",
+  "notes": [
+    "US PII and TLP coverage come from the Fed pack (CJIS- prefixed copies of its dictionaries; the pack's own CJIS Prox 500 clones are reused): identity data of subjects, victims, witnesses and officers that state breach law reaches outside any CJI marking, and the TLP:RED / AMBER+STRICT / AMBER markings law-enforcement information sharing runs under."
+  ]
+}
