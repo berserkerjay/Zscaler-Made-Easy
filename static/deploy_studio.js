@@ -2124,8 +2124,14 @@ async function _tfToggle(id, on) {
 // picks either (TF.mode); with no pick, static is used.
 function _tfCanGap() {
   const c = _dzCreds();
-  const prof = (window.GD && GD.profile && GD.profileHasSecret);
-  return !!((c.client_id && (c.client_secret || prof)) || (c.client_id && prof));
+  const prof = !!(window.GD && GD.profile && GD.profileHasSecret);
+  const has = k => !!String(c[k] || '').trim();
+  // The chosen sign-in: the classic API needs the admin login plus its
+  // password and API key (or a profile that remembers them); OneAPI the
+  // client id plus its secret (or a remembered one). migrateCredBody blanks
+  // the other method's fields, so client_id alone never decides it.
+  if (c.auth_method === 'legacy') return has('username') && ((has('password') && has('api_key')) || prof);
+  return has('client_id') && (has('client_secret') || prof);
 }
 // Static unless the operator picks gap: gap reads the tenant, and a
 // tenant read is never chosen for them just because credentials are there.

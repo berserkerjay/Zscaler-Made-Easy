@@ -7,6 +7,16 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### Classic-API sign-ins: the admin login stays out of the browser's records
+- **What you saw.** After *Authenticate* with the classic ZIA API sign-in, the guide kept the admin login in the browser's storage across restarts, and a failure the server answered without a tenant label (a rate limit, for example) was titled *Could not connect to <admin login>*. The sidebar's *Tenant* line showed a vanity domain left in the hidden OneAPI field.
+- **Now.** The guide matches the tenant on a one-way key of cloud and login, names it *classic API (<cloud>)*, and drops an old record that held the login. The sidebar shows *classic API · <cloud>*.
+
+### Smaller fixes
+- The Terraform hand-off offers gap mode for a complete classic-API sign-in (it only looked at the OneAPI client ID).
+- Best practices opened in its own tab stops its 30-second refresh when the tab is closed.
+- *FP/TP detection ratio* with pop-ups blocked says so and reads nothing (it used to read the tenant and show nothing).
+- *How a deployment works* follows the light theme.
+
 ### More tools read only what is in scope
 - **What you saw.** Deploy Studio's rule picker and *Export from tenant* read the DLP rules of every channel (and the SaaS application tenants) whatever the Scope page said. DLP efficacy (score, export, corpus test) read the Web DLP rules with Inline Web DLP covered elsewhere, and it, the ZCC endpoint diagnostics and every step of the Evaluate All Rules migration read the tenant with nothing ticked.
 - **Now.** They take the Scope page's selection, else the chosen profile's saved one. The rule picker and the export read only the DLP channels marked Zscaler; DLP efficacy needs DLP ticked and reads the Web DLP rules only with Inline Web DLP on Zscaler (the *unused by rules* findings then say *not in scope*); the ZCC diagnostics need ZCC ticked; the migration needs DLP ticked and Inline Web DLP on Zscaler. With nothing in scope, each refuses before signing in.

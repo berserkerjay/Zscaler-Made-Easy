@@ -88,9 +88,10 @@
   function signedIn() {
     const c = window.GD && GD.conn;
     if (!c || !c.ok) return false;
+    // The guide's own key: for the classic sign-in a hash of cloud and login, never the login itself.
+    if (typeof _gdIdent === 'function') return !c.vd || c.vd === _gdIdent();
     const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
-    const ident = (($(legacy ? 'zuser' : 'vd') || {}).value || '').trim();
-    return !c.vd || c.vd === ident;
+    return !legacy && (!c.vd || c.vd === (($('vd') || {}).value || '').trim());
   }
   function note(text, kind) {
     let n = $('dbRunNote');
@@ -450,10 +451,16 @@
 
   // Current implementation: tenant from the form / profile, build from /api/health.
   function refreshCurrent() {
-    const vd = ($('vd') || {}).value || '';
-    const cloud = ($('cloud') || {}).value || '';
+    // Only the chosen sign-in names the tenant: a classic-API sign-in shows
+    // "classic API · <cloud>", never a vanity domain left in the hidden
+    // OneAPI field nor the admin login (user rule 3).
+    const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
+    const cloud = (($('cloud') || {}).value || '').trim();
+    const vd = legacy ? '' : (($('vd') || {}).value || '').trim();
+    const user = legacy ? (($('zuser') || {}).value || '').trim() : '';
     const prof = (window.GD && GD.profile) ? GD.profile : '';
-    const t = $('dbCurTenant'); if (t) { t.textContent = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
+    const name = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (user ? `classic API${cloud ? ' · ' + cloud : ''}` : '');
+    const t = $('dbCurTenant'); if (t) { t.textContent = name || (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
     const s = $('dbCurSaved'); if (s) s.textContent = prof ? 'Profile selected' : 'Never';
     // The Scope assessment page's Run button follows the real run button.
     const run = $('dbScopeRun'), btn = $('runBtn');

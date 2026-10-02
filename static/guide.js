@@ -25,11 +25,22 @@ const _gdE = s => (typeof escapeHtml === 'function' ? escapeHtml(String(s == nul
 const GD_SIGNIN_ONLY = 'Sign-in only: the tenant\'s configuration was not read. The assessment reads only what you put in scope on the Scope page, when you click Run assessment.';
 const _gdVal = id => ((document.getElementById(id) || {}).value || '').trim();
 
+// The connection record is kept across restarts, so it never holds the
+// classic API's admin login (user rule 3): its "same tenant" key is a
+// one-way hash of cloud and login (_gdIdentOf) and its display name is
+// "classic API (<cloud>)". GD_CONN_V marks records written that way; an
+// older record (which kept the login as .vd) is dropped on load.
+const GD_CONN_V = 2;
 function _gdLoad() {
   try {
     GD.mode = localStorage.getItem(GD_LS_MODE) || 'guided';
     GD.profile = localStorage.getItem(GD_LS_PROFILE) || '';
-    const c = localStorage.getItem(GD_LS_CONN); if (c) GD.conn = JSON.parse(c);
+    const c = localStorage.getItem(GD_LS_CONN);
+    if (c) {
+      const conn = JSON.parse(c);
+      if (conn && conn.v === GD_CONN_V) GD.conn = conn;
+      else localStorage.removeItem(GD_LS_CONN);
+    }
   } catch (e) { /* storage may be unavailable */ }
 }
 function _gdSave() {
@@ -49,7 +60,7 @@ function _gdSteps() {
   const creds = legacy
     ? !!(_gdVal('zuser') && ((_gdVal('zpass') && _gdVal('zkey')) || remembered))
     : !!(_gdVal('vd') && _gdVal('cid') && (_gdVal('csec') || remembered));
-  const sameTenant = GD.conn && GD.conn.vd === (legacy ? _gdVal('zuser') : _gdVal('vd'));
+  const sameTenant = GD.conn && GD.conn.vd === _gdIdent();
   const connected = !!(sameTenant && GD.conn.ok);
   const runBtn = document.getElementById('runBtn');
   const running = !!(runBtn && runBtn.disabled);
@@ -68,7 +79,7 @@ function _gdSteps() {
         ? 'The classic ZIA API: a ZIA admin allowed to use the API (username and password) and the tenant\'s API key from Administration > API Key Management. Covers ZIA only. For a tenant on ZIdentity, switch the sign-in method to OneAPI.'
         : 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values. A tenant without ZIdentity can use the classic ZIA API instead (sign-in method in Tenant details).',
       status: sameTenant && GD.conn.ok
-        ? `Signed in to ${_gdE(GD.conn.label)}. ${GD_SIGNIN_ONLY}`
+        ? `Signed in to ${_gdE(GD.conn.label || GD.conn.name || 'the tenant')}. ${GD_SIGNIN_ONLY}`
         : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the tenant fields, then click Authenticate.'),
       tenant: true,
       actions: [
@@ -376,9 +387,30 @@ function _gdRender() {
 // The identity a connection result belongs to: the vanity domain for a
 // ZIdentity API client, the admin username for the classic sign-in — the
 // same key _gdSteps uses, so the status never goes blank on the classic sign-in.
+// For the classic sign-in the key is a one-way hash of cloud and login, never the login itself.
+function _gdHash(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+function _gdIdentOf(legacy, user, cloud, vd) {
+  return legacy
+    ? 'classic:' + _gdHash(String(cloud || '').trim().toLowerCase() + '|' + String(user || '').trim().toLowerCase())
+    : String(vd || '').trim();
+}
+// What a connection result is called when the server gave no label: the
+// vanity domain for OneAPI, "classic API (<cloud>)" for the classic sign-in.
+function _gdNameOf(legacy, cloud, vd) {
+  return legacy ? `classic API (${String(cloud || '').trim() || 'zscaler'})` : String(vd || '').trim();
+}
 function _gdIdent() {
   const legacy = (document.getElementById('authMethod') || {}).value === 'legacy';
-  return legacy ? _gdVal('zuser') : _gdVal('vd');
+  return _gdIdentOf(legacy, _gdVal('zuser'), _gdVal('cloud'), _gdVal('vd'));
 }
 function _gdAuthStatus() {
   const st = document.getElementById('authStatus');
@@ -387,13 +419,13 @@ function _gdAuthStatus() {
   if (GD.testing) { st.textContent = 'Authenticating…'; st.className = 'auth-status'; return; }
   if (!c || c.vd !== _gdIdent()) { st.textContent = ''; st.className = 'auth-status'; return; }
   st.className = 'auth-status ' + (c.ok ? 'ok' : 'bad');
-  st.textContent = c.ok ? `Signed in to ${c.label}. Nothing in the tenant was read. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
+  st.textContent = c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. Nothing in the tenant was read. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
 }
 function _gdConnHtml() {
   const c = GD.conn;
   if (!c || c.vd !== _gdIdent()) return '';
   if (c.ok) {
-    return `<div class="gd-conn ok"><strong>Signed in.</strong> ${_gdE(c.label)} · ${_gdE(GD_SIGNIN_ONLY)}${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
+    return `<div class="gd-conn ok"><strong>Signed in.</strong> ${_gdE(c.label || c.name || 'the tenant')} · ${_gdE(GD_SIGNIN_ONLY)}${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
   }
   return `<div class="gd-conn bad"><strong>Could not connect.</strong> ${_gdE(c.cause || '')}<div class="gd-fix"><strong>What to do:</strong> ${_gdE(c.fix || '')}</div>${c.raw ? `<details><summary>Technical detail</summary><code>${_gdE(c.raw)}</code></details>` : ''}</div>`;
 }
@@ -449,7 +481,11 @@ async function _gdTest() {
   if (typeof migrateCredBody !== 'function') return;
   if (GD.testing) return;   // one check at a time: a second click while one is running is ignored
   const body = migrateCredBody(); delete body.customer_id;
-  const ident = body.auth_method === 'legacy' ? body.username : body.vanity_domain;   // what "same tenant" is compared on
+  const legacy = body.auth_method === 'legacy';
+  // What "same tenant" is compared on, and what the tenant is called when the
+  // server names no label. Neither is the classic API's admin login (rule 3).
+  const ident = _gdIdentOf(legacy, body.username, body.cloud, body.vanity_domain);
+  const idn = { v: GD_CONN_V, vd: ident, name: _gdNameOf(legacy, body.cloud, body.vanity_domain) };
   GD.testing = true; _gdRender();
   const formBtn = document.getElementById('authBtn'); if (formBtn) { formBtn.disabled = true; formBtn.setAttribute('aria-busy', 'true'); }
   if (window.__dlpAskAgain) window.__dlpAskAgain();   // a deliberate click may ask for this app's own token again
@@ -460,19 +496,19 @@ async function _gdTest() {
       // The fetch wrapper marks a 401 it could not clear because the browser
       // could not ask for the token at all (no dialog, prompt() unsupported).
       GD.conn = r.dlpDialogUnavailable
-        ? _gdConnFailure('dialog', { vd: ident, raw: String(r.dlpDialogUnavailable) })
-        : _gdConnFailure('token', { vd: ident, raw: String(data.detail || 'HTTP 401 token_required') });
+        ? _gdConnFailure('dialog', { ...idn, raw: String(r.dlpDialogUnavailable) })
+        : _gdConnFailure('token', { ...idn, raw: String(data.detail || 'HTTP 401 token_required') });
     } else if (!r.ok) {
       const d = (data && typeof data.detail === 'object') ? data.detail : { cause: 'The connection failed.', fix: 'Re-check the tenant details and try again.', raw: String(data.detail || `HTTP ${r.status}`) };
-      GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', vd: ident, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
+      GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', ...idn, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
     } else {
-      GD.conn = { ok: true, vd: ident, label: data.tenant_label, problems: data.problems || [], at: new Date().toISOString() };
+      GD.conn = { ok: true, ...idn, label: data.tenant_label, problems: data.problems || [], at: new Date().toISOString() };
     }
   } catch (e) {
     const msg = String(e && e.message || e);
     GD.conn = /prompt|dialog|not supported|showModal/i.test(msg)
-      ? _gdConnFailure('dialog', { vd: ident, raw: msg })
-      : _gdConnFailure('server', { vd: ident, raw: msg });
+      ? _gdConnFailure('dialog', { ...idn, raw: msg })
+      : _gdConnFailure('server', { ...idn, raw: msg });
   } finally {
     GD.testing = false; _gdSave(); _gdRender();
     if (formBtn) { formBtn.disabled = false; formBtn.removeAttribute('aria-busy'); }
@@ -487,7 +523,7 @@ async function _gdTest() {
 function _gdAuthVerdict(conn) {
   if (!conn) return;
   if (conn.ok) {
-    if (typeof announce === 'function') announce(`Signed in to ${conn.label || conn.vd || 'the tenant'}. Nothing in the tenant was read. Next: choose what to assess on the Scope page and click Run assessment.`);
+    if (typeof announce === 'function') announce(`Signed in to ${conn.label || conn.name || 'the tenant'}. Nothing in the tenant was read. Next: choose what to assess on the Scope page and click Run assessment.`);
     if (typeof window.__dbSignedIn === 'function') window.__dbSignedIn();   // clears the sidebar's "Sign in first"
     const card = document.querySelector('.gd-conn.ok');
     if (card) { card.setAttribute('tabindex', '-1'); try { card.focus({ preventScroll: false }); } catch (e) {} }
@@ -497,7 +533,7 @@ function _gdAuthVerdict(conn) {
     : conn.kind === 'browser' ? 'This browser could not show the sign-in dialog'
     : conn.kind === 'transport' ? 'The app\'s server did not answer'
     : conn.kind === 'permission' ? `Signed in, but not allowed to read ${conn.label || 'this tenant'}`
-    : `Could not connect to ${conn.label || conn.vd || 'the tenant'}`;
+    : `Could not connect to ${conn.label || conn.name || 'the tenant'}`;
   if (typeof announce === 'function') announce(`${title}. ${conn.cause || ''}`);
   if (window.dlpDialog && window.dlpDialog.notice) {
     window.dlpDialog.notice({ title, body: conn.cause || 'The connection failed.', fix: conn.fix || 'Re-check the tenant details and try again.',
