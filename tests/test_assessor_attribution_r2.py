@@ -332,6 +332,8 @@ def test_the_assessment_journey_names_a_classic_api_tenant_without_vanity_or_log
     monkeypatch.setattr(srv, "_journey_packs", lambda ids: [{"id": "p1", "dir": "x"}])
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: object())
     monkeypatch.setattr(srv, "_journey_for", lambda sdk, packs, progress=None, **kw: {"status": "in_progress"})
+    # The journey runs only for a pack ticked on the profile, on its channels marked Zscaler.
+    monkeypatch.setattr(srv, "_journey_scope", lambda ids, channels: ([{"id": "p1", "dir": "x"}], {"p1": ["web"]}))
     events, kind = [], None
     with TestClient(srv.app).stream("POST", "/api/assess", json=_legacy_body(scopes=["dlp"])) as r:
         assert r.status_code == 200
