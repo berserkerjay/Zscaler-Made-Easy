@@ -156,6 +156,11 @@ function _dzCreds() {
            auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey'),
            assessor: v('assessor').trim() };
 }
+// What is in scope on the Scope page: the rule picker and Export from tenant
+// read only the DLP channels marked Zscaler there (user rule 1).
+function _dzScope() {
+  try { return (typeof scopePageSelection === 'function') ? scopePageSelection() : {}; } catch (e) { return {}; }
+}
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
 // A pack push (deploy or Terraform hand-off) names the assessor in every
 // object it creates, never DLP-Check, so it needs the name first.
@@ -1276,7 +1281,7 @@ async function _dzRemovePick() {
   DZ.remove = DZ.remove || {}; DZ.remove[RM_PICK] = 'busy'; _dzRenderSelect();
   let inv;
   try {
-    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds(), ..._dzScope() }) });
     inv = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
   } catch (e) {
@@ -1945,7 +1950,7 @@ async function _dzExportPick() {
   DZ.exportBusy = true; _dzRenderSelect();
   let inv;
   try {
-    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds() }) });
+    const r = await fetch('/api/dlp-packs/removal/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ..._dzCreds(), ..._dzScope() }) });
     inv = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error((inv.detail && (inv.detail.cause || inv.detail)) || `HTTP ${r.status}`);
   } catch (e) {
@@ -2041,7 +2046,7 @@ async function _dzExportRun() {
   }
   X.running = true; X.result = null; DZ.job = { logs: [] }; _dzExportRender();
   try {
-    const snap = await _dzRunJob('/api/dlp-packs/export/start', { rules, pack_name: X.name || '', ..._dzCreds() });
+    const snap = await _dzRunJob('/api/dlp-packs/export/start', { rules, pack_name: X.name || '', ..._dzCreds(), ..._dzScope() });
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The export ended without a result.');
     if (snap.result.status !== 'ready' || !snap.download) throw new Error(snap.result.error || snap.result.stopped || 'The export did not produce a pack.');
     const r = await fetch(snap.download, { cache: 'no-store' });

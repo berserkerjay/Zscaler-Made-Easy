@@ -608,6 +608,14 @@ class MigrateRequest(BaseModel):
     # Cloud App) have different best-practice ordering rules and are
     # out of scope here.
     rule_type: str = "web_dlp"
+    # What is in scope (user rule 1): the Scope page's ticked `scopes` and
+    # channel declaration (`channels`), else (nothing sent and `from_page`
+    # false) the chosen profile's saved selection (_scope_selection). Every
+    # endpoint that reads the tenant with this body checks it before sign-in
+    # (_require_in_scope); nothing in scope is refused (400).
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
 
 
 def _raw_client(creds: Dict[str, str]):
@@ -641,7 +649,9 @@ def _build_client(req: "MigrateRequest"):
 async def diagnose_zcc(req: MigrateRequest):
     """Probe every ZCC endpoint the assessment relies on and return
     per-endpoint HTTP status + response-key count + a likely-cause
-    hint. Lets users see what's readable vs blocked vs not-exposed."""
+    hint. Lets users see what's readable vs blocked vs not-exposed.
+    Only when ZCC is in scope on the Scope page (else 400, nothing read)."""
+    _require_in_scope(req, "zcc", "ZCC endpoint diagnostics")
     client = await asyncio.to_thread(_build_client, req)
     ZCC_ENDPOINTS = [
         ("/zcc/companyInfo",         "Company info"),
@@ -1949,18 +1959,31 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     return out
 
 
+class ScopedTenantCredsRequest(TenantCredsRequest):
+    """Tenant credentials plus what is in scope: the Scope page's ticked
+    `scopes` and channel declaration (`channels`), else (nothing sent and
+    `from_page` false) the chosen profile's saved selection."""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
 @app.post("/api/dlp-packs/removal/inventory")
-async def dlp_pack_removal_inventory(req: TenantCredsRequest):
-    """Every DLP rule the tenant has on every channel (web, endpoint, SaaS,
-    email) with its state, engines and DLP-Check provenance, so the
-    operator can pick the leftovers to remove. Read-only."""
+async def dlp_pack_removal_inventory(req: ScopedTenantCredsRequest):
+    """Every DLP rule the tenant has on the DLP channels in scope (DLP
+    ticked and the channel marked Zscaler on the Scope page: web,
+    endpoint, SaaS, email) with its state, engines and provenance, so the
+    operator can pick the leftovers to remove. Read-only; nothing in scope
+    is refused (400) before sign-in (user rule 1)."""
     try:
         import pack_removal
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pack_removal unavailable: {e}")
+    channels = _pack_channels_in_scope(req, "The rule picker")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(pack_removal.inventory, client)
+    out = await asyncio.to_thread(pack_removal.inventory, client, channels)
+    out["channels_in_scope"] = channels
     out["writes_enabled"] = writes_enabled()
     out["tenant_label"] = tenant_auth.record_label(creds)
     return out
@@ -2715,10 +2738,11 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
-class PackExportRequest(TenantCredsRequest):
+class PackExportRequest(ScopedTenantCredsRequest):
     """Body of Export from tenant as a pack: which rules (rule ids per
-    channel, or "all"; empty means every DLP rule on every channel) and
-    the name the pack gets."""
+    channel, or "all"; empty means every DLP rule on every channel in
+    scope), the name the pack gets and what is in scope on the Scope page
+    (only those channels are read)."""
     customer_id: str = ""
     rules: Dict[str, Any] = {}
     pack_name: str = ""
@@ -2765,6 +2789,16 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     if pack_export.nothing_picked(selection):   # nothing to read the tenant for
         raise HTTPException(status_code=400, detail=pack_export.NOTHING_PICKED)
+    # Only the channels in scope on the Scope page are read (user rule 1).
+    in_scope = _pack_channels_in_scope(req, "Export from tenant")
+    if selection is None:
+        selection = {ch: None for ch in in_scope}
+    else:
+        out = sorted(ch for ch, ids in selection.items() if ch not in in_scope and (ids is None or ids))
+        if out:
+            raise HTTPException(status_code=400, detail=f"Not in scope on the Scope page: {', '.join(out)} DLP rules. Mark the channel as Zscaler, "
+                                                        "or leave its rules out of the export. Nothing was read.")
+        selection = {ch: ids for ch, ids in selection.items() if ch in in_scope}
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
@@ -4403,8 +4437,10 @@ async def dlp_efficacy(req: MigrateRequest):
     """Score every custom DLP dictionary and engine on the tenant.
 
     Static analysis only — no user content, no outbound calls beyond
-    the three read-only endpoints the assessment already uses
-    (/zia/dlpDictionaries, /zia/dlpEngines, /zia/webDlpRules).
+    the read-only endpoints the assessment already uses
+    (/zia/dlpDictionaries, /zia/dlpEngines, and /zia/webDlpRules only when
+    Inline Web DLP is marked Zscaler on the Scope page). DLP must be ticked
+    on the Scope page (else 400, nothing read).
 
     Returns per-item 0–100 score + letter grade + specific reasons
     + remediation steps, plus orphan detection and tenant-wide
@@ -4413,8 +4449,9 @@ async def dlp_efficacy(req: MigrateRequest):
         from dlp_efficacy import analyze
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    sel = _require_in_scope(req, "dlp", "DLP efficacy")
     client = await asyncio.to_thread(_build_client, req)
-    return await asyncio.to_thread(analyze, client)
+    return await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
 
 
 class DlpEfficacyExportRequest(MigrateRequest):
@@ -4435,8 +4472,9 @@ async def dlp_efficacy_export(req: DlpEfficacyExportRequest):
         from dlp_efficacy import analyze, export
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    sel = _require_in_scope(req, "dlp", "DLP efficacy")
     client = await asyncio.to_thread(_build_client, req)
-    analysis = await asyncio.to_thread(analyze, client)
+    analysis = await asyncio.to_thread(analyze, client, "web_dlp" in sel["on_zscaler"])
     try:
         body, mime, filename = await asyncio.to_thread(export, analysis, req.format)
     except ValueError as e:
@@ -4457,18 +4495,26 @@ async def dlp_efficacy_corpus_test(req: DlpEfficacyCorpusRequest):
     """Test a user-supplied text sample against every custom
     dictionary's phrases + regex patterns. Runs locally with stdlib
     re — the corpus never leaves this server, never reaches Zscaler,
-    never leaves this machine. 256 KB hard cap on input."""
+    never leaves this machine. 256 KB hard cap on input. The tenant is
+    still signed in to and read for the dictionaries and engines (and the
+    Web DLP rules when Inline Web DLP is marked Zscaler), so DLP must be
+    ticked on the Scope page (else 400, nothing read)."""
     try:
         from dlp_efficacy import corpus_test
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dlp_efficacy unavailable: {e}")
+    sel = _require_in_scope(req, "dlp", "The DLP corpus test")
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(
-        corpus_test, client, req.corpus or "", int(req.max_dicts or 200)
+        corpus_test, client, req.corpus or "", int(req.max_dicts or 200), "web_dlp" in sel["on_zscaler"]
     )
 
 
 # ── Step 1: Assess Current Status ─────────────────────────────────
+# Every step that signs in reads (or writes) the Inline Web DLP rules: DLP
+# ticked and Inline Web DLP marked Zscaler on the Scope page, else 400.
+MIGRATE_WHAT = "The Evaluate All Rules migration (Inline Web DLP rules)"
+
 @app.post("/api/migrate/status")
 async def migrate_status(req: MigrateRequest):
     """Step 1: Determine whether tenant is in First-Match-Wins or Evaluate All Rules mode."""
@@ -4476,6 +4522,7 @@ async def migrate_status(req: MigrateRequest):
         from rule_migrator import assess_current_status
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     result = await asyncio.to_thread(assess_current_status, client)
     result["mode_source"] = "auto_detected" if result.get("found_via") else "api_unknown"
@@ -4500,6 +4547,7 @@ async def migrate_status_manual(req: ManualModeRequest):
     if m not in ("rule_order", "evaluate_all_rules"):
         raise HTTPException(status_code=400,
                             detail="mode must be 'rule_order' or 'evaluate_all_rules'")
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     # Still run the real assessment (to get rule counts, posture) but OVERRIDE the mode.
     base = await asyncio.to_thread(assess_current_status, client)
@@ -4525,6 +4573,7 @@ async def migrate_fetch(req: MigrateRequest):
         from rule_migrator import fetch_current_rules
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     rules = await asyncio.to_thread(fetch_current_rules, client, "web_dlp")
     return {"rule_type": "web_dlp", "count": len(rules), "rules": rules}
@@ -4564,6 +4613,7 @@ async def migrate_enable(req: EnableRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _security.require_writer()
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(enable_evaluate_all_rules, client, req.dry_run)
 
@@ -4583,6 +4633,7 @@ async def migrate_delete_all(req: DeleteAllRequest):
         raise HTTPException(status_code=500, detail=f"rule_migrator not available: {e}")
     if not req.dry_run:
         _security.require_writer()
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(delete_all_rules, client, req.dry_run)
 
@@ -4611,6 +4662,7 @@ async def migrate_post(req: PostRequest):
         raise HTTPException(status_code=400, detail="No proposed_rules provided.")
     if not req.dry_run:
         _security.require_writer()
+    _require_in_scope(req, "dlp", MIGRATE_WHAT, "web_dlp")   # user rule 1: nothing read out of scope
     client = await asyncio.to_thread(_build_client, req)
     return await asyncio.to_thread(post_new_rule_order, client, req.proposed_rules, req.dry_run, req.mode)
 
@@ -5500,6 +5552,36 @@ def _scope_selection(req: Any) -> Tuple[List[str], Dict[str, Any], str]:
         if sc or ch:
             source = f"the saved profile {prof.get('name') or pid}"
     return sc, ch, source
+
+
+def _require_in_scope(req: Any, scope: str, what: str, channel: str = "") -> Dict[str, Any]:
+    """The Scope page selection (_scope_selection) for a tool that reads
+    only when `scope` is ticked and, with `channel`, that channel is marked
+    Zscaler; else HTTPException 400 before anything is signed in to or read
+    (user rule 1). Returns {scopes, channels, source, on_zscaler}."""
+    import channel_scope
+    import data_flow
+    sc, ch, source = _scope_selection(req)
+    on = channel_scope.in_scope(ch)
+    label = data_flow.SCOPE_LABELS.get(scope, scope)
+    if scope not in sc:
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: on the Scope page tick {label}, then run it again. Nothing was read.")
+    if channel and channel not in on:
+        name = channel_scope.CHANNELS.get(channel, channel)
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: on the Scope page mark {name} as Zscaler, then run it again. Nothing was read.")
+    return {"scopes": sc, "channels": ch, "source": source, "on_zscaler": on}
+
+
+def _pack_channels_in_scope(req: Any, what: str) -> List[str]:
+    """The pack channels (web / endpoint / saas / email) the Scope page puts
+    in scope: DLP ticked and the channel marked Zscaler. 400 when none is."""
+    import channel_scope
+    sel = _require_in_scope(req, "dlp", what)
+    targets = channel_scope.pack_targets(sel["channels"])
+    if not targets:
+        raise HTTPException(status_code=400, detail=f"{what} is not in scope: on the Scope page mark at least one DLP channel "
+                                                    "(Inline Web, Endpoint, SaaS or Email DLP) as Zscaler. Nothing was read.")
+    return targets
 
 
 def _path_scope(req: Any, nothing: str = "") -> Dict[str, Any]:
