@@ -669,7 +669,7 @@
         </button>
         <button class="btn btn-ghost" onclick="openBeaconTab()"
                 aria-label="Open Beacon: what changed in the Zscaler SDK, the Zscaler API and the Terraform provider since the last run, on a timer and on demand, with an optional read-only watch of the tenant's API endpoints (opens in a new tab)"
-                title="Watches the Zscaler Python SDK, the ZIA API (service definition, API reference, help-center pages) and the zscaler/zia Terraform provider, runs on a timer while this server runs, and says what changed since the last run. Optionally reads every endpoint the app uses from a tenant, GET only. Opens in a new tab.">
+                title="Watches the Zscaler Python SDK, the ZIA API (service definition, API reference, help-center pages) and the zscaler/zia Terraform provider, runs on a timer while this server runs, and says what changed since the last run. Optionally reads from a tenant, GET only and about one request a second, only the endpoints in scope on the Scope page. Opens in a new tab.">
           <span aria-hidden="true">🛰️</span> Beacon: SDK, API &amp; Terraform changes
         </button>
         <button class="btn btn-ghost" onclick="openReferenceTab('data-security-portfolio-framework')"
@@ -1588,8 +1588,11 @@ function migrateCredBody() {
 // may leave the secret field blank.
 function profileHasSecret() { return !!(window.GD && GD.profile && GD.profileHasSecret); }
 
-function migrateValidateCreds() {
-  const b = migrateCredBody();
+// The chosen sign-in's blank fields, as [elementId, label]: the classic
+// API needs the admin login, password and API key; OneAPI the vanity
+// domain, client id and secret. A remembered secret fills a blank secret.
+function missingSignInFields(b) {
+  b = b || migrateCredBody();
   const missing = [];
   const blank = s => !s || !s.trim();
   if (b.auth_method === 'legacy') {
@@ -1601,6 +1604,12 @@ function migrateValidateCreds() {
     if (blank(b.client_id))     missing.push(['cid', 'Client ID']);
     if (blank(b.client_secret) && !profileHasSecret()) missing.push(['csec','Client secret']);
   }
+  return missing;
+}
+
+function migrateValidateCreds() {
+  const b = migrateCredBody();
+  const missing = missingSignInFields(b);
   if (missing.length) {
     popMissingCredsAlert(missing);
     return null;
@@ -2574,19 +2583,14 @@ function validate() {
 
 async function runAssessment() {
   // Credential gate — same popup style as the migration wizard
+  // The organisation and assessor, then the chosen sign-in's own fields
+  // (a classic-API run never needs the hidden OneAPI fields).
   const missing = [];
-  const checks = [
-    ['org',      'Organization name'],
-    ['assessor', 'Assessor name'],
-    ['vd',       'Vanity domain'],
-    ['cid',      'Client ID'],
-    ['csec',     'Client secret'],
-  ];
-  for (const [id, label] of checks) {
+  for (const [id, label] of [['org', 'Organization name'], ['assessor', 'Assessor name']]) {
     const el = document.getElementById(id);
-    if (id === 'csec' && profileHasSecret()) continue;
     if (!el || !el.value || !el.value.trim()) missing.push([id, label]);
   }
+  missing.push(...missingSignInFields());
   if (missing.length) {
     popMissingCredsAlert(missing);
     return;
@@ -4898,7 +4902,7 @@ async function openBypassReportTab() {
 // id; the SSL inspection flow tab calls this to open the full report.
 window.__bypassGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection() }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   _bypassReportCache = data;
@@ -5025,7 +5029,7 @@ function _reportErrorText(data, status) {
 }
 window.__sslFlowGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection() }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   return data.report_id;
@@ -5041,7 +5045,7 @@ async function runBypassReport() {
   r.innerHTML = '<div class="bp-empty">Reading ZIA and Client Connector in parallel… this takes 5–15 seconds on a normal tenant.</div>';
   ['bypassExportCsv','bypassExportMd','bypassExportDocx','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
   try {
-    const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     _bypassReportCache = data;
@@ -5057,6 +5061,7 @@ async function runBypassReport() {
 
 async function exportBypass(fmt) {
   const body = migrateValidateCreds(); if (!body) return;
+  Object.assign(body, scopePageSelection());   // only what is in scope on the Scope page is read
   body.format = fmt;
   try {
     const resp = await fetch('/api/report/bypass/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});

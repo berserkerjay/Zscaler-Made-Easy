@@ -2019,7 +2019,7 @@ async def dlp_pack_removal_apply_start(req: PackRemovalRequest, request: Request
     client = await asyncio.to_thread(_build_sdk_client, creds)
     label = "undo " + rec["id"] if rec else ("everything" if req.all else ", ".join(req.pack_ids) or f"{len(req.rules)} rule(s)")
     job = pack_jobs.start("removal", lambda log, cancel: _keyed(client, _run_removal, client, req, rec, packs, log, cancel), label=label,
-                           actor=_actor(request))
+                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2034,6 +2034,30 @@ async def dlp_pack_job(job_id: str, since: int = 0):
     if job is None:
         raise HTTPException(status_code=404, detail="No such job. Jobs are kept for an hour after they finish; start the run again.")
     return pack_jobs.snapshot(job, since=max(0, int(since or 0)))
+
+
+def _start_token(request: Request) -> Optional[str]:
+    """The page's name for a job start (X-Start-Token), so a Stop pressed
+    before the start answers still reaches the job (pack_jobs.stop_before_start)."""
+    import pack_jobs
+    return pack_jobs.valid_start_token(request.headers.get("X-Start-Token"))
+
+
+class StopBeforeStartRequest(BaseModel):
+    start_token: str
+
+
+@app.post("/api/dlp-packs/jobs/stop-before-start")
+async def dlp_pack_job_stop_before_start(req: StopBeforeStartRequest):
+    """Stop pressed while a start request (deploy, removal, export,
+    Terraform hand-off, path analysis) is still signing in, so there is no
+    job id yet. The job that start creates begins with its cancel set and
+    reads or writes nothing; one that already exists is cancelled now."""
+    import pack_jobs
+    try:
+        return pack_jobs.stop_before_start(req.start_token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/dlp-packs/jobs/{job_id}/cancel")
@@ -2647,7 +2671,7 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
-                           actor=_actor(request))
+                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2706,7 +2730,8 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
-                          label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request))
+                          label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request),
+                          start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -2810,7 +2835,7 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest, request: Request):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     job = pack_jobs.start("deploy", lambda log, cancel: _keyed(client, _run_apply, client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
-                           actor=_actor(request))
+                           actor=_actor(request), start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -5214,21 +5239,61 @@ def _report_label(req: Any) -> str:
     return tenant_auth.record_label(_tenant_creds(req))
 
 
+class ScopedReportRequest(MigrateRequest):
+    """A report that reads the tenant (Bypass, SSL inspection flow): what
+    is in scope, as for the Path analyzer and the Data Flow Map — the Scope
+    page's ticked `scopes` and channel declaration (`channels`), else
+    (nothing sent and `from_page` false) the chosen profile's saved
+    selection. Nothing in scope is refused before sign-in (user rule 1)."""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+def _bypass_report_scope(req: Any) -> Dict[str, Any]:
+    """What the Bypass report may read (bypass_report.bypass_scope of
+    _scope_selection); HTTPException 400 when nothing is in scope. Never
+    reads a tenant."""
+    import bypass_report
+    sc, ch, source = _scope_selection(req)
+    sel = bypass_report.bypass_scope(sc, ch)
+    if not sel["read"]:
+        raise HTTPException(status_code=400, detail=bypass_report.NOTHING_IN_SCOPE)
+    sel["source"] = source
+    return sel
+
+
+def _ssl_flow_scope(req: Any) -> Dict[str, Any]:
+    """What the SSL inspection flow may read (data_flow.path_scope of
+    _scope_selection). It walks the SSL inspection rules, so it is refused
+    (400) unless they are in scope. Never reads a tenant."""
+    import data_flow
+    import ssl_flow
+    sc, ch, source = _scope_selection(req)
+    sel = data_flow.path_scope(sc, ch)
+    if "ssl" not in sel["read"]:
+        raise HTTPException(status_code=400, detail=ssl_flow.NOTHING_IN_SCOPE)
+    sel["source"] = source
+    return sel
+
+
 @app.post("/api/report/bypass")
-async def report_bypass(req: MigrateRequest):
-    """Generate the bypass-inventory report (JSON). Read-only. The response
-    carries report_id for /report/bypass?id=... and the export links."""
+async def report_bypass(req: ScopedReportRequest):
+    """Generate the bypass-inventory report (JSON). Read-only, and only
+    what is in scope on the Scope page is read. The response carries
+    report_id for /report/bypass?id=... and the export links."""
     try:
         from bypass_report import generate_bypass_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    scope = _bypass_report_scope(req)   # refused here, before signing in, when nothing is in scope
     client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_bypass_report, client)
+    report = await asyncio.to_thread(generate_bypass_report, client, scope)
     rid = _remember_report("bypass", report, _report_label(req))
     return _REPORTS[rid]
 
 
-class BypassExportRequest(MigrateRequest):
+class BypassExportRequest(ScopedReportRequest):
     format: str = "csv"  # csv | markdown | json | docx
 
 
@@ -5467,7 +5532,7 @@ async def _path_analysis_inputs(req: PathAnalyzerRequest):
 
 
 @app.post("/api/path-analyzer/start")
-async def path_analyzer_start(req: PathAnalyzerRequest):
+async def path_analyzer_start(req: PathAnalyzerRequest, request: Request):
     """Start the Path Analyzer as a job the page follows (the first run
     reads the tenant, only what is in scope on the Scope page; later runs
     for the same scope reuse that read through `report_id` and only look
@@ -5475,7 +5540,8 @@ async def path_analyzer_start(req: PathAnalyzerRequest):
     read. Poll GET /api/dlp-packs/jobs/{job_id}."""
     import pack_jobs
     client, snapshot, label, scope = await _path_analysis_inputs(req)
-    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel, scope), label=req.destination[:80])
+    job = pack_jobs.start("path", lambda log, cancel: _run_path_analysis(client, req, snapshot, label, log, cancel, scope), label=req.destination[:80],
+                          start_token=_start_token(request))
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
@@ -5533,16 +5599,19 @@ async def report_sslflow_page():
 
 
 @app.post("/api/report/ssl-flow")
-async def report_ssl_flow(req: MigrateRequest):
+async def report_ssl_flow(req: ScopedReportRequest):
     """Walk the SSL inspection rules per DLP-relevant traffic class, map the
-    inline Web DLP rules over them and list the gaps. Read-only; the
-    response carries report_id for /report/sslflow?id=... and exports."""
+    inline Web DLP rules over them and list the gaps. Read-only, and only
+    what is in scope on the Scope page is read (Web DLP rules and Client
+    Connector bypasses only when in scope); the response carries report_id
+    for /report/sslflow?id=... and exports."""
     try:
         from ssl_flow import generate_ssl_flow_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ssl_flow unavailable: {e}")
+    scope = _ssl_flow_scope(req)   # refused here, before signing in, when the SSL rules are not in scope
     client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_ssl_flow_report, client)
+    report = await asyncio.to_thread(generate_ssl_flow_report, client, scope)
     rid = _remember_report("sslflow", report, _report_label(req))
     return _REPORTS[rid]
 
@@ -5578,13 +5647,15 @@ async def report_ssl_flow_export(report_id: str, format: str = "csv"):
 
 @app.post("/api/report/bypass/export")
 async def report_bypass_export(req: BypassExportRequest):
-    """Generate and download the bypass report in csv / markdown / json / docx."""
+    """Generate and download the bypass report in csv / markdown / json /
+    docx; only what is in scope on the Scope page is read."""
     try:
         from bypass_report import generate_bypass_report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"bypass_report unavailable: {e}")
+    scope = _bypass_report_scope(req)
     client = await asyncio.to_thread(_build_client, req)
-    report = await asyncio.to_thread(generate_bypass_report, client)
+    report = await asyncio.to_thread(generate_bypass_report, client, scope)
     return await _bypass_export_response(report, req.format)
 
 

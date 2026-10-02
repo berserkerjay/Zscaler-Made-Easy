@@ -54,6 +54,12 @@
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const POLL_MS = 15000;
     let running = false, timer = null, since = '', stats = {}, rows = [], errShown = false;
+    // Each Start opens a new polling chain; Stop ends it. A chain whose
+    // generation is no longer current never polls or re-arms again, so a
+    // Stop (or Stop then Start) while a poll is answering leaves at most
+    // one chain, and none after Stop.
+    let gen = 0;
+    const isCurrent = my => running && gen === my;
 
     document.getElementById('lfLive').hidden = !(window.opener && !window.opener.closed);
 
@@ -146,12 +152,14 @@
         ${errShown ? `<div class="df-hint lf-err">${E(errShown)}</div>` : ''}`;
     }
 
-    async function poll() {
+    async function poll(my) {
+      if (!isCurrent(my)) return;
       let d;
       try {
         const r = await fetch('/api/live-feed', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(Object.assign({}, credBody(), scopeSelection(), { since, stats })) });
         d = await r.json().catch(() => ({}));
+        if (!isCurrent(my)) return;   // stopped (or restarted) while this poll was answering
         if (r.status === 400) {
           // Nothing the feed reads is in scope: polling again would only be refused again.
           const why = (d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`;
@@ -159,6 +167,7 @@
         }
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
       } catch (e) {
+        if (!isCurrent(my)) return;
         errShown = `Poll failed, retrying: ${e.message}`;
         render(); return;
       }
@@ -170,19 +179,21 @@
       render(freshIds);
       if (d.incidents.length) say(`${d.incidents.length} new incident${d.incidents.length === 1 ? '' : 's'}.`);
     }
-    function schedule() { timer = setTimeout(async () => { if (!running) return; await poll(); if (running) schedule(); }, POLL_MS); }
+    function schedule(my) { timer = setTimeout(async () => { if (!isCurrent(my)) return; await poll(my); if (isCurrent(my)) schedule(my); }, POLL_MS); }
     async function start() {
       if (running) return;
       running = true;
+      const my = ++gen;
       document.getElementById('lfStart').hidden = true;
       document.getElementById('lfStop').hidden = false;
       say('Live feed started; polling every 15 seconds.');
-      await poll();
-      if (running) schedule();   // Stop (or a refusal) during the first poll: no further poll
+      await poll(my);
+      if (isCurrent(my)) schedule(my);   // Stop (or a refusal, or Stop then Start) during the first poll: no further poll from this chain
     }
     function stop() {
       running = false;
-      clearTimeout(timer);
+      gen++;
+      clearTimeout(timer); timer = null;
       document.getElementById('lfStart').hidden = false;
       document.getElementById('lfStop').hidden = true;
       say('Live feed stopped.');

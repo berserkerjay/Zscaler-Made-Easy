@@ -329,8 +329,12 @@ def _short(rule: Dict[str, Any], hit: Optional[Dict[str, Any]] = None) -> Dict[s
 
 def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
             catalogue: Optional[Dict[str, List[str]]] = None,
-            category_lookup: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Pure function: normalised rule dicts in, report body out."""
+            category_lookup: Optional[Dict[str, Any]] = None,
+            dlp_in_scope: bool = True) -> Dict[str, Any]:
+    """Pure function: normalised rule dicts in, report body out. With
+    `dlp_in_scope` false the Web DLP rules were not read (not in scope on
+    the Scope page): no class is said to lack a DLP rule, and its DLP
+    status is "not in scope"."""
     catalogue = catalogue or {}
     ssl = sorted((normalize_ssl_rule(r) for r in ssl_rules), key=_sort_key)
     dlp = sorted((normalize_dlp_rule(r) for r in dlp_rules), key=lambda r: (int(r["order"]) if str(r.get("order") or "").lstrip("-").isdigit() else 10 ** 6, int(r.get("id") or 0)))
@@ -381,6 +385,10 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
         gaps: List[Dict[str, Any]] = []
         label = klass["label"]
         rel = klass["relevance"]
+        if not dlp_in_scope:
+            dlp_note_none = " Web DLP is not in scope on the Scope page, so its rules were not read."
+        else:
+            dlp_note_none = " No inline DLP rule targets it either."
         if decision in ("not_inspected", "no_rule"):
             if rel == "privacy":
                 gaps.append({"type": "privacy_exemption", "severity": "info",
@@ -393,14 +401,14 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
                 who = (f"'{decided_by['name']}' (order {decided_by['order']}, {decided_by['action']})" if decided_by
                        else "no SSL rule matches, so the traffic is passed through encrypted")
                 dlp_note = (f" {len(covering)} inline DLP rule(s) target this traffic but never see the HTTPS content: "
-                            + ", ".join(r["name"] for r in covering[:4]) + ("…" if len(covering) > 4 else "")) if covering else " No inline DLP rule targets it either."
+                            + ", ".join(r["name"] for r in covering[:4]) + ("…" if len(covering) > 4 else "")) if covering else dlp_note_none
                 gaps.append({"type": "blind_spot", "severity": sev,
                              "title": f"{label}: encrypted, inline DLP is blind",
                              "detail": f"Decided by {who}.{dlp_note}",
                              "fix": ("Add or reorder a DECRYPT rule for this traffic ahead of the exemption" if decided_by
                                      else "Add a DECRYPT rule for this traffic (or enable a catch-all decrypt rule)")
                                     + "; keep Zscaler Recommended Exemptions for certificate-pinned apps only."})
-        elif decision == "inspected":
+        elif decision == "inspected" and dlp_in_scope:
             if not covering:
                 gaps.append({"type": "ungoverned", "severity": "medium" if rel != "privacy" else "low",
                              "title": f"{label}: decrypted, but no inline DLP rule applies",
@@ -458,6 +466,7 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
             "dlp_enforcing": enforcing,
             "dlp_status": ("blind" if decision in ("not_inspected", "no_rule") else
                            "blocked" if decision == "blocked" else
+                           "not_in_scope" if not dlp_in_scope else
                            "none" if not covering else "enforcing" if enforcing else "monitor"),
             "gaps": gaps,
         })
@@ -471,7 +480,7 @@ def analyse(ssl_rules: List[Dict[str, Any]], dlp_rules: List[Dict[str, Any]],
         "inspected": counts["inspected"],
         "not_inspected": counts["not_inspected"] + counts["no_rule"],
         "blocked": counts["blocked"],
-        "dlp_covered": sum(1 for c in classes_out if c["decision"] == "inspected" and c["dlp_rules"]),
+        "dlp_covered": sum(1 for c in classes_out if c["decision"] == "inspected" and c["dlp_rules"]) if dlp_in_scope else None,
         "gaps": len(all_gaps),
         "high": sum(1 for g in all_gaps if g["severity"] == "high"),
         "medium": sum(1 for g in all_gaps if g["severity"] == "medium"),
@@ -546,12 +555,29 @@ def zcc_gap(zcc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                    "Cover bypassed destinations with Endpoint DLP or a SaaS Security API scan, and review trusted-network definitions."}
 
 
-def generate_ssl_flow_report(client) -> Dict[str, Any]:
+# The sections this report reads, keyed as data_flow.PATH_SECTIONS keys
+# them: the SSL inspection rules ("ssl"), the Web DLP rules ("dlp") and the
+# Client Connector bypasses ("zcc"). The URL categories and the cloud
+# application catalogue are read only to place traffic for the SSL rules.
+SECTIONS = ("ssl", "dlp", "zcc")
+NOTHING_IN_SCOPE = ("Nothing the SSL inspection flow reads is in scope — it walks the SSL inspection rules: on the Scope page "
+                    "tick DLP or ZIA platform and mark SSL inspection as Zscaler, then run it again.")
+
+
+def generate_ssl_flow_report(client, scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Read the tenant and build the report. Never raises for a missing
-    section; problems are listed under diagnostics."""
+    section; problems are listed under diagnostics. `scope` (data_flow.
+    path_scope of the Scope page's selection) limits what is read: a
+    section not in its `read` is not read, and the report says so under
+    `not_in_scope`. Without `scope` every section is read (tools, tests).
+    Raises ValueError when the SSL inspection rules are not in scope."""
+    read = set(SECTIONS) if scope is None else {k for k in (scope.get("read") or []) if k in SECTIONS}
+    why = {} if scope is None else {k: v for k, v in (scope.get("not_in_scope") or {}).items() if k in SECTIONS}
+    if "ssl" not in read:
+        raise ValueError(NOTHING_IN_SCOPE)
     diagnostics: List[Dict[str, Any]] = []
     ssl_rules = _fetch_rules(client, "/zia/sslInspectionRules", diagnostics, "SSL inspection rules")
-    dlp_rules = _fetch_rules(client, "/zia/webDlpRules", diagnostics, "Web DLP rules")
+    dlp_rules = _fetch_rules(client, "/zia/webDlpRules", diagnostics, "Web DLP rules") if "dlp" in read else []
     classes = {cls for k in TRAFFIC_CLASSES for cls in k["app_classes"]}
     catalogue = _fetch_app_catalogue(client, classes, diagnostics)
     try:
@@ -559,8 +585,12 @@ def generate_ssl_flow_report(client) -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         lookup = {}
         diagnostics.append({"section": "URL categories", "endpoint": "/zia/urlCategories", "error_type": type(e).__name__, "error": str(e)[:200]})
-    report = analyse(ssl_rules, dlp_rules, catalogue, lookup)
-    zcc = zcc_bypass_summary(client)
+    report = analyse(ssl_rules, dlp_rules, catalogue, lookup, dlp_in_scope="dlp" in read)
+    if "zcc" in read:
+        zcc = zcc_bypass_summary(client)
+    else:
+        zcc = {"available": False, "profiles": 0, "total": 0, "counts": {}, "items": [], "endpoints": [], "error": None,
+               "not_in_scope": why.get("zcc") or "Not in scope: ZCC is not ticked on the Scope page, so the Client Connector profiles were not read."}
     report["zcc"] = zcc
     if zcc.get("error"):
         diagnostics.append({"section": "Client Connector bypasses", "endpoint": "/zcc/webPolicies", "error_type": "unavailable", "error": zcc["error"]})
@@ -572,6 +602,9 @@ def generate_ssl_flow_report(client) -> Dict[str, Any]:
         s["high"] = s.get("high", 0) + 1
     report["summary"]["zcc_bypasses"] = zcc.get("total", 0)
     report["diagnostics"] = diagnostics
+    report["not_in_scope"] = {k: why.get(k) or "Not in scope on the Scope page, so it was not read." for k in SECTIONS if k not in read}
+    if scope is not None:
+        report["scope"] = {"read": sorted(read), "source": scope.get("source") or "", "key": scope.get("key") or ""}
     report["sources"] = {"ssl_rules": "/zia/sslInspectionRules", "dlp_rules": "/zia/webDlpRules",
                          "applications": "/zia/cloudApplications/policy", "url_categories": "/zia/urlCategories",
                          "zcc_bypasses": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks, /zcc/webAppService"}

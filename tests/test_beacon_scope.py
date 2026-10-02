@@ -847,3 +847,11 @@ def test_the_probe_never_gets_an_unticked_channels_rules_even_from_a_stale_selec
     beacon.run(online=False, upstream=lambda **k: {}, tenant_client=t2, tenant_scope=forged, save=False,
                probe=lambda c, endpoints: beacon.probe_tenant(c, endpoints=endpoints, sleep=lambda s: None))
     assert t2.calls and "/zia/webDlpRules" not in t2.calls
+
+
+def test_the_beacon_button_says_the_watch_reads_only_what_is_in_scope():
+    import re
+    html = open(os.path.join(ROOT, "static", "index.html"), encoding="utf-8").read()
+    assert "every endpoint the app uses" not in html
+    tip = re.search(r'title="Watches the Zscaler Python SDK[^"]*"', html).group(0)
+    assert "in scope on the Scope page" in tip and "GET only" in tip and "one request a second" in tip

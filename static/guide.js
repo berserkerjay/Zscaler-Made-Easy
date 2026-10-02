@@ -409,7 +409,9 @@ function _gdGoConfig() {
     if (card.classList.contains('collapsed') && h) h.click();
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  const first = ['vd', 'cid', 'csec'].map(id => document.getElementById(id)).find(el => el && !el.value);
+  // The chosen sign-in's fields: a classic-API user is never sent to the hidden vanity domain.
+  const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
+  const first = (legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec']).map(id => document.getElementById(id)).find(el => el && !el.value);
   if (first) setTimeout(() => first.focus(), 400);
 }
 function _gdGoResults() {

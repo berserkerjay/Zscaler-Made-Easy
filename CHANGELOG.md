@@ -7,6 +7,22 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### A classic-API user can run the assessment
+- **What you saw.** With the classic ZIA API sign-in filled in, *Run assessment* did nothing but ask for the vanity domain, client ID and client secret: fields the classic sign-in hides. The guide's *Connect* step focused the hidden vanity domain.
+- **Now.** The run asks for the chosen sign-in's own fields (admin username, password and API key for the classic API), and no vanity domain is sent.
+
+### Stop pressed before a run has started still stops it
+- **What you saw.** Stop pressed while a deployment, removal, export, Terraform hand-off or Path analysis was still signing in did nothing, and the run then went ahead in full. Stop on the Live DLP feed while its first poll was answering left one more tenant read 15 seconds later, and Stop then Start could leave two polling loops running at twice the pace.
+- **Now.** Each start carries a random start token; a Stop sent before the job's id arrives (`POST /api/dlp-packs/jobs/stop-before-start`) makes the job start stopped, so nothing is read or written, and the job is also cancelled by id once it exists. The live feed runs one polling loop at a time and makes no read after Stop.
+
+### The SSL inspection flow and the Bypass report read only what is in scope
+- **What you saw.** Both read every section of the tenant (SSL inspection, Web DLP, URL filtering, firewall rules and Client Connector) whatever the Scope page said, and the SSL flow's auto-refresh repeated that every two minutes.
+- **Now.** They take the Scope page's selection, else the chosen profile's saved one, and read only the parts in scope; the rest say *not in scope*. The SSL flow needs SSL inspection on Zscaler; the firewall rules come with the ZIA platform scope. With nothing in scope, each refuses before signing in.
+
+### Wording
+- The Beacon button says the optional tenant watch reads only the endpoints in scope on the Scope page, GET only, about one request a second.
+- Advanced settings says the assessor's name is required for a Terraform download, never replaced by DLP-Check.
+
 ### A classic-API tenant is never named by its admin login or a stale vanity domain
 - **What you saw.** With the classic ZIA API sign-in, Beacon's tenant watch, the Path analyzer, the live feed and the sign-in check named the tenant `admin@acme.com (cloud, classic API)`, and Beacon kept that label on disk. The Data Flow Map, Bypass and SSL flow reports named it by a vanity domain left in the hidden OneAPI field.
 - **Now.** Every label, kept report, export and Beacon snapshot names a classic-API tenant `classic API (cloud)`. Beacon history written before is cleaned of the login when it is read, and the same tenant still finds its baseline. An authentication error masks the login. The assessment page sends only the chosen sign-in's fields.

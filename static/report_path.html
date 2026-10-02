@@ -73,6 +73,15 @@
     const SEV_RANK = { high: 0, medium: 1, low: 2, info: 3 };
     let lastReport = '';   // report_id of the last tenant read, reused for the next destination
     let fresh = false, running = false, job = null;
+    // The start request signs in first, so it has no job id for a while; a
+    // Stop pressed then is sent with this start's token (X-Start-Token) and
+    // the job begins stopped, reading nothing.
+    let startToken = null, stopAsked = false;
+    function newStartToken() {
+      try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, ''); } catch (e) { /* below */ }
+      let t = ''; for (let i = 0; i < 4; i++) t += Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      return t;
+    }
 
     document.getElementById('paNet').innerHTML = NETWORKS.map(([k, l]) => `<option value="${k}">${E(l)}</option>`).join('');
     document.getElementById('paPlat').innerHTML = PLATFORMS.map(p => `<option value="${p}">${p}</option>`).join('');
@@ -187,8 +196,16 @@
       }
     }
     async function stop() {
-      if (!job) return;
+      if (!running || stopAsked) return;
+      stopAsked = true;
       const b = document.getElementById('paStop'); if (b) { b.disabled = true; b.textContent = 'Stopping…'; }
+      if (!job) {
+        // Still signing in: the job this start creates begins stopped.
+        try {
+          await fetch('/api/dlp-packs/jobs/stop-before-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_token: startToken }) });
+        } catch (e) { /* cancelled by id as soon as it arrives */ }
+        return;
+      }
       try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the poll shows the state */ }
     }
 
@@ -198,7 +215,7 @@
       if (!dest) { fail('Nothing to analyze', 'Type a URL, a hostname or an IP address first.'); document.getElementById('paDest').focus(); return; }
       const net = document.getElementById('paNet').value, plat = document.getElementById('paPlat').value;
       const btn = document.getElementById('paRun');
-      running = true; btn.disabled = true; btn.textContent = 'Analyzing…';
+      running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Analyzing…';
       body.innerHTML = liveHtml(dest);
       showMotion(null);
       document.getElementById('paStop').addEventListener('click', stop);
@@ -207,10 +224,13 @@
       const tick = setInterval(() => { const el = document.getElementById('paElapsed'); if (el) el.textContent = mmss((Date.now() - t0) / 1000); }, 1000);
       try {
         const payload = Object.assign({}, credBody(), scopeSelection(), { destination: dest, network: net, platform: plat, report_id: fresh ? '' : lastReport });
-        const r = await fetch('/api/path-analyzer/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const r = await fetch('/api/path-analyzer/start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Start-Token': startToken }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
         job = d.job_id;
+        if (stopAsked) {   // Stop pressed while signing in: cancel by id too
+          try { await fetch(`/api/dlp-packs/jobs/${encodeURIComponent(job)}/cancel`, { method: 'POST' }); } catch (e) { /* the token stopped it */ }
+        }
         const snap = await follow(job);
         if (snap.status !== 'done' || !snap.result) throw new Error(snap.error || (snap.status === 'cancelled' ? 'You clicked Stop before the analysis finished.' : 'The analysis did not finish.'));
         const res = snap.result;
@@ -223,7 +243,7 @@
         fail('The analysis could not run', e.message);
         say(`The analysis could not run: ${e.message}`);
       } finally {
-        clearInterval(tick); running = false; job = null; btn.disabled = false; btn.textContent = 'Analyze';
+        clearInterval(tick); running = false; job = null; startToken = null; stopAsked = false; btn.disabled = false; btn.textContent = 'Analyze';
       }
     }
     function fail(title, msg) {

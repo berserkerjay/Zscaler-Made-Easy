@@ -586,8 +586,42 @@ def _aggregate_bypasses(sections: Dict[str, Any], url_cat_lookup: Optional[Dict[
 
 # ── Top-level report generator ───────────────────────────────────────
 
-def generate_bypass_report(client) -> Dict[str, Any]:
-    """Produce the full bypass inventory. Read-only.
+# What each section reads, keyed as data_flow.PATH_SECTIONS keys the parts
+# of the tenant ("firewall" is this report's own: the firewall filtering
+# rules, in scope with the ZIA platform scope).
+SECTION_PARTS = {"ssl_bypass_rules": "ssl", "ssl_exemptions": "ssl", "url_filter_allow": "url",
+                 "firewall_allow": "firewall", "dlp_allow": "dlp", "zcc": "zcc"}
+NOTHING_IN_SCOPE = ("Nothing the Bypass report reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
+                    "and mark the channels you run on Zscaler, then run the report again.")
+
+
+def bypass_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
+    """What the Bypass report may read for the Scope page's selection:
+    data_flow.path_scope (SSL inspection, URL filtering, Web DLP, Client
+    Connector) plus the firewall filtering rules when the ZIA platform
+    scope is ticked. Returns {read, not_in_scope, key, summary}. Pure:
+    never reads a tenant."""
+    import data_flow
+    sel = data_flow.path_scope(scopes, channels)
+    parts = set(SECTION_PARTS.values())
+    read = [k for k in sel["read"] if k in parts]
+    out = {k: v for k, v in sel["not_in_scope"].items() if k in parts}
+    if "zia_extras" in sel["scopes"]:
+        read.append("firewall")
+    else:
+        out["firewall"] = "Not in scope: ZIA platform is not ticked on the Scope page, so the firewall filtering rules were not read."
+    return {"read": read, "not_in_scope": out, "key": ",".join(sorted(read)), "scopes": sel["scopes"], "channels": sel["channels"],
+            "summary": NOTHING_IN_SCOPE if not read else "Reads only what is in scope on the Scope page."}
+
+
+def generate_bypass_report(client, scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Produce the bypass inventory. Read-only.
+
+    `scope` (bypass_scope of the Scope page's selection) limits what is
+    read: a section whose part is not in its `read` is not read and says
+    `not_in_scope` (never an empty "nothing here"). Without `scope` every
+    section is read (tools, tests). Raises ValueError when nothing is in
+    scope.
 
     Every section is independently wrapped so a single failing endpoint
     never prevents the whole report from returning. The top-level is
@@ -599,6 +633,11 @@ def generate_bypass_report(client) -> Dict[str, Any]:
     start = datetime.now(timezone.utc)
     sections: Dict[str, Any] = {}
     diagnostics: List[Dict[str, Any]] = []
+    parts = set(SECTION_PARTS.values())
+    read = parts if scope is None else {k for k in (scope.get("read") or []) if k in parts}
+    why = {} if scope is None else dict(scope.get("not_in_scope") or {})
+    if not read:
+        raise ValueError(NOTHING_IN_SCOPE)
 
     def _safe(name, fn):
         try:
@@ -612,16 +651,23 @@ def generate_bypass_report(client) -> Dict[str, Any]:
             })
             return {"error": str(e)[:200], "items": [], "count": 0}
 
-    sections["ssl_bypass_rules"] = _safe("ssl_bypass_rules", lambda: _fetch_ssl_bypass(client))
-    sections["ssl_exemptions"]   = _safe("ssl_exemptions",   lambda: _fetch_ssl_exemptions(client))
-    sections["url_filter_allow"] = _safe("url_filter_allow", lambda: _fetch_urlfilter_bypass(client))
-    sections["firewall_allow"]   = _safe("firewall_allow",   lambda: _fetch_firewall_bypass(client))
-    sections["dlp_allow"]        = _safe("dlp_allow",        lambda: _fetch_dlp_bypass(client))
-    sections["zcc"]              = _safe("zcc",              lambda: _fetch_zcc_bypasses(client))
+    fetchers = {"ssl_bypass_rules": _fetch_ssl_bypass, "ssl_exemptions": _fetch_ssl_exemptions, "url_filter_allow": _fetch_urlfilter_bypass,
+                "firewall_allow": _fetch_firewall_bypass, "dlp_allow": _fetch_dlp_bypass, "zcc": _fetch_zcc_bypasses}
+    not_in_scope: Dict[str, str] = {}
+    for key, fetch in fetchers.items():
+        part = SECTION_PARTS[key]
+        if part in read:
+            sections[key] = _safe(key, lambda fetch=fetch: fetch(client))
+        else:
+            not_in_scope[key] = why.get(part) or "Not in scope on the Scope page, so it was not read."
+            sections[key] = {"not_in_scope": not_in_scope[key], "items": [], "count": 0}
 
     # Fetch URL category catalog once — used to expand category refs in
-    # bypass rules into their inherited URLs.
-    url_cat_lookup = _safe("url_category_lookup", lambda: _fetch_url_category_lookup(client))
+    # bypass rules into their inherited URLs (only when a ZIA rule section is read).
+    if read & {"ssl", "url", "firewall", "dlp"}:
+        url_cat_lookup = _safe("url_category_lookup", lambda: _fetch_url_category_lookup(client))
+    else:
+        url_cat_lookup = {}
     if isinstance(url_cat_lookup, dict) and "error" in url_cat_lookup:
         url_cat_lookup = {}
     sections["url_category_catalog_count"] = len(url_cat_lookup or {})
@@ -683,6 +729,8 @@ def generate_bypass_report(client) -> Dict[str, Any]:
         "aggregated": aggregated,    # consolidated global lists of bypassed items
         "sections": sections,
         "diagnostics": diagnostics,  # empty list = clean run; populated = something failed per-section
+        "not_in_scope": not_in_scope,  # section -> why it was not read (the Scope page left it out)
+        **({"scope": {"read": sorted(read), "source": scope.get("source") or "", "key": scope.get("key") or ""}} if scope is not None else {}),
         "guidance": [
             "Document business justification for every bypass — auditors expect this.",
             "Periodically (quarterly minimum) review the bypass list. Remove anything without a current owner.",
