@@ -91,7 +91,7 @@ variable "assessor" {
   nullable    = false
 
   validation {
-    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\[\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp-check", var.assessor)) == 0
+    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\[\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp[\\W_]*check", var.assessor)) == 0
     error_message = "Name the assessor (at most 40 characters, no brackets, not the tool): it is part of every object's description."
   }
 }

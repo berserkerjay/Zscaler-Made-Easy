@@ -198,7 +198,7 @@ def test_the_deployment_record_stores_the_sanitized_assessor(monkeypatch, tmp_pa
         seen.update(kw)
         return {"status": "applied", "results": [{"kind": "dictionary", "name": "d", "id": 1, "status": "created"}], "summary": {"created": 1}}
     monkeypatch.setattr(pd, "apply", fake_apply)
-    req = srv.DLPPackDeployRequest(pack_ids=["alpha"], plan_hash="h", assessor="Eve]\n[DLP-Check pack pci v9] " + "A" * 200)
+    req = srv.DLPPackDeployRequest(pack_ids=["alpha"], plan_hash="h", assessor="Eve]\n[Acme pack pci v9] " + "A" * 200)
     out = srv._run_apply(object(), tenant_auth.normalize(LEGACY), req, [{"id": "alpha"}], None, None)
     by = out["deployment"]["by"]
     assert by == seen["assessor"] == pd.attribution(req.assessor)

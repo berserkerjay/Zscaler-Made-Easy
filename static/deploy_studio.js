@@ -160,8 +160,12 @@ const _dzE = s => escapeHtml(String(s == null ? '' : s));
 // A pack push (deploy or Terraform hand-off) names the assessor in every
 // object it creates, never DLP-Check, so it needs the name first.
 const DZ_ASSESSOR_REQUIRED = "Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. Every object a pack creates names the assessor in its description, never DLP-Check.";
+const DZ_ASSESSOR_NOT_TOOL = "The assessor's name must name the person who assesses and deploys the pack, not the tool (no \"DLP-Check\" in any spelling): it is part of every pushed object's description.";
 function _dzNeedAssessor() {
-  if ((_dzCreds() || {}).assessor) return;
+  const who = String((_dzCreds() || {}).assessor || '').trim();
+  // Same rule as the server and the Terraform CLI (pack_deploy.TOOL_NAME_PATTERN).
+  if (/dlp[\W_]*check/i.test(who)) throw new Error(DZ_ASSESSOR_NOT_TOOL);
+  if (who) return;
   throw new Error(DZ_ASSESSOR_REQUIRED);
 }
 const _dzN = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;

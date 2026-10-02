@@ -388,7 +388,7 @@ _ASSESSOR_VARIABLE = (
     '  type        = string\n'
     '  nullable    = false\n\n'
     '  validation {\n'
-    '    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\\\[\\\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp-check", var.assessor)) == 0\n'
+    '    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\\\[\\\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp[\\\\W_]*check", var.assessor)) == 0\n'   # pack_deploy.TOOL_NAME_PATTERN
     '    error_message = "Name the assessor (at most 40 characters, no brackets, not the tool): it is part of every object\'s description."\n'
     '  }\n'
     '}\n\n')
@@ -1318,7 +1318,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     assessor = " ".join(str(args.assessor or "").split())
     if args.assessor and not assessor:
         sys.exit("--assessor is blank: name the assessor, or leave the option out to require it at apply time")
-    if re.search(r"(?i)dlp[- ]?check", assessor):
+    import pack_deploy
+    if pack_deploy.is_tool_name(assessor):
         sys.exit("--assessor must name the person who assesses and deploys the pack, not the tool")
     known = {p["id"]: p for p in discover_packs()}
     ids = args.packs or sorted(known)

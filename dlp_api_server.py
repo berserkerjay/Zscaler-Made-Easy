@@ -1022,12 +1022,28 @@ def _assessor(req: Any) -> str:
 
 ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. "
                      "Every object a pack creates names the assessor in its description, never DLP-Check.")
+ASSESSOR_NOT_TOOL = ("The assessor's name must name the person who assesses and deploys the pack, not the tool "
+                     "(no \"DLP-Check\" in any spelling): it is part of every pushed object's description.")
 
 
 def _require_assessor(req: Any) -> str:
     """The assessor's name, or a 400 before anything is read or written:
     a pack push (deploy, single-pack import, Terraform hand-off) always
     names the assessor in the objects it creates, never DLP-Check."""
+    import pack_deploy
+    given = getattr(req, "assessor", "") or ""
+    if not str(given).strip():
+        pid = getattr(req, "profile_id", "") or ""
+        if pid:
+            try:
+                import tenant_profiles
+                given = (tenant_profiles.get(pid) or {}).get("assessor") or ""
+            except Exception:  # noqa: BLE001 — a missing profile only loses the name
+                given = ""
+    if pack_deploy.is_tool_name(given):
+        # The tool's own name, in any spelling (pack_deploy.TOOL_NAME_PATTERN, the
+        # rule the Terraform CLI and var.assessor apply): refused, never rewritten.
+        raise HTTPException(status_code=400, detail=ASSESSOR_NOT_TOOL)
     name = _assessor(req)
     if not name:
         raise HTTPException(status_code=400, detail=ASSESSOR_REQUIRED)
