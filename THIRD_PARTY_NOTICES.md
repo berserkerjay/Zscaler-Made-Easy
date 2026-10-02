@@ -79,3 +79,23 @@ distribution links in the SBOM.
 | uvicorn | 0.53.0 | BSD-3-Clause |
 | zscaler-sdk-python | 1.9.44 | MIT |
 | zscaler/terraform-provider-zia | 4.8.8 | MPL-2.0 |
+
+## Container image
+
+The container image is built on `python:3.11-slim-trixie` (Debian 13 with CPython 3.11).
+The components of that base image are not in the SBOM above, which covers
+the Python packages and the Terraform provider only; CI builds a CycloneDX
+SBOM of the built image (every Debian package and its licence) as the
+`image-sbom` artifact. The Dockerfile removes the base packages the app
+does not need; what stays includes the components below, used unmodified.
+Each one's licence text and copyright notice are in the image at the path
+shown, and the Debian licence texts are in `/usr/share/common-licenses/`.
+
+| Component | Licence text in the image | Licence (SPDX) |
+|---|---|---|
+| CPython 3.11 | `/usr/local/lib/python3.11/LICENSE.txt` | PSF-2.0 |
+| glibc (libc6) | `/usr/share/doc/libc6/copyright` | LGPL-2.1-or-later |
+| OpenSSL library (libssl3t64) | `/usr/share/doc/libssl3t64/copyright` | Apache-2.0 |
+| zlib (zlib1g) | `/usr/share/doc/zlib1g/copyright` | Zlib |
+| dash | `/usr/share/doc/dash/copyright` | BSD-3-Clause AND GPL-2.0-or-later |
+| coreutils | `/usr/share/doc/coreutils/copyright` | GPL-3.0-or-later |
