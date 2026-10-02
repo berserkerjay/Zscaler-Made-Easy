@@ -1587,10 +1587,19 @@ class ProposalApplyRequest(TenantCredsRequest):
     confirm: bool = False
 
 
-def _proposal_client(req: ProposalApplyRequest):
+def _proposal_client(req: ProposalApplyRequest, tenant: str):
+    """The SDK client for previewing, applying or rolling back a proposal
+    queued under `tenant`, or an error before anything is read: 400 without
+    complete credentials (OneAPI or the classic API), 409 when the signed-in
+    tenant is not the one the proposal was raised for (its proposal key)."""
+    import proposals
+    import tenant_fingerprint
     creds = _tenant_creds(req)
-    if not (creds.get("client_id") and creds.get("client_secret")):
-        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open FP/TP Detection Ratio from the assessment page (its credentials are used), or select a tenant profile that remembers its secret.")
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Tenant credentials are needed to touch the tenant: open FP/TP Detection Ratio from the assessment page (its sign-in is used, OneAPI or classic API), or select a tenant profile that remembers its secret.")
+    mine = proposals.tenant_key(tenant_fingerprint.proposal_key(creds, getattr(req, "profile_id", "") or ""))
+    if proposals.tenant_key(tenant) != mine:
+        raise HTTPException(status_code=409, detail=f"This proposal was raised for another tenant, but the current credentials are for {tenant_auth.record_label(creds)}. Switch tenant first.")
     return _build_sdk_client(creds)
 
 
@@ -1599,7 +1608,7 @@ async def proposals_preview(tenant: str, pid: str, req: ProposalApplyRequest, di
     """Re-read the rules an approved proposal touches and show exactly what
     would change (or what a rollback would restore). Read-only."""
     import proposal_apply
-    client = await asyncio.to_thread(_proposal_client, req)
+    client = await asyncio.to_thread(_proposal_client, req, tenant)
     try:
         return await asyncio.to_thread(proposal_apply.preview, client, tenant, pid, direction="rollback" if direction == "rollback" else "apply")
     except ValueError as e:
@@ -1616,7 +1625,7 @@ async def proposals_apply(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=400, detail="Applying requires explicit confirmation (confirm=true).")
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
-    client = await asyncio.to_thread(_proposal_client, req)
+    client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
     try:
@@ -1637,7 +1646,7 @@ async def proposals_rollback(tenant: str, pid: str, req: ProposalApplyRequest):
         raise HTTPException(status_code=400, detail="Rolling back requires explicit confirmation (confirm=true).")
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
-    client = await asyncio.to_thread(_proposal_client, req)
+    client = await asyncio.to_thread(_proposal_client, req, tenant)
     logs: list = []
     by = (_security.current_actor() or "")[:80]
     try:
