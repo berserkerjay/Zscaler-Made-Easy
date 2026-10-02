@@ -549,10 +549,23 @@ def _tenant_rules(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
     return web + others
 
 
-def inventory(client) -> Dict[str, Any]:
+def _scoped_need(channels: Iterable[str]) -> Dict[str, Any]:
+    """The reads for the rules of `channels` only (web / endpoint / saas /
+    email): no other channel's rules, no SaaS application tenants, no
+    endpoint application groups."""
+    chans = {str(c) for c in channels} & set(pc.DLP_CHANNELS)
+    need = pc.needs([])
+    need["channels"] = chans
+    need["web_rules"] = pc.WEB in chans
+    return need
+
+
+def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
     """Every DLP rule the tenant has, on every channel, with its engines
-    and provenance, so an operator can pick the leftovers to remove."""
-    snap = pd.fetch_tenant(client, _all_need())
+    and provenance, so an operator can pick the leftovers to remove.
+    `channels` (web / endpoint / saas / email) limits the read to those
+    channels' rules, for a caller that may read only an in-scope part."""
+    snap = pd.fetch_tenant(client, _all_need() if channels is None else _scoped_need(channels))
     if not snap.get("reachable", True):
         return {"status": "blocked", "rules": [], "blockers": ["Could not read the tenant. Check credentials and permissions."],
                 "errors": snap.get("errors", [])}
@@ -606,7 +619,7 @@ def inventory(client) -> Dict[str, Any]:
         orphan_dicts.append({"kind": "dictionary", "id": pd._field(d, "id"), "name": name, "tagged": pack is not None, "pack": pack})
     orphan_engines.sort(key=lambda x: str(x["name"]).lower()); orphan_dicts.sort(key=lambda x: str(x["name"]).lower())
     return {"status": "ready", "rules": rules, "dictionaries": dicts, "orphans": {"engines": orphan_engines, "dictionaries": orphan_dicts},
-            "errors": (snap.get("channels") or {}).get("errors") or {}}
+            "errors": (snap.get("channels") or {}).get("errors") or {}, "unreadable": dict(snap.get("unreadable") or {})}
 
 
 def plan_removal_selected(client, selected: Sequence[Dict[str, Any]], *, tenant_cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

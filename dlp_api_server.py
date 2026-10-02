@@ -17,7 +17,7 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, re, sys, tempfile, time
+import json, asyncio, os, re, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from starlette.background import BackgroundTask
@@ -1538,26 +1538,31 @@ async def digests_list():
     import continuous_eval
     import guidance
     health = guidance.source_health()
-    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": continuous_eval.notification_settings(),
+    notifications = continuous_eval.notification_settings()
+    if _DH_REFRESH_STATE.get("interval_hours") is not None:   # what the timer started with, decided (and logged) once at startup
+        notifications["interval_hours"] = _DH_REFRESH_STATE["interval_hours"]
+    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": notifications,
             "sources": {"watched": sum(1 for h in health if h["watched"]), "stale": [h for h in health if h["stale"]]},
             "checks_config": guidance.config_summary(), "guidance_queue": __import__("proposals").summary(guidance.APP_TENANT)}
 
 
 @app.post("/api/digests/run")
 async def digests_run(req: DigestRunRequest):
-    """Run the loop now (the same run the schedule makes)."""
+    """Run the loop now (the same run the schedule makes). One run at a
+    time: a second click, another tab or the timer firing meanwhile gets
+    409, so the tenants are not read twice against the API rate limit."""
     try:
         d = await asyncio.to_thread(_continuous_eval_once, req.notify)
+    except LoopRunInProgress as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:  # noqa: BLE001
         _DH_REFRESH_STATE["last_status"] = "error"
         _DH_REFRESH_STATE["last_error"] = str(e)[:200]
         _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         raise HTTPException(status_code=500, detail=f"the evaluation failed: {type(e).__name__}: {str(e)[:200]}")
-    # The same bookkeeping the scheduled run does, so the Digest tab's
-    # "Last run" and its status are right after a manual run too.
-    _DH_REFRESH_STATE["last_status"] = "ok"
-    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    return {"ok": True, "digest": d}
+    # The same bookkeeping the scheduled run does (_continuous_eval_once), so
+    # the Digest tab's "Last run" and its status are right after a manual run too.
+    return {"ok": True, "digest": d, "status": _DH_REFRESH_STATE.get("last_status"), "errors": __import__("continuous_eval").run_errors(d)}
 
 
 @app.get("/api/digests/{digest_id}")
@@ -1600,8 +1605,8 @@ async def report_digest_page():
 
 @app.get("/api/detection-health/schedule")
 async def detection_health_schedule():
-    """State of the 6-hour FP/TP Detection Ratio refresh for tenant profiles
-    that remember their secret."""
+    """State of the opt-in FP/TP Detection Ratio refresh (the continuous
+    evaluation timer, DLP_CHECK_CONTINUOUS_EVAL_HOURS; off by default)."""
     return dict(_DH_REFRESH_STATE)
 
 
@@ -1638,48 +1643,89 @@ async def report_health_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
-# Every 6 hours while this server process runs, for each tenant profile that
-# remembers its secret, continuous_eval.run_once reads FP/TP Detection Ratio,
-# the SaaS tenants and the packs' drift (never the assessment checks or the
-# score) and writes a digest. Same cadence as the best-practices refresh;
-# nothing is written to any tenant. The loop dies with the process: a
-# schedule that must survive it is Task Scheduler / cron running
-# continuous_eval.py --once.
-_DH_REFRESH_INTERVAL_SECONDS = 6 * 3600
-_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": True, "interval_seconds": _DH_REFRESH_INTERVAL_SECONDS, "last_run_at": None,
+# Off unless the operator opts in: every tenant read counts against the
+# ZIA API rate limit, and nothing reads a tenant until the operator runs it.
+# With DLP_CHECK_CONTINUOUS_EVAL_HOURS > 0 (unset or 0: off), every N hours
+# while this server process runs, continuous_eval.run_once reads, for each
+# tenant profile that remembers its secret and only what that profile's
+# Scope page puts in scope, FP/TP Detection Ratio, the SaaS tenants and the
+# ticked packs' drift (never the assessment checks or the score) and writes
+# a digest. Run the loop now (POST /api/digests/run) and
+# continuous_eval.py --once are the explicit runs. Nothing is written to any
+# tenant. The loop dies with the process: a schedule that must survive it
+# is Task Scheduler / cron running continuous_eval.py --once.
+_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": False, "interval_seconds": None, "interval_hours": None, "last_run_at": None,
                                      "next_run_at": None, "last_status": None, "profiles": {},
-                                     "runs_while": "this server process is running"}
+                                     "runs_while": "this server process is running",
+                                     "setting": "DLP_CHECK_CONTINUOUS_EVAL_HOURS (unset or 0: off; runs only when you click Run the loop now)"}
+
+
+def _continuous_eval_hours() -> float:
+    """DLP_CHECK_CONTINUOUS_EVAL_HOURS as hours; 0 (the default) is off."""
+    import continuous_eval
+    return continuous_eval.interval_hours()
+
+
+# A run of the loop is already reading the tenants. continuous_eval.run_once
+# also takes a cross-process file lock (digests/.loop.lock), so a run here
+# and RUN_Continuous_Evaluation.bat / continuous_eval.py --once in another
+# process never overlap either: whichever starts second gets this.
+from continuous_eval import LoopRunInProgress  # noqa: E402
+
+_LOOP_RUN_LOCK = threading.Lock()
 
 
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
     """One run of the continuous evaluation (guidance, FP/TP Detection Ratio,
     SaaS tenants, drift, digest, notifications). Keeps the per-profile
-    state the FP/TP Detection Ratio tab shows."""
+    state the FP/TP Detection Ratio tab shows, and the run's status: "ok"
+    only when nothing failed, "partial" when a section or a tenant read did
+    (a 429, say). Only one run at a time: every tenant read counts against
+    the ZIA API rate limit, so an overlapping run raises LoopRunInProgress."""
+    if not _LOOP_RUN_LOCK.acquire(blocking=False):
+        raise LoopRunInProgress("a run of the loop is already in progress; wait for it to finish")
+    try:
+        return _continuous_eval_locked(notify)
+    finally:
+        _LOOP_RUN_LOCK.release()
+
+
+def _continuous_eval_locked(notify: bool) -> Dict[str, Any]:
     import continuous_eval
     d = continuous_eval.run_once(build_client=_build_sdk_client, notify=notify)
     for t in d.get("tenants") or []:
         dh = t.get("detection_health") or {}
-        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else "ok",
+        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else ("not in scope" if t.get("note") else "ok"),
                                                           "incidents": dh.get("incidents"), "errors": len(t.get("errors") or []),
                                                           "error": "; ".join(t.get("errors") or [])[:200] or None}
     _DH_REFRESH_STATE["last_digest"] = d.get("id")
     _DH_REFRESH_STATE["last_noteworthy"] = d.get("noteworthy")
+    errors = continuous_eval.run_errors(d)
+    _DH_REFRESH_STATE["last_status"] = "partial" if errors else "ok"
+    _DH_REFRESH_STATE["last_error"] = (f"{errors} error(s) in the run; see the digest" if errors else None)
+    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return d
 
 
 async def _dh_auto_refresh_loop() -> None:
-    await asyncio.sleep(30)
-    while _DH_REFRESH_STATE.get("enabled", True):
+    interval = _DH_REFRESH_STATE["interval_seconds"]
+    _DH_REFRESH_STATE["next_run_at"] = time.time() + 30
+    try:
+        await asyncio.sleep(30)
+    except asyncio.CancelledError:
+        return
+    while _DH_REFRESH_STATE.get("enabled"):
         try:
-            await asyncio.to_thread(_continuous_eval_once)
-            _DH_REFRESH_STATE["last_status"] = "ok"
+            await asyncio.to_thread(_continuous_eval_once)   # sets last_status / last_run_at
+        except LoopRunInProgress:
+            pass   # a manual run is reading the tenants right now: this pass is skipped
         except Exception as e:  # noqa: BLE001
             _DH_REFRESH_STATE["last_status"] = "error"
             _DH_REFRESH_STATE["last_error"] = str(e)[:200]
-        _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        _DH_REFRESH_STATE["next_run_at"] = time.time() + _DH_REFRESH_INTERVAL_SECONDS
+            _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _DH_REFRESH_STATE["next_run_at"] = time.time() + interval
         try:
-            await asyncio.sleep(_DH_REFRESH_INTERVAL_SECONDS)
+            await asyncio.sleep(interval)
         except asyncio.CancelledError:
             break
 
@@ -1687,8 +1733,17 @@ async def _dh_auto_refresh_loop() -> None:
 @app.on_event("startup")
 async def _start_dh_refresh() -> None:
     try:
+        hours = _continuous_eval_hours()   # logs a value it cannot use, once
+    except Exception:  # noqa: BLE001  # a setting that cannot be read leaves the timer off; it never stops the app
+        hours = 0.0
+    _DH_REFRESH_STATE["interval_hours"] = hours
+    if hours <= 0:
+        _DH_REFRESH_STATE.update({"enabled": False, "interval_seconds": None, "next_run_at": None, "last_status": _DH_REFRESH_STATE.get("last_status") or "off"})
+        return
+    try:
         import detection_health  # noqa: F401
         import tenant_profiles  # noqa: F401
+        _DH_REFRESH_STATE.update({"enabled": True, "interval_seconds": hours * 3600})
         asyncio.create_task(_dh_auto_refresh_loop())
     except Exception:
         _DH_REFRESH_STATE["enabled"] = False
