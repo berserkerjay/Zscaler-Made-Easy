@@ -30,7 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pyflakes>=3", "httpx"]
+# Same pins as requirements-dev.lock (make lock-dev), which CI and make dev
+# install hash-verified.
+dev = ["pytest==9.1.1", "pyflakes==4.0.1", "httpx==0.28.1"]
 
 # The app runs from its own folder (the web UI, the policy packs and the
 # Terraform workspaces live next to the modules), so it is installed

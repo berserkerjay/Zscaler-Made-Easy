@@ -35,7 +35,7 @@ for a local image:
 ```sh
 docker build -t dlp-check:local .
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" \
-  aquasec/trivy:latest image --format cyclonedx --output /out/image-sbom.cdx.json dlp-check:local
+  aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format cyclonedx --output /out/image-sbom.cdx.json dlp-check:local
 ```
 
 `THIRD_PARTY_NOTICES.md` ends with a "Container image" section that names
