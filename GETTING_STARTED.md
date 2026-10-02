@@ -344,14 +344,17 @@ Dictionary and engine tuning proposals are made in the ZIA portal; the
 queue tracks them and says so. Every decision and every apply is in
 `audit.log`.
 
-## 4i. The digest (when you run it, or on a timer you opt in to)
+## 4i. The digest (when you run it)
 
-Toolbar › *Find the gaps › Digest*. The loop reads tenants, and every read
-counts against the ZIA API rate limit, so it is off by default: it runs when
-you click *Run the loop now* (or run `python continuous_eval.py --once`).
-To run it on a timer while the app runs, set
-`DLP_CHECK_CONTINUOUS_EVAL_HOURS` (for example `6`) in `local_settings.bat`.
-For every tenant profile that remembers its secret, the loop:
+Toolbar › *Find the gaps › Digest*. Every tenant read counts against the
+ZIA API rate limit, so the loop never runs on its own by default: it runs
+when you click *Run the loop now* (or run `RUN_Continuous_Evaluation.bat` /
+`python continuous_eval.py --once`). To have it run on a timer while the
+app runs, set `DLP_CHECK_CONTINUOUS_EVAL_HOURS` to a number of hours in
+`local_settings.bat` (unset or 0, the default: off; 1 to 8784, anything
+else is logged once at startup and leaves the timer off). Each tenant profile
+that remembers its secret is read only for what its Scope page puts in
+scope; a profile with no scope saved is not read at all. The loop:
 
 1. re-reads the guidance sources (Zscaler's own and the integration
    partners, Proofpoint first) and turns a new article on a mapped topic
@@ -359,9 +362,13 @@ For every tenant profile that remembers its secret, the loop:
    that stops answering for seven days is flagged as stale;
 2. refreshes Zscaler's SaaS tenant capability matrix and compares it with
    the customer's onboarded tenants (not active, at the limit, not
-   onboarded at all);
-3. runs FP/TP Detection Ratio and refreshes the proposals queue;
-4. measures the packs' journey and reports drift since the last run;
+   onboarded at all) when SaaS Security (CASB) is marked as run on Zscaler
+   on the Scope page;
+3. runs FP/TP Detection Ratio and refreshes the proposals queue (when DLP
+   is in the profile's scopes);
+4. measures the ticked packs' journey on the DLP channels the Scope page
+   puts on Zscaler and reports drift since the last run (when DLP is in
+   scope; never every pack);
 5. writes a digest and, when there is something to decide, sends it.
 
 To receive it, put the settings in `local_settings.bat` (see

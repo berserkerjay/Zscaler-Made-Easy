@@ -117,13 +117,49 @@ def key_for(cloud: str, who: str, client: str) -> str:
 
 
 def key_of(client: Any) -> str:
-    """The key stamped on an SDK client by the app (attach_client), or ""."""
-    return str(getattr(client, "_zia_rate_key", "") or "")
+    """The key stamped on an SDK client by the app (attach_client), or "".
+    Only a string the app attached counts: an object that answers every
+    attribute (a proxy, a test double) has no key."""
+    key = getattr(client, "_zia_rate_key", "")
+    return key if isinstance(key, str) else ""
 
 
 def label_of(client: Any) -> Optional[str]:
     """The tenant label stamped on an SDK client, as the deployment log has it."""
-    return getattr(client, "_zia_rate_label", None) or None
+    label = getattr(client, "_zia_rate_label", None)
+    return label if isinstance(label, str) and label else None
+
+
+def labels_of(client: Any) -> Optional[Tuple[str, ...]]:
+    """Every label this client's tenant may carry in the deployment log
+    (the current one first, then older forms), or None. Only the tuple of
+    strings attach_client stamps counts."""
+    labels = getattr(client, "_zia_rate_labels", None)
+    if isinstance(labels, tuple) and labels and all(isinstance(x, str) and x for x in labels):
+        return labels
+    one = label_of(client)
+    return (one,) if one else None
+
+
+def _label_ok(rec_label: Any, tenant_label: Any) -> bool:
+    """Whether a deployment record belongs to the tenant: `tenant_label` is
+    one label or a sequence of them (tenant_auth.record_labels)."""
+    if not tenant_label or rec_label is None:
+        return True
+    if isinstance(tenant_label, str):
+        return rec_label == tenant_label
+    return rec_label in tuple(tenant_label)
+
+
+def _record_ok(r: Dict[str, Any], tenant_label: Any, key: Optional[str]) -> bool:
+    """Whether a deployment record belongs to the tenant: by its classic-API
+    fingerprint or opaque tenant key when both sides have one (classic-API
+    tenants on a cloud share one label; their key here is the fingerprint,
+    tenant_fingerprint.tenant_key), else by label."""
+    rk = r.get("tenant_fp") or r.get("tenant_key")
+    if key and rk:
+        return rk == key
+    return _label_ok(r.get("tenant_label"), tenant_label)
 
 
 def current_key() -> str:
@@ -657,15 +693,17 @@ def attach(session: Any, key: str) -> Any:
     return session
 
 
-def attach_client(client: Any, key: str, label: Optional[str] = None) -> Any:
+def attach_client(client: Any, key: str, label: Any = None) -> Any:
     """Stamp an SDK client with its tenant key (and the tenant label the
     deployment log uses), and give its request executor a session that
     reports ZIA's answers (attach). A client with no executor to hook (the
     legacy one) is only stamped."""
     with contextlib.suppress(Exception):
         setattr(client, "_zia_rate_key", key)
-        if label:
-            setattr(client, "_zia_rate_label", label)
+        labels = (label,) if isinstance(label, str) else tuple(x for x in (label or ()) if x)
+        if labels:
+            setattr(client, "_zia_rate_label", labels[0])
+            setattr(client, "_zia_rate_labels", labels)
     ex = getattr(client, "_request_executor", None)
     if ex is not None and hasattr(ex, "set_session"):
         with contextlib.suppress(Exception):
@@ -751,7 +789,7 @@ def _view(key: Optional[str], use_recent: bool, now: float) -> Tuple[Dict[str, L
     return sent, held, refused, server, unkeyed
 
 
-def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[float, str]]:
+def _deployment_refusals(now: float, tenant_label: Any, key: Optional[str] = None) -> List[Tuple[float, str]]:
     """Runs of this tenant in the deployment log of the last week that ZIA
     refused for its rate: (when, what it answered)."""
     try:
@@ -761,7 +799,7 @@ def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[
         return []
     out = []
     for r in rows:
-        if tenant_label and r.get("tenant_label") not in (None, tenant_label):
+        if not _record_ok(r, tenant_label, key):
             continue
         for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
                               ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
@@ -779,7 +817,7 @@ def _deployment_refusals(now: float, tenant_label: Optional[str]) -> List[Tuple[
     return sorted(out)
 
 
-def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
+def _track_record(now: float, tenant_label: Any, key: Optional[str] = None) -> Dict[str, Any]:
     """This tenant's deploys and removals in the deployment log of the last
     week, and how many finished without ZIA refusing a request for its rate."""
     try:
@@ -789,7 +827,7 @@ def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
         rows = []
     runs = clean = 0
     for r in rows:
-        if tenant_label and r.get("tenant_label") not in (None, tenant_label):
+        if not _record_ok(r, tenant_label, key):
             continue
         for when, results in ((r.get("at"), (r.get("created") or []) + (r.get("other") or []) + (r.get("failed") or [])),
                               ((r.get("undo") or {}).get("at"), (r.get("undo") or {}).get("results") or [])):
@@ -806,7 +844,7 @@ def _track_record(now: float, tenant_label: Optional[str]) -> Dict[str, Any]:
 
 
 def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[str] = None,
-             tenant_label: Optional[str] = None) -> Dict[str, Any]:
+             tenant_label: Any = None) -> Dict[str, Any]:
     """Will a run of `counts` requests per bucket succeed at ZIA's limits,
     for tenant `key`? Simulated, nothing is sent, against what the app
     executed for that tenant: its requests of the last hour (reads too),
@@ -865,7 +903,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
     # What ZIA has shown it tolerates: the fewest writes in 5 minutes it blocked the client at.
     tolerated = [r for r in blocked if (r.get("writes_5m") or 0) > 0]
     ceiling = min(tolerated, key=lambda r: r["writes_5m"]) if tolerated else None
-    history = _deployment_refusals(now, tenant_label) if use_recent else []
+    history = _deployment_refusals(now, tenant_label, key) if use_recent else []
     # A run of deletes only is a removal: its advice is about removing, not deploying.
     removing = bool(counts.get("delete")) and not any(counts.get(b) for b in ("write", "endpoint_rules", "cloud_app"))
     run_after = None
@@ -946,7 +984,7 @@ def forecast(counts: Dict[str, int], *, use_recent: bool = True, key: Optional[s
         f"{r['used_last_hour']} already sent this hour"
         + (f" (ZIA counts {r['zia_reports_used']})" if (r['zia_reports_used'] or 0) > r['used_last_hour'] else "")
         + f"; takes about {_human(max(1.0, r['duration']))}" for r in rows]
-    record = _track_record(now, tenant_label) if use_recent else {"runs": 0, "clean": 0, "percent": None}
+    record = _track_record(now, tenant_label, key) if use_recent else {"runs": 0, "clean": 0, "percent": None}
     outlook = "good, unless that refusal was this tenant's" if only_unkeyed else {"ok": "good", "warn": "good, but slow", "fail": "poor"}[severity]
     success = {"outlook": outlook, "track_record": record,
                "text": f"Outlook: {outlook}. " + (f"Track record: {record['clean']} of {record['runs']} of this tenant's runs in the last week "

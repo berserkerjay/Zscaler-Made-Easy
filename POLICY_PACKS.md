@@ -592,9 +592,16 @@ curl -s -X POST http://localhost:8000/api/dlp-packs/journey \
 
 It runs without the write gate (nothing is written). `next_steps` names
 the exact rules to enable or harden, and where in the ZIA Admin Portal.
-Every object a policy pack creates carries a provenance tag in its
-description (`[DLP-Check baseline <pack> v<version>]`), so admins can see
-which policy pack version it came from.
+Every object a policy pack creates carries a provenance tag at the end of
+its description (`[<assessor> baseline <pack> v<version>]`, or
+`[<assessor> pack <pack> v<version>]` for a pack without a baseline), so
+admins can see which policy pack version it came from and who deployed it.
+The tag names only the assessor (Scope assessment, else the saved
+profile's assessor; no brackets or line breaks, at most 40 bytes); it says
+`DLP-Check` only when no assessor is named. Removal, export, the journey
+and the inventory recognise both this form and the older
+`[DLP-Check ...]` tag; an assessor's tag counts only for a pack in the
+library, so a customer's own text such as `[Q3 pack review]` never does.
 
 **Dynamic application scope.** A web rule may carry
 `"cloud_app_classes": ["AI_ML"]` instead of a fixed `cloud_applications`
@@ -713,8 +720,8 @@ card) returns the static workspace.
 | `imports.tf` | gap mode only |
 | `README.md`, `.gitignore`, `terraform.tfvars.example` | requirements, inputs, outputs, state and lock-file guidance, verify and review steps; state and secrets kept out of git |
 
-Every object carries a `[DLP-Check baseline|pack <id> v<ver>] Terraform-managed.`
-description tag. Every file is written the way `terraform fmt` lays it out
+Every object carries a `[<assessor> baseline|pack <id> v<ver>] Terraform-managed.`
+description tag (`DLP-Check` in place of the assessor when none is named). Every file is written the way `terraform fmt` lays it out
 (`pack_terraform.hcl_fmt`); CI regenerates the committed workspaces, fails
 on any drift or new file, runs `terraform fmt -check`, and `terraform init`
 + `validate` against the real provider schema.

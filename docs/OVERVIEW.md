@@ -97,11 +97,15 @@ what you get, what to do next.
   production, measured from Workflow Automation incidents and analyst
   verdicts, turned into proposals you approve, preview, apply with a
   read-back, and roll back.
-- **Digest — the loop** — when you run it (or every N hours when you opt
-  in with `DLP_CHECK_CONTINUOUS_EVAL_HOURS`; off by default) it re-reads the guidance sources, the FP/TP ratio, the SaaS tenants and
-  the packs' drift for every profile that remembers its secret, and
-  writes a digest (e-mail or a Teams/Slack webhook when there is
-  something to decide). It never writes to a tenant.
+- **Digest — the evaluation loop** — when you click *Run the loop now*
+  (or run `continuous_eval.py --once`) it re-reads the guidance sources
+  and, for every profile that remembers its secret, only what that
+  profile's Scope page puts in scope (the FP/TP ratio and the ticked
+  packs' drift when DLP is in scope, the SaaS tenants when SaaS Security
+  runs on Zscaler), and writes a digest (e-mail or a Teams/Slack webhook
+  when there is something to decide). Every tenant read counts against
+  the ZIA API rate limit, so the timer is off unless the operator sets
+  `DLP_CHECK_CONTINUOUS_EVAL_HOURS`. It never writes to a tenant.
 - **Regulatory & compliance alignment** — the findings mapped to the
   frameworks the customer answers to (HIPAA, PCI DSS, NIST, CMMC, SOC 2,
   ISO 27001, GDPR, CIS, GLBA), scoped to the industry on the profile.
@@ -117,6 +121,14 @@ what you get, what to do next.
   (Inline Web, Endpoint, SaaS Security API, Outbound Email). Every
   deployment is recorded and can be undone; rules can also be removed
   selectively, with a usage check before anything goes.
+- **Export from tenant as a pack** — the tenant's DLP rules on every
+  channel (all of them, or the ones you tick), with every engine they use
+  and every dictionary those engines use, as a pack zip the library
+  accepts and Deploy policy packs can deploy into another tenant. Scope
+  that only exists in the source tenant (users, groups, locations, ...)
+  is left out and listed in the pack. Read-only. Where: Deploy policy
+  packs, under the pack list; also Step 2 of the Evaluate All Rules
+  migration wizard, for its Inline Web DLP rules.
 - **Deploy flow diagram** — the plan a preflight produced as a picture:
   which dictionaries feed which engines, which engines feed which rules,
   on which channels. Where: inside Deploy policy packs, on the review step.
@@ -326,8 +338,11 @@ Being honest about the edges:
   caches, and a built-in pack rebuilt from the tenant, which is kept in
   the pack library under its own id (remove it there to go back to the
   shipped pack).
-- The **Digest** loop runs while the server runs; for a schedule that
-  outlives it, use Task Scheduler or cron.
+- The **Digest** loop is off by default: it runs when you click *Run the
+  loop now* or run `continuous_eval.py --once`, and on a timer only while
+  the server runs and only when `DLP_CHECK_CONTINUOUS_EVAL_HOURS` is set
+  (1 to 8784 hours); for a schedule that outlives the server, use Task
+  Scheduler or cron.
 - The checks cover ZIA DLP end to end and the parts of ZPA, Client
   Connector and ZDX that affect data protection; they are not a full
   audit of those products.

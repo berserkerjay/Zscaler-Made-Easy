@@ -238,7 +238,9 @@ class Client:
         s.customer_id = str(customer_id or "")
         s.sess = requests.Session(); s.sess.headers.update({"Accept":"application/json"})
         import zia_rate   # every ZIA answer on this session counts toward the tenant's next preflight rate check
-        s.rate_key = zia_rate.key_for(cloud, vd or s.username, cid or s.username)
+        import tenant_fingerprint   # the classic API's key is its keyed fingerprint: no hash of the admin login is kept
+        s.rate_key = tenant_fingerprint.tenant_key({"auth_method": s.method, "cloud": cloud, "vanity_domain": vd, "client_id": cid,
+                                                    "username": s.username})
         zia_rate.attach(s.sess, s.rate_key)
         # Use OrderedDict for O(1) LRU eviction
         from collections import OrderedDict

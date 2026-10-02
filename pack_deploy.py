@@ -51,6 +51,7 @@ plan the user saw.
 """
 from __future__ import annotations
 
+import functools
 import re
 import hashlib
 import json
@@ -106,6 +107,134 @@ WRITE_STATUSES = {CREATE, MODIFY, RESTORE}
 BASELINE_MARK = "[DLP-Check baseline"
 PACK_MARK = "[DLP-Check pack"          # provenance tag for packs without a baseline section
 
+# The tag names the assessor who deployed the pack ("[Jane Doe pack pci v2]"),
+# not the tool. DEFAULT_BY is used only when no assessor name is given, and
+# is what every tag written before the assessor name was used says, so the
+# recognisers below match both. A tag is always the END of a description
+# (the deploy appends it; fit_description keeps it whole), which is what
+# keeps "[Q3 baseline review]" in a customer's own text from matching.
+DEFAULT_BY = "DLP-Check"
+BY_MAX = 40          # UTF-8 bytes (ZIA measures descriptions in bytes), so the tag always fits
+_BY_BAD = re.compile(r"[\[\]\x00-\x1f\x7f]+")
+# A name that begins like the tool's own legacy tag ("DLP-Check pack alpha")
+# would put the literal "[DLP-Check pack alpha" marker into another pack's tag.
+_BY_FORGED = re.compile(r"(?i)^dlp-check(?=\s+(?:pack|baseline)\b)")
+_TAG_SUFFIX = (r"(?P<suffix>(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?"
+               r"(?: Terraform-managed\.?)?)")
+_TAG_VER = r"(?: v(?P<ver>[^\[\]\r\n]*))?"     # versions are free text (pack.json), spaces included
+_TAG_BY = r"\[(?P<by>[^\[\]\r\n]{1,60}?) (?P<kind>baseline|pack) "
+_TAG_BODY = _TAG_BY + r"(?P<pack>[^\s\[\]]+)" + _TAG_VER + r"\]" + _TAG_SUFFIX
+MARK_RE = re.compile(r"\s*" + _TAG_BODY + r"\s*$")
+_LOOKS_VER = re.compile(r"\d")
+
+
+@functools.lru_cache(maxsize=512)
+def _id_re(pack_id: str, anywhere: bool = False) -> "re.Pattern":
+    """A tag for exactly this pack id (which may contain spaces), at the end
+    of a description or, with `anywhere`, wherever it stands."""
+    body = _TAG_BY + "(?P<pack>" + re.escape(pack_id) + ")" + _TAG_VER + r"\]" + _TAG_SUFFIX
+    return re.compile(r"\s*" + body + ("" if anywhere else r"\s*$"))
+
+
+def attribution(assessor: Any) -> str:
+    """The name a provenance tag carries: the assessor's name, cleaned so it
+    cannot break the tag (no brackets or control characters, at most
+    BY_MAX UTF-8 bytes, never the tool's own "DLP-Check pack|baseline"
+    marker), or DEFAULT_BY when there is none."""
+    s = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
+    s = _BY_FORGED.sub("DLP Check", s)
+    s = s.encode("utf-8")[:BY_MAX].decode("utf-8", errors="ignore").strip()
+    return s or DEFAULT_BY
+
+
+def assessor_name(assessor: Any) -> str:
+    """The sanitized assessor name a record stores: attribution() of a given
+    name, or blank when none was given (the tag then says DLP-Check)."""
+    given = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
+    return attribution(assessor) if given else ""
+
+
+def _counts(m: Any, known: Optional[Set[str]]) -> bool:
+    """Whether a tag match at the end of a description is a real provenance
+    tag: the tool's own "[DLP-Check ..." form, an assessor's tag for a known
+    pack id, or an assessor's tag for any other pack id that carries what
+    every deploy writes (a version, or the deploy's closing sentence), so an
+    object deployed from a pack since gone from the library is still found
+    while a customer's "[Q3 pack review]" is not."""
+    if m.group("by") == DEFAULT_BY or (known is not None and m.group("pack") in known):
+        return True
+    return bool(m.group("suffix")) or bool(_LOOKS_VER.match(m.group("ver") or ""))
+
+
+def has_mark(desc: Any, *, pack_id: Optional[str] = None, kind: Optional[str] = None) -> bool:
+    """Whether a description carries a deploy's provenance tag, optionally
+    for one pack id and/or kind ("baseline" / "pack"). A tag naming an
+    assessor counts only at the end of the description, and with a pack id
+    only for that pack id; a customer's "[Q3 baseline review]" never
+    qualifies."""
+    d = str(desc or "")
+    legacy = [BASELINE_MARK] if kind == "baseline" else [PACK_MARK] if kind == "pack" else [BASELINE_MARK, PACK_MARK]
+    m = MARK_RE.search(d)
+    if pack_id is not None:
+        pm = _id_re(str(pack_id)).search(d)
+        if pm and (kind is None or pm.group("kind") == kind):
+            return True
+        if not pm and m and m.group("by") != DEFAULT_BY and _counts(m, None):
+            return False      # the description ends in another pack's tag
+        return any(f"{mk} {pack_id}" in d for mk in legacy)
+    if m and (kind is None or m.group("kind") == kind) and _counts(m, None):
+        return True
+    return any(mk in d for mk in legacy)
+
+
+def library_ids() -> Set[str]:
+    """The ids of every pack in the library (shipped and uploaded): the
+    pack ids an assessor's tag is recognised for when no pack is named."""
+    try:
+        from dlp_importer import discover_packs
+        return {str(p["id"]) for p in discover_packs()}
+    except Exception:  # noqa: BLE001 — no library: only "[DLP-Check ..." tags count
+        return set()
+
+
+def tag_pack(desc: Any, known: Optional[Iterable[str]] = None) -> Optional[str]:
+    """The pack id inside a provenance tag, or None. Pack ids in `known`
+    are matched exactly (spaces included); any other tag counts as _counts
+    says (the tool's own, or one carrying a version or deploy sentence)."""
+    d = str(desc or "")
+    ks = set(known) if known is not None else None
+    for k in sorted(ks or (), key=len, reverse=True):
+        if k and k in d and _id_re(k).search(d):
+            return k
+    m = MARK_RE.search(d)
+    if m and _counts(m, ks):
+        return m.group("pack")
+    for mk in (BASELINE_MARK, PACK_MARK):
+        if mk in d:
+            rest = d.split(mk, 1)[1].strip()
+            return rest.split("]", 1)[0].split(" v")[0].strip() or None
+    return None
+
+
+def strip_mark(base: Any, known: Optional[Iterable[str]] = None) -> str:
+    """A description without its provenance tag: the tool's own
+    "[DLP-Check ..." tag (and anything after it, as before), an assessor's
+    tag for a pack id in `known` wherever it stands (text an admin added
+    after it is kept), and a tag at the end that _counts. Customer text
+    such as "[Q3 pack review]" is kept."""
+    s = str(base or "")
+    ks = set(known) if known is not None else None
+    for k in sorted(ks or (), key=len, reverse=True):
+        if k and k in s:
+            s = _id_re(k, True).sub(lambda m: "" if m.group("by") != DEFAULT_BY else m.group(0), s)
+    m = MARK_RE.search(s)
+    if m and _counts(m, ks):
+        s = s[:m.start()]
+    for mk in (PACK_MARK, BASELINE_MARK):
+        if mk in s:
+            s = s.split(mk, 1)[0]
+    return s.strip()
+
 LogFn = Optional[Callable[[str], None]]
 
 
@@ -151,39 +280,39 @@ def baseline_meta(meta: Dict[str, Any], pack_id: str) -> Optional[Dict[str, Any]
     }
 
 
-def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None) -> str:
+def baseline_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None, by: Any = None) -> str:
     """Description with the provenance tag appended (idempotent). `limit`
-    clamps the total length (dictionaries: 255) without losing the tag."""
+    clamps the total length (dictionaries: 255) without losing the tag.
+    `by` is the assessor's name the tag carries (DEFAULT_BY when blank)."""
     b = item.get("baseline") or {}
-    tag = f"{BASELINE_MARK} {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Measured on every journey check, never overwritten."
+    tag = f"[{attribution(by)} baseline {b.get('pack', '?')}{(' v' + b['version']) if b.get('version') else ''}] Measured on every journey check, never overwritten."
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
-    base = (base or "").strip()
-    if BASELINE_MARK in base:
-        base = base.split(BASELINE_MARK, 1)[0].strip()
+    base = strip_mark(base, known={b.get('pack', '?')})
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
 
 
-def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None) -> str:
+def pack_description(item: Dict[str, Any], base: Optional[str], *, limit: Optional[int] = None, by: Any = None) -> str:
     """Provenance tag for a pack that is not a baseline, so a removal can
-    find its objects by tag instead of by name alone (idempotent)."""
+    find its objects by tag instead of by name alone (idempotent). `by` is
+    the assessor's name the tag carries (DEFAULT_BY when blank)."""
     ver = str(item.get("pack_version") or "")
-    tag = f"{PACK_MARK} {item.get('pack', '?')}{(' v' + ver) if ver else ''}]"
+    tag = f"[{attribution(by)} pack {item.get('pack', '?')}{(' v' + ver) if ver else ''}]"
     if item.get("kind") == "policy":
         tag += " Deployed DISABLED; enable once reviewed."
-    base = (base or "").strip()
-    for mark in (PACK_MARK, BASELINE_MARK):
-        if mark in base:
-            base = base.split(mark, 1)[0].strip()
+    base = strip_mark(base, known={item.get('pack', '?')})
     if limit:
         return fit_description(base, tag, limit)
     return f"{base} {tag}".strip()
 
 
-def _has_mark(obj: Any) -> bool:
-    return BASELINE_MARK in str(_field(obj, "description", default="") or "")
+def _has_mark(obj: Any, pack_id: Optional[str] = None) -> bool:
+    """Whether a tenant object carries a baseline tag: the tool's own, or
+    an assessor's for this baseline's pack id."""
+    d = _field(obj, "description", default="") if not isinstance(obj, str) else obj
+    return has_mark(d, kind="baseline") or (pack_id is not None and has_mark(d, kind="baseline", pack_id=pack_id))
 
 
 # ---------------------------------------------------------------------------
@@ -402,8 +531,8 @@ def merge_sources(sources: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Dict
 # Tenant snapshot
 # ---------------------------------------------------------------------------
 
-class _NotInScope(Exception):
-    """A read left out because its channel is not in scope."""
+class _NotRead(Exception):
+    """A read the caller's scope leaves out: not attempted, not an error."""
 
 
 def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None,
@@ -470,13 +599,15 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
         snap["unreadable"]["engines"] = str(e)[:200]
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
-    skip_web = bool(only_channels and need is not None and pc.WEB not in (need.get("channels") or ()))
-    if skip_web:
-        _log("Web DLP is not in scope: its rules are not read.")
+    # need["web_rules"] False (a scoped read with Inline Web DLP out of
+    # scope) leaves the Web DLP rules unread, and so does `only_channels`
+    # when `need` does not name the web channel; every other caller reads them.
+    read_web = bool((need or {}).get("web_rules", True)) and not (
+        only_channels and need is not None and pc.WEB not in (need.get("channels") or ()))
+    _log("Reading the tenant: Web DLP rules…" if read_web else "Web DLP rules: not in scope, not read.")
     try:
-        if skip_web:
-            raise _NotInScope()
-        _log("Reading the tenant: Web DLP rules…")
+        if not read_web:
+            raise _NotRead()
         rules, err = _nx(zia.dlp_web_rules.list_rules())
         if err:
             raise RuntimeError(str(err))
@@ -496,7 +627,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
                 "description": _field(r, "description"),
             })
         snap["rules"].sort(key=lambda r: r["order"])
-    except _NotInScope:
+    except _NotRead:
         snap["not_read"] = ["web DLP rules"]
     except Exception as e:  # noqa: BLE001
         snap["unreadable"]["web DLP rules"] = str(e)[:200]
@@ -505,7 +636,8 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
     # is the tenant unreachable. What could not be read is planned as new
     # (the API rejects duplicate names, so nothing is overwritten) and every
     # such item is marked unverified, with the permission that would fix it.
-    snap["reachable"] = len(snap["unreadable"]) < 3
+    # Out of three reads (two when a scoped read leaves the Web DLP rules out).
+    snap["reachable"] = len(snap["unreadable"]) < (3 if (need or {}).get("web_rules", True) else 2)
     # Each refused read with ZIA's status in front ("HTTP 403: Resource
     # Access Blocked"), so a 403 is never mistaken for a 429 or a timeout.
     _log(f"Tenant read in {time.time() - started:.0f} s"
@@ -585,7 +717,7 @@ def _plan_dictionaries(items: Dict[str, Dict[str, Any]], tenant: Dict[str, Any],
                                   "predefined objects. Rename the policy pack dictionary.")
                 continue
             if baseline:
-                item["adopt"] = not _has_mark(existing)
+                item["adopt"] = not _has_mark(existing, (baseline or {}).get("pack"))
             if ten_sig is None:
                 item["status"] = REUSE
                 item["reason"] = "Already in the tenant; existing dictionary will be used (content not compared — tenant returned a summary only)."
@@ -702,7 +834,7 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
             item["tenant"] = {"id": _field(existing, "id")}
             baseline = item.get("baseline")
             if baseline:
-                item["adopt"] = not _has_mark(existing)
+                item["adopt"] = not _has_mark(existing, (baseline or {}).get("pack"))
             ten_expr = _field(existing, "engine_expression", "engineExpression")
             # A referenced dictionary the plan will CREATE has no ID yet, so
             # the tenant expression cannot be current. (A RESTORE keeps its
@@ -741,6 +873,14 @@ def _plan_engines(items: Dict[str, Dict[str, Any]], dict_items: Dict[str, Dict[s
                 item["reason"] = ("Exists in the tenant but references dictionaries the policy pack is about to create. Kept as-is; "
                                   "point it at the new dictionaries in the portal once they exist, or re-run in converge mode.")
                 item["warnings"].append("customized in tenant")
+            elif ten_expr and deps_changing:
+                # The tenant's engine cannot use a dictionary that is not in
+                # the tenant yet, so its expression certainly differs.
+                item["status"] = REUSE_DIFFERS
+                item["reason"] = ("Already in the tenant, but its expression cannot match the pack's (it does not use "
+                                  + ", ".join(deps_changing) + ", which this deploy creates). The tenant's engine is kept and used by "
+                                  "the rules below; the pack's expression is NOT applied.")
+                item["warnings"].append("tenant version differs from pack")
             else:
                 item["status"] = REUSE
                 item["reason"] = "Already in the tenant; existing engine will be used (expression not compared)."
@@ -822,7 +962,7 @@ def _plan_policies(items: Dict[str, Dict[str, Any]], engine_items: Dict[str, Dic
             item["tenant"] = existing
             baseline = item.get("baseline")
             if baseline:
-                item["adopt"] = BASELINE_MARK not in str(existing.get("description") or "")
+                item["adopt"] = not _has_mark(existing.get("description") or "", (baseline or {}).get("pack"))
                 drift = _policy_drift(p, channel, existing, engine_items, tenant, pack_action=pack_action,
                                       resolved=item.get("resolved") or {})
                 if drift and restore:
@@ -1312,7 +1452,7 @@ def _rate_forecast(all_items: Sequence[Dict[str, Any]], client: Any = None) -> D
             continue
         ch = (i.get("channel") or (pc.channel_of(i["definition"]) if i["kind"] == "policy" and i.get("definition") else None)) if i["kind"] == "policy" else None
         counts[zia_rate.bucket_of("POST", channel=ch, kind=i["kind"])] = counts.get(zia_rate.bucket_of("POST", channel=ch, kind=i["kind"]), 0) + 1
-    return zia_rate.forecast(counts, key=zia_rate.key_of(client), tenant_label=zia_rate.label_of(client))
+    return zia_rate.forecast(counts, key=zia_rate.key_of(client), tenant_label=zia_rate.labels_of(client))
 
 
 def _rate_detail(f: Dict[str, Any]) -> str:
@@ -1397,6 +1537,7 @@ def preflight(
     restore_drift: bool = False,
     channel_targets: Optional[Dict[str, Sequence[str]]] = None,
     tenant_cache: Optional[Dict[str, Any]] = None,
+    read_scope: Optional[Dict[str, Any]] = None,
     log: LogFn = None,
 ) -> Dict[str, Any]:
     """Build the deployment plan for the selected packs without writing.
@@ -1411,6 +1552,11 @@ def preflight(
     which DLP channels each pack is deployed into: deselected channels
     are skipped, channels the pack has no rule for get a monitor-only
     extension rule with the pack's engines.
+
+    `read_scope` ({"channels": web/endpoint/saas/email, "casb": bool}) caps
+    the tenant read for a caller that may read only an in-scope part: no
+    rules of a channel outside `channels` (the Web DLP rules included), and
+    no SaaS application tenants unless `casb` is true.
 
     `restore_drift` (converge mode) makes policy pack objects that differ from
     the reference RESTORE (overwrite) instead of being kept; it is off by
@@ -1428,6 +1574,14 @@ def preflight(
     sources = load_sources(packs, targets_norm)
     merged = merge_sources(sources)
     need = pc.needs(i["definition"] for i in merged["policy"].values())
+    if read_scope is not None:
+        allowed = {str(c) for c in (read_scope.get("channels") or ())} & set(pc.DLP_CHANNELS)
+        need["channels"] = set(need["channels"]) & allowed
+        need["web_rules"] = pc.WEB in allowed
+        if not read_scope.get("casb"):
+            need["casb"] = False
+        if pc.ENDPOINT not in allowed:
+            need["endpoint_app_groups"] = False
     if tenant_cache is not None:
         import copy
         if tenant_cache.get("snapshot") is None:
@@ -1894,8 +2048,10 @@ def apply(
     log: LogFn = None,
     settle_seconds: float = 45.0,
     cancel: Optional[threading.Event] = None,
+    assessor: str = "",
 ) -> Dict[str, Any]:
-    """Execute a previously approved plan.
+    """Execute a previously approved plan. `assessor` is the name the
+    provenance tag in each created object's description carries.
 
     The preflight is recomputed first; if its hash differs from
     `plan_hash` the tenant or selection changed after the user approved,
@@ -1917,13 +2073,13 @@ def apply(
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
         run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
                                writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                               activate=activate, log=log, settle_seconds=settle_seconds)
+                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor)
         return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
            writes_enabled: Optional[bool], restore_drift: bool, channel_targets: Optional[Dict[str, Sequence[str]]],
-           activate: bool, log: LogFn, settle_seconds: float) -> Dict[str, Any]:
+           activate: bool, log: LogFn, settle_seconds: float, assessor: str = "") -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
     _log("Checking the approved plan against the tenant as it is now…")
@@ -1973,9 +2129,9 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
         (clamped to the API limit for dictionaries)."""
         limit = {"dictionary": DICT_DESCRIPTION_MAX, "engine": ENGINE_DESCRIPTION_MAX}.get(item["kind"])
         if item.get("baseline"):
-            return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit))
+            return dict(definition, description=baseline_description(item, definition.get("description") or fallback, limit=limit, by=assessor))
         if item.get("pack"):
-            return dict(definition, description=pack_description(item, definition.get("description") or fallback, limit=limit))
+            return dict(definition, description=pack_description(item, definition.get("description") or fallback, limit=limit, by=assessor))
         return definition
 
     # Say up front what the channel selection left out, so a missing
@@ -2132,7 +2288,20 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
             policy_ids.setdefault(r["name"], r.get("id"))
     for r in tenant["rules"]:
         policy_ids.setdefault(r["name"], r.get("id"))
-    for item in sorted(merged["policy"].values(), key=lambda i: 1 if i["definition"].get("parent_rule") else 0):
+    # Web, Endpoint and Email DLP insert a new rule at order 1 and move the
+    # others down, so rules created in pack order would end up reversed.
+    # Create those top-level rules last-first so the first pack rule ends up
+    # on top; SaaS rules take the next free order and keep pack order, and
+    # sub-rules still come after their parents. The results are put back in
+    # pack order below so the report reads the same way as the plan.
+    in_pack_order = sorted(merged["policy"].values(), key=lambda i: 1 if i["definition"].get("parent_rule") else 0)
+    top_level = [i for i in in_pack_order if not i["definition"].get("parent_rule")]
+    inserted_on_top = [i for i in top_level if (i.get("channel") or pc.channel_of(i["definition"])) != pc.SAAS]
+    on_top_ids = {id(i) for i in inserted_on_top}
+    creation_order = (list(reversed(inserted_on_top)) + [i for i in top_level if id(i) not in on_top_ids]
+                      + [i for i in in_pack_order if i["definition"].get("parent_rule")])
+    first_policy_result = len(results)
+    for item in creation_order:
         if item["status"] in (REUSE, REUSE_DIFFERS):
             record(item, "reused", id=(item.get("tenant") or {}).get("id"))
             continue
@@ -2201,6 +2370,8 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
                 record(item, "failed", outcome=out, channel=channel, error=out.as_error() or "the API returned no id")
         except Exception as ex:  # noqa: BLE001
             record(item, "failed", error=str(ex)[:200], channel=channel)
+    pack_position = {i["name"]: n for n, i in enumerate(in_pack_order)}
+    results[first_policy_result:] = sorted(results[first_policy_result:], key=lambda r: pack_position.get(r["name"], len(pack_position)))
 
     if apply_tweaks:
         _log("Phase 4: confidence tweaks")

@@ -1361,7 +1361,13 @@ def build_payload(channel: str, p: Dict[str, Any], engine_ids: List[Any], resolv
         from dlp_importer import build_policy_payload
         if resolved.get("cloud_applications") and not p.get("cloud_applications"):
             p = dict(p, cloud_applications=list(resolved["cloud_applications"]))
-        return build_policy_payload(p, engine_ids, use_rank_0=use_rank_0)
+        # Labels and the notification template are named in the pack and
+        # resolved to this tenant's ids in preflight, as on every channel.
+        p = dict(p, labels=list(resolved.get("labels") or []))
+        payload = build_policy_payload(p, engine_ids, use_rank_0=use_rank_0)
+        if resolved.get("notification_template") is not None:
+            payload["notification_template"] = {"id": resolved["notification_template"]}
+        return payload
 
     if channel in CONTROL_CHANNELS:
         return _build_control_payload(channel, p, resolved, use_rank_0=use_rank_0)

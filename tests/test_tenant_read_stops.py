@@ -331,8 +331,9 @@ def test_an_unreadable_declaration_leaves_every_channel_unticked(channels):
 
 
 # ── The opt-in timer has a floor ─────────────────────────────────────────
+# A value below an hour never runs the timer more often: it is off.
 
-@pytest.mark.parametrize("value,hours", [("0.00001", 1.0), ("1e-300", 1.0), ("0.5", 1.0), ("6", 6.0), ("0", 0.0), ("", 0.0)])
+@pytest.mark.parametrize("value,hours", [("0.00001", 0.0), ("1e-300", 0.0), ("0.5", 0.0), ("1", 1.0), ("6", 6.0), ("0", 0.0), ("", 0.0)])
 def test_the_loop_interval_never_drops_below_an_hour(monkeypatch, value, hours):
     monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", value)
     assert srv._continuous_eval_hours() == hours
@@ -387,7 +388,7 @@ def test_the_digest_reads_only_the_ticked_channels(tmp_path, monkeypatch):
         assert bad not in read, f"{bad} was read though its channel is unticked"
     assert "client.zia.dlp_web_rules.list_rules" in read, "the ticked channel is still measured"
     assert dh == [1] and out["drift"]["packs"]
-    assert any("SaaS / email tenants" in n for n in out["not_read"])
+    assert any("SaaS tenants" in n for n in out["skipped"])
 
 
 def _digest_client(calls):
@@ -417,7 +418,8 @@ UNTICKED_READS = {
 def test_the_digests_detection_health_reads_only_the_ticked_channels(tmp_path, monkeypatch, ticked):
     # The FP/TP Detection Ratio step itself (detection_health.generate, not
     # stubbed): no unticked channel's rules, no SaaS tenant list unless
-    # SaaS or Email is ticked, no incidents unless Workflow Automation is.
+    # SaaS Security is ticked, no incidents unless Workflow Automation is.
+    # With no DLP channel ticked nothing is read at all.
     import continuous_eval as ce
     monkeypatch.setenv("DLP_CHECK_CARVED_CHANNELS", "none")
     channels = {cid: ("zscaler" if cid in ticked else "gap") for cid in UNTICKED_READS}
@@ -425,6 +427,9 @@ def test_the_digests_detection_health_reads_only_the_ticked_channels(tmp_path, m
     calls = []
     out = ce._evaluate_tenant(profile, lambda creds: _digest_client(calls), days=30, log=lambda s: None)
     read = set(calls)
+    if not {"web_dlp", "endpoint_dlp", "saas_casb", "email_dlp"} & set(ticked):
+        assert read == set() and out["detection_health"] is None and out["note"].startswith("nothing in scope"), (read, out)
+        return
     assert out["detection_health"] is not None, out["errors"]
     for cid, eps in UNTICKED_READS.items():
         for ep in eps:
@@ -432,11 +437,11 @@ def test_the_digests_detection_health_reads_only_the_ticked_channels(tmp_path, m
                 assert ep in read, f"{ep} not read though {cid} is ticked"
             else:
                 assert ep not in read, f"{ep} was read though {cid} is unticked"
-    if not {"saas_casb", "email_dlp"} & set(ticked):
+    if "saas_casb" not in ticked:
         assert "client.zia.saas_security_api.list_casb_tenant_lite" not in read
-        assert any("SaaS / email tenants" in n for n in out["not_read"])
+        assert any("SaaS tenants" in n for n in out["skipped"])
     if "workflow_automation" not in ticked:
-        assert any("Workflow Automation" in n for n in out["not_read"])
+        assert any("Workflow Automation" in n for n in out["skipped"])
     # Shared objects stay readable.
     assert "client.zia.dlp_dictionary.list_dicts" in read
 
@@ -457,7 +462,7 @@ def test_the_digest_signs_in_to_nothing_outside_the_profiles_scope(tmp_path, mon
     for fields in ({"scopes": ["genai"], "channels": {"web_dlp": "zscaler"}}, {}):
         profile = _digest_profile(tmp_path, monkeypatch, baseline_packs=["zbp_enterprise_baseline"], **fields)
         out = ce._evaluate_tenant(profile, lambda creds: built.append(1), days=30, log=lambda s: None)
-        assert out["drift"] is None and out["tenants"] is None and out["detection_health"] is None and out["not_read"]
+        assert out["drift"] is None and out["tenants"] is None and out["detection_health"] is None and (out["skipped"] or out["note"])
     assert built == []
 
 
@@ -669,10 +674,10 @@ def test_a_path_analyzer_link_never_runs_by_itself():
 
 def test_the_digest_schedule_tile_follows_the_real_schedule(monkeypatch):
     page = _read("static/report_digest.html")
-    assert "n.interval_hours || 6" not in page and "sc.enabled && hrs > 0" in page
-    assert "DLP_CHECK_CONTINUOUS_EVAL_HOURS to run it on a timer" in page
+    assert "n.interval_hours || 6" not in page and "sc.enabled && n.interval_hours > 0" in page
+    assert "set DLP_CHECK_CONTINUOUS_EVAL_HOURS to opt in" in page
     import continuous_eval as ce
     monkeypatch.delenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", raising=False)
-    assert ce.notification_settings()["interval_hours"] is None
+    assert not ce.notification_settings()["interval_hours"]
     monkeypatch.setenv("DLP_CHECK_CONTINUOUS_EVAL_HOURS", "2")
     assert ce.notification_settings()["interval_hours"] == 2.0

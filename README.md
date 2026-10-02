@@ -104,6 +104,14 @@ off) and on demand, each run compared with the last (the last 30 are
 kept). The tab can also read every endpoint the app uses from a tenant,
 GET only, and say which ones now answer differently.
 
+The **Digest** (`continuous_eval.py`) reads tenants, and every read counts
+against the ZIA API rate limit, so it never runs on its own by default: it
+runs when you click *Run the loop now*, or from `python continuous_eval.py
+--once` / `RUN_Continuous_Evaluation.bat`, and each tenant profile is read
+only for what its Scope page puts in scope (nothing, when no scope is
+saved). `DLP_CHECK_CONTINUOUS_EVAL_HOURS` opts in to a timer while the
+server runs (unset or 0, the default: off).
+
 The suite (380 tests) covers the checks, the policy-pack planner and
 executor against a fake tenant that refuses what a real ZIA tenant refuses,
 the API endpoints, the background jobs, the entry points' error paths and

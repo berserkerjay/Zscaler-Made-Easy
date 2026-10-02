@@ -189,7 +189,10 @@ def cancel(job_id: str) -> bool:
     if job is None or job.status != RUNNING:
         return False
     job.cancel.set()
-    job.log("Stop requested: the write in flight finishes, nothing more is sent; activation and the read-back still run.")
+    if job.kind == "export":   # read-only: nothing is written or activated
+        job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
+    else:
+        job.log("Stop requested: the write in flight finishes, nothing more is sent; activation and the read-back still run.")
     return True
 
 
