@@ -23,7 +23,8 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 CREDS = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
 PACK = "zbp_enterprise_baseline"
 TOOL_NAMES = ["DLP-Check", "dlp-check", "dlp check", "DLPCheck", "DLP_Check", "DLP–Check",
-              "DLP-Check pack", "DLP-Check Team", "Jane (DLP-Check)"]
+              "DLP-Check pack", "DLP-Check Team", "Jane (DLP-Check)",
+              "  [DLP-Check]  ", "[dlp-check]", "dlp-check team"]   # F2-6: brackets are stripped first
 
 
 @pytest.fixture
@@ -51,7 +52,7 @@ def test_the_shared_rule_refuses_the_tool_name_in_any_spelling(name):
     ("/api/dlp-packs/terraform", {"pack_ids": [PACK], "mode": "static"}),
     ("/api/dlp-packs/terraform/start", dict(CREDS, pack_ids=[PACK], mode="gap")),
 ])
-@pytest.mark.parametrize("name", ["DLP-Check", "dlp check", "DLP-Check pack"])
+@pytest.mark.parametrize("name", ["DLP-Check", "dlp check", "DLP-Check pack", "  [DLP-Check]  "])
 def test_every_pack_push_refuses_the_tool_name(client, path, body, name):
     r = client.post(path, json=dict(body, assessor=name))
     assert r.status_code == 400, r.text
