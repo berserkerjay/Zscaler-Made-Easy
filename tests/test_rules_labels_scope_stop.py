@@ -491,3 +491,43 @@ def test_a_snapshot_is_kept_when_a_poll_holds_the_history_file_open(monkeypatch,
     p = str(tmp_path / "beacon_state.json")
     beacon.save_history([{"at": "x"}], p)
     assert len(calls) == 2 and beacon.load_history(p)[-1]["at"] == "x"
+
+
+def test_stop_pressed_during_the_gap_between_endpoints_sends_no_further_get():
+    """Rule 4: Stop pressed while Beacon waits out the gap between two
+    endpoints sends no further GET."""
+    tenant = Recorder()
+    eps = bs.select(["zdx"], {})["endpoints"]
+    assert len(eps) >= 2
+    pressed = []
+    out = beacon.probe_tenant(tenant, endpoints=eps, sleep=lambda s: pressed.append(1),
+                              stop=lambda: bool(pressed))
+    assert len(tenant.calls) == 1, tenant.calls
+    assert out["stopped"] == beacon.STOPPED_BY_OPERATOR
+
+
+class _CutShortByStop(Recorder):
+    """The first GET is cut short by Stop inside the request (a paged read
+    or a rate-limit wait ends with an error instead of an answer)."""
+
+    def __init__(self, flag):
+        super().__init__()
+        self.flag = flag
+
+    def get(self, ep, p=None):
+        self.calls.append(ep)
+        self.flag.append(1)
+        raise RuntimeError("stopped while waiting for ZIA's rate limit; the request was not sent")
+
+
+def test_a_read_cut_short_by_stop_is_not_probed_never_an_error():
+    """Rule 4: a read that Stop cut short is 'not probed', so it never
+    reaches Beacon's diff as an error row."""
+    flag = []
+    tenant = _CutShortByStop(flag)
+    eps = bs.select(["zdx"], {})["endpoints"]
+    out = beacon.probe_tenant(tenant, endpoints=eps, sleep=lambda s: None, stop=lambda: bool(flag))
+    assert len(tenant.calls) == 1
+    first = next(e for e in out["endpoints"] if e["endpoint"] == tenant.calls[0])
+    assert first["status"] == "not probed", first
+    assert out["stopped"] == beacon.STOPPED_BY_OPERATOR
