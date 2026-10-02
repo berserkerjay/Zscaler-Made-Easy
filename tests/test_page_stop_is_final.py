@@ -186,6 +186,7 @@ START_CASES = {
     "removal": ("/api/dlp-packs/removal/apply/start", dict(CREDS, pack_ids=["zbp_enterprise_baseline"], plan_hash="h", confirm=True)),
     "export": ("/api/dlp-packs/export/start", dict(CREDS, rules={"web": "all"})),
     "path": ("/api/path-analyzer/start", dict(CREDS, destination="chat.openai.com", scopes=["dlp"], channels={"web_dlp": "zscaler"})),
+    "terraform": ("/api/dlp-packs/terraform/start", dict(CREDS, pack_ids=["zbp_enterprise_baseline"], mode="gap", assessor="Pat")),
 }
 
 
