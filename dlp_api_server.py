@@ -1000,7 +1000,7 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
 
 def _assessor(req: Any) -> str:
     """The assessor's name for a pack deploy: the request's, else the saved
-    profile's, else blank (the tag then says DLP-Check). Sanitized as the
+    profile's, else blank (a deploy then refuses: _require_assessor). Sanitized as the
     tag carries it (pack_deploy.assessor_name: no brackets or line breaks,
     at most 40 bytes), so the deployment record names the same person."""
     import pack_deploy
@@ -1015,6 +1015,20 @@ def _assessor(req: Any) -> str:
         except Exception:  # noqa: BLE001 — a missing profile only loses the name
             return ""
     return ""
+
+
+ASSESSOR_REQUIRED = ("Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. "
+                     "Every object a pack creates names the assessor in its description, never DLP-Check.")
+
+
+def _require_assessor(req: Any) -> str:
+    """The assessor's name, or a 400 before anything is read or written:
+    a pack push (deploy, single-pack import, Terraform hand-off) always
+    names the assessor in the objects it creates, never DLP-Check."""
+    name = _assessor(req)
+    if not name:
+        raise HTTPException(status_code=400, detail=ASSESSOR_REQUIRED)
+    return name
 
 
 def _tenant_key(c: Dict[str, Any]) -> str:
@@ -2329,6 +2343,7 @@ async def dlp_packs_terraform(req: DLPPackDeployRequest):
     already exists gets an import block, so the first `terraform plan`
     shows exactly what closes the gap. Without credentials (empty
     client_id) the workspace is static. Read-only — nothing is written."""
+    _require_assessor(req)
     try:
         import pack_deploy  # noqa: F401 — availability check; the run is in _run_terraform
         import pack_terraform  # noqa: F401
@@ -2415,6 +2430,7 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     import pack_jobs
     if not req.pack_ids:
         raise HTTPException(status_code=400, detail="Select at least one pack.")
+    _require_assessor(req)
     packs = _resolve_pack_ids(req.pack_ids)
     creds, client = await _terraform_client(req)
     job = pack_jobs.start("terraform", lambda log, cancel: _run_terraform(client, creds, req, packs, log, cancel), label=", ".join(req.pack_ids),
@@ -2507,6 +2523,7 @@ async def dlp_packs_apply(req: DLPPackDeployRequest, request: Request):
         raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
     if not req.plan_hash:
         raise HTTPException(status_code=400, detail="plan_hash is required — run /api/dlp-packs/preflight first.")
+    _require_assessor(req)
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids)
@@ -2569,6 +2586,7 @@ async def dlp_packs_apply_start(req: DLPPackDeployRequest, request: Request):
         raise HTTPException(status_code=400, detail="Deployment requires explicit confirmation (confirm=true).")
     if not req.plan_hash:
         raise HTTPException(status_code=400, detail="plan_hash is required — run /api/dlp-packs/preflight first.")
+    _require_assessor(req)
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     packs = _resolve_pack_ids(req.pack_ids)
@@ -2629,6 +2647,8 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
     _security.require_writer()
     import pack_deploy
     pack = _resolve_pack_ids([pack_id])[0]
+    # A deploying call needs the assessor's name before the tenant is signed in to.
+    by = _require_assessor(req) if req.plan_hash else ""
     client = await asyncio.to_thread(_build_sdk_client, _tenant_creds(req))
     if not req.plan_hash:
         report = await asyncio.to_thread(lambda: pack_deploy.preflight(client, [pack], use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
@@ -2641,7 +2661,6 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     logs: list = []
-    by = _assessor(req)       # resolved once: the tags and the record name the same assessor
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
                                                                log=logs.append, assessor=by))
@@ -2820,12 +2839,12 @@ async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: s
     provider, static mode (no tenant read), for any pack in the library.
     Gap mode (imports of what already exists) is the Terraform hand-off.
     `assessor` (else the saved profile's, by `profile_id`) is the name the
-    provenance tags carry; DLP-Check only when no assessor is named."""
+    provenance tags carry; refused (400) when no assessor is named."""
     import pack_library as pl
     import pack_terraform
     pack = _resolve_pack_ids([pack_id])[0]
     from types import SimpleNamespace
-    by = _assessor(SimpleNamespace(assessor=assessor, profile_id=profile_id))
+    by = _require_assessor(SimpleNamespace(assessor=assessor, profile_id=profile_id))
     files = await asyncio.to_thread(lambda: pack_terraform.generate(pack, assessor=by))
     data = pack_terraform.zip_workspaces({pack["id"]: files})
     return Response(content=data, media_type="application/zip",
