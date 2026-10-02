@@ -7,6 +7,18 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### More tools read only what is in scope
+- **What you saw.** Deploy Studio's rule picker and *Export from tenant* read the DLP rules of every channel (and the SaaS application tenants) whatever the Scope page said. DLP efficacy (score, export, corpus test) read the Web DLP rules with Inline Web DLP covered elsewhere, and it, the ZCC endpoint diagnostics and every step of the Evaluate All Rules migration read the tenant with nothing ticked.
+- **Now.** They take the Scope page's selection, else the chosen profile's saved one. The rule picker and the export read only the DLP channels marked Zscaler; DLP efficacy needs DLP ticked and reads the Web DLP rules only with Inline Web DLP on Zscaler (the *unused by rules* findings then say *not in scope*); the ZCC diagnostics need ZCC ticked; the migration needs DLP ticked and Inline Web DLP on Zscaler. With nothing in scope, each refuses before signing in.
+
+### Proposals are applied only to their own tenant, also with the classic API
+- **What you saw.** *Preview*, *Apply* and *Roll back* on an approved FP/TP proposal used whatever credentials the assessment page held: after switching tenant, a proposal could be written to a same-named rule of another tenant. With the classic ZIA API sign-in, all three said *Tenant credentials are needed*.
+- **Now.** They refuse (409) before signing in when the credentials are for another tenant than the proposal's, and accept either sign-in.
+
+### The assessor is never the tool
+- **What you saw.** An assessor named *DLP-Check* (or *dlp check*, *DLP-Check pack*) was accepted by deploy, the single-pack import, the Terraform hand-off and the library download, so pushed descriptions said *[DLP-Check pack ...]*; only the Terraform CLI refused it.
+- **Now.** One rule (`(?i)dlp[\W_]*check`) refuses the tool's name in any spelling everywhere: the API (400, before signing in, also from a saved profile), the CLI, `var.assessor` in every workspace, Deploy Studio and Advanced settings.
+
 ### Classic-API tenants: Stop and ZIA's rate limits hold for every request
 - **What you saw.** With the classic ZIA API sign-in, the SDK's helper answered a 429 itself: it slept ZIA's whole Retry-After (close to an hour on the hourly limit) with no cap, ignored Stop during that wait, then sent the request again — a write could reach the tenant after Stop. Its requests also bypassed the app's pacing, so classic-API reads and writes were not held to ZIA's read and write limits.
 - **Now.** Every classic-API request goes through the app's paced session (the same read and write buckets as OneAPI) and is checked against Stop before it is sent and during any wait. A short 429 is waited out at most twice, up to 30 seconds each, in steps Stop ends; a longer Retry-After is not waited for inside the request but answered like OneAPI's (*Retry wait time … exceeds configured maxRetrySeconds 30*), so a deployment or export waits it out in its own stoppable steps or stops with the reason.

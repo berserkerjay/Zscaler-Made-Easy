@@ -1659,7 +1659,7 @@ async function step1Assess() {
   const el = document.getElementById('step1Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">Checking tenant status...</span>';
   try {
-    const resp = await fetch('/api/migrate/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const s = await resp.json();
     // Rename First-Match-Wins to "Rule Order" everywhere it shows up
@@ -1717,7 +1717,7 @@ async function step1SetManual() {
   body.mode = choice.value;
   const el = document.getElementById('step1Result');
   try {
-    const resp = await fetch('/api/migrate/status/manual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/status/manual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const s = await resp.json();
     const displayMode = s.current_mode;
@@ -1744,7 +1744,7 @@ async function step2Download() {
   const el = document.getElementById('step2Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">Downloading rules...</span>';
   try {
-    const resp = await fetch('/api/migrate/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     migrateRules = data.rules || [];
@@ -1768,7 +1768,7 @@ async function step2DownloadPack() {
   const btn = document.getElementById('step2PackBtn'); btn.disabled = true;
   el.innerHTML = '<span style="color:var(--dim);">Reading the rules, engines and dictionaries… (read-only)</span>';
   try {
-    const jobId = await _dzStartJob('/api/dlp-packs/export/start', Object.assign(body, { rules: { web: 'all' } }));
+    const jobId = await _dzStartJob('/api/dlp-packs/export/start', Object.assign(body, scopePageSelection(), { rules: { web: 'all' } }));
     const snap = await _dzFollowJob(jobId, s => {
       const last = (s.logs || []).slice(-1)[0];
       if (last) el.innerHTML = '<span style="color:var(--dim);">' + escapeHtml(last) + '</span>';
@@ -2013,7 +2013,7 @@ async function step3bDeleteAll(dryRun) {
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
-    const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     if (r.status === 'dry_run') {
@@ -2158,7 +2158,7 @@ async function step4Check() {
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">① Checking current state of Evaluate All Rules...</span>';
   try {
-    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     const currentTxt = r.current === true ? 'ENABLED' : r.current === false ? 'DISABLED' : 'UNKNOWN (API does not expose this flag)';
@@ -2186,7 +2186,7 @@ async function step4EnablePlan() {
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">② Building enable plan (dry-run)...</span>';
   try {
-    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     _step4Plan = r;
@@ -2224,7 +2224,7 @@ async function step4Activate() {
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (trying found field, then candidate combinations)</span>';
   try {
-    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
 
@@ -2320,7 +2320,7 @@ async function step5Post(dryRun) {
   const el = document.getElementById('step5Result'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building post plan (dry-run)...' : 'Posting rules live...'}</span>`;
   try {
-    const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     let summary = '';
@@ -4503,6 +4503,7 @@ function _renderDlpEfficacy(data) {
         ${orphanBlock('Dictionaries not referenced by any engine', o.dictionaries_unused_by_engines)}
         ${orphanBlock('Dictionaries not reachable by any rule',    o.dictionaries_unused_by_rules)}
         ${orphanBlock('Engines not referenced by any rule',        o.engines_unused_by_rules)}
+        ${data.rules_not_in_scope ? `<div style="color:var(--dim);padding:0.3rem;">${_effEsc(data.rules_not_in_scope)}</div>` : ''}
         ${(!o.dictionaries_unused_by_engines?.length && !o.dictionaries_unused_by_rules?.length && !o.engines_unused_by_rules?.length) ? '<div style="color:var(--dim);padding:0.3rem;">No orphans — every custom dict and engine is reachable.</div>' : ''}
       </div>
     </details>`;
@@ -4514,12 +4515,12 @@ async function runDlpEfficacy() {
   const r = document.getElementById('dlpEffResult');
   const originalBtnText = btn.textContent;
   btn.disabled = true; btn.textContent = 'Scoring...';
-  r.innerHTML = '<div style="color:var(--dim);padding:0.8rem;">Fetching dictionaries, engines, and rules...</div>';
+  r.innerHTML = '<div style="color:var(--dim);padding:0.8rem;">Fetching dictionaries, engines and, when Inline Web DLP is in scope, rules...</div>';
   try {
     const resp = await fetch('/api/dlp/efficacy', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, ...scopePageSelection() }),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -4548,7 +4549,7 @@ async function exportDlpEfficacy(fmt) {
     const resp = await fetch('/api/dlp/efficacy/export', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({...body, format: fmt}),
+      body: JSON.stringify({ ...body, ...scopePageSelection(), format: fmt }),
     });
     if (!resp.ok) {
       let msg = 'HTTP ' + resp.status;
@@ -4585,7 +4586,7 @@ async function runDlpEfficacyCorpus() {
     const resp = await fetch('/api/dlp/efficacy/test', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({...body, corpus, max_dicts: 200}),
+      body: JSON.stringify({ ...body, ...scopePageSelection(), corpus, max_dicts: 200 }),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -4687,7 +4688,7 @@ async function diagnoseZcc() {
   const host = document.getElementById('zccDiagContent');
   host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1.5rem;">⏳ Probing every ZCC endpoint on your tenant…</div>';
   try {
-    const r = await fetch('/api/diagnose/zcc', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const r = await fetch('/api/diagnose/zcc', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     const data = await r.json().catch(() => ({}));
     // A 401 (bad credentials) or 400 (invalid field) carries {detail}
     // and no probe results. Surface it instead of rendering zeros.

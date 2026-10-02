@@ -25,6 +25,9 @@ import pack_library as pl
 from test_pack_channels import TENANTS, FakeCasbRules, FakeChannelRules, make_client
 from test_pack_deploy import Obj, items_by
 
+# The Scope page with DLP ticked and every DLP channel on Zscaler (export reads only what is in scope).
+ALL_DLP_IN_SCOPE = {"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "saas_casb": "zscaler", "email_dlp": "zscaler"}, "from_page": True}
+
 SECRET = "secret-secret-secret"
 
 
@@ -363,7 +366,7 @@ def test_the_export_runs_as_a_read_only_job_and_the_zip_comes_from_its_download(
     monkeypatch.setattr(srv._security, "require_writer", no_writer)
     c = TestClient(srv.app)
     creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": SECRET}
-    r = c.post("/api/dlp-packs/export/start", json=dict(creds, pack_name="Acme export"))
+    r = c.post("/api/dlp-packs/export/start", json=dict(creds, pack_name="Acme export", **ALL_DLP_IN_SCOPE))
     assert r.status_code == 200 and r.json()["kind"] == "export", r.text
     job_id = r.json()["job_id"]
     snap = _wait(c, job_id)
