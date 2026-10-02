@@ -146,14 +146,24 @@ function _dzTargetsSummary(ids) {
 }
 
 function _dzCreds() {
-  if (typeof migrateCredBody === 'function') {
-    const b = migrateCredBody(); delete b.customer_id; return b;
-  }
+  // The assessor's name goes with every pack request: a deploy names only
+  // the assessor in the provenance tag and the deployment record.
   const v = id => (document.getElementById(id) || {}).value || '';
+  if (typeof migrateCredBody === 'function') {
+    const b = migrateCredBody(); delete b.customer_id; b.assessor = v('assessor').trim(); return b;
+  }
   return { cloud: v('cloud') || 'production', vanity_domain: v('vd'), client_id: v('cid'), client_secret: v('csec'),
-           auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey') };
+           auth_method: v('authMethod') === 'legacy' ? 'legacy' : 'oneapi', username: v('zuser'), password: v('zpass'), api_key: v('zkey'),
+           assessor: v('assessor').trim() };
 }
 const _dzE = s => escapeHtml(String(s == null ? '' : s));
+// A pack push (deploy or Terraform hand-off) names the assessor in every
+// object it creates, never DLP-Check, so it needs the name first.
+const DZ_ASSESSOR_REQUIRED = "Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack. Every object a pack creates names the assessor in its description, never DLP-Check.";
+function _dzNeedAssessor() {
+  if ((_dzCreds() || {}).assessor) return;
+  throw new Error(DZ_ASSESSOR_REQUIRED);
+}
 const _dzN = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
 
 function _ensureDlpPacksModal() {
@@ -557,8 +567,9 @@ async function _dzTerraform(ids, mode) {
   if (DZ.step === 1) _dzRenderSelect();
   TF.last = null;
   try {
+    _dzNeedAssessor();
     // Static mode sends no credentials at all, so the server never reads the tenant.
-    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', username: '', password: '', api_key: '', cloud: (_dzCreds() || {}).cloud || 'production' } : _dzCreds();
+    const creds = mode === 'static' ? { client_id: '', client_secret: '', vanity_domain: '', username: '', password: '', api_key: '', cloud: (_dzCreds() || {}).cloud || 'production', assessor: (_dzCreds() || {}).assessor || '' } : _dzCreds();
     const snap = await _dzRunJob('/api/dlp-packs/terraform/start', { pack_ids: ids, use_rank_0: DZ.options.use_rank_0, channel_targets: _dzTargets(ids), mode: mode || '', ...creds });
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The hand-off ended without a result.');
     if (snap.result.status === 'stopped' || !snap.download) throw new Error(snap.result.stopped || 'The hand-off was stopped before the workspace was built.');
@@ -1022,6 +1033,7 @@ async function _dzApply() {
   DZ.step = 4; DZ.busy = true; DZ.result = null; DZ.error = ''; DZ.job = null;
   _dzRender();
   try {
+    _dzNeedAssessor();
     const body = { pack_ids: [...DZ.selected], ...DZ.options, channel_targets: _dzTargets([...DZ.selected]), plan_hash: DZ.report.plan_hash, confirm: true, verify: true, ..._dzCreds() };
     const snap = await _dzRunJob('/api/dlp-packs/apply/start', body);
     if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The run ended without a result.');
@@ -1560,7 +1572,7 @@ function _dzDeploymentsHtml() {
     const res = DZ.undoResult && DZ.undoResult.id === d.id ? DZ.undoResult : null;
     return `<div class="dz-row ${done ? 'st-reuse' : 'st-ok'}">
       <span class="ic" aria-hidden="true">${done ? '↺' : '✓'}</span>
-      <div><div class="nm">${_dzE(fmt(d.at))} · ${_dzE(d.tenant_label || '')} · ${_dzE((d.packs || []).join(', '))}</div>
+      <div><div class="nm">${_dzE(fmt(d.at))} · ${_dzE(d.tenant_label || '')} · ${_dzE((d.packs || []).join(', '))}${d.by ? ` · by ${_dzE(d.by)}` : ''}</div>
         <div class="rs">${_dzE(kinds(d.created_by_kind))} created${d.remaining !== d.created ? ` · ${d.created - d.remaining} already undone` : ''}${d.channel_targets && Object.keys(d.channel_targets).length ? ` · ${chans(d.channel_targets)}` : ''}${done ? ` · undone ${_dzE(fmt(d.undone_at))}` : ''}</div>
         ${res ? `<div class="rs">${_dzE(res.text)}</div>` : ''}</div>
       <div class="tags">${done ? '<span class="dz-chip">Undone</span>' : `<button type="button" class="dz-btn quiet dz-btn-sm" ${busy || !writeOn ? 'disabled' : ''} title="${writeOn ? 'Delete what this deployment created' : 'Enable write mode to undo'}" onclick="event.stopPropagation(); _dzUndo('${_dzE(d.id)}')">${busy ? 'Undoing…' : `Undo (${d.remaining})`}</button>`}</div>

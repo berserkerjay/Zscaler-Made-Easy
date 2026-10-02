@@ -43,6 +43,9 @@ services:
       DLP_CHECK_HOST_PORT: "${DLP_CHECK_HOST_PORT:-8001}"   # so the printed address uses the host port
       DLP_CHECK_HOST_BIND: "${DLP_CHECK_HOST_BIND:-127.0.0.1}"   # the address ports: publishes on; loopback lets the browser enable writes
       DLP_CHECK_USER_PACKS: /data/user_packs   # packs added from Advanced settings persist on the volume
+      # The Digest's timer reads every in-scope tenant profile and counts against
+      # the ZIA API rate limit: off (0) unless you opt in with a number of hours in .env.
+      DLP_CHECK_CONTINUOUS_EVAL_HOURS: "${DLP_CHECK_CONTINUOUS_EVAL_HOURS:-0}"
     volumes:
       - dlpcheck-data:/data
     read_only: true
