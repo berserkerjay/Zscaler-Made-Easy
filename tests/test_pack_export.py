@@ -995,6 +995,29 @@ def test_a_short_429_is_waited_out_in_seconds_and_does_not_hold_the_tenant_for_t
         assert holds and max(holds) <= 30 and sum(slept) <= 30, (refusal, holds, sum(slept))
 
 
+def test_a_short_retry_too_long_waits_at_least_what_zia_asked_for_before_the_read_is_sent_again(monkeypatch):
+    # ZIA asks for 120 s: above both short fallbacks (5 s / 15 s), below the
+    # hourly limit. Retrying sooner sends a read ZIA refuses (rule 4), and a
+    # shorter hold lets other sessions on this tenant send too soon.
+    import zia_rate
+    holds, slept, logged = [], [], []
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: holds.append(s) or 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: slept.append(s), raising=False)
+    asked = 120
+    refusal = f"RetryTooLong: Retry wait time {asked} seconds exceeds configured maxRetrySeconds 30"
+    assert not pe._is_hourly(refusal) and asked > max(pe.SHORT_RATE_WAIT_SECONDS)
+    answers = iter([([], refusal), (["ok"], None)])
+    sent_after = []
+    def fn():
+        sent_after.append(sum(slept))
+        return next(answers)
+    data, err, refused = pe._read("rules", fn, logged.append)
+    assert (data, err, refused) == (["ok"], None, False)
+    assert len(sent_after) == 2 and sent_after[1] >= asked, sent_after
+    assert sum(slept) >= asked, slept
+    assert holds and max(holds) >= asked, holds
+
+
 def test_only_a_retry_too_long_with_a_long_wait_is_the_hourly_limit():
     assert pe._is_hourly(HOURLY)
     assert pe._is_hourly("Retry wait time 1800 seconds exceeds configured maxRetrySeconds 30.")
