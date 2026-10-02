@@ -221,7 +221,8 @@ def test_the_pack_library_terraform_download_names_the_assessor(monkeypatch):
     assert f"[Jane Doe " in text and "[DLP-Check " not in text
     monkeypatch.setattr(tenant_profiles, "get", lambda p, **kw: {"assessor": "Sam Lee"} if p == "p1" else None)
     assert "[Sam Lee " in _zip_text(c.get(f"/api/pack-library/{pid}/terraform.zip", params={"profile_id": "p1"}).content)
-    assert "[DLP-Check " in _zip_text(c.get(f"/api/pack-library/{pid}/terraform.zip").content)
+    # No assessor anywhere: refused, so a workspace never tags objects DLP-Check.
+    assert c.get(f"/api/pack-library/{pid}/terraform.zip").status_code == 400
 
 
 def test_the_advanced_page_sends_the_assessor_with_its_terraform_downloads():

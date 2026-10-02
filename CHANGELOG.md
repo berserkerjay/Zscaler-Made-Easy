@@ -5,6 +5,13 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-02
+
+### The assessor's name is mandatory for every pack push; nothing is tagged DLP-Check
+- **What you saw.** With the assessor field blank, a pack deploy still tagged its dictionaries, engines and rules `[DLP-Check pack …]`.
+- **Now.** Deploy policy packs, the single-pack import, the Terraform hand-off (gap and static) and the library's Terraform download all refuse without an assessor name: *Enter the assessor's name (Scope assessment → Assessor name) before pushing a policy pack.* The request stops before the tenant is signed in to, and the page checks first, so nothing is read or written. The saved profile's assessor counts. Planning a single-pack import still works without one, since it writes nothing.
+- **Unchanged.** Objects tagged `[DLP-Check …]` by earlier deploys are still recognised by removal, export and the journey check.
+
 ## 2026-10-01
 
 ### Pack deploys name only the assessor; the classic API's vanity domain and login stay out
