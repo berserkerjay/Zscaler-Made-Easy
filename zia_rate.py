@@ -152,11 +152,13 @@ def _label_ok(rec_label: Any, tenant_label: Any) -> bool:
 
 
 def _record_ok(r: Dict[str, Any], tenant_label: Any, key: Optional[str]) -> bool:
-    """Whether a deployment record belongs to the tenant: by its opaque
-    tenant key when both sides have one (classic-API tenants on a cloud
-    share one label), else by label."""
-    if key and r.get("tenant_key"):
-        return r.get("tenant_key") == key
+    """Whether a deployment record belongs to the tenant: by its classic-API
+    fingerprint or opaque tenant key when both sides have one (classic-API
+    tenants on a cloud share one label; their key here is the fingerprint,
+    tenant_fingerprint.tenant_key), else by label."""
+    rk = r.get("tenant_fp") or r.get("tenant_key")
+    if key and rk:
+        return rk == key
     return _label_ok(r.get("tenant_label"), tenant_label)
 
 
