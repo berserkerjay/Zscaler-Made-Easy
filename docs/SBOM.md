@@ -6,7 +6,9 @@ dependencies, the Python packages and the Terraform provider:
 - every Python package pinned in `requirements.lock`, with its exact version,
   package URL, the wheel hashes the installers verify and its SPDX licence.
   It covers every platform the lock covers, so the Windows-only `pywin32` and
-  `colorama` are listed too;
+  `colorama` are listed too, as are `keyring` (the credential store for
+  remembered profile secrets, pinned for Windows and macOS) and the packages
+  it pulls in (`pywin32-ctypes`, the `jaraco` packages, `more-itertools`);
 - the Terraform provider the policy packs use (`zscaler/zia`, pinned in
   `terraform/*/.terraform.lock.hcl`), with its licence (MPL-2.0);
 - DLP-Check itself as the root component (`LicenseRef-DLP-Check-Internal`,

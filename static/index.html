@@ -896,7 +896,7 @@
           <input id="zpass" type="password" placeholder="The admin's password" autocomplete="off" spellcheck="false" style="padding-right:60px;">
           <button type="button" id="togglePass" onclick="toggleField('zpass','togglePass')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
         </div>
-        <div class="helper">Kept only in this form for this browser session unless you tick <em>Remember the client secret on this laptop</em> on a saved profile (then it goes to this laptop's credential store when the optional <code>keyring</code> package is installed, otherwise to the owner-only profile file). Never shown in a message.</div>
+        <div class="helper">Kept only in this form for this browser session unless you tick <em>Remember the client secret on this laptop</em> on a saved profile (then it goes to this laptop's credential store, Windows Credential Manager or the macOS Keychain, through the <code>keyring</code> package the installer pins with the app; on Linux and in the container it goes to the owner-only profile file). Never shown in a message.</div>
         <div class="err-msg">Password is required</div>
       </div>
       <div class="field" id="fieldKey" hidden>
