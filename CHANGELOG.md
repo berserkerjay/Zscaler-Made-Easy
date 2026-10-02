@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### The credential store for remembered secrets is part of the pinned install
+- **What you saw.** A remembered profile secret goes to Windows Credential Manager or the macOS Keychain only through the `keyring` package, which the app did not install. SECURITY.md said to run an unpinned `pip install keyring`, which installed six packages that were not hash-verified and were missing from the SBOM and the notices.
+- **Now.** `keyring` and the packages it needs are pinned by hash in `requirements.lock` for Windows and macOS, and they are listed in `docs/sbom.cdx.json` and `THIRD_PARTY_NOTICES.md` with their licences. The installers install them with the rest of the app. On Linux and in the container there is no credential store, so a remembered secret stays in the owner-only profile file, as before. The tests never touch this machine's real credential store.
+
 ### Classic-API sign-ins: the admin login stays out of the browser's records
 - **What you saw.** After *Authenticate* with the classic ZIA API sign-in, the guide kept the admin login in the browser's storage across restarts, and a failure the server answered without a tenant label (a rate limit, for example) was titled *Could not connect to <admin login>*. The sidebar's *Tenant* line showed a vanity domain left in the hidden OneAPI field.
 - **Now.** The guide matches the tenant on a one-way key of cloud and login, names it *classic API (<cloud>)*, and drops an old record that held the login. The sidebar shows *classic API · <cloud>*.

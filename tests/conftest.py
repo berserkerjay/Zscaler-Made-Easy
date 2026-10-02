@@ -39,6 +39,16 @@ def _no_backoff_sleep(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_credential_store(monkeypatch):
+    """keyring is a pinned dependency on Windows and macOS, so it is installed
+    where the tests run. A test that remembers a profile secret must never
+    write it to this machine's real Credential Manager or Keychain: keyring
+    is unimportable here, the owner-only file is used, and a test that wants
+    the credential store installs its own fake in sys.modules."""
+    monkeypatch.setitem(sys.modules, "keyring", None)
+
+
+@pytest.fixture(autouse=True)
 def _fresh_rate_limit_bucket():
     """The API rate limiter (20 requests/s, burst 60, per client IP) is
     process-wide and every test talks from the same "testclient" address,

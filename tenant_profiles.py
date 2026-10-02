@@ -194,11 +194,12 @@ def list_profiles() -> List[Dict[str, Any]]:
 
 
 # ── Secret storage ────────────────────────────────────────────────────
-# A remembered secret goes to the operating system's credential store when
-# the optional `keyring` package is installed (Windows Credential Manager /
-# DPAPI, macOS Keychain, Secret Service on Linux); the profile file then
-# holds only a marker. Without keyring it is stored in the owner-only
-# profile file, as before.
+# A remembered secret goes to the operating system's credential store
+# through the `keyring` package (Windows Credential Manager / DPAPI, macOS
+# Keychain); the profile file then holds only a marker. keyring is pinned by
+# hash in requirements.lock for Windows and macOS only; on Linux and in the
+# container it is not installed and the secret is stored in the owner-only
+# profile file, as it is when the store refuses it.
 KEYRING_SERVICE = "dlp-check"
 KEYRING_MARK = "@keyring"
 

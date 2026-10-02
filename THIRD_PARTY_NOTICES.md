@@ -24,6 +24,7 @@ distribution links in the SBOM.
 | anyio | 4.15.1 | MIT |
 | arrow | 1.4.0 | Apache-2.0 |
 | attrs | 26.1.0 | MIT |
+| backports-tarfile | 1.2.0 | MIT |
 | certifi | 2026.7.22 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
 | charset-normalizer | 3.5.1 | MIT |
@@ -36,15 +37,21 @@ distribution links in the SBOM.
 | httpx2 | 2.13.0 | BSD-3-Clause |
 | httpx2-jsfetch | 1.0 | BSD-3-Clause |
 | idna | 3.19 | BSD-3-Clause |
+| importlib-metadata | 9.0.1 | Apache-2.0 |
+| jaraco-classes | 3.4.0 | MIT |
+| jaraco-context | 6.1.2 | MIT |
+| jaraco-functools | 4.6.0 | MIT |
 | jmespath | 1.1.0 | MIT |
 | jsonschema | 4.26.0 | MIT |
 | jsonschema-specifications | 2025.9.1 | MIT |
 | jwcrypto | 1.6.0 | LGPL-3.0-or-later |
+| keyring | 25.7.0 | MIT |
 | lxml | 6.1.3 | BSD-3-Clause |
 | markdown-it-py | 4.2.0 | MIT |
 | mcp | 2.2.0 | MIT |
 | mcp-types | 2.2.0 | MIT |
 | mdurl | 0.1.2 | MIT |
+| more-itertools | 11.1.0 | MIT |
 | msgpack | 1.2.2 | Apache-2.0 |
 | opentelemetry-api | 1.44.0 | Apache-2.0 |
 | pycparser | 3.0 | BSD-3-Clause |
@@ -60,6 +67,7 @@ distribution links in the SBOM.
 | python-multipart | 0.0.32 | Apache-2.0 |
 | pytz | 2026.3.post1 | MIT |
 | pywin32 | 312 | BSD-3-Clause AND LGPL-2.1-or-later AND PSF-2.0 AND HPND AND MIT |
+| pywin32-ctypes | 0.2.3 | BSD-3-Clause |
 | pyyaml | 6.0.3 | MIT |
 | referencing | 0.37.0 | MIT |
 | requests | 2.34.2 | Apache-2.0 |
@@ -77,6 +85,7 @@ distribution links in the SBOM.
 | tzdata | 2026.4 | Apache-2.0 |
 | urllib3 | 2.8.0 | MIT |
 | uvicorn | 0.53.0 | BSD-3-Clause |
+| zipp | 4.1.0 | MIT |
 | zscaler-sdk-python | 1.9.44 | MIT |
 | zscaler/terraform-provider-zia | 4.8.8 | MPL-2.0 |
 

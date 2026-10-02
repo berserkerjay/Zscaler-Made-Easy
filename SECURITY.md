@@ -179,9 +179,14 @@ to do when a control falls short.
   `ZSCALER_SSO_WRITERS`); anyone allowed to sign in can read every
   assessment and preview the app holds.
 - A remembered profile secret goes to the operating system's credential
-  store only when the optional `keyring` package is installed
-  (`pip install keyring`); otherwise it stays in the owner-only profile
-  file. Prefer `local_settings.bat` or the form on a shared laptop.
+  store (Windows Credential Manager, macOS Keychain) through the `keyring`
+  package. It is a pinned dependency on Windows and macOS: the installers
+  install it, hash-verified, from `requirements.lock` with the rest of the
+  app, and it is in the SBOM, so no separate or unpinned install is needed.
+  On Linux and in the container it is not installed (there is no Secret
+  Service there), and a remembered secret stays in the owner-only profile
+  file, as it also does if the store refuses it. Prefer
+  `local_settings.bat` or the form on a shared laptop.
 - The updater fast-forwards `main` over HTTPS and cross-checks the
   commit it pulled against GitHub's REST API (a channel separate from
   the git pull). The repository is private, so that cross-check needs a

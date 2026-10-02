@@ -27,6 +27,9 @@ dependencies = [
     "setuptools>=78.1.1",
     'pywin32>=311; sys_platform == "win32"',
     'colorama>=0.4.6; sys_platform == "win32"',
+    # The OS credential store for remembered profile secrets (Windows
+    # Credential Manager, macOS Keychain); not on Linux, see requirements.txt.
+    'keyring>=25.7.0; sys_platform == "win32" or sys_platform == "darwin"',
 ]
 
 [project.optional-dependencies]

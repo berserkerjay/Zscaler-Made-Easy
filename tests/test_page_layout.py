@@ -68,7 +68,7 @@ def test_authenticate_ends_with_an_inline_success_or_an_in_app_failure_dialog():
         assert '/static/ui_auth.js' in c.get(page).text, page
     # The copy about secrets says what the code does (tenant_profiles.upsert).
     assert "Never stored by this tool" not in html and "Kept only in this form for this browser session" in html
-    assert "optional <code>keyring</code> package is installed, otherwise" in guide
+    assert "through the <code>keyring</code> package the installer pins with the app" in guide and "optional <code>keyring</code>" not in guide
     c = _page()
     html = c.get("/").text
     assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules" not in html, "the wizard no longer hands rules to a simulator"
