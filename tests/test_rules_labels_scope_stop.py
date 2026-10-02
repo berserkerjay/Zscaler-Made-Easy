@@ -447,3 +447,29 @@ def test_the_committed_workspaces_never_tag_objects_dlp_check():
             text = open(f, encoding="utf-8").read()
             assert "[DLP-Check pack" not in text and "[DLP-Check baseline" not in text, f
         assert 'variable "assessor"' in open(os.path.join(d, "variables.tf"), encoding="utf-8").read(), d
+
+
+def test_the_committed_workspaces_say_to_name_the_assessor_before_apply():
+    # TD1-2: the READMEs of the committed workspaces tell the reader to
+    # apply them, so their Use section names the required assessor.
+    folders = [d for d in glob.glob(os.path.join(ROOT, "terraform", "*")) if os.path.isdir(d)]
+    assert folders
+    for d in folders:
+        readme = open(os.path.join(d, "README.md"), encoding="utf-8").read()
+        use = readme.split("## Use", 1)[1].split("\n## ", 1)[0]
+        assert "assessor" in use and "-var" in use, d
+    docs = open(os.path.join(ROOT, "POLICY_PACKS.md"), encoding="utf-8").read()
+    section = docs.split("**Committed workspaces.**", 1)[1].split("**Gap mode", 1)[0]
+    assert "assessor" in section and "--assessor" in section
+
+
+def test_the_terraform_cli_names_the_assessor_or_leaves_it_to_apply(tmp_path):
+    import pack_terraform as pt
+    pt.main(["cjis_policy_pack", "--out", str(tmp_path / "a"), "--assessor", "Jane Doe"])
+    rules = (tmp_path / "a" / "cjis_policy_pack" / "rules.tf").read_text(encoding="utf-8")
+    assert "[Jane Doe pack cjis_policy_pack" in rules and "DLP-Check pack" not in rules
+    pt.main(["cjis_policy_pack", "--out", str(tmp_path / "b")])
+    rules = (tmp_path / "b" / "cjis_policy_pack" / "rules.tf").read_text(encoding="utf-8")
+    assert "[${var.assessor} pack cjis_policy_pack" in rules and "DLP-Check pack" not in rules
+    with pytest.raises(SystemExit):
+        pt.main(["cjis_policy_pack", "--out", str(tmp_path / "c"), "--assessor", "DLP-Check"])

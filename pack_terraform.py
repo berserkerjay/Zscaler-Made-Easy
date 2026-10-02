@@ -991,8 +991,15 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
                      "change; customized objects import and would be updated in place (delete their import block to keep the "
                      "customer's version); missing objects are created; blocked objects are listed as comments with their reason. "
                      "The first `terraform plan` is the gap.\n\n")
-    lines.append("## Use\n\n```bash\nterraform init\nterraform plan -out=tfplan   # review: creates, in-place updates, imports\nterraform apply tfplan\n```\n\n"
-                 "Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables; nothing secret is in these files. "
+    if _ASSESSOR_VARIABLE in (variables_extra or []):
+        lines.append("## Use\n\n```bash\nterraform init\nterraform plan -var 'assessor=Jane Doe' -out=tfplan   # review: creates, in-place updates, imports\n"
+                     "terraform apply tfplan\n```\n\n"
+                     "Name the assessor first: every description this workspace pushes carries `[<assessor> pack …]`, and `assessor` "
+                     "is required (no default, never the tool's name), so `plan` and `apply` refuse without it. Pass `-var 'assessor=…'`, "
+                     "set it in `terraform.tfvars`, or export `TF_VAR_assessor`.\n\n")
+    else:
+        lines.append("## Use\n\n```bash\nterraform init\nterraform plan -out=tfplan   # review: creates, in-place updates, imports\nterraform apply tfplan\n```\n\n")
+    lines.append("Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables; nothing secret is in these files. "
                  "The client needs a ZIA role with write access to DLP dictionaries, engines and the rule types in this pack.\n\n"
                  "Ordering: new rules are inserted starting at `rule_starting_order` and push existing rules down. "
                  "Run `terraform apply -parallelism=1` if the tenant reports ordering conflicts.\n\n"
@@ -1292,7 +1299,10 @@ def split_report(report: Dict[str, Any], pack_id: str) -> Dict[str, Any]:
     return dict(report, items=items)
 
 
-if __name__ == "__main__":  # pragma: no cover — small CLI for local use
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Small CLI for local use and for regenerating terraform/<pack>/. With
+    --assessor the descriptions name that person; without it they take the
+    required `assessor` variable, so nothing is applied untagged (rule 2)."""
     import argparse
     import sys
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1301,12 +1311,25 @@ if __name__ == "__main__":  # pragma: no cover — small CLI for local use
     ap = argparse.ArgumentParser(description="Generate Terraform workspaces for DLP packs.")
     ap.add_argument("packs", nargs="*", help="pack ids (default: all)")
     ap.add_argument("--out", default="terraform", help="output root (one folder per pack)")
-    args = ap.parse_args()
+    ap.add_argument("--assessor", default="",
+                    help="the assessor's name every description carries; without it the workspace "
+                         "requires the `assessor` variable at plan/apply time (never DLP-Check)")
+    args = ap.parse_args(argv)
+    assessor = " ".join(str(args.assessor or "").split())
+    if args.assessor and not assessor:
+        sys.exit("--assessor is blank: name the assessor, or leave the option out to require it at apply time")
+    if re.search(r"(?i)dlp[- ]?check", assessor):
+        sys.exit("--assessor must name the person who assesses and deploys the pack, not the tool")
     known = {p["id"]: p for p in discover_packs()}
     ids = args.packs or sorted(known)
     for pid in ids:
         if pid not in known:
             sys.exit(f"unknown pack: {pid}")
-        files = generate({"id": pid, "dir": known[pid]["dir"]})
+        files = generate({"id": pid, "dir": known[pid]["dir"]}, assessor=assessor)
         write_workspace(files, os.path.join(args.out, pid))
         print(f"{pid}: {len(files)} files -> {os.path.join(args.out, pid)}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

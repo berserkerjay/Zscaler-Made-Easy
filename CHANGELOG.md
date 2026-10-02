@@ -46,6 +46,7 @@ lists what each batch of changes did, newest first.
 ### Terraform workspaces generated without an assessor need one at apply time
 - **What you saw.** The workspace written when a pack is uploaded or rebuilt, and the ones committed under `terraform/<pack>/`, tagged every description `[DLP-Check pack …]`.
 - **Now.** Without an assessor's name, the tag reads `[${var.assessor} pack …]`, and `variable "assessor"` is required (no default; no brackets, not the tool's name). `terraform apply` cannot push anything until an assessor is named. Downloads that name the assessor are unchanged.
+- **Also.** Each workspace README's *Use* section shows `terraform plan -var 'assessor=…'` and says why it is required, `POLICY_PACKS.md` says the same for the committed workspaces, and `python pack_terraform.py … --assessor "Jane Doe"` writes the name in (a name naming the tool is refused).
 
 ### Beacon's tenant watch reads no channel the assessment leaves out
 - **What you saw.** With only Endpoint (or Email) DLP marked Zscaler, the tenant watch for DLP still read the Inline Web DLP rules, the SSL inspection rules, the Cloud App Control rules and the tenancy restrictions; with GenAI & prompts ticked and GenAI Security left unticked it read 9 endpoints, while the assessment for the same selection reads none of them. The watch kept its own, older channel rule: outside DLP only an *alternative* channel took checks out, and only three rule endpoints needed their channel.
