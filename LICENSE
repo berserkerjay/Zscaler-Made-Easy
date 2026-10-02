@@ -20,7 +20,8 @@ IMPLIED. It reads and, when the operator enables writes, changes a Zscaler
 tenant's configuration; the operator remains responsible for reviewing
 every plan before approving it.
 
-This repository is public so its code can be reviewed and vulnerabilities
-can be reported and disclosed responsibly (see SECURITY.md). Being
-publicly readable does not change the terms above: it is still not for redistribution,
-still not for sublicensing, and still not for third-party use.
+The repository is private: access is granted per GitHub account (INSTALL.md
+says whom to ask). Whether or not it is ever made readable to others so its
+code can be reviewed and vulnerabilities reported and disclosed responsibly
+(see SECURITY.md), the terms above apply unchanged: it is still not for
+redistribution, still not for sublicensing, and still not for third-party use.
