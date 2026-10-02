@@ -143,7 +143,8 @@ jobs:
           pip install cyclonedx-bom==7.5.0
           # Same commands as docs/SBOM.md. cyclonedx-py reads only the lock,
           # which holds no licences and no Terraform provider; sbom_enrich.py
-          # adds both (and fails on a package with no recorded licence) and
+          # adds both, builds the dependency graph from the lock (fails on a
+          # package with no recorded licence) and
           # rewrites THIRD_PARTY_NOTICES.md. The committed files must match.
           cyclonedx-py requirements --pyproject pyproject.toml --mc-type application --output-reproducible --of JSON -o docs/sbom.cdx.json requirements.lock
           python tools/sbom_enrich.py docs/sbom.cdx.json
@@ -204,3 +205,15 @@ jobs:
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:latest image --exit-code 1 --ignore-unfixed --severity CRITICAL,HIGH --format table dlp-check:ci
+
+      - name: Image SBOM (CycloneDX, every OS and Python package in the image)
+        run: |
+          # docs/sbom.cdx.json covers the Python lock and the Terraform provider
+          # only; this inventories the built image, including the base image's
+          # CPython and Debian packages (docs/SBOM.md).
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" \
+            aquasec/trivy:latest image --format cyclonedx --output /out/image-sbom.cdx.json dlp-check:ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-sbom
+          path: image-sbom.cdx.json
