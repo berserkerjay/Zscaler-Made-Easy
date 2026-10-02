@@ -18,6 +18,23 @@
   }
   function clearSay() { const el = $('advStatus'); el.hidden = true; el.innerHTML = ''; }
 
+  // A Terraform download names the assessor in every provenance tag, as
+  // Deploy policy packs does: this page's field, else the assessment tab's
+  // Scope assessment name (when this tab was opened from it).
+  const assessorField = $('advAssessor');
+  try {
+    const o = window.opener && !window.opener.closed && window.opener.document.getElementById('assessor');
+    if (assessorField && o && !assessorField.value) assessorField.value = String(o.value || '').trim();
+  } catch (e) { /* cross-window: the field stays as typed */ }
+  document.addEventListener('click', e => {
+    const a = e.target && e.target.closest ? e.target.closest('a[href*="/terraform.zip"]') : null;
+    if (!a) return;
+    const u = new URL(a.getAttribute('href'), location.href);
+    const who = advAssessorName();
+    if (who) u.searchParams.set('assessor', who); else u.searchParams.delete('assessor');
+    a.setAttribute('href', u.pathname + u.search);
+  }, true);
+
   async function api(path, body) {
     const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' });
     const data = await r.json().catch(() => ({}));
@@ -287,12 +304,17 @@
 })();
 
 
+// The assessor a Terraform download names (Advanced settings' field).
+function advAssessorName() {
+  return String((document.getElementById('advAssessor') || {}).value || '').trim();
+}
+
 // Terraform workspace for one pack, static mode: no tenant read, no
 // credentials, no import blocks — the pack transcribed as HCL.
 async function advTerraform(id) {
   try {
     const r = await fetch('/api/dlp-packs/terraform', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pack_ids: [id], mode: 'static', client_id: '', client_secret: '', vanity_domain: '' }) });
+      body: JSON.stringify({ pack_ids: [id], mode: 'static', client_id: '', client_secret: '', vanity_domain: '', assessor: advAssessorName() }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`); }
     const blob = await r.blob();
     const m = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');

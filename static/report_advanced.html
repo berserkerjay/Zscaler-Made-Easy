@@ -34,6 +34,9 @@
         <section aria-labelledby="advLibH">
           <h2 class="df-h" id="advLibH">Policy pack library</h2>
           <p class="adv-lead">Built-in packs ship with the app. Uploaded packs are yours: they live in the library folder on this machine and survive updates. Every pack here is offered by Deploy policy packs.</p>
+          <p class="adv-lead"><label for="advAssessor">Assessor named in Terraform downloads</label>
+            <input id="advAssessor" type="text" maxlength="40" autocomplete="off" placeholder="from Scope assessment" style="margin-left:0.4rem;">
+            <span class="dim">Each object's description is tagged with this name; DLP-Check only when it is blank.</span></p>
           <div class="tw"><table class="bp-table adv-table" id="advPacks" aria-describedby="advLibH">
             <thead><tr><th scope="col">Pack</th><th scope="col">Source</th><th scope="col">Dictionaries</th><th scope="col">Engines</th><th scope="col">Rules</th><th scope="col">Channels</th><th scope="col">Actions</th></tr></thead>
             <tbody><tr><td colspan="7" class="dim">Loading…</td></tr></tbody>
