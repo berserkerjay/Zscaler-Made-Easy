@@ -206,6 +206,103 @@ def test_zia_rate_pacing_honours_stop_inside_a_wait():
     assert naps and all(s <= zia_rate.CANCEL_STEP for s in naps) and len(naps) == 1, naps
 
 
+def _fake_clock(monkeypatch):
+    """A fake clock under zia_rate: each nap moves it on by the nap."""
+    import zia_rate
+    t, naps = [1000.0], []
+
+    def nap(s):
+        naps.append(s)
+        t[0] += s
+    monkeypatch.setattr(zia_rate, "_now", lambda: t[0])
+    monkeypatch.setattr(zia_rate, "_sleep", nap)
+    return t, naps
+
+
+def test_a_stoppable_write_waits_out_the_whole_hold_when_stop_is_not_pressed(monkeypatch):
+    """Stop armed but never pressed: a write inside stopping_on sleeps in
+    CANCEL_STEP steps, yet still waits out all of ZIA's hold before it is
+    sent (every assessment and path-analyzer write runs this way). Not a
+    read: reads do not wait for a hold by design."""
+    import zia_rate
+    t, naps = _fake_clock(monkeypatch)
+    end = zia_rate.hold(120)
+    with zia_rate.stopping_on(lambda: False):
+        waited = zia_rate.wait("POST", "/zia/api/v1/webDlpRules")
+    assert waited >= 119.5 and t[0] >= end, (waited, t[0], end)
+    assert naps and all(s <= zia_rate.CANCEL_STEP for s in naps), naps
+
+
+def test_a_stoppable_paced_write_waits_the_whole_delay_when_stop_is_not_pressed(monkeypatch):
+    """The same for a paced (non-hold) wait longer than CANCEL_STEP: the
+    write waits until the bucket has room again."""
+    import zia_rate
+    monkeypatch.setenv("DLP_CHECK_ZIA_LIMIT_WRITE", "1/m")
+    t, naps = _fake_clock(monkeypatch)
+    zia_rate.wait("POST", "/zia/api/v1/webDlpRules")   # fills the write bucket
+    first = t[0]
+    with zia_rate.stopping_on(lambda: False):
+        waited = zia_rate.wait("POST", "/zia/api/v1/webDlpRules")
+    assert waited >= 59.5 and t[0] - first >= 60, (waited, t[0] - first)
+    assert naps and all(s <= zia_rate.CANCEL_STEP for s in naps), naps
+
+
+class _Req:
+    def __init__(self, method, url):
+        self.method, self.url = method, url
+
+
+class _Session:
+    """A fake requests session: records what it would send."""
+    def __init__(self):
+        self.sent = []
+
+    def send(self, request, **kwargs):
+        self.sent.append((request.method, request.url))
+        return "ok"
+
+
+ZIA_URL = "https://api.zsapi.net/zia/api/v1"
+
+
+@pytest.mark.parametrize("req", [_Req("POST", ZIA_URL + "/webDlpRules"),
+                                 _Req("POST", ZIA_URL + "/authenticatedSession")],
+                         ids=["prepaced", "authenticatedsession"])
+def test_a_paced_session_sends_nothing_after_stop_even_for_a_request_it_would_not_pace(req):
+    """A request just paced by its caller (wait() marks it) or an
+    authenticatedSession request skips the session's own wait(), but it is
+    still not sent once Stop is pressed."""
+    import zia_rate
+    s = _Session()
+    zia_rate._pace_session(s, "k")
+    zia_rate._ctx.prepaced = zia_rate._now()
+    try:
+        with zia_rate.stopping_on(lambda: True):
+            with pytest.raises(zia_rate.Cancelled):
+                s.send(req)
+    finally:
+        zia_rate._ctx.prepaced = None
+    assert s.sent == []
+
+
+def test_a_caller_paced_mark_lets_only_one_request_skip_the_session_wait(monkeypatch):
+    """wait() marks the one request it paced; the next request the session
+    sends is paced again (the mark is used up)."""
+    import zia_rate
+    calls = []
+    real_wait = zia_rate.wait
+    monkeypatch.setattr(zia_rate, "wait", lambda *a, **k: (calls.append(a), real_wait(*a, **k))[1])
+    s = _Session()
+    zia_rate._pace_session(s, "k")
+    zia_rate.wait("POST", "/webDlpRules", key="k")   # the caller paces its request
+    calls.clear()
+    s.send(_Req("POST", ZIA_URL + "/webDlpRules"))
+    assert calls == [], "the request its caller just paced is not paced twice"
+    s.send(_Req("POST", ZIA_URL + "/webDlpRules"))
+    assert len(calls) == 1, "the next request is paced again"
+    assert len(s.sent) == 2
+
+
 def test_stop_ends_the_job_as_stopped_with_no_result_and_no_kept_read(monkeypatch):
     import dlp_api_server as srv
     from fastapi.testclient import TestClient
