@@ -7,7 +7,7 @@
 #   make docker-run start the container (loopback publish, read-only, non-root)
 PY ?= .venv/bin/python
 
-.PHONY: install dev run stop test check docker docker-run lock upstream
+.PHONY: install dev run stop test check docker docker-run lock sbom upstream
 
 install:
 	./install.sh
@@ -56,3 +56,10 @@ docker-run:
 lock:
 	$(PY) -m pip install --quiet uv
 	$(PY) -m uv pip compile --universal --python-version 3.11 --generate-hashes --upgrade --output-file requirements.lock requirements.txt
+
+# Rebuild docs/sbom.cdx.json and THIRD_PARTY_NOTICES.md (docs/SBOM.md); run
+# after make lock or a Terraform provider upgrade. CI fails when they are stale.
+sbom:
+	$(PY) -m pip install --quiet cyclonedx-bom==7.5.0
+	$(PY) -m cyclonedx_py requirements --pyproject pyproject.toml --mc-type application --output-reproducible --of JSON -o docs/sbom.cdx.json requirements.lock
+	$(PY) tools/sbom_enrich.py docs/sbom.cdx.json

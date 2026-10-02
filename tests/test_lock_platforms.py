@@ -124,7 +124,8 @@ def test_committed_sbom_lists_exactly_the_locked_packages():
     with open(os.path.join(ROOT, "docs", "sbom.cdx.json"), encoding="utf-8") as f:
         sbom = json.load(f)
     assert sbom.get("bomFormat") == "CycloneDX"
-    in_sbom = {(packaging_utils.canonicalize_name(c["name"]), c["version"]) for c in sbom["components"]}
+    in_sbom = {(packaging_utils.canonicalize_name(c["name"]), c["version"]) for c in sbom["components"]
+               if c.get("purl", "").startswith("pkg:pypi/")}
     in_lock = {(name, v) for name, rows in _lock_pins().items() for v, _m in rows}
     assert in_sbom == in_lock, {"only in sbom": sorted(in_sbom - in_lock), "only in lock": sorted(in_lock - in_sbom)}
     assert "docs/sbom.cdx.json" in _read(os.path.join("docs", "SBOM.md"))

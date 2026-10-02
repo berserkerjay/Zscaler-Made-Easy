@@ -117,7 +117,7 @@ jobs:
 
       - name: Lock file matches requirements.txt (hash-pinned)
         run: |
-          python -m pip install --upgrade pip uv
+          python -m pip install --upgrade pip uv==0.12.22
           # Compile on top of the committed lock: uv keeps every pin that still
           # satisfies requirements.txt, so this fails when requirements.txt
           # changed without a re-lock, not whenever a dependency publishes a new
@@ -135,14 +135,20 @@ jobs:
 
       - name: Known-vulnerability audit
         run: |
-          pip install pip-audit
+          pip install pip-audit==2.10.1
           pip-audit -r requirements.lock --strict --desc on
 
       - name: Software bill of materials (CycloneDX)
         run: |
-          pip install cyclonedx-bom
-          # Same command as docs/SBOM.md; the committed docs/sbom.cdx.json must match the lock.
-          cyclonedx-py requirements --pyproject pyproject.toml --mc-type application --output-reproducible --of JSON -o sbom.cdx.json requirements.lock
+          pip install cyclonedx-bom==7.5.0
+          # Same commands as docs/SBOM.md. cyclonedx-py reads only the lock,
+          # which holds no licences and no Terraform provider; sbom_enrich.py
+          # adds both (and fails on a package with no recorded licence) and
+          # rewrites THIRD_PARTY_NOTICES.md. The committed files must match.
+          cyclonedx-py requirements --pyproject pyproject.toml --mc-type application --output-reproducible --of JSON -o docs/sbom.cdx.json requirements.lock
+          python tools/sbom_enrich.py docs/sbom.cdx.json
+          git diff --exit-code -- docs/sbom.cdx.json THIRD_PARTY_NOTICES.md             || { echo "::error::docs/sbom.cdx.json or THIRD_PARTY_NOTICES.md is stale; regenerate them as docs/SBOM.md describes and commit the result"; exit 1; }
+          cp docs/sbom.cdx.json sbom.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
@@ -166,6 +172,14 @@ jobs:
           python -m pip install --require-hashes --no-deps -r requirements.lock
           python -m pip check
           python -c "import dlp_api_server, dlp_mcp_server"
+
+      - name: Known-vulnerability audit of the Windows install
+        # The Linux audit resolves the lock for Linux and skips the
+        # Windows-only pins (pywin32, colorama); this one covers them.
+        shell: bash
+        run: |
+          python -m pip install pip-audit==2.10.1
+          pip-audit -r requirements.lock --strict --desc on
 
   container:
     runs-on: ubuntu-latest

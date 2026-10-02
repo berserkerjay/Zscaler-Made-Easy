@@ -8,7 +8,7 @@ version = "2026.9.13"
 description = "Zscaler DLP assessment and policy-pack deployment: 300+ automated checks, guided deploy / verify / remove of policy packs, reports and continuous evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "Internal tooling. Not for redistribution."}
+license = {file = "LICENSE"}
 # The runtime dependencies. Installs pin every wheel by hash from
 # requirements.lock (install.sh, INSTALL_Zscaler_Assessment.bat and the
 # Dockerfile all install from that file); this list is the source it is
