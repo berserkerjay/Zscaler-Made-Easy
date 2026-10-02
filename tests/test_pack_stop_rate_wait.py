@@ -223,6 +223,47 @@ def test_read_tenant_stops_when_stop_is_pressed_during_a_paced_read(monkeypatch,
     assert snap["stopped"] and s.sent == [URL], "the engines read waited, Stop was pressed, it was not sent"
 
 
+def test_the_export_job_path_sends_no_read_after_stop_when_the_hours_reads_are_used(monkeypatch, clock):
+    """RS2-2: the job the export endpoint starts (_keyed + _run_pack_export),
+    with the tenant's 1000 reads of the last hour already counted. Stop is
+    pressed during the wait for the read limit: the wait ends within a step
+    and the read is never sent, and the job ends 'stopped'."""
+    import dlp_api_server as srv
+    monkeypatch.setenv("DLP_CHECK_ZIA_LIMIT_READ", "2/s,1000/h")   # ZIA's own read limit
+    key = "tenant-rs2-2"
+    s = _Session()
+    zia_rate._pace_session(s, key)
+    with zia_rate._lock:
+        zia_rate._load()
+        zia_rate._t(key).sent["read"].extend(clock["t"] - 3500 + i * 3 for i in range(1000))
+    cancel = threading.Event()
+    clock["on_sleep"] = cancel.set
+
+    class Dicts:
+        def list_dicts(self):
+            s.send(_Req())
+            return [], None, None
+
+    class Engines:
+        def list_dlp_engines(self):
+            s.send(_Req())
+            return [], None, None
+
+    class Zia:
+        dlp_dictionary = Dicts()
+        dlp_engine = Engines()
+
+    class Client:
+        zia = Zia()
+        _zia_rate_key = key
+    client = Client()
+    res = srv._keyed(client, srv._run_pack_export, client, {}, srv.PackExportRequest(pack_name="x"), {"web": None},
+                     lambda m: None, cancel)
+    assert s.sent == [], "no read goes out after Stop"
+    assert sum(clock["slept"]) <= zia_rate.CANCEL_STEP, "Stop ends the wait within a step, not after the hour's pacing delay"
+    assert res["status"] == "stopped" and "artifact" not in res
+
+
 def test_a_journey_read_waiting_for_the_read_limit_is_not_sent_after_stop(monkeypatch, clock):
     import dlp_api_server as srv
     monkeypatch.setenv("DLP_CHECK_ZIA_LIMIT_READ", "1/m")
