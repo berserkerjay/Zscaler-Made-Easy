@@ -857,7 +857,7 @@ def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = Tr
 # (JSON, DOCX) so users can plug the results into whatever review
 # workflow they already run (Excel, Confluence, ticketing).
 
-import csv as _csv
+import csv_safe
 import io as _io
 import json as _json
 
@@ -913,7 +913,7 @@ def export_csv(analysis: Dict[str, Any]) -> bytes:
             if k not in seen:
                 seen.add(k); fieldnames.append(k)
     buf = _io.StringIO()
-    w = _csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    w = csv_safe.dict_writer(buf, fieldnames=fieldnames, extrasaction="ignore")
     w.writeheader()
     for r in rows:
         w.writerow(r)

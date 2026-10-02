@@ -4109,7 +4109,8 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
             headers={"Content-Disposition": f'attachment; filename="{fname_base}.md"'},
         )
     else:  # CSV (default)
-        import csv, io
+        import io
+        import csv_safe
         buf = io.StringIO()
         # Determine all framework keys
         fw_keys = []
@@ -4118,7 +4119,7 @@ async def export_checks(format: str = "csv", scope: Optional[str] = None):
             fw_keys = sorted(FRAMEWORK_DESCRIPTIONS.keys())
         except Exception:
             pass
-        writer = csv.writer(buf)
+        writer = csv_safe.writer(buf)
         writer.writerow(["Check ID", "Section", "Description"] + fw_keys)
         for id, sec, label, _ in all_checks:
             comp = get_compliance_for_check(id)
@@ -4214,8 +4215,9 @@ async def compliance_report_export(report_id: str, format: str = "markdown"):
         return JSONResponse(rep, headers={"Content-Disposition": f'attachment; filename="compliance_alignment_{stamp}.json"'})
     keys = rep.get("frameworks_selected") or list(rep.get("summary") or {})
     if format == "csv":
-        import csv, io
-        buf = io.StringIO(); w = csv.writer(buf)
+        import io
+        import csv_safe
+        buf = io.StringIO(); w = csv_safe.writer(buf)
         w.writerow(["framework", "control", "status", "passing", "failing", "review", "not_applicable", "evidence_check_ids"])
         for k in keys:
             d = (rep.get("drilldown") or {}).get(k) or {}
