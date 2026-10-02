@@ -639,11 +639,25 @@ def _fn(src, start, end):
     return src[i:src.index(end, i)]
 
 
+def _run_code(html):
+    # runAssessment with the page's own sign-in check (missingSignInFields),
+    # so a harness runs the real credential gate, not a stub.
+    return (_fn(html, "function missingSignInFields(b)", "function migrateValidateCreds()")
+            + _fn(html, "async function runAssessment()", "function buildPartialReport()")
+            + _fn(html, "// The server's reason for refusing a run", "function resetForm()"))
+
+
+# A classic-API sign-in: admin login, password and API key; the OneAPI
+# fields (vanity domain, client id/secret) are left blank (rule 3).
+CLASSIC_BODY = {"auth_method": "legacy", "cloud": "zscalerthree", "username": "admin@example.invalid",
+                "password": "pw", "api_key": "k", "vanity_domain": "", "client_id": "", "client_secret": ""}
+ONEAPI_BODY = {"auth_method": "oneapi", "vanity_domain": "example", "client_id": "cid", "client_secret": "s"}
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 def test_a_refused_run_shows_the_servers_reason_where_the_run_started(tmp_path):
     html = _read("static/index.html")
-    code = (_fn(html, "async function runAssessment()", "function buildPartialReport()")
-            + _fn(html, "// The server's reason for refusing a run", "function resetForm()"))
+    code = _run_code(html)
     detail = ("Nothing to assess: every check in the chosen scope belongs to a channel that is not ticked as Zscaler on the "
               "Scope page (GenAI Security). Tick the channel, then run the assessment.")
     harness = """
@@ -651,22 +665,28 @@ const vm = require('vm');
 const els = {};
 const el = id => els[id] || (els[id] = {id, value: 'x', textContent: '', disabled: false, style: {}, className: '',
   classList: {add(){}, remove(){}}});
-const status = [], refused = [];
+const status = [], refused = [], asked = [], sent = [];
 const ctx = {
   document: {getElementById: el}, window: {__dbRunStarted(){}, __dbRunRefused(r){ refused.push(r); }},
-  profileHasSecret: () => false, popMissingCredsAlert(){}, getSelectedScopes: () => ['genai'],
-  setStatus: (m, t) => status.push([m, t]), setStep(){}, migrateCredBody: () => ({}), alert(){}, confirm: () => true,
+  profileHasSecret: () => false, popMissingCredsAlert(m){ asked.push(m); }, getSelectedScopes: () => ['genai'],
+  setStatus: (m, t) => status.push([m, t]), setStep(){}, migrateCredBody: () => (BODY), alert(){}, confirm: () => true,
   AbortController, console, TextDecoder, setInterval, clearInterval,
-  fetch: async () => ({ok: false, status: 400, json: async () => ({detail: DETAIL})}),
+  fetch: async (url, opts) => { sent.push([url, JSON.parse(opts.body)]);
+    return {ok: false, status: 400, json: async () => ({detail: DETAIL})}; },
   buildPartialReport(){}, handleEvent(){},
 };
 vm.createContext(ctx);
 vm.runInContext(CODE + '\\nthis.__run = runAssessment;', ctx);
-ctx.__run().then(() => { process.stdout.write(JSON.stringify({status, refused, btn: els.runBtn.disabled})); });
-""".replace("DETAIL", json.dumps(detail)).replace("CODE", json.dumps(code))
+ctx.__run().then(() => { process.stdout.write(JSON.stringify({status, refused, asked, sent, btn: els.runBtn.disabled})); });
+""".replace("DETAIL", json.dumps(detail)).replace("BODY", json.dumps(CLASSIC_BODY)).replace("CODE", json.dumps(code))
     f = tmp_path / "h.js"
     f.write_text(harness, encoding="utf-8")
     out = json.loads(subprocess.run(["node", str(f)], capture_output=True, text=True, check=True).stdout)
+    # A classic-API sign-in passes the gate without the hidden OneAPI fields,
+    # and the run really reaches the server, which refuses it.
+    assert out["asked"] == [], out["asked"]
+    assert [u for u, _b in out["sent"]] == ["/api/assess"], out["sent"]
+    assert out["sent"][0][1]["auth_method"] == "legacy" and out["sent"][0][1]["scopes"] == ["genai"]
     assert out["refused"] == [detail]
     assert not any("Connection lost" in m or "partial" in m for m, _t in out["status"]), out["status"]
     assert out["status"][-1][0] == detail and out["btn"] is False
@@ -702,19 +722,18 @@ def test_stop_during_the_journey_keeps_the_servers_complete_report(tmp_path):
     # no browser-built PARTIAL report, no "queued checks were cancelled",
     # and the run's watchdog timer is cleared.
     html = _read("static/index.html")
-    code = (_fn(html, "async function runAssessment()", "function buildPartialReport()")
-            + _fn(html, "// The server's reason for refusing a run", "function resetForm()"))
+    code = _run_code(html)
     harness = """
 const vm = require('vm');
 const els = {};
 const el = id => els[id] || (els[id] = {id, value: 'x', textContent: '', disabled: false, style: {}, className: '',
   classList: {add(){}, remove(){}}});
-const status = [], calls = [], cards = [];
+const status = [], calls = [], cards = [], asked = [];
 const timers = new Set();
 const ctx = {
   document: {getElementById: el}, window: {__dbRunStarted(){}, __dbRunRefused(){}},
-  profileHasSecret: () => false, popMissingCredsAlert(){}, getSelectedScopes: () => ['dlp'],
-  setStatus: (m, t) => status.push([m, t]), setStep(){}, migrateCredBody: () => ({}), alert(){}, confirm: () => true,
+  profileHasSecret: () => false, popMissingCredsAlert(m){ asked.push(m); }, getSelectedScopes: () => ['dlp'],
+  setStatus: (m, t) => status.push([m, t]), setStep(){}, migrateCredBody: () => (BODY), alert(){}, confirm: () => true,
   AbortController, console, TextDecoder,
   setInterval: (f, ms) => { const t = setInterval(f, ms); timers.add(t); return t; },
   clearInterval: t => { timers.delete(t); clearInterval(t); },
@@ -723,6 +742,7 @@ const ctx = {
   handleEvent(evt){ if (evt.score !== undefined) { ctx.reportData = evt; calls.push('complete-report'); } else if (evt.id) ctx.partialResults.push(evt); },
 };
 ctx.fetch = async (url, opts) => {
+  calls.push('start ' + url);
   let n = 0;
   const chunk = 'data: ' + JSON.stringify({id: '1.1', label: 'x', status: 'PASS'}) + '\\n\\n'
               + 'data: ' + JSON.stringify({score: 80, journey: {status: 'pending'}}) + '\\n\\n';
@@ -736,12 +756,13 @@ vm.createContext(ctx);
 vm.runInContext(CODE + '\\nthis.__run = runAssessment; this.__stop = stopAssessment;', ctx);
 const run = ctx.__run();
 setTimeout(() => { calls.push('Stop clicked'); ctx.__stop(); }, 50);
-run.then(() => { process.stdout.write(JSON.stringify({status, calls, cards, score: ctx.reportData.score, timers: timers.size})); process.exit(0); });
-""".replace("CODE", json.dumps(code))
+run.then(() => { process.stdout.write(JSON.stringify({status, calls, cards, asked, score: ctx.reportData && ctx.reportData.score, timers: timers.size})); process.exit(0); });
+""".replace("BODY", json.dumps(ONEAPI_BODY)).replace("CODE", json.dumps(code))
     f = tmp_path / "h.js"
     f.write_text(harness, encoding="utf-8")
     out = json.loads(subprocess.run(["node", str(f)], capture_output=True, text=True, check=True, timeout=30).stdout)
-    assert out["calls"] == ["complete-report", "Stop clicked"], out["calls"]
+    assert out["asked"] == [], out["asked"]
+    assert out["calls"] == ["start /api/assess", "complete-report", "Stop clicked"], out["calls"]
     assert out["score"] == 80
     assert "Every check had finished" in out["status"][-1][0] and "queued" not in out["status"][-1][0], out["status"]
     assert out["cards"] and out["cards"][-1]["status"] == "error", out["cards"]
