@@ -119,8 +119,13 @@ EPS = {"/zia/webDlpRules": ["dlp_assessment_full_auto.py"], "/zia/dlpDictionarie
        "/zcc/devices": ["zcc_evaluation.py"], "/zpa/application": ["zscaler_full_checks.py"]}
 
 
-def _probe(endpoints=EPS):
-    return lambda client: beacon.probe_tenant(client, endpoints=endpoints, sleep=lambda s: None)
+# What the Scope page selected (beacon_scope.select's shape): the watch reads only these.
+SCOPE = {"endpoints": EPS, "scopes": ["dlp", "zpa", "zcc"], "channels": [], "not_in_scope": [], "unmapped": [],
+         "summary": "4 endpoints for DLP, ZPA, ZCC", "source": "the Scope page"}
+
+
+def _probe():
+    return lambda client, endpoints: beacon.probe_tenant(client, endpoints=endpoints, sleep=lambda s: None)
 
 
 # ── One snapshot ──────────────────────────────────────────────────────
@@ -184,11 +189,11 @@ def test_an_offline_run_is_compared_with_the_last_offline_run_not_an_online_one(
 
 def test_the_diff_names_tenant_endpoints_whose_answer_changed():
     t1 = FakeTenant(customer_id="7")
-    beacon.run(online=False, upstream=fake_upstream(upstream_report()), tenant_client=t1, tenant_label="acme (production)", probe=_probe())
+    beacon.run(online=False, upstream=fake_upstream(upstream_report()), tenant_client=t1, tenant_label="acme (production)", probe=_probe(), tenant_scope=SCOPE)
     t2 = FakeTenant({"/zia/webDlpRules": ({"error": "not found", "status": 404}, 404),
                      "/zia/dlpDictionaries": ({"error": "Forbidden", "status": 403}, 403),
                      "/zcc/devices": ({"error": "request timeout", "status": 0}, 0)}, customer_id="7")
-    s = beacon.run(online=False, upstream=fake_upstream(upstream_report()), tenant_client=t2, tenant_label="acme (production)", probe=_probe())
+    s = beacon.run(online=False, upstream=fake_upstream(upstream_report()), tenant_client=t2, tenant_label="acme (production)", probe=_probe(), tenant_scope=SCOPE)
     changes = {c["endpoint"]: c for c in s["diff"]["changes"] if c["watcher"] == "tenant"}
     assert set(changes) == {"/zia/webDlpRules", "/zia/dlpDictionaries", "/zcc/devices"}
     assert changes["/zia/webDlpRules"]["text"].startswith("/zia/webDlpRules answered OK last time and 404 (not found) now.")
@@ -197,7 +202,7 @@ def test_the_diff_names_tenant_endpoints_whose_answer_changed():
     rows = {e["endpoint"]: e for e in s["tenant"]["endpoints"]}
     assert rows["/zpa/application"]["status"] == "OK" and rows["/zia/webDlpRules"]["items"] is None
     # Another tenant is never compared with this one.
-    other = beacon.run(online=False, upstream=fake_upstream(upstream_report()), tenant_client=FakeTenant(), tenant_label="globex (zscalerten)", probe=_probe())
+    other = beacon.run(online=False, upstream=fake_upstream(upstream_report()), tenant_client=FakeTenant(), tenant_label="globex (zscalerten)", probe=_probe(), tenant_scope=SCOPE)
     assert other["diff"]["against"]["tenant"] is None and not [c for c in other["diff"]["changes"] if c["watcher"] == "tenant"]
 
 
@@ -347,10 +352,10 @@ def fake_run(monkeypatch):
     real = beacon.run
     seen = []
 
-    def run(online=True, tenant_client=None, tenant_label="", trigger="manual", **kw):
-        seen.append({"online": online, "tenant_client": tenant_client, "tenant_label": tenant_label, "trigger": trigger})
+    def run(online=True, tenant_client=None, tenant_label="", trigger="manual", tenant_scope=None, **kw):
+        seen.append({"online": online, "tenant_client": tenant_client, "tenant_label": tenant_label, "trigger": trigger, "tenant_scope": tenant_scope})
         return real(online=online, fetch=fake_fetch(), upstream=fake_upstream(upstream_report()), tenant_client=tenant_client,
-                    tenant_label=tenant_label, trigger=trigger, probe=_probe())
+                    tenant_label=tenant_label, trigger=trigger, probe=_probe(), tenant_scope=tenant_scope)
     monkeypatch.setattr(beacon, "run", run)
     return seen
 
@@ -394,10 +399,11 @@ def test_the_tenant_watch_signs_in_first_reads_only_and_never_echoes_a_secret(fa
     c = _client()
     secret = "s3cr3t-Value-1234567890"
     r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "cloud": "production", "vanity_domain": "acme",
-                                        "client_id": "cid-abcdef123456", "client_secret": secret})
+                                        "client_id": "cid-abcdef123456", "client_secret": secret, "scopes": ["zdx"]})
     assert r.status_code == 200 and secret not in r.text and r.json()["tenant"] == "acme (production)"
     d = _wait_idle(c)
     assert d["latest"]["tenant"]["label"] == "acme (production)" and {m for m, _ in tenant.calls} == {"GET"}
+    assert {ep for _m, ep in tenant.calls} == set(fake_run[0]["tenant_scope"]["endpoints"]) and all(ep.startswith("/zdx/") for _m, ep in tenant.calls)
     assert tenant.closed and secret not in c.get("/api/beacon").text
 
 
@@ -405,7 +411,8 @@ def test_bad_input_is_refused_like_every_other_endpoint():
     c = _client()
     assert c.post("/api/beacon/run", json={"online": "sometimes"}).status_code == 422
     secret = "zz-Top-Secret-Value-987654"
-    r = c.post("/api/beacon/run", json={"tenant_watch": True, "vanity_domain": "bad domain!", "client_id": "cid-abcdef123456", "client_secret": secret})
+    r = c.post("/api/beacon/run", json={"tenant_watch": True, "vanity_domain": "bad domain!", "client_id": "cid-abcdef123456", "client_secret": secret,
+                                        "scopes": ["dlp"]})
     assert r.status_code == 400 and secret not in r.text
     assert c.get("/api/beacon").json()["running"] is False
 

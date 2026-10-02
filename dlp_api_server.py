@@ -2958,14 +2958,26 @@ _BEACON_STATE: Dict[str, Any] = {"enabled": False, "interval_hours": None, "last
                                  "runs_while": "this server process is running", "covers": "SDK, API and Terraform (never the tenant API watch)"}
 
 
-def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: str = "") -> Optional[Dict[str, Any]]:
+def _beacon_run_locked(online: bool, trigger: str, client: Any = None, label: str = "",
+                       scope: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """One Beacon run by a caller that already holds beacon.RUN_LOCK; the
-    lock is released here, whatever happens. Keeps the timer state."""
+    lock is released here, whatever happens. Keeps the timer state. A
+    tenant watch reads only `scope`'s endpoints (beacon_scope.select)."""
     import beacon
     _BEACON_STATE.update({"running": True, "running_since": datetime.now(timezone.utc).isoformat(timespec="seconds"), "running_trigger": trigger})
     try:
-        snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger)
-        _BEACON_STATE.update({"last_status": "error" if snap.get("error") else "ok", "last_error": snap.get("error")})
+        if client is not None:
+            snap = beacon.run(online=online, tenant_client=client, tenant_label=label, trigger=trigger, tenant_scope=scope)
+        else:
+            snap = beacon.run(online=online, tenant_client=None, tenant_label=label, trigger=trigger)
+        problem = beacon.watch_problem(snap.get("tenant"))   # read nothing: error; stopped early: partial
+        if snap.get("error"):
+            status, err = "error", snap["error"]
+        elif problem:
+            status, err = problem
+        else:
+            status, err = "ok", None
+        _BEACON_STATE.update({"last_status": status, "last_error": err})
         return snap
     except Exception as e:  # noqa: BLE001 — a failed run is reported on the tab, never raised into the server
         _BEACON_STATE.update({"last_status": "error", "last_error": f"{type(e).__name__}: {str(e)[:200]}"})
@@ -2989,14 +3001,15 @@ def _beacon_run_blocking(online: bool, trigger: str) -> Optional[Dict[str, Any]]
     return _beacon_run_locked(online, trigger)
 
 
-def _beacon_start_background(online: bool, trigger: str, client: Any = None, label: str = "") -> bool:
+def _beacon_start_background(online: bool, trigger: str, client: Any = None, label: str = "",
+                             scope: Optional[Dict[str, Any]] = None) -> bool:
     """Start a run on its own thread; False when one is already running."""
     import beacon
     import threading
     if not beacon.RUN_LOCK.acquire(blocking=False):
         return False
     try:
-        threading.Thread(target=_beacon_run_locked, args=(online, trigger, client, label), name="beacon-run", daemon=True).start()
+        threading.Thread(target=_beacon_run_locked, args=(online, trigger, client, label, scope), name="beacon-run", daemon=True).start()
     except Exception:
         beacon.RUN_LOCK.release()
         raise
@@ -3064,13 +3077,81 @@ def _beacon_timer() -> Dict[str, Any]:
 class BeaconRunRequest(TenantCredsRequest):
     """Body of POST /api/beacon/run. `online` reads PyPI, the Terraform
     registry, the provider's docs and Zscaler's pages (false: the installed
-    SDK and the committed Terraform only). `tenant_watch` also GETs every
-    endpoint the app reads from the tenant the credentials name (blank
-    fields fall back to the saved profile, the environment or
-    tenant_config.json, like every tenant call)."""
+    SDK and the committed Terraform only). `tenant_watch` also GETs, from
+    the tenant the credentials name (blank fields fall back to the saved
+    profile, the environment or tenant_config.json, like every tenant
+    call), only the endpoints that belong to what is in scope: `scopes`
+    (the Scope page's ticked .scope-cb keys) and `channels` (its channel
+    declaration; only "zscaler" counts). When the body carries neither,
+    the profile's saved scopes and channels are used, unless `from_page`
+    says the Scope page's ticks are known (then empty is empty); with
+    nothing in scope the watch is refused (400), never widened to every
+    endpoint."""
     online: bool = True
     tenant_watch: bool = False
     customer_id: str = ""   # ZPA endpoints are probed only with one
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False   # the Scope page's ticks are known: nothing ticked is nothing in scope
+
+
+class BeaconScopeRequest(TenantCredsRequest):
+    """Body of POST /api/beacon/scope: the same selection and credential
+    fields as a run, so the preview judges the sign-in the run will use."""
+    customer_id: str = ""
+    scopes: List[str] = []
+    channels: Dict[str, Any] = {}
+    from_page: bool = False
+
+
+def _beacon_readable(sel: Dict[str, Any], req: Any) -> None:
+    """400 when the sign-in these credentials resolve to (without signing
+    in) can read none of the endpoints in scope: the classic ZIA API
+    sign-in with only non-ZIA scopes, or only ZPA without a customer id."""
+    import beacon_scope
+    try:
+        creds = _tenant_creds(req)
+    except Exception:  # noqa: BLE001 — bad credentials are refused by the sign-in itself
+        return
+    why = beacon_scope.nothing_readable(sel, creds.get("auth_method") == tenant_auth.LEGACY, creds.get("customer_id") or "")
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+
+
+def _beacon_scope(scopes: Any, channels: Any, profile_id: str = "", from_page: bool = False) -> Dict[str, Any]:
+    """What the tenant API watch would read: the page's selection, else
+    (only when the page sent nothing at all and does not know the Scope
+    page's ticks) the saved profile's. The two are never mixed, so the
+    profile cannot widen what the page chose, and every scope unticked on
+    the Scope page is nothing in scope, not the profile's selection.
+    Raises HTTPException 400 when nothing is in scope. Never reads a
+    tenant."""
+    import beacon_scope
+    import channel_scope
+    src = []
+    sc = beacon_scope.normalize_scopes(scopes)
+    ch = channels if channel_scope.normalize(channels) else {}
+    if sc or ch or from_page:
+        src.append("the Scope page")
+    elif profile_id:
+        try:
+            import tenant_profiles
+            prof = tenant_profiles.get(profile_id) or {}
+        except Exception:  # noqa: BLE001 — an unreadable profile store is no selection
+            prof = {}
+        sc = beacon_scope.normalize_scopes(prof.get("scopes"))
+        ch = prof.get("channels") if channel_scope.normalize(prof.get("channels")) else {}
+        if sc or ch:
+            src.append(f"the saved profile {prof.get('name') or profile_id}")
+    if not sc and not ch:
+        raise HTTPException(status_code=400, detail=beacon_scope.NOTHING_IN_SCOPE)
+    sel = beacon_scope.select(sc, ch)
+    sel["source"] = " and ".join(src)
+    if not sel["endpoints"]:
+        chosen = sel["summary"].split(" for ", 1)[-1] if sel["scopes"] else ""
+        raise HTTPException(status_code=400, detail=beacon_scope.NOTHING_IN_SCOPE + (
+            f" What is chosen ({chosen}) reads no tenant endpoint the watch covers." if chosen else ""))
+    return sel
 
 
 @app.get("/api/beacon")
@@ -3113,22 +3194,45 @@ async def beacon_status(refresh: bool = False):
 @app.post("/api/beacon/run")
 async def beacon_run(req: BeaconRunRequest):
     """Start a Beacon run in the background; GET /api/beacon shows it when
-    it is done. With `tenant_watch`, the credentials are checked and signed
-    in first (a refusal is answered here, secrets masked) and the tenant
-    is then only read: GET, about one request a second."""
+    it is done. With `tenant_watch`, what is in scope is worked out first
+    (nothing in scope: 400, before any sign-in), then the credentials are
+    checked and signed in (a refusal is answered here, secrets masked) and
+    the tenant is only read: GET, about one request a second, and only
+    the endpoints in scope."""
     import beacon
+    import beacon_scope
     if _BEACON_STATE["running"] or beacon.RUN_LOCK.locked():
         raise HTTPException(status_code=409, detail=f"A Beacon run is already in progress (started {_BEACON_STATE.get('running_since') or 'just now'}); wait for it to finish.")
-    client, label = None, ""
+    client, label, sel = None, "", None
     if req.tenant_watch:
+        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id, req.from_page)
+        await asyncio.to_thread(_beacon_readable, sel, req)   # nothing readable with this sign-in: 400, no sign-in
         client = await asyncio.to_thread(_build_client, req)   # validates every field; 400/401 without echoing a secret
         label = tenant_auth.label(_tenant_creds(req))
-    if not _beacon_start_background(bool(req.online), "manual", client, label):
+    if not _beacon_start_background(bool(req.online), "manual", client, label, sel):
         if client is not None:
             client.close()
         raise HTTPException(status_code=409, detail="A Beacon run is already in progress; wait for it to finish.")
     return {"started": True, "online": bool(req.online), "tenant_watch": bool(req.tenant_watch), "tenant": label or None,
-            "endpoints": len(beacon.tenant_endpoints()) if req.tenant_watch else 0}
+            "endpoints": len(sel["endpoints"]) if sel else 0,
+            "scope": beacon_scope.describe(sel, sel["source"]) if sel else None}
+
+
+@app.post("/api/beacon/scope")
+async def beacon_scope_preview(req: BeaconScopeRequest):
+    """What the tenant API watch would read for this selection (the Scope
+    page's, else the profile's): how many endpoints, for which scopes and
+    channels, and which are not in scope. The same checks as a run with
+    the same body, including whether the sign-in it resolves to (typed,
+    profile, environment or tenant_config.json; never signed in to) can
+    read any of it. Reads no tenant."""
+    import beacon_scope
+    try:
+        sel = await asyncio.to_thread(_beacon_scope, req.scopes, req.channels, req.profile_id, req.from_page)
+        await asyncio.to_thread(_beacon_readable, sel, req)
+    except HTTPException as e:
+        return {"ok": False, "detail": e.detail, "endpoints": 0}
+    return {"ok": True, **beacon_scope.describe(sel, sel["source"])}
 
 
 @app.get("/report/beacon")

@@ -2457,7 +2457,16 @@ function setSelectedScopes(arr) {
   document.querySelectorAll('.scope-cb').forEach(cb => {
     cb.checked = (arr || []).includes(cb.value);
   });
+  publishScopes();
 }
+
+// The ticked scopes, published on every change (like the channels in
+// zassess_channels_v1) so a Beacon tab opened without this tab as its
+// opener reads what is ticked now, not the last "Save config" copy.
+function publishScopes() {
+  try { localStorage.setItem('zassess_scopes_live_v1', JSON.stringify({ scopes: getSelectedScopes() })); } catch (e) { /* storage blocked */ }
+}
+document.addEventListener('change', e => { if (e.target && e.target.classList && e.target.classList.contains('scope-cb')) publishScopes(); });
 
 // Load saved config (excluding secret)
 function loadConfig() {
@@ -2477,6 +2486,7 @@ function loadConfig() {
   } catch(e){}
 }
 loadConfig();
+publishScopes();
 
 // Dialogs must live directly under <body>. The page container and <main>
 // create stacking contexts (position:relative; z-index:1, to sit above the

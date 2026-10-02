@@ -101,8 +101,9 @@ Beacon tab, `/report/beacon`): the SDK, the ZIA API (service definition,
 API reference, help-center pages) and the Terraform provider, on a timer
 while the server runs (`DLP_CHECK_BEACON_HOURS`, default 24, 0 turns it
 off) and on demand, each run compared with the last (the last 30 are
-kept). The tab can also read every endpoint the app uses from a tenant,
-GET only, and say which ones now answer differently.
+kept). The tab can also read from a tenant the endpoints that are in scope on the
+Scope page (and nothing else), GET only, and say which ones now answer
+differently.
 
 The **Digest** (`continuous_eval.py`) reads tenants, and every read counts
 against the ZIA API rate limit, so it never runs on its own by default: it

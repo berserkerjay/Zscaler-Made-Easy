@@ -179,8 +179,8 @@ what you get, what to do next.
   zscaler/zia Terraform provider, on a timer (every 24 hours by default,
   `DLP_CHECK_BEACON_HOURS`) and on demand, with what changed since the
   last run and the last 30 runs. Optionally a read-only (GET) watch of
-  every tenant endpoint the app uses, which says which ones now answer
-  differently.
+  the tenant endpoints in scope on the Scope page (nothing else), which
+  says which ones now answer differently.
 - **Update app** — fetches the latest build of this app from GitHub,
   installs the pinned dependencies and restarts; the Branch dropdown
   tries a fix on QA or Development before it is promoted to Stable.

@@ -12,7 +12,7 @@
   <div class="rp-page">
     <header class="hero rp-hero">
       <h1><span class="accent">Beacon</span> — SDK, API and Terraform changes</h1>
-      <p>What changed upstream since the last run: the Zscaler Python SDK (new releases and whether they touch the modules this app calls), the Zscaler API (the SDK's machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now. Optionally it also reads every endpoint the app's checks use from a tenant — GET only, about one request a second — and says which ones now answer differently. Nothing is ever written to a tenant.</p>
+      <p>What changed upstream since the last run: the Zscaler Python SDK (new releases and whether they touch the modules this app calls), the Zscaler API (the SDK's machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now. Optionally it also reads, from a tenant, only the endpoints that belong to what is in scope on the Scope page — GET only, about one request a second — and says which ones now answer differently. Nothing is ever written to a tenant.</p>
       <span class="badge" id="rpMeta">Loading…</span>
     </header>
     <nav class="rp-bar" aria-label="Page actions">
@@ -48,12 +48,13 @@
           <div id="bcApi"><span class="dim">No run yet.</span></div>
 
           <h3 class="bc-h3" id="bcTenantH">Tenant API watch (optional, read-only)</h3>
-          <p class="adv-lead" id="bcTenantLead">Reads every endpoint the app's checks and features use from one tenant — GET only, about one request a second, so the full list takes two to three minutes — and records what each answered (OK, 403, 404, 429, timeout, error) and how many items. The next watch of the same tenant says which endpoints now answer differently: a 200 that became 404 is an endpoint that moved; a 200 that became 403 is a permission that was taken away. The timer never runs this; only you do, here.</p>
+          <p class="adv-lead" id="bcTenantLead">Reads from one tenant only the endpoints that belong to what is in scope on the Scope page: the scopes ticked there. For DLP, only the channels marked Zscaler are read (an alternative or unticked channel is not); another ticked scope, such as GenAI &amp; prompts or ZIA platform, reads what its checks read, including its channel checks, unless that channel is declared alternative. Every request counts against the tenant's ZIA API rate limit, so nothing else is read — GET only, about one request a second — and it records what each answered (OK, 403, 404, 429, timeout, error) and how many items. When this page cannot see the Scope page's ticks it uses the selected profile's saved scope; with every scope unticked, or nothing saved, it does not run. The next watch of the same tenant says which endpoints now answer differently (only the endpoints both watches read; a changed scope is said): a 200 that became 404 is an endpoint that moved; a 200 that became 403 is a permission that was taken away. The timer never runs this; only you do, here.</p>
           <div class="adv-actions" role="group" aria-labelledby="bcTenantH">
             <label class="df-ctl" for="bcTenant"><span class="lbl">Tenant</span></label>
             <select id="bcTenant" aria-describedby="bcTenantLead"></select>
             <button type="button" class="rp-btn" id="bcRunTenant">Run with tenant API watch</button>
           </div>
+          <p id="bcScope" class="dim" role="status" aria-live="polite">Working out what is in scope…</p>
           <div id="bcTenantBody"></div>
         </section>
 
