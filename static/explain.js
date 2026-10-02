@@ -90,9 +90,9 @@
     next: 'Approve the proposals the customer agrees with, then Preview and apply: the app re-reads the rules, shows the exact change, applies it with a read-back, and keeps a Roll back button.',
   };
   X.digest = {
-    group: 'Find the gaps', name: 'Digest — the six-hour loop', href: '/report/digest',
-    what: 'While this app\'s server is running, every six hours it re-reads the guidance sources, FP/TP detection ratio, the SaaS tenants and the packs\' drift for every tenant profile that remembers its secret, writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
-    why: 'While the server is up, nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence. For a schedule that outlives the server, use Task Scheduler or cron (the Digest tab says how).',
+    group: 'Find the gaps', name: 'Digest — the evaluation loop', href: '/report/digest',
+    what: 'When you click Run the loop now, it re-reads the guidance sources and, for every tenant profile that remembers its secret, only what that profile\'s Scope page puts in scope (FP/TP detection ratio and the ticked packs\' drift when DLP is in scope, the SaaS tenants when SaaS Security runs on Zscaler), writes a digest, and sends it by e-mail or to a Teams or Slack webhook when there is something to decide. It does not re-run the assessment checks or re-score the tenant.',
+    why: 'Nothing reads the tenant on its own: every read counts against the ZIA API rate limit, so the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS. When it is on, nobody has to remember to check. A new Zscaler or partner article, a noisy rule, a SaaS tenant that lost its authorisation or a pack the customer changed all show up as a proposal in your queue, with the evidence. For a schedule that outlives the server, use Task Scheduler or cron (the Digest tab says how).',
     when: 'Read it when it arrives; open the tab to run the loop now, to see which sources are stale, or to check what is notified where.',
     get: 'The latest digest with counts, the full text, the watched sources with their state, the SaaS capability matrix, the schedule and the notification settings.',
     next: 'Decide the new proposals in FP/TP detection ratio; a stale source or a missing notification setting is fixed in local_settings.bat.',
