@@ -598,8 +598,9 @@ its description (`[<assessor> baseline <pack> v<version>]`, or
 admins can see which policy pack version it came from and who deployed it.
 The tag names only the assessor (Scope assessment, else the saved
 profile's assessor; no brackets or line breaks, at most 40 bytes). The
-assessor's name is required: every pack push without one is refused before
-the tenant is signed in to, so no new tag says `DLP-Check`; that name is
+assessor's name is required: every pack push without one, or with the
+tool's own name in any spelling (`DLP-Check`, `dlp check`, `DLPCheck`, ...),
+is refused before the tenant is signed in to, so no new tag says `DLP-Check`; that name is
 found only in tags written by earlier deploys. Removal, export, the journey
 and the inventory recognise both this form and the older
 `[DLP-Check ...]` tag; an assessor's tag counts only for a pack in the
@@ -687,7 +688,7 @@ python pack_terraform.py zbp_enterprise_baseline --out terraform
 
 The committed workspaces name no assessor: each description's tag is
 `[${var.assessor} pack …]` and `variable "assessor"` is required (no default,
-never the tool's name), so `terraform plan` and `apply` refuse until you name
+never the tool's name: the same `(?i)dlp[\W_]*check` rule as the app and the CLI), so `terraform plan` and `apply` refuse until you name
 the assessor (`-var 'assessor=Jane Doe'`, `terraform.tfvars` or
 `TF_VAR_assessor`). To bake the name in instead, generate the workspace with
 `python pack_terraform.py <pack_id> --out <dir> --assessor "Jane Doe"`, or

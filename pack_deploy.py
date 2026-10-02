@@ -119,6 +119,12 @@ _BY_BAD = re.compile(r"[\[\]\x00-\x1f\x7f]+")
 # A name that begins like the tool's own legacy tag ("DLP-Check pack alpha")
 # would put the literal "[DLP-Check pack alpha" marker into another pack's tag.
 _BY_FORGED = re.compile(r"(?i)^dlp-check(?=\s+(?:pack|baseline)\b)")
+# The tool's own name in any spelling ("DLP-Check", "dlp check", "DLPCheck",
+# "DLP_Check", a Unicode dash) is never an assessor's name (user rule 2). One
+# rule for the API (dlp_api_server._require_assessor), the Terraform CLI and
+# the workspace's var.assessor validation (the same pattern in RE2/HCL).
+TOOL_NAME_PATTERN = r"(?i)dlp[\W_]*check"
+TOOL_NAME_RE = re.compile(TOOL_NAME_PATTERN)
 _TAG_SUFFIX = (r"(?P<suffix>(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?"
                r"(?: Terraform-managed\.?)?)")
 _TAG_VER = r"(?: v(?P<ver>[^\[\]\r\n]*))?"     # versions are free text (pack.json), spaces included
@@ -147,12 +153,18 @@ def attribution(assessor: Any) -> str:
     return s or DEFAULT_BY
 
 
+def is_tool_name(assessor: Any) -> bool:
+    """Whether a would-be assessor name names the tool (TOOL_NAME_RE)."""
+    return bool(TOOL_NAME_RE.search(" ".join(_BY_BAD.sub(" ", str(assessor or "")).split())))
+
+
 def assessor_name(assessor: Any) -> str:
     """The sanitized assessor name a record stores: attribution() of a given
-    name, or blank when none was given (every pack push then refuses;
-    a Terraform workspace takes the required `assessor` variable)."""
+    name, or blank when none was given or the name is the tool's own
+    (is_tool_name) — every pack push then refuses, and a Terraform workspace
+    takes the required `assessor` variable."""
     given = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
-    return attribution(assessor) if given else ""
+    return attribution(assessor) if given and not is_tool_name(given) else ""
 
 
 def _counts(m: Any, known: Optional[Set[str]]) -> bool:
