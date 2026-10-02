@@ -685,6 +685,15 @@ python pack_terraform.py --out terraform          # all packs
 python pack_terraform.py zbp_enterprise_baseline --out terraform
 ```
 
+The committed workspaces name no assessor: each description's tag is
+`[${var.assessor} pack …]` and `variable "assessor"` is required (no default,
+never the tool's name), so `terraform plan` and `apply` refuse until you name
+the assessor (`-var 'assessor=Jane Doe'`, `terraform.tfvars` or
+`TF_VAR_assessor`). To bake the name in instead, generate the workspace with
+`python pack_terraform.py <pack_id> --out <dir> --assessor "Jane Doe"`, or
+download it from the app with the assessor named. Nothing a workspace pushes
+is tagged DLP-Check.
+
 **Gap mode (assess, then close the gap with Terraform).** From Deploy
 Studio, run preflight and click *Export Terraform*, or call the API with
 tenant credentials:

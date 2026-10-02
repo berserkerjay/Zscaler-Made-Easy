@@ -149,7 +149,8 @@ def attribution(assessor: Any) -> str:
 
 def assessor_name(assessor: Any) -> str:
     """The sanitized assessor name a record stores: attribution() of a given
-    name, or blank when none was given (the tag then says DLP-Check)."""
+    name, or blank when none was given (every pack push then refuses;
+    a Terraform workspace takes the required `assessor` variable)."""
     given = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
     return attribution(assessor) if given else ""
 
