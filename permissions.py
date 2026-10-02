@@ -146,8 +146,9 @@ SCORE_FORMULA = "configured ÷ (configured + action required + needs review)"
 
 def classify(result: Dict[str, Any]) -> str:
     """The class of one check result (CLASSES)."""
-    # A check whose channel the customer declared covered elsewhere (the
-    # Scope page, channel_scope) was never run: not in scope, outside the score.
+    # A check whose channel the customer declared covered elsewhere or left
+    # as a gap (the Scope page, channel_scope) was never run: not in scope,
+    # outside the score.
     if result.get("out_of_scope"):
         return "not_in_scope"
     st = str(result.get("status") or "").upper()

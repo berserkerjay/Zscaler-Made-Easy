@@ -153,7 +153,7 @@ _BP_FALLBACKS = [
      "Categorize internal-approved AI services with explicit URL/cloud-app "
      "rules. Apply DLP engines (PII, IP, source code) to every outbound "
      "prompt. Block unsanctioned GenAI tools rather than alerting only.",
-     "https://help.zscaler.com/zia/about-ai-ml-controls"),
+     "https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control"),
 
     ("automation", "API client roles should be scoped per use case "
      "(read-only auditor vs IaC executor). Audit log retention should be "
@@ -194,7 +194,7 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
             return f"{text} Reference: {url}"
     return (
         "Apply the Zscaler-recommended baseline for this control. Reference "
-        "https://help.zscaler.com/zscaler-deployments-operation for the "
+        "https://help.zscaler.com/zscaler-deployments-operations for the "
         "deployment-and-operations guide covering this feature area."
     )
 
@@ -661,7 +661,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                             f"{cov['not_permitted']} could not because the API client's role does not include their feature. ")
         if cov.get("not_in_scope"):
             summary.add_run(f"{cov['not_in_scope']} checks are not in scope: their channel is covered by an alternative "
-                            f"solution, as declared on the Scope page, so the tenant was not read for them. ")
+                            f"solution or was left as a gap on the Scope page, so the tenant was not read for them. ")
 
     summary2 = doc.add_paragraph()
     summary2.add_run("Configured correctly: ").bold = True
@@ -679,8 +679,9 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
         doc.add_heading("Channel Coverage", level=2)
         doc.add_paragraph(str(chcov.get("note") or ""))
         doc.add_paragraph("A channel covered by an alternative solution is not assessed here: its checks are reported "
-                          "as Not in scope and left out of the score. A gap is a channel nothing covers; its checks ran "
-                          "and their findings are the evidence.")
+                          "as Not in scope and left out of the score. A gap is a channel nothing covers and that was not put "
+                          "in scope: its checks were not run either (the tenant was not read for them) and are reported "
+                          "the same way. Mark it Zscaler on the Scope page to assess it.")
         ch_table = doc.add_table(rows=1, cols=4)
         ch_table.style = _safe_style(doc, ["Light Grid Accent 1", "Light List Accent 1", "Light Grid", "Table Grid"])
         for i, h in enumerate(["Channel", "Coverage", "Checks not in scope", "Note"]):
@@ -692,7 +693,7 @@ def generate_report(results, cfg, output_path, compute_fn=None, maturity_fn=None
                 cells = ch_table.add_row().cells
                 cells[0].text = str(row.get("name") or row.get("id") or "")
                 cells[1].text = label
-                cells[2].text = str(row.get("checks_not_in_scope") or 0) if key == "alternative" else "—"
+                cells[2].text = str(row.get("checks_not_in_scope") or 0) if key in ("alternative", "gaps") else "—"
                 cells[3].text = str(row.get("note") or "")
         doc.add_paragraph()
 

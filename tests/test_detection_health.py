@@ -157,7 +157,8 @@ def test_detection_health_endpoints(monkeypatch):
     incidents = [_inc(f"i{i}", "Z-US PII-Monitor", "US PII", ["SSN - High"], days_ago=1, resolution="False Positive") for i in range(12)]
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: _client(incidents))
     c = TestClient(srv.app)
-    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "days": 14}
+    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "days": 14,
+            "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}}   # what the Scope page puts in scope
     r = c.post("/api/detection-health", json=body)
     assert r.status_code == 200, r.text
     rep = r.json()
@@ -166,7 +167,8 @@ def test_detection_health_endpoints(monkeypatch):
     md = c.get(f"/api/detection-health/export/{rep['report_id']}?format=markdown")
     assert md.status_code == 200 and "FP/TP Detection Ratio" in md.text
     assert c.get("/report/health").status_code == 200
-    assert c.get("/api/detection-health/schedule").json()["interval_seconds"] == 6 * 3600
+    sched = c.get("/api/detection-health/schedule").json()   # off unless DLP_CHECK_CONTINUOUS_EVAL_HOURS opts in
+    assert sched["enabled"] is False and sched["interval_seconds"] is None and "DLP_CHECK_CONTINUOUS_EVAL_HOURS" in sched["setting"]
 
 
 def test_noisy_dictionary_is_explained_with_evidence_pattern_and_definition():
@@ -313,7 +315,8 @@ def test_the_live_feed_endpoint_polls_and_tells_the_truth_about_coverage(monkeyp
     c = _client([_inc_at("e1", "Cards-Block", real_now - timedelta(seconds=20))])
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: c)
     t = TestClient(srv.app)
-    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret",
+             "scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}}   # what the Scope page puts in scope
     r = t.post("/api/live-feed", json=creds)
     assert r.status_code == 200, r.text
     d = r.json()

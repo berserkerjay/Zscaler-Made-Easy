@@ -229,7 +229,7 @@ def test_job_start_endpoints_carry_the_actor_and_no_secret(monkeypatch, tmp_path
     monkeypatch.setattr(srv, "writes_enabled", lambda: True)
     monkeypatch.setattr(security, "current_actor", lambda request: "alice@example.com", raising=False)
     c = TestClient(srv.app)
-    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "assessor": "Jane Doe"}
     plan = c.post("/api/dlp-packs/preflight", json=dict(creds, pack_ids=["zbp_enterprise_baseline"])).json()
     r = c.post("/api/dlp-packs/apply/start", json=dict(creds, pack_ids=["zbp_enterprise_baseline"], plan_hash=plan["plan_hash"], confirm=True, verify=False))
     assert r.status_code == 200, r.text
@@ -245,7 +245,7 @@ def test_job_start_endpoints_carry_the_actor_and_no_secret(monkeypatch, tmp_path
     assert all(set(w) <= {"at", "event", "job_id", "tenant", "action", "object_type", "channel", "id", "name", "result", "http_status",
                           "error", "run", "actor"} for w in _entries("object_write")), "no request body in an object entry"
     # The Terraform hand-off writes nothing to the tenant and still leaves its entry.
-    t = c.post("/api/dlp-packs/terraform/start", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "static"})
+    t = c.post("/api/dlp-packs/terraform/start", json={"pack_ids": ["zbp_enterprise_baseline"], "mode": "static", "assessor": "Jane Doe"})
     tjob = pack_jobs.get(t.json()["job_id"])
     while tjob.status == pack_jobs.RUNNING and time.time() < deadline:
         time.sleep(0.02)

@@ -22,6 +22,7 @@ inside the job adds what it knows through note() (pack_ops.audited_run).
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 import uuid
@@ -108,18 +109,79 @@ def write_audit(event: str, **fields: Any) -> None:
         logger.error("AUDIT WRITE FAILED: the %s entry was not written: %s", event, f"{type(e).__name__}: {str(e)[:200]}")
 
 
-def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None) -> Job:
+# A Stop pressed before the start request has answered (it signs in to the
+# tenant first, which takes seconds) has no job id to cancel yet. The page
+# names each start with a random start token (the X-Start-Token header) and
+# sends that token with such an early Stop; the job it names then starts
+# with its cancel already set, so it reads and writes nothing, and a job
+# that already started is cancelled at once. Early stops are kept for
+# PENDING_STOP_SECONDS and at most MAX_PENDING_STOPS of them.
+PENDING_STOP_SECONDS = 600.0
+MAX_PENDING_STOPS = 256
+_START_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+_pending_stops: Dict[str, float] = {}     # start token -> when Stop was pressed
+_token_jobs: Dict[str, str] = {}          # start token -> the job it started
+
+STOPPED_BEFORE_START = ("Stop requested before the run started: the job begins stopped, "
+                        "so nothing is read from or written to the tenant.")
+
+
+def valid_start_token(token: Any) -> Optional[str]:
+    """The token when it is a well-formed start token, else None."""
+    t = str(token or "").strip()
+    return t if _START_TOKEN_RE.match(t) else None
+
+
+def _prune_tokens(now: float) -> None:
+    for k in [k for k, at in _pending_stops.items() if now - at > PENDING_STOP_SECONDS]:
+        del _pending_stops[k]
+    if len(_token_jobs) > 4 * MAX_PENDING_STOPS:
+        for k in [k for k, jid in _token_jobs.items() if jid not in _jobs]:
+            del _token_jobs[k]
+
+
+def stop_before_start(token: Any) -> Dict[str, Any]:
+    """Stop for a run whose start request has not answered yet. When its
+    job already exists it is cancelled now; otherwise the stop waits for
+    the job, which then starts stopped. Returns what was done."""
+    t = valid_start_token(token)
+    if t is None:
+        raise ValueError("start_token must be 8-64 letters, digits, '-' or '_'.")
+    now = time.time()
+    with _registry_lock:
+        _prune_tokens(now)
+        job_id = _token_jobs.get(t)
+        if job_id is None:
+            if t not in _pending_stops and len(_pending_stops) >= MAX_PENDING_STOPS:
+                oldest = min(_pending_stops, key=_pending_stops.get)
+                del _pending_stops[oldest]
+            _pending_stops[t] = now
+    if job_id is not None:
+        return {"job_id": job_id, "cancelled": cancel(job_id), "pending": False}
+    return {"job_id": None, "cancelled": True, "pending": True}
+
+
+def start(kind: str, fn: JobFn, *, label: str = "", actor: Optional[str] = None, start_token: Any = None) -> Job:
     """Run `fn(log, cancel)` in a daemon thread and return the job at once.
     `fn` returns the result dict; an exception becomes status `failed`
     with the message. A `cancel` set before `fn` returns is reported as
     `cancelled` when the function honoured it (its result says `stopped`).
     `actor` is who asked for the job, for its audit entry. That entry is
     written before the final status is published, so a poller that sees
-    the job end also finds it in the audit log."""
+    the job end also finds it in the audit log. `start_token` is the
+    page's name for this start: a Stop sent for it before the job existed
+    (stop_before_start) makes the job start with its cancel set."""
     prune()
     job = Job(id=uuid.uuid4().hex[:12], kind=kind, label=label, actor=actor or None)
+    token = valid_start_token(start_token)
     with _registry_lock:
         _jobs[job.id] = job
+        if token is not None:
+            _prune_tokens(time.time())
+            _token_jobs[token] = job.id
+            if _pending_stops.pop(token, None) is not None:
+                job.cancel.set()
+                job.log(STOPPED_BEFORE_START)
 
     def _run() -> None:
         final = FAILED
@@ -189,7 +251,12 @@ def cancel(job_id: str) -> bool:
     if job is None or job.status != RUNNING:
         return False
     job.cancel.set()
-    job.log("Stop requested: the write in flight finishes, nothing more is sent; activation and the read-back still run.")
+    if job.kind == "path":   # a read-only analysis: there is no write, activation or read-back
+        job.log("Stop requested: nothing more is read from the tenant, also while waiting for ZIA's rate limit; the analysis ends as stopped with no partial result.")
+    elif job.kind == "export":   # read-only: nothing is written or activated
+        job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
+    else:
+        job.log("Stop requested: the write in flight finishes, nothing more is sent; activation and the read-back still run.")
     return True
 
 

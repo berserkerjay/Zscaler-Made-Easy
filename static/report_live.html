@@ -54,6 +54,12 @@
     const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
     const POLL_MS = 15000;
     let running = false, timer = null, since = '', stats = {}, rows = [], errShown = false;
+    // Each Start opens a new polling chain; Stop ends it. A chain whose
+    // generation is no longer current never polls or re-arms again, so a
+    // Stop (or Stop then Start) while a poll is answering leaves at most
+    // one chain, and none after Stop.
+    let gen = 0;
+    const isCurrent = my => running && gen === my;
 
     document.getElementById('lfLive').hidden = !(window.opener && !window.opener.closed);
 
@@ -74,6 +80,38 @@
       if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
       if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
       return {};
+    }
+
+    // What is in scope: the Scope page's selection. The feed reads Workflow
+    // Automation's incidents only when Workflow Automation is marked Zscaler
+    // there, and the rule actions only of the DLP channels marked Zscaler.
+    // Read live from the assessment tab that opened this one, else from the
+    // ticks the Scope page publishes (localStorage); without either nothing
+    // is sent and the server uses the chosen profile's saved selection, or
+    // refuses. Only each channel's choice is sent, never its note.
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const live = readJson('zassess_scopes_live_v1', null);
+        scopes = live && Array.isArray(live.scopes) ? live.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
     }
 
     const CHAN = { web: 'Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security API', email: 'Email DLP', other: 'Other' };
@@ -114,14 +152,22 @@
         ${errShown ? `<div class="df-hint lf-err">${E(errShown)}</div>` : ''}`;
     }
 
-    async function poll() {
+    async function poll(my) {
+      if (!isCurrent(my)) return;
       let d;
       try {
         const r = await fetch('/api/live-feed', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Object.assign({}, credBody(), { since, stats })) });
+          body: JSON.stringify(Object.assign({}, credBody(), scopeSelection(), { since, stats })) });
         d = await r.json().catch(() => ({}));
+        if (!isCurrent(my)) return;   // stopped (or restarted) while this poll was answering
+        if (r.status === 400) {
+          // Nothing the feed reads is in scope: polling again would only be refused again.
+          const why = (d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`;
+          stop(); errShown = String(why); render(); say(String(why)); return;
+        }
         if (!r.ok) throw new Error((d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`);
       } catch (e) {
+        if (!isCurrent(my)) return;
         errShown = `Poll failed, retrying: ${e.message}`;
         render(); return;
       }
@@ -133,19 +179,21 @@
       render(freshIds);
       if (d.incidents.length) say(`${d.incidents.length} new incident${d.incidents.length === 1 ? '' : 's'}.`);
     }
-    function schedule() { timer = setTimeout(async () => { await poll(); if (running) schedule(); }, POLL_MS); }
+    function schedule(my) { timer = setTimeout(async () => { if (!isCurrent(my)) return; await poll(my); if (isCurrent(my)) schedule(my); }, POLL_MS); }
     async function start() {
       if (running) return;
       running = true;
+      const my = ++gen;
       document.getElementById('lfStart').hidden = true;
       document.getElementById('lfStop').hidden = false;
       say('Live feed started; polling every 15 seconds.');
-      await poll();
-      schedule();
+      await poll(my);
+      if (isCurrent(my)) schedule(my);   // Stop (or a refusal, or Stop then Start) during the first poll: no further poll from this chain
     }
     function stop() {
       running = false;
-      clearTimeout(timer);
+      gen++;
+      clearTimeout(timer); timer = null;
       document.getElementById('lfStart').hidden = false;
       document.getElementById('lfStop').hidden = true;
       say('Live feed stopped.');

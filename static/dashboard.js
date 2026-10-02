@@ -88,16 +88,16 @@
   function signedIn() {
     const c = window.GD && GD.conn;
     if (!c || !c.ok) return false;
+    // The guide's own key: for the classic sign-in a hash of cloud and login, never the login itself.
+    if (typeof _gdIdent === 'function') return !c.vd || c.vd === _gdIdent();
     const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
-    const ident = (($(legacy ? 'zuser' : 'vd') || {}).value || '').trim();
-    return !c.vd || c.vd === ident;
+    return !legacy && (!c.vd || c.vd === (($('vd') || {}).value || '').trim());
   }
   function note(text, kind) {
     let n = $('dbRunNote');
     if (!n) { n = document.createElement('div'); n.id = 'dbRunNote'; n.className = 'db-note'; n.setAttribute('role', 'status'); const sc = aside.querySelector('.db-item[data-db="scope"]'); sc.insertAdjacentElement('afterend', n); }
     n.textContent = text || ''; n.hidden = !text; n.className = 'db-note' + (kind ? ' ' + kind : '');
   }
-  let pendingRun = false;
   function goConnect(first) {
     hideScopeView();   // the Scope assessment page steps aside for the sign-in form
     if (typeof _gdGoConfig === 'function') _gdGoConfig(); else if (typeof _stepGo === 'function') _stepGo('configure');
@@ -105,10 +105,10 @@
     if (first) setTimeout(() => { const el = $(first); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); } }, 450);
   }
   function startRun() {
-    pendingRun = false; note('');
+    note('');
     if (typeof runAssessment !== 'function') return;
     const btn = $('runBtn');
-    if (btn && btn.disabled) return;   // already running (the Authenticate wrapper started it)
+    if (btn && btn.disabled) return;   // already running
     runAssessment();
     // The run happens on the main page: the Scope assessment page steps
     // aside and the progress card (then the results) is where you land.
@@ -127,29 +127,23 @@
       goConnect(report[0]);
       return;
     }
+    // Signing in never starts an assessment: every read counts against the
+    // tenant's ZIA API rate limit, so the run starts only from this click,
+    // once signed in. Signed out, say so and go to the sign-in form.
     if (missing.length) {
-      pendingRun = true;
-      note(`Sign in first: fill in ${missing.map(id => FIELD_LABELS[id] || id).join(', ')} and click Authenticate. The assessment starts by itself right after.`, 'warn');
-      say('Sign in first. Fill in the tenant details and click Authenticate; the assessment starts right after.');
+      note(`Sign in first: fill in ${missing.map(id => FIELD_LABELS[id] || id).join(', ')} and click Authenticate, then click Run assessment again.`, 'warn');
+      say('Sign in first. Fill in the tenant details and click Authenticate, then click Run assessment again.');
       goConnect(missing[0]);
       return;
     }
     if (!signedIn()) {
-      pendingRun = true;
-      note('Authenticating with the tenant, then running the assessment…');
-      setCurrent('configure');
-      if (typeof authenticateTenant === 'function') await authenticateTenant();
-      if (!pendingRun) return;          // the Authenticate wrapper already started the run
-      if (signedIn()) { startRun(); return; }
-      note('The tenant did not accept the sign-in. Fix the details in Connect to the tenant and click Authenticate; the assessment starts right after.', 'warn');
-      goConnect();
+      note('Sign in first: click Authenticate in Connect to the tenant, then click Run assessment again. Signing in reads nothing from the tenant.', 'warn');
+      say('Sign in first. Click Authenticate, then click Run assessment again.');
+      goConnect('authBtn');   // focus lands on the button just named, never on <body>
       return;
     }
     startRun();
   }
-  // A successful Authenticate (the guide's button or the form's) starts a queued run.
-  const origTest = window._gdTest;
-  if (typeof origTest === 'function') window._gdTest = async function () { const r = await origTest.apply(this, arguments); if (pendingRun && signedIn()) startRun(); return r; };
 
   // ── Tenant configuration: the "Start here" guide with the tenant
   // details form is a sign-in surface, not part of the dashboard. Hidden
@@ -194,6 +188,14 @@
   // run always behaves the same way.
   window.__dbRunFromSidebar = runFromSidebar;
   window.__dbNote = note;
+  // A successful Authenticate replaces a "Sign in first" warning (guide.js
+  // _gdAuthVerdict calls this); it never starts a run.
+  window.__dbSignedIn = function () {
+    const n = $('dbRunNote');
+    // Only a "Sign in first" warning is answered by signing in; any other
+    // (Report details to fill in, a refused run) still stands.
+    if (n && !n.hidden && /^Sign in first/.test(n.textContent || '')) note('Signed in. Click Run assessment to assess what is in scope.');
+  };
 
   // ── Scope: one combined page for everything that decides what the
   // assessment covers — which Zscaler data-security channels the
@@ -256,14 +258,14 @@
             <button type="button" class="rp-btn primary" id="dbChAdd">+ Add channel</button>
           </div>
         </div>
-        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it. <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap; the assessment still reads the tenant and the findings show what is missing. The declaration is saved with the tenant profile and printed in the report.</p>
+        <p class="db-scope-p">Which Zscaler data security channels the customer owns. <strong>Zscaler</strong>: the assessment reads it (a check that also reads another channel's rules, such as a GenAI check reading the Web DLP rules, runs only when that channel is ticked too). <strong>Alternative</strong>: another product covers it, so its checks are reported as <em>Not in scope</em> and left out of the score (note the vendor with ✎). <strong>Unticked</strong>: a gap, not in scope; the tenant is not read for it and its checks are reported as <em>Not in scope</em> (the report lists it as a gap). The declaration is saved with the tenant profile and printed in the report.</p>
         <div id="dbChList" class="db-ch-list"></div>
       </div>
       <div class="card db-scope-section" id="dbScopeAssessCard"><div id="dbScopeAssessBody"></div></div>
       <div class="card db-scope-section" id="dbScopeFwCard"><div id="dbScopeFwBody"></div></div>
       <div class="db-scope-foot">
         <button type="button" class="rp-btn primary" id="dbScopeRun">▶ Run assessment</button>
-        <span class="db-scope-p">Signs in first when needed. The assessment runs on this page; the results open on the Dashboard.</span>
+        <span class="db-scope-p">Authenticate first (it only signs in). The assessment reads only what is in scope here, runs on this page, and the results open on the Dashboard.</span>
       </div>`;
     const main = document.getElementById('main-content');
     main.insertBefore(sec, main.firstChild);
@@ -342,8 +344,9 @@
   }
   // What the assessment and the tenant profile read: every channel with its
   // choice (zscaler / alternative / gap), note and name (channel_scope.py
-  // applies it: an "alternative" channel's checks are reported as not in
-  // scope). A profile's saved declaration replaces this browser's copy.
+  // applies it: only a Zscaler channel is read; an alternative's or a gap's
+  // checks are reported as not in scope). A profile's saved declaration
+  // replaces this browser's copy.
   window.__dbChannelScope = function () {
     const out = {};
     allChannels().forEach(c => { const st = channelState[c.id] || {}; out[c.id] = { choice: st.choice === 'zscaler' || st.choice === 'alternative' ? st.choice : 'gap', note: st.note || '', name: c.name }; });
@@ -448,10 +451,16 @@
 
   // Current implementation: tenant from the form / profile, build from /api/health.
   function refreshCurrent() {
-    const vd = ($('vd') || {}).value || '';
-    const cloud = ($('cloud') || {}).value || '';
+    // Only the chosen sign-in names the tenant: a classic-API sign-in shows
+    // "classic API · <cloud>", never a vanity domain left in the hidden
+    // OneAPI field nor the admin login (user rule 3).
+    const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
+    const cloud = (($('cloud') || {}).value || '').trim();
+    const vd = legacy ? '' : (($('vd') || {}).value || '').trim();
+    const user = legacy ? (($('zuser') || {}).value || '').trim() : '';
     const prof = (window.GD && GD.profile) ? GD.profile : '';
-    const t = $('dbCurTenant'); if (t) { t.textContent = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
+    const name = vd ? `${vd}${cloud ? ' · ' + cloud : ''}` : (user ? `classic API${cloud ? ' · ' + cloud : ''}` : '');
+    const t = $('dbCurTenant'); if (t) { t.textContent = name || (prof ? `profile ${prof}` : 'not connected'); t.title = t.textContent; }
     const s = $('dbCurSaved'); if (s) s.textContent = prof ? 'Profile selected' : 'Never';
     // The Scope assessment page's Run button follows the real run button.
     const run = $('dbScopeRun'), btn = $('runBtn');
@@ -651,8 +660,10 @@
     const cc = data.channel_coverage;
     if (cc && cc.declared) {
       const alt = cc.alternative || [], gaps = cc.gaps || [];
-      const altTxt = alt.length ? `${alt.length} covered elsewhere (${alt.map(a => E(a.name) + (a.note ? ` — ${E(a.note)}` : '')).join(', ')}; ${cc.not_in_scope || 0} check${cc.not_in_scope === 1 ? '' : 's'} not in scope)` : '';
-      const gapTxt = gaps.length ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} (${gaps.map(g => E(g.name)).join(', ')})` : 'no gaps';
+      const nOut = rows => rows.reduce((n, r) => n + (r.checks_not_in_scope || 0), 0);
+      const nAlt = nOut(alt), nGap = nOut(gaps);
+      const altTxt = alt.length ? `${alt.length} covered elsewhere (${alt.map(a => E(a.name) + (a.note ? ` — ${E(a.note)}` : '')).join(', ')}; ${nAlt} check${nAlt === 1 ? '' : 's'} not in scope)` : '';
+      const gapTxt = gaps.length ? `${gaps.length} gap${gaps.length === 1 ? '' : 's'} (${gaps.map(g => E(g.name)).join(', ')}${nGap ? `; ${nGap} check${nGap === 1 ? '' : 's'} not in scope, not read` : ''})` : 'no gaps';
       items.push([gaps.length ? 'warn' : 'ok', '🎯', `<strong>Channels: ${(cc.zscaler || []).length} on Zscaler</strong>${altTxt ? `, ${altTxt}` : ''}, ${gapTxt}. Declared on the Scope page.`]);
     }
     if (!items.length) items.push(['ok', '✅', `<strong>${passes.length} of ${checks.length} checks configured.</strong> Nothing needs action.`]);
@@ -737,12 +748,31 @@
   // While a run is in flight the tiles say so — the Completion tile follows
   // the same progress events as the progress card (index.html handleEvent),
   // and a previous score stays visible only labelled as previous.
+  let beforeRun = null;   // the tiles as they were, put back when the server refuses the run
   window.__dbRunStarted = function () {
-    const cp = $('dbCompPct'), ct = $('dbCompTxt'); if (cp) cp.textContent = '0%'; if (ct) ct.textContent = 'starting…';
+    const cp = $('dbCompPct'), ct = $('dbCompTxt'), arc = $('dbCompArc');
+    beforeRun = { cp: cp ? cp.textContent : null, ct: ct ? ct.textContent : null, sm: ($('scoreMeta') || {}).textContent,
+                  arc: arc ? arc.style.strokeDashoffset : null };
+    if (cp) cp.textContent = '0%'; if (ct) ct.textContent = 'starting…';
     ring('dbCompArc', 0);
     const sm = $('scoreMeta'), sn = $('scoreNum');
     if (sm) sm.textContent = (sn && sn.textContent !== '—') ? 'Assessing now · previous result shown until it finishes' : 'Assessing now';
     const f = $('dbFooter'); if (f) f.hidden = true; document.body.classList.remove('db-has-footer');
+  };
+  // The server refused the run (nothing to read in the chosen scope, a
+  // channel to tick): the tiles go back as they were, and the reason is
+  // shown on the Scope page, where the run was started and the fix is made.
+  window.__dbRunRefused = function (reason) {
+    const b = beforeRun || {}; beforeRun = null;
+    const cp = $('dbCompPct'), ct = $('dbCompTxt'), sm = $('scoreMeta'), arc = $('dbCompArc');
+    if (cp && b.cp !== null && b.cp !== undefined) cp.textContent = b.cp;
+    if (ct && b.ct !== null && b.ct !== undefined) ct.textContent = b.ct;
+    if (sm && b.sm !== undefined) sm.textContent = b.sm || '';
+    if (arc && b.arc !== null && b.arc !== undefined) arc.style.strokeDashoffset = b.arc;
+    showScopeView(); setCurrent('scope');
+    note(reason, 'warn');
+    say(reason);
+    const run = $('dbScopeRun'); if (run) { run.scrollIntoView({ behavior: 'smooth', block: 'center' }); run.focus(); }
   };
   window.__dbProgress = function (evt) {
     if (!evt || evt.total === undefined || evt.completed === undefined) return;

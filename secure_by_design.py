@@ -321,7 +321,7 @@ def evaluate(app: Any = None) -> Dict[str, Any]:
         checks.append(_check("pins", "Dependencies are pinned by hash and installed hash-verified", P_LEAD, "patches", "pass",
                              f"requirements.lock carries {hashes} hashes; the installer, the updater and the container install with --require-hashes.", "Nothing to do."))
     else:
-        checks.append(_check("pins", "Dependencies are pinned by hash and installed hash-verified", P_LEAD, "patches", "fail", "No requirements.lock with hashes.", "Generate the lock with pip-compile --generate-hashes."))
+        checks.append(_check("pins", "Dependencies are pinned by hash and installed hash-verified", P_LEAD, "patches", "fail", "No requirements.lock with hashes.", "Generate the lock with make lock (uv pip compile --universal --generate-hashes)."))
 
     ci = _read(os.path.join(APP_DIR, ".github", "workflows", "tests.yml"))
     scans = [t for t, needle in (("pip-audit", "pip-audit"), ("Trivy image scan", "trivy"), ("CycloneDX SBOM", "cyclonedx")) if needle in ci]

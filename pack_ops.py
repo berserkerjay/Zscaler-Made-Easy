@@ -471,28 +471,55 @@ def call(fn: Callable[..., Any], *args: Any, op: str = "write", kind: str = "", 
     there after that stops the run. Outside a run (a proposal's single
     field change) nothing is activated. Every other answer is returned
     as-is. Exceptions become a failed Outcome, never a crash."""
+    import zia_rate
     _log = log or (lambda m: None)
     kwargs = dict(kw or {})
-    halted = _stopped_now()
-    if halted:
+
+    def not_attempted(halted: str) -> Outcome:
         if halted == CANCELLED_REASON and not getattr(_run, "announced", False):
             _run.announced = True
             _log(f"STOPPED — nothing more is written. {halted}")
         return Outcome(False, error=f"not attempted: {halted}", code=STOPPED)
 
+    halted = _stopped_now()
+    if halted:
+        return not_attempted(halted)
+
     attempts = 0
+    # Inside a run, Stop (or a stop for a fatal refusal) also ends a wait
+    # for ZIA's rate limit, and a request the SDK's paced session would
+    # send is not sent (zia_rate.Cancelled): nothing goes out after Stop.
+    hook = (lambda: _stopped_now() is not None) if in_run() else None
 
     def once() -> Outcome:
         nonlocal attempts
+        halted = _stopped_now()   # also after a retry's backoff: Stop sends no retry
+        if halted:
+            out = not_attempted(halted)
+            out.attempts = attempts
+            return out
         attempts += 1
-        if op != "read":
-            import zia_rate
-            zia_rate.wait(_METHOD.get(op, "POST"), channel=channel, kind=kind, log=_log, what=f"[{kind or op}] {name}")
         try:
-            out = normalize(fn(*args, **kwargs))
-        except Exception as e:  # noqa: BLE001 — one object never stops the run
-            msg = f"{type(e).__name__}: {e}"[:300]
-            out = Outcome(False, error=msg, transient=is_transient(msg))
+            with zia_rate.stopping_on(hook):
+                if op != "read":
+                    zia_rate.wait(_METHOD.get(op, "POST"), channel=channel, kind=kind, log=_log, what=f"[{kind or op}] {name}")
+                halted = _stopped_now()
+                if halted:
+                    raise zia_rate.Cancelled(halted)
+                try:
+                    out = normalize(fn(*args, **kwargs))
+                except zia_rate.Cancelled:
+                    raise
+                except Exception as e:  # noqa: BLE001 — one object never stops the run
+                    msg = f"{type(e).__name__}: {e}"[:300]
+                    out = Outcome(False, error=msg, transient=is_transient(msg))
+        except zia_rate.Cancelled:
+            out = None
+        # The SDK turns an exception from its session into an error answer:
+        # a request its paced session refused to send after Stop is STOPPED too.
+        if out is None or (not out.ok and in_run() and zia_rate.is_cancelled(out.error) and _stopped_now()):
+            attempts -= 1   # never sent
+            out = not_attempted(_stopped_now() or CANCELLED_REASON)
         out.attempts = attempts
         return out
 
@@ -1023,16 +1050,46 @@ def activate_once(zia, log: Optional[Callable[[str], None]] = None) -> Dict[str,
     completely reset and tries again, up to RATE_WINDOWS times."""
     import zia_rate
     _log = log or (lambda m: None)
-    act = pc.activate(zia)
+    earlier = _stopped_now()
+    if earlier:
+        # Deliberate: what was written before the run stopped is activated
+        # once, so it is live and recorded. Nothing new is written, and a
+        # refused activation is not sent again.
+        _log(f"The run stopped: {earlier} Activating what was written before Stop, once, so it is live; nothing else is sent.")
+        return pc.activate(zia)
+    act = _activate_unless_stopped(zia, _log)
     for window in range(1, RATE_WINDOWS + 1):
-        if act.get("activated") or not is_rate_refusal(Outcome(False, error=str(act.get("error") or ""))):
+        if act.get("activated") or act.get("stopped") or not is_rate_refusal(Outcome(False, error=str(act.get("error") or ""))):
             break
         secs = zia_rate.full_reset("activate")
         zia_rate.hold(secs)
         _log(f"ZIA refused the activation for its rate ('{act.get('error')}'); waiting until the activation limit has completely "
              f"reset: {_human_secs(secs)}, then activating again ({window} of {RATE_WINDOWS}).")
         _wait_out(secs)
-        act = pc.activate(zia)
+        if _stopped_now():
+            _log(ACTIVATION_STOPPED)
+            return dict(act, stopped=True)
+        act = _activate_unless_stopped(zia, _log)
+    return act
+
+
+ACTIVATION_STOPPED = ("You clicked Stop while the activation waited for ZIA's rate limit, so it was not sent. What was written stays "
+                      "pending in ZIA until it is activated: run again, or activate in the ZIA Admin Portal.")
+
+
+def _activate_unless_stopped(zia, log: Callable[[str], None]) -> Dict[str, Any]:
+    """pc.activate, unless the run is stopped before it goes out (also in
+    the middle of its wait for ZIA's activation limit): then nothing is sent."""
+    import zia_rate
+    hook = (lambda: _stopped_now() is not None) if in_run() else None
+    try:
+        with zia_rate.stopping_on(hook):
+            act = pc.activate(zia)
+    except zia_rate.Cancelled as e:
+        act = {"activated": False, "status": None, "error": str(e)}
+    if not act.get("activated") and zia_rate.is_cancelled(act.get("error")) and _stopped_now():
+        log(ACTIVATION_STOPPED)
+        act = dict(act, stopped=True, error=f"not sent: {ACTIVATION_STOPPED}")
     return act
 
 

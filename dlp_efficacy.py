@@ -223,7 +223,8 @@ def _score_dictionary(
         "confidence": confidence,
         "min_match_count": min_match,
         "orphan_engine": did is not None and did not in engine_refs,
-        "orphan_rule": did is not None and did not in rule_reachable,
+        # None when the Web DLP rules were not read (not in scope): unknown, never "orphan".
+        "orphan_rule": (did is not None and did not in rule_reachable) if rule_reachable is not None else None,
     }
 
     # Predefined dictionaries are curated by Zscaler — don't penalize.
@@ -452,7 +453,7 @@ def _score_engine(
         "expression": expr[:300],
         "dictionary_count": len(dict_ids),
         "dictionary_ids": dict_ids,
-        "orphan_rule": eid is not None and eid not in rule_refs,
+        "orphan_rule": (eid is not None and eid not in rule_refs) if rule_refs is not None else None,
     }
 
     if not _is_custom_engine(e):
@@ -597,8 +598,16 @@ def _score_engine(
 
 # ─── Public API ──────────────────────────────────────────────────
 
-def analyze(client) -> Dict[str, Any]:
+RULES_NOT_IN_SCOPE = ("Not in scope: Inline Web DLP is not marked Zscaler on the Scope page, so the Web DLP rules "
+                     "were not read and nothing is reported as unused by rules.")
+
+
+def analyze(client, read_rules: bool = True) -> Dict[str, Any]:
     """Run the full static efficacy analysis against a tenant.
+
+    `read_rules` False (Inline Web DLP not on Zscaler on the Scope page):
+    /zia/webDlpRules is not read; the rule counts and the "unused by
+    rules" findings are None, and `rules_not_in_scope` says why.
 
     Returns:
       {
@@ -611,7 +620,7 @@ def analyze(client) -> Dict[str, Any]:
     """
     dicts = _fetch_dictionaries(client)
     engines = _fetch_engines(client)
-    rules = _fetch_rules(client)
+    rules = _fetch_rules(client) if read_rules else []
 
     # Build reference graph
     engine_dict_refs: Set[int] = set()
@@ -630,7 +639,7 @@ def analyze(client) -> Dict[str, Any]:
 
     # Dicts reachable through an engine that a rule uses
     rule_reachable_dicts: Set[int] = set()
-    for e in engines:
+    for e in (engines if read_rules else []):
         eid = _safe_int(e.get("id"))
         if eid is None or eid not in rule_engine_refs:
             continue
@@ -646,10 +655,10 @@ def analyze(client) -> Dict[str, Any]:
             dict_by_id[did] = d
 
     dict_scores = [
-        _score_dictionary(d, engine_dict_refs, rule_reachable_dicts) for d in dicts
+        _score_dictionary(d, engine_dict_refs, rule_reachable_dicts if read_rules else None) for d in dicts
     ]
     engine_scores = [
-        _score_engine(e, rule_engine_refs, dict_by_id) for e in engines
+        _score_engine(e, rule_engine_refs if read_rules else None, dict_by_id) for e in engines
     ]
 
     # Sort worst-first by TP estimate (precision is the point of this
@@ -672,13 +681,20 @@ def analyze(client) -> Dict[str, Any]:
                 out[band] += 1
         return out
 
+    def _by_rules(xs: List[Dict[str, Any]]) -> Optional[List[str]]:
+        if not read_rules:
+            return None
+        return [x["name"] for x in xs if x.get("orphan_rule") and x["type"] == "custom"]
+
     return {
+        "rules_read": bool(read_rules),
+        "rules_not_in_scope": None if read_rules else RULES_NOT_IN_SCOPE,
         "counts": {
             "dictionaries_total": len(dict_scores),
             "dictionaries_custom": len(custom_dicts),
             "engines_total": len(engine_scores),
             "engines_custom": len(custom_engines),
-            "rules": len(rules),
+            "rules": len(rules) if read_rules else None,
         },
         "averages": {
             "custom_dictionary_efficacy": _avg(custom_dicts, "score"),
@@ -695,14 +711,8 @@ def analyze(client) -> Dict[str, Any]:
                 x["name"] for x in dict_scores
                 if x.get("orphan_engine") and x["type"] == "custom"
             ],
-            "dictionaries_unused_by_rules": [
-                x["name"] for x in dict_scores
-                if x.get("orphan_rule") and x["type"] == "custom"
-            ],
-            "engines_unused_by_rules": [
-                x["name"] for x in engine_scores
-                if x.get("orphan_rule") and x["type"] == "custom"
-            ],
+            "dictionaries_unused_by_rules": _by_rules(dict_scores),
+            "engines_unused_by_rules": _by_rules(engine_scores),
         },
         "dictionaries": dict_scores,
         "engines": engine_scores,
@@ -718,7 +728,7 @@ _CORPUS_CAP_BYTES = 262_144
 _PATTERN_TIMEOUT_FALLBACK_MAX = 20_000  # chars per pattern match call
 
 
-def corpus_test(client, corpus: str, max_dicts: int = 200) -> Dict[str, Any]:
+def corpus_test(client, corpus: str, max_dicts: int = 200, read_rules: bool = True) -> Dict[str, Any]:
     """Test a user-supplied text corpus against every custom dictionary.
 
     Returns per-dictionary hit counts + a few sample match rows.
@@ -822,7 +832,8 @@ def corpus_test(client, corpus: str, max_dicts: int = 200) -> Dict[str, Any]:
         did = _safe_int(r["id"])
         if did is not None:
             counts[did] = r["hits"] if r["simulated"] else None; names[did] = r["name"]
-    engines = ce.engine_results(_fetch_engines(client), _fetch_rules(client), counts, names)
+    # The Web DLP rules an engine drives: read only when Inline Web DLP is in scope.
+    engines = ce.engine_results(_fetch_engines(client), _fetch_rules(client) if read_rules else [], counts, names)
     return {
         "corpus_length": len(corpus),
         "dicts_tested": tested,
@@ -846,7 +857,7 @@ def corpus_test(client, corpus: str, max_dicts: int = 200) -> Dict[str, Any]:
 # (JSON, DOCX) so users can plug the results into whatever review
 # workflow they already run (Excel, Confluence, ticketing).
 
-import csv as _csv
+import csv_safe
 import io as _io
 import json as _json
 
@@ -902,7 +913,7 @@ def export_csv(analysis: Dict[str, Any]) -> bytes:
             if k not in seen:
                 seen.add(k); fieldnames.append(k)
     buf = _io.StringIO()
-    w = _csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    w = csv_safe.dict_writer(buf, fieldnames=fieldnames, extrasaction="ignore")
     w.writeheader()
     for r in rows:
         w.writerow(r)
@@ -937,7 +948,7 @@ def export_markdown(analysis: Dict[str, Any]) -> bytes:
                f"of {c.get('dictionaries_total', 0)} total")
     out.append(f"- **Engines**: {c.get('engines_custom', 0)} custom "
                f"of {c.get('engines_total', 0)} total")
-    out.append(f"- **Rules referencing custom engines**: {c.get('rules', 0)}")
+    out.append(f"- **Rules referencing custom engines**: {c.get('rules') if c.get('rules') is not None else 'not read (Inline Web DLP not in scope)'}")
     out.append("")
     out.append(f"- **Avg TP% (dictionaries)**: {_fmt_pct(avg.get('custom_dictionary_tp_pct'))}")
     out.append(f"- **Avg TP% (engines)**: {_fmt_pct(avg.get('custom_engine_tp_pct'))}")
@@ -1033,7 +1044,7 @@ def export_docx(analysis: Dict[str, Any]) -> bytes:
         f"{c.get('dictionaries_total', 0)} total dictionaries · "
         f"{c.get('engines_custom', 0)} custom / "
         f"{c.get('engines_total', 0)} total engines · "
-        f"{c.get('rules', 0)} rules.\n"
+        f"{c.get('rules') if c.get('rules') is not None else 'no'} rules.\n"
     )
     p.add_run("Averages: ").bold = True
     p.add_run(

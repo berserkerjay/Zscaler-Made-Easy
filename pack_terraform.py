@@ -374,9 +374,31 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     }
 
 
+# A workspace generated without an assessor's name (an upload, a rebuild,
+# the committed terraform/<pack>/, the CLI) never names the tool in what it
+# pushes: each description's tag takes the required `assessor` variable,
+# so `terraform apply` cannot run until an assessor is named (user rule 2).
+# The token stands in for "${var.assessor}" until the files are written; it
+# is BY_MAX bytes long, so a description is fitted for the longest name.
+_ASSESSOR_TOKEN = "ASSESSORTOKENASSESSORTOKENASSESSORTOKEN0"
+_ASSESSOR_VARIABLE = (
+    'variable "assessor" {\n'
+    '  description = "The assessor\'s name each object\'s description carries ([<assessor> pack <id> v<version>]). Required: '
+    'name the person who assesses and deploys the pack, never the tool."\n'
+    '  type        = string\n'
+    '  nullable    = false\n\n'
+    '  validation {\n'
+    '    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\\\[\\\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp[\\\\W_]*check", var.assessor)) == 0\n'   # pack_deploy.TOOL_NAME_PATTERN
+    '    error_message = "Name the assessor (at most 40 characters, no brackets, not the tool): it is part of every object\'s description."\n'
+    '  }\n'
+    '}\n\n')
+
+
 def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optional[int] = None) -> str:
+    import pack_deploy
     b = meta.get("baseline")
-    tag = f"[DLP-Check {'baseline' if b else 'pack'} {pack_id}{(' v' + str(meta.get('version'))) if meta.get('version') else ''}] Terraform-managed."
+    by = pack_deploy.assessor_name(meta.get("_by")) or _ASSESSOR_TOKEN
+    tag = f"[{by} {'baseline' if b else 'pack'} {pack_id}{(' v' + str(meta.get('version'))) if meta.get('version') else ''}] Terraform-managed."
     if limit:
         return fit_description(base, tag, limit)
     base = (base or "").strip()
@@ -384,12 +406,17 @@ def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optiona
 
 
 def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
-             backend: Optional[Dict[str, str]] = None, channel_targets: Optional[Sequence[str]] = None) -> Dict[str, str]:
+             backend: Optional[Dict[str, str]] = None, channel_targets: Optional[Sequence[str]] = None,
+             assessor: str = "") -> Dict[str, str]:
     """Build the workspace files for one pack. `report` (a public preflight
     report for exactly this pack) switches on gap mode. `channel_targets`
-    applies the same per-channel choice as Deploy Policy Packs."""
+    applies the same per-channel choice as Deploy Policy Packs. `assessor`
+    is the name each object's provenance tag carries."""
     src = load_pack(pack, channel_targets)
     meta, pack_id = src["meta"], src["id"]
+    import pack_deploy
+    named = pack_deploy.assessor_name(assessor)
+    meta = dict(meta, _by=named)    # none: the tags take var.assessor (_ASSESSOR_TOKEN), never "DLP-Check"
     S = Slugger()
     files: Dict[str, str] = {}
 
@@ -710,6 +737,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     )
     files["terraform.tf"] = _versions_tf(backend)
     files["providers.tf"] = PROVIDERS_TF
+    if not named:
+        variables_extra.append(_ASSESSOR_VARIABLE)
     files["variables.tf"] = _variables_tf(meta, variables_extra, tenant_vars)
     files["locals.tf"] = _locals_tf([f"zia_dlp_dictionaries.{S.get('dict', d['name'])}" for d in src["dictionaries"]],
                                     [f"zia_dlp_engines.{S.get('engine', e['name'])}" for e in src["engines"]], rule_refs)
@@ -761,6 +790,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     header = (f"{GENERATED_MARK} from {'policy pack' if meta.get('baseline') else 'pack'} {one_line(pack_id)}"
               + (f" v{one_line(meta.get('version'))}" if meta.get("version") else "") + f" for {PROVIDER_SOURCE} {PROVIDER_VERSION}.\n\n")
     for name in list(files):
+        if _ASSESSOR_TOKEN in files[name]:
+            files[name] = files[name].replace(_ASSESSOR_TOKEN, "${var.assessor}" if name.endswith(".tf") else "<assessor>")
         if name.endswith(".tf"):
             files[name] = hcl_fmt(header + files[name])
     return files
@@ -960,8 +991,15 @@ def _readme(meta: Dict[str, Any], pack_id: str, src: Dict[str, Any], gap: bool, 
                      "change; customized objects import and would be updated in place (delete their import block to keep the "
                      "customer's version); missing objects are created; blocked objects are listed as comments with their reason. "
                      "The first `terraform plan` is the gap.\n\n")
-    lines.append("## Use\n\n```bash\nterraform init\nterraform plan -out=tfplan   # review: creates, in-place updates, imports\nterraform apply tfplan\n```\n\n"
-                 "Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables; nothing secret is in these files. "
+    if _ASSESSOR_VARIABLE in (variables_extra or []):
+        lines.append("## Use\n\n```bash\nterraform init\nterraform plan -var 'assessor=Jane Doe' -out=tfplan   # review: creates, in-place updates, imports\n"
+                     "terraform apply tfplan\n```\n\n"
+                     "Name the assessor first: every description this workspace pushes carries `[<assessor> pack …]`, and `assessor` "
+                     "is required (no default, never the tool's name), so `plan` and `apply` refuse without it. Pass `-var 'assessor=…'`, "
+                     "set it in `terraform.tfvars`, or export `TF_VAR_assessor`.\n\n")
+    else:
+        lines.append("## Use\n\n```bash\nterraform init\nterraform plan -out=tfplan   # review: creates, in-place updates, imports\nterraform apply tfplan\n```\n\n")
+    lines.append("Credentials: `terraform.tfvars` (copy the example) or `ZSCALER_*` environment variables; nothing secret is in these files. "
                  "The client needs a ZIA role with write access to DLP dictionaries, engines and the rule types in this pack.\n\n"
                  "Ordering: new rules are inserted starting at `rule_starting_order` and push existing rules down. "
                  "Run `terraform apply -parallelism=1` if the tenant reports ordering conflicts.\n\n"
@@ -1261,7 +1299,10 @@ def split_report(report: Dict[str, Any], pack_id: str) -> Dict[str, Any]:
     return dict(report, items=items)
 
 
-if __name__ == "__main__":  # pragma: no cover — small CLI for local use
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Small CLI for local use and for regenerating terraform/<pack>/. With
+    --assessor the descriptions name that person; without it they take the
+    required `assessor` variable, so nothing is applied untagged (rule 2)."""
     import argparse
     import sys
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1270,12 +1311,26 @@ if __name__ == "__main__":  # pragma: no cover — small CLI for local use
     ap = argparse.ArgumentParser(description="Generate Terraform workspaces for DLP packs.")
     ap.add_argument("packs", nargs="*", help="pack ids (default: all)")
     ap.add_argument("--out", default="terraform", help="output root (one folder per pack)")
-    args = ap.parse_args()
+    ap.add_argument("--assessor", default="",
+                    help="the assessor's name every description carries; without it the workspace "
+                         "requires the `assessor` variable at plan/apply time (never DLP-Check)")
+    args = ap.parse_args(argv)
+    assessor = " ".join(str(args.assessor or "").split())
+    if args.assessor and not assessor:
+        sys.exit("--assessor is blank: name the assessor, or leave the option out to require it at apply time")
+    import pack_deploy
+    if pack_deploy.is_tool_name(assessor):
+        sys.exit("--assessor must name the person who assesses and deploys the pack, not the tool")
     known = {p["id"]: p for p in discover_packs()}
     ids = args.packs or sorted(known)
     for pid in ids:
         if pid not in known:
             sys.exit(f"unknown pack: {pid}")
-        files = generate({"id": pid, "dir": known[pid]["dir"]})
+        files = generate({"id": pid, "dir": known[pid]["dir"]}, assessor=assessor)
         write_workspace(files, os.path.join(args.out, pid))
         print(f"{pid}: {len(files)} files -> {os.path.join(args.out, pid)}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

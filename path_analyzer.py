@@ -28,7 +28,8 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlsplit
 
-from data_flow import NETWORKS, PLATFORMS, load_packs, read_client_connector, read_zia, resolve_destination, trace
+from data_flow import (NETWORKS, NOTHING_IN_SCOPE, PATH_SECTIONS, PLATFORMS, ReadStopped, full_path_scope, load_packs,  # noqa: F401
+                       path_scope, read_client_connector, read_zia, resolve_destination, stop_on, stop_requested, trace, unread_sections)
 
 LogFn = Optional[Callable[[str], None]]
 
@@ -49,7 +50,8 @@ def _is_private(ip) -> bool:
     return ip is not None and any(ip in n for n in _PRIVATE_NETS)
 
 
-STOPPED_REASON = "You clicked Stop before the analysis finished, so it was abandoned. Nothing was written."
+STOPPED_REASON = ("You clicked Stop before the analysis finished, so it was abandoned: nothing more was read from the tenant and no partial result is shown. "
+                  "Nothing was written.")
 
 
 class Stopped(RuntimeError):
@@ -118,47 +120,94 @@ def lookup_categories(client, host: str) -> Dict[str, Any]:
 def _snapshot_zia(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     zia = dict(snapshot["snapshot"]["zia"])
     zia["categories"] = snapshot["snapshot"].get("categories") or {}
+    zia.setdefault("unread", unread_sections(snapshot.get("diagnostics")))
     for r in zia.get("dlp", []):
         r.setdefault("enforcing", str(r.get("action", "")).upper() in ("BLOCK", "CONFIRM", "ICAP_RESPONSE"))
         r.setdefault("without_content_inspection", False)
     return zia
 
 
+def snapshot_scope_key(snapshot: Optional[Dict[str, Any]]) -> Optional[str]:
+    """The scope a kept tenant read was made for (path_scope's `key`), or
+    None for a read that does not say (a Data Flow Map read of everything,
+    or one from before reads were scoped)."""
+    if not isinstance(snapshot, dict):
+        return None
+    k = snapshot.get("path_scope")
+    return k if isinstance(k, str) else None
+
+
+def reusable(snapshot: Optional[Dict[str, Any]], scope: Dict[str, Any]) -> bool:
+    """Whether a kept tenant read may answer for `scope`: only a read made
+    for exactly the same parts of the tenant. A read for a wider scope
+    would show what is now out of scope; one for a narrower scope would
+    say "not in scope" for what is now in it."""
+    return bool(snapshot) and snapshot_scope_key(snapshot) == scope.get("key")
+
+
 def analyze(client, destination: str, network: str = "off", platform: str = "windows", *,
-            snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
-            cancel: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
-    """The live analysis. `snapshot` (a Data Flow Map report: client
-    connector + ZIA policy) skips the tenant read; the URL lookup is
-    always live. `cancel()` is asked between the read steps: once it is
-    true the analysis stops with a plain sentence (nothing is written at
-    any point, so stopping loses only the read). Returns the destination,
-    the lookup, the trace, the verdict and the assumptions, plus
-    `snapshot_for_cache` so the caller can keep the tenant read for the
-    next destination."""
+            scope: Optional[Dict[str, Any]] = None, snapshot: Optional[Dict[str, Any]] = None, log: LogFn = None,
+            cancel: Any = None) -> Dict[str, Any]:
+    """The live analysis. `scope` (data_flow.path_scope: the Scope page's
+    ticked scopes and the channels marked Zscaler) is required, and only
+    the parts of the tenant in it are read; every other hop says "not in
+    scope". `snapshot` (an earlier read for the same scope, see
+    `reusable`) skips the tenant read; the URL lookup is always live when
+    in scope. `cancel` (a threading.Event or a callable) is the operator's
+    Stop: it is checked between every read step, between paged calls and
+    while a request waits out ZIA's rate limit; once set nothing more is
+    sent and Stopped is raised: a partial read is never returned as a
+    result. Returns the destination, the lookup, the trace, the verdict,
+    the scope and the assumptions, plus `snapshot_for_cache` so the
+    caller can keep the tenant read for the next destination."""
     _log = log or (lambda m: None)
 
-    def _check() -> None:
-        if cancel and cancel():
-            _log("STOPPED — you clicked Stop; the analysis was abandoned. Nothing is ever written by this page.")
-            raise Stopped(STOPPED_REASON)
+    def _stopped() -> Stopped:
+        _log("STOPPED — you clicked Stop; the analysis was abandoned and nothing more was read. Nothing is ever written by this page.")
+        return Stopped(STOPPED_REASON)
 
+    def _check() -> None:
+        if stop_requested(cancel):
+            raise _stopped()
+
+    if not scope or not scope.get("read"):
+        raise ValueError(NOTHING_IN_SCOPE)
     d = parse_destination(destination)
     network = network if network in {n["key"] for n in NETWORKS} else "off"
     platform = platform if platform in PLATFORMS else "windows"
-    if snapshot:
-        zcc = snapshot["client_connector"]
-        zia = _snapshot_zia(snapshot)
-        _log("Using the tenant configuration read a moment ago (Refresh reads it again).")
-    else:
-        _log("Reading Client Connector: app profiles and their bypasses, forwarding profiles, trusted networks, PAC files…")
-        zcc = read_client_connector(client)
-        _check()
-        _log("Reading ZIA policy: SSL inspection, URL filtering, Cloud App Control, File Type Control, DLP rules on every channel, URL categories…")
-        zia = read_zia(client)
-    _check()
-    _log(f"Asking ZIA which categories {d['host']} belongs to…")
-    lk = lookup_categories(client, d["host"])
-    if lk["error"]:
+    if snapshot and not reusable(snapshot, scope):
+        _log("The tenant read kept from before was made for a different scope; reading again for what is in scope now.")
+        snapshot = None
+    try:
+        with stop_on(client, cancel):
+            _check()
+            if snapshot:
+                zcc = snapshot["client_connector"]
+                zia = _snapshot_zia(snapshot)
+                _log("Using the tenant configuration read a moment ago for the same scope (Refresh reads it again).")
+            else:
+                _log(scope["summary"])
+                if "zcc" in scope["read"]:
+                    _log("Reading Client Connector: app profiles and their bypasses, forwarding profiles, trusted networks"
+                         + (", PAC files…" if "pac" in scope["read"] else "…"))
+                zcc = read_client_connector(client, scope=scope, cancel=cancel)
+                _check()
+                zia_parts = [PATH_SECTIONS[k][0] for k in scope["read"] if k not in ("zcc", "pac")]
+                if zia_parts:
+                    _log("Reading ZIA policy: " + ", ".join(zia_parts) + (", URL categories…" if scope["lookup"] else "…"))
+                zia = read_zia(client, scope=scope, cancel=cancel)
+            _check()
+            if scope["lookup"]:
+                _log(f"Asking ZIA which categories {d['host']} belongs to…")
+                lk = lookup_categories(client, d["host"])
+                _check()
+            else:
+                lk = {"categories": [], "security_alerts": [], "application": None, "error": None, "not_in_scope": True}
+    except ReadStopped:
+        raise _stopped()
+    if lk.get("not_in_scope"):
+        _log("ZIA's URL lookup is not in scope (no ZIA policy section is), so it was not asked.")
+    elif lk["error"]:
         _log(f"The URL lookup could not run ({lk['error']}); the tenant's own category lists decide the categories.")
     else:
         _log("ZIA says: " + (", ".join(lk["categories"]) if lk["categories"] else "no category") + (f"; application {lk['application']}" if lk["application"] else "")
@@ -175,14 +224,20 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
                 rd["app_classes"].append(cls)
     rd["lookup"] = lk
     _log("Tracing the path hop by hop…")
-    t = trace(rd, network, platform, zcc, zia, load_packs())
+    t = trace(rd, network, platform, zcc, zia, load_packs(), scope=scope)
     verdict = derive_verdict(t, d, lk)
     _log(f"Verdict: {verdict['headline']}")
-    out = {"destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": list(ASSUMPTIONS),
+    sc = {"summary": scope["summary"], "read": list(scope["read"]), "not_in_scope": dict(scope["not_in_scope"]), "key": scope["key"],
+          "scopes": list(scope.get("scopes") or []), "channels": dict(scope.get("channels") or {})}
+    assumptions = list(ASSUMPTIONS)
+    if scope["not_in_scope"]:
+        assumptions.append("Only what is in scope on the Scope page was read; these parts are not in scope and their hops are not assessed: "
+                           + ", ".join(PATH_SECTIONS[k][0] for k in PATH_SECTIONS if k in scope["not_in_scope"]) + ".")
+    out = {"destination": d, "lookup": lk, "trace": t, "verdict": verdict, "assumptions": assumptions, "scope": sc,
            "network": network, "platform": platform, "read_at": time.time(), "fresh_read": snapshot is None}
     if snapshot is None:
-        out["snapshot_for_cache"] = {"client_connector": zcc,
-                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
+        out["snapshot_for_cache"] = {"client_connector": zcc, "path_scope": scope["key"],
+                                     "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue", "not_in_scope")},
                                                   "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"),
                                                                      "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                                                  for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
@@ -191,7 +246,7 @@ def analyze(client, destination: str, network: str = "off", platform: str = "win
 
 
 _STOP = ("bypass", "blocked")
-_IMPACT = ("bypass", "blocked", "blind", "warn", "assumed")
+_IMPACT = ("bypass", "blocked", "blind", "warn", "assumed", "unknown")
 
 
 def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> Dict[str, Any]:
@@ -219,6 +274,14 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
         n = len((dlp or {}).get("rules") or [])
         headline = f"Reaches {host} decrypted; {n} DLP rule(s) inspect the content and can block it."
         summary = (dlp or {}).get("detail", "")
+    elif outcome == "unknown":
+        unread = [h["label"] for h in hops if h["status"] == "unknown" and h["key"] != "incident"]
+        headline = f"Reaches {host}; whether DLP inspects it is unknown: the {' and '.join(unread) or 'policy'} rules could not be read."
+        summary = "A failed or rate-limited read is not an empty rule list, so this is not reported as 'no DLP rule'. Run the analysis again (Refresh) once the API answers."
+    elif outcome == "out_of_scope":
+        dlp = next((h for h in hops if h["key"] == "dlp"), None)
+        headline = f"Reaches {host}; whether DLP inspects it is not assessed: it is not in scope on the Scope page."
+        summary = ((dlp or {}).get("detail") or "") + " Nothing was read for it, so this is neither 'no DLP rule' nor 'could not read'. Put it in scope on the Scope page and analyze again to assess it."
     elif outcome == "monitor":
         dlp = next((h for h in hops if h["key"] == "dlp"), None)
         n = len((dlp or {}).get("rules") or [])
@@ -231,7 +294,7 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
     if lk.get("security_alerts"):
         impacts.append({"hop": "lookup", "label": "URL lookup", "status": "alert", "severity": "high", "rule": None,
                         "detail": f"ZIA flags {host} with a security alert ({', '.join(lk['security_alerts'])}); threat protection normally blocks it before any data control runs."})
-    order = {"bypass": 0, "blocked": 1, "blind": 2, "warn": 3, "assumed": 4}
+    order = {"bypass": 0, "blocked": 1, "blind": 2, "warn": 3, "assumed": 4, "unknown": 5}
     for h in sorted((h for h in hops if h["status"] in _IMPACT), key=lambda h: order.get(h["status"], 9)):
         w = h.get("weak_point") or {}
         impacts.append({"hop": h["key"], "label": h["label"], "status": h["status"], "rule": rule(h), "detail": h["detail"],
@@ -246,7 +309,10 @@ def derive_verdict(t: Dict[str, Any], d: Dict[str, Any], lk: Dict[str, Any]) -> 
          "stops_at": stop["label"] if stop else None, "blocked_by": rule(stop) if stop else None,
          "reaches_zscaler": t["reaches_zscaler"], "decrypted": t["decrypted"],
          "content_inspected": bool(t["decrypted"] and outcome in ("enforce", "monitor")),
-         "impacts": impacts, "categories": categories, "applications": applications}
+         "impacts": impacts, "categories": categories, "applications": applications,
+         # What was not read (out of scope on the Scope page): said, never scored as a gap.
+         "not_in_scope": [{"hop": h["key"], "label": h["label"], "detail": h["detail"]} for h in hops if h["status"] == "out_of_scope"]
+                         + [{"hop": k, "label": c["label"], "detail": c["detail"]} for k, c in (t.get("channels") or {}).items() if c.get("status") == "out_of_scope"]}
     v["mitigations"] = recommend_mitigations(t, v)
     return v
 
@@ -267,10 +333,22 @@ def recommend_mitigations(t: Dict[str, Any], v: Dict[str, Any]) -> List[Dict[str
     chans = t.get("channels") or {}
     ep, sa, em = chans.get("endpoint") or {}, chans.get("saas") or {}, chans.get("email") or {}
     out: List[Dict[str, Any]] = []
-    blind_here = not v["reaches_zscaler"] or not v["decrypted"]   # bypassed or encrypted: the network path sees nothing
+    # Bypassed or encrypted: the network path sees nothing. With SSL
+    # inspection out of scope whether it is encrypted is not known, so it
+    # is not called encrypted.
+    ssl_out = any(h["key"] == "ssl" and h["status"] == "out_of_scope" for h in t.get("hops") or [])
+    blind_here = not v["reaches_zscaler"] or (not v["decrypted"] and not ssl_out)
     if blind_here:
         reason = "never reaches Zscaler" if not v["reaches_zscaler"] else "reaches Zscaler encrypted, so the content can never be inspected here"
-        if ep.get("status") in ("none", "off"):
+        if ep.get("status") == "out_of_scope":
+            out.append({"rank": 1, "channel": "endpoint", "action": "Endpoint DLP is not in scope",
+                        "why": f"This traffic {reason}, so Endpoint DLP is the only control that could see it, but it is not in scope on the Scope page, so it was not read: {ep.get('detail', '')}",
+                        "severity": "info"})
+        elif ep.get("status") == "unknown":
+            out.append({"rank": 1, "channel": "endpoint", "action": "Read the Endpoint DLP rules again",
+                        "why": f"This traffic {reason}, so Endpoint DLP is the only control that could see it, but its rules could not be read: run the analysis again once the API answers.",
+                        "severity": "medium"})
+        elif ep.get("status") in ("none", "off"):
             why = "the app profile does not install it on this device" if ep.get("status") == "off" else "no Endpoint DLP rule is enabled"
             out.append({"rank": 1, "channel": "endpoint", "action": "Enable Endpoint DLP for this device",
                         "why": f"This traffic {reason}: Endpoint DLP is the only control that ever sees it, and {why}.",

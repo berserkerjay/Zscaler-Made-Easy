@@ -212,7 +212,7 @@ def test_single_pack_import_and_verify_endpoints_use_the_shared_path(monkeypatch
     monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
     monkeypatch.setattr(srv, "writes_enabled", lambda: False)
     c = TestClient(srv.app)
-    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret", "assessor": "Jane Doe"}
     r = c.post("/api/dlp-packs/zbp_source_code_baseline/import", json=creds)
     assert r.status_code == 200 and r.json()["status"] == "plan" and r.json()["plan_hash"] and "Nothing was written" in r.json()["message"]
     assert client.zia.dlp_dictionary.added == []

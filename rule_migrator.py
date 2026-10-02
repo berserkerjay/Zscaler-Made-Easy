@@ -297,9 +297,10 @@ def export_rules(rules: List[Dict[str, Any]], format: str = "json") -> str:
             clean.append(cr)
         return json.dumps({"rules": clean, "count": len(clean)}, indent=2, default=str)
     elif format == "csv":
-        import csv, io
+        import io
+        import csv_safe
         buf = io.StringIO()
-        w = csv.writer(buf)
+        w = csv_safe.writer(buf)
         w.writerow(["Order", "Rule ID", "Name", "Action", "State", "Scope", "URL Categories", "File Types", "DLP Engines"])
         for i, r in enumerate(rules, 1):
             order = r.get("_proposed_order", i)
