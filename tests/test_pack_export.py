@@ -461,7 +461,7 @@ BLOCKED = '{"status": 403, "code": null, "message": "Resource Access Blocked"}'
 
 def test_a_rate_refused_rule_read_is_waited_out_and_retried(monkeypatch):
     import zia_rate
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
     client = _source()
     _refuse_n(client.zia.dlp_web_rules, "list_rules", TOO_MANY, times=1)
@@ -474,7 +474,7 @@ def test_a_rate_refused_rule_read_is_waited_out_and_retried(monkeypatch):
 
 def test_a_persistent_resource_access_blocked_fails_the_export_and_stops_reading(monkeypatch):
     import zia_rate
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
     client = _source()
     _refuse_n(client.zia.dlp_web_rules, "list_rules", BLOCKED, times=99)
@@ -908,7 +908,7 @@ HOURLY = "Retry wait time 3600 seconds exceeds configured maxRetrySeconds 30."
 
 def test_the_sdks_hourly_limit_refusal_on_a_rule_read_fails_the_export_instead_of_a_ready_pack_without_that_channel(monkeypatch):
     import zia_rate
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
     client = _source()
     calls = _refuse_n(client.zia.dlp_web_rules, "list_rules", HOURLY, times=99)
@@ -985,7 +985,7 @@ def test_a_pick_of_no_rule_reads_nothing_and_says_so(monkeypatch):
 def test_a_short_429_is_waited_out_in_seconds_and_does_not_hold_the_tenant_for_the_hour(monkeypatch):
     import zia_rate
     holds, slept = [], []
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: holds.append(s) or 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: holds.append(s) or 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: slept.append(s), raising=False)
     for refusal in ('{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}', TOO_MANY,
                     "Retry wait time 2 seconds exceeds configured maxRetrySeconds 1."):
@@ -1004,7 +1004,7 @@ def test_a_short_retry_too_long_waits_at_least_what_zia_asked_for_before_the_rea
     # shorter hold lets other sessions on this tenant send too soon.
     import zia_rate
     holds, slept, logged = [], [], []
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: holds.append(s) or 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: holds.append(s) or 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: slept.append(s), raising=False)
     asked = 120
     refusal = f"RetryTooLong: Retry wait time {asked} seconds exceeds configured maxRetrySeconds 30"
@@ -1055,7 +1055,7 @@ def test_blank_rule_ids_are_no_pick_and_are_refused_before_any_sign_in_or_read(m
 
 def test_a_channel_named_with_an_empty_pick_is_not_read(monkeypatch):
     import zia_rate
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
     client = _source()
     email = _refuse_n(client.zia.outbound_email_dlp_rules, "list_rules", HOURLY, times=99)
@@ -1063,3 +1063,26 @@ def test_a_channel_named_with_an_empty_pick_is_not_read(monkeypatch):
     assert email == [], "read the Email rules although no Email rule was picked"
     assert res["status"] == "ready", res.get("error")
     assert not any("Email" in d["name"] for d in res["pack"]["not_exported"]), res["pack"]["not_exported"]
+
+
+def test_a_refused_export_read_holds_every_jobs_reads_on_the_tenant(monkeypatch):
+    # RS2-5: the export's hold after a refused read is the tenant's, for
+    # reads too: the assessment's Client and other SDK sessions wait for it.
+    import zia_rate
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    key = "t" * 16
+    answers = iter([([], '{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}'), (["ok"], None)])
+    with zia_rate.using(key):
+        assert pe._read("rules", lambda: next(answers), lambda m: None) == (["ok"], None, False)
+    assert zia_rate.paused_for(key, reads=True) > 0
+    assert zia_rate.wait("GET", "/dlpDictionaries", key=key) > 0, "another job's read waits for the export's hold"
+    assert zia_rate.paused_for("u" * 16, reads=True) == 0.0, "another tenant is not held"
+
+
+def test_an_hourly_export_refusal_holds_every_jobs_reads_for_the_hour(monkeypatch):
+    import zia_rate
+    key = "t" * 16
+    with zia_rate.using(key):
+        data, err, refused = pe._read("rules", lambda: ([], HOURLY), lambda m: None)
+    assert refused
+    assert zia_rate.paused_for(key, reads=True) >= pe._retry_wait(HOURLY) - 5

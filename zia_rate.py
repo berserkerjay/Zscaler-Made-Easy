@@ -30,7 +30,8 @@ by commas; "0" or "off" turns a bucket off:
     DLP_CHECK_ZIA_LIMIT_ACTIVATE        default "10/m,40/h"
 
 Only writes are held back here: reads already have the assessment
-client's own pacing. Reads are counted, though, with ZIA's answers, per
+client's own pacing. A hold after ZIA refused a read (hold(reads=True))
+holds reads too, of every job and process on the tenant. Reads are counted, though, with ZIA's answers, per
 tenant and API client, for the preflight's rate-limit check (forecast).
 
 The state is kept per tenant and API client (key_for): requests of the
@@ -83,6 +84,10 @@ class _Tenant:
         # After ZIA refuses a request for its rate, nothing more is sent
         # until this moment: the limit's window has completely reset.
         self.hold = [0.0]
+        # The end of a hold that reads keep too: ZIA refused a read (one
+        # job's 429), so no job on the tenant reads until it has passed.
+        # A hold after a write refusal leaves reads alone (a preview reads).
+        self.read_hold = [0.0]
         # Rate refusals of the last week, dicts: at, bucket, message, kind
         # ("blocked": 403 Resource Access Blocked, the client as a whole;
         # "429": one endpoint's limit), reset (ZIA's timer, seconds, or
@@ -306,6 +311,7 @@ def _merge_into(t: _Tenant, d: Dict[str, Any], now: float) -> None:
             t.sent[k].clear()
             t.sent[k].extend(merged)
     t.hold[0] = max(t.hold[0], float(d.get("hold_until") or 0))
+    t.read_hold[0] = max(t.read_hold[0], float(d.get("read_hold_until") or 0))
     seen = {(round(r["at"], 3), r["bucket"]) for r in t.refused}
     for r in d.get("refused") or []:
         if isinstance(r, dict) and now - float(r.get("at") or 0) < HISTORY_SECONDS and (round(float(r["at"]), 3), r.get("bucket")) not in seen:
@@ -407,7 +413,9 @@ def _save() -> None:
                     t.refused.popleft()
                 rec = {"sent": {b: [x for x in q if now - x < HOUR] for b, q in t.sent.items() if q},
                        "hold_until": t.hold[0] if t.hold[0] > now else 0.0, "refused": list(t.refused), "server": t.server}
-                if rec["sent"] or rec["hold_until"] or rec["refused"] or rec["server"]:
+                if t.read_hold[0] > now:
+                    rec["read_hold_until"] = t.read_hold[0]
+                if rec["sent"] or rec["hold_until"] or rec.get("read_hold_until") or rec["refused"] or rec["server"]:
                     out[k] = rec
             fd, tmp = tempfile.mkstemp(prefix=".zia_rate-", dir=os.path.dirname(p) or ".")
             replaced = False
@@ -554,10 +562,11 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
             t = _t(key)
             now = _now()
             # A hold is slept through once: it ends at a fixed moment, unless
-            # another run set or extended it meanwhile. Reads do not wait
-            # for it: a preview must still be able to read.
-            held = 0.0 if (bucket == "read" or t.hold[0] <= slept_until) else t.hold[0] - now
-            hold_end = t.hold[0]
+            # another run set or extended it meanwhile. Reads wait only for a
+            # hold set after a read was refused (read_hold): a hold after a
+            # write refusal leaves them alone, so a preview can still read.
+            hold_end = t.read_hold[0] if bucket == "read" else t.hold[0]
+            held = 0.0 if hold_end <= slept_until else hold_end - now
             d, binding = (0.0, None) if held > 0 else _delay(t, bucket, now)
             if held <= 0 and d <= 0:
                 t.sent[bucket].append(now)
@@ -610,23 +619,30 @@ def full_reset(bucket: str, key: Optional[str] = None) -> float:
         return (inside[0] + longest - now) if inside else longest
 
 
-def hold(seconds: float, key: Optional[str] = None) -> float:
-    """Send nothing more, in any bucket of this tenant, for `seconds`.
-    Returns the moment (epoch seconds) the hold ends."""
+def hold(seconds: float, key: Optional[str] = None, *, reads: bool = False) -> float:
+    """Send nothing more, in any write bucket of this tenant, for `seconds`;
+    with `reads` (ZIA refused a read) no read either, from any job or
+    process on the tenant: the assessment's Client and the SDK's sessions
+    alike. Returns the moment (epoch seconds) the hold ends."""
     with _lock:
         _load()
         t = _t(key)
-        t.hold[0] = max(t.hold[0], _now() + max(0.0, seconds))
+        end = _now() + max(0.0, seconds)
+        t.hold[0] = max(t.hold[0], end)
+        if reads:
+            t.read_hold[0] = max(t.read_hold[0], end)
         _save()
         return t.hold[0]
 
 
-def paused_for(key: Optional[str] = None) -> float:
+def paused_for(key: Optional[str] = None, *, reads: bool = False) -> float:
     """Seconds left on this tenant's hold (0 when there is none), so a job
-    window can count down to the moment the run sends again."""
+    window can count down to the moment the run sends again. With `reads`,
+    the hold reads keep (set after a read was refused)."""
     with _lock:
         _refresh()
-        left = _t(key).hold[0] - _now()
+        t = _t(key)
+        left = (t.read_hold[0] if reads else t.hold[0]) - _now()
     return left if left > 0 else 0.0
 
 
@@ -1192,6 +1208,7 @@ def reset() -> None:
             for q in t.sent.values():
                 q.clear()
             t.hold[0] = 0.0
+            t.read_hold[0] = 0.0
             t.refused.clear()
             t.server.clear()
         for k in [k for k in _tenants if k]:
