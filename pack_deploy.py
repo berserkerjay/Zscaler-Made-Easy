@@ -1527,7 +1527,109 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Stop during a tenant read
+# ---------------------------------------------------------------------------
+
+class ReadsStopped(BaseException):
+    """The operator clicked Stop: the next tenant read is not sent. A
+    BaseException, so the readers' "one failed list is recorded and the
+    read goes on" handlers (except Exception) do not swallow it and log
+    more reads: it ends the whole read, and the caller says it stopped."""
+
+
+_PLAIN = (str, bytes, int, float, bool, type(None), dict, list, tuple, set)
+
+
+class _StopReads:
+    """The SDK client (or any part of it) with every call checked against
+    `should_stop` first: once it says so, the call is not made
+    (ReadsStopped). While a call runs, zia_rate.stopping_on ends a wait
+    for ZIA's rate limit and a paced session sends nothing more."""
+
+    def __init__(self, target: Any, should_stop: Callable[[], bool]):
+        object.__setattr__(self, "_t", target)
+        object.__setattr__(self, "_stop", should_stop)
+
+    def __getattr__(self, name: str) -> Any:
+        val = getattr(self._t, name)
+        if isinstance(val, _PLAIN):
+            return val
+        if callable(val) and not isinstance(val, type):
+            should_stop = self._stop
+
+            def call(*a: Any, **k: Any) -> Any:
+                if should_stop():
+                    raise ReadsStopped(STOPPED_READ)
+                import zia_rate
+                try:
+                    with zia_rate.stopping_on(should_stop):
+                        return val(*a, **k)
+                except zia_rate.Cancelled:
+                    raise ReadsStopped(STOPPED_READ) from None
+            return call
+        return _StopReads(val, self._stop)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self._t, name, value)
+
+
+STOPPED_READ = "You clicked Stop, so nothing more was read from or sent to the tenant."
+
+
+def stop_reads(client: Any, cancel: Any) -> Any:
+    """`client` with Stop (`cancel`, a threading.Event) honoured before
+    every tenant read made through it (ReadsStopped); `client` itself
+    when there is no cancel."""
+    if cancel is None:
+        return client
+
+    def should_stop() -> bool:
+        try:
+            return bool(cancel.is_set())
+        except Exception:  # noqa: BLE001 — a broken event never stops a read by itself
+            return False
+    return _StopReads(client, should_stop)
+
+
+def stopped_report(reason: str = STOPPED_READ) -> Dict[str, Any]:
+    """The plan of a read Stop ended: nothing planned, nothing to write."""
+    return {"status": "stopped", "stopped": reason, "blockers": [reason], "items": [], "warnings": [], "impacts": [],
+            "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
+
+
 def preflight(
+    client,
+    packs: Sequence[Dict[str, Any]],
+    *,
+    use_rank_0: bool = False,
+    apply_tweaks: bool = True,
+    writes_enabled: Optional[bool] = None,
+    restore_drift: bool = False,
+    channel_targets: Optional[Dict[str, Sequence[str]]] = None,
+    tenant_cache: Optional[Dict[str, Any]] = None,
+    read_scope: Optional[Dict[str, Any]] = None,
+    log: LogFn = None,
+    cancel: Optional[threading.Event] = None,
+) -> Dict[str, Any]:
+    """preflight_plan, with the operator's Stop (`cancel`) honoured before
+    every tenant read: once Stop is clicked nothing more is read and the
+    plan comes back with status "stopped" (stopped_report)."""
+    kw = dict(use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled, restore_drift=restore_drift,
+              channel_targets=channel_targets, tenant_cache=tenant_cache, read_scope=read_scope, log=log)
+    if cancel is None:
+        return preflight_plan(client, packs, **kw)
+    if cancel.is_set():
+        return stopped_report()
+    try:
+        return preflight_plan(stop_reads(client, cancel), packs, **kw)
+    except ReadsStopped:
+        if log:
+            log(f"STOPPED — {STOPPED_READ}")
+        return stopped_report()
+
+
+def preflight_plan(
     client,
     packs: Sequence[Dict[str, Any]],
     *,
@@ -2073,18 +2175,22 @@ def apply(
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
         run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
                                writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor)
+                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
         return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
            writes_enabled: Optional[bool], restore_drift: bool, channel_targets: Optional[Dict[str, Sequence[str]]],
-           activate: bool, log: LogFn, settle_seconds: float, assessor: str = "") -> Dict[str, Any]:
+           activate: bool, log: LogFn, settle_seconds: float, assessor: str = "",
+           cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
     _log("Checking the approved plan against the tenant as it is now…")
+    # Stop also ends this read: nothing more is read, and nothing is written.
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
+                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log, cancel=cancel)
+    if report.get("status") == "stopped":
+        return {"status": "stopped", "stopped": report["stopped"], "results": [], "report": public_report(report)}
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs where the page "
                                                   "offers it; otherwise " + __import__("security").write_enable_hint() + ". Then deploy."],
@@ -2421,7 +2527,11 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
     # must be found; anything the fresh read would still create is missing.
     read_check: Dict[str, Any] = {"read": False, "clean": False, "expected": 0, "present": 0, "missing": [], "activation_status": settled}
     fresh: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    if wrote or counts.get("reused"):
+    if not wrote and ops.stop_reason():
+        # Stopped before anything was written: nothing to verify, and Stop
+        # means no further read either.
+        _log("Nothing was written before the run stopped, so the tenant is not read back.")
+    elif wrote or counts.get("reused"):
         _log("Reading the tenant back to verify the deployment…")
         try:
             again = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,

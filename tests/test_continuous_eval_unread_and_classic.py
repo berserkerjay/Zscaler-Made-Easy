@@ -165,7 +165,7 @@ def test_saving_a_classic_profile_drops_the_vanity_domain_left_in_the_form(tmp_p
     _env(tmp_path, monkeypatch)
     c = TestClient(srv.app)
     c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
-    r = c.post("/api/tenant-profiles", json={"vanity_domain": "acmecorp", "auth_method": "legacy", "username": "api-admin@acme.com",
+    r = c.post("/api/tenant-profiles", json={"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "vanity_domain": "acmecorp", "auth_method": "legacy", "username": "api-admin@acme.com",
                                              "cloud": "zscalertwo", "password": "pw-pw-pw-pw", "api_key": "abcdefghijkl", "remember_secret": True})
     assert r.status_code == 200, r.text
     got = r.json()
@@ -181,10 +181,10 @@ def test_the_detection_health_report_keys_a_classic_tenant_without_its_vanity_do
     monkeypatch.setattr(detection_health, "generate", lambda client, **kw: {"findings": [], "rules": [], "summary": {}, "errors": [], "read": {"incidents": True, "rules": True}})
     c = TestClient(srv.app)
     c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
-    r = c.post("/api/detection-health", json={"vanity_domain": "acmecorp", "auth_method": "legacy", "username": "api-admin@acme.com",
+    r = c.post("/api/detection-health", json={"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "vanity_domain": "acmecorp", "auth_method": "legacy", "username": "api-admin@acme.com",
                                               "password": "pw-pw-pw-pw", "api_key": "abcdefghijkl", "cloud": "zscalertwo"})
     assert r.status_code == 200, r.text
     assert r.json()["tenant_key"].startswith("classic-") and "acmecorp" not in r.text and "api-admin" not in r.text
     # OneAPI keeps the vanity domain as its queue key.
-    r = c.post("/api/detection-health", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
+    r = c.post("/api/detection-health", json={"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "workflow_automation": "zscaler"}, "vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
     assert r.status_code == 200 and r.json()["tenant_key"] == "acme"

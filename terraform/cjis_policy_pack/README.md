@@ -41,6 +41,7 @@ Ordering: new rules are inserted starting at `rule_starting_order` and push exis
 | `saas_tenant_ids_default` | `list(number)` | `[]` | Onboarded SaaS Security API tenant ids for every SaaS Security API rule not listed in saas_tenant_ids. |
 | `email_tenant_ids` | `map(list(number))` | `{}` | Onboarded outbound email tenant ids per rule name (Administration > SaaS Application Tenants) for the outbound email rules whose tenants the pack does not name; a rule not listed here uses email_tenant_ids_default. Run a preflight in DLP-Check to have them resolved by name instead. |
 | `email_tenant_ids_default` | `list(number)` | `[]` | Onboarded outbound email tenant ids for every outbound email rule not listed in email_tenant_ids. |
+| `assessor` | `string` | required | The assessor's name each object's description carries ([<assessor> pack <id> v<version>]). Required: name the person who assesses and deploys the pack, never the tool. |
 
 ## Outputs
 

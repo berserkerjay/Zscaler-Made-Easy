@@ -374,10 +374,30 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
     }
 
 
+# A workspace generated without an assessor's name (an upload, a rebuild,
+# the committed terraform/<pack>/, the CLI) never names the tool in what it
+# pushes: each description's tag takes the required `assessor` variable,
+# so `terraform apply` cannot run until an assessor is named (user rule 2).
+# The token stands in for "${var.assessor}" until the files are written; it
+# is BY_MAX bytes long, so a description is fitted for the longest name.
+_ASSESSOR_TOKEN = "ASSESSORTOKENASSESSORTOKENASSESSORTOKEN0"
+_ASSESSOR_VARIABLE = (
+    'variable "assessor" {\n'
+    '  description = "The assessor\'s name each object\'s description carries ([<assessor> pack <id> v<version>]). Required: '
+    'name the person who assesses and deploys the pack, never the tool."\n'
+    '  type        = string\n'
+    '  nullable    = false\n\n'
+    '  validation {\n'
+    '    condition     = length(trimspace(var.assessor)) > 0 && length(var.assessor) <= 40 && length(regexall("[\\\\[\\\\]]", var.assessor)) == 0 && length(regexall("(?i)dlp-check", var.assessor)) == 0\n'
+    '    error_message = "Name the assessor (at most 40 characters, no brackets, not the tool): it is part of every object\'s description."\n'
+    '  }\n'
+    '}\n\n')
+
+
 def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optional[int] = None) -> str:
     import pack_deploy
     b = meta.get("baseline")
-    by = pack_deploy.attribution(meta.get("_by"))
+    by = pack_deploy.assessor_name(meta.get("_by")) or _ASSESSOR_TOKEN
     tag = f"[{by} {'baseline' if b else 'pack'} {pack_id}{(' v' + str(meta.get('version'))) if meta.get('version') else ''}] Terraform-managed."
     if limit:
         return fit_description(base, tag, limit)
@@ -394,8 +414,9 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     is the name each object's provenance tag carries."""
     src = load_pack(pack, channel_targets)
     meta, pack_id = src["meta"], src["id"]
-    if assessor:
-        meta = dict(meta, _by=assessor)
+    import pack_deploy
+    named = pack_deploy.assessor_name(assessor)
+    meta = dict(meta, _by=named)    # none: the tags take var.assessor (_ASSESSOR_TOKEN), never "DLP-Check"
     S = Slugger()
     files: Dict[str, str] = {}
 
@@ -716,6 +737,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     )
     files["terraform.tf"] = _versions_tf(backend)
     files["providers.tf"] = PROVIDERS_TF
+    if not named:
+        variables_extra.append(_ASSESSOR_VARIABLE)
     files["variables.tf"] = _variables_tf(meta, variables_extra, tenant_vars)
     files["locals.tf"] = _locals_tf([f"zia_dlp_dictionaries.{S.get('dict', d['name'])}" for d in src["dictionaries"]],
                                     [f"zia_dlp_engines.{S.get('engine', e['name'])}" for e in src["engines"]], rule_refs)
@@ -767,6 +790,8 @@ def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
     header = (f"{GENERATED_MARK} from {'policy pack' if meta.get('baseline') else 'pack'} {one_line(pack_id)}"
               + (f" v{one_line(meta.get('version'))}" if meta.get("version") else "") + f" for {PROVIDER_SOURCE} {PROVIDER_VERSION}.\n\n")
     for name in list(files):
+        if _ASSESSOR_TOKEN in files[name]:
+            files[name] = files[name].replace(_ASSESSOR_TOKEN, "${var.assessor}" if name.endswith(".tf") else "<assessor>")
         if name.endswith(".tf"):
             files[name] = hcl_fmt(header + files[name])
     return files

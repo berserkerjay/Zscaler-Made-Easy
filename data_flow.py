@@ -81,6 +81,8 @@ SCOPE_LABELS = {"dlp": "DLP", "zia_extras": "ZIA platform", "zpa": "ZPA", "zcc":
                 "automation": "Automation readiness", "zdx": "ZDX", "zidentity": "ZIdentity", "rbac": "RBAC"}
 NOTHING_IN_SCOPE = ("Nothing the Path analyzer reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
                     "and mark the channels you run on Zscaler, then analyze again.")
+MAP_NOTHING_IN_SCOPE = ("Nothing the Data Flow Map reads is in scope — on the Scope page tick ZCC, DLP or ZIA platform "
+                        "and mark the channels you run on Zscaler, then run the map again.")
 
 
 def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
@@ -127,7 +129,14 @@ def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
 def full_path_scope() -> Dict[str, Any]:
     """Every part in scope (a caller that declared every channel on
     Zscaler and ticked every scope the path reads): for tests and tools."""
-    return path_scope(["dlp", "zia_extras", "zcc"], {cid: "zscaler" for _, _, cid in PATH_SECTIONS.values() if cid})
+    return path_scope(**{k: v for k, v in full_path_scope_request().items() if k != "from_page"})
+
+
+def full_path_scope_request() -> Dict[str, Any]:
+    """The Scope page selection (a request body's scopes, channels and
+    from_page) that puts every part the path reads in scope."""
+    return {"scopes": ["dlp", "zia_extras", "zcc"], "channels": {cid: "zscaler" for _, _, cid in PATH_SECTIONS.values() if cid},
+            "from_page": True}
 
 
 # ── Stop ──────────────────────────────────────────────────────────────
@@ -999,11 +1008,17 @@ def load_packs() -> List[Dict[str, Any]]:
         return []
 
 
-def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = None, platform: str = "windows") -> Dict[str, Any]:
+def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = None, platform: str = "windows", *,
+                              scope: Optional[Dict[str, Any]] = None, cancel: Any = None) -> Dict[str, Any]:
     """Read the tenant once, trace every traffic class (or the given
-    destinations) for every network context, and summarise."""
-    zcc = read_client_connector(client)
-    zia = read_zia(client)
+    destinations) for every network context, and summarise. With a
+    `scope` (path_scope: the Scope page's selection) only what is in scope
+    is read, and every part out of scope is drawn "not in scope"; None
+    reads every section (tests and tools only, the server always passes
+    the Scope page's). `cancel` (Stop) ends the read between requests."""
+    with stop_on(client, cancel):
+        zcc = read_client_connector(client, scope=scope, cancel=cancel)
+        zia = read_zia(client, scope=scope, cancel=cancel)
     packs = load_packs()
     dests = list(destinations) if destinations else [k["key"] for k in TRAFFIC_CLASSES]
     traces = []
@@ -1014,7 +1029,7 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
             # One destination the tracer cannot handle must not take the
             # whole map down: it is reported in the diagnostics instead.
             try:
-                traces.append(trace(rd, net["key"], platform, zcc, zia, packs))
+                traces.append(trace(rd, net["key"], platform, zcc, zia, packs, scope=scope))
             except Exception as e:  # noqa: BLE001
                 failed.append({"section": f"trace {rd.get('label') or d} ({net['key']})", "error_type": type(e).__name__, "error": str(e)[:200]})
     if not traces and failed:
@@ -1033,7 +1048,13 @@ def generate_data_flow_report(client, destinations: Optional[Sequence[str]] = No
             "destinations": [{"key": k["key"], "label": k["label"], "why": k.get("why", "")} for k in TRAFFIC_CLASSES],
             "traces": traces, "client_connector": zcc, "packs": [{"id": p["id"], "name": p["name"], "rules": len(p["policies"])} for p in packs],
             "diagnostics": zia.get("diagnostics", []) + [{"section": "Client Connector", "error": e} for e in zcc.get("errors", [])] + failed,
-            "snapshot": {"zia": {k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
+            # The scope the read was made for: its key (so the Path analyzer
+            # reuses this read only for the same scope) and what it says.
+            "path_scope": (scope or {}).get("key"),
+            "scope": ({"summary": scope.get("summary"), "read": list(scope.get("read") or []), "not_in_scope": dict(scope.get("not_in_scope") or {}),
+                       "source": scope.get("source") or ""} if scope else None),
+            "snapshot": {"zia": dict({k: zia[k] for k in ("ssl", "dlp", "url", "cac", "ftc", "endpoint", "saas", "email", "catalogue")},
+                                     not_in_scope=zia.get("not_in_scope") or {}),
                          "categories": {k: {"id": v.get("id"), "name": v.get("configured_name") or v.get("name"), "urls": v.get("urls"), "db_categorized_urls": v.get("db_categorized_urls") or v.get("dbCategorizedUrls")}
                                         for k, v in (zia.get("categories") or {}).items() if isinstance(v, dict)}},
             "sources": {"client_connector": "/zcc/webPolicies, /zcc/forwardingProfiles, /zcc/trustedNetworks", "pac": "/zia/pacFiles",

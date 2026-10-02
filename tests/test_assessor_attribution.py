@@ -116,7 +116,9 @@ def test_terraform_tags_name_the_assessor(tmp_path):
     files = pack_terraform.generate(_pack(tmp_path), assessor="Jane Doe")
     hcl = "".join(v for k, v in files.items() if k.endswith(".tf"))
     assert "[Jane Doe pack alpha v2] Terraform-managed." in hcl and "[DLP-Check pack" not in hcl
-    assert "[DLP-Check pack alpha v2] Terraform-managed." in "".join(pack_terraform.generate(_pack(tmp_path / "b")).values())
+    # No assessor: the tag takes the required var.assessor, never "DLP-Check" (user rule 2).
+    unnamed = "".join(pack_terraform.generate(_pack(tmp_path / "b")).values())
+    assert "[${var.assessor} pack alpha v2] Terraform-managed." in unnamed and "[DLP-Check pack" not in unnamed
 
 
 # --- records and labels ---------------------------------------------------------

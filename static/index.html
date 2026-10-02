@@ -1565,15 +1565,20 @@ document.addEventListener('DOMContentLoaded', applyAuthMethod);
 
 function migrateCredBody() {
   const v = id => (document.getElementById(id) || {}).value || '';
+  // Only the chosen sign-in's fields are sent: a vanity domain or client id
+  // left in a hidden field never reaches a classic-API run (its labels and
+  // records name no vanity domain), and no admin login reaches a OneAPI one.
+  const legacy = currentAuthMethod() === 'legacy';
+  const only = (id, forLegacy) => (forLegacy === legacy ? v(id) : '');
   return {
     auth_method: currentAuthMethod(),
     cloud: v('cloud'),
-    vanity_domain: v('vd'),
-    client_id: v('cid'),
-    client_secret: v('csec'),
-    username: v('zuser'),
-    password: v('zpass'),
-    api_key: v('zkey'),
+    vanity_domain: only('vd', false),
+    client_id: only('cid', false),
+    client_secret: only('csec', false),
+    username: only('zuser', true),
+    password: only('zpass', true),
+    api_key: only('zkey', true),
     customer_id: v('custid'),
     // Saved tenant profile (guide add-on): fills blanks server-side, incl. a remembered secret.
     profile_id: (window.GD && GD.profile) ? GD.profile : '',
@@ -4955,7 +4960,7 @@ async function openDetectionHealthTab() {
 }
 window.__detectionHealthGenerate = async function (days) {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/detection-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, days: days || 30 }) });
+  const resp = await fetch('/api/detection-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection(), days: days || 30 }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${resp.status}`);
   return data.report_id;
@@ -4989,10 +4994,24 @@ async function openDataFlowTab() {
     w.location = `/report/dataflow?error=${encodeURIComponent(e.message)}`;
   }
 }
+// What is in scope on the Scope page, for a tenant read started from this
+// page: the ticked scopes and each channel's choice (never its free-text
+// note). The server reads only that, and refuses when nothing is in scope.
+function scopePageSelection() {
+  const channels = {};
+  try {
+    const state = (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {};
+    Object.entries(state || {}).forEach(([id, val]) => {
+      const choice = val && typeof val === 'object' ? val.choice : val;
+      if (choice === 'zscaler' || choice === 'alternative') channels[id] = choice;
+    });
+  } catch (e) { /* no channel declared */ }
+  return { scopes: getSelectedScopes(), channels, from_page: true };
+}
 // Called by the Data flow map tab (Refresh); this page holds the credentials.
 window.__dataFlowGenerate = async function (platform) {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, platform: platform || 'windows' }) });
+  const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection(), platform: platform || 'windows' }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   return data.report_id;

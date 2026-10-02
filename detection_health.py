@@ -300,14 +300,16 @@ LIVE_FIRST_LOOKBACK_SECONDS = 120     # first poll: how far back to start (avoid
 LIVE_POLL_CLAMP_SECONDS = 3600        # a client that waited an hour still only gets the last hour, not a backfill storm
 
 
-def rule_actions(client) -> Dict[str, str]:
+def rule_actions(client, channels: Optional[Iterable[str]] = None) -> Dict[str, str]:
     """name -> configured action (upper-cased), from the same DLP rule
     inventory the full report reads. `incident_action` and `live_stats`
     need this because a Workflow Automation incident record carries no
     action field of its own — only the rule it matched decides whether
-    that match was enforced or only logged."""
+    that match was enforced or only logged. `channels` (web / endpoint /
+    saas / email: the ones in scope) limits the read to those channels'
+    rules; None reads every channel (tests and tools only)."""
     from pack_removal import inventory
-    inv = inventory(client)
+    inv = inventory(client) if channels is None else inventory(client, channels=[str(c) for c in channels])
     return {str(r.get("name")): str(r.get("action") or "").upper() for r in (inv.get("rules") or [])}
 
 

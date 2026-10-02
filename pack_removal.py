@@ -426,7 +426,7 @@ def remove_deployment(client, record: Dict[str, Any], *, plan_hash: str, writes_
     """Undo one recorded deployment through the guided path: the plan
     previewed by plan_removal_deployment, tiered deletes with activation,
     then the same read-back verification as a pack removal."""
-    return _execute(client, lambda: plan_removal_deployment(client, record),
+    return _execute(client, lambda c=client: plan_removal_deployment(c, record),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
@@ -744,7 +744,7 @@ def remove(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, writes_en
     anything of the pack is still there. `cancel` (the operator's Stop)
     and a refusal no later delete can get past stop the remaining deletes;
     the result's `stopped` says why."""
-    return _execute(client, lambda: plan_removal(client, packs, everything=everything),
+    return _execute(client, lambda c=client: plan_removal(c, packs, everything=everything),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
@@ -752,7 +752,7 @@ def remove_selected(client, selected: Sequence[Dict[str, Any]], *, plan_hash: st
                     log: pd.LogFn = None, settle_seconds: float = 45.0, cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Execute a removal previewed by plan_removal_selected: the chosen
     rules, then the engines and dictionaries only they used."""
-    return _execute(client, lambda: plan_removal_selected(client, selected),
+    return _execute(client, lambda c=client: plan_removal_selected(c, selected),
                     plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds, cancel=cancel)
 
 
@@ -763,15 +763,38 @@ def _execute(client, planner, *, plan_hash: str, writes_enabled: Optional[bool],
     run's summary go to the audit log (pack_ops.audited_run)."""
     import zia_rate
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("removal", client, plan_hash=plan_hash, cancel=cancel) as run:
-        run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds)
+        run["result"] = _execute_run(client, planner, plan_hash=plan_hash, writes_enabled=writes_enabled, log=log, settle_seconds=settle_seconds,
+                                     cancel=cancel)
         return run["result"]
 
 
-def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float) -> Dict[str, Any]:
+def _plan_with(planner, client: Any) -> Dict[str, Any]:
+    """planner() on `client` when it takes a client (remove, remove_selected,
+    remove_deployment pass one), else on the client it was built with."""
+    import inspect
+    try:
+        takes = bool(inspect.signature(planner).parameters)
+    except (TypeError, ValueError):
+        takes = False
+    return planner(client) if takes else planner()
+
+
+def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bool], log: pd.LogFn, settle_seconds: float,
+                 cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode to remove a deployment."], "results": []}
-    plan = planner()
+    # Stop also ends the plan's tenant read: nothing more is read, nothing is deleted.
+    try:
+        plan = _plan_with(planner, pd.stop_reads(client, cancel))
+    except pd.ReadsStopped:
+        plan = None
+    if plan is None or (cancel is not None and cancel.is_set()):
+        _log(f"STOPPED — {pd.STOPPED_READ}")
+        return {"status": "stopped", "stopped": pd.STOPPED_READ, "summary": {}, "results": [], "events": [], "complete": False,
+                "kept": [], "gone": [], "activation": None, "activations": [], "activation_required": False, "run_again": False,
+                "verification": {"read": False, "clean": False, "remaining": [], "kept": [], "activation_status": None, "plan": None,
+                                 "blockers": ["not read: the run stopped before the plan was read"]}}
     if plan["status"] == "blocked":
         return {"status": "blocked", "blockers": plan["blockers"], "results": []}
     if plan_hash and plan["plan_hash"] != plan_hash:
@@ -926,8 +949,14 @@ def _execute_run(client, planner, *, plan_hash: str, writes_enabled: Optional[bo
     # VERIFY BY READING: run the same discovery the preview ran, against
     # the tenant as it is now. Anything of the pack still there is
     # reported as still present, and the removal is not called complete.
-    _log("Re-reading the tenant to verify the removal…")
-    verify = planner()
+    if not sent_any and ops.stop_reason():
+        # Stopped before any delete was sent: nothing to verify, and Stop
+        # means no further read either.
+        _log("No delete was sent before the run stopped, so the tenant is not read again.")
+        verify = {"status": "blocked", "items": [], "blockers": ["not read: the run stopped before any delete was sent"]}
+    else:
+        _log("Re-reading the tenant to verify the removal…")
+        verify = _plan_with(planner, client)
     remaining = [it for it in verify.get("items", []) if it["status"] == "remove"]
     remaining_keys = {(it["kind"], it.get("channel"), str(it["id"])) for it in remaining}
     # Also look for every object this run deleted, by id and name: a plan

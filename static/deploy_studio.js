@@ -2107,7 +2107,7 @@ function _tfRender() {
     const ch = Object.entries(s.counts.channels || {}).map(([k, v]) => `${v} ${_dzChan(k)}`).join(', ');
     const files = (s.files || []).filter(f => !f.name.startsWith('.')).map(f => `<li><code>${_dzE(f.name)}</code> <span class="d">${_dzE(f.purpose)}</span></li>`).join('');
     return `<div class="tf-sum"><div class="tf-sum-h"><b>${_dzE(s.name)}</b> <span class="d">${s.counts.dictionaries} dictionaries · ${s.counts.engines} engines · ${s.counts.rules} rules (${_dzE(ch)})${s.counts.app_groups ? ` · ${s.counts.app_groups} app group(s)` : ''}</span></div>
-      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
+      ${s.committed ? `<div class="d">Also in the repository as <code>${_dzE(s.path)}</code>, validated against the real provider on every commit. Those files name no assessor: <code>terraform apply</code> asks for the required <code>assessor</code> variable, the name every object's description carries. Gap mode adds <code>imports.tf</code> on top of these files.</div>` : ''}
       <details class="dz-fold"><summary>What is in the workspace (${(s.files || []).length} files)</summary><ul class="tf-files">${files}</ul></details></div>`;
   }).join('');
   host.innerHTML = `

@@ -7,6 +7,22 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### A classic-API tenant is never named by its admin login or a stale vanity domain
+- **What you saw.** With the classic ZIA API sign-in, Beacon's tenant watch, the Path analyzer, the live feed and the sign-in check named the tenant `admin@acme.com (cloud, classic API)`, and Beacon kept that label on disk. The Data Flow Map, Bypass and SSL flow reports named it by a vanity domain left in the hidden OneAPI field.
+- **Now.** Every label, kept report, export and Beacon snapshot names a classic-API tenant `classic API (cloud)`. Beacon history written before is cleaned of the login when it is read, and the same tenant still finds its baseline. An authentication error masks the login. The assessment page sends only the chosen sign-in's fields.
+
+### The Data Flow Map, the FP/TP Detection Ratio and the live feed read only what is in scope
+- **What you saw.** *Traffic flow & gaps* read Client Connector and every ZIA section whatever the Scope page said. The manual FP/TP Detection Ratio and the live feed read every channel's rules and Workflow Automation's incidents.
+- **Now.** They take the Scope page's selection, else the chosen profile's saved one (never mixed). The Data Flow Map reads only the parts in scope and draws the rest as *not in scope*. The FP/TP Detection Ratio reads the rules of the DLP channels marked Zscaler, and the incidents only when Workflow Automation is marked Zscaler. The live feed needs DLP ticked and Workflow Automation on Zscaler. With nothing in scope, each one refuses before signing in.
+
+### Stop stops the Beacon tenant watch and the plan read of a hand-off, a deployment and a removal
+- **What you saw.** A running tenant watch could not be stopped. After Stop, a Terraform gap hand-off, a deployment and a removal still finished their tenant read (a removal also read the tenant again to verify, with nothing deleted).
+- **Now.** The Beacon tab has a Stop button (`POST /api/beacon/stop`). No further endpoint is read, and the watch is kept as one that stopped early. Stop during a plan read sends no further read. A deployment or removal stopped before anything was written does not read the tenant back.
+
+### Terraform workspaces generated without an assessor need one at apply time
+- **What you saw.** The workspace written when a pack is uploaded or rebuilt, and the ones committed under `terraform/<pack>/`, tagged every description `[DLP-Check pack …]`.
+- **Now.** Without an assessor's name, the tag reads `[${var.assessor} pack …]`, and `variable "assessor"` is required (no default; no brackets, not the tool's name). `terraform apply` cannot push anything until an assessor is named. Downloads that name the assessor are unchanged.
+
 ### Beacon's tenant watch reads no channel the assessment leaves out
 - **What you saw.** With only Endpoint (or Email) DLP marked Zscaler, the tenant watch for DLP still read the Inline Web DLP rules, the SSL inspection rules, the Cloud App Control rules and the tenancy restrictions; with GenAI & prompts ticked and GenAI Security left unticked it read 9 endpoints, while the assessment for the same selection reads none of them. The watch kept its own, older channel rule: outside DLP only an *alternative* channel took checks out, and only three rule endpoints needed their channel.
 - **Now.** The watch uses the assessment's own rule (`channel_scope.partition` and its endpoint map) for every scope: a check's endpoints are read only when the assessment would run that check, and a channel's own configuration only with that channel on Zscaler. A channel the Beacon tab does not send counts as unticked. As a backstop, the watch's GETs go through the same client guard as the assessment's, so a channel's endpoint is refused without touching the tenant even if a selection listed it. With GenAI & prompts ticked and GenAI Security unticked there is nothing to read, and the run is refused before signing in.

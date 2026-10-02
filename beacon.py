@@ -97,7 +97,31 @@ def load_history(path: Optional[str] = None) -> List[Dict[str, Any]]:
     except (OSError, ValueError):
         return []
     snaps = data.get("snapshots") if isinstance(data, dict) else None
-    return [s for s in snaps if isinstance(s, dict)] if isinstance(snaps, list) else []
+    kept = [s for s in snaps if isinstance(s, dict)] if isinstance(snaps, list) else []
+    clean = _scrub(kept)
+    if clean != kept:
+        # A classic-API tenant's admin login, kept in a label by an older
+        # version: rewritten as 'classic API (cloud)' on disk too, so the
+        # login is gone from the history and the next watch of the same
+        # tenant still finds its baseline (user rule 3).
+        try:
+            save_history(clean, path)
+        except OSError:
+            pass
+    return clean
+
+
+def _scrub(value: Any) -> Any:
+    """`value` (a snapshot, a list of them, or any part) with every
+    classic-API admin login label replaced (tenant_auth.scrub_classic_login)."""
+    import tenant_auth
+    if isinstance(value, str):
+        return tenant_auth.scrub_classic_login(value)
+    if isinstance(value, list):
+        return [_scrub(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub(v) for k, v in value.items()}
+    return value
 
 
 def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) -> str:
@@ -107,7 +131,7 @@ def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) ->
     os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
     tmp = f"{p}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "snapshots": snapshots[-HISTORY_KEEP:]}, f, indent=1)
+        json.dump({"version": 1, "snapshots": _scrub(snapshots[-HISTORY_KEEP:])}, f, indent=1)
     os.replace(tmp, p)
     return p
 
@@ -348,7 +372,8 @@ def probe_endpoint(client: Any, ep: str, method: str = "GET") -> Dict[str, Any]:
 def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, *, method: str = "GET",
                  gap: float = PROBE_GAP_SECONDS, budget: float = PROBE_BUDGET_SECONDS,
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.time,
-                 on_progress: Optional[Callable[[int, int], None]] = None) -> Dict[str, Any]:
+                 on_progress: Optional[Callable[[int, int], None]] = None,
+                 stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     """GET each of `endpoints` (the ones in scope, from
     beacon_scope.select), one about every `gap` seconds. There is no
     default: without a list nothing is read. A ZPA path without a ZPA
@@ -360,7 +385,12 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
     request pacer (dlp_assessment_full_auto.Client._limiter), its gap is
     raised to `gap` for the watch, so every HTTP GET is paced; otherwise
     the wait after an endpoint grows with the GETs it took. `requests` is
-    the HTTP GETs the client sent when it counts them (requests_made)."""
+    the HTTP GETs the client sent when it counts them (requests_made).
+
+    `stop` (the operator's Stop) is checked before every endpoint and,
+    through the client's stop_check and zia_rate.stopping_on, inside a
+    request that pages or waits out ZIA's rate limit: once it says so
+    nothing more is sent and every endpoint left is "not probed"."""
     if str(method or "").upper() != "GET":
         raise ValueError(f"Beacon's tenant watch only sends GET; {method!r} was refused.")
     if endpoints is None:
@@ -375,11 +405,43 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
     paced = isinstance(old_gap, (int, float)) and not isinstance(old_gap, bool)
     if paced:
         limiter.min_gap = max(float(old_gap), float(gap))
+    should_stop = _stop_hook(stop)
+    bound, before = False, None
+    if should_stop is not None:
+        try:
+            before = getattr(client, "stop_check", None)
+            client.stop_check = should_stop
+            bound = True
+        except Exception:  # noqa: BLE001 — a client that takes no hook is still stopped between endpoints
+            pass
+    import zia_rate
     try:
-        return _probe_rows(ro, eps, legacy, customer_id, paced, gap, budget, sleep, clock, on_progress, permissions)
+        with zia_rate.stopping_on(should_stop):
+            return _probe_rows(ro, eps, legacy, customer_id, paced, gap, budget, sleep, clock, on_progress, permissions, should_stop)
     finally:
         if paced:
             limiter.min_gap = old_gap
+        if bound:
+            try:
+                client.stop_check = before
+            except Exception:  # noqa: BLE001
+                pass
+
+
+STOPPED_BY_OPERATOR = "you clicked Stop; nothing more was read"
+
+
+def _stop_hook(stop: Optional[Callable[[], bool]]) -> Optional[Callable[[], bool]]:
+    """`stop` as a hook that never raises (a broken hook never stops a watch by itself)."""
+    if stop is None:
+        return None
+
+    def should_stop() -> bool:
+        try:
+            return bool(stop())
+        except Exception:  # noqa: BLE001
+            return False
+    return should_stop
 
 
 def _gets(ro: "ReadOnlyClient") -> Optional[int]:
@@ -389,7 +451,8 @@ def _gets(ro: "ReadOnlyClient") -> Optional[int]:
 
 def _probe_rows(ro: "ReadOnlyClient", eps: Dict[str, List[str]], legacy: bool, customer_id: str, paced: bool, gap: float,
                 budget: float, sleep: Callable[[float], None], clock: Callable[[], float],
-                on_progress: Optional[Callable[[int, int], None]], permissions: Any) -> Dict[str, Any]:
+                on_progress: Optional[Callable[[int, int], None]], permissions: Any,
+                should_stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     started = clock()
     rows: List[Dict[str, Any]] = []
     stopped = None
@@ -404,14 +467,26 @@ def _probe_rows(ro: "ReadOnlyClient", eps: Dict[str, List[str]], legacy: bool, c
         if ep.startswith("/zpa/") and not customer_id:
             rows.append({**base, "status": "skipped", "http": None, "items": None, "error": "no ZPA customer id was given"})
             continue
+        if not stopped and should_stop is not None and should_stop():
+            stopped = STOPPED_BY_OPERATOR
         if stopped or clock() - started > budget:
             stopped = stopped or f"the {int(budget)}-second budget ran out"
             rows.append({**base, "status": "not probed", "http": None, "items": None})
             continue
         if sent and not paced:
             sleep(gap * max(1, last_cost))
+            if should_stop is not None and should_stop():
+                stopped = STOPPED_BY_OPERATOR
+                rows.append({**base, "status": "not probed", "http": None, "items": None})
+                continue
         before = _gets(ro)
-        rows.append({**base, **probe_endpoint(ro, ep, "GET")})
+        row = probe_endpoint(ro, ep, "GET")
+        if should_stop is not None and should_stop() and row.get("status") not in ("OK", "403", "404", "429"):
+            # Cut short by Stop (a paged read or a rate-limit wait ended
+            # by it): not an answer from the tenant.
+            stopped = STOPPED_BY_OPERATOR
+            row = {"endpoint": ep, "status": "not probed", "http": None, "items": None}
+        rows.append({**base, **row})
         after = _gets(ro)
         last_cost = (after - before) if before is not None and after is not None else 1
         sent += 1
@@ -684,14 +759,16 @@ def headline(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
 def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any = None, tenant_label: str = "", *,
         upstream: Optional[Callable[..., Dict[str, Any]]] = None, trigger: str = "manual", path: Optional[str] = None,
         save: bool = True, probe: Optional[Callable[..., Dict[str, Any]]] = None,
-        tenant_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        tenant_scope: Optional[Dict[str, Any]] = None, stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     """One Beacon snapshot: the three upstream watchers, the tenant API
     watch when a client is given, and what changed since the last run.
     Saved to the history unless `save` is False.
 
     The tenant API watch reads only `tenant_scope["endpoints"]` (a
     beacon_scope.select result, with an optional "source"); with a client
-    and nothing in scope it refuses (ValueError) before anything is read."""
+    and nothing in scope it refuses (ValueError) before anything is read.
+    `stop` (the operator's Stop) ends the watch between endpoints and
+    inside a request: what was read is kept as a watch that stopped early."""
     import beacon_scope
     if tenant_client is not None and not (tenant_scope or {}).get("endpoints"):
         raise ValueError(beacon_scope.NOTHING_IN_SCOPE)
@@ -713,12 +790,14 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
             client = channel_scope.ScopedClient(
                 tenant_client, beacon_scope.declaration({c: "zscaler" for c in tenant_scope.get("channels") or ()}))
         try:
-            t = (probe or probe_tenant)(client, endpoints=tenant_scope["endpoints"])
+            kw = {"stop": stop} if stop is not None else {}
+            t = (probe or probe_tenant)(client, endpoints=tenant_scope["endpoints"], **kw)
         except PermissionError:
             raise
         except Exception as e:  # noqa: BLE001
             t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET", "failed": True}
-        t["label"] = tenant_label or "tenant"
+        import tenant_auth
+        t["label"] = tenant_auth.scrub_classic_login(tenant_label) or "tenant"   # never a classic-API admin login (user rule 3)
         t["scope"] = beacon_scope.describe(tenant_scope, str(tenant_scope.get("source") or ""))
         snap["tenant"] = t
     snap["drift"] = headline(snap)

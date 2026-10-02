@@ -1,7 +1,8 @@
 // Beacon tab: what changed in the Zscaler SDK, the API and the Terraform
 // provider since the last run, the tenant API watch (GET only, and only
 // the endpoints in scope on the Scope page) and the history. Talks only to
-// /api/beacon, /api/beacon/run, /api/beacon/scope (what the watch would
+// /api/beacon, /api/beacon/run, /api/beacon/stop (Stop: the tenant watch
+// reads nothing more), /api/beacon/scope (what the watch would
 // read; no tenant call) and, for the tenant choices, /api/tenant-profiles.
 (function () {
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -154,6 +155,7 @@
     renderTenant(l && l.tenant, d.diff);
     renderHistory(d.history);
     $('bcRun').disabled = !!d.running; $('bcRunTenant').disabled = !!d.running || !scopeOk;
+    $('bcStop').hidden = !d.running;
   }
   async function load() {
     try {
@@ -279,6 +281,7 @@
       const d = await api('/api/beacon/run', body);
       say('', `Running${online ? ' online' : ' offline'}${d.tenant ? `, with the tenant API watch on ${E(d.tenant)}: only what is in scope, ${E(d.scope ? d.scope.summary : `${d.endpoints} endpoints`)} (GET only, about one a second)` : ''}. This page updates when it finishes.`);
       $('rpMeta').textContent = 'Running…';
+      $('bcStop').hidden = false; $('bcStop').disabled = false;
       poll();
     } catch (e) {
       say('bad', `Could not start: ${E(e.message)}`);
@@ -286,7 +289,23 @@
     }
   }
 
+  // Stop: the tenant API watch reads no further endpoint, and a request
+  // waiting for ZIA's rate limit is not sent. What was read is kept as a
+  // watch that stopped early.
+  async function stopRun() {
+    $('bcStop').disabled = true;
+    try {
+      const d = await api('/api/beacon/stop', {});
+      say('', d.stopping ? 'Stopping: the tenant API watch reads nothing more. This page updates when the run has ended.' : 'No run is in progress.');
+      poll();
+    } catch (e) {
+      say('bad', `Could not stop: ${E(e.message)}`);
+      $('bcStop').disabled = false;
+    }
+  }
+
   $('bcRun').addEventListener('click', () => run(false));
+  $('bcStop').addEventListener('click', stopRun);
   $('bcRunTenant').addEventListener('click', () => run(true));
   $('bcTenant').addEventListener('change', previewScope);
   window.addEventListener('focus', previewScope);

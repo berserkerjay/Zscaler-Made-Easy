@@ -19,6 +19,7 @@ key obfuscation the classic sign-in needs and the SDK legacy client.
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -129,12 +130,26 @@ def from_env(environ: Optional[Dict[str, str]] = None) -> Dict[str, str]:
 
 def label(creds: Dict[str, Any]) -> str:
     """How the tenant is named in messages: 'acme (zscalerten)' for OneAPI,
-    'admin@acme.com (zscalerten, classic API)' for the legacy sign-in."""
-    c = normalize(creds)
-    cloud = c["cloud"] or "production"
-    if c["auth_method"] == LEGACY:
-        return f"{c['username'] or '?'} ({cloud}, classic API)"
-    return f"{c['vanity_domain'] or '?'} ({cloud})"
+    'classic API (zscalerten)' for the legacy sign-in. The same as
+    record_label: a label is shown, returned and often kept (a Beacon
+    snapshot, a report), so the classic API's admin login and any vanity
+    domain left in the form are never part of it (user rule 3)."""
+    return record_label(creds)
+
+
+# The form label() gave a classic-API tenant before it stopped naming the
+# admin login: '<login> (<cloud>, classic API)'. Only used to find and
+# scrub it in what was kept before (scrub_classic_login).
+_OLD_CLASSIC_LABEL = re.compile(r"[^\s()\[\]{}\"']+ \(([^(),]+), classic API\)")
+
+
+def scrub_classic_login(text: Any) -> Any:
+    """`text` with every '<admin login> (<cloud>, classic API)' label the
+    app wrote before replaced by 'classic API (<cloud>)'. Anything that is
+    not a string is returned as it is."""
+    if not isinstance(text, str) or ", classic API)" not in text:
+        return text
+    return _OLD_CLASSIC_LABEL.sub(lambda m: f"classic API ({m.group(1).strip()})", text)
 
 
 def record_label(creds: Dict[str, Any]) -> str:
@@ -163,10 +178,12 @@ def record_labels(creds: Dict[str, Any]) -> Tuple[str, ...]:
 
 
 def identity(creds: Dict[str, Any]) -> str:
-    """The masked identity for an error message."""
+    """The masked identity for an error message. The classic API's admin
+    login is masked like a client id: an error message can end up in a
+    job log or a report, where the login never appears (user rule 3)."""
     c = normalize(creds)
     if c["auth_method"] == LEGACY:
-        return f"username={c['username'] or '?'}"
+        return f"username={_mask(c['username']) if c['username'] else '?'}"
     return f"client_id={_mask(c['client_id'])}"
 
 

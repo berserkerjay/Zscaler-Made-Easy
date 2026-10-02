@@ -37,8 +37,9 @@ def test_the_method_is_stated_or_inferred_and_completeness_follows_it():
     assert ta.missing({"client_id": "c"}) == ["vanity_domain", "client_secret"]
     n = ta.normalize({"username": " u ", "api_key": "k"})
     assert set(n) == set(ta.CRED_KEYS) and n["username"] == "u" and n["auth_method"] == "legacy"
-    assert ta.label(LEGACY) == "api-admin@acme.com (zscalerten, classic API)" and ta.label(ONEAPI) == "acme (production)"
-    assert ta.identity(LEGACY) == "username=api-admin@acme.com" and "abc" in ta.identity(ONEAPI) and "abc123456789" not in ta.identity(ONEAPI)
+    # The admin login is never part of a label (user rule 3), and is masked in an identity.
+    assert ta.label(LEGACY) == "classic API (zscalerten)" and ta.label(ONEAPI) == "acme (production)"
+    assert ta.identity(LEGACY).startswith("username=api") and "api-admin@acme.com" not in ta.identity(LEGACY) and "abc" in ta.identity(ONEAPI) and "abc123456789" not in ta.identity(ONEAPI)
 
 
 def test_secrets_are_masked_in_text_and_the_environment_and_profiles_fill_blanks():
@@ -314,7 +315,7 @@ def test_the_connection_test_and_the_assessment_accept_the_classic_sign_in(store
     r = c.post("/api/tenant/check", json=LEGACY)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["auth_method"] == "legacy" and body["tenant_label"] == "api-admin@acme.com (zscalerten, classic API)" and any("ZIA only" in p for p in body["problems"])
+    assert body["auth_method"] == "legacy" and body["tenant_label"] == "classic API (zscalerten)" and any("ZIA only" in p for p in body["problems"])
     entry = json.loads(log.read_text().splitlines()[-1])
     assert entry["body"]["password"] == "[redacted]" and entry["body"]["api_key"] == "[redacted]" and "Pa55word!" not in log.read_text()
     # The assessment builds the raw client with the classic sign-in.
@@ -358,7 +359,7 @@ def test_sdk_client_and_mcp_take_the_classic_sign_in_from_the_environment(monkey
 def test_the_page_offers_the_sign_in_method_and_sends_every_credential_field():
     html = open(os.path.join(ROOT, "static", "index.html"), encoding="utf-8").read()
     assert '<select id="authMethod"' in html and 'value="legacy"' in html and 'id="zuser"' in html and 'id="zpass"' in html and 'id="zkey"' in html
-    for needle in ("function currentAuthMethod", "function applyAuthMethod", "auth_method: currentAuthMethod()", "username: v('zuser')", "password: v('zpass')", "api_key: v('zkey')",
+    for needle in ("function currentAuthMethod", "function applyAuthMethod", "auth_method: currentAuthMethod()", "username: only('zuser', true)", "password: only('zpass', true)", "api_key: only('zkey', true)",
                    "API Key Management", "...migrateCredBody()"):
         assert needle in html, needle
     assert re.search(r"if \(b\.auth_method === 'legacy'\) \{\s*if \(blank\(b\.username\)\)", html), "validation follows the method"
