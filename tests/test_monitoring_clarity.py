@@ -1,5 +1,5 @@
 """Monitoring and compliance clarity (UI/UX stage 4): the Digest says what
-the six-hour loop covers and when it runs; a framework percentage says
+the evaluation loop covers and when it runs; a framework percentage says
 what it is and is never invented; this app's CISA score is labelled as
 the app's, not the tenant's; the daily upstream check is explained and
 its offline half can be run here."""
@@ -46,19 +46,25 @@ def test_the_pages_say_what_the_percentage_is():
 def test_digest_says_when_the_loop_runs_and_what_it_covers():
     c = _client()
     d = c.get("/report/digest").text
-    assert "Digest</span> — the six-hour loop" in d and "While this app's server is running" in d
+    assert "Digest</span> — the evaluation loop" in d and "When you click <strong>Run the loop now</strong>" in d
+    # Off unless the operator opts in, and only what is in scope is read.
+    assert "nothing runs on its own" in d and "DLP_CHECK_CONTINUOUS_EVAL_HOURS" in d and "only what that profile's Scope page puts in scope" in d
+    assert "every six hours" not in d and "30 seconds after the server starts" not in d
     assert "does not run the assessment checks or re-score the tenant" in d and "stops when the server stops" in d
     assert "No tenant was evaluated: no tenant profile remembers its secret" in d and "tile('Tenants evaluated'" in d
     assert "always-on" not in d
     html = c.get("/").text
     assert "always-on loop" not in html and "It does not re-run the assessment." in html
     ex = c.get("/static/explain.js").text
-    assert "Digest — the six-hour loop" in ex and "does not re-run the assessment checks" in ex and "always-on" not in ex
+    assert "Digest — the evaluation loop" in ex and "does not re-run the assessment checks" in ex and "always-on" not in ex
+    assert "every six hours" not in ex.split("X.digest")[1].split("X.")[0] and "DLP_CHECK_CONTINUOUS_EVAL_HOURS" in ex
+    assert "every six hours the app re-reads" not in html and "the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS" in html
     assert "always-on" not in open("GETTING_STARTED.md", encoding="utf-8").read().split("## 4i.")[1].split("\n")[0]
     # A manual run keeps the same bookkeeping as the scheduled one.
     src = open("dlp_api_server.py", encoding="utf-8").read()
     body = src.split("async def digests_run(")[1].split("@app.get")[0]
-    assert '_DH_REFRESH_STATE["last_status"] = "ok"' in body and "_dh_refresh_once" not in src
+    once = src.split("def _continuous_eval_locked(")[1].split("async def ")[0]
+    assert "_continuous_eval_once" in body and '_DH_REFRESH_STATE["last_status"] = "partial" if errors else "ok"' in once and "_dh_refresh_once" not in src
 
 
 def test_this_apps_cisa_score_is_labelled_as_the_apps_and_the_daily_upstream_check_is_exposed():
