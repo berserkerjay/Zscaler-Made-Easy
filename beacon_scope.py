@@ -11,17 +11,17 @@ derives the endpoint list:
     dlp_api_server._get_checks does (SCOPE_REGISTRIES below).
   - Each registered check's function is read (and every helper it calls,
     in its own module or another) for the literal endpoints it GETs.
-  - A DLP-scope check that belongs to a data-security channel
-    (channel_scope.CHANNEL_CHECKS: Ch.A Inline Web, Ch.B Endpoint, 4 — SSL
-    Policy, ...) counts only when that channel is marked **Zscaler** on
-    the Scope page. Alternative, gap (unticked) and undeclared channels are
-    out of scope for the watch. The Endpoint DLP, SaaS (CASB) and Email DLP
-    rule endpoints are read only with their channel on Zscaler, whichever
-    check reads them (CHANNEL_ONLY_ENDPOINTS).
-  - A check of any other ticked scope (GenAI & prompts, ZIA platform's
-    Cloud Apps, ...) is in scope because its scope is ticked; a channel
-    takes it out only when that channel is declared **alternative**, as
-    the assessment itself skips it then (channel_scope.partition).
+  - The channels are applied exactly as the assessment applies them
+    (channel_scope.partition and channel_scope.ScopedClient), for every
+    scope: a check runs, and its endpoints are read, only when
+    channel_scope.partition would run it, and an endpoint that holds a
+    channel's own configuration (channel_scope.ENDPOINT_CHANNELS: the Web,
+    Endpoint, Email and SaaS DLP rules, SSL inspection rules, Cloud App
+    Control rules, tenancy restrictions, ...) is read only with one of its
+    channels on **Zscaler**. Alternative, gap (unticked) and undeclared
+    channels are all out of scope for the watch: the page sends only the
+    channels marked Zscaler or alternative, so a channel it leaves out is a
+    gap, never "nothing narrowed" (declaration()).
 
 The endpoints the watch knows (watch_endpoints) are the literal GET calls
 in beacon.TENANT_WATCH_MODULES plus every endpoint a check reads through a
@@ -71,13 +71,6 @@ CHANNEL_SHORT: Dict[str, str] = {
     "genai_security": "GenAI", "shadow_it": "Shadow IT", "endpoint_scan": "Endpoint scan",
     "ssl_inspection": "SSL", "cloud_app_control": "Cloud App Control", "device_control": "Device Control",
     "workflow_automation": "Workflow",
-}
-# Rule endpoints that are a channel's own: read only with that channel on
-# Zscaler, even when a check outside the channel's sections reads them.
-CHANNEL_ONLY_ENDPOINTS: Dict[str, str] = {
-    "/zia/endPointDlpRules": "endpoint_dlp",
-    "/zia/emailDlpRules": "email_dlp",
-    "/zia/casbDlpRules/all": "saas_casb",
 }
 NOTHING_IN_SCOPE = "Nothing is in scope — choose what to assess on the Scope page."
 
@@ -298,15 +291,32 @@ def has_selection(scopes: Any, channels: Any) -> bool:
     return bool(normalize_scopes(scopes)) or bool(channel_scope.normalize(channels))
 
 
-def _owner_in_scope(owner: Dict[str, Any], scopes: Set[str], on: Set[str], alt: Set[str] = frozenset()) -> bool:
-    if owner["scope"] not in scopes:
-        return False
-    if not owner["channels"]:
-        return True
-    if owner["scope"] == "dlp":
-        return any(c in on for c in owner["channels"])
-    # Another ticked scope: its checks run unless a channel of theirs is covered elsewhere.
-    return not any(c in alt for c in owner["channels"])
+def declaration(channels: Any) -> Dict[str, Dict[str, str]]:
+    """The channel declaration the watch applies: what was sent, and every
+    Scope-page channel it leaves out as a gap. Unlike an assessment sent
+    no `channels` at all, the watch never reads an undeclared channel: the
+    page sends only the channels marked Zscaler or alternative."""
+    ch = channel_scope.normalize(channels)
+    for cid, name in channel_scope.CHANNELS.items():
+        ch.setdefault(cid, {"choice": "gap", "note": "", "name": name})
+    return ch
+
+
+def _endpoint_in_scope(ep: str, on: Set[str]) -> bool:
+    """A channel's own configuration is read only with one of its channels
+    on Zscaler, as channel_scope.ScopedClient refuses it otherwise."""
+    chans = channel_scope.endpoint_channels(ep)
+    return not chans or any(c in on for c in chans)
+
+
+def running_checks(scopes: Iterable[str], channels: Any) -> List[Dict[str, Any]]:
+    """The check_map rows of the ticked scopes that the assessment runs
+    under this declaration (channel_scope.partition decides, so the watch
+    and the assessment share one rule)."""
+    sset = set(scopes)
+    rows = [r for r in check_map() if r["scope"] in sset]
+    run, _, _ = channel_scope.partition([(r["id"], r["section"], "", r) for r in rows], declaration(channels))
+    return [chk[3] for chk in run]
 
 
 def summary(scopes: Sequence[str], on: Sequence[str], n: int) -> str:
@@ -335,28 +345,28 @@ def select(scopes: Any, channels: Any, endpoints: Optional[Dict[str, List[str]]]
     eps = endpoints if endpoints is not None else watch_endpoints()
     sc = normalize_scopes(scopes)
     on = zscaler_channels(channels)
-    alt = {cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "alternative"}
     sset, onset = set(sc), set(on)
     owners = endpoint_owners(eps)
+    running = running_checks(sc, channels)
+    readers: Dict[str, List[Dict[str, Any]]] = {}
+    for row in running:
+        for ep in row["endpoints"]:
+            readers.setdefault(ep, []).append(row)
     picked: Dict[str, List[str]] = {}
     not_in, unmapped = [], []
     for ep, mods in eps.items():
-        who = owners.get(ep) or []
-        if not who:
+        if not owners.get(ep):
             unmapped.append(ep)
-            continue
-        need = CHANNEL_ONLY_ENDPOINTS.get(ep)
-        if need and need not in onset:
-            not_in.append(ep)
-            continue
-        if any(_owner_in_scope(o, sset, onset, alt) for o in who):
+        elif readers.get(ep) and _endpoint_in_scope(ep, onset):
             picked[ep] = list(mods)
         else:
             not_in.append(ep)
     # The summary names only the channels that bring something in: all of
-    # them with DLP ticked, else a channel whose own rule endpoint
-    # (CHANNEL_ONLY_ENDPOINTS) a check of another ticked scope reads.
-    named = on if "dlp" in sset else [c for c in on if any(CHANNEL_ONLY_ENDPOINTS.get(ep) == c for ep in picked)]
+    # them with DLP ticked, else a channel whose own configuration is read
+    # or whose checks read something.
+    brings = {c for ep in picked for c in channel_scope.endpoint_channels(ep)}
+    brings |= {c for ep in picked for row in readers[ep] for c in row["channels"]}
+    named = on if "dlp" in sset else [c for c in on if c in brings]
     return {"endpoints": picked, "not_in_scope": not_in, "unmapped": unmapped, "scopes": sc, "channels": on,
             "summary": summary(sc, named, len(picked))}
 

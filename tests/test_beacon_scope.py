@@ -94,22 +94,26 @@ def test_channel_rule_endpoints_need_their_channel_on_zscaler():
 
 def test_a_channel_widens_only_its_own_checks():
     base = set(bs.select(["dlp"], {})["endpoints"])
-    assert "/zia/dlpDictionaries" in base and "/zia/webDlpRules" in base, "the general DLP section reads them without a channel"
-    assert set(bs.select(["dlp"], {"genai_security": "zscaler"})["endpoints"]) - base == {"/zia/urlCategories"}
+    assert "/zia/dlpDictionaries" in base, "the general DLP section reads shared objects without a channel"
+    assert "/zia/webDlpRules" not in base, "Inline Web DLP's rules are its own: never read with the channel unticked"
+    web = set(bs.select(["dlp"], {"web_dlp": "zscaler"})["endpoints"])
+    assert {"/zia/webDlpRules", "/zia/webDlpGlobalOptions"} <= web - base
     platform = set(bs.select(["zia_extras"], {})["endpoints"])
     cac = set(bs.select(["zia_extras"], {"cloud_app_control": "zscaler"})["endpoints"])
-    assert cac == platform, "ZIA platform's Cloud Apps checks are in scope with the scope ticked"
-    no_cac = set(bs.select(["zia_extras"], {"cloud_app_control": "alternative"})["endpoints"])
-    assert "/zia/advancedSettings" in platform - no_cac, "a channel covered elsewhere takes its checks out, as the assessment does"
+    assert {"/zia/cloudApplicationRules", "/zia/tenancyRestrictionProfile", "/zia/advancedSettings"} <= cac - platform,         "ZIA platform's Cloud Apps checks are in scope only with Cloud App Control on Zscaler"
+    assert set(bs.select(["zia_extras"], {"cloud_app_control": "alternative"})["endpoints"]) == platform,         "alternative and gap are both out of scope, as the assessment does"
 
 
-def test_a_ticked_non_dlp_scope_is_not_emptied_by_an_undeclared_channel():
-    genai = bs.select(["genai"], {})
-    assert genai["endpoints"] and genai["summary"] == f"{len(genai['endpoints'])} endpoints for GenAI & prompts"
-    assert genai["endpoints"].keys() == bs.select(["genai"], {"genai_security": "gap"})["endpoints"].keys()
-    assert genai["endpoints"].keys() == bs.select(["genai"], {"genai_security": "zscaler"})["endpoints"].keys()
-    assert "/zia/urlCategories" in genai["endpoints"] and "/zia/cloudApplicationRules" in genai["endpoints"]
-    assert bs.select(["genai"], {"genai_security": "alternative"})["endpoints"] == {}
+def test_a_ticked_non_dlp_scope_reads_only_its_channels_on_zscaler():
+    # As the assessment: a channel that is undeclared, a gap or an
+    # alternative takes its checks out, whichever scope they sit in.
+    for ch in ({}, {"genai_security": "gap"}, {"genai_security": "alternative"}):
+        assert bs.select(["genai"], ch)["endpoints"] == {}, ch
+    genai = bs.select(["genai"], {"genai_security": "zscaler"})
+    assert genai["endpoints"] and genai["summary"] == f"{len(genai['endpoints'])} endpoints for GenAI & prompts, channels on Zscaler: GenAI"
+    assert "/zia/urlCategories" in genai["endpoints"] and "/zia/cloudApplicationRules" not in genai["endpoints"]
+    both = bs.select(["genai"], {"genai_security": "zscaler", "cloud_app_control": "zscaler"})
+    assert "/zia/cloudApplicationRules" in both["endpoints"]
 
 
 def test_server_watches_the_genai_scope_alone(server):
@@ -117,11 +121,16 @@ def test_server_watches_the_genai_scope_alone(server):
     c = _client()
     for ch in ({}, {"genai_security": {"choice": "gap"}}):
         d = c.post("/api/beacon/scope", json={"scopes": ["genai"], "channels": ch}).json()
-        assert d["ok"] is True and d["summary"].endswith("endpoints for GenAI & prompts"), d
-    r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["genai"], "channels": {}})
+        assert d["ok"] is False and d["endpoints"] == 0 and "Nothing is in scope" in d["detail"], d
+        r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["genai"], "channels": ch})
+        assert r.status_code == 400 and not tenant.calls, r.text
+    on = {"genai_security": "zscaler"}
+    d = c.post("/api/beacon/scope", json={"scopes": ["genai"], "channels": on}).json()
+    assert d["ok"] is True and d["summary"].endswith("endpoints for GenAI & prompts, channels on Zscaler: GenAI"), d
+    r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["genai"], "channels": on})
     assert r.status_code == 200, r.text
     _wait_idle(c)
-    assert tenant.calls and set(tenant.calls) == set(bs.select(["genai"], {})["endpoints"])
+    assert tenant.calls and set(tenant.calls) == set(bs.select(["genai"], on)["endpoints"])
 
 
 class _RecordAll:
@@ -164,7 +173,7 @@ def test_the_map_gives_each_check_every_endpoint_it_really_reads():
     zia = bs.select(["zia_extras"], {})["endpoints"]
     assert {"/zia/fileTypeRules", "/zia/urlFilteringRules", "/zia/urlCategories", "/zia/nssFeeds"} <= set(zia)
     assert {"/zpa/application", "/zpa/appConnectorGroup"} <= set(bs.select(["zpa"], {})["endpoints"])
-    assert {"/zia/webDlpRules", "/zia/urlFilteringRules"} <= set(bs.select(["automation"], {})["endpoints"])
+    assert {"/zia/webDlpRules", "/zia/urlFilteringRules"} <= set(bs.select(["automation"], {"web_dlp": "zscaler"})["endpoints"])
 
 
 def test_summary_names_scopes_and_zscaler_channels():
@@ -787,3 +796,54 @@ def test_a_failed_watch_reads_as_failed_and_its_change_has_a_label(tmp_path):
 def test_a_preview_in_flight_is_not_asked_again_on_focus(tmp_path):
     d = _render({"store": {"zassess_scopes_live_v1": '{"scopes":["zdx"]}'}, "scopeDelay": 80, "focus": 4, "wait": 150}, tmp_path)
     assert len(d["posts"]) == 1, d["posts"]
+
+
+# ── Release round 1: the watch reads no more than the assessment would ──
+
+import channel_scope  # noqa: E402
+
+_DECLARATIONS = (
+    {}, {"genai_security": "gap"}, {"endpoint_dlp": "zscaler"}, {"email_dlp": "zscaler"},
+    {"web_dlp": "gap", "ssl_inspection": "gap", "cloud_app_control": "gap"}, WEB_EMAIL,
+    {"web_dlp": "zscaler", "ssl_inspection": "zscaler", "cloud_app_control": "zscaler", "genai_security": "zscaler"},
+)
+
+
+def _run_endpoints(scopes, channels):
+    """The endpoints of the checks the assessment runs for this selection
+    (channel_scope.partition, every channel not on Zscaler out)."""
+    decl = bs.declaration(channels)
+    rows = [r for r in bs.check_map() if r["scope"] in scopes]
+    run, _, _ = channel_scope.partition([(r["id"], r["section"], "", r) for r in rows], decl)
+    return set().union(*[set(chk[3]["endpoints"]) for chk in run]) if run else set()
+
+
+@pytest.mark.parametrize("channels", _DECLARATIONS)
+@pytest.mark.parametrize("scope", sorted(bs.SCOPE_REGISTRIES))
+def test_the_watch_never_reads_what_the_assessment_leaves_out(scope, channels):
+    sel = bs.select([scope], channels)
+    on = set(bs.zscaler_channels(channels))
+    for ep in sel["endpoints"]:
+        chans = channel_scope.endpoint_channels(ep)
+        assert not chans or set(chans) & on, f"{scope} {channels}: {ep} belongs to {chans}, none on Zscaler"
+    assert set(sel["endpoints"]) <= _run_endpoints({scope}, channels), (scope, channels)
+
+
+def test_genai_with_its_channel_a_gap_reads_nothing_as_the_assessment_runs_nothing():
+    for ch in ({"genai_security": "gap"}, {"genai_security": "alternative"}):
+        assert channel_scope.partition([(r["id"], r["section"], "") for r in bs.check_map() if r["scope"] == "genai"], ch)[0] == []
+        assert bs.select(["genai"], ch)["endpoints"] == {}, ch
+
+
+def test_the_probe_never_gets_an_unticked_channels_rules_even_from_a_stale_selection():
+    sel, t, _ = _watch(["dlp"], {"email_dlp": "zscaler"})
+    for ep in ("/zia/webDlpRules", "/zia/sslInspectionRules", "/zia/cloudApplicationRules", "/zia/tenancyRestrictionProfile"):
+        assert ep not in sel["endpoints"] and ep in sel["not_in_scope"] and ep not in t.calls, ep
+    assert "/zia/emailDlpRules" in t.calls
+    # A selection that lists an unticked channel's endpoint anyway (drift, a
+    # hand-built scope) is still refused at the client: the tenant is not read.
+    forged = dict(sel, endpoints=dict(sel["endpoints"], **{"/zia/webDlpRules": ["x.py"]}))
+    t2 = Recorder()
+    beacon.run(online=False, upstream=lambda **k: {}, tenant_client=t2, tenant_scope=forged, save=False,
+               probe=lambda c, endpoints: beacon.probe_tenant(c, endpoints=endpoints, sleep=lambda s: None))
+    assert t2.calls and "/zia/webDlpRules" not in t2.calls

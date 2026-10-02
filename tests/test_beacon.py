@@ -120,8 +120,9 @@ EPS = {"/zia/webDlpRules": ["dlp_assessment_full_auto.py"], "/zia/dlpDictionarie
 
 
 # What the Scope page selected (beacon_scope.select's shape): the watch reads only these.
-SCOPE = {"endpoints": EPS, "scopes": ["dlp", "zpa", "zcc"], "channels": [], "not_in_scope": [], "unmapped": [],
-         "summary": "4 endpoints for DLP, ZPA, ZCC", "source": "the Scope page"}
+# /zia/webDlpRules is Inline Web DLP's own configuration: read only with that channel on Zscaler.
+SCOPE = {"endpoints": EPS, "scopes": ["dlp", "zpa", "zcc"], "channels": ["web_dlp"], "not_in_scope": [], "unmapped": [],
+         "summary": "4 endpoints for DLP (Web), ZPA, ZCC", "source": "the Scope page"}
 
 
 def _probe():

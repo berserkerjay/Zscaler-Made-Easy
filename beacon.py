@@ -704,8 +704,16 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
         snap["error"] = error
     snap["tenant"] = None
     if tenant_client is not None:
+        client = tenant_client
+        if "channels" in tenant_scope:
+            # The backstop the assessment has too: a channel's own configuration
+            # whose channel is not on Zscaler is refused without touching the
+            # tenant, even when the selection listed it.
+            import channel_scope
+            client = channel_scope.ScopedClient(
+                tenant_client, beacon_scope.declaration({c: "zscaler" for c in tenant_scope.get("channels") or ()}))
         try:
-            t = (probe or probe_tenant)(tenant_client, endpoints=tenant_scope["endpoints"])
+            t = (probe or probe_tenant)(client, endpoints=tenant_scope["endpoints"])
         except PermissionError:
             raise
         except Exception as e:  # noqa: BLE001
