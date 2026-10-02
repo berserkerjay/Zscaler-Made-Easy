@@ -221,7 +221,18 @@ def _list_rules(zia, channel: str) -> Tuple[List[Dict[str, Any]], Optional[str]]
 # after that the export stops reading and fails, rather than hand out a
 # pack with a channel missing.
 READ_RETRIES = 2
-_RATE_WORDS = ("429", "too many requests", "rate limit", "resource access blocked")
+_RATE_WORDS = ("429", "too many requests", "rate limit", "ratelimit", "resource access blocked", "retry wait time")
+# The SDK's answer when ZIA's Retry-After is longer than the client will
+# wait (RetryTooLong: "Retry wait time 3600 seconds exceeds configured
+# maxRetrySeconds 30"). With a wait of HOURLY_WAIT_MIN or more, the hourly
+# limit is reached: waiting a few seconds and reading again only sends more
+# requests ZIA refuses, so the export fails. A shorter wait is waited out.
+_RETRY_WAIT_RE = re.compile(r"retry wait time (\d+(?:\.\d+)?) seconds", re.I)
+HOURLY_WAIT_MIN = 300.0
+# A short refusal (429 for ZIA's per-second limit, after the SDK's own
+# retries) is waited out this long before each retry, and the tenant is
+# held only that long: never until the hour's read window turns.
+SHORT_RATE_WAIT_SECONDS = (5.0, 15.0)
 STOP_READS = "Stop requested: no more reads are sent."
 
 
@@ -237,18 +248,36 @@ def _is_rate(err_text: Any) -> bool:
     return any(w in low for w in _RATE_WORDS)
 
 
+def _retry_wait(err_text: Any) -> Optional[float]:
+    """The wait ZIA asked for in the SDK's RetryTooLong answer, or None."""
+    hit = _RETRY_WAIT_RE.search(str(err_text or ""))
+    return float(hit.group(1)) if hit else None
+
+
+def _is_hourly(err_text: Any) -> bool:
+    """ZIA's hourly limit is reached: a RetryTooLong with a long wait."""
+    secs = _retry_wait(err_text)
+    return secs is not None and secs >= HOURLY_WAIT_MIN
+
+
 def _stopped(cancel: Any) -> bool:
     return cancel is not None and cancel.is_set()
 
 
 def _rate_wait(err: str, attempt: int) -> float:
     """Seconds to wait before retry `attempt` (1-based): the deploy's
-    Resource Access Blocked schedule, or until ZIA's read limit has room again."""
+    Resource Access Blocked schedule, the short wait ZIA asked for in a
+    RetryTooLong, or a few seconds for a short 429. Never the hour's read
+    window: only an hourly refusal (_is_hourly) is about the hour, and that
+    one is not retried."""
     if "resource access blocked" in err.lower():
         import pack_ops
         waits = pack_ops.BLOCKED_WAIT_SECONDS
         return waits[min(max(attempt, 1), len(waits)) - 1]
-    return zia_rate.full_reset("read")
+    asked = _retry_wait(err)
+    if asked is not None:
+        return asked + 1.0
+    return SHORT_RATE_WAIT_SECONDS[min(max(attempt, 1), len(SHORT_RATE_WAIT_SECONDS)) - 1]
 
 
 def _wait_out(seconds: float, cancel: Any) -> None:
@@ -273,7 +302,7 @@ def _read(what: str, fn: Callable[[], Tuple[Any, Optional[str]]], log: Callable[
             data, err = [], str(e)[:200]
         if not err or not _is_rate(err):
             return data, err, False
-        if attempt >= READ_RETRIES or _stopped(cancel):
+        if attempt >= READ_RETRIES or _stopped(cancel) or _is_hourly(err):
             return data, err, True
         attempt += 1
         secs = _rate_wait(str(err), attempt)
@@ -291,6 +320,11 @@ def _one_line(text: Any) -> str:
 
 
 def _rate_error(what: str, err: str) -> str:
+    if _is_hourly(err):
+        import pack_ops
+        why = pack_ops.fatal_reason(err) or "ZIA's request limit for this hour is reached."
+        return (f"ZIA refused the read of the tenant's {what}: {why.split(' Run this again')[0]} Nothing was exported. "
+                f"ZIA answered: {_one_line(err)}. Try again after that.")
     return (f"ZIA refused the read of the tenant's {what} for its rate limit (Resource Access Blocked / 429), and still did after "
             f"waiting and trying again; nothing was exported. ZIA answered: {_one_line(err)}. Another tool or session may be using "
             "the same API client, or ZIA blocked it for a while. Try again later.")
@@ -392,8 +426,18 @@ def normalize_selection(selection: Any) -> Optional[Dict[str, Optional[set]]]:
             continue
         if not isinstance(ids, (list, tuple, set)) or any(isinstance(i, bool) or not isinstance(i, (str, int)) for i in ids if i is not None):
             raise ValueError(f"rules for '{ch}' must be \"all\" or a list of rule ids")
-        out[ch] = {str(i) for i in ids if i is not None}
+        # Blank ids name no rule: {"web": [""]} is a pick of nothing, refused before any read.
+        out[ch] = {str(i).strip() for i in ids if i is not None and str(i).strip()}
     return out
+
+
+NOTHING_PICKED = "No rule was picked: tick at least one rule (or pick \"all\" for a channel) to export."
+
+
+def nothing_picked(sel: Optional[Dict[str, Optional[set]]]) -> bool:
+    """True for a selection that names channels but no rule on any of them
+    ({"web": []}): there is nothing to read the tenant for."""
+    return sel is not None and all(v is not None and not v for v in sel.values())
 
 
 # ---------------------------------------------------------------------------
@@ -929,7 +973,11 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
     _log = log or (lambda m: None)
     stopped = {"status": "stopped", "stopped": "You clicked Stop."}
     sel = normalize_selection(selection)
-    channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel)
+    if nothing_picked(sel):
+        _log(NOTHING_PICKED)
+        return {"status": "error", "error": NOTHING_PICKED}
+    # Only the in-scope part of the tenant is read: a channel named with an empty pick has nothing to read.
+    channels = pc.DLP_CHANNELS if sel is None else tuple(ch for ch in pc.DLP_CHANNELS if ch in sel and (sel[ch] is None or sel[ch]))
     snap = read_tenant(client, channels, log=_log, cancel=cancel)
     if snap.get("stopped") or _stopped(cancel):
         return stopped
@@ -963,6 +1011,8 @@ def export_pack(client, *, selection: Any = None, name: str = "", tenant_label: 
          f"; {c['not_exported']} item(s) could not be exported (listed in pack.json).")
     for w in pack["warnings"]:
         _log(f"Note: {w}")
+    if _stopped(cancel):   # Stop while the pack was built: the job promised no pack
+        return stopped
     return {"status": "ready", "pack": pack, "validation": validation}
 
 

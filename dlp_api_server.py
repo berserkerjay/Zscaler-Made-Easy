@@ -2474,6 +2474,8 @@ def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, sele
         return dict(res, tenant_label=label)
     pack = res["pack"]
     name, data = pack_export.zip_pack(pack)
+    if cancel is not None and cancel.is_set():   # Stop said no pack is produced; keep that promise
+        return {"status": "stopped", "stopped": "You clicked Stop.", "tenant_label": label}
     log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
     v = res["validation"]
     return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "pack_name": pack["meta"]["name"],
@@ -2496,6 +2498,8 @@ async def dlp_packs_export_start(req: PackExportRequest, request: Request):
         selection = pack_export.normalize_selection(req.rules or None)
     except (ValueError, TypeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if pack_export.nothing_picked(selection):   # nothing to read the tenant for
+        raise HTTPException(status_code=400, detail=pack_export.NOTHING_PICKED)
     creds = _tenant_creds(req)
     if not tenant_auth.complete(creds):
         raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
