@@ -42,6 +42,8 @@ launcher.log
 local_settings.bat
 local_settings.env
 deployments.json
+# The install's key for classic-API tenant fingerprints (tenant_fingerprint.py)
+tenant_fingerprint.key
 zia_rate_state.json*
 .zia_rate-*
 ui_token.txt
