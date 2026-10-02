@@ -58,8 +58,9 @@ def _quiet(monkeypatch):
 def test_fp_tp_reads_only_the_dlp_channels_on_zscaler(tmp_path, monkeypatch):
     _env(tmp_path, monkeypatch)
     _quiet(monkeypatch)
+    # Workflow Automation's incidents are read only when it is marked Zscaler too.
     _profile(scopes=["dlp"], channels={"web_dlp": "zscaler", "endpoint_dlp": "alternative", "email_dlp": "alternative",
-                                       "saas_casb": "alternative"}, baseline_packs=[])
+                                       "saas_casb": "alternative", "workflow_automation": "zscaler"}, baseline_packs=[])
     log = []
     d = ce.run_once(build_client=lambda creds: _Reads(log), notify=False)
     t = d["tenants"][0]

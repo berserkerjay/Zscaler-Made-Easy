@@ -103,7 +103,10 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     pack is measured). Only a channel marked "zscaler" is in scope;
     "alternative", "gap" or no choice is not. `incidents` is False when
     Workflow Automation is covered by another product: its incidents (the
-    FP/TP Detection Ratio's input) are then not read."""
+    FP/TP Detection Ratio's input) are then not read, and with it the
+    whole FP/TP Detection Ratio. `read_incidents` is True only when
+    Workflow Automation is marked "zscaler": otherwise the ratio reads
+    the in-scope channels' rules but no incidents."""
     import channel_scope
     raw = profile.get("scopes")
     if isinstance(raw, str):          # a hand-edited "dlp" or "dlp, zia_extras"
@@ -115,7 +118,8 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     on_zscaler = {cid for cid, v in chans.items() if v["choice"] == "zscaler"}
     return {"scopes": scopes, "dlp": "dlp" in scopes, "saas": SAAS_SCOPE_CHANNEL in on_zscaler,
             "pack_channels": [pc for cid, pc in SCOPE_PACK_CHANNELS.items() if cid in on_zscaler],
-            "incidents": (chans.get(WA_SCOPE_CHANNEL) or {}).get("choice") != "alternative"}
+            "incidents": (chans.get(WA_SCOPE_CHANNEL) or {}).get("choice") != "alternative",
+            "read_incidents": (chans.get(WA_SCOPE_CHANNEL) or {}).get("choice") == "zscaler"}
 
 
 def _now() -> str:
@@ -292,6 +296,8 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
     else:
         if not sc["incidents"]:
             out["skipped"].append("FP/TP Detection Ratio: Workflow Automation is covered by another product on the Scope page, so its incidents are not read")
+        elif not sc["read_incidents"]:
+            out["skipped"].append("Workflow Automation incidents: Workflow Automation is not marked as run on Zscaler on the Scope page")
         off = [CHANNEL_LABELS[c] for c in SCOPE_PACK_CHANNELS.values() if c not in sc["pack_channels"]]
         if off:
             out["skipped"].append(f"DLP rules on {', '.join(off)}: not marked as run on Zscaler on the Scope page")
@@ -310,6 +316,22 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
     except Exception as e:  # noqa: BLE001
         out["errors"].append(f"connect: {str(e)[:200]}")
         return out
+    try:
+        return _evaluate_in_scope(out, profile, full, client, creds, sc, wanted, read_dh, read_drift, days=days, log=log)
+    finally:
+        close = getattr(client, "close", None)   # end the session (a classic ZIA API one stays open otherwise)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[str, Any], client: Any, creds: Dict[str, Any],
+                       sc: Dict[str, Any], wanted: List[str], read_dh: bool, read_drift: bool, *, days: int, log) -> Dict[str, Any]:
+    """The reads _evaluate_tenant decided are in scope, on a signed-in client."""
+    import tenant_profiles
+    pid = profile["id"]
     tenant_key = creds.get("vanity_domain") or pid
     # The queue as it was before this run, so "new" counts only what this
     # run raised, whichever sections ran.
@@ -326,7 +348,7 @@ def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -
             raise _Skip()
         import detection_health
         import proposals
-        rep = detection_health.generate(client, days=days, channels=list(sc["pack_channels"]))
+        rep = detection_health.generate(client, days=days, channels=list(sc["pack_channels"]), read_incidents=sc["read_incidents"])
         read_errors = [str(e)[:200] for e in (rep.get("errors") or [])]
         if read_errors:
             # A report built on reads that failed (a 429, say) is not a

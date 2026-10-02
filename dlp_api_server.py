@@ -29,7 +29,7 @@ def _unlink_quietly(path: str) -> None:
         os.unlink(path)
     except OSError:
         pass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -318,13 +318,16 @@ class AssessRequest(BaseModel):
     username: str = ""         # classic ZIA API sign-in
     password: str = ""
     api_key: str = ""
-    scope: str = "full"  # legacy single scope, kept for compatibility
-    scopes: list[str] = []  # new: list of scope keys (dlp, zia_extras, zpa, zcc)
+    # Legacy single scope, kept for MCP / CLI callers that set it on purpose.
+    # Left unset with no `scopes`, the request is refused: nothing is assessed
+    # unless it was put in scope.
+    scope: str = "full"
+    scopes: list[str] = []  # list of scope keys (dlp, zia_extras, zpa, zcc, ...): the Scope page's choice
     customer_id: str = ""  # Optional ZPA customer ID
     profile_id: str = ""   # Saved tenant profile: fills blanks, records history
     # The Scope page's channel ownership: {id: {choice: zscaler|alternative|gap, note, name}}.
-    # A channel covered by an alternative solution has its checks reported as
-    # not in scope instead of read from the tenant (channel_scope).
+    # Only a Zscaler channel is read; an alternative or a gap has its checks
+    # reported as not in scope instead of read from the tenant (channel_scope).
     channels: Dict[str, Any] = {}
 
 
@@ -2036,58 +2039,98 @@ def _explain_connection_error(detail: str, method: str = "oneapi") -> Dict[str, 
     return {"cause": cause, "fix": fix, "raw": d[:300]}
 
 
+def _close_quietly(client: Any) -> None:
+    """Close a tenant client (ends a classic ZIA API session); best effort."""
+    close = getattr(client, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+_UNANSWERED_WORDS = {429: "rate limited (HTTP 429)", 502: "unavailable (HTTP 502)", 503: "unavailable (HTTP 503)",
+                     504: "unavailable (HTTP 504)", 0: "no answer (timed out or unreachable)"}
+
+
+def _unanswered_result(r: Any, label: str, unanswered: List[Tuple[str, int]]) -> Any:
+    """A check built on a read the tenant did not answer (rate limited,
+    unavailable, timed out) judged nothing: it is "Could not be checked"
+    (ERROR, outside the score, the run partial), never "Configured", "Not
+    configured" or an empty tenant ("0 devices", "No PAC files")."""
+    if not unanswered or str(getattr(r, "status", "")) == str(R.ERROR):
+        return r
+    codes = sorted({c for _ep, c in unanswered})
+    why = ", ".join(_UNANSWERED_WORDS.get(c, f"HTTP {c}") for c in codes)
+    eps = ", ".join(sorted({ep.split("?", 1)[0] for ep, _c in unanswered}))[:160]
+    return R(R.ERROR, f"{label}: Could not be checked: the tenant did not answer {len(unanswered)} read(s) ({why}; {eps}). "
+                      "Run the assessment again later.")
+
+
+def _close_when_done(client: Any):
+    """A done-callback for the thread still using `client`: ends its
+    session once that thread has stopped (never under a running read)."""
+    def _cb(fut):
+        if not fut.cancelled():
+            fut.exception()   # retrieved, so an error is not logged as unhandled
+        threading.Thread(target=_close_quietly, args=(client,), name="journey-close", daemon=True).start()
+    return _cb
+
+
+def _stop_reads(client: Any) -> None:
+    """Tell the checks' client the run is over: the checks still running
+    send no further request (no next endpoint, no 429 retry). Queued
+    checks are cancelled by the pool itself."""
+    stop = getattr(client, "stop", None)
+    if callable(stop):
+        try:
+            stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _end_checks_session(client: Any, pool: Any, running: set) -> None:
+    """End the assessment checks' session. When no check thread is still
+    using it, at once; otherwise (a check past its timeout, or a stream
+    closed mid-run) in the background once those threads are done, so no
+    running read is cut off and nothing waits on a stuck request."""
+    if client is None:
+        return
+    if pool is None or not running:
+        await asyncio.to_thread(_close_quietly, client)
+        return
+
+    def _later():
+        pool.shutdown(wait=True)
+        _close_quietly(client)
+    threading.Thread(target=_later, name="assess-close", daemon=True).start()
+
+
 @app.post("/api/tenant/check")
 async def tenant_check(req: TenantCredsRequest):
-    """Read-only connection test for the Start-here panel: authenticates,
-    counts DLP dictionaries, engines and the Web, Endpoint, SaaS and Email
-    DLP rules, and explains any
-    failure in plain language with what to do next."""
+    """Sign-in test for Authenticate: obtains the token (or, for the classic
+    ZIA API, the session) and nothing else. It never lists or counts
+    anything in the tenant: every read counts against the tenant's ZIA API
+    rate limit, so the tenant is read only by an assessment the operator
+    runs, for what they put in scope. A failure is explained in plain
+    language with what to do next."""
     creds = _tenant_creds(req)
     label = tenant_auth.label(creds)
     method = creds["auth_method"]
     try:
-        client = await asyncio.to_thread(_build_sdk_client, creds)
+        client = await asyncio.to_thread(_build_sdk_client, creds)   # signs in as it is built; no listing
+        # Sign-in only: end the session at once (the classic ZIA API keeps
+        # an admin session open until it idles out otherwise).
+        await asyncio.to_thread(_close_quietly, client)
     except HTTPException as e:
         raise HTTPException(status_code=e.status_code, detail={"tenant_label": label, "auth_method": method, **_explain_connection_error(e.detail, method)})
-
-    def probe() -> Dict[str, Any]:
-        from pack_channels import _nx
-        z = client.zia
-        out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
-        if method == tenant_auth.LEGACY:
-            out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
-        dicts, err = _nx(z.dlp_dictionary.list_dicts())
-        if err:
-            raise RuntimeError(str(err))
-        items = list(dicts or [])
-        custom = sum(1 for d in items if getattr(d, "custom", False) or (isinstance(d, dict) and d.get("custom")))
-        out["dictionaries"] = len(items)
-        out["custom_dictionaries"] = custom
-        out["predefined_dictionaries"] = len(items) - custom
-        engines, err = _nx(z.dlp_engine.list_dlp_engines_lite())
-        out["engines"] = 0 if err else len(engines or [])
-        if err:
-            out["problems"].append("DLP engines could not be listed; the role may lack engine read access.")
-        rules, err = _nx(z.dlp_web_rules.list_rules())
-        out["web_rules"] = 0 if err else len(rules or [])
-        if err:
-            out["problems"].append("Web DLP rules could not be listed; the role may lack DLP policy read access.")
-        # The other DLP channels, so the operator sees the whole DLP policy
-        # before deploying into it. None = could not be read (said in problems).
-        import pack_channels as pc
-        for ch, key, name in ((pc.ENDPOINT, "endpoint_rules", "Endpoint DLP"), (pc.SAAS, "saas_rules", "SaaS Security API DLP"),
-                              (pc.EMAIL, "email_rules", "Email DLP")):
-            n, cerr = pc.count_rules(z, ch)
-            out[key] = n
-            if cerr:
-                out["problems"].append(f"{name} rules could not be listed; the role may lack read access to them or the tenant has no subscription for them.")
-        return out
-
-    try:
-        return await asyncio.to_thread(probe)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail={"tenant_label": label, "auth_method": method,
                                                      **_explain_connection_error(tenant_auth.mask_secrets(str(e), creds), method)})
+    out: Dict[str, Any] = {"ok": True, "tenant_label": label, "auth_method": method, "problems": []}
+    if method == tenant_auth.LEGACY:
+        out["problems"].append("Signed in through the classic ZIA API: ZIA only. ZPA, Client Connector and ZDX checks need a ZIdentity API client.")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2225,27 +2268,99 @@ def _journey_packs(pack_ids: List[str]) -> List[Dict[str, Any]]:
     return [{"id": p["id"], "dir": p["dir"]} for p in discover_packs() if pack_deploy.baseline_meta(p, p["id"])]
 
 
+def _journey_scope(pack_ids: List[str], channels: Any) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
+    """The packs and channels the assessment's journey may measure: only
+    the packs chosen on the profile (never every installed pack), each on
+    its own DLP channels that the Scope page marks Zscaler. A pack with no
+    such channel is left out, so nothing out of scope is read. Reads local
+    pack files only."""
+    import channel_scope
+    import pack_channels as pc
+    import pack_deploy
+    from dlp_importer import discover_packs
+    targets = channel_scope.pack_targets(channels)
+    if not pack_ids or not targets:
+        return [], {}
+    known = {p["id"]: p for p in discover_packs()}
+    packs: List[Dict[str, Any]] = []
+    chosen: Dict[str, List[str]] = {}
+    for pid in pack_ids:
+        if pid not in known or pid in chosen:
+            continue
+        pk = {"id": pid, "dir": known[pid]["dir"]}
+        try:
+            own = {pc.channel_of(p) for p in pack_deploy.load_sources([pk])[0]["policies"]}
+        except Exception:  # noqa: BLE001 — an unreadable pack is not measured
+            continue
+        mine = [c for c in pc.DLP_CHANNELS if c in own and c in targets]
+        if mine:
+            packs.append(pk)
+            chosen[pid] = mine
+    return packs, chosen
+
+
+class JourneyStopped(Exception):
+    """The run the journey belongs to has ended (stream closed, timed out)."""
+
+
+_PLAIN = (str, bytes, int, float, bool, type(None), dict, list, tuple, set)
+
+
+class _StopAware:
+    """Wraps an SDK client so that every call made through it (every
+    tenant read) first checks `stop`: once the run has ended, the next read
+    raises JourneyStopped instead of reaching the tenant."""
+
+    def __init__(self, target: Any, stop: Any):
+        object.__setattr__(self, "_t", target)
+        object.__setattr__(self, "_stop", stop)
+
+    def __getattr__(self, name):
+        val = getattr(self._t, name)
+        if isinstance(val, _PLAIN):
+            return val
+        if callable(val) and not isinstance(val, type):
+            stop = self._stop
+
+            def call(*a, **k):
+                if stop.is_set():
+                    raise JourneyStopped("the run ended; no further tenant read")
+                return val(*a, **k)
+            return call
+        return _StopAware(val, self._stop)
+
+    def __setattr__(self, name, value):
+        setattr(self._t, name, value)
+
+
 def _journey_for(client, packs: List[Dict[str, Any]], use_rank_0: bool = False,
                  channel_targets: Optional[Dict[str, List[str]]] = None,
-                 progress: Optional[Any] = None) -> Dict[str, Any]:
+                 progress: Optional[Any] = None, stop: Optional[Any] = None) -> Dict[str, Any]:
     """Read-only journey check: one preflight per policy pack (so each
     pack is measured on its own), rolled up with pack_deploy.journey.
     `channel_targets` measures the pack as the operator chose to deploy
     it (extension rules count, skipped channels do not). The tenant is
     read once for every pack (superset of their needs); `progress(i, n,
-    pack_id)` is called before each pack is measured."""
+    pack_id)` is called before each pack is measured. `stop` (an Event):
+    once set, no further tenant read is made (JourneyStopped)."""
     import pack_deploy
     import pack_channels as pc
+    if stop is not None:
+        client = _StopAware(client, stop)
     rows: List[Dict[str, Any]] = []
     tenant = None
     blockers: List[str] = []
-    cache: Dict[str, Any] = {}
+    # With channel targets (the assessment's journey), only the channels in
+    # scope are read: Web DLP rules too are left alone when web is not one.
+    cache: Dict[str, Any] = {"only_channels": channel_targets is not None}
     try:
-        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, {}))
+        merged = pack_deploy.merge_sources(pack_deploy.load_sources(packs, channel_targets or {}))
         cache["need"] = pc.needs(i["definition"] for i in merged["policy"].values())
     except Exception:  # noqa: BLE001 — fall back to per-pack needs
-        cache = {}
+        cache.pop("need", None)
     for i, pk in enumerate(packs):
+        if stop is not None and stop.is_set():
+            raise JourneyStopped("the run ended; no further tenant read")
         if progress is not None:
             try:
                 progress(i, len(packs), pk["id"])
@@ -2291,7 +2406,10 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
         raise HTTPException(status_code=404, detail="No policy packs found (pack.json needs a \"policy pack\" section).")
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
-    out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
+    try:
+        out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
+    finally:   # end the session (a classic ZIA API one stays open otherwise)
+        await asyncio.to_thread(_close_quietly, client)
     out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
@@ -4441,6 +4559,11 @@ async def migrate_export(request: Request, format: str = "json"):
     )
 
 
+# The legacy single `scope` values _get_checks knows (MCP / CLI callers).
+_LEGACY_SCOPES = frozenset({"full", "all", "automation", "zdx", "zidentity", "rbac", "zia", "zpa", "zcc", "dlp"})
+_LEGACY_DLP_SCOPES = frozenset({"full", "all", "zia", "dlp"})   # legacy scopes whose checks include the DLP ones
+
+
 def _get_checks(scope: str = "dlp", scopes: list = None):
     """Get the check list for the given scope or list of scopes."""
     if scopes:
@@ -4519,24 +4642,52 @@ async def assess_stream(req: AssessRequest):
             profile = None
         if profile:
             req.org_name = req.org_name if req.org_name not in ("", "Unknown") else (profile.get("org_name") or req.org_name)
+    # Nothing is assessed unless it was put in scope: no `scopes` and no
+    # legacy `scope` set on purpose (an MCP or CLI caller) is refused, never
+    # read as "everything".
+    # A legacy `scope` must name a scope, and `scopes` must select a known
+    # one: an empty, blank or unknown choice is refused before any sign-in,
+    # never read as the DLP default.
+    _nothing = "Nothing to assess: choose what to assess on the Scope page, then run the assessment."
+    if not req.scopes and ("scope" not in req.model_fields_set or str(req.scope or "").strip() not in _LEGACY_SCOPES):
+        raise HTTPException(status_code=400, detail=_nothing)
     # Validate inputs BEFORE the SSE stream opens so failures return 400, not 200+stream
     creds = _validate_creds(_tenant_creds(req))
     cloud, vd = creds["cloud"], creds["vanity_domain"]
-    checks = _get_checks(req.scope, req.scopes)
-    # The Scope page's channel ownership: a channel covered by an alternative
-    # solution has its checks reported as not in scope instead of read
-    # (channel_scope); the rest run. The findings keep their section order.
+    checks = _get_checks(str(req.scope or "").strip(), req.scopes)
+    if not checks:
+        raise HTTPException(status_code=400, detail=_nothing)
+    # The Scope page's channel ownership: only a channel marked Zscaler is
+    # read; an alternative or a gap has its checks reported as not in scope
+    # (channel_scope). The findings keep their section order.
     import channel_scope as _chs
     checks, skipped_checks, check_order = _chs.partition(checks, req.channels)
+    if not checks:
+        # Every check in the chosen scopes belongs to a channel that is not
+        # ticked: signing in would read nothing, so say what to tick instead.
+        names = sorted({str(r.get("channel_name") or _chs.CHANNELS.get(r.get("channel"), r.get("channel")) or "") for r in skipped_checks} - {""})
+        raise HTTPException(status_code=400, detail=(
+            "Nothing to assess: every check in the chosen scope belongs to a channel that is not ticked as Zscaler on the "
+            f"Scope page ({', '.join(names) or 'none ticked'}). Tick the channel, then run the assessment."))
     total_all = len(checks) + len(skipped_checks)
-    # The journey (pack deficiencies) is measured against the profile's
-    # packs, or the packs of its industry when none are ticked.
+    # The profile's industry: the frameworks and packs the suggestions are limited to.
     import vertical as _vertical
     _scope = _vertical.scope_for(profile, all_packs=[p["id"] for p in __import__("dlp_importer").discover_packs()])
-    journey_pack_ids = list(_scope["packs"]) if _scope["scoped"] else [str(b) for b in (profile or {}).get("baseline_packs") or []]
+    # The journey (pack deficiencies) reads the tenant too, so it runs only
+    # when DLP is in scope, only for the packs ticked on the profile (never
+    # a default set) and only on their channels marked Zscaler.
+    journey_pack_ids = [str(b) for b in (profile or {}).get("baseline_packs") or [] if b]
+    try:
+        dlp_in_scope = ("dlp" in req.scopes) if req.scopes else (str(req.scope or "").strip() in _LEGACY_DLP_SCOPES)
+        journey_packs, journey_targets = _journey_scope(journey_pack_ids, req.channels) if dlp_in_scope else ([], {})
+    except Exception:  # noqa: BLE001 — no journey rather than a failed run
+        journey_packs, journey_targets = [], {}
 
     async def event_generator():
         results = []
+        client = None
+        pool = None
+        running: set = set()   # checks whose thread has started and not yet returned
         try:
             yield _sse("auth", {"status": "authenticating", "auth_method": creds["auth_method"]})
 
@@ -4571,17 +4722,29 @@ async def assess_stream(req: AssessRequest):
             inbox: asyncio.Queue = asyncio.Queue()
             started: Dict[int, float] = {}
 
+            # The checks read through the channel guard: a GET of an unticked
+            # channel's configuration is refused without touching the tenant.
+            scoped_client = _chs.ScopedClient(client, req.channels)
+
             def _run_one(idx, check_id, section, label, fn):
                 started[idx] = time.time()
+                running.add(idx)
                 try:
-                    r = fn(client)
+                    scoped_client.begin()
+                    r = fn(scoped_client)
+                    r = _unanswered_result(r, label, scoped_client.unanswered())
                 except Exception as ex:  # noqa: BLE001
                     r = R(R.ERROR, f"{label}: Could not complete check. {str(ex)[:120]}")  # "Could not be checked", never "Not configured"
+                finally:
+                    running.discard(idx)
                 loop.call_soon_threadsafe(inbox.put_nowait, (idx, r))
 
             pool = ThreadPoolExecutor(max_workers=ASSESS_WORKERS, thread_name_prefix="assess")
             for idx, chk in enumerate(checks):
                 pool.submit(_run_one, idx, *chk)
+            # Whatever ends this stream (results in, the browser gone, Stop),
+            # the checks still queued are cancelled: no tenant read is made
+            # once nobody is listening (the finally around the loop below).
             done: Dict[int, Dict[str, Any]] = {}
             last_keepalive = time.time()
             run_started = time.time()
@@ -4600,44 +4763,51 @@ async def assess_stream(req: AssessRequest):
                 done[idx] = result
                 return result
 
-            while len(done) < len(checks):
-                landed = []
-                try:
-                    landed.append(await asyncio.wait_for(inbox.get(), timeout=1.0))
-                except asyncio.TimeoutError:
-                    pass
-                while not inbox.empty():
-                    landed.append(inbox.get_nowait())
-                now = time.time()
-                fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
-                for idx, t0 in list(started.items()):
-                    if idx not in done and now - t0 > CHECK_TIMEOUT:
-                        fresh.append(_finish(idx, R(R.ERROR, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
-                try:
-                    for result in fresh:
-                        yield _sse("check", result)
-                    if fresh:
-                        yield _sse("progress", {
-                            "total": total_all, "completed": len(done) + len(skipped_checks),
-                            "pct": round((len(done) + len(skipped_checks)) / max(total_all, 1) * 100),
-                            "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
-                            "running": len([i for i in started if i not in done]),
-                            "elapsed": round(now - run_started),
-                        })
-                    if now - last_keepalive > 10:
-                        yield ": keepalive\n\n"
-                        last_keepalive = now
-                except Exception:
-                    # Client disconnected; just keep collecting results
-                    pass
-            pool.shutdown(wait=False, cancel_futures=True)
+            try:
+                while len(done) < len(checks):
+                    landed = []
+                    try:
+                        landed.append(await asyncio.wait_for(inbox.get(), timeout=1.0))
+                    except asyncio.TimeoutError:
+                        pass
+                    while not inbox.empty():
+                        landed.append(inbox.get_nowait())
+                    now = time.time()
+                    fresh = [_finish(idx, r) for idx, r in landed if idx not in done]
+                    for idx, t0 in list(started.items()):
+                        if idx not in done and now - t0 > CHECK_TIMEOUT:
+                            fresh.append(_finish(idx, R(R.ERROR, f"{checks[idx][2]}: Check timed out after {CHECK_TIMEOUT} seconds; the tenant did not answer in time.")))
+                    try:
+                        for result in fresh:
+                            yield _sse("check", result)
+                        if fresh:
+                            yield _sse("progress", {
+                                "total": total_all, "completed": len(done) + len(skipped_checks),
+                                "pct": round((len(done) + len(skipped_checks)) / max(total_all, 1) * 100),
+                                "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
+                                "running": len([i for i in started if i not in done]),
+                                "elapsed": round(now - run_started),
+                            })
+                        if now - last_keepalive > 10:
+                            yield ": keepalive\n\n"
+                            last_keepalive = now
+                    except Exception:  # noqa: BLE001 — a failed write; a disconnect closes the generator (finally below)
+                        pass
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
+                _stop_reads(client)   # a check still running (timed out, or Stop) reads nothing more
+            # The checks' own session ends as soon as the checks are in (a
+            # classic ZIA API admin session stays open otherwise).
+            api_requests = getattr(client, "requests_made", None)
+            await _end_checks_session(client, pool, running)
+            client = None
             results = _chs.merge(check_order, [done[i] for i in range(len(checks))], skipped_checks)
 
             # Results first: the report goes out as soon as the checks are
             # in. The data-governance journey (one read-only preflight per
-            # baseline pack) follows as its own event so nobody waits on it.
-            want_journey = bool(_journey_packs(journey_pack_ids)) and (
-                not req.scopes or "dlp" in req.scopes or req.scope in ("full", "dlp"))
+            # chosen pack, on its channels in scope) follows as its own event
+            # so nobody waits on it.
+            want_journey = bool(journey_packs)
 
             try:
                 secs, overall = compute(results)
@@ -4655,7 +4825,7 @@ async def assess_stream(req: AssessRequest):
                     "total_checks": total_all,
                     "scope": ",".join(req.scopes) if req.scopes else req.scope,
                     "elapsed_seconds": round(time.time() - run_started, 1),
-                    "api_requests": getattr(client, "requests_made", None),
+                    "api_requests": api_requests,
                 },
                 "score": overall,
                 "maturity": maturity(overall),
@@ -4703,8 +4873,11 @@ async def assess_stream(req: AssessRequest):
 
             if want_journey:
                 journey = None
+                sdk = None
+                task = None
+                stop = threading.Event()   # set when the run ends: the journey makes no further tenant read
                 try:
-                    packs = _journey_packs(journey_pack_ids)
+                    packs = journey_packs
                     yield _sse("progress", {"total": total_all, "completed": total_all, "pct": 100,
                                             "current": f"Data governance journey: measuring the tenant against {len(packs)} policy packs"})
                     sdk = await asyncio.to_thread(_build_sdk_client, creds)
@@ -4713,7 +4886,7 @@ async def assess_stream(req: AssessRequest):
                     def _note(i, n, pack_id):
                         loop.call_soon_threadsafe(notes.put_nowait, (i, n, pack_id))
 
-                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, progress=_note))
+                    task = loop.run_in_executor(None, lambda: _journey_for(sdk, packs, channel_targets=journey_targets, progress=_note, stop=stop))
                     deadline = time.time() + JOURNEY_TIMEOUT
                     while not task.done():
                         if time.time() > deadline:
@@ -4728,6 +4901,17 @@ async def assess_stream(req: AssessRequest):
                     journey["tenant_label"] = tenant_auth.record_label(creds)
                 except Exception as ex:  # noqa: BLE001
                     journey = {"status": "error", "error": tenant_auth.mask_secrets(str(ex), creds)[:200]}
+                finally:
+                    # Timed out, failed or nobody listening: the journey stops
+                    # before its next tenant read, and its session (a classic
+                    # ZIA API one stays open otherwise) is ended only once the
+                    # journey thread has stopped using it.
+                    stop.set()
+                    if sdk is not None:
+                        if task is not None and not task.done():
+                            task.add_done_callback(_close_when_done(sdk))
+                        else:
+                            await asyncio.to_thread(_close_quietly, sdk)
                 report["journey"] = journey
                 report["profile"] = _record_history(report)
                 yield _sse("journey", {"journey": journey, "profile": report["profile"]})
@@ -4735,6 +4919,14 @@ async def assess_stream(req: AssessRequest):
         except Exception as e:
             # Catch-all: never let the generator crash the stream
             yield _sse("error", {"message": f"Server error: {str(e)[:200]}"})
+        finally:
+            # Failed sign-in, error or the browser gone: the checks' session
+            # is still ended (once no check thread is using it).
+            if pool is not None:
+                pool.shutdown(wait=False, cancel_futures=True)
+            if client is not None:
+                _stop_reads(client)
+                await _end_checks_session(client, pool, running)
 
     return StreamingResponse(
         event_generator(),

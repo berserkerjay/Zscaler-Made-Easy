@@ -925,8 +925,8 @@ choice and the fields for it:
   ZPA, Client Connector or ZDX checks).
 
 Type the values, click **Authenticate**, and read the line it answers
-with ("Connected to <tenant>: N dictionaries, N engines, N web DLP
-rules.", or "Could not connect:" with a plain reason). `GETTING_STARTED.md` section 2 says what to ask the
+with ("Signed in to <tenant>", or "Could not connect:" with a plain
+reason). Authenticate only signs in; it reads nothing from the tenant. `GETTING_STARTED.md` section 2 says what to ask the
 customer's admin for and section 3 walks through the first connection;
 that is the next document to read.
 

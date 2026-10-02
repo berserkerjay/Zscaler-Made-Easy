@@ -725,7 +725,7 @@ def dictionary_why(name: str, incs: List[Dict[str, Any]], definition: Optional[D
 
 # ── report ─────────────────────────────────────────────────────────────
 def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None,
-             channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+             channels: Optional[Iterable[str]] = None, read_incidents: bool = True) -> Dict[str, Any]:
     """The Detection Health report for one tenant: incidents from
     Workflow Automation, rules from the tenant inventory, metrics and
     findings. Never raises; read problems are listed in `errors`.
@@ -733,15 +733,20 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     `channels` (web / endpoint / saas / email) limits the report to those
     DLP channels: only their rules are read, incidents on other channels
     are left out, and the incident delivery (Web DLP rules and receivers)
-    is read only when web is one of them. None reads every channel."""
+    is read only when web is one of them. None reads every channel.
+    `read_incidents=False` leaves Workflow Automation's incidents unread."""
     _log = log or (lambda m: None)
     s = dict(DEFAULTS, **(settings or {}))
     days = int(days or s["days"])
     scoped = None if channels is None else [str(c) for c in channels]
     errors: List[str] = []
-    _log(f"Reading Workflow Automation incidents for the last {days} days…")
-    incidents, errs = fetch_incidents(client, days, _log)
-    errors.extend(errs)
+    if read_incidents:
+        _log(f"Reading Workflow Automation incidents for the last {days} days…")
+        incidents, errs = fetch_incidents(client, days, _log)
+        errors.extend(errs)
+    else:
+        _log("Workflow Automation is not in scope: incidents are not read.")
+        incidents = []
     if scoped is not None:
         incidents = [i for i in incidents if i.get("channel") in scoped or i.get("channel") == "other"]
     rules: List[Dict[str, Any]] = []
@@ -779,7 +784,7 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     for i in incidents:
         i.pop("_created", None)
     ev.update({"days": days, "incident_count": len(incidents), "errors": errors,
-               "read": {"incidents": not any("incident search" in e or "Workflow Automation" in e for e in errors), "rules": bool(rules)},
+               "read": {"incidents": read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors), "rules": bool(rules)},
                "sources": {"incidents": "Workflow Automation: POST /zwa/dlp/v1/incidents/search",
                            "rules": "ZIA: /webDlpRules, /endpointDlpRules, /casbDlpRules, /emailDlpRules"}})
     return ev

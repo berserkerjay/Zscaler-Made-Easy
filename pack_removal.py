@@ -563,9 +563,15 @@ def _scoped_need(channels: Iterable[str]) -> Dict[str, Any]:
 def inventory(client, channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
     """Every DLP rule the tenant has, on every channel, with its engines
     and provenance, so an operator can pick the leftovers to remove.
-    `channels` (web / endpoint / saas / email) limits the read to those
-    channels' rules, for a caller that may read only an in-scope part."""
-    snap = pd.fetch_tenant(client, _all_need() if channels is None else _scoped_need(channels))
+    `channels` (pack channels: web / endpoint / saas / email) limits the
+    read to those channels' rules plus the shared dictionaries and
+    engines, for a caller that may read only an in-scope part: an
+    unlisted channel's rules, the SaaS tenants and the endpoint
+    application groups are not read. None reads every channel."""
+    if channels is None:
+        snap = pd.fetch_tenant(client, _all_need())
+    else:
+        snap = pd.fetch_tenant(client, _scoped_need(channels), only_channels=True)
     if not snap.get("reachable", True):
         return {"status": "blocked", "rules": [], "blockers": ["Could not read the tenant. Check credentials and permissions."],
                 "errors": snap.get("errors", [])}
