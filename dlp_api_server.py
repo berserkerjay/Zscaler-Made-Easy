@@ -2430,7 +2430,14 @@ class _StopAware:
             def call(*a, **k):
                 if stop.is_set():
                     raise JourneyStopped("the run ended; no further tenant read")
-                return val(*a, **k)
+                import zia_rate
+                try:
+                    # A Stop while the read waits for ZIA's read limit: not sent.
+                    with zia_rate.stopping_on(stop.is_set):
+                        out = val(*a, **k)
+                except zia_rate.Cancelled:
+                    raise JourneyStopped("the run ended while a read waited for ZIA's rate limit; it was not sent") from None
+                return out
             return call
         return _StopAware(val, self._stop)
 

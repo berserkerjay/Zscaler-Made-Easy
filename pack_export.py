@@ -296,10 +296,19 @@ def _read(what: str, fn: Callable[[], Tuple[Any, Optional[str]]], log: Callable[
     READ_RETRIES times; `rate refused` is True when ZIA still refused it."""
     attempt = 0
     while True:
+        if _stopped(cancel):
+            return [], None, False
         try:
-            data, err = fn()
+            # Stop also ends a wait for ZIA's read limit inside the SDK's paced
+            # session: the read is not sent (Cancelled), not sent after the wait.
+            with zia_rate.stopping_on(cancel.is_set if cancel is not None else None):
+                data, err = fn()
+        except zia_rate.Cancelled:
+            return [], None, False
         except Exception as e:  # noqa: BLE001 - reported like an error answer
             data, err = [], str(e)[:200]
+        if err and _stopped(cancel) and zia_rate.is_cancelled(err):
+            return [], None, False   # the SDK made an error answer of the Cancelled: nothing was read
         if not err or not _is_rate(err):
             return data, err, False
         if attempt >= READ_RETRIES or _stopped(cancel) or _is_hourly(err):
