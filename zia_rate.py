@@ -195,6 +195,14 @@ class Cancelled(RuntimeError):
     request waited for ZIA's rate limit: the request is not sent."""
 
 
+def is_cancelled(error: Any) -> bool:
+    """Whether an error (an exception, or the text an SDK made of one) is a
+    Cancelled: the request was never sent because the run was stopped."""
+    if isinstance(error, Cancelled):
+        return True
+    return "the request was not sent" in str(error or "")
+
+
 # A wait() that honours a stop sleeps in steps no longer than this, so a
 # Stop pressed during a long rate-limit wait is seen within a second.
 CANCEL_STEP = 0.5
@@ -216,12 +224,25 @@ def stopping_on(should_stop: Optional[Callable[[], bool]]) -> Iterator[None]:
     """While inside, a request this thread would pace (wait(), and every
     ZIA request a paced session sends) is not sent once `should_stop()` is
     true: Cancelled is raised instead, also in the middle of a rate-limit
-    wait. None leaves the thread as it is."""
+    wait. None leaves the thread as it is. A hook already bound on this
+    thread (an outer scope's) still stops it too: an inner scope never
+    hides an outer Stop."""
     if should_stop is None:
         yield
         return
     before = getattr(_ctx, "stop", None)
-    _ctx.stop = should_stop
+
+    def either() -> bool:
+        for fn in (should_stop, before):
+            if fn is None:
+                continue
+            try:
+                if fn():
+                    return True
+            except Exception:  # noqa: BLE001 — a broken hook never stops a run by itself
+                continue
+        return False
+    _ctx.stop = either if before is not None else should_stop
     try:
         yield
     finally:
@@ -524,6 +545,7 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
     slept_until = 0.0
     stoppable = getattr(_ctx, "stop", None) is not None
     told_wait = False
+    hold_seen, hold_left = 0.0, 0.0
     while True:
         if stoppable and stop_requested():
             raise Cancelled(f"stopped while waiting for ZIA's rate limit{' (' + what + ')' if what else ''}; the request was not sent")
@@ -558,9 +580,17 @@ def wait(method: str, path: str = "", log: Optional[Callable[[str], None]] = Non
                     f"waiting {_human(d)} (next at {at}).")
             step = d
         if stoppable:   # a Stop during a long wait is seen within CANCEL_STEP
-            step = min(step, CANCEL_STEP)
-            if held > 0 and step < held:
-                slept_until = 0.0   # the hold is not over yet: sleep it again in the next step
+            if held > 0:
+                if hold_end != hold_seen:   # a new (or extended) hold: its whole length is still to sleep
+                    hold_seen, hold_left = hold_end, held
+                step = min(hold_left, CANCEL_STEP)
+                hold_left -= step
+                # The hold is slept through once its whole length has been
+                # slept in steps (as an unstoppable wait sleeps it in one),
+                # whatever the clock says meanwhile.
+                slept_until = hold_end if hold_left <= 0 else 0.0
+            else:
+                step = min(step, CANCEL_STEP)
         _sleep(step)
         total += step
 
@@ -705,7 +735,7 @@ def _pace_session(session: Any, key: str) -> None:
     def send(request, **kwargs):
         path = _zia_path(getattr(request, "url", ""))
         if path is not None and stop_requested():
-            raise Cancelled("stopped before the request was sent")
+            raise Cancelled("stopped before it went out; the request was not sent")
         if path is not None and "authenticatedsession" not in path.lower():
             mark = getattr(_ctx, "prepaced", None)
             _ctx.prepaced = None
