@@ -46,7 +46,8 @@ def server(monkeypatch, tmp_path):
 
 
 def _deploy(c, creds):
-    r = c.post("/api/dlp-packs/alpha/import", json=dict(creds, plan_hash="h"))
+    # A pack push names its assessor (it is refused without one).
+    r = c.post("/api/dlp-packs/alpha/import", json=dict(creds, plan_hash="h", assessor="Jane Doe"))
     assert r.status_code == 200, r.text
     return deployments._read()["deployments"][-1], r
 
