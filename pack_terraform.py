@@ -375,8 +375,10 @@ def load_pack(pack: Dict[str, Any], channel_targets: Optional[Sequence[str]] = N
 
 
 def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optional[int] = None) -> str:
+    import pack_deploy
     b = meta.get("baseline")
-    tag = f"[DLP-Check {'baseline' if b else 'pack'} {pack_id}{(' v' + str(meta.get('version'))) if meta.get('version') else ''}] Terraform-managed."
+    by = pack_deploy.attribution(meta.get("_by"))
+    tag = f"[{by} {'baseline' if b else 'pack'} {pack_id}{(' v' + str(meta.get('version'))) if meta.get('version') else ''}] Terraform-managed."
     if limit:
         return fit_description(base, tag, limit)
     base = (base or "").strip()
@@ -384,12 +386,16 @@ def _provenance(meta: Dict[str, Any], pack_id: str, base: str, *, limit: Optiona
 
 
 def generate(pack: Dict[str, Any], *, report: Optional[Dict[str, Any]] = None,
-             backend: Optional[Dict[str, str]] = None, channel_targets: Optional[Sequence[str]] = None) -> Dict[str, str]:
+             backend: Optional[Dict[str, str]] = None, channel_targets: Optional[Sequence[str]] = None,
+             assessor: str = "") -> Dict[str, str]:
     """Build the workspace files for one pack. `report` (a public preflight
     report for exactly this pack) switches on gap mode. `channel_targets`
-    applies the same per-channel choice as Deploy Policy Packs."""
+    applies the same per-channel choice as Deploy Policy Packs. `assessor`
+    is the name each object's provenance tag carries."""
     src = load_pack(pack, channel_targets)
     meta, pack_id = src["meta"], src["id"]
+    if assessor:
+        meta = dict(meta, _by=assessor)
     S = Slugger()
     files: Dict[str, str] = {}
 

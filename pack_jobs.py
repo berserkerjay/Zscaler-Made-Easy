@@ -191,6 +191,8 @@ def cancel(job_id: str) -> bool:
     job.cancel.set()
     if job.kind == "path":   # a read-only analysis: there is no write, activation or read-back
         job.log("Stop requested: nothing more is read from the tenant, also while waiting for ZIA's rate limit; the analysis ends as stopped with no partial result.")
+    elif job.kind == "export":   # read-only: nothing is written or activated
+        job.log("Stop requested: the read in flight finishes, nothing more is read and no pack is produced.")
     else:
         job.log("Stop requested: the write in flight finishes, nothing more is sent; activation and the read-back still run.")
     return True
