@@ -140,14 +140,43 @@ def proposal_key(creds: Dict[str, Any], pid: str) -> str:
 
 
 def _proposal_key_migrated(creds: Dict[str, Any], pid: str) -> str:
-    """proposal_key, after moving a classic-API tenant's proposals queued
-    under its stale vanity domain (or the profile id) to it."""
+    """proposal_key, after moving, once, the proposals a saved classic-API
+    profile was queued under before this release (its stale vanity domain,
+    else its profile id) to it.
+
+    Only a saved classic profile with the same fingerprint as `creds` is
+    migrated, and only from what that profile stored, never from a vanity
+    domain in the request's form. A key another saved profile claims (a
+    OneAPI profile's vanity domain or id, or any other profile's id or
+    vanity domain) is never moved: that queue may be another tenant's. The
+    profile is marked once it has been looked at, so no later run moves
+    anything again."""
     import tenant_fingerprint
     key = proposal_key(creds, pid)
     try:
+        import tenant_auth
+        import tenant_profiles
+        fp = tenant_fingerprint.fingerprint(creds)
+        if not pid or not fp:
+            return key
+        rows = tenant_profiles.list_profiles()
+        mine = next((r for r in rows if r.get("id") == pid), None)
+        if (not mine or tenant_auth.method_of(mine) != tenant_auth.LEGACY or mine.get("proposal_queue_migrated")
+                or tenant_fingerprint.fingerprint(tenant_profiles.creds_from(mine)) != fp):
+            return key
+        claimed = set()
+        for r in rows:
+            if r.get("id") == pid:
+                continue
+            claimed.update(str(x) for x in (r.get("id"), r.get("vanity_domain")) if x)
+            if tenant_auth.method_of(r) != tenant_auth.LEGACY:
+                claimed.add(tenant_fingerprint.proposal_key(tenant_profiles.creds_from(r), str(r.get("id") or "")))
         import proposals
-        for old in tenant_fingerprint.proposal_key_aliases(creds, pid):
-            proposals.rekey(old, key)
+        claimed = {proposals.tenant_key(k) for k in claimed}
+        for old in tenant_fingerprint.proposal_key_aliases(tenant_profiles.creds_from(mine), pid):
+            if proposals.tenant_key(old) not in claimed:
+                proposals.rekey(old, key)
+        tenant_profiles.mark_proposal_queue_migrated(pid)
     except Exception:  # noqa: BLE001
         pass
     return key
