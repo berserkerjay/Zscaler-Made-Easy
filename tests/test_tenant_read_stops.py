@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -522,6 +523,60 @@ def test_a_fan_out_part_the_tenant_refuses_is_still_left_out():
     assert c.get("/zia/cloudApplicationRules") == ([], 200)
 
 
+@pytest.mark.parametrize("how", ["stop", "stop_check"])
+def test_a_fan_out_read_stopped_part_way_is_never_cached(how):
+    # One Stop for the client: Client.stop() (the assessment) and the stop
+    # hook data_flow.stop_on binds (the Path analyzer) end a fan-out read
+    # the same way: nothing more is sent, and the cut-short list is not
+    # cached, so the same read asked again (not stopped) reads every part.
+    import dlp_assessment_full_auto as full
+    c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
+    c.token, c.exp, c._limiter.min_gap = "t", time.time() + 3600, 0
+    sent = []
+    hook = {"on": False}
+
+    def fake_get(url, params=None, timeout=None):
+        sent.append(url)
+        if len(sent) == 1:   # Stop is pressed while the first part is being read
+            if how == "stop":
+                c.stop()
+            else:
+                hook["on"] = True
+        return _Answer(200)
+
+    c.sess.get = fake_get
+    if how == "stop_check":
+        c.stop_check = lambda: hook["on"]
+    assert c.get("/zia/cloudApplicationRules") == full._STOPPED and len(sent) == 1
+    c.stopped.clear()
+    c.stop_check = None
+    d, code = c.get("/zia/cloudApplicationRules")
+    # The part answered before the stop is a whole answer of its own (kept); every other part is read now.
+    assert code == 200 and len(sent) == len(full._FAN_OUT["/zia/cloudApplicationRules"]) > 1
+
+
+def test_client_stop_also_ends_a_wait_for_zias_rate_limit(monkeypatch):
+    # The assessment's Stop reaches ZIA's own pacing too (zia_rate.wait in
+    # a write): the request is not sent and the write answers "run stopped".
+    import dlp_assessment_full_auto as full
+    import zia_rate
+    c = full.Client("abc123456789", "secret-secret-secret", "acme", "zscaler")
+    c.token, c.exp, c._limiter.min_gap = "t", time.time() + 3600, 0
+    sent = []
+    c.sess.request = lambda *a, **k: sent.append(a) or _Answer(200)
+    naps = []
+
+    def fake_wait(method, path="", log=None, key=None, **k):
+        naps.append(path)
+        c.stop()   # Stop pressed while the write waits for ZIA's limit
+        assert zia_rate.stop_requested()
+        raise zia_rate.Cancelled("stopped while waiting for ZIA's rate limit")
+
+    monkeypatch.setattr(zia_rate, "wait", fake_wait)
+    assert c.post("/zia/dlpDictionaries", {"name": "x"}) == full._STOPPED
+    assert naps and sent == [] and c.requests_made == 0
+
+
 def test_a_rate_limited_run_reports_could_not_be_checked(monkeypatch):
     class Limited:
         requests_made = 0
@@ -668,8 +723,12 @@ def test_a_new_assessment_never_redraws_the_previous_runs_checks():
 
 
 def test_a_path_analyzer_link_never_runs_by_itself():
+    # An old ?run=1 link only fills the form in (and points at Analyze):
+    # nothing on the line that reads it starts the analysis.
     page = _read("static/report_path.html")
-    assert "tenantChoices().then(run)" not in page and "q.get('run')" not in page
+    assert "tenantChoices().then(run)" not in page
+    for ln in (ln for ln in page.splitlines() if "q.get('run')" in ln):
+        assert not re.search(r"\brun\(\)|\(run\)|\.click\(\)", ln), ln
 
 
 def test_the_digest_schedule_tile_follows_the_real_schedule(monkeypatch):

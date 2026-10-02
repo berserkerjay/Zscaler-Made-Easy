@@ -43,7 +43,7 @@
   };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
-    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named.',
+    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
     why: 'When a customer asks "what happens if a user goes to this site?" the honest answer is in a dozen policies. This page reads them all and answers in one line, naming the rule or profile that decides it.',
     when: 'While troubleshooting a "Zscaler blocks my site" or "DLP did not catch it" ticket, before promising a control will apply, and when showing a customer where a destination is blind.',
     get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), the objects that block or impact it with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export.',

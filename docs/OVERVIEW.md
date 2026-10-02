@@ -80,7 +80,9 @@ what you get, what to do next.
 - **Path analyzer** — type a URL, hostname or IP address and see, live
   from the tenant as it is right now, the path a user's traffic takes to
   it, one verdict in plain words, and every rule or profile that blocks
-  or impacts it, each with a fix.
+  or impacts it, each with a fix. It reads only what is in scope on the
+  Scope page (a part out of scope says "not in scope"), and Stop ends the
+  read at once.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
   15 seconds: who, what triggered, where it was going, enforced or
   monitor-only, with a running tally. It covers DLP incidents only, not
