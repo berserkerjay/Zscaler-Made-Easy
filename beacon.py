@@ -147,20 +147,33 @@ def _sdk_watcher(rep: Dict[str, Any], online: bool, findings: List[Dict[str, Any
     return w
 
 
-def _page_entry(source: Dict[str, Any], text: Optional[str], err: str) -> Dict[str, Any]:
-    """One help-center page, hashed exactly as zscaler_update_check hashes it."""
+def _page_entry(source: Dict[str, Any], fetch: Fetch) -> Dict[str, Any]:
+    """One help-center page, read and hashed exactly as zscaler_update_check
+    reads and hashes it (a help.zscaler.com article through its fetch-data
+    answer, since the page itself is an empty browser shell)."""
     import zscaler_update_check as zu
     e: Dict[str, Any] = {"key": source["key"], "name": source["name"], "url": source["url"],
                          "importance": source.get("importance", "medium"), "hash": None, "ok": False, "reason": ""}
-    if not text:
+
+    def get(url: str):
+        text, err = fetch(url)
+        if text:
+            return text.encode("utf-8", "ignore"), 200, ""
+        # Keep an HTTP status the fetcher reports ("HTTP 404"): the site
+        # answered. Status 0 is a network error (read_page then stops).
+        m = re.match(r"HTTP (\d{3})\b", err or "")
+        return None, int(m.group(1)) if m else (0 if err else 200), err or "no answer"
+    content, q, _code, err = zu.read_page(source["url"], get)
+    if q is None:
         e["reason"] = err or "no answer"
         return e
-    body = text.encode("utf-8", "ignore")
-    q = zu.page_quality(body, 200)
-    e["hash"] = zu._hash(zu._strip_volatile(body))
+    e["hash"] = zu._hash(content or b"")
     e["ok"] = bool(q.get("ok"))
     e["reason"] = q.get("reason") or ""
     e["title"] = q.get("title") or ""
+    e["basis"] = q.get("basis") or "page"  # a hash is only compared with one taken the same way
+    if q.get("article_status") is not None:
+        e["article_status"] = q["article_status"]
     return e
 
 
@@ -174,10 +187,10 @@ def watch_pages(fetch: Fetch) -> List[Dict[str, Any]]:
         if s.get("type") != "html_hash":
             continue
         try:
-            text, err = fetch(s["url"])
+            out.append(_page_entry(s, fetch))
         except Exception as e:  # noqa: BLE001 — one page never stops the others
-            text, err = None, f"{type(e).__name__}: {str(e)[:150]}"
-        out.append(_page_entry(s, text, err))
+            out.append({"key": s["key"], "name": s["name"], "url": s["url"], "importance": s.get("importance", "medium"),
+                        "hash": None, "ok": False, "reason": f"{type(e).__name__}: {str(e)[:150]}"})
     return out
 
 
@@ -397,6 +410,17 @@ def _usable(w: Optional[Dict[str, Any]]) -> bool:
     return bool(w) and w.get("status") in ("ok", "offline")
 
 
+def _page_state(p: Dict[str, Any]) -> str:
+    """"ok", "unreadable" (the help center answered a status other than
+    200/404/410, e.g. 403 "Help Article in Maintenance": the page is still
+    there) or "gone" (404/410, or no readable content). The same split as
+    the page table's chip in static/beacon.js and the Updates tab."""
+    if p.get("ok"):
+        return "ok"
+    st = p.get("article_status")
+    return "unreadable" if st is not None and st not in (200, 404, 410) else "gone"
+
+
 def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
     """What changed between `cur` and the snapshots before it. Upstream
     changes are measured against the latest earlier run of the same kind
@@ -434,16 +458,42 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
                 add(watcher, "drift_new", f"New drift: {after[k]['text']}")
             for k in sorted(before.keys() - after.keys()):
                 add(watcher, "drift_cleared", f"Cleared: {before[k]['text']}")
-        # Help-center pages
-        prev_pages = {p["key"]: p for p in (up.get("api") or {}).get("pages") or []}
+        # Help-center pages. A page is only compared with earlier reads
+        # taken the same way at the same address (the first run that reads
+        # help.zscaler.com's article instead of its empty shell is a new
+        # baseline, not a change on every page), and that were read at all:
+        # a run where the page could not be fetched, or was read another way
+        # once (an earlier run that read the shell), is
+        # skipped, not a baseline that hides the next change.
+        earlier = [s for s in reversed(history)
+                   if bool(s.get("online")) == bool(cur.get("online")) and s.get("id") != cur.get("id")]
         for p in (cur.get("api") or {}).get("pages") or []:
-            q = prev_pages.get(p["key"])
-            if not q:
+            if not p.get("hash"):
                 continue
-            if p.get("hash") and q.get("hash") and p["hash"] != q["hash"]:
-                add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
-            elif q.get("ok") and p.get("hash") and not p.get("ok"):
-                add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
+            same = [e for s in earlier for e in (s.get("api") or {}).get("pages") or []
+                    if e.get("key") == p["key"] and e.get("hash") and e.get("basis", "page") == p.get("basis", "page")
+                    and e.get("url") == p.get("url")]
+            if not same:
+                continue
+            q = same[0]
+            # Gone first: a page that went away also hashes differently.
+            # Said when the page's state differs from the read before it, so
+            # a page in maintenance (403, still there: "not readable") that
+            # is later removed (404) is still reported gone.
+            if not p.get("ok"):
+                state = _page_state(p)
+                if state != _page_state(q):
+                    if state == "unreadable":
+                        add("api", "doc_unreadable", f"{p['name']} cannot be read right now ({p.get('reason')}); "
+                            f"the page is still there and is read again next run: {p['url']}", key=p["key"], url=p["url"])
+                    else:
+                        add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
+            else:
+                # Changed against the last time it was readable: a page back
+                # from maintenance (or a 404) with the same text is not a change.
+                last_ok = next((e for e in same if e.get("ok")), None)
+                if last_ok and last_ok["hash"] != p["hash"]:
+                    add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
 
     tb = None
     ct = cur.get("tenant")

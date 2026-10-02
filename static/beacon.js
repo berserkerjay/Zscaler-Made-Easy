@@ -6,7 +6,7 @@
   const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const $ = id => document.getElementById(id);
   const WATCHER = { sdk: 'SDK', api: 'API', terraform: 'Terraform', tenant: 'Tenant' };
-  const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', endpoint_status: 'endpoint' };
+  const KIND = { version: 'version', changelog: 'changelog', drift_new: 'new drift', drift_cleared: 'cleared', doc_changed: 'page changed', doc_gone: 'page gone', doc_unreadable: 'not readable', endpoint_status: 'endpoint' };
   let polling = null;
 
   function say(kind, html) {
@@ -77,6 +77,9 @@
   }
 
   // ---- API -----------------------------------------------------------------
+  // A help.zscaler.com article answers with its own status: 404/410 is a
+  // page that moved or went away, 403 one that is locked (maintenance).
+  const pageGone = p => [404, 410].includes(p.article_status) ? 'moved or gone' : p.article_status && p.article_status !== 200 ? 'not readable' : 'no readable content';
   function renderApi(w) {
     if (!w) return;
     const sd = w.service_definition, ref = w.reference;
@@ -90,7 +93,7 @@
     }
     if ((w.pages || []).length) {
       html += `<div class="tw"><table class="bp-table adv-table" aria-label="Help-center and OneAPI pages"><thead><tr><th scope="col">Page</th><th scope="col">State</th></tr></thead><tbody>
-        ${w.pages.map(p => `<tr><td><a href="${E(p.url)}" target="_blank" rel="noopener">${E(p.name)}</a></td><td>${p.hash ? (p.ok ? chip('read', 'ok') : chip('no readable content', 'warn')) : chip('not fetched', 'warn')} <span class="dim">${E(p.reason || '')}</span></td></tr>`).join('')}</tbody></table></div>`;
+        ${w.pages.map(p => `<tr><td><a href="${E(p.url)}" target="_blank" rel="noopener">${E(p.name)}</a></td><td>${p.hash ? (p.ok ? chip('read', 'ok') : chip(pageGone(p), 'warn')) : chip('not fetched', 'warn')} <span class="dim">${E(p.reason || '')}</span></td></tr>`).join('')}</tbody></table></div>`;
     }
     $('bcApi').innerHTML = html + findingsTable(w.findings, 'No API findings.');
   }

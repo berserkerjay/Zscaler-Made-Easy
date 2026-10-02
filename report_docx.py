@@ -153,7 +153,7 @@ _BP_FALLBACKS = [
      "Categorize internal-approved AI services with explicit URL/cloud-app "
      "rules. Apply DLP engines (PII, IP, source code) to every outbound "
      "prompt. Block unsanctioned GenAI tools rather than alerting only.",
-     "https://help.zscaler.com/zia/about-ai-ml-controls"),
+     "https://help.zscaler.com/zia/adding-ai-ml-applications-rule-cloud-app-control"),
 
     ("automation", "API client roles should be scoped per use case "
      "(read-only auditor vs IaC executor). Audit log retention should be "
@@ -194,7 +194,7 @@ def _resolve_best_practice(label: str, section: str, check_id: str) -> str:
             return f"{text} Reference: {url}"
     return (
         "Apply the Zscaler-recommended baseline for this control. Reference "
-        "https://help.zscaler.com/zscaler-deployments-operation for the "
+        "https://help.zscaler.com/zscaler-deployments-operations for the "
         "deployment-and-operations guide covering this feature area."
     )
 

@@ -5,6 +5,7 @@ answer and every tenant is a fake; nothing leaves this machine."""
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 
 import pytest
@@ -78,10 +79,17 @@ def fake_upstream(report):
 
 def fake_fetch(changed_key=None):
     def fetch(url):
-        src = next((s for s in HTML_SOURCES if s["url"] == url), None)
+        # help.zscaler.com pages are read through the article API (fetch-data);
+        # any other page as itself.
+        src = next((s for s in HTML_SOURCES if s["url"] == url or zu.help_api_url(s["url"]) == url), None)
         if not src:
-            return None, "not in this fake"
-        return PAGE_TEXT.format(t=src["name"], extra="A new section." if src["key"] == changed_key else ""), ""
+            return None, "HTTP 404"
+        text = PAGE_TEXT.format(t=src["name"], extra="A new section." if src["key"] == changed_key else "")
+        if zu.help_api_url(src["url"]):
+            if url != zu.help_api_url(src["url"]):
+                return None, "HTTP 404"
+            return json.dumps({"data": {"info": {"status": 200}, "body": {"title": src["name"], "content": text}}}), ""
+        return text, ""
     return fetch
 
 
