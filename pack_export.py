@@ -311,13 +311,17 @@ def _read(what: str, fn: Callable[[], Tuple[Any, Optional[str]]], log: Callable[
             return [], None, False   # the SDK made an error answer of the Cancelled: nothing was read
         if not err or not _is_rate(err):
             return data, err, False
+        if _is_hourly(err) and not _stopped(cancel):
+            # ZIA's hourly read limit: not retried, and every job on the
+            # tenant (the assessment's Client too) holds its reads until it resets.
+            zia_rate.hold(_retry_wait(err) or 0.0, reads=True)
         if attempt >= READ_RETRIES or _stopped(cancel) or _is_hourly(err):
             return data, err, True
         attempt += 1
         secs = _rate_wait(str(err), attempt)
         log(f"ZIA refused the read of the {what} (rate limit / Resource Access Blocked); waiting {secs:.0f}s before trying "
             f"again (attempt {attempt} of {READ_RETRIES}).")
-        zia_rate.hold(secs)
+        zia_rate.hold(secs, reads=True)   # a refused read: every job's reads on this tenant wait too
         _wait_out(secs, cancel)
         if _stopped(cancel):
             return data, err, True

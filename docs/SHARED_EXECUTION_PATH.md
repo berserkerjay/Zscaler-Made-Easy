@@ -110,7 +110,13 @@ the reference this path is measured against. The app never runs it.
    for ZIA's read limit. The SDK itself is built with bounded waits
    (`dlp_api_server.SDK_REQUEST_TIMEOUT`, `SDK_MAX_RETRY_SECONDS`): a
    request has a timeout, and a Retry-After longer than 30 s is not slept
-   through but reported.
+   through but reported. The assessment client
+   (`dlp_assessment_full_auto.Client`) does the same: a 429 asking for
+   more than 30 s, or naming an hourly limit, is not retried; the tenant
+   is held for the whole wait (`zia_rate.hold(..., reads=True)`) and
+   every job on it, in any process, sends nothing until it has passed.
+   A refused read holds every job's reads on the tenant; a hold after a
+   refused write leaves reads alone.
 8. **A duplicate the plan did not see is reused, not fatal.** ZIA compares
    names without regard to case, and a predefined dictionary's display
    name (CRED_LEAKAGE is shown as "Private Key") is taken too. A pack

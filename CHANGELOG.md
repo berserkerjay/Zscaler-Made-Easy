@@ -7,6 +7,10 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-02
 
+### ZIA's hourly limit stops the assessment's reads and writes, and one 429 holds every job on the tenant
+- **What you saw.** When ZIA refused a request for its hourly limit (429, *Retry-After: 3300 seconds*), the assessment client used by assessments, Beacon, path analysis, the live feed, remediation and the rule migrator waited only 30 seconds and tried each request four times, and every later check did the same, so a run sent hundreds of refused requests. A 429 seen by an assessment did not hold an export or a deploy's plan reads on the same tenant, and the export's hold after a refused read held no reads at all.
+- **Now.** A 429 asking for more than 30 seconds, or naming an hourly limit, is not retried: the tenant is held for the whole wait and the request answers *rate limited* at once, as the classic API and the export already did. While that hold lasts, every job on the tenant (any client, any process) sends nothing and its checks are reported unanswered. A refused read, by the assessment client or the export, holds every job's reads on the tenant until ZIA's wait has passed; a hold after a refused write still leaves reads alone.
+
 ### The credential store for remembered secrets is part of the pinned install
 - **What you saw.** A remembered profile secret goes to Windows Credential Manager or the macOS Keychain only through the `keyring` package, which the app did not install. SECURITY.md said to run an unpinned `pip install keyring`, which installed six packages that were not hash-verified and were missing from the SBOM and the notices.
 - **Now.** `keyring` and the packages it needs are pinned by hash in `requirements.lock` for Windows and macOS, and they are listed in `docs/sbom.cdx.json` and `THIRD_PARTY_NOTICES.md` with their licences. The installers install them with the rest of the app. On Linux and in the container there is no credential store, so a remembered secret stays in the owner-only profile file, as before. The tests never touch this machine's real credential store.
