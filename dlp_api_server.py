@@ -17,7 +17,7 @@ Endpoints:
     GET  /api/checks         — List all check IDs/labels
 """
 
-import json, asyncio, os, re, sys, tempfile, time
+import json, asyncio, os, re, sys, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from starlette.background import BackgroundTask
@@ -909,6 +909,10 @@ class TenantCredsRequest(BaseModel):
     # Saved tenant profile: blanks above are filled from it (including a
     # remembered secret), so the operator can switch tenants without retyping.
     profile_id: str = ""
+    # The assessor's name (Scope assessment). A pack deploy names only this
+    # in the provenance tag it writes and in its deployment record; blank
+    # falls back to the saved profile's assessor.
+    assessor: str = ""
 
 
 class DLPPackImportRequest(TenantCredsRequest):
@@ -994,6 +998,43 @@ def _tenant_creds(req: Any) -> Dict[str, str]:
     return tenant_auth.normalize(creds)
 
 
+def _assessor(req: Any) -> str:
+    """The assessor's name for a pack deploy: the request's, else the saved
+    profile's, else blank (the tag then says DLP-Check). Sanitized as the
+    tag carries it (pack_deploy.assessor_name: no brackets or line breaks,
+    at most 40 bytes), so the deployment record names the same person."""
+    import pack_deploy
+    name = pack_deploy.assessor_name(getattr(req, "assessor", "") or "")
+    if name:
+        return name
+    pid = getattr(req, "profile_id", "") or ""
+    if pid:
+        try:
+            import tenant_profiles
+            return pack_deploy.assessor_name((tenant_profiles.get(pid) or {}).get("assessor") or "")
+        except Exception:  # noqa: BLE001 — a missing profile only loses the name
+            return ""
+    return ""
+
+
+def _tenant_key(c: Dict[str, Any]) -> str:
+    """The tenant's API client as zia_rate's opaque key (a hash): the rate
+    state's key, and what a deployment record keeps so classic-API tenants
+    on one cloud (one label, 'classic API (cloud)') stay apart."""
+    import zia_rate
+    c = tenant_auth.normalize(c)
+    return zia_rate.key_for(c["cloud"], c["vanity_domain"] or c.get("username"), c["client_id"] or c.get("username"))
+
+
+def _same_tenant(rec: Dict[str, Any], creds: Dict[str, Any]) -> bool:
+    """Whether a deployment record was made in the tenant these credentials
+    point at: its label (current or older form) and, when recorded, its
+    opaque tenant key."""
+    if rec.get("tenant_label") and rec["tenant_label"] not in tenant_auth.record_labels(creds):
+        return False
+    return not rec.get("tenant_key") or rec["tenant_key"] == _tenant_key(creds)
+
+
 def _fill_from_profile(creds: Dict[str, str], profile_id: str) -> Dict[str, str]:
     """Fill blank credential fields from a saved tenant profile (the
     remembered secrets included). Typed values always win."""
@@ -1067,8 +1108,11 @@ def _build_sdk_client(creds: Dict[str, str]):
     cloud, vd, cid, sec = c["cloud"], c["vanity_domain"], c["client_id"], c["client_secret"]
     # The tenant's API client, for ZIA's rate limits: its requests, holds and
     # refusals are counted apart from any other tenant's.
-    rate_key = zia_rate.key_for(cloud, vd or c.get("username"), cid or c.get("username"))
-    rate_label = f"{vd or '?'} ({cloud or 'production'})"   # as the deployment log names the tenant
+    rate_key = _tenant_key(c)
+    # As the deployment log names the tenant (tenant_auth.record_label: never
+    # the classic API's admin login or a stale vanity domain), then the
+    # labels older records carry, so the rate forecast still counts them.
+    rate_label = tenant_auth.record_labels(c)
     if c["auth_method"] == tenant_auth.LEGACY:
         try:
             return zia_rate.attach_client(tenant_auth.build_legacy_sdk_client(c, timeout=SDK_REQUEST_TIMEOUT), rate_key, rate_label)
@@ -1247,7 +1291,7 @@ async def dlp_packs_preflight(req: DLPPackDeployRequest):
     )
     out = pack_deploy.public_report(report)
     out["writes_enabled"] = writes_enabled()
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -1284,7 +1328,7 @@ async def detection_health_generate(req: DetectionHealthRequest):
         report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
     except Exception as e:  # noqa: BLE001
         report["proposals"] = {"error": str(e)[:200]}
-    rid = _remember_report("health", report, f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})")
+    rid = _remember_report("health", report, tenant_auth.record_label(creds))
     return _REPORTS[rid]
 
 
@@ -1494,26 +1538,31 @@ async def digests_list():
     import continuous_eval
     import guidance
     health = guidance.source_health()
-    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": continuous_eval.notification_settings(),
+    notifications = continuous_eval.notification_settings()
+    if _DH_REFRESH_STATE.get("interval_hours") is not None:   # what the timer started with, decided (and logged) once at startup
+        notifications["interval_hours"] = _DH_REFRESH_STATE["interval_hours"]
+    return {"digests": continuous_eval.list_digests(), "schedule": dict(_DH_REFRESH_STATE), "notifications": notifications,
             "sources": {"watched": sum(1 for h in health if h["watched"]), "stale": [h for h in health if h["stale"]]},
             "checks_config": guidance.config_summary(), "guidance_queue": __import__("proposals").summary(guidance.APP_TENANT)}
 
 
 @app.post("/api/digests/run")
 async def digests_run(req: DigestRunRequest):
-    """Run the loop now (the same run the schedule makes)."""
+    """Run the loop now (the same run the schedule makes). One run at a
+    time: a second click, another tab or the timer firing meanwhile gets
+    409, so the tenants are not read twice against the API rate limit."""
     try:
         d = await asyncio.to_thread(_continuous_eval_once, req.notify)
+    except LoopRunInProgress as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:  # noqa: BLE001
         _DH_REFRESH_STATE["last_status"] = "error"
         _DH_REFRESH_STATE["last_error"] = str(e)[:200]
         _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         raise HTTPException(status_code=500, detail=f"the evaluation failed: {type(e).__name__}: {str(e)[:200]}")
-    # The same bookkeeping the scheduled run does, so the Digest tab's
-    # "Last run" and its status are right after a manual run too.
-    _DH_REFRESH_STATE["last_status"] = "ok"
-    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    return {"ok": True, "digest": d}
+    # The same bookkeeping the scheduled run does (_continuous_eval_once), so
+    # the Digest tab's "Last run" and its status are right after a manual run too.
+    return {"ok": True, "digest": d, "status": _DH_REFRESH_STATE.get("last_status"), "errors": __import__("continuous_eval").run_errors(d)}
 
 
 @app.get("/api/digests/{digest_id}")
@@ -1556,8 +1605,8 @@ async def report_digest_page():
 
 @app.get("/api/detection-health/schedule")
 async def detection_health_schedule():
-    """State of the 6-hour FP/TP Detection Ratio refresh for tenant profiles
-    that remember their secret."""
+    """State of the opt-in FP/TP Detection Ratio refresh (the continuous
+    evaluation timer, DLP_CHECK_CONTINUOUS_EVAL_HOURS; off by default)."""
     return dict(_DH_REFRESH_STATE)
 
 
@@ -1594,48 +1643,89 @@ async def report_health_page():
         return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
 
 
-# Every 6 hours while this server process runs, for each tenant profile that
-# remembers its secret, continuous_eval.run_once reads FP/TP Detection Ratio,
-# the SaaS tenants and the packs' drift (never the assessment checks or the
-# score) and writes a digest. Same cadence as the best-practices refresh;
-# nothing is written to any tenant. The loop dies with the process: a
-# schedule that must survive it is Task Scheduler / cron running
-# continuous_eval.py --once.
-_DH_REFRESH_INTERVAL_SECONDS = 6 * 3600
-_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": True, "interval_seconds": _DH_REFRESH_INTERVAL_SECONDS, "last_run_at": None,
+# Off unless the operator opts in: every tenant read counts against the
+# ZIA API rate limit, and nothing reads a tenant until the operator runs it.
+# With DLP_CHECK_CONTINUOUS_EVAL_HOURS > 0 (unset or 0: off), every N hours
+# while this server process runs, continuous_eval.run_once reads, for each
+# tenant profile that remembers its secret and only what that profile's
+# Scope page puts in scope, FP/TP Detection Ratio, the SaaS tenants and the
+# ticked packs' drift (never the assessment checks or the score) and writes
+# a digest. Run the loop now (POST /api/digests/run) and
+# continuous_eval.py --once are the explicit runs. Nothing is written to any
+# tenant. The loop dies with the process: a schedule that must survive it
+# is Task Scheduler / cron running continuous_eval.py --once.
+_DH_REFRESH_STATE: Dict[str, Any] = {"enabled": False, "interval_seconds": None, "interval_hours": None, "last_run_at": None,
                                      "next_run_at": None, "last_status": None, "profiles": {},
-                                     "runs_while": "this server process is running"}
+                                     "runs_while": "this server process is running",
+                                     "setting": "DLP_CHECK_CONTINUOUS_EVAL_HOURS (unset or 0: off; runs only when you click Run the loop now)"}
+
+
+def _continuous_eval_hours() -> float:
+    """DLP_CHECK_CONTINUOUS_EVAL_HOURS as hours; 0 (the default) is off."""
+    import continuous_eval
+    return continuous_eval.interval_hours()
+
+
+# A run of the loop is already reading the tenants. continuous_eval.run_once
+# also takes a cross-process file lock (digests/.loop.lock), so a run here
+# and RUN_Continuous_Evaluation.bat / continuous_eval.py --once in another
+# process never overlap either: whichever starts second gets this.
+from continuous_eval import LoopRunInProgress  # noqa: E402
+
+_LOOP_RUN_LOCK = threading.Lock()
 
 
 def _continuous_eval_once(notify: bool = True) -> Dict[str, Any]:
     """One run of the continuous evaluation (guidance, FP/TP Detection Ratio,
     SaaS tenants, drift, digest, notifications). Keeps the per-profile
-    state the FP/TP Detection Ratio tab shows."""
+    state the FP/TP Detection Ratio tab shows, and the run's status: "ok"
+    only when nothing failed, "partial" when a section or a tenant read did
+    (a 429, say). Only one run at a time: every tenant read counts against
+    the ZIA API rate limit, so an overlapping run raises LoopRunInProgress."""
+    if not _LOOP_RUN_LOCK.acquire(blocking=False):
+        raise LoopRunInProgress("a run of the loop is already in progress; wait for it to finish")
+    try:
+        return _continuous_eval_locked(notify)
+    finally:
+        _LOOP_RUN_LOCK.release()
+
+
+def _continuous_eval_locked(notify: bool) -> Dict[str, Any]:
     import continuous_eval
     d = continuous_eval.run_once(build_client=_build_sdk_client, notify=notify)
     for t in d.get("tenants") or []:
         dh = t.get("detection_health") or {}
-        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else "ok",
+        _DH_REFRESH_STATE["profiles"][t["profile_id"]] = {"at": d.get("at"), "status": "error" if t.get("errors") else ("not in scope" if t.get("note") else "ok"),
                                                           "incidents": dh.get("incidents"), "errors": len(t.get("errors") or []),
                                                           "error": "; ".join(t.get("errors") or [])[:200] or None}
     _DH_REFRESH_STATE["last_digest"] = d.get("id")
     _DH_REFRESH_STATE["last_noteworthy"] = d.get("noteworthy")
+    errors = continuous_eval.run_errors(d)
+    _DH_REFRESH_STATE["last_status"] = "partial" if errors else "ok"
+    _DH_REFRESH_STATE["last_error"] = (f"{errors} error(s) in the run; see the digest" if errors else None)
+    _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return d
 
 
 async def _dh_auto_refresh_loop() -> None:
-    await asyncio.sleep(30)
-    while _DH_REFRESH_STATE.get("enabled", True):
+    interval = _DH_REFRESH_STATE["interval_seconds"]
+    _DH_REFRESH_STATE["next_run_at"] = time.time() + 30
+    try:
+        await asyncio.sleep(30)
+    except asyncio.CancelledError:
+        return
+    while _DH_REFRESH_STATE.get("enabled"):
         try:
-            await asyncio.to_thread(_continuous_eval_once)
-            _DH_REFRESH_STATE["last_status"] = "ok"
+            await asyncio.to_thread(_continuous_eval_once)   # sets last_status / last_run_at
+        except LoopRunInProgress:
+            pass   # a manual run is reading the tenants right now: this pass is skipped
         except Exception as e:  # noqa: BLE001
             _DH_REFRESH_STATE["last_status"] = "error"
             _DH_REFRESH_STATE["last_error"] = str(e)[:200]
-        _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        _DH_REFRESH_STATE["next_run_at"] = time.time() + _DH_REFRESH_INTERVAL_SECONDS
+            _DH_REFRESH_STATE["last_run_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _DH_REFRESH_STATE["next_run_at"] = time.time() + interval
         try:
-            await asyncio.sleep(_DH_REFRESH_INTERVAL_SECONDS)
+            await asyncio.sleep(interval)
         except asyncio.CancelledError:
             break
 
@@ -1643,8 +1733,17 @@ async def _dh_auto_refresh_loop() -> None:
 @app.on_event("startup")
 async def _start_dh_refresh() -> None:
     try:
+        hours = _continuous_eval_hours()   # logs a value it cannot use, once
+    except Exception:  # noqa: BLE001  # a setting that cannot be read leaves the timer off; it never stops the app
+        hours = 0.0
+    _DH_REFRESH_STATE["interval_hours"] = hours
+    if hours <= 0:
+        _DH_REFRESH_STATE.update({"enabled": False, "interval_seconds": None, "next_run_at": None, "last_status": _DH_REFRESH_STATE.get("last_status") or "off"})
+        return
+    try:
         import detection_health  # noqa: F401
         import tenant_profiles  # noqa: F401
+        _DH_REFRESH_STATE.update({"enabled": True, "interval_seconds": hours * 3600})
         asyncio.create_task(_dh_auto_refresh_loop())
     except Exception:
         _DH_REFRESH_STATE["enabled"] = False
@@ -1658,9 +1757,12 @@ def _deployment_for_removal(req: "PackRemovalRequest", creds: Dict[str, str]) ->
     rec = deployments.get(req.deployment_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Deployment not found.")
-    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
-    if rec.get("tenant_label") and rec["tenant_label"] != label:
-        raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
+    label = tenant_auth.record_label(creds)
+    if not _same_tenant(rec, creds):
+        where = rec.get("tenant_label") or "another tenant"
+        if where == label:
+            where = f"another {label} tenant"
+        raise HTTPException(status_code=409, detail=f"This deployment was made in {where}, but the current credentials are for {label}. Switch tenant first.")
     return rec
 
 
@@ -1681,8 +1783,8 @@ async def rate_check(req: RateCheckRequest):
     key, label = "", None
     try:
         c = _validate_creds(_tenant_creds(req))
-        key = zia_rate.key_for(c["cloud"], c["vanity_domain"] or c.get("username"), c["client_id"] or c.get("username"))
-        label = f"{c['vanity_domain'] or '?'} ({c['cloud'] or 'production'})"
+        key = _tenant_key(c)
+        label = tenant_auth.record_labels(c)
     except HTTPException:
         pass   # no tenant to tell apart: the unkeyed record still applies
     counts = {k: max(0, min(int(v or 0), 5000)) for k, v in (req.counts or {}).items() if k in zia_rate.DEFAULTS and k != "read"}
@@ -1716,7 +1818,7 @@ async def dlp_pack_removal_preflight(req: PackRemovalRequest):
     else:
         out = await asyncio.to_thread(lambda: pack_removal.plan_removal(client, packs, everything=bool(req.all)))
     out["writes_enabled"] = writes_enabled()
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -1733,7 +1835,7 @@ async def dlp_pack_removal_inventory(req: TenantCredsRequest):
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(pack_removal.inventory, client)
     out["writes_enabled"] = writes_enabled()
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -2164,7 +2266,7 @@ async def dlp_packs_journey(req: DLPPackDeployRequest):
     creds = _tenant_creds(req)
     client = await asyncio.to_thread(_build_sdk_client, creds)
     out = await asyncio.to_thread(_journey_for, client, packs, req.use_rank_0, req.channel_targets or None)
-    out["tenant_label"] = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
+    out["tenant_label"] = tenant_auth.record_label(creds)
     return out
 
 
@@ -2273,11 +2375,11 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
     gap: Dict[str, int] = {}
     if client is not None:
         mode = "gap"
-        _log(f"Gap mode: reading {tenant_auth.label(creds)} so the workspace imports what already exists and creates only the rest.")
+        _log(f"Gap mode: reading {tenant_auth.record_label(creds)} so the workspace imports what already exists and creates only the rest.")
         full = pack_deploy.preflight(client, packs, use_rank_0=req.use_rank_0, apply_tweaks=False, writes_enabled=None,
                                      channel_targets=req.channel_targets or None, log=_log)
         report = pack_deploy.public_report(full)
-        report["tenant_label"] = tenant_auth.label(creds)
+        report["tenant_label"] = tenant_auth.record_label(creds)
         for it in report.get("items") or []:
             if it.get("kind") == "tweak":
                 continue
@@ -2286,20 +2388,21 @@ def _run_terraform(client, creds: Dict[str, str], req: DLPPackDeployRequest, pac
     else:
         _log("Static mode: no tenant read; the workspace describes the whole pack.")
     workspaces = {}
+    by = _assessor(req)       # resolved once: every pack in the workspace names the same assessor
     for p in packs:
         if cancel is not None and cancel.is_set():
             _log("Stopped before the workspace was built.")
             return {"status": "stopped", "stopped": "You clicked Stop.", "mode": mode, "packs": list(workspaces), "logs": logs}
         _log(f"Generating the Terraform workspace for {p.get('name') or p['id']}…")
         files = pack_terraform.generate(p, report=pack_terraform.split_report(report, p["id"]) if report else None,
-                                        channel_targets=(req.channel_targets or {}).get(p["id"]))
+                                        channel_targets=(req.channel_targets or {}).get(p["id"]), assessor=by)
         workspaces[p["id"]] = files
         _log(f"  {len(files)} files" + (", imports.tf included" if "imports.tf" in files else "") + ".")
     data = pack_terraform.zip_workspaces(workspaces)
     name = f"dlp-check-terraform-{mode}-{'-'.join(req.pack_ids)[:60]}.zip"
     _log(f"Ready: {name} ({len(data) // 1024} KB).")
     return {"status": "ready", "mode": mode, "filename": name, "bytes": len(data), "packs": list(workspaces), "gap": gap,
-            "tenant_label": tenant_auth.label(creds) if client is not None else "", "logs": logs,
+            "tenant_label": tenant_auth.record_label(creds) if client is not None else "", "logs": logs,
             "artifact": (name, "application/zip", data)}
 
 
@@ -2319,9 +2422,65 @@ async def dlp_packs_terraform_start(req: DLPPackDeployRequest, request: Request)
     return {"job_id": job.id, "status": job.status, "kind": job.kind}
 
 
+class PackExportRequest(TenantCredsRequest):
+    """Body of Export from tenant as a pack: which rules (rule ids per
+    channel, or "all"; empty means every DLP rule on every channel) and
+    the name the pack gets."""
+    customer_id: str = ""
+    rules: Dict[str, Any] = {}
+    pack_name: str = ""
+
+
+def _run_pack_export(client, creds: Dict[str, str], req: PackExportRequest, selection, log, cancel) -> Dict[str, Any]:
+    """Read the tenant and build the pack (pack_export), zipped. The zip
+    travels as the result's `artifact`; the JSON result says what is in it
+    and what could not be exported."""
+    import pack_export
+    c = tenant_auth.normalize(creds)
+    # The pack names the tenant, never the admin who signed in (the classic API's label is its username).
+    # The classic API's label is 'classic API (cloud)' (tenant_auth.record_label), never a stale vanity domain.
+    label = tenant_auth.record_label(c)
+    log(f"Exporting from {label}: the rules, the engines they use and the dictionaries those engines use. Nothing is written to the tenant.")
+    res = pack_export.export_pack(client, selection=selection, name=req.pack_name[:120], tenant_label=label, log=log, cancel=cancel)
+    if res["status"] != "ready":
+        return dict(res, tenant_label=label)
+    pack = res["pack"]
+    name, data = pack_export.zip_pack(pack)
+    log(f"Ready: {name} ({max(1, len(data) // 1024)} KB).")
+    v = res["validation"]
+    return {"status": "ready", "filename": name, "bytes": len(data), "tenant_label": label, "pack_name": pack["meta"]["name"],
+            "counts": pack["meta"]["counts"], "not_exported": pack["meta"]["not_exported"], "warnings": pack["warnings"],
+            "validation": {"ok": v["ok"], "problems": v["problems"], "warnings": v["warnings"]},
+            "artifact": (name, "application/zip", data)}
+
+
+@app.post("/api/dlp-packs/export/start")
+async def dlp_packs_export_start(req: PackExportRequest, request: Request):
+    """Export from tenant as a pack, as a background job: the tenant's DLP
+    rules (all of them, or the ones picked per channel) with every engine
+    they use and every dictionary those engines use, in the layout Deploy
+    Policy Packs and the pack library read. Read-only, so it needs neither
+    write mode nor the writer check. Poll GET /api/dlp-packs/jobs/{job_id}
+    for the log; the finished job's `download` path serves the zip."""
+    import pack_export
+    import pack_jobs
+    try:
+        selection = pack_export.normalize_selection(req.rules or None)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    creds = _tenant_creds(req)
+    if not tenant_auth.complete(creds):
+        raise HTTPException(status_code=400, detail="Fill in the tenant details (or pick a saved tenant) to export its rules.")
+    client = await asyncio.to_thread(_build_sdk_client, creds)
+    job = pack_jobs.start("export", lambda log, cancel: _keyed(client, _run_pack_export, client, creds, req, selection, log, cancel),
+                          label=req.pack_name[:60] or tenant_auth.record_label(creds), actor=_actor(request))
+    return {"job_id": job.id, "status": job.status, "kind": job.kind}
+
+
 @app.get("/api/dlp-packs/jobs/{job_id}/download")
 async def dlp_pack_job_download(job_id: str):
-    """The file a finished job produced (a Terraform workspace zip)."""
+    """The file a finished job produced (a Terraform workspace zip, or an
+    exported pack)."""
     import pack_jobs
     job = pack_jobs.get(job_id)
     if job is None:
@@ -2373,19 +2532,20 @@ def _run_apply(client, creds: Dict[str, str], req: DLPPackDeployRequest, packs, 
         if log:
             log(line)
 
+    by = _assessor(req)       # resolved once: the tags and the record name the same assessor
     result = pack_deploy.apply(client, packs, plan_hash=req.plan_hash, use_rank_0=req.use_rank_0, apply_tweaks=req.apply_tweaks,
                                verify=req.verify, writes_enabled=True, restore_drift=req.restore_drift,
-                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel)
+                               channel_targets=req.channel_targets or None, log=_log, cancel=cancel, assessor=by)
     result["logs"] = logs
     if result.get("status") in ("plan_changed", "blocked"):
         return result
     # Remember what was created so the deployment can be undone later.
     try:
         import deployments
-        rec = deployments.from_apply(result, tenant_label=f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})",
+        rec = deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds),
                                      packs=list(req.pack_ids), options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks,
                                                                         "restore_drift": req.restore_drift},
-                                     channel_targets=req.channel_targets or {})
+                                     channel_targets=req.channel_targets or {}, by=by, tenant_key=_tenant_key(creds))
         if rec:
             deployments.add(rec)
             result["deployment_id"] = rec["id"]
@@ -2445,9 +2605,12 @@ async def dlp_deployment_undo(dep_id: str, req: DeploymentUndoRequest, request: 
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     creds = _tenant_creds(req)
-    label = f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})"
-    if rec.get("tenant_label") and rec["tenant_label"] != label:
-        raise HTTPException(status_code=409, detail=f"This deployment was made in {rec['tenant_label']}, but the current credentials are for {label}. Switch tenant first.")
+    label = tenant_auth.record_label(creds)
+    if not _same_tenant(rec, creds):
+        where = rec.get("tenant_label") or "another tenant"
+        if where == label:
+            where = f"another {label} tenant"
+        raise HTTPException(status_code=409, detail=f"This deployment was made in {where}, but the current credentials are for {label}. Switch tenant first.")
     client = await asyncio.to_thread(_build_sdk_client, creds)
     logs: list = []
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.undo(client, rec, writes_enabled=True, log=logs.append))
@@ -2478,16 +2641,18 @@ async def dlp_pack_import(pack_id: str, req: DLPPackImportRequest, request: Requ
     if not writes_enabled():
         raise HTTPException(status_code=403, detail=_writes_disabled_msg())
     logs: list = []
+    by = _assessor(req)       # resolved once: the tags and the record name the same assessor
     result = await asyncio.to_thread(_as_actor, _actor(request), lambda: pack_deploy.apply(client, [pack], plan_hash=req.plan_hash, use_rank_0=req.use_rank_0,
                                                                apply_tweaks=req.apply_tweaks, verify=req.verify, writes_enabled=True,
-                                                               log=logs.append))
+                                                               log=logs.append, assessor=by))
     result["logs"] = logs
     if result.get("status") == "applied" and result.get("summary", {}).get("created"):
         try:
             import deployments
             creds = _tenant_creds(req)
-            deployments.add(deployments.from_apply(result, tenant_label=f"{creds.get('vanity_domain') or '?'} ({creds.get('cloud') or 'production'})", packs=[pack["id"]],
-                                                   options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={}))
+            deployments.add(deployments.from_apply(result, tenant_label=tenant_auth.record_label(creds), packs=[pack["id"]],
+                                                   options={"use_rank_0": req.use_rank_0, "apply_tweaks": req.apply_tweaks}, channel_targets={},
+                                                   by=by, tenant_key=_tenant_key(creds)))
         except Exception as e:  # noqa: BLE001 — the deployment happened; only the record failed
             result.setdefault("warnings", []).append(f"The deployment was not recorded for undo: {e}")
     return result
@@ -2592,7 +2757,7 @@ async def pack_library_preview(req: PackLibraryUploadRequest):
     except ValueError as e:
         return {"ok": False, "problems": [str(e)], "warnings": [], "counts": {}, "channels": []}
     v = pl.validate_pack(pack)
-    slug = pl.slugify(req.pack_id or pack["meta"].get("name") or "")
+    slug = pl.pack_slug(req.pack_id or pack["meta"].get("name") or "")
     if slug and pl._pack_id_taken(slug, PACKS_ROOT):
         v["ok"] = False
         v["problems"].append(f"a pack with id '{slug}' already exists; choose another id or remove that pack first")
@@ -2650,14 +2815,18 @@ def _transcribe_pack_to_terraform(pack_id: str, pack_dir: str) -> Dict[str, Any]
 
 
 @app.get("/api/pack-library/{pack_id}/terraform.zip")
-async def pack_library_terraform(pack_id: str):
+async def pack_library_terraform(pack_id: str, assessor: str = "", profile_id: str = ""):
     """The pack as a Terraform workspace for the official zscaler/zia
     provider, static mode (no tenant read), for any pack in the library.
-    Gap mode (imports of what already exists) is the Terraform hand-off."""
+    Gap mode (imports of what already exists) is the Terraform hand-off.
+    `assessor` (else the saved profile's, by `profile_id`) is the name the
+    provenance tags carry; DLP-Check only when no assessor is named."""
     import pack_library as pl
     import pack_terraform
     pack = _resolve_pack_ids([pack_id])[0]
-    files = await asyncio.to_thread(pack_terraform.generate, pack)
+    from types import SimpleNamespace
+    by = _assessor(SimpleNamespace(assessor=assessor, profile_id=profile_id))
+    files = await asyncio.to_thread(lambda: pack_terraform.generate(pack, assessor=by))
     data = pack_terraform.zip_workspaces({pack["id"]: files})
     return Response(content=data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{pl.slugify(pack_id) or "pack"}-terraform.zip"', "X-DLP-Check-Mode": "static"})
@@ -4422,7 +4591,7 @@ async def assess_stream(req: AssessRequest):
                         except asyncio.TimeoutError:
                             yield ": keepalive\n\n"
                     journey = task.result()
-                    journey["tenant_label"] = f"{vd} ({cloud})"
+                    journey["tenant_label"] = tenant_auth.record_label(creds)
                 except Exception as ex:  # noqa: BLE001
                     journey = {"status": "error", "error": tenant_auth.mask_secrets(str(ex), creds)[:200]}
                 report["journey"] = journey

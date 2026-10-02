@@ -166,7 +166,8 @@ def test_detection_health_endpoints(monkeypatch):
     md = c.get(f"/api/detection-health/export/{rep['report_id']}?format=markdown")
     assert md.status_code == 200 and "FP/TP Detection Ratio" in md.text
     assert c.get("/report/health").status_code == 200
-    assert c.get("/api/detection-health/schedule").json()["interval_seconds"] == 6 * 3600
+    sched = c.get("/api/detection-health/schedule").json()   # off unless DLP_CHECK_CONTINUOUS_EVAL_HOURS opts in
+    assert sched["enabled"] is False and sched["interval_seconds"] is None and "DLP_CHECK_CONTINUOUS_EVAL_HOURS" in sched["setting"]
 
 
 def test_noisy_dictionary_is_explained_with_evidence_pattern_and_definition():
