@@ -1383,7 +1383,7 @@ def compile_export(snapshot: Dict[str, Any], decisions: Dict[str, Any], prefix: 
     variables: Dict[str, Dict[str, Any]] = {}
     vendor_id = vendor_id or snapshot.get("vendor") or "symantec"
     origin = f"{(VENDORS.get(vendor_id) or {}).get('name', vendor_id)} export {snapshot['sha256'][:12]}"
-    default_desc = f"Migrated from {origin} by DLP-Check."
+    default_desc = f"Migrated from {origin}."   # pushed to the tenant: never names DLP-Check (rule 2)
     report: Dict[str, Any] = {"source_sha256": snapshot["sha256"], "provider_version": PROVIDER_VERSION, "vendor": vendor_id,
                               "semantic_equivalence": "manual_review_required_native_export_not_interpreted",
                               "converted": [], "questions": [], "blocked": [], "dispositions": []}

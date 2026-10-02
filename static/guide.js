@@ -18,22 +18,29 @@ const GD_LS_CONN = 'zassess_guide_conn';
 const GD_LS_DEPLOY = 'zassess_last_deploy';
 
 const _gdE = s => (typeof escapeHtml === 'function' ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s));
-// DLP rules per channel as the connection check read them. A channel the
-// check could not read (null) says so instead of showing 0; a result
-// saved before the check counted Endpoint, SaaS and Email shows Web only.
-function _gdRuleCounts(c, sep = ', ') {
-  const n = v => (v === null ? 'unreadable' : String(v));
-  const parts = [`${n(c.web_rules)} Web DLP rules`];
-  if ('endpoint_rules' in c) parts.push(`${n(c.endpoint_rules)} Endpoint DLP rules`, `${n(c.saas_rules)} SaaS DLP rules`, `${n(c.email_rules)} Email DLP rules`);
-  return parts.join(sep);
-}
+// Authenticate only signs in: it obtains the token (or the classic API's
+// session) and reads nothing from the tenant, because every read counts
+// against the tenant's ZIA API rate limit. The tenant is read only by an
+// assessment the operator runs, for what the Scope page puts in scope.
+const GD_SIGNIN_ONLY = 'Sign-in only: the tenant\'s configuration was not read. The assessment reads only what you put in scope on the Scope page, when you click Run assessment.';
 const _gdVal = id => ((document.getElementById(id) || {}).value || '').trim();
 
+// The connection record is kept across restarts, so it never holds the
+// classic API's admin login (user rule 3): its "same tenant" key is a
+// one-way hash of cloud and login (_gdIdentOf) and its display name is
+// "classic API (<cloud>)". GD_CONN_V marks records written that way; an
+// older record (which kept the login as .vd) is dropped on load.
+const GD_CONN_V = 2;
 function _gdLoad() {
   try {
     GD.mode = localStorage.getItem(GD_LS_MODE) || 'guided';
     GD.profile = localStorage.getItem(GD_LS_PROFILE) || '';
-    const c = localStorage.getItem(GD_LS_CONN); if (c) GD.conn = JSON.parse(c);
+    const c = localStorage.getItem(GD_LS_CONN);
+    if (c) {
+      const conn = JSON.parse(c);
+      if (conn && conn.v === GD_CONN_V) GD.conn = conn;
+      else localStorage.removeItem(GD_LS_CONN);
+    }
   } catch (e) { /* storage may be unavailable */ }
 }
 function _gdSave() {
@@ -53,7 +60,7 @@ function _gdSteps() {
   const creds = legacy
     ? !!(_gdVal('zuser') && ((_gdVal('zpass') && _gdVal('zkey')) || remembered))
     : !!(_gdVal('vd') && _gdVal('cid') && (_gdVal('csec') || remembered));
-  const sameTenant = GD.conn && GD.conn.vd === (legacy ? _gdVal('zuser') : _gdVal('vd'));
+  const sameTenant = GD.conn && GD.conn.vd === _gdIdent();
   const connected = !!(sameTenant && GD.conn.ok);
   const runBtn = document.getElementById('runBtn');
   const running = !!(runBtn && runBtn.disabled);
@@ -66,13 +73,13 @@ function _gdSteps() {
       n: 1, title: 'Connect to the tenant',
       state: sameTenant && GD.conn.ok ? 'done' : (creds ? 'ready' : 'todo'),
       what: legacy
-        ? 'Open Tenant details below, pick the tenant\'s cloud, enter the admin username, password and the tenant\'s API key, and click Authenticate. Nothing is changed in the tenant; the tool only reads.'
-        : 'Open Tenant details below, enter the customer\'s cloud, vanity domain, API client ID and client secret, and click Authenticate. Nothing is changed in the tenant; the tool only reads.',
+        ? 'Open Tenant details below, pick the tenant\'s cloud, enter the admin username, password and the tenant\'s API key, and click Authenticate. Authenticate only signs in: nothing in the tenant is read or changed.'
+        : 'Open Tenant details below, enter the customer\'s cloud, vanity domain, API client ID and client secret, and click Authenticate. Authenticate only signs in: nothing in the tenant is read or changed.',
       need: legacy
         ? 'The classic ZIA API: a ZIA admin allowed to use the API (username and password) and the tenant\'s API key from Administration > API Key Management. Covers ZIA only. For a tenant on ZIdentity, switch the sign-in method to OneAPI.'
         : 'A OneAPI API client from ZIdentity (Integration > API Clients) with a ZIA role that can read DLP dictionaries, engines and rules. Ask the customer\'s Zscaler admin for these four values. A tenant without ZIdentity can use the classic ZIA API instead (sign-in method in Tenant details).',
       status: sameTenant && GD.conn.ok
-        ? `Connected to ${_gdE(GD.conn.label)}: ${GD.conn.dictionaries} dictionaries, ${GD.conn.engines} engines, ${_gdRuleCounts(GD.conn)}.`
+        ? `Signed in to ${_gdE(GD.conn.label || GD.conn.name || 'the tenant')}. ${GD_SIGNIN_ONLY}`
         : (creds ? 'Details entered. Click Authenticate before going further.' : 'Fill in the tenant fields, then click Authenticate.'),
       tenant: true,
       actions: [
@@ -380,9 +387,30 @@ function _gdRender() {
 // The identity a connection result belongs to: the vanity domain for a
 // ZIdentity API client, the admin username for the classic sign-in — the
 // same key _gdSteps uses, so the status never goes blank on the classic sign-in.
+// For the classic sign-in the key is a one-way hash of cloud and login, never the login itself.
+function _gdHash(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+function _gdIdentOf(legacy, user, cloud, vd) {
+  return legacy
+    ? 'classic:' + _gdHash(String(cloud || '').trim().toLowerCase() + '|' + String(user || '').trim().toLowerCase())
+    : String(vd || '').trim();
+}
+// What a connection result is called when the server gave no label: the
+// vanity domain for OneAPI, "classic API (<cloud>)" for the classic sign-in.
+function _gdNameOf(legacy, cloud, vd) {
+  return legacy ? `classic API (${String(cloud || '').trim() || 'zscaler'})` : String(vd || '').trim();
+}
 function _gdIdent() {
   const legacy = (document.getElementById('authMethod') || {}).value === 'legacy';
-  return legacy ? _gdVal('zuser') : _gdVal('vd');
+  return _gdIdentOf(legacy, _gdVal('zuser'), _gdVal('cloud'), _gdVal('vd'));
 }
 function _gdAuthStatus() {
   const st = document.getElementById('authStatus');
@@ -391,13 +419,13 @@ function _gdAuthStatus() {
   if (GD.testing) { st.textContent = 'Authenticating…'; st.className = 'auth-status'; return; }
   if (!c || c.vd !== _gdIdent()) { st.textContent = ''; st.className = 'auth-status'; return; }
   st.className = 'auth-status ' + (c.ok ? 'ok' : 'bad');
-  st.textContent = c.ok ? `Connected to ${c.label}. Now run the assessment from Start here, step 2.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
+  st.textContent = c.ok ? `Signed in to ${c.label || c.name || 'the tenant'}. Nothing in the tenant was read. Choose what to assess on the Scope page, then click Run assessment.` : `Could not connect: ${c.cause || 'see Start here, step 1'}`;
 }
 function _gdConnHtml() {
   const c = GD.conn;
   if (!c || c.vd !== _gdIdent()) return '';
   if (c.ok) {
-    return `<div class="gd-conn ok"><strong>Connected.</strong> ${_gdE(c.label)} · ${c.dictionaries} dictionaries (${c.custom_dictionaries} custom) · ${c.engines} engines · ${_gdRuleCounts(c, ' · ')}${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
+    return `<div class="gd-conn ok"><strong>Signed in.</strong> ${_gdE(c.label || c.name || 'the tenant')} · ${_gdE(GD_SIGNIN_ONLY)}${(c.problems || []).length ? `<div class="gd-warn">${c.problems.map(p => _gdE(p)).join('<br>')}</div>` : ''}</div>`;
   }
   return `<div class="gd-conn bad"><strong>Could not connect.</strong> ${_gdE(c.cause || '')}<div class="gd-fix"><strong>What to do:</strong> ${_gdE(c.fix || '')}</div>${c.raw ? `<details><summary>Technical detail</summary><code>${_gdE(c.raw)}</code></details>` : ''}</div>`;
 }
@@ -413,7 +441,9 @@ function _gdGoConfig() {
     if (card.classList.contains('collapsed') && h) h.click();
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  const first = ['vd', 'cid', 'csec'].map(id => document.getElementById(id)).find(el => el && !el.value);
+  // The chosen sign-in's fields: a classic-API user is never sent to the hidden vanity domain.
+  const legacy = typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy';
+  const first = (legacy ? ['zuser', 'zpass', 'zkey'] : ['vd', 'cid', 'csec']).map(id => document.getElementById(id)).find(el => el && !el.value);
   if (first) setTimeout(() => first.focus(), 400);
 }
 function _gdGoResults() {
@@ -424,7 +454,7 @@ function _gdRun() {
   const btn = document.getElementById('runBtn');
   if (btn && btn.disabled) { if (typeof announce === 'function') announce('The assessment is already running; the progress card shows each check as it completes.'); return; }
   // One behaviour for every "Run assessment" button: the run happens on
-  // this page (sign-in first when needed, via the sidebar's runner) and
+  // this page (signed out, the sidebar's runner says to sign in first) and
   // the results land below. "Open in new tab" on the results is the
   // explicit way to mirror them into their own tab.
   if (typeof window.__dbRunFromSidebar === 'function') window.__dbRunFromSidebar();
@@ -451,7 +481,11 @@ async function _gdTest() {
   if (typeof migrateCredBody !== 'function') return;
   if (GD.testing) return;   // one check at a time: a second click while one is running is ignored
   const body = migrateCredBody(); delete body.customer_id;
-  const ident = body.auth_method === 'legacy' ? body.username : body.vanity_domain;   // what "same tenant" is compared on
+  const legacy = body.auth_method === 'legacy';
+  // What "same tenant" is compared on, and what the tenant is called when the
+  // server names no label. Neither is the classic API's admin login (rule 3).
+  const ident = _gdIdentOf(legacy, body.username, body.cloud, body.vanity_domain);
+  const idn = { v: GD_CONN_V, vd: ident, name: _gdNameOf(legacy, body.cloud, body.vanity_domain) };
   GD.testing = true; _gdRender();
   const formBtn = document.getElementById('authBtn'); if (formBtn) { formBtn.disabled = true; formBtn.setAttribute('aria-busy', 'true'); }
   if (window.__dlpAskAgain) window.__dlpAskAgain();   // a deliberate click may ask for this app's own token again
@@ -462,21 +496,19 @@ async function _gdTest() {
       // The fetch wrapper marks a 401 it could not clear because the browser
       // could not ask for the token at all (no dialog, prompt() unsupported).
       GD.conn = r.dlpDialogUnavailable
-        ? _gdConnFailure('dialog', { vd: ident, raw: String(r.dlpDialogUnavailable) })
-        : _gdConnFailure('token', { vd: ident, raw: String(data.detail || 'HTTP 401 token_required') });
+        ? _gdConnFailure('dialog', { ...idn, raw: String(r.dlpDialogUnavailable) })
+        : _gdConnFailure('token', { ...idn, raw: String(data.detail || 'HTTP 401 token_required') });
     } else if (!r.ok) {
       const d = (data && typeof data.detail === 'object') ? data.detail : { cause: 'The connection failed.', fix: 'Re-check the tenant details and try again.', raw: String(data.detail || `HTTP ${r.status}`) };
-      GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', vd: ident, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
+      GD.conn = { ok: false, kind: r.status === 403 ? 'permission' : 'tenant', ...idn, label: d.tenant_label, cause: d.cause, fix: d.fix, raw: d.raw, status: r.status };
     } else {
-      GD.conn = { ok: true, vd: ident, label: data.tenant_label, dictionaries: data.dictionaries, custom_dictionaries: data.custom_dictionaries,
-                  engines: data.engines, web_rules: data.web_rules, endpoint_rules: data.endpoint_rules, saas_rules: data.saas_rules,
-                  email_rules: data.email_rules, problems: data.problems || [], at: new Date().toISOString() };
+      GD.conn = { ok: true, ...idn, label: data.tenant_label, problems: data.problems || [], at: new Date().toISOString() };
     }
   } catch (e) {
     const msg = String(e && e.message || e);
     GD.conn = /prompt|dialog|not supported|showModal/i.test(msg)
-      ? _gdConnFailure('dialog', { vd: ident, raw: msg })
-      : _gdConnFailure('server', { vd: ident, raw: msg });
+      ? _gdConnFailure('dialog', { ...idn, raw: msg })
+      : _gdConnFailure('server', { ...idn, raw: msg });
   } finally {
     GD.testing = false; _gdSave(); _gdRender();
     if (formBtn) { formBtn.disabled = false; formBtn.removeAttribute('aria-busy'); }
@@ -491,7 +523,8 @@ async function _gdTest() {
 function _gdAuthVerdict(conn) {
   if (!conn) return;
   if (conn.ok) {
-    if (typeof announce === 'function') announce(`Connected to ${conn.label || conn.vd || 'the tenant'}. Next: run the assessment from Start here, step 2.`);
+    if (typeof announce === 'function') announce(`Signed in to ${conn.label || conn.name || 'the tenant'}. Nothing in the tenant was read. Next: choose what to assess on the Scope page and click Run assessment.`);
+    if (typeof window.__dbSignedIn === 'function') window.__dbSignedIn();   // clears the sidebar's "Sign in first"
     const card = document.querySelector('.gd-conn.ok');
     if (card) { card.setAttribute('tabindex', '-1'); try { card.focus({ preventScroll: false }); } catch (e) {} }
     return;
@@ -500,7 +533,7 @@ function _gdAuthVerdict(conn) {
     : conn.kind === 'browser' ? 'This browser could not show the sign-in dialog'
     : conn.kind === 'transport' ? 'The app\'s server did not answer'
     : conn.kind === 'permission' ? `Signed in, but not allowed to read ${conn.label || 'this tenant'}`
-    : `Could not connect to ${conn.label || conn.vd || 'the tenant'}`;
+    : `Could not connect to ${conn.label || conn.name || 'the tenant'}`;
   if (typeof announce === 'function') announce(`${title}. ${conn.cause || ''}`);
   if (window.dlpDialog && window.dlpDialog.notice) {
     window.dlpDialog.notice({ title, body: conn.cause || 'The connection failed.', fix: conn.fix || 'Re-check the tenant details and try again.',
@@ -557,7 +590,7 @@ function _gdHelp(open) {
       <p>A good first engagement: connect, run the assessment, walk the customer through the critical findings, then run a preflight for the pack that matches their regulation and show them the plan. Deploy only when the customer has agreed and the server is running with writes enabled.</p>
       <h3>Tools at a glance</h3>
       <dl>
-        <dt>Assessment (Run Assessment)</dt><dd>300+ read-only checks against the tenant, a score, findings with fixes, and the Data governance journey card for every policy pack.</dd>
+        <dt>Assessment (Run Assessment)</dt><dd>300+ read-only checks against the tenant, a score, findings with fixes, and the Data governance journey card for the policy packs ticked on the tenant profile. It reads only what the Scope page puts in scope.</dd>
         <dt>Tenant profiles</dt><dd>One saved record per customer (details, scopes, applicable policy packs, optional remembered secret) with the history of every assessment.</dd>
         <dt>Deploy policy packs</dt><dd>Pick a policy pack, choose which DLP channels its engines go into (Inline Web, Endpoint DLP, SaaS Security, Outbound Email: a ticked channel the pack has no rule for gets a monitor-only rule with the pack's engines, an unticked one is skipped), preflight against the tenant, review the exact plan, enable write mode, approve, deploy. Every rule arrives disabled; existing objects are kept. <em>Where is this tenant?</em> on a policy pack card measures the journey. Every deployment is recorded under <em>Previous deployments</em>, where <em>Undo</em> deletes exactly what it created.</dd>
         <dt>Terraform hand-off</dt><dd>The same policy pack as a Terraform workspace for the official zscaler/zia provider, for platform teams that manage Zscaler as code. Gap mode imports what already exists so the first plan is exactly the gap. The repository also carries a validated workspace per pack under terraform/.</dd>
@@ -580,7 +613,8 @@ function _gdHelp(open) {
 }
 
 // ── Journey card on the assessment results ─────────────────────────
-// The assessment measures the tenant against every policy pack; this
+// The assessment measures the tenant against the policy packs ticked on
+// the profile, on their channels in scope; this
 // renders that as a card above the compliance section.
 function _gdJourneyCard(j) {
   let card = document.getElementById('gdJourney');
@@ -753,14 +787,17 @@ async function _gdProfileSelect(id) {
   if (p) { _gdProfileFill(p); if (typeof setStatus === 'function') setStatus(`Profile "${p.name}" loaded${p.has_secret ? ' (secret remembered on this laptop)' : (p.auth_method === 'legacy' ? ' — paste the admin password and the API key' : ' — paste the client secret')}.`, 'success'); }
   _gdRender();
 }
+function _gdLegacy() { return typeof currentAuthMethod === 'function' && currentAuthMethod() === 'legacy'; }
 function _gdProfileFormValues() {
   const sel = _gdProfileSel() || {};
   const q = id => document.getElementById(id);
   return {
     id: GD.profile || '',
-    name: (q('gdProfName') || {}).value || sel.name || _gdVal('org') || _gdVal('vd'),
+    // A classic-API sign-in has no vanity domain: one left in the hidden
+    // OneAPI field never names the profile (user rule 3).
+    name: (q('gdProfName') || {}).value || sel.name || _gdVal('org') || (_gdLegacy() ? '' : _gdVal('vd')),
     org_name: _gdVal('org'), assessor: _gdVal('assessor'), cloud: _gdVal('cloud') || 'production',
-    vanity_domain: _gdVal('vd'), client_id: _gdVal('cid'), client_secret: _gdVal('csec'),
+    vanity_domain: _gdLegacy() ? '' : _gdVal('vd'), client_id: _gdVal('cid'), client_secret: _gdVal('csec'),
     auth_method: typeof currentAuthMethod === 'function' ? currentAuthMethod() : 'oneapi',
     username: _gdVal('zuser'), password: _gdVal('zpass'), api_key: _gdVal('zkey'),
     remember_secret: !!((q('gdProfRemember') || {}).checked),
@@ -776,7 +813,7 @@ function _gdProfileFormValues() {
 async function _gdProfileSave(asNew) {
   const body = _gdProfileFormValues();
   if (asNew) { body.id = ''; body.name = prompt('Profile name (usually the customer name):', body.org_name || body.name || '') || ''; if (!body.name) return; }
-  if (!(body.name || body.org_name || body.vanity_domain)) { alert('Give the profile a name, or fill in the organisation or vanity domain first.'); return; }
+  if (!(body.name || body.org_name || body.vanity_domain || (body.auth_method === 'legacy' && body.username))) { alert('Give the profile a name, or fill in the organisation or vanity domain first.'); return; }
   GD.profileBusy = true; _gdProfilesRender();
   try {
     const r = await fetch('/api/tenant-profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -837,10 +874,10 @@ function _gdProfilesRender() {
       <div class="gd-prof-grid">
         <label>Profile name<input id="gdProfName" value="${_gdE(det.name || '')}" placeholder="Acme Health"><span class="gd-need">Usually the customer name. Sample: <code>Acme Health</code></span></label>
         <label>Industry<select id="gdProfIndustry" onchange="_gdIndustryChanged(this.value)"><option value="">—</option>${GD_INDUSTRIES.map(i => `<option ${det.industry === i ? 'selected' : ''}>${i}</option>`).join('')}</select><span class="gd-need">Ticks the industry's policy packs below and pre-selects them in Deploy policy packs; add more packs as needed. It does not change any check.</span></label>
-        <div class="gd-prof-packs"><span class="lbl">Policy packs that apply to this customer</span>${packs || '<span class="gd-need">No policy packs installed.</span>'}<span class="gd-need">The journey is measured only against the ticked policy packs. Leave all unticked to measure against every policy pack.</span></div>
+        <div class="gd-prof-packs"><span class="lbl">Policy packs that apply to this customer</span>${packs || '<span class="gd-need">No policy packs installed.</span>'}<span class="gd-need">The assessment's journey is measured only against the ticked policy packs, and only on their channels marked Zscaler on the Scope page, when DLP is in scope. Leave all unticked and the assessment measures no journey (it reads nothing for it).</span></div>
         <label class="gd-prof-wide">Notes<textarea id="gdProfNotes" rows="2" placeholder="Kickoff 12 May; admin contact: Pat Lee; PHI pack agreed, enable SSL rule after change window.">${_gdE(det.notes || '')}</textarea></label>
         <label class="gd-prof-remember"><input type="checkbox" id="gdProfRemember" ${det.has_secret ? 'checked' : ''}> Remember the client secret on this laptop
-          <span class="gd-need">Also the admin password and API key for the classic sign-in. Goes to this laptop's credential store when the optional <code>keyring</code> package is installed, otherwise into <code>tenant_profiles.json</code> next to the app (owner-only file); never sent back to the browser. Unticked, nothing secret is written and the form's values live only in this browser tab. Leave unticked on a shared machine.</span></label>
+          <span class="gd-need">Also the admin password and API key for the classic sign-in. Goes to this laptop's credential store (Windows Credential Manager or the macOS Keychain, through the <code>keyring</code> package the installer pins with the app); on Linux and in the container, or if the store refuses it, into <code>tenant_profiles.json</code> next to the app (owner-only file); never sent back to the browser. Unticked, nothing secret is written and the form's values live only in this browser tab. Leave unticked on a shared machine.</span></label>
       </div>
       ${sel ? `<div class="gd-prof-hist"><span class="lbl">History${last ? ` · last assessed ${_gdE(new Date(last.at).toLocaleString())}, ${last.score ?? '?'}%${last.journey ? `, journey stage ${last.journey.stage || 0} of 5` : ''}` : ''}</span>${_gdHistoryHtml(det)}</div>` : ''}
     </details>`;

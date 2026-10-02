@@ -1,6 +1,6 @@
 """Beacon: what changed upstream since the last run — the Zscaler SDK, the
 Zscaler API and the Terraform provider — and, when asked, whether the
-tenant still answers every endpoint the app reads.
+tenant still answers the endpoints that are in scope on the Scope page.
 
 Three watchers make one snapshot:
 
@@ -13,8 +13,11 @@ Three watchers make one snapshot:
     API reference answers, and the help-center / OneAPI pages
     zscaler_update_check watches, hashed the same way. Optionally, the
     tenant API watch: a GET-only probe, about one request a second, of
-    every endpoint the app's checks and features read, recording what
-    each answered (OK, 403, 404, 429, timeout, error) and how many items.
+    the endpoints that belong to what is in scope on the Scope page (the
+    ticked scopes and the channels marked Zscaler; beacon_scope.py picks
+    them), recording what each answered (OK, 403, 404, 429, timeout,
+    error) and how many items. Every GET counts against the tenant's
+    ZIA API rate limit, so nothing out of scope is ever read.
   - Terraform: the zscaler/zia provider pin against the registry's
     latest, attribute drift against the provider's schema and docs, and
     the provider's changelog head.
@@ -22,8 +25,9 @@ Three watchers make one snapshot:
 Each snapshot is kept (the last 30) in beacon_state.json in the same
 per-user cache folder zscaler_update_check uses, and compared with the
 previous one: versions that moved, drift that is new or cleared, doc
-pages whose content changed, tenant endpoints whose answer changed. The
-comparison is in plain words.
+pages whose content changed, tenant endpoints whose answer changed (only
+the endpoints read both times; a changed scope is said). The comparison
+is in plain words.
 
 Nothing here writes anywhere but that state file. Every upstream fetch
 goes through zscaler_update_check._safe_get's host allowlist (via
@@ -41,7 +45,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_KEEP = 30
@@ -93,7 +97,31 @@ def load_history(path: Optional[str] = None) -> List[Dict[str, Any]]:
     except (OSError, ValueError):
         return []
     snaps = data.get("snapshots") if isinstance(data, dict) else None
-    return [s for s in snaps if isinstance(s, dict)] if isinstance(snaps, list) else []
+    kept = [s for s in snaps if isinstance(s, dict)] if isinstance(snaps, list) else []
+    clean = _scrub(kept)
+    if clean != kept:
+        # A classic-API tenant's admin login, kept in a label by an older
+        # version: rewritten as 'classic API (cloud)' on disk too, so the
+        # login is gone from the history and the next watch of the same
+        # tenant still finds its baseline (user rule 3).
+        try:
+            save_history(clean, path)
+        except OSError:
+            pass
+    return clean
+
+
+def _scrub(value: Any) -> Any:
+    """`value` (a snapshot, a list of them, or any part) with every
+    classic-API admin login label replaced (tenant_auth.scrub_classic_login)."""
+    import tenant_auth
+    if isinstance(value, str):
+        return tenant_auth.scrub_classic_login(value)
+    if isinstance(value, list):
+        return [_scrub(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub(v) for k, v in value.items()}
+    return value
 
 
 def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) -> str:
@@ -103,8 +131,18 @@ def save_history(snapshots: List[Dict[str, Any]], path: Optional[str] = None) ->
     os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
     tmp = f"{p}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"version": 1, "snapshots": snapshots[-HISTORY_KEEP:]}, f, indent=1)
-    os.replace(tmp, p)
+        json.dump({"version": 1, "snapshots": _scrub(snapshots[-HISTORY_KEEP:])}, f, indent=1)
+    # On Windows the move fails while another thread (GET /api/beacon's
+    # load_history) has the file open: retry briefly, so a run's snapshot is
+    # not lost to a poll that happened to read at the same moment.
+    for attempt in range(20):
+        try:
+            os.replace(tmp, p)
+            break
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
     return p
 
 
@@ -147,20 +185,33 @@ def _sdk_watcher(rep: Dict[str, Any], online: bool, findings: List[Dict[str, Any
     return w
 
 
-def _page_entry(source: Dict[str, Any], text: Optional[str], err: str) -> Dict[str, Any]:
-    """One help-center page, hashed exactly as zscaler_update_check hashes it."""
+def _page_entry(source: Dict[str, Any], fetch: Fetch) -> Dict[str, Any]:
+    """One help-center page, read and hashed exactly as zscaler_update_check
+    reads and hashes it (a help.zscaler.com article through its fetch-data
+    answer, since the page itself is an empty browser shell)."""
     import zscaler_update_check as zu
     e: Dict[str, Any] = {"key": source["key"], "name": source["name"], "url": source["url"],
                          "importance": source.get("importance", "medium"), "hash": None, "ok": False, "reason": ""}
-    if not text:
+
+    def get(url: str):
+        text, err = fetch(url)
+        if text:
+            return text.encode("utf-8", "ignore"), 200, ""
+        # Keep an HTTP status the fetcher reports ("HTTP 404"): the site
+        # answered. Status 0 is a network error (read_page then stops).
+        m = re.match(r"HTTP (\d{3})\b", err or "")
+        return None, int(m.group(1)) if m else (0 if err else 200), err or "no answer"
+    content, q, _code, err = zu.read_page(source["url"], get)
+    if q is None:
         e["reason"] = err or "no answer"
         return e
-    body = text.encode("utf-8", "ignore")
-    q = zu.page_quality(body, 200)
-    e["hash"] = zu._hash(zu._strip_volatile(body))
+    e["hash"] = zu._hash(content or b"")
     e["ok"] = bool(q.get("ok"))
     e["reason"] = q.get("reason") or ""
     e["title"] = q.get("title") or ""
+    e["basis"] = q.get("basis") or "page"  # a hash is only compared with one taken the same way
+    if q.get("article_status") is not None:
+        e["article_status"] = q["article_status"]
     return e
 
 
@@ -174,10 +225,10 @@ def watch_pages(fetch: Fetch) -> List[Dict[str, Any]]:
         if s.get("type") != "html_hash":
             continue
         try:
-            text, err = fetch(s["url"])
+            out.append(_page_entry(s, fetch))
         except Exception as e:  # noqa: BLE001 — one page never stops the others
-            text, err = None, f"{type(e).__name__}: {str(e)[:150]}"
-        out.append(_page_entry(s, text, err))
+            out.append({"key": s["key"], "name": s["name"], "url": s["url"], "importance": s.get("importance", "medium"),
+                        "hash": None, "ok": False, "reason": f"{type(e).__name__}: {str(e)[:150]}"})
     return out
 
 
@@ -249,7 +300,9 @@ def run_upstream(online: bool, fetch: Optional[Fetch] = None, upstream: Optional
 def tenant_endpoints(root: str = ROOT) -> Dict[str, List[str]]:
     """endpoint -> the modules that read it, from the literal GET calls in
     TENANT_WATCH_MODULES. Read from the code each time, so a new check
-    is watched without a list to keep in step."""
+    is watched without a list to keep in step. This is everything the
+    watch could read; beacon_scope.select narrows it to what is in scope,
+    and only that is ever read."""
     out: Dict[str, List[str]] = {}
     for name in TENANT_WATCH_MODULES:
         try:
@@ -329,21 +382,93 @@ def probe_endpoint(client: Any, ep: str, method: str = "GET") -> Dict[str, Any]:
 def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, *, method: str = "GET",
                  gap: float = PROBE_GAP_SECONDS, budget: float = PROBE_BUDGET_SECONDS,
                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.time,
-                 on_progress: Optional[Callable[[int, int], None]] = None) -> Dict[str, Any]:
-    """GET every endpoint the app reads, one about every `gap` seconds.
-    A ZPA path without a ZPA customer id, and anything but ZIA on the
-    classic ZIA API sign-in, is skipped (the client would answer for it
-    without asking the tenant)."""
+                 on_progress: Optional[Callable[[int, int], None]] = None,
+                 stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
+    """GET each of `endpoints` (the ones in scope, from
+    beacon_scope.select), one about every `gap` seconds. There is no
+    default: without a list nothing is read. A ZPA path without a ZPA
+    customer id, and anything but ZIA on the classic ZIA API sign-in, is
+    skipped (the client would answer for it without asking the tenant).
+
+    One endpoint can cost more than one GET (an endpoint the client lists
+    in parts, a path with candidate spellings). When the client has a
+    request pacer (dlp_assessment_full_auto.Client._limiter), its gap is
+    raised to `gap` for the watch, so every HTTP GET is paced; otherwise
+    the wait after an endpoint grows with the GETs it took. `requests` is
+    the HTTP GETs the client sent when it counts them (requests_made).
+
+    `stop` (the operator's Stop) is checked before every endpoint and,
+    through the client's stop_check and zia_rate.stopping_on, inside a
+    request that pages or waits out ZIA's rate limit: once it says so
+    nothing more is sent and every endpoint left is "not probed"."""
     if str(method or "").upper() != "GET":
         raise ValueError(f"Beacon's tenant watch only sends GET; {method!r} was refused.")
+    if endpoints is None:
+        import beacon_scope
+        raise ValueError(beacon_scope.NOTHING_IN_SCOPE)
     import permissions
     ro = ReadOnlyClient(client)
-    eps = endpoints if endpoints is not None else tenant_endpoints()
+    eps = endpoints
     legacy, customer_id = bool(ro.legacy), str(ro.customer_id or "")
+    limiter = getattr(client, "_limiter", None)
+    old_gap = getattr(limiter, "min_gap", None)
+    paced = isinstance(old_gap, (int, float)) and not isinstance(old_gap, bool)
+    if paced:
+        limiter.min_gap = max(float(old_gap), float(gap))
+    should_stop = _stop_hook(stop)
+    bound, before = False, None
+    if should_stop is not None:
+        try:
+            before = getattr(client, "stop_check", None)
+            client.stop_check = should_stop
+            bound = True
+        except Exception:  # noqa: BLE001 — a client that takes no hook is still stopped between endpoints
+            pass
+    import zia_rate
+    try:
+        with zia_rate.stopping_on(should_stop):
+            return _probe_rows(ro, eps, legacy, customer_id, paced, gap, budget, sleep, clock, on_progress, permissions, should_stop)
+    finally:
+        if paced:
+            limiter.min_gap = old_gap
+        if bound:
+            try:
+                client.stop_check = before
+            except Exception:  # noqa: BLE001
+                pass
+
+
+STOPPED_BY_OPERATOR = "you clicked Stop; nothing more was read"
+
+
+def _stop_hook(stop: Optional[Callable[[], bool]]) -> Optional[Callable[[], bool]]:
+    """`stop` as a hook that never raises (a broken hook never stops a watch by itself)."""
+    if stop is None:
+        return None
+
+    def should_stop() -> bool:
+        try:
+            return bool(stop())
+        except Exception:  # noqa: BLE001
+            return False
+    return should_stop
+
+
+def _gets(ro: "ReadOnlyClient") -> Optional[int]:
+    n = ro.requests_made
+    return n if isinstance(n, int) and not isinstance(n, bool) else None
+
+
+def _probe_rows(ro: "ReadOnlyClient", eps: Dict[str, List[str]], legacy: bool, customer_id: str, paced: bool, gap: float,
+                budget: float, sleep: Callable[[float], None], clock: Callable[[], float],
+                on_progress: Optional[Callable[[int, int], None]], permissions: Any,
+                should_stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     started = clock()
     rows: List[Dict[str, Any]] = []
     stopped = None
     sent = 0
+    first = _gets(ro)
+    last_cost = 1
     for i, (ep, mods) in enumerate(eps.items()):
         base = {"endpoint": ep, "used_by": list(mods), "permission": permissions.permission_for_endpoint(ep).get("permission")}
         if legacy and not ep.startswith("/zia/"):
@@ -352,20 +477,37 @@ def probe_tenant(client: Any, endpoints: Optional[Dict[str, List[str]]] = None, 
         if ep.startswith("/zpa/") and not customer_id:
             rows.append({**base, "status": "skipped", "http": None, "items": None, "error": "no ZPA customer id was given"})
             continue
+        if not stopped and should_stop is not None and should_stop():
+            stopped = STOPPED_BY_OPERATOR
         if stopped or clock() - started > budget:
             stopped = stopped or f"the {int(budget)}-second budget ran out"
             rows.append({**base, "status": "not probed", "http": None, "items": None})
             continue
-        if sent:
-            sleep(gap)
-        rows.append({**base, **probe_endpoint(ro, ep, "GET")})
+        if sent and not paced:
+            sleep(gap * max(1, last_cost))
+            if should_stop is not None and should_stop():
+                stopped = STOPPED_BY_OPERATOR
+                rows.append({**base, "status": "not probed", "http": None, "items": None})
+                continue
+        before = _gets(ro)
+        row = probe_endpoint(ro, ep, "GET")
+        if should_stop is not None and should_stop() and row.get("status") not in ("OK", "403", "404", "429"):
+            # Cut short by Stop (a paged read or a rate-limit wait ended
+            # by it): not an answer from the tenant.
+            stopped = STOPPED_BY_OPERATOR
+            row = {"endpoint": ep, "status": "not probed", "http": None, "items": None}
+        rows.append({**base, **row})
+        after = _gets(ro)
+        last_cost = (after - before) if before is not None and after is not None else 1
         sent += 1
         if on_progress:
             on_progress(i + 1, len(eps))
     counts: Dict[str, int] = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    return {"endpoints": rows, "counts": counts, "requests": sent, "stopped": stopped,
+    last = _gets(ro)
+    requests = (last - first) if first is not None and last is not None else sent
+    return {"endpoints": rows, "counts": counts, "requests": requests, "stopped": stopped,
             "seconds": round(clock() - started, 1), "method": "GET"}
 
 
@@ -397,11 +539,90 @@ def _usable(w: Optional[Dict[str, Any]]) -> bool:
     return bool(w) and w.get("status") in ("ok", "offline")
 
 
+def _page_state(p: Dict[str, Any]) -> str:
+    """"ok", "unreadable" (the help center answered a status other than
+    200/404/410, e.g. 403 "Help Article in Maintenance": the page is still
+    there) or "gone" (404/410, or no readable content). The same split as
+    the page table's chip in static/beacon.js and the Updates tab."""
+    if p.get("ok"):
+        return "ok"
+    st = p.get("article_status")
+    return "unreadable" if st is not None and st not in (200, 404, 410) else "gone"
+
+
+def _answered(e: Dict[str, Any]) -> bool:
+    """The tenant answered this read over HTTP (any status code). A
+    transport error or a timeout (HTTP 0) is no answer."""
+    if e.get("status") in ("skipped", "not probed"):
+        return False
+    try:
+        return int(e.get("http") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _watch_read(t: Optional[Dict[str, Any]]) -> bool:
+    """Whether a tenant watch read anything: not one that failed (the
+    probe raised), skipped or left every endpoint unread, or where not one
+    GET got an HTTP answer (the tenant could not be reached)."""
+    if not t or t.get("failed"):
+        return False
+    return any(_answered(e) for e in t.get("endpoints") or [])
+
+
+def _watch_complete(t: Optional[Dict[str, Any]]) -> bool:
+    """A watch that read and did not stop before reading everything in scope."""
+    return _watch_read(t) and not any(e.get("status") == "not probed" for e in (t or {}).get("endpoints") or [])
+
+
+def watch_problem(t: Optional[Dict[str, Any]]) -> Optional[Tuple[str, str]]:
+    """("error", why) for a tenant watch that read nothing, ("partial", why)
+    for one that stopped before reading everything in scope, else None."""
+    if not t:
+        return None
+    rows = t.get("endpoints") or []
+    if not _watch_read(t):
+        why = t.get("stopped") or ("no endpoint got an HTTP answer (the tenant could not be reached)" if rows else "nothing was read")
+        return "error", f"The tenant API watch of {t.get('label') or 'the tenant'} read nothing: {why}."
+    unread = sum(1 for e in rows if e.get("status") == "not probed")
+    if unread:
+        return "partial", (f"The tenant API watch of {t.get('label') or 'the tenant'} stopped early ({t.get('stopped') or 'stopped'}): "
+                           f"{unread} of {len(rows)} endpoints in scope were not read.")
+    return None
+
+
+def _scope_set(t: Dict[str, Any], rows: Iterable[str]) -> Set[str]:
+    """The endpoints a watch had in scope (what the selection picked),
+    else, for a watch from before the scope was kept, the rows it read."""
+    sc = t.get("scope") or {}
+    return set(sc["read"]) if isinstance(sc.get("read"), list) else set(rows)
+
+
+def _scope_change(prev: Dict[str, Any], cur: Dict[str, Any], prev_eps: Dict[str, Dict[str, Any]]) -> str:
+    """One sentence when the tenant watch had a different scope than the
+    last watch of the same tenant (the Scope page changed); only the
+    endpoints read both times are compared. The scope is the set of
+    endpoints the selection picked, not what happened to be answered and
+    not its wording: the same endpoints are the same scope."""
+    now = _scope_set(cur, (e["endpoint"] for e in cur.get("endpoints") or []))
+    before = _scope_set(prev, prev_eps)
+    ps, cs = (prev.get("scope") or {}).get("summary"), (cur.get("scope") or {}).get("summary")
+    if now == before:
+        return ""
+    both, added, gone = len(now & before), len(now - before), len(before - now)
+    was = ps or f"{len(before)} endpoints, before the watch followed the Scope page"
+    now_words = cs or f"{len(now)} endpoints"
+    return (f"The scope changed since the last watch of this tenant (was {was}; now {now_words}): "
+            f"only the {both} endpoint{'' if both == 1 else 's'} read both times {'is' if both == 1 else 'are'} compared; "
+            f"{added} newly in scope, {gone} no longer read.")
+
+
 def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
     """What changed between `cur` and the snapshots before it. Upstream
     changes are measured against the latest earlier run of the same kind
     (online against online, offline against offline); tenant endpoints
-    against the latest earlier watch of the same tenant."""
+    against the latest earlier watch of the same tenant, endpoint by
+    endpoint for the endpoints both watches read (the scope may differ)."""
     changes: List[Dict[str, Any]] = []
 
     def add(watcher: str, kind: str, text: str, **extra: Any) -> None:
@@ -434,23 +655,67 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
                 add(watcher, "drift_new", f"New drift: {after[k]['text']}")
             for k in sorted(before.keys() - after.keys()):
                 add(watcher, "drift_cleared", f"Cleared: {before[k]['text']}")
-        # Help-center pages
-        prev_pages = {p["key"]: p for p in (up.get("api") or {}).get("pages") or []}
+        # Help-center pages. A page is only compared with earlier reads
+        # taken the same way at the same address (the first run that reads
+        # help.zscaler.com's article instead of its empty shell is a new
+        # baseline, not a change on every page), and that were read at all:
+        # a run where the page could not be fetched, or was read another way
+        # once (an earlier run that read the shell), is
+        # skipped, not a baseline that hides the next change.
+        earlier = [s for s in reversed(history)
+                   if bool(s.get("online")) == bool(cur.get("online")) and s.get("id") != cur.get("id")]
         for p in (cur.get("api") or {}).get("pages") or []:
-            q = prev_pages.get(p["key"])
-            if not q:
+            if not p.get("hash"):
                 continue
-            if p.get("hash") and q.get("hash") and p["hash"] != q["hash"]:
-                add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
-            elif q.get("ok") and p.get("hash") and not p.get("ok"):
-                add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
+            same = [e for s in earlier for e in (s.get("api") or {}).get("pages") or []
+                    if e.get("key") == p["key"] and e.get("hash") and e.get("basis", "page") == p.get("basis", "page")
+                    and e.get("url") == p.get("url")]
+            if not same:
+                continue
+            q = same[0]
+            # Gone first: a page that went away also hashes differently.
+            # Said when the page's state differs from the read before it, so
+            # a page in maintenance (403, still there: "not readable") that
+            # is later removed (404) is still reported gone.
+            if not p.get("ok"):
+                state = _page_state(p)
+                if state != _page_state(q):
+                    if state == "unreadable":
+                        add("api", "doc_unreadable", f"{p['name']} cannot be read right now ({p.get('reason')}); "
+                            f"the page is still there and is read again next run: {p['url']}", key=p["key"], url=p["url"])
+                    else:
+                        add("api", "doc_gone", f"{p['name']} no longer reads as a page ({p.get('reason')}): {p['url']}", key=p["key"], url=p["url"])
+            else:
+                # Changed against the last time it was readable: a page back
+                # from maintenance (or a 404) with the same text is not a change.
+                last_ok = next((e for e in same if e.get("ok")), None)
+                if last_ok and last_ok["hash"] != p["hash"]:
+                    add("api", "doc_changed", f"{p['name']} changed since the last run: {p['url']}", key=p["key"], url=p["url"])
 
     tb = None
     ct = cur.get("tenant")
-    if ct:
-        tb = _baseline(history, lambda s: bool(s.get("tenant")) and (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id"))
+    if ct and not _watch_read(ct):
+        rows = ct.get("endpoints") or []
+        reason = ct.get("stopped") or ("no endpoint got an HTTP answer; the tenant could not be reached" if rows else "")
+        why = f" ({reason})" if reason else ""
+        add("tenant", "watch_failed", f"The tenant API watch of {ct.get('label') or 'the tenant'} read nothing{why}: nothing was compared, "
+            "and the last watch that read the tenant stays the one to compare with.")
+    elif ct:
+        same = lambda s: (s.get("tenant") or {}).get("label") == ct.get("label") and s.get("id") != cur.get("id")  # noqa: E731
+        # A complete watch is the baseline; one that stopped early only when there is no complete one.
+        tb = (_baseline(history, lambda s: _watch_complete(s.get("tenant")) and same(s))
+              or _baseline(history, lambda s: _watch_read(s.get("tenant")) and same(s)))
+        unread = sum(1 for e in ct.get("endpoints") or [] if e.get("status") == "not probed")
+        if unread:
+            n = len(ct.get("endpoints") or [])
+            add("tenant", "watch_partial", f"{unread} of {n} endpoints in scope were not read: {ct.get('stopped') or 'the watch stopped early'}. "
+                "Only the endpoints read are compared, and this watch is not the baseline while a complete one is kept.",
+                unread=unread, of=n)
         if tb:
             prev_eps = {e["endpoint"]: e for e in (tb.get("tenant") or {}).get("endpoints") or []}
+            sc = _scope_change(tb.get("tenant") or {}, ct, prev_eps)
+            if sc:
+                add("tenant", "scope_changed", sc)
             for e in ct.get("endpoints") or []:
                 q = prev_eps.get(e["endpoint"])
                 skip = ("skipped", "not probed")
@@ -465,15 +730,20 @@ def diff(cur: Dict[str, Any], history: List[Dict[str, Any]]) -> Dict[str, Any]:
                     before_http=q.get("http"), after_http=e.get("http"))
 
     summary = []
-    if not up and not tb:
+    if not up and not tb and not changes:
         summary.append("First run of this kind: nothing to compare with yet. This run is the baseline for the next one.")
     elif not changes:
         when = (up or tb or {}).get("at", "")
         summary.append(f"Nothing changed since the last run ({when}).")
     else:
-        n = {k: sum(1 for c in changes if c["watcher"] == k) for k in ("sdk", "api", "terraform", "tenant")}
-        parts = [f"{v} {({'sdk': 'SDK', 'api': 'API', 'terraform': 'Terraform', 'tenant': 'tenant endpoint'})[k]} change{'s' if v != 1 else ''}"
-                 for k, v in n.items() if v]
+        kinds = {"scope_changed": "scope", "watch_failed": "failed", "watch_partial": "partial"}
+        key = lambda c: kinds.get(c["kind"], c["watcher"])  # noqa: E731
+        words = {"sdk": ("SDK change", "SDK changes"), "api": ("API change", "API changes"), "terraform": ("Terraform change", "Terraform changes"),
+                 "tenant": ("tenant endpoint change", "tenant endpoint changes"), "scope": ("tenant scope change", "tenant scope changes"),
+                 "failed": ("tenant watch that read nothing", "tenant watches that read nothing"),
+                 "partial": ("tenant watch that stopped early", "tenant watches that stopped early")}
+        n = {k: sum(1 for c in changes if key(c) == k) for k in words}
+        parts = [f"{v} {words[k][0 if v == 1 else 1]}" for k, v in n.items() if v]
         summary.append(f"{len(changes)} change{'s' if len(changes) != 1 else ''} since the last run: {', '.join(parts)}.")
         summary.extend(c["text"] for c in changes)
     return {"against": {"upstream": (up or {}).get("id"), "upstream_at": (up or {}).get("at"),
@@ -498,10 +768,20 @@ def headline(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any = None, tenant_label: str = "", *,
         upstream: Optional[Callable[..., Dict[str, Any]]] = None, trigger: str = "manual", path: Optional[str] = None,
-        save: bool = True, probe: Optional[Callable[..., Dict[str, Any]]] = None) -> Dict[str, Any]:
+        save: bool = True, probe: Optional[Callable[..., Dict[str, Any]]] = None,
+        tenant_scope: Optional[Dict[str, Any]] = None, stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     """One Beacon snapshot: the three upstream watchers, the tenant API
     watch when a client is given, and what changed since the last run.
-    Saved to the history unless `save` is False."""
+    Saved to the history unless `save` is False.
+
+    The tenant API watch reads only `tenant_scope["endpoints"]` (a
+    beacon_scope.select result, with an optional "source"); with a client
+    and nothing in scope it refuses (ValueError) before anything is read.
+    `stop` (the operator's Stop) ends the watch between endpoints and
+    inside a request: what was read is kept as a watch that stopped early."""
+    import beacon_scope
+    if tenant_client is not None and not (tenant_scope or {}).get("endpoints"):
+        raise ValueError(beacon_scope.NOTHING_IN_SCOPE)
     started = time.time()
     snap: Dict[str, Any] = {"id": f"beacon-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.urandom(2).hex()}", "at": _now(),
                             "online": bool(online), "trigger": trigger}
@@ -511,13 +791,24 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
         snap["error"] = error
     snap["tenant"] = None
     if tenant_client is not None:
+        client = tenant_client
+        if "channels" in tenant_scope:
+            # The backstop the assessment has too: a channel's own configuration
+            # whose channel is not on Zscaler is refused without touching the
+            # tenant, even when the selection listed it.
+            import channel_scope
+            client = channel_scope.ScopedClient(
+                tenant_client, beacon_scope.declaration({c: "zscaler" for c in tenant_scope.get("channels") or ()}))
         try:
-            t = (probe or probe_tenant)(tenant_client)
+            kw = {"stop": stop} if stop is not None else {}
+            t = (probe or probe_tenant)(client, endpoints=tenant_scope["endpoints"], **kw)
         except PermissionError:
             raise
         except Exception as e:  # noqa: BLE001
-            t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET"}
-        t["label"] = tenant_label or "tenant"
+            t = {"endpoints": [], "counts": {}, "requests": 0, "stopped": f"{type(e).__name__}: {str(e)[:200]}", "method": "GET", "failed": True}
+        import tenant_auth
+        t["label"] = tenant_auth.scrub_classic_login(tenant_label) or "tenant"   # never a classic-API admin login (user rule 3)
+        t["scope"] = beacon_scope.describe(tenant_scope, str(tenant_scope.get("source") or ""))
         snap["tenant"] = t
     snap["drift"] = headline(snap)
     snap["seconds"] = round(time.time() - started, 1)
@@ -537,7 +828,8 @@ def history_rows(history: List[Dict[str, Any]], limit: int = HISTORY_KEEP) -> Li
     for s in reversed(history[-limit:]):
         d = s.get("diff") or {}
         rows.append({"id": s.get("id"), "at": s.get("at"), "online": s.get("online"), "trigger": s.get("trigger"),
-                     "tenant": (s.get("tenant") or {}).get("label"), "drift": len(s.get("drift") or []),
+                     "tenant": (s.get("tenant") or {}).get("label"),
+                     "tenant_scope": ((s.get("tenant") or {}).get("scope") or {}).get("summary"), "drift": len(s.get("drift") or []),
                      "changes": len(d.get("changes") or []), "summary": (d.get("summary") or [""])[0]})
     return rows
 

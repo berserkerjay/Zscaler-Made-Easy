@@ -97,10 +97,26 @@ the reference this path is measured against. The app never runs it.
    reason in words, activation and the read-back still run so what was
    written is live and recorded, and the result's `stopped` says why.
    The operator's Stop (a cancel event passed to `apply()` / `remove()`)
-   works the same way. The SDK itself is built with bounded waits
+   works the same way, and it is seen everywhere a write can wait: a
+   write waiting for ZIA's rate limit (`call()` binds
+   `zia_rate.stopping_on` for the run) or for a retry's backoff is not
+   sent after the wait but comes back `STOPPED`; an activation refused
+   for its rate is not sent again, and one still waiting for the
+   activation limit when Stop is pressed is not sent. The one
+   activation of what was written before Stop is deliberate and logged;
+   after Stop the run does not then poll ZIA for the activation status
+   (`pc.wait_active`), and a Stop pressed while it polls ends the polling.
+   Export and journey reads honour Stop the same way while they wait
+   for ZIA's read limit. The SDK itself is built with bounded waits
    (`dlp_api_server.SDK_REQUEST_TIMEOUT`, `SDK_MAX_RETRY_SECONDS`): a
    request has a timeout, and a Retry-After longer than 30 s is not slept
-   through but reported.
+   through but reported. The assessment client
+   (`dlp_assessment_full_auto.Client`) does the same: a 429 asking for
+   more than 30 s, or naming an hourly limit, is not retried; the tenant
+   is held for the whole wait (`zia_rate.hold(..., reads=True)`) and
+   every job on it, in any process, sends nothing until it has passed.
+   A refused read holds every job's reads on the tenant; a hold after a
+   refused write leaves reads alone.
 8. **A duplicate the plan did not see is reused, not fatal.** ZIA compares
    names without regard to case, and a predefined dictionary's display
    name (CRED_LEAKAGE is shown as "Private Key") is taken too. A pack

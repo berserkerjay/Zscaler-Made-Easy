@@ -147,9 +147,11 @@ reported as not available, and policy packs deploy the same way.
 1. Open **Tenant Configuration** and enter the four values plus your
    organisation and assessor name.
 2. Click **Authenticate** at the bottom of Tenant Configuration (or in the
-   **Start here** panel, step 1). You should see
-   "Connected to <tenant>: N dictionaries, N engines, N web DLP rules."
-   in the Start here panel.
+   **Start here** panel, step 1). You should see "Signed in to <tenant>"
+   in the Start here panel. Authenticate only signs in: it reads nothing
+   from the tenant (every read counts against the tenant's ZIA API rate
+   limit). The tenant is read only when you click **Run assessment**, and
+   only for what you put in scope on the Scope page.
 3. If it fails, the panel says why and what to do. The two common causes:
    - *Zscaler rejected the client ID or client secret* → regenerate the secret.
    - *Connection intercepted by TLS inspection* → your laptop is behind
@@ -342,10 +344,17 @@ Dictionary and engine tuning proposals are made in the ZIA portal; the
 queue tracks them and says so. Every decision and every apply is in
 `audit.log`.
 
-## 4i. The six-hour digest (while the app runs)
+## 4i. The digest (when you run it)
 
-Toolbar › *Find the gaps › Digest*. Every six hours while the app runs, for
-every tenant profile that remembers its secret, the loop:
+Toolbar › *Find the gaps › Digest*. Every tenant read counts against the
+ZIA API rate limit, so the loop never runs on its own by default: it runs
+when you click *Run the loop now* (or run `RUN_Continuous_Evaluation.bat` /
+`python continuous_eval.py --once`). To have it run on a timer while the
+app runs, set `DLP_CHECK_CONTINUOUS_EVAL_HOURS` to a number of hours in
+`local_settings.bat` (unset or 0, the default: off; 1 to 8784, anything
+else is logged once at startup and leaves the timer off). Each tenant profile
+that remembers its secret is read only for what its Scope page puts in
+scope; a profile with no scope saved is not read at all. The loop:
 
 1. re-reads the guidance sources (Zscaler's own and the integration
    partners, Proofpoint first) and turns a new article on a mapped topic
@@ -353,9 +362,13 @@ every tenant profile that remembers its secret, the loop:
    that stops answering for seven days is flagged as stale;
 2. refreshes Zscaler's SaaS tenant capability matrix and compares it with
    the customer's onboarded tenants (not active, at the limit, not
-   onboarded at all);
-3. runs FP/TP Detection Ratio and refreshes the proposals queue;
-4. measures the packs' journey and reports drift since the last run;
+   onboarded at all) when SaaS Security (CASB) is marked as run on Zscaler
+   on the Scope page;
+3. runs FP/TP Detection Ratio and refreshes the proposals queue (when DLP
+   is in the profile's scopes);
+4. measures the ticked packs' journey on the DLP channels the Scope page
+   puts on Zscaler and reports drift since the last run (when DLP is in
+   scope; never every pack);
 5. writes a digest and, when there is something to decide, sends it.
 
 To receive it, put the settings in `local_settings.bat` (see

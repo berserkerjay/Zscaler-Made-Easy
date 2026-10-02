@@ -232,6 +232,33 @@ def merge(tenant: str, fresh: List[Dict[str, Any]], *, source: str = "detection_
     return stats
 
 
+def rekey(old: str, new: str) -> int:
+    """Move the queue kept under `old` to `new` (a classic-API tenant once
+    keyed by a stale vanity domain). Ids are recomputed for the new key so
+    the next run merges into them; a decision already taken (dismissed,
+    snoozed, approved, applied) is kept, and a proposal already under the
+    new key wins. Returns how many proposals moved."""
+    ok, nk = tenant_key(old), tenant_key(new)
+    if not old or ok == nk:
+        return 0
+    with _LOCK:
+        data = _read()
+        q = data["tenants"].pop(ok, None)
+        if not q:
+            return 0
+        dest = data["tenants"].setdefault(nk, {"proposals": {}, "updated_at": _now()})
+        moved = 0
+        for p in (q.get("proposals") or {}).values():
+            nid = proposal_id(nk, str(p.get("kind") or ""), str(p.get("target") or "")) if p.get("kind") else p.get("id")
+            if nid in dest["proposals"]:
+                continue
+            dest["proposals"][nid] = dict(p, id=nid, tenant=nk)
+            moved += 1
+        dest["updated_at"] = _now()
+        _write(data)
+    return moved
+
+
 def refresh_from_report(rep: Dict[str, Any], tenant: str) -> Dict[str, Any]:
     return merge(tenant, build_proposals(rep, tenant))
 

@@ -66,7 +66,7 @@ def _write(data: Dict[str, Any]) -> None:
 
 
 def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], options: Dict[str, Any],
-               channel_targets: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+               channel_targets: Optional[Dict[str, Any]] = None, by: str = "", tenant_key: str = "", tenant_fp: str = "") -> Optional[Dict[str, Any]]:
     """Build a record from an apply() result. None when nothing was created."""
     created: List[Dict[str, Any]] = []
     other: List[Dict[str, Any]] = []
@@ -79,10 +79,11 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
             other.append(entry)
     if not created:
         return None
-    return {
+    rec = {
         "id": f"dep-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
         "at": _now(),
         "tenant_label": tenant_label,
+        "by": by or "",          # the assessor's name, nothing else about who signed in
         "packs": list(packs),
         "options": dict(options or {}),
         "channel_targets": dict(channel_targets or {}),
@@ -92,6 +93,16 @@ def from_apply(result: Dict[str, Any], *, tenant_label: str, packs: List[str], o
         "undone_at": None,
         "undo": None,
     }
+    # What tells the tenant apart, never shown (summary leaves both out):
+    # a classic-API tenant's keyed fingerprint (tenant_fingerprint: every
+    # classic-API tenant on a cloud shares the label 'classic API (cloud)',
+    # and the fingerprint names neither the admin login nor the domain),
+    # or a OneAPI tenant's opaque rate key (zia_rate.key_for).
+    if tenant_fp:
+        rec["tenant_fp"] = str(tenant_fp)
+    elif tenant_key:
+        rec["tenant_key"] = str(tenant_key)
+    return rec
 
 
 def add(record: Dict[str, Any]) -> Dict[str, Any]:
@@ -124,7 +135,7 @@ def summary(r: Dict[str, Any]) -> Dict[str, Any]:
     for c in created:
         by_kind[c["kind"]] = by_kind.get(c["kind"], 0) + 1
     return {
-        "id": r["id"], "at": r.get("at"), "tenant_label": r.get("tenant_label"), "packs": r.get("packs") or [],
+        "id": r["id"], "at": r.get("at"), "tenant_label": r.get("tenant_label"), "by": r.get("by") or "", "packs": r.get("packs") or [],
         "channel_targets": r.get("channel_targets") or {}, "status": r.get("status"),
         "created": len(created), "created_by_kind": by_kind, "remaining": len(remaining),
         "undone_at": r.get("undone_at"), "undo": r.get("undo"),

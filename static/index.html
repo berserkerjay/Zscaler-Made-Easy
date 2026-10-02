@@ -617,8 +617,8 @@
           <span aria-hidden="true">🩺</span> FP/TP detection ratio
         </button>
         <button class="btn btn-ghost" onclick="openDigestTab()"
-                aria-label="Open the Digest: what the six-hour loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
-                title="While this server runs, every six hours the app re-reads guidance, FP/TP detection ratio, the SaaS tenants and the packs' drift for every tenant profile that remembers its secret, and writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
+                aria-label="Open the Digest: what the evaluation loop found since last time, the watched sources, the SaaS capability matrix, the schedule and the notification settings (opens in a new tab)"
+                title="When you click Run the loop now (the timer is off unless the operator sets DLP_CHECK_CONTINUOUS_EVAL_HOURS), the app re-reads guidance and, for every tenant profile that remembers its secret, only what its Scope page puts in scope: FP/TP detection ratio, the SaaS tenants and the ticked packs' drift. It writes a digest. It does not re-run the assessment. This tab shows the latest one, lets you run the loop now, and shows what is notified where. Opens in a new tab.">
           <span aria-hidden="true">🔁</span> Digest
         </button>
       </div>
@@ -669,7 +669,7 @@
         </button>
         <button class="btn btn-ghost" onclick="openBeaconTab()"
                 aria-label="Open Beacon: what changed in the Zscaler SDK, the Zscaler API and the Terraform provider since the last run, on a timer and on demand, with an optional read-only watch of the tenant's API endpoints (opens in a new tab)"
-                title="Watches the Zscaler Python SDK, the ZIA API (service definition, API reference, help-center pages) and the zscaler/zia Terraform provider, runs on a timer while this server runs, and says what changed since the last run. Optionally reads every endpoint the app uses from a tenant, GET only. Opens in a new tab.">
+                title="Watches the Zscaler Python SDK, the ZIA API (service definition, API reference, help-center pages) and the zscaler/zia Terraform provider, runs on a timer while this server runs, and says what changed since the last run. Optionally reads from a tenant, GET only and about one request a second, only the endpoints in scope on the Scope page. Opens in a new tab.">
           <span aria-hidden="true">🛰️</span> Beacon: SDK, API &amp; Terraform changes
         </button>
         <button class="btn btn-ghost" onclick="openReferenceTab('data-security-portfolio-framework')"
@@ -896,7 +896,7 @@
           <input id="zpass" type="password" placeholder="The admin's password" autocomplete="off" spellcheck="false" style="padding-right:60px;">
           <button type="button" id="togglePass" onclick="toggleField('zpass','togglePass')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:0.8rem;font-weight:600;padding:0.2rem 0.5rem;">Show</button>
         </div>
-        <div class="helper">Kept only in this form for this browser session unless you tick <em>Remember the client secret on this laptop</em> on a saved profile (then it goes to this laptop's credential store when the optional <code>keyring</code> package is installed, otherwise to the owner-only profile file). Never shown in a message.</div>
+        <div class="helper">Kept only in this form for this browser session unless you tick <em>Remember the client secret on this laptop</em> on a saved profile (then it goes to this laptop's credential store, Windows Credential Manager or the macOS Keychain, through the <code>keyring</code> package the installer pins with the app; on Linux and in the container it goes to the owner-only profile file). Never shown in a message.</div>
         <div class="err-msg">Password is required</div>
       </div>
       <div class="field" id="fieldKey" hidden>
@@ -1029,7 +1029,7 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="authBtn" onclick="authenticateTenant()" title="Checks the four tenant values against Zscaler without changing anything. Run the assessment from Start here, step 2.">Authenticate</button>
+      <button class="btn btn-primary" id="authBtn" onclick="authenticateTenant()" title="Signs in to the tenant with these values and nothing else: it reads nothing from the tenant. Run the assessment from the Scope page.">Authenticate</button>
       <span id="authStatus" class="auth-status" aria-live="polite"></span>
       <!-- The assessment itself starts from Start here (step 2); this hidden
            button keeps the existing run/complete handlers wired. -->
@@ -1096,6 +1096,7 @@
         <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="step2Download()" style="padding:0.55rem 1.1rem;font-size:0.85rem;">Download rules</button>
           <button class="btn btn-ghost" id="step2SaveBtn" onclick="step2SaveLocal()" style="padding:0.55rem 1.1rem;font-size:0.85rem;display:none;">💾 Save JSON backup</button>
+          <button class="btn btn-ghost" id="step2PackBtn" onclick="step2DownloadPack()" title="A zip in the policy pack layout: the Inline Web DLP rules with every engine they use and every dictionary those engines use. Deploy Policy Packs can put it back into this tenant or another one; the pack library accepts it as an upload. Read-only." style="padding:0.55rem 1.1rem;font-size:0.85rem;">📦 Download as a pack (rules, engines and dictionaries)</button>
           <label class="btn btn-ghost" style="padding:0.55rem 1.1rem;font-size:0.85rem;cursor:pointer;">
             📂 Upload rules JSON
             <input type="file" id="step2UploadFile" accept=".json,application/json" onchange="step2UploadJson(event)" style="display:none;">
@@ -1103,6 +1104,7 @@
         </div>
       </div>
       <div id="step2Result" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
+      <div id="step2PackResult" style="display:none;font-size:0.85rem;padding:0.75rem;background:rgba(59,130,246,0.05);border-radius:8px;margin-top:0.5rem;"></div>
     </div>
 
     <!-- Step 3 -->
@@ -1225,6 +1227,7 @@
     </div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
     <div class="progress-detail" id="progressDetail"></div>
+    <div class="actions"><button type="button" class="btn btn-secondary" id="stopBtn" onclick="stopAssessment()">Stop</button></div>
   </div>
 
   <!-- Results -->
@@ -1255,7 +1258,7 @@
         <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Needs review</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">Not configured</div></div>
         <div class="stat" id="notPermStat" hidden><div class="stat-num" style="color:var(--info)" id="notPermCount">0</div><div class="stat-label">Not permitted</div></div>
-        <div class="stat" id="notScopeStat" hidden title="Checks of a channel the Scope page marks as covered by an alternative solution: not read, outside the score"><div class="stat-num" style="color:var(--info)" id="notScopeCount">0</div><div class="stat-label">Not in scope</div></div>
+        <div class="stat" id="notScopeStat" hidden title="Checks of a channel the Scope page marks as covered by an alternative solution or leaves unticked (a gap): not read, outside the score"><div class="stat-num" style="color:var(--info)" id="notScopeCount">0</div><div class="stat-label">Not in scope</div></div>
         <div class="stat" id="errorStat" hidden><div class="stat-num" style="color:var(--info)" id="errorCount">0</div><div class="stat-label">Could not be checked</div></div>
       </div>
       <p class="stat-note" id="coverageNote" aria-live="polite"></p>
@@ -1289,7 +1292,7 @@
 
     <div class="card">
       <h2>Detailed findings</h2>
-      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong>, <strong>Not in scope</strong> (a channel the Scope page marks as covered elsewhere) and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
+      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong>, <strong>Not in scope</strong> (a channel the Scope page marks as covered elsewhere or leaves unticked) and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
       <div class="checks-filter" role="group" aria-label="Filter findings by status">
         <button class="filter-btn active" data-filter="all" data-label="All" onclick="filterChecks('all',this)">All</button>
         <button class="filter-btn" data-filter="FAIL" data-label="Action required" onclick="filterChecks('FAIL',this)">Action required</button>
@@ -1310,6 +1313,9 @@
 <script>
 let reportData = null;
 let partialResults = [];
+// The running assessment's request: Stop (or New assessment) aborts it, and
+// the server then cancels the checks still queued (no further tenant read).
+let assessAbort = null;
 let runMeta = null;
 const LS_KEY = 'zscaler_assessment_config';
 
@@ -1376,7 +1382,7 @@ function coverageSentence(s, meta) {
   const parts = [];
   parts.push(s.state === 'partial' ? `Partial: ${s.assessed} of ${s.total} checks ran` : (s.not_in_scope ? `${s.assessed} of ${s.total} checks ran` : `${s.total} checks ran`));
   if (s.not_permitted) parts.push(`${s.not_permitted} not permitted for this API client`);
-  if (s.not_in_scope) parts.push(`${s.not_in_scope} not in scope (channels covered outside Zscaler, per the Scope page)`);
+  if (s.not_in_scope) parts.push(`${s.not_in_scope} not in scope (channels covered outside Zscaler or left unticked, per the Scope page)`);
   if (s.errors) parts.push(`${s.errors} could not be checked`);
   parts.push(s.scored ? `score = ${s.configured} configured ÷ ${s.scored} scoreable (${s.excluded} excluded)` : 'nothing was scoreable, so there is no score');
   if (meta && meta.partial) parts.push('the run stopped early: the numbers cover only the checks that finished');
@@ -1526,8 +1532,9 @@ function exportChecks(scope, format) {
 let migrateRules = null;
 let optimizedRules = null;
 
-// Authenticate only: the same read-only connection test the Start-here
-// panel uses. The assessment is started from Start here, step 2.
+// Authenticate only signs in (POST /api/tenant/check): it obtains the
+// token and reads nothing from the tenant. The assessment is started from
+// a Run assessment button.
 async function authenticateTenant() {
   const st = document.getElementById('authStatus');
   if (typeof _gdTest === 'function') { if (st) st.textContent = 'Checking…'; await _gdTest(); return; }
@@ -1536,7 +1543,7 @@ async function authenticateTenant() {
   try {
     const r = await fetch('/api/tenant/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (st) st.textContent = r.ok ? `Connected to ${d.tenant_label}.` : `Could not connect: ${(d.detail && d.detail.cause) || d.detail || r.status}`;
+    if (st) st.textContent = r.ok ? `Signed in to ${d.tenant_label}. Nothing in the tenant was read.` : `Could not connect: ${(d.detail && d.detail.cause) || d.detail || r.status}`;
   } catch (e) { if (st) st.textContent = `Could not connect: ${e.message}`; }
 }
 
@@ -1558,15 +1565,20 @@ document.addEventListener('DOMContentLoaded', applyAuthMethod);
 
 function migrateCredBody() {
   const v = id => (document.getElementById(id) || {}).value || '';
+  // Only the chosen sign-in's fields are sent: a vanity domain or client id
+  // left in a hidden field never reaches a classic-API run (its labels and
+  // records name no vanity domain), and no admin login reaches a OneAPI one.
+  const legacy = currentAuthMethod() === 'legacy';
+  const only = (id, forLegacy) => (forLegacy === legacy ? v(id) : '');
   return {
     auth_method: currentAuthMethod(),
     cloud: v('cloud'),
-    vanity_domain: v('vd'),
-    client_id: v('cid'),
-    client_secret: v('csec'),
-    username: v('zuser'),
-    password: v('zpass'),
-    api_key: v('zkey'),
+    vanity_domain: only('vd', false),
+    client_id: only('cid', false),
+    client_secret: only('csec', false),
+    username: only('zuser', true),
+    password: only('zpass', true),
+    api_key: only('zkey', true),
     customer_id: v('custid'),
     // Saved tenant profile (guide add-on): fills blanks server-side, incl. a remembered secret.
     profile_id: (window.GD && GD.profile) ? GD.profile : '',
@@ -1576,8 +1588,11 @@ function migrateCredBody() {
 // may leave the secret field blank.
 function profileHasSecret() { return !!(window.GD && GD.profile && GD.profileHasSecret); }
 
-function migrateValidateCreds() {
-  const b = migrateCredBody();
+// The chosen sign-in's blank fields, as [elementId, label]: the classic
+// API needs the admin login, password and API key; OneAPI the vanity
+// domain, client id and secret. A remembered secret fills a blank secret.
+function missingSignInFields(b) {
+  b = b || migrateCredBody();
   const missing = [];
   const blank = s => !s || !s.trim();
   if (b.auth_method === 'legacy') {
@@ -1589,6 +1604,12 @@ function migrateValidateCreds() {
     if (blank(b.client_id))     missing.push(['cid', 'Client ID']);
     if (blank(b.client_secret) && !profileHasSecret()) missing.push(['csec','Client secret']);
   }
+  return missing;
+}
+
+function migrateValidateCreds() {
+  const b = migrateCredBody();
+  const missing = missingSignInFields(b);
   if (missing.length) {
     popMissingCredsAlert(missing);
     return null;
@@ -1638,7 +1659,7 @@ async function step1Assess() {
   const el = document.getElementById('step1Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">Checking tenant status...</span>';
   try {
-    const resp = await fetch('/api/migrate/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/status', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const s = await resp.json();
     // Rename First-Match-Wins to "Rule Order" everywhere it shows up
@@ -1696,7 +1717,7 @@ async function step1SetManual() {
   body.mode = choice.value;
   const el = document.getElementById('step1Result');
   try {
-    const resp = await fetch('/api/migrate/status/manual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/status/manual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const s = await resp.json();
     const displayMode = s.current_mode;
@@ -1723,7 +1744,7 @@ async function step2Download() {
   const el = document.getElementById('step2Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">Downloading rules...</span>';
   try {
-    const resp = await fetch('/api/migrate/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     migrateRules = data.rules || [];
@@ -1734,6 +1755,45 @@ async function step2Download() {
     document.getElementById('step2SaveBtn').style.display = 'inline-flex';
   } catch(e) {
     el.innerHTML = '<span style="color:var(--fail);">Failed: ' + escapeHtml(e.message) + '</span>';
+  }
+}
+
+// The same rules as a policy pack: the server reads the Inline Web DLP
+// rules with every engine and dictionary they use (a background job, the
+// same one Deploy Policy Packs' "Export from tenant as a pack" runs) and
+// the zip comes from the finished job. The JSON backup above is unchanged.
+async function step2DownloadPack() {
+  const body = migrateValidateCreds(); if (!body) return;
+  const el = document.getElementById('step2PackResult'); el.style.display = 'block';
+  const btn = document.getElementById('step2PackBtn'); btn.disabled = true;
+  el.innerHTML = '<span style="color:var(--dim);">Reading the rules, engines and dictionaries… (read-only)</span>';
+  try {
+    const jobId = await _dzStartJob('/api/dlp-packs/export/start', Object.assign(body, scopePageSelection(), { rules: { web: 'all' } }));
+    const snap = await _dzFollowJob(jobId, s => {
+      const last = (s.logs || []).slice(-1)[0];
+      if (last) el.innerHTML = '<span style="color:var(--dim);">' + escapeHtml(last) + '</span>';
+    });
+    if (snap.status === 'failed' || !snap.result) throw new Error(snap.error || 'The export ended without a result.');
+    if (snap.result.status !== 'ready' || !snap.download) throw new Error(snap.result.error || snap.result.stopped || 'The export did not produce a pack.');
+    const r = await fetch(snap.download, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`The pack could not be fetched (HTTP ${r.status}).`);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = snap.filename || 'exported_pack.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const c = snap.result.counts || {};
+    const left = snap.result.not_exported || [];
+    el.innerHTML = `
+      <div style="color:var(--pass);font-weight:600;">✓ Downloaded ${escapeHtml(snap.filename || 'the pack')}: ${c.rules || 0} rule(s), ${c.engines || 0} custom engine(s), ${c.dictionaries || 0} dictionar${c.dictionaries === 1 ? 'y' : 'ies'}</div>
+      <div style="color:var(--dim);margin-top:0.25rem;">Add it to the library under Advanced settings → Add a pack, then deploy it with Deploy Policy Packs. Every rule arrives DISABLED there; the pack keeps each rule's action and state as they are now.</div>
+      ${left.length ? `<details style="margin-top:0.4rem;"><summary style="cursor:pointer;color:var(--warn);">${left.length} item(s) could not go into the pack (also listed in pack.json)</summary><ul style="margin:0.3rem 0 0 1.1rem;color:var(--dim);">${left.map(d => `<li><strong>${escapeHtml(d.name)}</strong>${d.field ? ' (' + escapeHtml(d.field) + ')' : ''}: ${escapeHtml(d.reason)}</li>`).join('')}</ul></details>` : ''}
+      ${snap.result.validation && !snap.result.validation.ok ? `<div style="color:var(--fail);margin-top:0.3rem;">The pack library would refuse this pack as it is: ${escapeHtml((snap.result.validation.problems || []).slice(0, 3).join('; '))}</div>` : ''}
+    `;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--fail);">Pack download failed: ' + escapeHtml(e.message) + '</span>';
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1953,7 +2013,7 @@ async function step3bDeleteAll(dryRun) {
   const el = document.getElementById('step3bResult'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building deletion preview...' : 'Deleting rules...'}</span>`;
   try {
-    const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/delete-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     if (r.status === 'dry_run') {
@@ -2098,7 +2158,7 @@ async function step4Check() {
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">① Checking current state of Evaluate All Rules...</span>';
   try {
-    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     const currentTxt = r.current === true ? 'ENABLED' : r.current === false ? 'DISABLED' : 'UNKNOWN (API does not expose this flag)';
@@ -2126,7 +2186,7 @@ async function step4EnablePlan() {
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">② Building enable plan (dry-run)...</span>';
   try {
-    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     _step4Plan = r;
@@ -2164,7 +2224,7 @@ async function step4Activate() {
   const el = document.getElementById('step4Result'); el.style.display = 'block';
   el.innerHTML = '<span style="color:var(--dim);">③ Activating via API... (trying found field, then candidate combinations)</span>';
   try {
-    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/enable', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
 
@@ -2260,7 +2320,7 @@ async function step5Post(dryRun) {
   const el = document.getElementById('step5Result'); el.style.display = 'block';
   el.innerHTML = `<span style="color:var(--dim);">${dryRun ? 'Building post plan (dry-run)...' : 'Posting rules live...'}</span>`;
   try {
-    const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/migrate/post', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const r = await resp.json();
     let summary = '';
@@ -2416,7 +2476,16 @@ function setSelectedScopes(arr) {
   document.querySelectorAll('.scope-cb').forEach(cb => {
     cb.checked = (arr || []).includes(cb.value);
   });
+  publishScopes();
 }
+
+// The ticked scopes, published on every change (like the channels in
+// zassess_channels_v1) so a Beacon tab opened without this tab as its
+// opener reads what is ticked now, not the last "Save config" copy.
+function publishScopes() {
+  try { localStorage.setItem('zassess_scopes_live_v1', JSON.stringify({ scopes: getSelectedScopes() })); } catch (e) { /* storage blocked */ }
+}
+document.addEventListener('change', e => { if (e.target && e.target.classList && e.target.classList.contains('scope-cb')) publishScopes(); });
 
 // Load saved config (excluding secret)
 function loadConfig() {
@@ -2436,6 +2505,7 @@ function loadConfig() {
   } catch(e){}
 }
 loadConfig();
+publishScopes();
 
 // Dialogs must live directly under <body>. The page container and <main>
 // create stacking contexts (position:relative; z-index:1, to sit above the
@@ -2513,19 +2583,14 @@ function validate() {
 
 async function runAssessment() {
   // Credential gate — same popup style as the migration wizard
+  // The organisation and assessor, then the chosen sign-in's own fields
+  // (a classic-API run never needs the hidden OneAPI fields).
   const missing = [];
-  const checks = [
-    ['org',      'Organization name'],
-    ['assessor', 'Assessor name'],
-    ['vd',       'Vanity domain'],
-    ['cid',      'Client ID'],
-    ['csec',     'Client secret'],
-  ];
-  for (const [id, label] of checks) {
+  for (const [id, label] of [['org', 'Organization name'], ['assessor', 'Assessor name']]) {
     const el = document.getElementById(id);
-    if (id === 'csec' && profileHasSecret()) continue;
     if (!el || !el.value || !el.value.trim()) missing.push([id, label]);
   }
+  missing.push(...missingSignInFields());
   if (missing.length) {
     popMissingCredsAlert(missing);
     return;
@@ -2569,18 +2634,34 @@ async function runAssessment() {
     org_name: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
     scopes: scopes,
-    // The Scope page's channel ownership (dashboard.js): a channel covered by
-    // an alternative solution has its checks reported as not in scope.
+    // The Scope page's channel ownership (dashboard.js): only a channel marked
+    // Zscaler is read; an alternative's or a gap's checks are reported as not in scope.
     channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {},
   };
 
+  const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+  assessAbort = ctl;
+  let watchdog = null;
   try {
     const resp = await fetch('/api/assess', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined,
     });
-    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    if (!resp.ok) {
+      // A refused run (nothing in scope, a channel to tick, a bad field) is
+      // guidance, not a lost connection: show the server's reason where the
+      // run was started, and put the tiles back as they were.
+      const reason = await refusalText(resp);
+      assessAbort = null;
+      btn.disabled = false;
+      btn.textContent = 'Run assessment';
+      prog.classList.remove('active');
+      setStatus(reason, 'error');
+      if (window.__dbRunRefused) { try { window.__dbRunRefused(reason); } catch (e) {} }
+      return;
+    }
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -2589,7 +2670,7 @@ async function runAssessment() {
     // a keepalive). If nothing arrives for 45 s, say so instead of sitting
     // on a frozen bar; after 3 minutes of silence give up and show what we have.
     let lastByte = Date.now();
-    const watchdog = setInterval(() => {
+    watchdog = setInterval(() => {
       const quiet = Math.round((Date.now() - lastByte) / 1000);
       if (quiet >= 180) { clearInterval(watchdog); reader.cancel().catch(() => {}); return; }
       if (quiet >= 45) document.getElementById('progressDetail').textContent = `No answer from the server for ${quiet}s — still waiting (the tenant may be slow to answer a listing).`;
@@ -2614,7 +2695,25 @@ async function runAssessment() {
       buildPartialReport();
     }
   } catch(e) {
-    setStatus('Connection lost: ' + e.message + '. Showing partial results.', 'error');
+    if (watchdog) clearInterval(watchdog);
+    const stopped = !!(ctl && ctl.signal.aborted);
+    if (reportData) {
+      // Every check was in and the server's report is on screen: Stop (or a
+      // lost connection) only ended the journey measurement. The report stays.
+      if (reportData.journey && reportData.journey.status === 'pending') {
+        reportData.journey = { status: 'error', error: stopped ? 'the measurement was stopped before it finished' : 'the connection was lost before it finished' };
+        if (typeof _gdJourneyCard === 'function') { try { _gdJourneyCard(reportData.journey); } catch (e2) {} }
+        try { refreshBenchmarkJourney(reportData.journey); } catch (e2) {}
+      }
+      setStatus(stopped ? 'Stopped. Every check had finished; only the data governance journey measurement was stopped.'
+                        : 'Connection lost while measuring the journey: ' + e.message + '. The assessment results are complete.', stopped ? 'success' : 'error');
+      btn.disabled = false;
+      btn.textContent = 'Run assessment';
+      prog.classList.remove('active');
+      return;
+    }
+    setStatus(stopped ? 'Stopped. The checks still queued were cancelled; showing the checks that finished.'
+                      : 'Connection lost: ' + e.message + '. Showing partial results.', 'error');
     btn.disabled = false;
     btn.textContent = 'Run assessment';
     prog.classList.remove('active');
@@ -3054,7 +3153,7 @@ function renderChecks(checks, filter) {
   const notPermitted = new Set(((typeof reportData !== 'undefined' && reportData && reportData.summary && reportData.summary.not_permitted_ids) || []).filter(Boolean));
   const classOf = c => c.out_of_scope ? 'NOTSCOPE' : notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
   const PILL = {PASS:'Configured', FAIL:'Action required', REVIEW:'Needs review', INFO:'Not configured', NOTPERM:'Not permitted', NOTSCOPE:'Not in scope', ERROR:'Could not be checked'};
-  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', NOTSCOPE: 'Its channel is covered by an alternative solution, as declared on the Scope page. Not read, outside the score.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
+  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', NOTSCOPE: 'Its channel is covered by an alternative solution or left unticked (a gap) on the Scope page. Not read, outside the score.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
   for (const c of checks) {
     const st = classOf(c);
     if (filter !== 'all' && st !== filter) continue;
@@ -4112,7 +4211,28 @@ async function downloadDocx() {
   }
 }
 
+// The server's reason for refusing a run (FastAPI's {"detail": ...}), in words.
+async function refusalText(resp) {
+  let d = '';
+  try {
+    const j = await resp.json();
+    d = j && j.detail;
+    if (Array.isArray(d)) d = d.map(x => (x && x.msg) || '').filter(Boolean).join('; ');
+    else if (d && typeof d === 'object') d = [d.cause, d.fix].filter(Boolean).join(' ') || d.message || '';
+  } catch (e) { d = ''; }
+  return String(d || '').trim() || `The server refused the run (HTTP ${resp.status}).`;
+}
+
+// Stop: abort the running assessment's request; the server cancels the
+// checks still queued, so the tenant is read no further.
+function stopAssessment() {
+  if (assessAbort) { try { assessAbort.abort(); } catch (e) {} }
+  assessAbort = null;
+}
+
 function resetForm() {
+  stopAssessment();   // a new assessment never leaves the previous one reading the tenant
+  partialResults = [];   // nor redraws the previous run's checks once its stream ends
   document.getElementById('results').style.display = 'none';
   reportData = null;
   forgetResults();
@@ -4120,13 +4240,9 @@ function resetForm() {
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-// Enter key submits form
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !document.getElementById('runBtn').disabled) {
-    const activeEl = document.activeElement;
-    if (activeEl && activeEl.tagName === 'INPUT') runAssessment();
-  }
-});
+// No Enter-to-run: Enter in a field never starts an assessment. Every
+// read counts against the tenant's ZIA API rate limit, so a run starts
+// only from a Run assessment button.
 
 // ══════════════════════════════════════════════════════════════════
 // Update checker — monitors PyPI + help.zscaler.com for new APIs
@@ -4387,6 +4503,7 @@ function _renderDlpEfficacy(data) {
         ${orphanBlock('Dictionaries not referenced by any engine', o.dictionaries_unused_by_engines)}
         ${orphanBlock('Dictionaries not reachable by any rule',    o.dictionaries_unused_by_rules)}
         ${orphanBlock('Engines not referenced by any rule',        o.engines_unused_by_rules)}
+        ${data.rules_not_in_scope ? `<div style="color:var(--dim);padding:0.3rem;">${_effEsc(data.rules_not_in_scope)}</div>` : ''}
         ${(!o.dictionaries_unused_by_engines?.length && !o.dictionaries_unused_by_rules?.length && !o.engines_unused_by_rules?.length) ? '<div style="color:var(--dim);padding:0.3rem;">No orphans — every custom dict and engine is reachable.</div>' : ''}
       </div>
     </details>`;
@@ -4398,12 +4515,12 @@ async function runDlpEfficacy() {
   const r = document.getElementById('dlpEffResult');
   const originalBtnText = btn.textContent;
   btn.disabled = true; btn.textContent = 'Scoring...';
-  r.innerHTML = '<div style="color:var(--dim);padding:0.8rem;">Fetching dictionaries, engines, and rules...</div>';
+  r.innerHTML = '<div style="color:var(--dim);padding:0.8rem;">Fetching dictionaries, engines and, when Inline Web DLP is in scope, rules...</div>';
   try {
     const resp = await fetch('/api/dlp/efficacy', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, ...scopePageSelection() }),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -4432,7 +4549,7 @@ async function exportDlpEfficacy(fmt) {
     const resp = await fetch('/api/dlp/efficacy/export', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({...body, format: fmt}),
+      body: JSON.stringify({ ...body, ...scopePageSelection(), format: fmt }),
     });
     if (!resp.ok) {
       let msg = 'HTTP ' + resp.status;
@@ -4469,7 +4586,7 @@ async function runDlpEfficacyCorpus() {
     const resp = await fetch('/api/dlp/efficacy/test', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({...body, corpus, max_dicts: 200}),
+      body: JSON.stringify({ ...body, ...scopePageSelection(), corpus, max_dicts: 200 }),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -4571,7 +4688,7 @@ async function diagnoseZcc() {
   const host = document.getElementById('zccDiagContent');
   host.innerHTML = '<div style="color:var(--dim);text-align:center;padding:1.5rem;">⏳ Probing every ZCC endpoint on your tenant…</div>';
   try {
-    const r = await fetch('/api/diagnose/zcc', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const r = await fetch('/api/diagnose/zcc', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     const data = await r.json().catch(() => ({}));
     // A 401 (bad credentials) or 400 (invalid field) carries {detail}
     // and no probe results. Surface it instead of rendering zeros.
@@ -4786,7 +4903,7 @@ async function openBypassReportTab() {
 // id; the SSL inspection flow tab calls this to open the full report.
 window.__bypassGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const resp = await fetch('/api/report/bypass', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection() }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   _bypassReportCache = data;
@@ -4838,7 +4955,11 @@ function openBeaconTab() {
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 async function openDetectionHealthTab() {
+  // Check the sign-in and the pop-up before the tenant is read: a blocked
+  // tab used to read incidents and rules, then throw, with nothing shown.
+  if (!migrateValidateCreds()) return;
   const w = window.open('/report/health?pending=1', '_blank');
+  if (!w) { alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.'); return; }
   try {
     const id = await window.__detectionHealthGenerate(30);
     w.location = `/report/health?id=${encodeURIComponent(id)}`;
@@ -4848,7 +4969,7 @@ async function openDetectionHealthTab() {
 }
 window.__detectionHealthGenerate = async function (days) {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/detection-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, days: days || 30 }) });
+  const resp = await fetch('/api/detection-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection(), days: days || 30 }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error((data.detail && (data.detail.cause || data.detail)) || `HTTP ${resp.status}`);
   return data.report_id;
@@ -4882,10 +5003,24 @@ async function openDataFlowTab() {
     w.location = `/report/dataflow?error=${encodeURIComponent(e.message)}`;
   }
 }
+// What is in scope on the Scope page, for a tenant read started from this
+// page: the ticked scopes and each channel's choice (never its free-text
+// note). The server reads only that, and refuses when nothing is in scope.
+function scopePageSelection() {
+  const channels = {};
+  try {
+    const state = (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {};
+    Object.entries(state || {}).forEach(([id, val]) => {
+      const choice = val && typeof val === 'object' ? val.choice : val;
+      if (choice === 'zscaler' || choice === 'alternative') channels[id] = choice;
+    });
+  } catch (e) { /* no channel declared */ }
+  return { scopes: getSelectedScopes(), channels, from_page: true };
+}
 // Called by the Data flow map tab (Refresh); this page holds the credentials.
 window.__dataFlowGenerate = async function (platform) {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, platform: platform || 'windows' }) });
+  const resp = await fetch('/api/report/data-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection(), platform: platform || 'windows' }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   return data.report_id;
@@ -4899,7 +5034,7 @@ function _reportErrorText(data, status) {
 }
 window.__sslFlowGenerate = async function () {
   const body = migrateValidateCreds(); if (!body) throw new Error('Tenant credentials are missing in the assessment tab.');
-  const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const resp = await fetch('/api/report/ssl-flow', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...scopePageSelection() }) });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(_reportErrorText(data, resp.status));
   return data.report_id;
@@ -4915,7 +5050,7 @@ async function runBypassReport() {
   r.innerHTML = '<div class="bp-empty">Reading ZIA and Client Connector in parallel… this takes 5–15 seconds on a normal tenant.</div>';
   ['bypassExportCsv','bypassExportMd','bypassExportDocx','bypassExportJson'].forEach(id => document.getElementById(id).disabled = true);
   try {
-    const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/report/bypass', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ...body, ...scopePageSelection() })});
     if (!resp.ok) { let d=`Error ${resp.status}`; try{const j=await resp.json();d=j.detail||d;}catch(e){} throw new Error(d); }
     const data = await resp.json();
     _bypassReportCache = data;
@@ -4931,6 +5066,7 @@ async function runBypassReport() {
 
 async function exportBypass(fmt) {
   const body = migrateValidateCreds(); if (!body) return;
+  Object.assign(body, scopePageSelection());   // only what is in scope on the Scope page is read
   body.format = fmt;
   try {
     const resp = await fetch('/api/report/bypass/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -5032,6 +5168,7 @@ function renderUpdateResults(data) {
       unchanged: ['#64748b','OK'],
       error:     ['#ef4444','ERROR'],
       dead_link: ['#f59e0b','NO PAGE'],
+      unreadable: ['#f59e0b','NOT READABLE'],
     };
     const [col, label] = statusColors[r.status] || ['#64748b', (r.status||'?').toUpperCase()];
     const impColor = r.importance === 'high' ? '#f59e0b' : r.importance === 'medium' ? '#64748b' : '#475569';

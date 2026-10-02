@@ -68,12 +68,12 @@ def test_authenticate_ends_with_an_inline_success_or_an_in_app_failure_dialog():
         assert '/static/ui_auth.js' in c.get(page).text, page
     # The copy about secrets says what the code does (tenant_profiles.upsert).
     assert "Never stored by this tool" not in html and "Kept only in this form for this browser session" in html
-    assert "optional <code>keyring</code> package is installed, otherwise" in guide
+    assert "through the <code>keyring</code> package the installer pins with the app" in guide and "optional <code>keyring</code>" not in guide
     c = _page()
     html = c.get("/").text
     assert 'id="evalAllFlow"' in html and '/static/eval_all.js' in html and "evalAllLoadRules" not in html, "the wizard no longer hands rules to a simulator"
     js = c.get("/static/eval_all.js").text
-    assert "Tie on the action" in js and "lowest order number" in js and "about-first-match-wins-and-evaluate-all-rules-for-dlp" in js
+    assert "Tie on the action" in js and "lowest order number" in js and "configuring-dlp-policy-rules-evaluate-all-rules-mode-enabled" in js
 
 
 def test_evaluate_all_rules_has_its_own_tab_with_the_tie_breaker():
@@ -102,3 +102,13 @@ def test_step_strip_buttons_take_you_to_each_step():
     assert "① Connect" in html and "② Scope assessment" in html and "③ Dashboard: findings + export" in html
     assert "function _stepGo(step)" in html and 'id="scopeField"' in html and "Click a step to go there" in html
     assert '<span class="step-item"' not in html, "the strip is made of real buttons, not labels"
+
+
+def test_terraform_hand_off_says_when_to_use_each_and_defaults_to_static():
+    js = _page().get("/static/deploy_studio.js").text
+    assert "2 · Which hand-off" in js and 'class="tf-choose"' in js
+    for choice in ("<b>Deploy policy packs</b>", "<b>Gap mode</b>", "<b>Static</b>", "<b>Neither yet</b>"):
+        assert choice in js
+    assert js.count("<b>Use when</b>") == 2 and js.count("<b>Not when</b>") == 2
+    # Gap mode reads the tenant, so it is never picked just because credentials are there.
+    assert "return TF.mode === 'gap' && _tfCanGap() ? 'gap' : 'static';" in js

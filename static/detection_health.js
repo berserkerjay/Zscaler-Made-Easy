@@ -5,7 +5,7 @@
 const _dhE = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DH_STATUS = {
   noisy: ['Noisy', 'fail'], dead: ['Dead', 'warn'], promotable: ['Ready to promote', 'ok'], healthy: ['Healthy', 'ok'],
-  disabled: ['Disabled', 'dim'], unknown_rule: ['Not in inventory', 'warn'], no_verdicts: ['No verdicts yet', 'dim'],
+  disabled: ['Disabled', 'dim'], unknown_rule: ['Not in inventory', 'warn'], no_verdicts: ['No verdicts yet', 'dim'], not_measured: ['Not measured', 'dim'],
 };
 const DH_CHAN = { web: 'Web DLP', endpoint: 'Endpoint DLP', saas: 'SaaS Security API', email: 'Email DLP', other: 'Other' };
 const _dhPct = v => (v == null ? '–' : `${v}%`);
