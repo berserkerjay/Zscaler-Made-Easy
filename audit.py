@@ -5,7 +5,8 @@ owner-only, git-ignored; path in DLP_CHECK_AUDIT) with the time, method,
 path, status, duration, caller address, who made the call (`actor`: the
 signed-in email under SSO, otherwise "local UI token"), whether write
 mode was on, and a redacted view of the request body (keys that look like secrets or tokens
-are dropped, long values truncated). Write-mode toggles and updates go
+are dropped, long values truncated; for a classic-API sign-in the admin
+login and any vanity domain sent with it are dropped too, user rule 3). Write-mode toggles and updates go
 through the same log. Nothing here is ever sent anywhere; the file is
 evidence for the operator and the customer.
 
@@ -26,6 +27,11 @@ from typing import Any, Dict, Optional
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _LOCK = threading.Lock()
 _SECRET_KEY = re.compile(r"secret|token|password|passwd|credential|authorization|cookie|api_?key|private_?key", re.I)
+# The classic ZIA API signs in with an admin login (`username`), and a
+# vanity domain sent alongside it is stale form data: neither may appear in
+# a record (user rule 3). A OneAPI vanity domain is the tenant's name and stays.
+_IDENTITY_KEY = re.compile(r"^(user_?name|login|admin_?login)$", re.I)
+_VANITY_KEY = re.compile(r"^vanity_?domain$", re.I)
 _MAX_VALUE = 200
 _MAX_KEYS = 40
 logger = logging.getLogger("dlp_check.audit")
@@ -41,11 +47,12 @@ def redact(value: Any, depth: int = 0) -> Any:
         return "…"
     if isinstance(value, dict):
         out: Dict[str, Any] = {}
+        classic = _is_classic(value)
         for i, (k, v) in enumerate(value.items()):
             if i >= _MAX_KEYS:
                 out["…"] = f"{len(value) - _MAX_KEYS} more keys"
                 break
-            if _SECRET_KEY.search(str(k)):
+            if _SECRET_KEY.search(str(k)) or _IDENTITY_KEY.search(str(k)) or (classic and _VANITY_KEY.search(str(k))):
                 out[str(k)] = "[redacted]"
             else:
                 out[str(k)] = redact(v, depth + 1)
@@ -55,6 +62,22 @@ def redact(value: Any, depth: int = 0) -> Any:
     if isinstance(value, str):
         return value if len(value) <= _MAX_VALUE else value[:_MAX_VALUE] + "…"
     return value
+
+
+def _is_classic(d: Dict[str, Any]) -> bool:
+    """True when the dict is a classic-API (legacy) sign-in: the stated
+    method, or the one tenant_auth infers (a username or API key and no
+    client id). An unknown method is treated as classic, so in doubt the
+    vanity domain is dropped rather than kept."""
+    if not any(k in d for k in ("auth_method", "username", "api_key")):
+        return False
+    try:
+        import tenant_auth
+        return tenant_auth.method_of({k: str(d.get(k) or "") for k in ("auth_method", "username", "api_key", "client_id")}) == tenant_auth.LEGACY
+    except ValueError:
+        return True
+    except Exception:  # noqa: BLE001
+        return bool(d.get("username") or d.get("api_key")) and not d.get("client_id")
 
 
 def _actor() -> str:

@@ -171,29 +171,161 @@ def _resolve_ep(ep, customer_id="", legacy=False):
         return f"/zpa/mgmtconfig/{version}/" + suffix
     return ep
 
-class _RateLimiter:
-    """One request pacer shared by every thread of a Client: keeps a minimum
-    gap between requests (the API's rate limit is per tenant, not per
-    thread) and, after a 429, holds every thread until Retry-After has
-    passed instead of letting them each hit the limit in turn."""
-    def __init__(s, min_gap):
+# What a read answers once the run is stopped (Client.stop, or the stop
+# hook data_flow.stop_on binds): nothing was sent. Never cached, so a list
+# cut short is never kept as the tenant's whole configuration.
+_STOPPED = ({"error": "run stopped", "status": 0}, 0)
+# Answers that mean the tenant did not answer a read (channel_scope.ScopedClient.UNANSWERED).
+_UNANSWERED_CODES = frozenset({0, 429, 502, 503, 504})
+
+
+def _nap(seconds, stop=None):
+    """Sleep `seconds`, in steps of at most half a second when `stop()` can
+    end it early. True when it slept the whole time, False when stopped."""
+    end = time.time() + max(0.0, float(seconds))
+    if stop is None:
+        if seconds > 0:
+            time.sleep(seconds)
+        return True
+    while True:
+        if stop():
+            return False
+        left = end - time.time()
+        if left <= 0:
+            return True
+        time.sleep(min(0.5, left))
+
+
+class _TenantGate:
+    """The pacing state of one tenant: the next free send slot and the end
+    of a 429 hold. Every Client of the same tenant (same rate_key) shares
+    one, so concurrent jobs on a tenant are paced together and a 429 seen
+    by one holds them all."""
+    def __init__(s):
         import threading
-        s.min_gap = float(min_gap); s._lock = threading.Lock(); s._next = 0.0; s._pause_until = 0.0
-    def wait(s):
+        s.lock = threading.Lock(); s.next = 0.0; s.pause_until = 0.0
+
+
+_GATES = {}
+_GATES_LOCK = __import__("threading").Lock()
+
+
+def _tenant_gate(key):
+    """The one _TenantGate for tenant `key` (a fresh, unshared one when
+    there is no key)."""
+    if not key:
+        return _TenantGate()
+    with _GATES_LOCK:
+        g = _GATES.get(key)
+        if g is None:
+            g = _GATES[key] = _TenantGate()
+        return g
+
+
+def _reset_tenant_gates():
+    """Forget every tenant's pacing state (tests)."""
+    with _GATES_LOCK:
+        _GATES.clear()
+
+
+# The longest Retry-After a request waits out and then retries. A longer
+# one (ZIA's hourly limit answers "Retry-After: 3300 seconds") is not
+# retried: the tenant is held for all of it and the request gives up.
+RETRY_AFTER_CAP = 30
+
+
+def _retry_after(headers, default=5, cap=RETRY_AFTER_CAP):
+    """Seconds a 429 asks to wait: Retry-After as ZIA sends it ("0
+    seconds", "12") or plain, at least 1 and at most `cap` (None: no cap);
+    `default` when it is missing or unreadable."""
+    raw = str((headers or {}).get("Retry-After", "") or "").strip().lower()
+    for suffix in ("seconds", "second", "secs", "sec", "s"):
+        if raw.endswith(suffix):
+            raw = raw[: -len(suffix)].strip()
+            break
+    try:
+        wait = float(raw)
+    except (TypeError, ValueError):
+        wait = float(default)
+    if wait != wait:   # NaN
+        wait = float(default)
+    wait = max(1.0, wait)
+    return wait if cap is None else min(float(cap), wait)
+
+
+def _hourly_429(r):
+    """Seconds to hold the tenant when the 429 `r` is ZIA's hourly limit
+    (a Retry-After longer than RETRY_AFTER_CAP, or a body naming an /HOUR
+    limit); None for a short refusal that is waited out and retried."""
+    asked = _retry_after(r.headers, cap=None)
+    if asked > RETRY_AFTER_CAP:
+        return asked
+    try:
+        body = (r.text or "")[:300].lower()
+    except Exception:  # noqa: BLE001 - a body that cannot be read is not the hourly answer
+        body = ""
+    if "/hour" in body:
+        import zia_rate
+        return max(asked, zia_rate.full_reset("read"))
+    return None
+
+
+class _RateLimiter:
+    """One request pacer per tenant: keeps a minimum gap between requests
+    (the API's rate limit is per tenant, not per thread or per job) and,
+    after a 429, holds every thread of every Client on the tenant until
+    Retry-After has passed instead of letting them each hit the limit in
+    turn. Clients of the same tenant pass the same `key` and so share
+    one gate; `min_gap` is this pacer's own (a tenant watch may raise it
+    for its Client alone)."""
+    def __init__(s, min_gap, key=None):
+        s.min_gap = float(min_gap)
+        s._key = key
+        s._gate = _tenant_gate(key)
+    def _held_until(s):
+        """When the tenant's read hold, set by any job, ends: this gate's
+        429 pause, or one zia_rate keeps (an export's or another process's
+        refused read)."""
+        until = s._gate.pause_until
+        if s._key:
+            import zia_rate
+            left = zia_rate.paused_for(s._key, reads=True)
+            if left > 0:
+                until = max(until, time.time() + left)
+        return until
+    def held_for(s):
+        """Seconds left on the tenant's read hold (0 when there is none)."""
+        return max(0.0, s._held_until() - time.time())
+    def wait(s, stop=None):
+        """Wait for this request's turn. With `stop` (a callable: the run's
+        Stop), a stop seen while waiting, also during a long 429 pause,
+        ends the wait at once: False, and the request must not be sent."""
+        g = s._gate
         while True:
-            with s._lock:
+            if stop is not None and stop():
+                return False
+            held_until = s._held_until()   # outside the gate's lock: zia_rate takes its own
+            with g.lock:
                 now = time.time()
-                at = max(now, s._next, s._pause_until)
+                at = max(now, g.next, g.pause_until, held_until)
                 if at - now < 5:            # short waits are booked inside the lock
-                    s._next = at + s.min_gap
+                    g.next = at + s.min_gap
                     delay = at - now
                     break
-            time.sleep(1)                   # long pause (429): re-check every second
-        if delay > 0:
-            time.sleep(delay)
+            if not _nap(1, stop):           # long pause (429): re-check every second
+                return False
+        if delay > 0 and not _nap(delay, stop):
+            return False
+        return True
     def pause(s, seconds):
-        with s._lock:
-            s._pause_until = max(s._pause_until, time.time() + float(seconds))
+        """Hold every job on the tenant for `seconds`: this gate's Clients,
+        and through zia_rate the SDK's sessions and other processes too."""
+        g = s._gate
+        with g.lock:
+            g.pause_until = max(g.pause_until, time.time() + float(seconds))
+        if s._key:
+            import zia_rate
+            zia_rate.hold(float(seconds), key=s._key, reads=True)
 
 
 class Client:
@@ -239,8 +371,27 @@ class Client:
         s._c = OrderedDict()
         # Checks run on several threads at once: the cache and the token are shared.
         s._lock = threading.RLock()
-        s._limiter = _RateLimiter(s.MIN_GAP)
+        s._limiter = _RateLimiter(s.MIN_GAP, s.rate_key)   # shared with every Client of this tenant
         s.requests_made = 0
+        # The run's Stop. One predicate, _stopped(), is what every read and
+        # write consults (before sending, inside the pacer's waits, in
+        # retry back-offs, between fan-out parts and inside ZIA's rate-limit
+        # pacing). It is true once either
+        #  - stop() was called: the run is over for good (the assessment's
+        #    Stop, the browser gone, the checks in), or
+        #  - the stop hook `stop_check` (a callable, bound for the length of
+        #    one stoppable read by data_flow.stop_on) answers True.
+        s.stopped = threading.Event()
+        s.stop_check = None
+
+    def _stopped(s):
+        if s.stopped.is_set():
+            return True
+        fn = s.stop_check
+        try:
+            return bool(fn and fn())
+        except Exception:  # noqa: BLE001 — a broken hook never stops a run by itself
+            return False
 
     def _cache_set(s, k, v):
         with s._lock:
@@ -276,6 +427,10 @@ class Client:
     def _safe(s, text):
         """An error message with every secret masked."""
         return tenant_auth.mask_secrets(text, {"client_secret": s.sec, "password": s.password, "api_key": s.api_key})
+    def stop(s):
+        """End the run's reads: every later get() (a retry, a fan-out part,
+        a check still running) answers "run stopped" without a request."""
+        s.stopped.set()
     def close(s):
         """End a classic session (best effort); a OneAPI token just expires."""
         if s.legacy and s.token:
@@ -312,6 +467,8 @@ class Client:
             res = None
             for cand in candidates:
                 res = s.get("raw:" + cand, p)
+                if res is _STOPPED:
+                    return _STOPPED
                 tried.append(f"{cand} -> HTTP {res[1]}")
                 if res[1] not in (400, 404, 405):
                     break
@@ -325,23 +482,36 @@ class Client:
             if k in s._c:
                 s._c.move_to_end(k)
                 return s._c[k]
+        if s._stopped():
+            return _STOPPED
+        held = s._hourly_hold()
+        if held:
+            return held   # not cached: once the hour has reset the read is asked again
         # Self-healing: re-auth if token is stale or missing
         bad = s._ensure_token()
         if bad:
             return bad
         try:
-            s._limiter.wait()
-            r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
-            s.requests_made += 1
+            if not s._limiter.wait(s._stopped):
+                return _STOPPED
+            s.requests_made += 1   # every GET sent, whether it is answered, times out or is retried
+            import zia_rate
+            with zia_rate.stopping_on(s._stopped):   # a Stop also ends a wait for ZIA's rate limit: Cancelled, nothing sent
+                r = s.sess.get(f"{s.base}{real_ep}", params=p, timeout=s.TIMEOUT)
             if r.status_code == 200:
                 try: res = (r.json(), 200)
                 except Exception: res = ([], 200)
             elif r.status_code == 204:
                 res = ([], 204)
             elif r.status_code == 429:
+                hourly = _hourly_429(r)
+                if hourly:
+                    # ZIA's hourly limit: not retried. Every job on the tenant
+                    # is held for all of it, and this read gives up now.
+                    s._limiter.pause(hourly)
+                    return s._hourly_answer(hourly)
                 # Self-healing: honor Retry-After with cap, and hold every thread for it
-                try: wait = min(int(r.headers.get("Retry-After", 5)), 30)
-                except ValueError: wait = 5
+                wait = _retry_after(r.headers)
                 s._limiter.pause(wait)
                 if _retry < 3: return s.get(ep, p, _retry+1)
                 res = ({"error":"rate limited","status":429}, 429)
@@ -354,7 +524,8 @@ class Client:
             elif r.status_code in (502, 503, 504):
                 # Self-healing: transient server error, retry with backoff
                 if _retry < 2:
-                    time.sleep(2 ** _retry)
+                    if not _nap(2 ** _retry, s._stopped):
+                        return _STOPPED
                     return s.get(ep, p, _retry+1)
                 res = ({"error":"service unavailable","status":r.status_code}, r.status_code)
             else:
@@ -365,34 +536,49 @@ class Client:
             res = ({"error":"request timeout","status":0,"path":real_ep}, 0)
         except requests.exceptions.ConnectionError as e:
             if _retry < 2:
-                time.sleep(2 ** _retry)
+                if not _nap(2 ** _retry, s._stopped):
+                    return _STOPPED
                 return s.get(ep, p, _retry+1)
             res = ({"error":f"connection error: {str(e)[:100]}","status":0}, 0)
         except Exception as e:
+            import zia_rate
+            if isinstance(e, zia_rate.Cancelled):   # stopped while the request waited for ZIA's rate limit
+                return _STOPPED
             res = ({"error":str(e)[:200],"status":0}, 0)
         s._cache_set(k, res); return res
 
     def _fan_out(s, ep, p=None):
         """An endpoint the API only lists in parts (_FAN_OUT): every part,
         each item tagged with the part it came from, as one list. HTTP 200
-        when any part answered 200, otherwise the first part's status."""
+        when any part answered 200, otherwise the first part's status. A
+        part the tenant did not answer (rate limited, unavailable, timed
+        out) makes the whole read unanswered: a partial list is never
+        passed off as the tenant's whole configuration."""
         k = f"{ep}|{json.dumps(p or {},sort_keys=True)}"
         with s._lock:
             if k in s._c:
                 s._c.move_to_end(k)
                 return s._c[k]
-        items, answered, first = [], False, None
+        items, answered, first, missed = [], False, None, None
         for part, params, tag in _FAN_OUT[ep]:
-            d, c = s.get(part, dict(p or {}, **params))
+            if s._stopped():
+                return _STOPPED          # a list cut short is never kept as the whole list
+            res_part = s.get(part, dict(p or {}, **params))
+            if res_part is _STOPPED:
+                return _STOPPED
+            d, c = res_part
             if first is None:
                 first = (d, c)
+            if c in _UNANSWERED_CODES:
+                missed = (dict(d, part=part) if isinstance(d, dict) else {"error": "not answered", "status": c, "part": part}, c)
+                break   # the read is incomplete either way: no further part is asked for
             if c in (200, 204):
                 answered = True
                 for x in _ls(d):
                     if isinstance(x, dict):
                         x = dict(x); x.setdefault(*tag)
                     items.append(x)
-        res = (items, 200) if answered else first
+        res = missed or ((items, 200) if answered else first)
         s._cache_set(k, res)
         return res
 
@@ -401,6 +587,11 @@ class Client:
         real_ep = _resolve_ep(ep, s.customer_id, s.legacy)
         if real_ep is None:
             return _LEGACY_ZIA_ONLY
+        if s._stopped():
+            return _STOPPED
+        held = s._hourly_hold(write_ep=ep)
+        if held:
+            return held
         bad = s._ensure_token()
         if bad:
             return bad
@@ -408,25 +599,40 @@ class Client:
             kwargs = {"timeout": 30}
             if body is not None:
                 kwargs["json"] = body
-            if ep.startswith("/zia/"):
-                import zia_rate
-                zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
-            s._limiter.wait()
-            r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
-            s.requests_made += 1
+            import zia_rate
+            with zia_rate.stopping_on(s._stopped):   # a Stop also ends a wait for ZIA's rate limit: Cancelled, nothing sent
+                # The client's own pacer first, ZIA's write limits last: wait()
+                # counts the write and marks it paced, and the mark must still
+                # be fresh when the session sends it, or it is counted twice.
+                if not s._limiter.wait(s._stopped):
+                    return _STOPPED
+                if ep.startswith("/zia/"):
+                    zia_rate.wait(method, ep, key=s.rate_key)   # ZIA's per-endpoint write limits, for this tenant
+                s.requests_made += 1   # every request sent, answered or not
+                r = s.sess.request(method, f"{s.base}{real_ep}", **kwargs)
             if r.status_code in (200, 201):
                 try: return (r.json(), r.status_code)
                 except Exception: return ({}, r.status_code)
             if r.status_code == 204:
                 return ({}, 204)
-            if r.status_code == 429 and _retry < 3:
-                time.sleep(min(int(r.headers.get("Retry-After", 5)), 30))
+            if r.status_code == 429:
+                hourly = _hourly_429(r)
+                if hourly:
+                    s._limiter.pause(hourly)   # ZIA's hourly limit: every job on the tenant is held, nothing retried
+                    return s._hourly_answer(hourly)
+                wait = _retry_after(r.headers)
+                s._limiter.pause(wait)   # hold every thread and job on this tenant, not just this one
+                if _retry >= 3:
+                    return ({"error": "rate limited", "status": 429}, 429)
+                if not _nap(wait, s._stopped):
+                    return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             if r.status_code == 401 and _retry < 2:
                 s.token = None
                 return s._write(method, ep, body, _retry + 1)
             if r.status_code in (502, 503, 504) and _retry < 2:
-                time.sleep(2 ** _retry)
+                if not _nap(2 ** _retry, s._stopped):
+                    return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             return ({"error": r.text[:200] if r.text else "error", "status": r.status_code}, r.status_code)
         except requests.exceptions.Timeout:
@@ -434,11 +640,32 @@ class Client:
             return ({"error": "request timeout", "status": 0}, 0)
         except requests.exceptions.ConnectionError as e:
             if _retry < 2:
-                time.sleep(2 ** _retry)
+                if not _nap(2 ** _retry, s._stopped):
+                    return _STOPPED
                 return s._write(method, ep, body, _retry + 1)
             return ({"error": f"connection error: {str(e)[:100]}", "status": 0}, 0)
         except Exception as e:
+            import zia_rate
+            if isinstance(e, zia_rate.Cancelled):   # stopped while the request waited for ZIA's rate limit
+                return _STOPPED
             return ({"error": str(e)[:200], "status": 0}, 0)
+
+    @staticmethod
+    def _hourly_answer(seconds):
+        mins = max(1, int(round(float(seconds) / 60)))
+        return ({"error": f"rate limited: ZIA's hourly limit is reached; nothing more is sent to this tenant for about {mins} min",
+                 "status": 429}, 429)
+
+    def _hourly_hold(s, write_ep=None):
+        """The rate-limited answer, given without asking the tenant, while a
+        hold longer than RETRY_AFTER_CAP is on it (ZIA's hourly limit, seen
+        by any job or process); None when the request may go out. A write
+        to ZIA also gives up during a long hold on writes."""
+        left = s._limiter.held_for()
+        if write_ep is not None and str(write_ep).startswith("/zia/") and s.rate_key:
+            import zia_rate
+            left = max(left, zia_rate.paused_for(s.rate_key))
+        return s._hourly_answer(left) if left > RETRY_AFTER_CAP else None
 
     def post(s, ep, body=None):   return s._write("POST", ep, body)
     def put(s, ep, body=None):    return s._write("PUT", ep, body)

@@ -64,7 +64,9 @@ def test_static_workspace_shapes(tmp_path):
     assert 'pattern = "\\\\bA\\\\d{3}\\\\b"' in d                              # regex backslashes doubled
     assert "proximity = 100" in _sp(d) and "proximity_enabled_for_custom_dictionary = true" in d
     assert 'dict_template_id = data.zia_dlp_dictionaries.social_security_numbers_us.id' in _sp(d)
-    assert "[DLP-Check baseline tfpack v2.1] Terraform-managed." in d
+    # No assessor named: the tag takes the required `assessor` variable, never "DLP-Check" (user rule 2).
+    assert "[${var.assessor} baseline tfpack v2.1] Terraform-managed." in d and "DLP-Check baseline" not in d
+    assert 'variable "assessor"' in files["variables.tf"]
 
     e = files["engines.tf"]
     assert ('engine_expression = "((D${zia_dlp_dictionaries.alpha_dict.id}.S > 0) OR '
@@ -315,7 +317,7 @@ def test_a_long_engine_description_is_clamped_to_what_zia_accepts(tmp_path):
     assert m, engines
     text = json.loads('"' + m.group(1) + '"')
     assert len(long_text.encode()) > ENGINE_DESCRIPTION_MAX >= len(text.encode()), len(text.encode())
-    assert "[DLP-Check" in text, "the provenance tag survives the clamp"
+    assert "[${var.assessor} baseline clamp" in text, "the provenance tag survives the clamp"
 
 
 def test_the_committed_lock_files_cover_windows_mac_and_linux():

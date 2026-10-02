@@ -157,7 +157,8 @@ def test_custom_destinations_hostname_bypass_pac_direct_and_mac_contractor():
 def test_data_flow_api_page_trace_and_export(monkeypatch):
     monkeypatch.setattr(srv, "_build_client", lambda req: _client())
     c = TestClient(srv.app)
-    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    body = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret",
+            **df.full_path_scope_request()}   # everything the map reads, ticked on the Scope page
     r = c.post("/api/report/data-flow", json=body)
     assert r.status_code == 200, r.text[:300]
     rep = r.json()
@@ -202,10 +203,11 @@ def test_no_profile_for_the_platform_still_traces_and_numeric_zcc_codes_are_read
 
 def test_data_flow_endpoint_names_a_tracer_failure(monkeypatch):
     monkeypatch.setattr(srv, "_build_client", lambda req: _client())
-    def boom(client, dests, plat):
+    def boom(client, dests, plat, **kw):
         raise KeyError("platform")
     monkeypatch.setattr(df, "generate_data_flow_report", boom)
     import dlp_api_server as s2
     c = TestClient(s2.app)
-    r = c.post("/api/report/data-flow", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret"})
+    r = c.post("/api/report/data-flow", json={"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "secret-secret-secret",
+                                              **df.full_path_scope_request()})
     assert r.status_code == 500 and "KeyError" in r.json()["detail"] and "server.log" in r.json()["detail"]

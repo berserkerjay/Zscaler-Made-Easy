@@ -715,3 +715,33 @@ def test_the_migration_is_handed_over_as_a_terraform_workspace_following_terrafo
     assert blocked.status_code == 409 and "Blocked" in blocked.json()["detail"]["cause"]
     page = c.get("/report/vendor").text
     assert 'id="vmDlWs"' in page and "/api/vendor-migrate/workspace" in page and "Download Terraform workspace (.zip)" in page
+
+
+def _strings(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _strings(v)
+
+
+def test_nothing_terraform_pushes_to_the_tenant_names_dlp_check():
+    """Rule (2): pushed object descriptions never say "DLP-Check". Dictionaries and engines
+    without a reviewed description fall back to a default that names only the source export."""
+    snap = vm.inventory_bytes(RICH)
+    r = _page().post("/api/vendor-migrate/compile", json={"vendor": "symantec", "export": _upload("policies.xml", RICH),
+                                                         "decisions": _multi_decisions(snap)})
+    assert r.status_code == 200, r.text
+    res = r.json()["terraform"]["resource"]
+    descs = [o["description"] for kind in ("zia_dlp_dictionaries", "zia_dlp_engines") for o in res[kind].values()]
+    assert descs and all(d == "Migrated from Symantec DLP (Broadcom) export " + snap["sha256"][:12] + "." for d in descs), descs
+    # Every attribute of every resource terraform apply would create, on every channel, stays unbranded.
+    assert not [s for s in _strings(res) if "dlp-check" in s.lower()]
+    # Every vendor's default takes the same path.
+    for vid in vm.VENDORS:
+        snap2 = vm.inventory_bytes(EXPORT)
+        tf, _rep = vm.compile_export(snap2, _decisions(snap2), vendor_id=vid)
+        assert not [s for s in _strings(tf["resource"]) if "dlp-check" in s.lower()], vid

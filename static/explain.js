@@ -20,9 +20,9 @@
   X.connect = {
     group: 'Start', name: 'Connect to the tenant (sign-in details, profiles, Authenticate)', href: '/',
     what: 'Where you type the customer\'s cloud, vanity domain, API client ID and secret (or the classic ZIA API sign-in), then click Authenticate. Nothing else lives here. Tenant profiles save those details (and the history) per customer.',
-    why: 'Nothing works until the app can read the tenant. Authenticate proves the credentials work and shows what the app can see, so a "no results" later is never a mystery.',
+    why: 'Nothing works until the app can sign in to the tenant. Authenticate proves the credentials work and does nothing else: it reads nothing from the tenant, because every read counts against the tenant\'s ZIA API rate limit. The tenant is read only when you run an assessment, and only for what you put in scope.',
     when: 'First thing in every engagement. Save a profile so the next visit fills itself in and keeps history.',
-    get: 'Connected: N dictionaries, N engines, N rules, or a plain reason why not (wrong secret, TLS inspection, missing role).',
+    get: 'Signed in (the tenant\'s configuration is not read), or a plain reason why not (wrong secret, TLS inspection). Signing in reads nothing, so a role that cannot read DLP shows up only when the assessment runs, as checks the client was not permitted to run.',
     next: 'Open Scope assessment: mark the channels the customer owns, choose what to check and which frameworks to map to, name the organisation and assessor, and click Run assessment.',
   };
   X.results = {
@@ -43,7 +43,7 @@
   };
   X.path = {
     group: 'Find the gaps', name: 'Path analyzer', href: '/report/path',
-    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named.',
+    what: 'Type a URL, a hostname or an IP address and see, live from the tenant as it is right now, the path a user\'s traffic takes to it: Client Connector app and forwarding profile, PAC, Cloud App Control, URL filtering, SSL inspection, File Type Control and DLP, with one verdict in plain words and every point that blocks or impacts the traffic named. It reads only what is in scope on the Scope page; a part out of scope says Not in scope, never \"no rule\".',
     why: 'When a customer asks "what happens if a user goes to this site?" the honest answer is in a dozen policies. This page reads them all and answers in one line, naming the rule or profile that decides it.',
     when: 'While troubleshooting a "Zscaler blocks my site" or "DLP did not catch it" ticket, before promising a control will apply, and when showing a customer where a destination is blind.',
     get: 'The verdict (where the traffic stops or that it reaches the destination, whether it is decrypted and inspected), the objects that block or impact it with a fix each, the hop-by-hop path, the ZIA categories for the destination, and the assumptions, plus a JSON export.',
@@ -219,7 +219,7 @@
   };
   X.beacon = {
     group: 'Reference', name: 'Beacon: SDK, API & Terraform changes', href: '/report/beacon',
-    what: 'A watch on the three things outside this app that can silently break it: the Zscaler Python SDK (a new release, and whether it changes a module the app calls), the ZIA API (the SDK\'s machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now, and says what changed since the last run. Optionally it reads every endpoint the app uses from one tenant, GET only, and says which ones now answer differently.',
+    what: 'A watch on the three things outside this app that can silently break it: the Zscaler Python SDK (a new release, and whether it changes a module the app calls), the ZIA API (the SDK\'s machine-readable service definition, the API reference and the help-center pages) and the zscaler/zia Terraform provider (its version against the pin, its schema and docs). It runs on a timer while this server runs and whenever you click Run now, and says what changed since the last run. Optionally it reads from one tenant only the endpoints that belong to what is in scope on the Scope page (the ticked scopes; for every scope only the channels marked Zscaler, exactly as the assessment reads them; every request counts against the tenant\'s ZIA API rate limit), GET only, and says which ones now answer differently.',
     why: 'When Zscaler moves an endpoint, renames a field or ships an SDK that changes a request body, a deploy or a check fails in front of the customer. Beacon says so first, in plain words, with what to do.',
     when: 'Glance at it before an engagement and after a Zscaler release; run the tenant API watch when a check starts answering 403 or 404 and you want to know whether the endpoint or the permission moved.',
     get: 'A "Changed since last run" list (versions that moved, drift that is new or cleared, pages that changed, tenant endpoints whose answer changed), the SDK, API and Terraform detail, and the last 30 runs.',

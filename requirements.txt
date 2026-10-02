@@ -6,7 +6,18 @@ rich>=13.0.0
 zscaler-sdk-python>=1.9.0
 mcp[cli]>=1.2.0
 python-docx>=1.0.0
-pyjwt[crypto]>=2.10.1
+pyjwt[crypto]>=2.15.0  # 2.15.0 fixes CVE-2026-101918 (nested-payload RecursionError)
 # Transitive pins raised for the image scan (Trivy HIGH):
 msgpack>=1.2.1
 setuptools>=78.1.1
+# Windows-only dependencies that mcp and typer declare behind markers. Listed here so
+# the universal lock (make lock) pins them by hash; without them a Windows
+# install from requirements.lock cannot import the MCP server (pywintypes).
+pywin32>=311; sys_platform == "win32"
+colorama>=0.4.6; sys_platform == "win32"
+# The OS credential store for remembered profile secrets (tenant_profiles.py):
+# Windows Credential Manager and the macOS Keychain. Pinned by hash in the lock
+# like everything else, so the secure option needs no unpinned pip install.
+# Not on Linux: the container has no Secret Service backend, so a remembered
+# secret stays in the owner-only profile file there.
+keyring>=25.7.0; sys_platform == "win32" or sys_platform == "darwin"

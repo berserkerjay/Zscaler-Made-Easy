@@ -63,7 +63,93 @@ def _read() -> Dict[str, Any]:
         return {"version": 1, "profiles": {}}
     data.setdefault("version", 1)
     data.setdefault("profiles", {})
+    if _upgrade_classic_profiles(data):
+        _write(data)
     return data
+
+
+def _is_classic(p: Dict[str, Any]) -> bool:
+    try:
+        import tenant_auth
+        return tenant_auth.method_of(p) == tenant_auth.LEGACY
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def classic_leaks(p: Dict[str, Any]) -> set:
+    """What must never name a classic-API profile (user rule 3): its admin
+    login and a vanity domain left in it, as typed and as slugs."""
+    out = set()
+    for v in (p.get("username"), p.get("vanity_domain")):
+        v = str(v or "").strip().lower()
+        if v:
+            out.update({v, slugify(v)})
+    return out
+
+
+def classic_name_leaks(p: Dict[str, Any], name: Any) -> bool:
+    """True when `name` is a classic-API profile's admin login or stale
+    vanity domain (as typed or slugified)."""
+    n = str(name or "").strip().lower()
+    leaks = classic_leaks(p)
+    return bool(n) and (n in leaks or slugify(n) in leaks)
+
+
+def _classic_default_name(p: Dict[str, Any]) -> str:
+    import tenant_auth
+    return tenant_auth.record_label({"auth_method": tenant_auth.LEGACY, "cloud": p.get("cloud") or ""})
+
+
+def _upgrade_classic_profiles(data: Dict[str, Any]) -> bool:
+    """Classic-API profiles saved before this release were named, and their
+    id slugified, from the admin login (or a vanity domain left in the
+    form). Rename them to 'classic API (<cloud>)' and move them, with their
+    remembered secrets and the proposal queue kept under the old id, to an
+    id derived from that name. Returns whether anything changed."""
+    changed = False
+    profiles = data["profiles"]
+    for pid in list(profiles):
+        p = profiles[pid]
+        if not isinstance(p, dict) or not _is_classic(p):
+            continue
+        if classic_name_leaks(p, p.get("name")):
+            p["name"] = _classic_default_name(p)
+            changed = True
+        if not classic_name_leaks(p, pid):
+            continue
+        base = slugify(p.get("name") if not classic_name_leaks(p, p.get("name")) else _classic_default_name(p))
+        new, n = base, 2
+        while new in profiles or classic_name_leaks(p, new):
+            new, n = f"{base}-{n}", n + 1
+        secrets: Dict[str, str] = {}
+        for field in SECRET_FIELDS:
+            if p.get(field) == KEYRING_MARK:
+                sec = _load_secret(pid, field)
+                if sec is None:     # the credential store cannot be read now: keep the id rather than lose the secret
+                    secrets = {}
+                    new = ""
+                    break
+                secrets[field] = sec
+        if not new:
+            continue
+        for field, sec in secrets.items():
+            p[field] = _store_secret(new, sec, field)
+            if p[field] == KEYRING_MARK:
+                _forget_secret(pid, KEYRING_MARK, field)
+        p["id"] = new
+        profiles[new] = p
+        del profiles[pid]
+        changed = True
+        others = {str(x).strip().lower() for q in profiles.values() if q is not p for x in (q.get("id"), q.get("vanity_domain")) if x}
+        if not p.get("vanity_domain") and not p.get("proposal_queue_migrated") and pid.lower() not in others:
+            # Before this release the loop queued such a profile's
+            # proposals under its id (unless another profile claims it).
+            try:
+                import proposals
+                proposals.rekey(pid, new)
+            except Exception:  # noqa: BLE001
+                pass
+    return changed
 
 
 def _write(data: Dict[str, Any]) -> None:
@@ -91,6 +177,7 @@ def masked(p: Dict[str, Any], *, with_history: bool = True) -> Dict[str, Any]:
     # "Remembered" means what the profile's sign-in needs: the client secret,
     # or both the password and the API key of the classic sign-in.
     out["has_secret"] = (bool(p.get("password") and p.get("api_key")) if out["auth_method"] == "legacy" else bool(p.get(SECRET_FIELD)))
+    out["proposal_queue_migrated"] = bool(p.get("proposal_queue_migrated"))
     hist = list(p.get("history") or [])
     out["last_assessed"] = hist[-1] if hist else None
     if with_history:
@@ -107,11 +194,12 @@ def list_profiles() -> List[Dict[str, Any]]:
 
 
 # ── Secret storage ────────────────────────────────────────────────────
-# A remembered secret goes to the operating system's credential store when
-# the optional `keyring` package is installed (Windows Credential Manager /
-# DPAPI, macOS Keychain, Secret Service on Linux); the profile file then
-# holds only a marker. Without keyring it is stored in the owner-only
-# profile file, as before.
+# A remembered secret goes to the operating system's credential store
+# through the `keyring` package (Windows Credential Manager / DPAPI, macOS
+# Keychain); the profile file then holds only a marker. keyring is pinned by
+# hash in requirements.lock for Windows and macOS only; on Linux and in the
+# container it is not installed and the secret is stored in the owner-only
+# profile file, as it is when the store refuses it.
 KEYRING_SERVICE = "dlp-check"
 KEYRING_MARK = "@keyring"
 
@@ -219,6 +307,20 @@ def delete(profile_id: str) -> bool:
         for field in SECRET_FIELDS:
             _forget_secret(profile_id, p.get(field), field)
         del data["profiles"][profile_id]
+        _write(data)
+        return True
+
+
+def mark_proposal_queue_migrated(profile_id: str) -> bool:
+    """Record that a classic-API profile's pre-release proposal queue was
+    looked at (continuous_eval._proposal_key_migrated), so it is moved at
+    most once."""
+    with _LOCK:
+        data = _read()
+        p = data["profiles"].get(profile_id)
+        if not p:
+            return False
+        p["proposal_queue_migrated"] = True
         _write(data)
         return True
 

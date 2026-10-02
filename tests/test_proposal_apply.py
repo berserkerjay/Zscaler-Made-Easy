@@ -109,3 +109,57 @@ def test_http_routes_gate_writes_and_confirmation(tmp_path, monkeypatch):
     r = c.post(f"/api/proposals/acme/{promo['id']}/apply", json={**creds, "confirm": True, "by": "jane"})
     assert r.status_code == 200 and r.json()["status"] == "applied" and r.json()["results"][0]["verified"]
     assert c.post(f"/api/proposals/acme/{promo['id']}/apply", json={}).status_code == 400, "no credentials: explained, not attempted"
+
+
+# --- the proposal's tenant and the classic API (F2-1, F2-2, FE2-2) -----------------
+
+def _routes(tmp_path, monkeypatch, tenant):
+    _store(tmp_path, monkeypatch)
+    promo = _queue(tenant)["promote_rule:rule:web:Old-Monitor"]
+    pr.decide(tenant, promo["id"], "approve", confirm="I UNDERSTAND")
+    c = TestClient(srv.app)
+    c.cookies.set(security.UI_TOKEN_COOKIE, security.ui_token())
+    monkeypatch.setattr(srv, "writes_enabled", lambda: True)
+    return c, promo
+
+
+def test_a_proposal_is_never_previewed_applied_or_rolled_back_on_another_tenant(tmp_path, monkeypatch):
+    c, promo = _routes(tmp_path, monkeypatch, "acme")
+    built = []
+    globex = _client()
+
+    def build(creds):
+        built.append(creds.get("vanity_domain"))
+        return globex
+    monkeypatch.setattr(srv, "_build_sdk_client", build)
+    other = {"cloud": "production", "vanity_domain": "globex", "client_id": "abc123456789", "client_secret": "secret-secret-secret"}
+    for step, body in (("preview", other), ("apply", {**other, "confirm": True}), ("rollback", {**other, "confirm": True})):
+        r = c.post(f"/api/proposals/acme/{promo['id']}/{step}", json=body)
+        assert r.status_code == 409, (step, r.text)
+        assert "globex" not in r.json()["detail"] or "another tenant" in r.json()["detail"]
+    assert built == [], "the other tenant is never signed in to"
+    assert globex.zia.dlp_web_rules.updated == [] and pr.get("acme", promo["id"])["status"] == "approved"
+    # The proposal's own tenant (any case in the URL) still works.
+    r = c.post(f"/api/proposals/ACME/{promo['id']}/preview", json={**other, "vanity_domain": "acme"})
+    assert r.status_code == 200 and built == ["acme"]
+
+
+def test_a_classic_api_tenant_can_preview_apply_and_roll_back_its_proposals(tmp_path, monkeypatch):
+    import tenant_fingerprint
+    legacy = {"auth_method": "legacy", "cloud": "zscalertwo", "username": "admin@corp.example",
+              "password": "pw-pw-pw-pw", "api_key": "a" * 12, "vanity_domain": "", "client_id": "", "client_secret": ""}
+    key = tenant_fingerprint.proposal_key(legacy)
+    assert key.startswith("classic-")
+    c, promo = _routes(tmp_path, monkeypatch, key)
+    client = _client()
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: client)
+    r = c.post(f"/api/proposals/{key}/{promo['id']}/preview", json=legacy)
+    assert r.status_code == 200 and r.json()["steps"][0]["to"] == "CONFIRM", r.text
+    r = c.post(f"/api/proposals/{key}/{promo['id']}/apply", json={**legacy, "confirm": True})
+    assert r.status_code == 200 and r.json()["status"] == "applied", r.text
+    r = c.post(f"/api/proposals/{key}/{promo['id']}/rollback", json={**legacy, "confirm": True})
+    assert r.status_code == 200 and r.json()["status"] == "rolled_back", r.text
+    # Another classic login is another tenant.
+    other = dict(legacy, username="admin@other.example")
+    assert c.post(f"/api/proposals/{key}/{promo['id']}/preview", json=other).status_code == 409
+    assert c.post(f"/api/proposals/{key}/{promo['id']}/preview", json=dict(legacy, password="")).status_code == 400

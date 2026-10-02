@@ -119,6 +119,12 @@ _BY_BAD = re.compile(r"[\[\]\x00-\x1f\x7f]+")
 # A name that begins like the tool's own legacy tag ("DLP-Check pack alpha")
 # would put the literal "[DLP-Check pack alpha" marker into another pack's tag.
 _BY_FORGED = re.compile(r"(?i)^dlp-check(?=\s+(?:pack|baseline)\b)")
+# The tool's own name in any spelling ("DLP-Check", "dlp check", "DLPCheck",
+# "DLP_Check", a Unicode dash) is never an assessor's name (user rule 2). One
+# rule for the API (dlp_api_server._require_assessor), the Terraform CLI and
+# the workspace's var.assessor validation (the same pattern in RE2/HCL).
+TOOL_NAME_PATTERN = r"(?i)dlp[\W_]*check"
+TOOL_NAME_RE = re.compile(TOOL_NAME_PATTERN)
 _TAG_SUFFIX = (r"(?P<suffix>(?: Measured on every journey check, never overwritten\.)?(?: Deployed DISABLED; enable once reviewed\.)?"
                r"(?: Terraform-managed\.?)?)")
 _TAG_VER = r"(?: v(?P<ver>[^\[\]\r\n]*))?"     # versions are free text (pack.json), spaces included
@@ -147,11 +153,18 @@ def attribution(assessor: Any) -> str:
     return s or DEFAULT_BY
 
 
+def is_tool_name(assessor: Any) -> bool:
+    """Whether a would-be assessor name names the tool (TOOL_NAME_RE)."""
+    return bool(TOOL_NAME_RE.search(" ".join(_BY_BAD.sub(" ", str(assessor or "")).split())))
+
+
 def assessor_name(assessor: Any) -> str:
     """The sanitized assessor name a record stores: attribution() of a given
-    name, or blank when none was given (the tag then says DLP-Check)."""
+    name, or blank when none was given or the name is the tool's own
+    (is_tool_name) — every pack push then refuses, and a Terraform workspace
+    takes the required `assessor` variable."""
     given = " ".join(_BY_BAD.sub(" ", str(assessor or "")).split())
-    return attribution(assessor) if given else ""
+    return attribution(assessor) if given and not is_tool_name(given) else ""
 
 
 def _counts(m: Any, known: Optional[Set[str]]) -> bool:
@@ -535,11 +548,15 @@ class _NotRead(Exception):
     """A read the caller's scope leaves out: not attempted, not an error."""
 
 
-def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None) -> Dict[str, Any]:
+def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = None,
+                 only_channels: bool = False) -> Dict[str, Any]:
     """Read everything the plan needs from the tenant: dictionaries,
     engines and web DLP rules always; other channels' rules and their
     prerequisites (SaaS tenants, notification templates, labels) only
     when `need` (see pack_channels.needs) says the packs use them.
+    `only_channels` (the assessment's journey, limited to the channels in
+    scope) reads the Web DLP rules only when `need` names the web channel:
+    an unticked channel is never read.
     Never raises: each failure is recorded and `reachable` reflects it.
     `log` gets one line per read (a full read is many API calls and can
     take a minute; it must never look like a hang)."""
@@ -596,10 +613,13 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
         snap["errors"].append(f"engines: {str(e)[:200]}")
 
     # need["web_rules"] False (a scoped read with Inline Web DLP out of
-    # scope) leaves the Web DLP rules unread; every other caller reads them.
-    _log("Reading the tenant: Web DLP rules…" if (need or {}).get("web_rules", True) else "Web DLP rules: not in scope, not read.")
+    # scope) leaves the Web DLP rules unread, and so does `only_channels`
+    # when `need` does not name the web channel; every other caller reads them.
+    read_web = bool((need or {}).get("web_rules", True)) and not (
+        only_channels and need is not None and pc.WEB not in (need.get("channels") or ()))
+    _log("Reading the tenant: Web DLP rules…" if read_web else "Web DLP rules: not in scope, not read.")
     try:
-        if not (need or {}).get("web_rules", True):
+        if not read_web:
             raise _NotRead()
         rules, err = _nx(zia.dlp_web_rules.list_rules())
         if err:
@@ -621,7 +641,7 @@ def fetch_tenant(client, need: Optional[Dict[str, Any]] = None, log: LogFn = Non
             })
         snap["rules"].sort(key=lambda r: r["order"])
     except _NotRead:
-        pass
+        snap["not_read"] = ["web DLP rules"]
     except Exception as e:  # noqa: BLE001
         snap["unreadable"]["web DLP rules"] = str(e)[:200]
         snap["errors"].append(f"web DLP rules: {str(e)[:200]}")
@@ -1520,7 +1540,109 @@ def _public_item(item: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Stop during a tenant read
+# ---------------------------------------------------------------------------
+
+class ReadsStopped(BaseException):
+    """The operator clicked Stop: the next tenant read is not sent. A
+    BaseException, so the readers' "one failed list is recorded and the
+    read goes on" handlers (except Exception) do not swallow it and log
+    more reads: it ends the whole read, and the caller says it stopped."""
+
+
+_PLAIN = (str, bytes, int, float, bool, type(None), dict, list, tuple, set)
+
+
+class _StopReads:
+    """The SDK client (or any part of it) with every call checked against
+    `should_stop` first: once it says so, the call is not made
+    (ReadsStopped). While a call runs, zia_rate.stopping_on ends a wait
+    for ZIA's rate limit and a paced session sends nothing more."""
+
+    def __init__(self, target: Any, should_stop: Callable[[], bool]):
+        object.__setattr__(self, "_t", target)
+        object.__setattr__(self, "_stop", should_stop)
+
+    def __getattr__(self, name: str) -> Any:
+        val = getattr(self._t, name)
+        if isinstance(val, _PLAIN):
+            return val
+        if callable(val) and not isinstance(val, type):
+            should_stop = self._stop
+
+            def call(*a: Any, **k: Any) -> Any:
+                if should_stop():
+                    raise ReadsStopped(STOPPED_READ)
+                import zia_rate
+                try:
+                    with zia_rate.stopping_on(should_stop):
+                        return val(*a, **k)
+                except zia_rate.Cancelled:
+                    raise ReadsStopped(STOPPED_READ) from None
+            return call
+        return _StopReads(val, self._stop)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self._t, name, value)
+
+
+STOPPED_READ = "You clicked Stop, so nothing more was read from or sent to the tenant."
+
+
+def stop_reads(client: Any, cancel: Any) -> Any:
+    """`client` with Stop (`cancel`, a threading.Event) honoured before
+    every tenant read made through it (ReadsStopped); `client` itself
+    when there is no cancel."""
+    if cancel is None:
+        return client
+
+    def should_stop() -> bool:
+        try:
+            return bool(cancel.is_set())
+        except Exception:  # noqa: BLE001 — a broken event never stops a read by itself
+            return False
+    return _StopReads(client, should_stop)
+
+
+def stopped_report(reason: str = STOPPED_READ) -> Dict[str, Any]:
+    """The plan of a read Stop ended: nothing planned, nothing to write."""
+    return {"status": "stopped", "stopped": reason, "blockers": [reason], "items": [], "warnings": [], "impacts": [],
+            "summary": {}, "packs": [], "plan_hash": "", "tenant": {"reachable": False}}
+
+
 def preflight(
+    client,
+    packs: Sequence[Dict[str, Any]],
+    *,
+    use_rank_0: bool = False,
+    apply_tweaks: bool = True,
+    writes_enabled: Optional[bool] = None,
+    restore_drift: bool = False,
+    channel_targets: Optional[Dict[str, Sequence[str]]] = None,
+    tenant_cache: Optional[Dict[str, Any]] = None,
+    read_scope: Optional[Dict[str, Any]] = None,
+    log: LogFn = None,
+    cancel: Optional[threading.Event] = None,
+) -> Dict[str, Any]:
+    """preflight_plan, with the operator's Stop (`cancel`) honoured before
+    every tenant read: once Stop is clicked nothing more is read and the
+    plan comes back with status "stopped" (stopped_report)."""
+    kw = dict(use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled, restore_drift=restore_drift,
+              channel_targets=channel_targets, tenant_cache=tenant_cache, read_scope=read_scope, log=log)
+    if cancel is None:
+        return preflight_plan(client, packs, **kw)
+    if cancel.is_set():
+        return stopped_report()
+    try:
+        return preflight_plan(stop_reads(client, cancel), packs, **kw)
+    except ReadsStopped:
+        if log:
+            log(f"STOPPED — {STOPPED_READ}")
+        return stopped_report()
+
+
+def preflight_plan(
     client,
     packs: Sequence[Dict[str, Any]],
     *,
@@ -1578,7 +1700,8 @@ def preflight(
     if tenant_cache is not None:
         import copy
         if tenant_cache.get("snapshot") is None:
-            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need, log=log)
+            tenant_cache["snapshot"] = fetch_tenant(client, tenant_cache.get("need") or need, log=log,
+                                                    only_channels=bool(tenant_cache.get("only_channels")))
         tenant = copy.deepcopy(tenant_cache["snapshot"])
     else:
         tenant = fetch_tenant(client, need, log=log)
@@ -2065,18 +2188,22 @@ def apply(
     with zia_rate.using_client(client), ops.run_scope(cancel), ops.audited_run("deploy", client, plan_hash=plan_hash, cancel=cancel) as run:
         run["result"] = _apply(client, packs, plan_hash=plan_hash, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, verify=verify,
                                writes_enabled=writes_enabled, restore_drift=restore_drift, channel_targets=channel_targets,
-                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor)
+                               activate=activate, log=log, settle_seconds=settle_seconds, assessor=assessor, cancel=cancel)
         return run["result"]
 
 
 def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_0: bool, apply_tweaks: bool, verify: bool,
            writes_enabled: Optional[bool], restore_drift: bool, channel_targets: Optional[Dict[str, Sequence[str]]],
-           activate: bool, log: LogFn, settle_seconds: float, assessor: str = "") -> Dict[str, Any]:
+           activate: bool, log: LogFn, settle_seconds: float, assessor: str = "",
+           cancel: Optional[threading.Event] = None) -> Dict[str, Any]:
     _log = log or (lambda m: None)
     started = time.time()
     _log("Checking the approved plan against the tenant as it is now…")
+    # Stop also ends this read: nothing more is read, and nothing is written.
     report = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,
-                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log)
+                       restore_drift=restore_drift, channel_targets=channel_targets, log=_log, cancel=cancel)
+    if report.get("status") == "stopped":
+        return {"status": "stopped", "stopped": report["stopped"], "results": [], "report": public_report(report)}
     if writes_enabled is False:
         return {"status": "blocked", "blockers": ["The server is in read-only mode. Enable write mode in Deploy Policy Packs where the page "
                                                   "offers it; otherwise " + __import__("security").write_enable_hint() + ". Then deploy."],
@@ -2413,7 +2540,11 @@ def _apply(client, packs: Sequence[Dict[str, Any]], *, plan_hash: str, use_rank_
     # must be found; anything the fresh read would still create is missing.
     read_check: Dict[str, Any] = {"read": False, "clean": False, "expected": 0, "present": 0, "missing": [], "activation_status": settled}
     fresh: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    if wrote or counts.get("reused"):
+    if not wrote and ops.stop_reason():
+        # Stopped before anything was written: nothing to verify, and Stop
+        # means no further read either.
+        _log("Nothing was written before the run stopped, so the tenant is not read back.")
+    elif wrote or counts.get("reused"):
         _log("Reading the tenant back to verify the deployment…")
         try:
             again = preflight(client, packs, use_rank_0=use_rank_0, apply_tweaks=apply_tweaks, writes_enabled=writes_enabled,

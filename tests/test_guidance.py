@@ -111,8 +111,20 @@ def test_matrix_seed_parse_and_refresh(tmp_path, monkeypatch):
     assert by["Salesforce"]["capabilities"] == ["DLP", "Malware", "SSPM"] and by["Notion"]["type"] == "OFLCASB_DLP_COLLAB"
     assert by["ChatGPT Enterprise"]["type"] == "OFLCASB_DLP_GENAI"
     # A refresh that parses fewer applications than the seed keeps the seed.
-    r = sm.refresh(lambda url: (PAGE.encode(), 200, ""), pages=["https://help.zscaler.com/x"])
+    # help.zscaler.com pages are an empty shell: the table is read from the
+    # help center's article API (fetch-data), never from the page itself.
+    asked = []
+    art = json.dumps({"data": {"info": {"status": 200}, "body": {"title": "Capabilities", "content": PAGE}}}).encode()
+    r = sm.refresh(lambda url: asked.append(url) or ((art, 200, "") if "/zapi/fetch-data?" in url else (b"<html>shell</html>", 200, "")),
+                   pages=["https://help.zscaler.com/x"])
     assert r["ok"] and r["applications"] == 9 and "Notion" in r["new_since_seed"]
+    assert len(asked) == 1 and "/zapi/fetch-data?url_alias=/x&" in asked[0]
+    # The shell (or any answer that is not an article) is not parsed.
+    r = sm.refresh(lambda url: (PAGE.encode(), 200, ""), pages=["https://help.zscaler.com/x"])
+    assert not r["ok"] and "not an article" in r["errors"][0]
+    # Another host is read as the page itself.
+    r = sm.refresh(lambda url: (PAGE.encode(), 200, ""), pages=["https://example.com/x"])
+    assert r["ok"] and r["applications"] == 9
     assert sm.load()["refreshed_from_pages"] and any(a["name"] == "Notion" for a in sm.load()["applications"])
     r = sm.refresh(lambda url: (None, 403, "forbidden"), pages=["https://help.zscaler.com/x"])
     assert not r["ok"] and "forbidden" in r["errors"][0]

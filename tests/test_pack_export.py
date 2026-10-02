@@ -25,6 +25,9 @@ import pack_library as pl
 from test_pack_channels import TENANTS, FakeCasbRules, FakeChannelRules, make_client
 from test_pack_deploy import Obj, items_by
 
+# The Scope page with DLP ticked and every DLP channel on Zscaler (export reads only what is in scope).
+ALL_DLP_IN_SCOPE = {"scopes": ["dlp"], "channels": {"web_dlp": "zscaler", "endpoint_dlp": "zscaler", "saas_casb": "zscaler", "email_dlp": "zscaler"}, "from_page": True}
+
 SECRET = "secret-secret-secret"
 
 
@@ -363,7 +366,7 @@ def test_the_export_runs_as_a_read_only_job_and_the_zip_comes_from_its_download(
     monkeypatch.setattr(srv._security, "require_writer", no_writer)
     c = TestClient(srv.app)
     creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": SECRET}
-    r = c.post("/api/dlp-packs/export/start", json=dict(creds, pack_name="Acme export"))
+    r = c.post("/api/dlp-packs/export/start", json=dict(creds, pack_name="Acme export", **ALL_DLP_IN_SCOPE))
     assert r.status_code == 200 and r.json()["kind"] == "export", r.text
     job_id = r.json()["job_id"]
     snap = _wait(c, job_id)
@@ -458,7 +461,7 @@ BLOCKED = '{"status": 403, "code": null, "message": "Resource Access Blocked"}'
 
 def test_a_rate_refused_rule_read_is_waited_out_and_retried(monkeypatch):
     import zia_rate
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
     client = _source()
     _refuse_n(client.zia.dlp_web_rules, "list_rules", TOO_MANY, times=1)
@@ -471,7 +474,7 @@ def test_a_rate_refused_rule_read_is_waited_out_and_retried(monkeypatch):
 
 def test_a_persistent_resource_access_blocked_fails_the_export_and_stops_reading(monkeypatch):
     import zia_rate
-    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None: 0.0)
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
     monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
     client = _source()
     _refuse_n(client.zia.dlp_web_rules, "list_rules", BLOCKED, times=99)
@@ -892,3 +895,194 @@ def test_a_same_named_tenant_engine_whose_dictionaries_the_plan_creates_is_repor
     rep = pd.preflight(target, packs, writes_enabled=True)
     eng = items_by(rep, "engine")["Project Leak"]
     assert eng["status"] == pd.REUSE_DIFFERS, (eng["status"], eng.get("reason"))
+
+
+# ---------------------------------------------------------------------------
+# Independent review of PR #39
+# ---------------------------------------------------------------------------
+
+# What zscaler-sdk-python returns (RetryTooLong) when ZIA's Retry-After is
+# longer than the app lets it wait: the hourly limit is reached.
+HOURLY = "Retry wait time 3600 seconds exceeds configured maxRetrySeconds 30."
+
+
+def test_the_sdks_hourly_limit_refusal_on_a_rule_read_fails_the_export_instead_of_a_ready_pack_without_that_channel(monkeypatch):
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    client = _source()
+    calls = _refuse_n(client.zia.dlp_web_rules, "list_rules", HOURLY, times=99)
+    later = _refuse_n(client.zia.endpoint_dlp_rules, "list_rules", "unused", times=0)
+    res = pe.export_pack(client, tenant_label="acme")
+    assert res["status"] == "error" and "pack" not in res, res.get("status")
+    assert "hour" in res["error"] and "nothing was exported" in res["error"].lower(), res["error"]
+    assert calls == [1], "read again although ZIA's hourly limit was reached"
+    assert later == [], "kept sending reads to a client ZIA had just refused"
+
+
+def test_the_sdks_hourly_limit_refusal_on_the_dictionary_read_is_reported_as_the_rate_limit():
+    client = _source()
+    _refuse(client.zia.dlp_dictionary, "list_dicts", HOURLY)
+    res = pe.export_pack(client, tenant_label="acme")
+    assert res["status"] == "error" and "hour" in res["error"] and "role" not in res["error"], res["error"]
+
+
+def test_stop_while_the_pack_is_built_produces_no_pack(monkeypatch, tmp_path):
+    import threading
+    import dlp_api_server as srv
+    import pack_jobs
+    monkeypatch.setenv("DLP_CHECK_AUDIT", str(tmp_path / "audit.log"))
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": SECRET}
+
+    def fn(log, cancel):
+        def log_and_stop(line):
+            log(line)
+            if line.startswith("Pack built"):   # every read is done; Stop arrives now
+                pack_jobs.cancel(pack_jobs.current().id)
+        return srv._run_pack_export(_source(), creds, srv.PackExportRequest(pack_name="x"), None, log_and_stop, cancel)
+    job = pack_jobs.start("export", fn)
+    for _ in range(500):
+        if job.status != pack_jobs.RUNNING:
+            break
+        time.sleep(0.01)
+    assert any(l.startswith("Stop requested") and "no pack is produced" in l for l in job.logs)
+    assert job.status == pack_jobs.CANCELLED and job.artifact is None, (job.status, (job.result or {}).get("status"))
+
+    # The same promise when Stop arrives after the pack is built, while it is zipped.
+    cancel = threading.Event()
+    real_zip = pe.zip_pack
+    monkeypatch.setattr(pe, "zip_pack", lambda pack: (cancel.set(), real_zip(pack))[1])
+    res = srv._run_pack_export(_source(), creds, srv.PackExportRequest(pack_name="x"), None, lambda m: None, cancel)
+    assert res["status"] == "stopped" and "artifact" not in res
+
+
+def test_a_pick_of_no_rule_reads_nothing_and_says_so(monkeypatch):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    ro = ReadOnly(_source())
+    reads = []
+    real = ro.zia.dlp_dictionary.list_dicts
+    ro.zia._t.dlp_dictionary.list_dicts = lambda *a, **k: (reads.append(1), real(*a, **k))[1]
+    res = pe.export_pack(ro, selection={"web": [], "email": [None]}, tenant_label="acme")
+    assert res["status"] == "error" and "no rule was picked" in res["error"].lower(), res
+    assert "has no DLP rules" not in res["error"] and reads == [], "read the tenant for an empty pick"
+
+    built = []
+    monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or ro)
+    c = TestClient(srv.app, raise_server_exceptions=False)
+    creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20}
+    r = c.post("/api/dlp-packs/export/start", json=dict(creds, rules={"web": []}))
+    assert r.status_code == 400 and "no rule was picked" in r.text.lower(), (r.status_code, r.text[:200])
+    assert built == [], "signed in to the tenant for an empty pick"
+    # A channel left empty beside one with picks still exports the picks.
+    assert pe.export_pack(_source(), selection={"web": [], "email": "all"}, tenant_label="acme")["status"] == "ready"
+
+
+# ---------------------------------------------------------------------------
+# Independent review of PR #39, round 3
+# ---------------------------------------------------------------------------
+
+def test_a_short_429_is_waited_out_in_seconds_and_does_not_hold_the_tenant_for_the_hour(monkeypatch):
+    import zia_rate
+    holds, slept = [], []
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: holds.append(s) or 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: slept.append(s), raising=False)
+    for refusal in ('{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}', TOO_MANY,
+                    "Retry wait time 2 seconds exceeds configured maxRetrySeconds 1."):
+        holds.clear(), slept.clear()
+        client = _source()
+        calls = _refuse_n(client.zia.dlp_web_rules, "list_rules", refusal, times=1)
+        res = pe.export_pack(client, tenant_label="acme")
+        assert res["status"] == "ready", (refusal, res.get("error"))
+        assert len(calls) == 2, "the short refusal was not retried"
+        assert holds and max(holds) <= 30 and sum(slept) <= 30, (refusal, holds, sum(slept))
+
+
+def test_a_short_retry_too_long_waits_at_least_what_zia_asked_for_before_the_read_is_sent_again(monkeypatch):
+    # ZIA asks for 120 s: above both short fallbacks (5 s / 15 s), below the
+    # hourly limit. Retrying sooner sends a read ZIA refuses (rule 4), and a
+    # shorter hold lets other sessions on this tenant send too soon.
+    import zia_rate
+    holds, slept, logged = [], [], []
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: holds.append(s) or 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: slept.append(s), raising=False)
+    asked = 120
+    refusal = f"RetryTooLong: Retry wait time {asked} seconds exceeds configured maxRetrySeconds 30"
+    assert not pe._is_hourly(refusal) and asked > max(pe.SHORT_RATE_WAIT_SECONDS)
+    answers = iter([([], refusal), (["ok"], None)])
+    sent_after = []
+    def fn():
+        sent_after.append(sum(slept))
+        return next(answers)
+    data, err, refused = pe._read("rules", fn, logged.append)
+    assert (data, err, refused) == (["ok"], None, False)
+    assert len(sent_after) == 2 and sent_after[1] >= asked, sent_after
+    assert sum(slept) >= asked, slept
+    assert holds and max(holds) >= asked, holds
+
+
+def test_only_a_retry_too_long_with_a_long_wait_is_the_hourly_limit():
+    assert pe._is_hourly(HOURLY)
+    assert pe._is_hourly("Retry wait time 1800 seconds exceeds configured maxRetrySeconds 30.")
+    assert not pe._is_hourly("Retry wait time 2 seconds exceeds configured maxRetrySeconds 1.")
+    assert not pe._is_hourly('{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}')
+    assert pe._is_rate("Retry wait time 2 seconds exceeds configured maxRetrySeconds 1.")
+
+
+def test_blank_rule_ids_are_no_pick_and_are_refused_before_any_sign_in_or_read(monkeypatch):
+    from fastapi.testclient import TestClient
+    import dlp_api_server as srv
+    for rules in ({"web": [""]}, {"web": ["   "]}, {"web": [], "email": [""]}):
+        assert pe.nothing_picked(pe.normalize_selection(rules)), rules
+        ro = ReadOnly(_source())
+        reads = []
+        real = ro.zia.dlp_dictionary.list_dicts
+        ro.zia._t.dlp_dictionary.list_dicts = lambda *a, **k: (reads.append(1), real(*a, **k))[1]
+        res = pe.export_pack(ro, selection=rules, tenant_label="acme")
+        assert res["status"] == "error" and "no rule was picked" in res["error"].lower(), res
+        assert reads == [], "read the tenant for a blank pick"
+        built = []
+        monkeypatch.setattr(srv, "_build_sdk_client", lambda creds: built.append(1) or ro)
+        c = TestClient(srv.app, raise_server_exceptions=False)
+        creds = {"vanity_domain": "acme", "client_id": "abc123456789", "client_secret": "x" * 20}
+        r = c.post("/api/dlp-packs/export/start", json=dict(creds, rules=rules))
+        assert r.status_code == 400 and "no rule was picked" in r.text.lower(), (rules, r.status_code, r.text[:200])
+        assert built == [], "signed in to the tenant for a blank pick"
+    # An id with spaces around it still names its rule.
+    res = pe.export_pack(_source(), selection={"web": [" 11 "]}, tenant_label="acme")
+    assert res["status"] == "ready", res.get("error")
+
+
+def test_a_channel_named_with_an_empty_pick_is_not_read(monkeypatch):
+    import zia_rate
+    monkeypatch.setattr(zia_rate, "hold", lambda s, key=None, **kw: 0.0)
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    client = _source()
+    email = _refuse_n(client.zia.outbound_email_dlp_rules, "list_rules", HOURLY, times=99)
+    res = pe.export_pack(client, selection={"web": "all", "email": []}, tenant_label="acme")
+    assert email == [], "read the Email rules although no Email rule was picked"
+    assert res["status"] == "ready", res.get("error")
+    assert not any("Email" in d["name"] for d in res["pack"]["not_exported"]), res["pack"]["not_exported"]
+
+
+def test_a_refused_export_read_holds_every_jobs_reads_on_the_tenant(monkeypatch):
+    # RS2-5: the export's hold after a refused read is the tenant's, for
+    # reads too: the assessment's Client and other SDK sessions wait for it.
+    import zia_rate
+    monkeypatch.setattr(pe, "_sleep", lambda s: None, raising=False)
+    key = "t" * 16
+    answers = iter([([], '{"status": 429, "message": "Rate Limit (2/SECOND) exceeded"}'), (["ok"], None)])
+    with zia_rate.using(key):
+        assert pe._read("rules", lambda: next(answers), lambda m: None) == (["ok"], None, False)
+    assert zia_rate.paused_for(key, reads=True) > 0
+    assert zia_rate.wait("GET", "/dlpDictionaries", key=key) > 0, "another job's read waits for the export's hold"
+    assert zia_rate.paused_for("u" * 16, reads=True) == 0.0, "another tenant is not held"
+
+
+def test_an_hourly_export_refusal_holds_every_jobs_reads_for_the_hour(monkeypatch):
+    import zia_rate
+    key = "t" * 16
+    with zia_rate.using(key):
+        data, err, refused = pe._read("rules", lambda: ([], HOURLY), lambda m: None)
+    assert refused
+    assert zia_rate.paused_for(key, reads=True) >= pe._retry_wait(HOURLY) - 5

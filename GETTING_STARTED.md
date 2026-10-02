@@ -147,9 +147,11 @@ reported as not available, and policy packs deploy the same way.
 1. Open **Tenant Configuration** and enter the four values plus your
    organisation and assessor name.
 2. Click **Authenticate** at the bottom of Tenant Configuration (or in the
-   **Start here** panel, step 1). You should see
-   "Connected to <tenant>: N dictionaries, N engines, N web DLP rules."
-   in the Start here panel.
+   **Start here** panel, step 1). You should see "Signed in to <tenant>"
+   in the Start here panel. Authenticate only signs in: it reads nothing
+   from the tenant (every read counts against the tenant's ZIA API rate
+   limit). The tenant is read only when you click **Run assessment**, and
+   only for what you put in scope on the Scope page.
 3. If it fails, the panel says why and what to do. The two common causes:
    - *Zscaler rejected the client ID or client secret* → regenerate the secret.
    - *Connection intercepted by TLS inspection* → your laptop is behind

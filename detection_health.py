@@ -300,14 +300,16 @@ LIVE_FIRST_LOOKBACK_SECONDS = 120     # first poll: how far back to start (avoid
 LIVE_POLL_CLAMP_SECONDS = 3600        # a client that waited an hour still only gets the last hour, not a backfill storm
 
 
-def rule_actions(client) -> Dict[str, str]:
+def rule_actions(client, channels: Optional[Iterable[str]] = None) -> Dict[str, str]:
     """name -> configured action (upper-cased), from the same DLP rule
     inventory the full report reads. `incident_action` and `live_stats`
     need this because a Workflow Automation incident record carries no
     action field of its own — only the rule it matched decides whether
-    that match was enforced or only logged."""
+    that match was enforced or only logged. `channels` (web / endpoint /
+    saas / email: the ones in scope) limits the read to those channels'
+    rules; None reads every channel (tests and tools only)."""
     from pack_removal import inventory
-    inv = inventory(client)
+    inv = inventory(client) if channels is None else inventory(client, channels=[str(c) for c in channels])
     return {str(r.get("name")): str(r.get("action") or "").upper() for r in (inv.get("rules") or [])}
 
 
@@ -725,7 +727,7 @@ def dictionary_why(name: str, incs: List[Dict[str, Any]], definition: Optional[D
 
 # ── report ─────────────────────────────────────────────────────────────
 def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = None, log=None,
-             channels: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+             channels: Optional[Iterable[str]] = None, read_incidents: bool = True) -> Dict[str, Any]:
     """The Detection Health report for one tenant: incidents from
     Workflow Automation, rules from the tenant inventory, metrics and
     findings. Never raises; read problems are listed in `errors`.
@@ -733,15 +735,20 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
     `channels` (web / endpoint / saas / email) limits the report to those
     DLP channels: only their rules are read, incidents on other channels
     are left out, and the incident delivery (Web DLP rules and receivers)
-    is read only when web is one of them. None reads every channel."""
+    is read only when web is one of them. None reads every channel.
+    `read_incidents=False` leaves Workflow Automation's incidents unread."""
     _log = log or (lambda m: None)
     s = dict(DEFAULTS, **(settings or {}))
     days = int(days or s["days"])
     scoped = None if channels is None else [str(c) for c in channels]
     errors: List[str] = []
-    _log(f"Reading Workflow Automation incidents for the last {days} days…")
-    incidents, errs = fetch_incidents(client, days, _log)
-    errors.extend(errs)
+    if read_incidents:
+        _log(f"Reading Workflow Automation incidents for the last {days} days…")
+        incidents, errs = fetch_incidents(client, days, _log)
+        errors.extend(errs)
+    else:
+        _log("Workflow Automation is not in scope: incidents are not read.")
+        incidents = []
     if scoped is not None:
         incidents = [i for i in incidents if i.get("channel") in scoped or i.get("channel") == "other"]
     rules: List[Dict[str, Any]] = []
@@ -778,11 +785,34 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
                                   "channel": "web", "text": m["text"], "proposal": "enable_incident_forwarding"})
     for i in incidents:
         i.pop("_created", None)
+    incidents_read = read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors)
+    if not incidents_read:
+        _not_measured(ev)
     ev.update({"days": days, "incident_count": len(incidents), "errors": errors,
-               "read": {"incidents": not any("incident search" in e or "Workflow Automation" in e for e in errors), "rules": bool(rules)},
+               "read": {"incidents": incidents_read, "rules": bool(rules)},
                "sources": {"incidents": "Workflow Automation: POST /zwa/dlp/v1/incidents/search",
                            "rules": "ZIA: /webDlpRules, /endpointDlpRules, /casbDlpRules, /emailDlpRules"}})
     return ev
+
+
+# Findings that are measured from incidents: without the incidents read
+# they would be built on an absence that was never observed.
+INCIDENT_FINDINGS = ("dead_rule", "noisy_rule", "promotable_rule", "noisy_dictionary", "noisy_destination")
+NOT_MEASURED_WHY = "Workflow Automation incidents were not read, so this rule's activity was not measured"
+
+
+def _not_measured(ev: Dict[str, Any]) -> None:
+    """Incidents that were not read (out of scope, or the read failed) are
+    not "no incident": no rule is dead, noisy or promotable, and no finding
+    or proposal is built on them."""
+    for r in ev.get("rules") or []:
+        if r.get("status") in ("dead", "noisy", "promotable", "no_verdicts", "healthy"):
+            r["status"], r["why"] = "not_measured", NOT_MEASURED_WHY
+    ev["findings"] = [f for f in ev.get("findings") or [] if f.get("kind") not in INCIDENT_FINDINGS]
+    s = ev.setdefault("summary", {})
+    for k in ("noisy_rules", "dead_rules", "promotable_rules", "noisy_dictionaries", "excludable_destinations"):
+        s[k] = 0
+    s["incidents_read"] = False
 
 
 def to_markdown(rep: Dict[str, Any], label: str = "") -> str:
