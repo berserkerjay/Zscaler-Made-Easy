@@ -783,11 +783,34 @@ def generate(client, *, days: int = 30, settings: Optional[Dict[str, Any]] = Non
                                   "channel": "web", "text": m["text"], "proposal": "enable_incident_forwarding"})
     for i in incidents:
         i.pop("_created", None)
+    incidents_read = read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors)
+    if not incidents_read:
+        _not_measured(ev)
     ev.update({"days": days, "incident_count": len(incidents), "errors": errors,
-               "read": {"incidents": read_incidents and not any("incident search" in e or "Workflow Automation" in e for e in errors), "rules": bool(rules)},
+               "read": {"incidents": incidents_read, "rules": bool(rules)},
                "sources": {"incidents": "Workflow Automation: POST /zwa/dlp/v1/incidents/search",
                            "rules": "ZIA: /webDlpRules, /endpointDlpRules, /casbDlpRules, /emailDlpRules"}})
     return ev
+
+
+# Findings that are measured from incidents: without the incidents read
+# they would be built on an absence that was never observed.
+INCIDENT_FINDINGS = ("dead_rule", "noisy_rule", "promotable_rule", "noisy_dictionary", "noisy_destination")
+NOT_MEASURED_WHY = "Workflow Automation incidents were not read, so this rule's activity was not measured"
+
+
+def _not_measured(ev: Dict[str, Any]) -> None:
+    """Incidents that were not read (out of scope, or the read failed) are
+    not "no incident": no rule is dead, noisy or promotable, and no finding
+    or proposal is built on them."""
+    for r in ev.get("rules") or []:
+        if r.get("status") in ("dead", "noisy", "promotable", "no_verdicts", "healthy"):
+            r["status"], r["why"] = "not_measured", NOT_MEASURED_WHY
+    ev["findings"] = [f for f in ev.get("findings") or [] if f.get("kind") not in INCIDENT_FINDINGS]
+    s = ev.setdefault("summary", {})
+    for k in ("noisy_rules", "dead_rules", "promotable_rules", "noisy_dictionaries", "excludable_destinations"):
+        s[k] = 0
+    s["incidents_read"] = False
 
 
 def to_markdown(rep: Dict[str, Any], label: str = "") -> str:

@@ -122,6 +122,37 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
             "read_incidents": (chans.get(WA_SCOPE_CHANNEL) or {}).get("choice") == "zscaler"}
 
 
+def tenant_label(profile: Dict[str, Any], pid: str) -> str:
+    """How the digest names a profile's tenant: the vanity domain for
+    OneAPI; for the classic API, which signs in with an admin login and no
+    vanity domain, tenant_auth.record_label ('classic API (cloud)'), so a
+    vanity domain left in the form never reaches a digest."""
+    import tenant_auth
+    if tenant_auth.method_of(profile or {}) == tenant_auth.LEGACY:
+        return tenant_auth.record_label(profile)
+    return str((profile or {}).get("vanity_domain") or pid)
+
+
+def proposal_key(creds: Dict[str, Any], pid: str) -> str:
+    """The profile's key in the proposal queue (tenant_fingerprint.proposal_key)."""
+    import tenant_fingerprint
+    return tenant_fingerprint.proposal_key(creds, pid)
+
+
+def _proposal_key_migrated(creds: Dict[str, Any], pid: str) -> str:
+    """proposal_key, after moving a classic-API tenant's proposals queued
+    under its stale vanity domain (or the profile id) to it."""
+    import tenant_fingerprint
+    key = proposal_key(creds, pid)
+    try:
+        import proposals
+        for old in tenant_fingerprint.proposal_key_aliases(creds, pid):
+            proposals.rekey(old, key)
+    except Exception:  # noqa: BLE001
+        pass
+    return key
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -242,7 +273,7 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
             digest["tenants"].append(_evaluate_tenant(p, build_client, days=days, log=_log))
         except Exception as e:  # noqa: BLE001  # one malformed profile must not stop the others or the digest
             pid = str(p.get("id") or "?")
-            digest["tenants"].append({"profile_id": pid, "name": p.get("name") or pid, "tenant": p.get("vanity_domain") or pid,
+            digest["tenants"].append({"profile_id": pid, "name": p.get("name") or pid, "tenant": tenant_label(p, pid),
                                       "detection_health": None, "proposals": None, "tenants": None, "drift": None, "skipped": [],
                                       "errors": [f"profile: {type(e).__name__}: {str(e)[:200]}"]})
 
@@ -268,7 +299,7 @@ def _run_once_locked(*, build_client, safe_get, log: LogFn, days: int, notify: b
 def _evaluate_tenant(profile: Dict[str, Any], build_client, *, days: int, log) -> Dict[str, Any]:
     import tenant_profiles
     pid = profile["id"]
-    out: Dict[str, Any] = {"profile_id": pid, "name": profile.get("name") or pid, "tenant": profile.get("vanity_domain") or pid,
+    out: Dict[str, Any] = {"profile_id": pid, "name": profile.get("name") or pid, "tenant": tenant_label(profile, pid),
                            "detection_health": None, "proposals": None, "tenants": None, "drift": None, "errors": [], "skipped": []}
     # Only what the profile's Scope page puts in scope is read: every read
     # counts against the tenant's API rate limit. Nothing in scope: no
@@ -332,7 +363,7 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
     """The reads _evaluate_tenant decided are in scope, on a signed-in client."""
     import tenant_profiles
     pid = profile["id"]
-    tenant_key = creds.get("vanity_domain") or pid
+    tenant_key = _proposal_key_migrated(creds, pid)
     # The queue as it was before this run, so "new" counts only what this
     # run raised, whichever sections ran.
     open_before = None
@@ -357,6 +388,19 @@ def _evaluate_in_scope(out: Dict[str, Any], profile: Dict[str, Any], full: Dict[
             log(f"{pid}: detection health not measured, {len(read_errors)} read(s) failed")
             raise _Skip()
         s = rep.get("summary") or {}
+        if (rep.get("read") or {}).get("incidents", True) is False:
+            # Incidents that were not read are not "no incident": nothing
+            # measured from them (dead, noisy or promotable rules, the
+            # ratio) is reported, recorded or proposed, and the proposals
+            # raised when they were read stay as they are. Only what the
+            # rules alone show (incident forwarding) is proposed.
+            merged = proposals.merge(tenant_key, proposals.build_proposals(rep, tenant_key), resolve_missing=False)
+            out["detection_health"] = {"incidents": None, "incidents_read": False, "closed": None, "not_real": None, "fp_rate_pct": None,
+                                       "noisy_rules": None, "dead_rules": None, "promotable_rules": None, "noisy_dictionaries": None,
+                                       "delivery": (rep.get("delivery") or {}).get("path"), "errors": 0}
+            out["proposals"] = {"new": int((merged or {}).get("new") or 0), "updated": int((merged or {}).get("updated") or 0)}
+            log(f"{pid}: detection health not measured, Workflow Automation incidents were not read")
+            raise _Skip()
         merged = proposals.refresh_from_report(rep, tenant_key)
         out["detection_health"] = {"incidents": rep.get("incident_count"), "closed": s.get("closed"), "not_real": s.get("not_real"), "fp_rate_pct": s.get("fp_rate_pct"),
                                    "noisy_rules": s.get("noisy_rules"), "dead_rules": s.get("dead_rules"), "promotable_rules": s.get("promotable_rules"),
@@ -581,7 +625,9 @@ def to_markdown(d: Dict[str, Any]) -> str:
         L.append("")
         L.append(f"## Tenant {t.get('name')} ({t.get('tenant')})")
         dh = t.get("detection_health")
-        if dh:
+        if dh and dh.get("incidents_read") is False:
+            L.append(f"- FP/TP Detection Ratio: Workflow Automation incidents not read (not marked as run on Zscaler on the Scope page), so no rule is judged dead, noisy or ready to promote; incidents reach Workflow Automation via {dh.get('delivery') or 'unknown'}.")
+        elif dh:
             L.append(f"- FP/TP Detection Ratio: {dh.get('incidents')} incidents, {dh.get('fp_rate_pct')}% not real, {dh.get('noisy_rules')} noisy rule(s), {dh.get('dead_rules')} dead, {dh.get('promotable_rules')} ready to promote, {dh.get('noisy_dictionaries')} noisy dictionar(ies); incidents reach Workflow Automation via {dh.get('delivery') or 'unknown'}.")
         pr = t.get("proposals")
         if pr:

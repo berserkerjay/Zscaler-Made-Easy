@@ -1355,8 +1355,12 @@ async def detection_health_generate(req: DetectionHealthRequest):
     logs: list = []
     report = await asyncio.to_thread(lambda: detection_health.generate(client, days=days, settings=req.settings or None, log=logs.append))
     report["logs"] = logs
-    report["tenant_key"] = creds.get("vanity_domain") or "unknown"
     report["profile_id"] = getattr(req, "profile_id", "") or ""   # lets the tab apply proposals with the profile's remembered secret
+    # The proposal queue's key: the vanity domain for OneAPI, an opaque
+    # fingerprint key for the classic API (never a vanity domain left in
+    # the form); proposals queued under that stale domain move to it.
+    import continuous_eval
+    report["tenant_key"] = continuous_eval._proposal_key_migrated(creds, report["profile_id"])
     try:
         import proposals
         report["proposals"] = proposals.refresh_from_report(report, report["tenant_key"])
@@ -2239,8 +2243,16 @@ async def tenant_profile_save(req: TenantProfileRequest):
     api_key = validate_credential("api_key", req.api_key, required=False) if req.api_key else ""
     if not method:
         method = tenant_auth.method_of({"client_id": cid, "username": user, "api_key": api_key})
+    if method == tenant_auth.LEGACY:
+        # The classic API signs in with an admin login and no vanity domain:
+        # one left in the form is not kept, and neither it nor the login
+        # names the profile (user rule 3).
+        vd = ""
+        default_name = tenant_auth.record_label({"auth_method": method, "cloud": cloud})
+    else:
+        default_name = vd or user
     fields = {
-        "name": req.name or req.org_name or vd or user, "org_name": req.org_name, "assessor": req.assessor,
+        "name": req.name or req.org_name or default_name, "org_name": req.org_name, "assessor": req.assessor,
         "cloud": cloud, "vanity_domain": vd, "client_id": cid, "customer_id": cust,
         "auth_method": method, "username": user,
         "industry": req.industry, "baseline_packs": [str(b) for b in req.baseline_packs],

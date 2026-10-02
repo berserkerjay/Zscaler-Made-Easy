@@ -31,7 +31,7 @@ import os
 import secrets
 import tempfile
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import tenant_auth
 
@@ -132,6 +132,31 @@ def tenant_key(creds: Dict[str, Any]) -> str:
     if c["auth_method"] == tenant_auth.LEGACY:
         return fingerprint(c) or zia_rate.key_for(c["cloud"] or "production", "classic API", "")
     return zia_rate.key_for(c["cloud"], c["vanity_domain"] or c["username"], c["client_id"] or c["username"])
+
+
+def proposal_key(creds: Dict[str, Any], fallback: str = "") -> str:
+    """The tenant's key in the proposal queue (proposals.json and the
+    FP/TP Detection Ratio report's tenant_key): the vanity domain for
+    OneAPI, as before; for the classic API, which signs in with an admin
+    login and no vanity domain, "classic-<fingerprint>" (a vanity domain
+    left in the form or profile is never used), else `fallback` (a
+    profile id), else a per-cloud key that names nobody."""
+    c = tenant_auth.normalize(creds)
+    if c["auth_method"] == tenant_auth.LEGACY:
+        fp = fingerprint(c)
+        return f"classic-{fp}" if fp else (fallback or f"classic-{(c['cloud'] or 'production').lower()}")
+    return c["vanity_domain"] or fallback or "unknown"
+
+
+def proposal_key_aliases(creds: Dict[str, Any], fallback: str = "") -> Tuple[str, ...]:
+    """Keys a classic-API tenant's proposals were queued under before
+    proposal_key (its stale vanity domain, or the profile id): read once
+    to move them, never written again."""
+    c = tenant_auth.normalize(creds)
+    if c["auth_method"] != tenant_auth.LEGACY:
+        return ()
+    new = proposal_key(c, fallback)
+    return tuple(k for k in dict.fromkeys([c["vanity_domain"] or fallback]) if k and k != new)
 
 
 def legacy_unkeyed_key(creds: Dict[str, Any]) -> str:
