@@ -581,7 +581,7 @@
     <span class="badge" id="totalChecksBadge">Loading...</span>
 
     <div class="hero-toolbar" aria-label="Tools">
-      <div class="tool-group" role="group" aria-label="Start">
+      <div class="tool-group" role="group" aria-label="Start" data-sb-id="start">
         <div class="tool-group-l">Start</div>
         <button class="btn btn-ghost" onclick="openHelpTab()"
                 aria-label="Open What does everything do: every function of this app explained in plain English (opens in a new tab)"
@@ -589,7 +589,7 @@
           <span aria-hidden="true">❓</span> What does everything do?
         </button>
       </div>
-      <div class="tool-group" role="group" aria-label="Find the gaps">
+      <div class="tool-group" role="group" aria-label="Find the gaps" data-sb-id="find-gaps">
         <div class="tool-group-l">Find the gaps</div>
         <button class="btn btn-ghost" onclick="openDataFlowTab()"
                 aria-label="Open Traffic Flow and Gaps: the exact path a transaction takes through Client Connector app and forwarding profiles, PAC, SSL, URL filtering, app control and DLP, visibility by cloud app category, and every bypass or blind spot, in one report (opens in a new tab)"
@@ -622,7 +622,7 @@
           <span aria-hidden="true">🔁</span> Digest
         </button>
       </div>
-      <div class="tool-group" role="group" aria-label="Close the gaps">
+      <div class="tool-group" role="group" aria-label="Close the gaps" data-sb-id="close-gaps">
         <div class="tool-group-l">Close the gaps</div>
         <button class="btn btn-ghost" onclick="openDlpPacksModal()"
                 aria-label="Deploy policy packs: preflight, review, approve, deploy"
@@ -645,7 +645,7 @@
           <span aria-hidden="true">🔀</span> Rule migration wizard
         </button>
       </div>
-      <div class="tool-group" role="group" aria-label="Reference">
+      <div class="tool-group" role="group" aria-label="Reference" data-sb-id="reference">
         <div class="tool-group-l">Reference</div>
         <button class="btn btn-ghost" onclick="openEvalAllTab()"
                 aria-label="Open Evaluate All Rules: the decision flow with the tie-breaker (opens in a new tab)"
@@ -698,7 +698,7 @@
           <span aria-hidden="true">🌐</span> Data Security Architect
         </button>
       </div>
-      <div class="tool-group" role="group" aria-label="Troubleshoot">
+      <div class="tool-group" role="group" aria-label="Troubleshoot" data-sb-id="troubleshoot">
         <div class="tool-group-l">Troubleshoot</div>
         <button class="btn btn-ghost" onclick="openLogAnalyzerTab()"
                 aria-label="Open the Log analyzer: upload Client Connector log bundles or PAC files and get what happened, what it means and what to do next (opens in a new tab)"
