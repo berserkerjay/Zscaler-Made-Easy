@@ -2425,6 +2425,7 @@ def compute(results):
     _map={"PASS":"pass","FAIL":"fail","REVIEW":"warn","INFO":"info","ERROR":"info"}
     secs={}
     for r in results:
+        if isinstance(r,dict) and r.get("out_of_scope"): continue   # outside the selected scope: hidden, no section, no score (channel_scope)
         s=r.get("sec") or r.get("section") or "Other"
         if s not in secs: secs[s]={"total":0,"pass":0,"fail":0,"warn":0,"info":0}
         secs[s]["total"]+=1
@@ -2448,7 +2449,7 @@ def coverage_text(cov):
     parts=[f"Assessed {cov['assessed']} of {cov['total']} checks"]
     if cov["not_permitted"]: parts.append(f"{cov['not_permitted']} not permitted to the API client")
     if cov["errors"]: parts.append(f"{cov['errors']} could not be checked")
-    if cov["not_in_scope"]: parts.append(f"{cov['not_in_scope']} not in scope")
+    if cov.get("hidden"): parts.append(cov["hidden_note"].rstrip("."))
     return " · ".join(parts)
 
 def partial_banner(cov):

@@ -41,9 +41,21 @@ def test_nothing_in_scope_is_refused_before_sign_in(monkeypatch, ep, sel):
 
 def test_ssl_flow_needs_ssl_inspection_in_scope(monkeypatch):
     t, c, built = _t(monkeypatch)
-    r = t.post("/api/report/ssl-flow", json=dict(CREDS, scopes=["dlp", "zcc"], channels={"web_dlp": "zscaler", "ssl_inspection": "alternative"},
+    r = t.post("/api/report/ssl-flow", json=dict(CREDS, scopes=["dlp", "zcc"], channels={"email_dlp": "zscaler", "ssl_inspection": "alternative"},
                                                  from_page=True))
     assert r.status_code == 400 and r.json()["detail"] == ssl_flow.NOTHING_IN_SCOPE and not built and not c.requests
+
+
+def test_ssl_flow_reads_ssl_inspection_as_the_prerequisite_of_web_dlp(monkeypatch):
+    # Inline Web DLP on Zscaler needs SSL inspection (channel_scope.PREREQUISITES),
+    # so it is in scope even when it was marked alternative or left unticked.
+    t, c, _built = _t(monkeypatch)
+    for ssl in ("alternative", "gap"):
+        c.requests.clear()
+        r = t.post("/api/report/ssl-flow", json=dict(CREDS, scopes=["dlp"], channels={"web_dlp": "zscaler", "ssl_inspection": ssl},
+                                                     from_page=True))
+        assert r.status_code == 200, r.text[:300]
+        assert {"/zia/sslInspectionRules", "/zia/webDlpRules"} <= set(c.gets())
 
 
 def test_ssl_flow_reads_no_web_dlp_or_client_connector_out_of_scope(monkeypatch):
@@ -92,16 +104,20 @@ def test_bypass_firewall_rules_come_with_the_zia_platform_scope_only(monkeypatch
     assert r.status_code == 200
     gets = set(c.gets())
     assert "/zia/webDlpRules" in gets and "/zia/urlFilteringRules" in gets
-    assert "/zia/firewallFilteringRules" not in gets and "/zia/sslInspectionRules" not in gets and not (gets & ZCC_EPS), sorted(gets)
+    # SSL inspection comes with Inline Web DLP as its prerequisite; the firewall rules do not.
+    assert "/zia/sslInspectionRules" in gets
+    assert "/zia/firewallFilteringRules" not in gets and not (gets & ZCC_EPS), sorted(gets)
     c.requests.clear()
     r = t.post("/api/report/bypass", json=dict(CREDS, scopes=["zia_extras"], channels={}, from_page=True))
     assert r.status_code == 200 and "/zia/firewallFilteringRules" in set(c.gets())
 
 
 def test_bypass_scope_is_pure_and_says_why():
-    sel = bypass_report.bypass_scope(["dlp"], {"web_dlp": "zscaler", "ssl_inspection": "alternative"})
-    assert set(sel["read"]) == {"url", "dlp"}
+    sel = bypass_report.bypass_scope(["dlp"], {"email_dlp": "zscaler", "ssl_inspection": "alternative"})
+    assert set(sel["read"]) == {"url"}
     assert "alternative" in sel["not_in_scope"]["ssl"] and "ZIA platform" in sel["not_in_scope"]["firewall"]
+    # Inline Web DLP on Zscaler brings SSL inspection in as its prerequisite.
+    assert set(bypass_report.bypass_scope(["dlp"], {"web_dlp": "zscaler", "ssl_inspection": "alternative"})["read"]) == {"url", "dlp", "ssl"}
     assert bypass_report.bypass_scope([], {})["read"] == []
 
 

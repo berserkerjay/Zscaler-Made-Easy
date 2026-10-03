@@ -280,8 +280,9 @@ def normalize_scopes(scopes: Any) -> List[str]:
 def zscaler_channels(channels: Any) -> List[str]:
     """The channel ids marked Zscaler, in the Scope page's channel order
     whatever order they were sent in (so the same selection always reads
-    the same); alternative and gap are out."""
-    on = {cid for cid, v in channel_scope.normalize(channels).items() if v["choice"] == "zscaler"}
+    the same); alternative and gap are out, unless one is a prerequisite
+    of a channel on Zscaler (channel_scope.PREREQUISITES)."""
+    on = {cid for cid, v in channel_scope.resolve(channels).items() if v["choice"] == "zscaler"}
     order = list(channel_scope.CHANNELS)
     return sorted(on, key=lambda c: (order.index(c) if c in order else len(order), c))
 
@@ -299,7 +300,7 @@ def declaration(channels: Any) -> Dict[str, Dict[str, str]]:
     ch = channel_scope.normalize(channels)
     for cid, name in channel_scope.CHANNELS.items():
         ch.setdefault(cid, {"choice": "gap", "note": "", "name": name})
-    return ch
+    return channel_scope.with_prerequisites(ch)
 
 
 def _endpoint_in_scope(ep: str, on: Set[str]) -> bool:

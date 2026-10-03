@@ -501,7 +501,8 @@
   .status-REVIEW { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
   .status-INFO { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
   .status-NOTPERM { background: transparent; color: var(--info); border: 1px dashed var(--border-strong); }
-  .status-NOTSCOPE { background: transparent; color: var(--info); border: 1px solid var(--border-strong); }
+  .scope-note .scope-pre { display: block; }
+  .scope-note .scope-hidden { display: block; color: var(--dim); }
   .status-ERROR { background: transparent; color: var(--info); border: 1px dotted var(--border-strong); }
   .check-body { flex: 1; min-width: 0; }
   .check-id { font-size: var(--fs-footnote); color: var(--dim); font-family: var(--mono); }
@@ -1258,10 +1259,11 @@
         <div class="stat"><div class="stat-num" style="color:var(--warn)" id="warnCount">0</div><div class="stat-label">Needs review</div></div>
         <div class="stat"><div class="stat-num" style="color:var(--info)" id="infoCount">0</div><div class="stat-label">Not configured</div></div>
         <div class="stat" id="notPermStat" hidden><div class="stat-num" style="color:var(--info)" id="notPermCount">0</div><div class="stat-label">Not permitted</div></div>
-        <div class="stat" id="notScopeStat" hidden title="Checks of a channel the Scope page marks as covered by an alternative solution or leaves unticked (a gap): not read, outside the score"><div class="stat-num" style="color:var(--info)" id="notScopeCount">0</div><div class="stat-label">Not in scope</div></div>
         <div class="stat" id="errorStat" hidden><div class="stat-num" style="color:var(--info)" id="errorCount">0</div><div class="stat-label">Could not be checked</div></div>
       </div>
       <p class="stat-note" id="coverageNote" aria-live="polite"></p>
+      <!-- What the Scope page put in scope: each prerequisite added (and why) and one line counting the checks outside the scope, which are hidden (channel_scope). -->
+      <p class="stat-note scope-note" id="scopeNote" hidden></p>
     </div>
 
     <div class="card" id="permissionsCard" style="display:none;">
@@ -1292,7 +1294,7 @@
 
     <div class="card">
       <h2>Detailed findings</h2>
-      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong>, <strong>Not in scope</strong> (a channel the Scope page marks as covered elsewhere or leaves unticked) and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>.</p>
+      <p class="stat-note">Every check, grouped by section. <strong>Action required</strong> and <strong>Needs review</strong> count against the score; <strong>Not configured</strong>, <strong>Not permitted</strong> and <strong>Could not be checked</strong> sit outside it. A 🔧 button means a one-click recipe exists for that finding; the rest are fixed in the ZIA portal as described under <em>What to do</em>. Checks outside the scope chosen on the Scope page are not shown.</p>
       <div class="checks-filter" role="group" aria-label="Filter findings by status">
         <button class="filter-btn active" data-filter="all" data-label="All" onclick="filterChecks('all',this)">All</button>
         <button class="filter-btn" data-filter="FAIL" data-label="Action required" onclick="filterChecks('FAIL',this)">Action required</button>
@@ -1300,7 +1302,6 @@
         <button class="filter-btn" data-filter="PASS" data-label="Configured" onclick="filterChecks('PASS',this)">Configured</button>
         <button class="filter-btn" data-filter="INFO" data-label="Not configured" onclick="filterChecks('INFO',this)">Not configured</button>
         <button class="filter-btn" data-filter="NOTPERM" data-label="Not permitted" onclick="filterChecks('NOTPERM',this)" hidden>Not permitted</button>
-        <button class="filter-btn" data-filter="NOTSCOPE" data-label="Not in scope" onclick="filterChecks('NOTSCOPE',this)" hidden>Not in scope</button>
         <button class="filter-btn" data-filter="ERROR" data-label="Could not be checked" onclick="filterChecks('ERROR',this)" hidden>Could not be checked</button>
       </div>
       <div id="checksList"></div>
@@ -1359,19 +1360,56 @@ function maturityLabel(p) {
   return p >= 90 ? 'Optimized' : p >= 75 ? 'Managed' : p >= 50 ? 'Developing' : p >= 25 ? 'Initial' : 'Ad Hoc';
 }
 function scoreText(p) { return (p === null || p === undefined || !Number.isFinite(Number(p))) ? '—' : `${p}%`; }
+// A check outside the selected scope (its channel neither on Zscaler nor a
+// prerequisite of one: channel_scope) is hidden everywhere: no row, no
+// section, no score, no coverage. Only its count is kept, said in one line.
+function hiddenNote(n) {
+  n = Number(n) || 0;
+  if (n <= 0) return '';
+  const v = n === 1 ? 'is' : 'are';
+  return `${n} check${n === 1 ? '' : 's'} ${v} outside the selected scope and ${v} not shown.`;
+}
+// A report as the page shows it: an older report (or a partial one) that
+// still carries "Not in scope" rows has them dropped and counted, and its
+// sections rebuilt from what is left. The server's report has none.
+function scopeVisible(data) {
+  if (!data || !Array.isArray(data.checks)) return data;
+  const shown = data.checks.filter(c => !(c && c.out_of_scope));
+  const dropped = data.checks.length - shown.length;
+  if (!dropped) return data;
+  data.checks = shown;
+  data.hidden_checks = (Number(data.hidden_checks) || 0) + dropped;
+  data.hidden_note = hiddenNote(data.hidden_checks);
+  const sections = {};
+  const m = {PASS:'pass', FAIL:'fail', REVIEW:'warn', INFO:'info', ERROR:'info'};
+  for (const c of shown) {
+    const sec = c.section || c.sec || 'Other';
+    if (!sections[sec]) sections[sec] = {total:0, pass:0, fail:0, warn:0, info:0};
+    sections[sec].total++; sections[sec][m[c.status] || 'info']++;
+  }
+  for (const k in sections) { const sc = sections[k].total - sections[k].info; sections[k].scored = sc; sections[k].pct = sc ? Math.round(sections[k].pass / sc * 100) : null; }
+  data.sections = sections;
+  if (data.metadata) data.metadata.total_checks = shown.length;
+  data.critical = shown.filter(c => c.status === 'FAIL'); data.review = shown.filter(c => c.status === 'REVIEW');
+  delete data.summary;
+  const sum = assessmentSummary(data);
+  data.summary = sum; data.score = sum.score; data.maturity = sum.maturity;
+  return data;
+}
 function assessmentSummary(data) {
   if (data && data.summary && typeof data.summary.total === 'number') return data.summary;
-  const checks = (data && data.checks) || [];
-  const s = { total: checks.length, configured: 0, action_required: 0, needs_review: 0, not_permitted: 0, not_in_scope: 0, errors: 0, informational: 0, not_permitted_ids: [], not_in_scope_ids: [] };
+  const all = (data && data.checks) || [];
+  const checks = all.filter(c => !(c && c.out_of_scope));
+  const hidden = (Number(data && data.hidden_checks) || 0) + (all.length - checks.length);
+  const s = { total: checks.length, configured: 0, action_required: 0, needs_review: 0, not_permitted: 0, errors: 0, informational: 0, not_permitted_ids: [], hidden: hidden, hidden_note: hiddenNote(hidden) };
   for (const c of checks) {
     const k = classifyCheck(c);
     if (k === 'error') s.errors++; else s[k]++;
     if (k === 'not_permitted') s.not_permitted_ids.push(c.id);
-    if (k === 'not_in_scope') s.not_in_scope_ids.push(c.id);
   }
-  s.assessed = s.total - s.not_permitted - s.not_in_scope;
+  s.assessed = s.total - s.not_permitted;
   s.scored = s.configured + s.action_required + s.needs_review;
-  s.excluded = s.not_permitted + s.not_in_scope + s.errors + s.informational;
+  s.excluded = s.not_permitted + s.errors + s.informational;
   s.score = s.scored ? Math.round(s.configured / s.scored * 100) : null;
   s.maturity = maturityLabel(s.score);
   s.state = s.total === 0 ? 'unassessed' : (s.not_permitted || s.errors) ? 'partial' : 'complete';
@@ -1380,9 +1418,8 @@ function assessmentSummary(data) {
 }
 function coverageSentence(s, meta) {
   const parts = [];
-  parts.push(s.state === 'partial' ? `Partial: ${s.assessed} of ${s.total} checks ran` : (s.not_in_scope ? `${s.assessed} of ${s.total} checks ran` : `${s.total} checks ran`));
+  parts.push(s.state === 'partial' ? `Partial: ${s.assessed} of ${s.total} checks ran` : `${s.total} checks ran`);
   if (s.not_permitted) parts.push(`${s.not_permitted} not permitted for this API client`);
-  if (s.not_in_scope) parts.push(`${s.not_in_scope} not in scope (channels covered outside Zscaler or left unticked, per the Scope page)`);
   if (s.errors) parts.push(`${s.errors} could not be checked`);
   parts.push(s.scored ? `score = ${s.configured} configured ÷ ${s.scored} scoreable (${s.excluded} excluded)` : 'nothing was scoreable, so there is no score');
   if (meta && meta.partial) parts.push('the run stopped early: the numbers cover only the checks that finished');
@@ -2634,8 +2671,8 @@ async function runAssessment() {
     org_name: document.getElementById('org').value,
     assessor: document.getElementById('assessor').value,
     scopes: scopes,
-    // The Scope page's channel ownership (dashboard.js): only a channel marked
-    // Zscaler is read; an alternative's or a gap's checks are reported as not in scope.
+    // The Scope page's channel ownership (dashboard.js): only a channel on
+    // Zscaler (or a prerequisite of one) is read; the other checks are hidden.
     channels: (typeof window.__dbChannelScope === 'function') ? window.__dbChannelScope() : {},
   };
 
@@ -2754,8 +2791,8 @@ function handleEvent(evt) {
   if (evt.status === 'authenticating') setStatus('Authenticating with Zscaler...', '');
   else if (evt.status === 'ok' && !evt.total) setStatus('Authenticated successfully', 'success');
   else if (evt.id && evt.label && evt.status) {
-    // Individual check result — accumulate
-    partialResults.push(evt);
+    // Individual check result — accumulate (one outside the scope is hidden)
+    if (!evt.out_of_scope) partialResults.push(evt);
   } else if (evt.total !== undefined && evt.completed !== undefined) {
     const pct = evt.pct || Math.round((evt.completed / evt.total) * 100);
     document.getElementById('progressFill').style.width = pct + '%';
@@ -2799,6 +2836,11 @@ function showResults(data) {
   btn.disabled = false;
   btn.textContent = 'Run assessment';
 
+  // Checks outside the selected scope are hidden (an older report's
+  // "Not in scope" rows are dropped and counted) before anything is drawn,
+  // so the rows, the sections, the score, the exports and the compliance
+  // view all see the same in-scope checks.
+  scopeVisible(data);
   // The score and the counts come from one summary (server-side when the
   // report carries it), so the ring, the Summary card and the exports agree.
   const sum = assessmentSummary(data);
@@ -2821,10 +2863,10 @@ function showResults(data) {
   // refused or failed read is never folded into it.
   document.getElementById('infoCount').textContent = sum.informational;
   document.getElementById('notPermCount').textContent = sum.not_permitted; document.getElementById('notPermStat').hidden = !sum.not_permitted;
-  document.getElementById('notScopeCount').textContent = sum.not_in_scope || 0; document.getElementById('notScopeStat').hidden = !sum.not_in_scope;
   document.getElementById('errorCount').textContent = sum.errors; document.getElementById('errorStat').hidden = !sum.errors;
   const cov = document.getElementById('coverageNote');
   if (cov) cov.textContent = coverageSentence(sum, data.metadata);
+  renderScopeNote(data, sum);
 
   const grid = document.getElementById('sectionGrid');
   grid.innerHTML = '';
@@ -2845,6 +2887,20 @@ function showResults(data) {
   loadCompliance(data);
   expandResultSections();
   if (!restored) window.scrollTo({top: document.getElementById('results').offsetTop - 20, behavior: 'smooth'});
+}
+
+// What the Scope page put in scope, under the Summary: each prerequisite
+// added ("SSL/TLS Inspection: included because Inline Web DLP needs it")
+// and one unobtrusive line counting the hidden checks, never a list.
+function renderScopeNote(data, sum) {
+  const el = document.getElementById('scopeNote'); if (!el) return;
+  const pre = ((data && data.channel_coverage && data.channel_coverage.prerequisites) || []).map(p => p && p.note).filter(Boolean);
+  const hidden = (sum && sum.hidden) || Number(data && data.hidden_checks) || 0;
+  const line = (data && data.hidden_note) || (sum && sum.hidden_note) || hiddenNote(hidden);
+  const parts = pre.map(t => `<span class="scope-pre">${escapeHtml(t)}</span>`);
+  if (hidden && line) parts.push(`<span class="scope-hidden">${escapeHtml(line)}</span>`);
+  el.innerHTML = parts.join(' ');
+  el.hidden = !parts.length;
 }
 
 // ── The results survive a reload of this tab ─────────────────────────
@@ -3137,6 +3193,7 @@ function escapeHtml(s) {
 }
 
 function renderChecks(checks, filter) {
+  checks = (checks || []).filter(c => !(c && c.out_of_scope));   // outside the selected scope: hidden, never a row
   const list = document.getElementById('checksList');
   list.innerHTML = '';
   let curSec = '';
@@ -3151,9 +3208,9 @@ function renderChecks(checks, filter) {
   // The row's class is its own (permissions.classify): configured,
   // action_required, needs_review, not_permitted, error, informational.
   const notPermitted = new Set(((typeof reportData !== 'undefined' && reportData && reportData.summary && reportData.summary.not_permitted_ids) || []).filter(Boolean));
-  const classOf = c => c.out_of_scope ? 'NOTSCOPE' : notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
-  const PILL = {PASS:'Configured', FAIL:'Action required', REVIEW:'Needs review', INFO:'Not configured', NOTPERM:'Not permitted', NOTSCOPE:'Not in scope', ERROR:'Could not be checked'};
-  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', NOTSCOPE: 'Its channel is covered by an alternative solution or left unticked (a gap) on the Scope page. Not read, outside the score.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
+  const classOf = c => notPermitted.has(c.id) ? 'NOTPERM' : c.status === 'ERROR' ? 'ERROR' : (c.status || 'INFO');
+  const PILL = {PASS:'Configured', FAIL:'Action required', REVIEW:'Needs review', INFO:'Not configured', NOTPERM:'Not permitted', ERROR:'Could not be checked'};
+  const PILL_TITLE = {NOTPERM: 'The API client was not allowed to read this. Outside the score; grant the permission and run again.', ERROR: 'The read failed. Outside the score; run again.', INFO: 'Informational: not licensed, not in use, or nothing to score. Outside the score.'};
   for (const c of checks) {
     const st = classOf(c);
     if (filter !== 'all' && st !== filter) continue;
@@ -3188,7 +3245,7 @@ function renderChecks(checks, filter) {
   document.querySelectorAll('.checks-filter .filter-btn[data-filter]').forEach(b => {
     const k = b.dataset.filter; const n = k === 'all' ? checks.length : (counts[k] || 0);
     b.textContent = `${b.dataset.label} (${n})`;
-    if (k === 'NOTPERM' || k === 'NOTSCOPE' || k === 'ERROR') b.hidden = n === 0;
+    if (k === 'NOTPERM' || k === 'ERROR') b.hidden = n === 0;
   });
 }
 

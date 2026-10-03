@@ -189,7 +189,8 @@ def frameworks_benchmark(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def benchmark_report(report: Dict[str, Any]) -> Dict[str, Any]:
     """Everything the Benchmarks card shows, from an assessment report
     (the `complete` event payload or a saved JSON)."""
-    results = list(report.get("checks") or [])
+    import channel_scope
+    results, _ = channel_scope.visible(report.get("checks") or [])   # a check outside the selected scope is hidden
     journey = report.get("journey") if isinstance(report.get("journey"), dict) else None
     j = None
     if journey and journey.get("status") not in (None, "pending", "error"):

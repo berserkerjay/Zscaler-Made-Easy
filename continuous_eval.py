@@ -114,7 +114,7 @@ def profile_scope(profile: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(raw, (list, tuple)):   # 5, true, a dict: nothing in scope
         raw = []
     scopes = [str(x).strip().lower() for x in raw if isinstance(x, (str, int, float)) and not isinstance(x, bool) and str(x).strip()]
-    chans = channel_scope.normalize(profile.get("channels"))
+    chans = channel_scope.resolve(profile.get("channels"))   # with the prerequisites of the channels on Zscaler
     on_zscaler = {cid for cid, v in chans.items() if v["choice"] == "zscaler"}
     return {"scopes": scopes, "dlp": "dlp" in scopes, "saas": SAAS_SCOPE_CHANNEL in on_zscaler,
             "pack_channels": [pc for cid, pc in SCOPE_PACK_CHANNELS.items() if cid in on_zscaler],

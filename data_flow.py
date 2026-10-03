@@ -97,7 +97,7 @@ def path_scope(scopes: Any, channels: Any) -> Dict[str, Any]:
     import channel_scope
     given = {str(s).strip() for s in scopes} if isinstance(scopes, (list, tuple, set)) else set()
     sc = [k for k in SCOPE_KEYS if k in given]
-    ch = channel_scope.normalize(channels)
+    ch = channel_scope.resolve(channels)   # a prerequisite (SSL inspection for Web DLP) is in scope too
     read: List[str] = []
     out: Dict[str, str] = {}
     for key, (what, need, cid) in PATH_SECTIONS.items():

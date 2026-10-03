@@ -86,8 +86,10 @@ def test_channel_rule_endpoints_need_their_channel_on_zscaler():
     assert "/zia/emailDlpRules" in sel["endpoints"]
     assert "/zia/endPointDlpRules" not in sel["endpoints"], "alternative is out of scope"
     assert "/zia/casbDlpRules/all" not in sel["endpoints"], "a gap is out of scope for the watch"
-    assert sel["channels"] == ["web_dlp", "email_dlp"]
-    assert sel["summary"] == f"{len(sel['endpoints'])} endpoints for DLP (Web, Email)"
+    # SSL inspection is Inline Web DLP's prerequisite (channel_scope.PREREQUISITES): read with it.
+    assert sel["channels"] == ["web_dlp", "email_dlp", "ssl_inspection"]
+    assert sel["summary"] == f"{len(sel['endpoints'])} endpoints for DLP (Web, Email, SSL)"
+    assert "/zia/sslInspectionRules" in sel["endpoints"]
     # A channel alone, without its scope ticked, reads nothing.
     assert bs.select([], WEB_EMAIL)["endpoints"] == {}
 
@@ -110,7 +112,8 @@ def test_a_ticked_non_dlp_scope_reads_only_its_channels_on_zscaler():
     for ch in ({}, {"genai_security": "gap"}, {"genai_security": "alternative"}):
         assert bs.select(["genai"], ch)["endpoints"] == {}, ch
     genai = bs.select(["genai"], {"genai_security": "zscaler"})
-    assert genai["endpoints"] and genai["summary"] == f"{len(genai['endpoints'])} endpoints for GenAI & prompts, channels on Zscaler: GenAI"
+    # SSL inspection comes with GenAI Security as its prerequisite.
+    assert genai["endpoints"] and genai["summary"] == f"{len(genai['endpoints'])} endpoints for GenAI & prompts, channels on Zscaler: GenAI, SSL"
     assert "/zia/urlCategories" in genai["endpoints"] and "/zia/cloudApplicationRules" not in genai["endpoints"]
     both = bs.select(["genai"], {"genai_security": "zscaler", "cloud_app_control": "zscaler"})
     assert "/zia/cloudApplicationRules" in both["endpoints"]
@@ -126,7 +129,7 @@ def test_server_watches_the_genai_scope_alone(server):
         assert r.status_code == 400 and not tenant.calls, r.text
     on = {"genai_security": "zscaler"}
     d = c.post("/api/beacon/scope", json={"scopes": ["genai"], "channels": on}).json()
-    assert d["ok"] is True and d["summary"].endswith("endpoints for GenAI & prompts, channels on Zscaler: GenAI"), d
+    assert d["ok"] is True and d["summary"].endswith("endpoints for GenAI & prompts, channels on Zscaler: GenAI, SSL"), d
     r = c.post("/api/beacon/run", json={"online": False, "tenant_watch": True, "scopes": ["genai"], "channels": on})
     assert r.status_code == 200, r.text
     _wait_idle(c)
@@ -178,7 +181,7 @@ def test_the_map_gives_each_check_every_endpoint_it_really_reads():
 
 def test_summary_names_scopes_and_zscaler_channels():
     sel = bs.select(["dlp", "zcc"], WEB_EMAIL)
-    assert sel["summary"].endswith("endpoints for DLP (Web, Email), ZCC")
+    assert sel["summary"].endswith("endpoints for DLP (Web, Email, SSL), ZCC")
     assert bs.select(["zdx"], {})["summary"] == "6 endpoints for ZDX"
     assert bs.select(["nonsense"], {})["scopes"] == []
 
@@ -317,7 +320,7 @@ def test_the_scope_preview_says_what_will_be_read_without_touching_a_tenant(serv
     tenant, built = server
     c = _client()
     d = c.post("/api/beacon/scope", json={"scopes": ["dlp", "zcc"], "channels": WEB_EMAIL}).json()
-    assert d["ok"] is True and d["summary"].endswith("endpoints for DLP (Web, Email), ZCC") and d["endpoints"] == len(d["read"])
+    assert d["ok"] is True and d["summary"].endswith("endpoints for DLP (Web, Email, SSL), ZCC") and d["endpoints"] == len(d["read"])
     assert "/zia/fileTypeRules" in d["not_in_scope"] and d["unmapped"] == []
     d = c.post("/api/beacon/scope", json={}).json()
     assert d["ok"] is False and d["detail"] == "Nothing is in scope — choose what to assess on the Scope page."
@@ -559,7 +562,7 @@ def test_the_map_is_built_once_and_quickly_even_when_asked_at_the_same_time(monk
 def test_channels_in_another_order_are_the_same_scope():
     a, _, _ = _watch(["dlp"], {"web_dlp": "zscaler", "email_dlp": "zscaler"})
     b, _, snap = _watch(["dlp"], {"email_dlp": "zscaler", "web_dlp": "zscaler"})
-    assert a["summary"] == b["summary"] and a["channels"] == b["channels"] == ["web_dlp", "email_dlp"]
+    assert a["summary"] == b["summary"] and a["channels"] == b["channels"] == ["web_dlp", "email_dlp", "ssl_inspection"]
     assert not snap["diff"]["changes"], snap["diff"]["changes"]
     assert snap["diff"]["summary"][0].startswith("Nothing changed")
 

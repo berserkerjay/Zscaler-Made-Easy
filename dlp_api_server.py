@@ -4189,7 +4189,8 @@ async def compliance_report(request: Request):
     selected = [str(k) for k in (data.get("frameworks") or []) if str(k) in FRAMEWORK_DESCRIPTIONS]
     meta = data.get("metadata") or {}
     rep = {"summary": get_framework_summary(results), "drilldown": get_control_drilldown(results),
-           "descriptions": dict(FRAMEWORK_DESCRIPTIONS), "frameworks_selected": selected, "check_count": len(results),
+           "descriptions": dict(FRAMEWORK_DESCRIPTIONS), "frameworks_selected": selected,
+           "check_count": len(__import__("channel_scope").visible(results)[0]),   # checks outside the scope are hidden
            "metadata": {k: meta.get(k) for k in ("org", "assessor", "vanity_domain", "cloud", "date") if meta.get(k)}}
     rid = _remember_report("compliance", rep, str(meta.get("org") or meta.get("vanity_domain") or ""))
     return {"report_id": rid}
@@ -4850,6 +4851,17 @@ def _get_checks(scope: str = "dlp", scopes: list = None):
     return list(REG)  # dlp default
 
 
+@app.get("/api/scope/prerequisites")
+async def scope_prerequisites():
+    """The channel prerequisites (channel_scope.PREREQUISITES) the Scope
+    page shows: ticking a channel on Zscaler assesses these too. Static:
+    never reads a tenant."""
+    import channel_scope
+    return {"prerequisites": {cid: [{"id": pre, "name": channel_scope.CHANNELS.get(pre, pre), "reason": why} for pre, why in pres]
+                              for cid, pres in channel_scope.PREREQUISITES.items()},
+            "names": dict(channel_scope.CHANNELS)}
+
+
 @app.post("/api/assess")
 async def assess_stream(req: AssessRequest):
     """Run assessment with SSE streaming."""
@@ -4880,11 +4892,12 @@ async def assess_stream(req: AssessRequest):
     checks = _get_checks(str(req.scope or "").strip(), req.scopes)
     if not checks:
         raise HTTPException(status_code=400, detail=_nothing)
-    # The Scope page's channel ownership: only a channel marked Zscaler is
-    # read; an alternative or a gap has its checks reported as not in scope
-    # (channel_scope). The findings keep their section order.
+    # The Scope page's channel ownership: only a channel on Zscaler (ticked,
+    # or a prerequisite of one: SSL inspection for Inline Web DLP) is read;
+    # an alternative's or a gap's checks are not run and not shown, only
+    # counted (channel_scope: hidden, outside the score and the coverage).
     import channel_scope as _chs
-    checks, skipped_checks, check_order = _chs.partition(checks, req.channels)
+    checks, skipped_checks, _check_order = _chs.partition(checks, req.channels)
     if not checks:
         # Every check in the chosen scopes belongs to a channel that is not
         # ticked: signing in would read nothing, so say what to tick instead.
@@ -4892,7 +4905,7 @@ async def assess_stream(req: AssessRequest):
         raise HTTPException(status_code=400, detail=(
             "Nothing to assess: every check in the chosen scope belongs to a channel that is not ticked as Zscaler on the "
             f"Scope page ({', '.join(names) or 'none ticked'}). Tick the channel, then run the assessment."))
-    total_all = len(checks) + len(skipped_checks)
+    total_all = len(checks)   # the hidden checks are not part of the run's numbers
     # The profile's industry: the frameworks and packs the suggestions are limited to.
     import vertical as _vertical
     _scope = _vertical.scope_for(profile, all_packs=[p["id"] for p in __import__("dlp_importer").discover_packs()])
@@ -4928,10 +4941,7 @@ async def assess_stream(req: AssessRequest):
             yield _sse("auth", {"status": "ok", "auth_method": creds["auth_method"],
                                 "note": ("Signed in through the classic ZIA API: ZIA checks only; ZPA, Client Connector and ZDX checks "
                                          "are reported as not available.") if creds["auth_method"] == tenant_auth.LEGACY else ""})
-            for skipped in skipped_checks:
-                yield _sse("check", skipped)
-            yield _sse("progress", {"total": total_all, "completed": len(skipped_checks),
-                                    "pct": round(len(skipped_checks) / max(total_all, 1) * 100)})
+            yield _sse("progress", {"total": total_all, "completed": 0, "pct": 0})
 
             # Checks run on a small pool of threads (the API's rate limit is
             # shared by the Client's pacer), each result is streamed the moment
@@ -5005,8 +5015,8 @@ async def assess_stream(req: AssessRequest):
                             yield _sse("check", result)
                         if fresh:
                             yield _sse("progress", {
-                                "total": total_all, "completed": len(done) + len(skipped_checks),
-                                "pct": round((len(done) + len(skipped_checks)) / max(total_all, 1) * 100),
+                                "total": total_all, "completed": len(done),
+                                "pct": round(len(done) / max(total_all, 1) * 100),
                                 "current": f"{fresh[-1]['id']}: {fresh[-1]['label']}",
                                 "running": len([i for i in started if i not in done]),
                                 "elapsed": round(now - run_started),
@@ -5024,7 +5034,7 @@ async def assess_stream(req: AssessRequest):
             api_requests = getattr(client, "requests_made", None)
             await _end_checks_session(client, pool, running)
             client = None
-            results = _chs.merge(check_order, [done[i] for i in range(len(checks))], skipped_checks)
+            results = [done[i] for i in range(len(checks))]   # the checks keep their section order
 
             # Results first: the report goes out as soon as the checks are
             # in. The data-governance journey (one read-only preflight per
@@ -5058,8 +5068,11 @@ async def assess_stream(req: AssessRequest):
                 "review": [r for r in results if r["status"] == "REVIEW"],
                 "journey": {"status": "pending"} if want_journey else None,
                 "profile": None,
-                # The Scope page's declaration and what it did (channel_scope.coverage).
+                # The Scope page's declaration and what it did (channel_scope.coverage):
+                # the prerequisites added, and the hidden checks as one count.
                 "channel_coverage": _chs.coverage(req.channels, skipped_checks),
+                "hidden_checks": len(skipped_checks),
+                "hidden_note": _chs.hidden_note(len(skipped_checks)),
             }
 
             def _record_history(rep):
@@ -5086,7 +5099,7 @@ async def assess_stream(req: AssessRequest):
             # checks ran, how many the client was not permitted to run, what the
             # score divides over (permissions.assessment_summary; docs/SCORING.md).
             try:
-                report["summary"] = _perm.assessment_summary(results)
+                report["summary"] = _perm.assessment_summary(results, hidden=len(skipped_checks))
             except Exception:  # noqa: BLE001
                 report["summary"] = None
             if not want_journey:
@@ -5174,9 +5187,12 @@ async def generate_docx(request: Request):
 
     results = data.get("checks", [])
     cfg = dict(data.get("metadata") or {})
-    # The Scope page's channel declaration rides along for the Channel Coverage section.
+    # The Scope page's channel declaration rides along for the Channel Coverage
+    # section, and the count of the checks hidden as outside the scope.
     if isinstance(data.get("channel_coverage"), dict):
         cfg["channel_coverage"] = data["channel_coverage"]
+    if data.get("hidden_checks"):
+        cfg["hidden_checks"] = data.get("hidden_checks")
 
     if not results:
         raise HTTPException(status_code=400, detail="No checks in request body — cannot generate report.")

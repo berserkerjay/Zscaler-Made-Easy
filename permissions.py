@@ -165,30 +165,37 @@ def classify(result: Dict[str, Any]) -> str:
     return "informational"
 
 
-def assessment_summary(results: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+def assessment_summary(results: Iterable[Dict[str, Any]], hidden: int = 0) -> Dict[str, Any]:
     """Execution completion and measurable coverage as separate numbers,
     from the same results the score is built on, so every surface (the
     tiles, the summary card, the Word and JSON exports) says the same
     thing. `assessed` is what the API client was allowed to run;
     `scored` is what the score divides over; `score` is None — "Not
-    assessed" — when nothing was scoreable, never 100."""
+    assessed" — when nothing was scoreable, never 100.
+
+    A check outside the selected scope (channel_scope.is_hidden: its
+    channel is neither on Zscaler nor a prerequisite of one) is not a row
+    here at all: it counts toward nothing but `hidden` (with `hidden`, the
+    ones the caller already left out), said in one line (`hidden_note`)."""
     from dlp_assessment_full_auto import maturity
-    rows = list(results)
+    import channel_scope
+    rows, dropped = channel_scope.visible(results)
+    try:
+        hidden = max(0, int(hidden or 0)) + dropped
+    except (TypeError, ValueError):
+        hidden = dropped
     counts = {c: 0 for c in CLASSES}
     not_permitted_ids: List[Any] = []
-    not_in_scope_ids: List[Any] = []
     for r in rows:
         c = classify(r)
         counts[c] += 1
         if c == "not_permitted":
             not_permitted_ids.append(r.get("id"))
-        elif c == "not_in_scope":
-            not_in_scope_ids.append(r.get("id"))
     total = len(rows)
     scored = counts["configured"] + counts["action_required"] + counts["needs_review"]
     score = round(counts["configured"] / scored * 100) if scored else None
-    excluded = counts["not_permitted"] + counts["not_in_scope"] + counts["error"] + counts["informational"]
-    # Not-in-scope checks were left out on purpose: the run is still complete.
+    excluded = counts["not_permitted"] + counts["error"] + counts["informational"]
+    # Checks outside the scope were left out on purpose: the run is still complete.
     if total == 0:
         state = "unassessed"
     elif counts["not_permitted"] or counts["error"]:
@@ -197,11 +204,11 @@ def assessment_summary(results: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         state = "complete"
     return {
         "total": total,
-        "assessed": total - counts["not_permitted"] - counts["not_in_scope"],
+        "assessed": total - counts["not_permitted"],
         "not_permitted": counts["not_permitted"],
         "not_permitted_ids": not_permitted_ids,
-        "not_in_scope": counts["not_in_scope"],
-        "not_in_scope_ids": not_in_scope_ids,
+        "hidden": hidden,
+        "hidden_note": channel_scope.hidden_note(hidden),
         "errors": counts["error"],
         "informational": counts["informational"],
         "configured": counts["configured"],
