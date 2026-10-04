@@ -14,12 +14,14 @@
 FROM scratch AS certs
 COPY certs/ /
 
-FROM python:3.11-slim-trixie AS base
+FROM python:3.11-slim-trixie@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS base
 
-# The floating 3.11 tag picks up the current Debian and Python security
-# releases on every build (the image scan in CI fails on a stale base).
-# To pin exactly for a reproducible build, replace the tag with the digest:
-#   docker pull python:3.11-slim-trixie && docker inspect --format='{{index .RepoDigests 0}}' python:3.11-slim-trixie
+# Pinned by digest: every build starts from exactly the same base, and a
+# swapped or compromised tag cannot change it. Dependabot (docker
+# ecosystem, .github/dependabot.yml) proposes the new digest each month,
+# and the apt-get upgrade below still applies Debian security fixes
+# released since; the CI image scan fails on anything critical left over.
+# To refresh by hand: docker buildx imagetools inspect python:3.11-slim-trixie
 # Debian 13 (trixie), not 12: bookworm's perl, util-linux, openssl and
 # zlib carry critical and high CVEs Debian will not fix there.
 
@@ -63,7 +65,6 @@ COPY requirements.lock requirements.txt ./
 # are removed afterwards: nothing can install packages into the running
 # image. The build fails if a copy of either survives.
 RUN python -m pip install --require-hashes --no-deps -r requirements.lock \
- && python -m pip install --upgrade pip \
  && python -m pip uninstall -y setuptools wheel \
  && python -m pip uninstall -y pip \
  && rm -rf /usr/local/lib/python3.11/ensurepip /usr/local/lib/python3.11/site-packages/pip* /usr/local/bin/pip* \

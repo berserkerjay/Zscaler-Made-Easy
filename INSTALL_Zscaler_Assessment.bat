@@ -46,11 +46,14 @@ if errorlevel 1 goto :oldpython
 echo.
 echo  [1/2] Installing Python dependencies...
 echo        (this can sit with no output for a few minutes; that is normal)
-if exist "%INSTALL_DIR%\requirements.lock" (
-    "%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "%INSTALL_DIR%\requirements.lock"
-) else (
-    "%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check -r "%INSTALL_DIR%\requirements.txt"
+if not exist "%INSTALL_DIR%\requirements.lock" (
+    echo.
+    echo  requirements.lock is missing from this folder, so the dependencies cannot be
+    echo  installed hash-verified. Get a complete copy of the app and run this again.
+    pause
+    exit /b 1
 )
+"%PYTHON_EXE%" -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "%INSTALL_DIR%\requirements.lock"
 if errorlevel 1 (
     echo.
     echo  ============================================================
