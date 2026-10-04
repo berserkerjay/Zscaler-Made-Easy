@@ -109,10 +109,58 @@ const PM_EDGES = (() => {
   return seen;
 })();
 
+// The Live DLP feed's model: the session's Workflow Automation incidents
+// (each already through dictionaries, an engine and a channel rule, and
+// forwarded as evidence, or Workflow Automation would not have it). Each
+// channel that raised one carries bits through its rule and the evidence
+// lane at a rate that follows its count; the rest idle. Its rule is tagged
+// ENFORCE when every incident on it was enforced, MONITOR when any was
+// only logged. Only counts and rule / dictionary names are used: no user
+// or file name reaches the picture or its summary.
+const PM_LIVE_CH = { web: 'web', endpoint: 'ep', email: 'mail', saas: 'saas' };
+function pmLiveModel(incidents) {
+  const by = {};
+  let other = 0;
+  (incidents || []).forEach(i => {
+    const ch = PM_LIVE_CH[i && i.channel];
+    if (!ch) { other++; return; }
+    const c = by[ch] || (by[ch] = { n: 0, enforced: 0, monitor: 0, unknown: 0, rules: {}, dicts: {} });
+    c.n++;
+    c[i.enforcement === 'enforced' ? 'enforced' : i.enforcement === 'monitor' ? 'monitor' : 'unknown']++;
+    (i.rules || []).forEach(r => { c.rules[r] = (c.rules[r] || 0) + 1; });
+    (i.dictionaries || []).forEach(d => { if (d && d.name) c.dicts[d.name] = (c.dicts[d.name] || 0) + (Number(d.count) || 0); });
+  });
+  const top = o => Object.keys(o).sort((a, b) => o[b] - o[a]);
+  const routes = [], summary = [], extra = {};
+  const total = Object.keys(by).reduce((a, k) => a + by[k].n, 0);
+  summary.push(`${total} incident${total === 1 ? '' : 's'} this session${other ? ` (and ${other} on a channel the chain does not draw)` : ''}. Each one was matched by dictionaries, turned into a verdict by an engine, acted on by a channel rule and forwarded as evidence: Workflow Automation only has incidents whose rule forwards evidence.`);
+  PM_CHANNELS.forEach(({ ch, label }) => {
+    const base = _pmChain(ch), c = by[ch];
+    if (!c) {
+      routes.push({ edges: base, stop: null, tone: null, rate: 0.06 });
+      summary.push(`${label}: no incident this session.`);
+      return;
+    }
+    const rate = Math.min(1.4, 0.3 + c.n * 0.1);
+    routes.push({ edges: base.concat([`r_${ch}>evid`], PM_LANE.ev), stop: null, tone: null, rate });
+    routes.push({ edges: base.concat([`r_${ch}>logs`], PM_LANE.tel), stop: null, tone: null, rate: rate / 3 });
+    extra[`r_${ch}`] = c.monitor ? 'monitor' : (c.enforced ? 'enforce' : undefined);
+    const rules = top(c.rules), dicts = top(c.dicts);
+    summary.push(`${label}: ${c.n} incident${c.n === 1 ? '' : 's'}, ${c.enforced} enforced, ${c.monitor} monitor-only${c.unknown ? `, ${c.unknown} with the rule's action not read` : ''}.`
+      + (rules.length ? ` Rules: ${_pmList(rules.map(r => `${r} (${c.rules[r]})`))}.` : '')
+      + (dicts.length ? ` Dictionaries: ${_pmList(dicts.map(d => `${d} (${c.dicts[d]} matches)`))}.` : '')
+      + (c.monitor ? ' Monitor-only matches are logged and forwarded but the data still left.' : ''));
+  });
+  summary.push('Telemetry lane: each match also writes a channel log that NSS / Cloud NSS can stream to the SIEM; this feed does not read NSS, and that lane never feeds Workflow Automation.');
+  return { mode: 'live', routes, stops: [], summary, extra };
+}
+
 // The model: from an analyzer result (or none) to the routes the bits
 // take, where each one stops and why, and a plain-words summary. Pure, so
-// the page and the tests share it.
+// the page and the tests share it. {live: [incidents]} is the Live DLP
+// feed's session (pmLiveModel).
 function pmModel(res) {
+  if (res && Array.isArray(res.live) && res.live.length) return pmLiveModel(res.live);
   if (!res || !res.trace) {
     return {
       mode: 'reference', routes: _pmReferenceRoutes().map(r => Object.assign(r, { stop: null, tone: null, rate: 0.22 })),
@@ -459,7 +507,7 @@ function renderPathMotion(container) {
       // Stagger the first bits so the lanes do not pulse in step.
       return Object.assign({}, r, { lens: ls, end, acc: Math.random(), lane: _pmLane(r.edges[0]) });
     });
-    container.querySelector('#pmMode').textContent = m.mode === 'reference' ? 'Reference chain · every lane idling' : 'This path · bits stop where the chain breaks';
+    container.querySelector('#pmMode').textContent = m.mode === 'reference' ? 'Reference chain · every lane idling' : m.mode === 'live' ? 'This session · each lane carries the incidents it raised' : 'This path · bits stop where the chain breaks';
     container.querySelector('#pmSummary').innerHTML = m.summary.map(s => `<li>${_pmE(s)}</li>`).join('');
     sync();
     return m;
