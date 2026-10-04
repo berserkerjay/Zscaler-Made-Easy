@@ -81,12 +81,20 @@ def test_profile_secret_goes_to_the_keyring_when_available(monkeypatch, tmp_path
     assert ("dlp-check", row["id"]) not in store and tp.SECRET_FIELD not in tp.get(row["id"], with_secret=True)
 
 
-def test_profile_secret_falls_back_to_the_file_without_keyring(monkeypatch, tmp_path):
+def test_profile_secret_goes_to_the_file_without_keyring_only_when_opted_in(monkeypatch, tmp_path):
+    # Without a credential store the secret is NOT silently written in plain
+    # text: it is kept in the owner-only file only with the explicit opt-in.
     monkeypatch.setitem(sys.modules, "keyring", None)
     monkeypatch.setenv("DLP_CHECK_PROFILES", str(tmp_path / "profiles.json"))
+    monkeypatch.delenv("DLP_CHECK_SECRET_STORE", raising=False)
+    assert tp.secret_storage() == "none"
+    row = tp.upsert({"name": "Beta", "vanity_domain": "beta", "client_id": "abc123456789"}, client_secret="plain", remember_secret=True)
+    assert row["has_secret"] is False and "secret_warning" in row and row["secret_not_remembered"] == ["client_secret"]
+    assert "plain" not in (tmp_path / "profiles.json").read_text()
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
     assert tp.secret_storage() == "file"
     row = tp.upsert({"name": "Beta", "vanity_domain": "beta", "client_id": "abc123456789"}, client_secret="plain", remember_secret=True)
-    assert tp.get(row["id"], with_secret=True)[tp.SECRET_FIELD] == "plain"
+    assert tp.get(row["id"], with_secret=True)[tp.SECRET_FIELD] == "plain" and "secret_warning" not in row
 
 
 def test_installs_are_hash_pinned_and_container_files_are_present():

@@ -108,9 +108,14 @@ def test_no_page_or_document_asks_for_an_unpinned_keyring_install():
         assert "optional <code>keyring</code>" not in text and "optional `keyring`" not in text, parts
 
 
-def test_tests_never_reach_the_real_credential_store():
+def test_tests_never_reach_the_real_credential_store(monkeypatch):
     """conftest blocks the installed keyring, so a remembered secret in a
-    test never lands in this machine's Credential Manager or Keychain."""
+    test never lands in this machine's Credential Manager or Keychain.
+    Without a store a secret is not remembered, unless the profile file is
+    chosen explicitly (DLP_CHECK_SECRET_STORE=file): no silent fallback."""
     import tenant_profiles as tp
     assert sys.modules.get("keyring", "absent") is None
-    assert tp._keyring() is None and tp.secret_storage() == "file"
+    monkeypatch.delenv("DLP_CHECK_SECRET_STORE", raising=False)
+    assert tp._keyring() is None and tp.secret_storage() == "none"
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+    assert tp.secret_storage() == "file"

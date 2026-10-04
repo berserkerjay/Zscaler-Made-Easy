@@ -645,19 +645,22 @@ def update(app_dir: str, install_deps: bool = True, python: Optional[str] = None
 
     if install_deps and result["updated"]:
         lock = os.path.join(app_dir, "requirements.lock")
-        req = os.path.join(app_dir, "requirements.txt")
-        if os.path.isfile(lock) or os.path.isfile(req):
+        if not os.path.isfile(lock):
+            # Never an unhashed install from requirements.txt.
+            result["deps_ok"] = False
+            step("Install Python dependencies", False,
+                 "requirements.lock is missing, so no dependency was installed (only a hash-verified install is allowed). "
+                 "Get a complete copy of the app and run the installer.", soft=True)
+        else:
             py = python or sys.executable
             # The lock pins every wheel by hash; pip refuses anything that differs.
-            args = ([py, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "--require-hashes", "--no-deps", "-r", lock]
-                    if os.path.isfile(lock) else
-                    [py, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "-r", req])
+            args = [py, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "--require-hashes", "--no-deps", "-r", lock]
             try:
                 cp = subprocess.run(args,
                                     cwd=app_dir, capture_output=True, text=True, timeout=PIP_TIMEOUT)
                 result["deps_ok"] = cp.returncode == 0
                 step("Install Python dependencies", cp.returncode == 0,
-                     ("requirements.lock installed (hash-verified)" if os.path.isfile(lock) else "requirements.txt installed") if cp.returncode == 0
+                     "requirements.lock installed (hash-verified)" if cp.returncode == 0
                      else "pip reported a problem; the app still runs. If a feature fails to import, run INSTALL_Zscaler_Assessment.bat once. "
                           + (cp.stderr or cp.stdout or "").strip()[-400:], soft=True)
             except subprocess.TimeoutExpired:
@@ -763,7 +766,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Update DLP-Check in place (git pull, edits preserved).")
     ap.add_argument("--dir", default=os.path.dirname(os.path.abspath(__file__)), help="app folder (default: this file's folder)")
-    ap.add_argument("--no-deps", action="store_true", help="skip pip install -r requirements.txt")
+    ap.add_argument("--no-deps", action="store_true", help="skip the hash-verified pip install of requirements.lock")
     ap.add_argument("--status", action="store_true", help="only report where this install stands")
     ap.add_argument("--branch", choices=BRANCHES, default=None,
                     help="branch to update to (default: the one checked out, else main)")

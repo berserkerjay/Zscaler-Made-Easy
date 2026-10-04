@@ -198,10 +198,21 @@ def list_profiles() -> List[Dict[str, Any]]:
 # through the `keyring` package (Windows Credential Manager / DPAPI, macOS
 # Keychain); the profile file then holds only a marker. keyring is pinned by
 # hash in requirements.lock for Windows and macOS only; on Linux and in the
-# container it is not installed and the secret is stored in the owner-only
-# profile file, as it is when the store refuses it.
+# container it is not installed. Without a usable credential store (or when
+# it refuses the secret) the secret is written to the owner-only profile
+# file ONLY when the operator chose that explicitly with
+# DLP_CHECK_SECRET_STORE=file; otherwise it is not remembered and the save
+# says so (secret_warning). Never a silent plaintext fallback. Secrets saved
+# in the file by older versions still load.
 KEYRING_SERVICE = "dlp-check"
 KEYRING_MARK = "@keyring"
+FILE_STORE_OPT_IN = "DLP_CHECK_SECRET_STORE"
+
+
+def file_store_allowed() -> bool:
+    """True when the operator explicitly allowed plaintext secrets in the
+    owner-only profile file (DLP_CHECK_SECRET_STORE=file)."""
+    return os.environ.get(FILE_STORE_OPT_IN, "").strip().lower() == "file"
 
 
 def _keyring():
@@ -213,8 +224,16 @@ def _keyring():
 
 
 def secret_storage() -> str:
-    """'keyring' or 'file': where a remembered secret is kept on this machine."""
-    return "keyring" if _keyring() is not None else "file"
+    """Where a remembered secret would be kept on this machine: 'keyring',
+    'file' (only with DLP_CHECK_SECRET_STORE=file) or 'none' (not remembered)."""
+    if _keyring() is not None:
+        return "keyring"
+    return "file" if file_store_allowed() else "none"
+
+
+NOT_REMEMBERED = ("The secret was not remembered: this machine has no usable credential store (the keyring package or its "
+                  "backend is missing, as in the container). It is used for this session only. To keep it anyway in the "
+                  "owner-only profile file, start the app with DLP_CHECK_SECRET_STORE=file.")
 
 
 def _keyring_key(profile_id: str, field: str) -> str:
@@ -223,15 +242,18 @@ def _keyring_key(profile_id: str, field: str) -> str:
     return profile_id if field == SECRET_FIELD else f"{profile_id}:{field}"
 
 
-def _store_secret(profile_id: str, secret: str, field: str = SECRET_FIELD) -> str:
+def _store_secret(profile_id: str, secret: str, field: str = SECRET_FIELD) -> Optional[str]:
+    """What the profile file holds for a remembered secret: the keyring
+    marker, the secret itself (only with DLP_CHECK_SECRET_STORE=file), or
+    None when it cannot be remembered safely."""
     kr = _keyring()
     if kr is not None:
         try:
             kr.set_password(KEYRING_SERVICE, _keyring_key(profile_id, field), secret)
             return KEYRING_MARK
-        except Exception:  # noqa: BLE001 — no usable backend: fall back to the file
+        except Exception:  # noqa: BLE001 — no usable backend
             pass
-    return secret
+    return secret if file_store_allowed() else None
 
 
 def _load_secret(profile_id: str, field: str = SECRET_FIELD) -> Optional[str]:
@@ -285,17 +307,28 @@ def upsert(fields: Dict[str, Any], *, client_secret: str = "", remember_secret: 
             if k in fields and fields[k] is not None:
                 p[k] = fields[k]
         p.setdefault("name", p.get("org_name") or pid)
+        not_kept = []
         for field in SECRET_FIELDS:
             if remember_secret:
                 if given[field]:
-                    p[field] = _store_secret(pid, given[field], field)
+                    stored = _store_secret(pid, given[field], field)
+                    if stored is None:
+                        not_kept.append(field)
+                        _forget_secret(pid, p.get(field), field)
+                        p.pop(field, None)
+                    else:
+                        p[field] = stored
             else:
                 _forget_secret(pid, p.get(field), field)
                 p.pop(field, None)
         p["updated_at"] = _now()
         data["profiles"][pid] = p
         _write(data)
-        return masked(p)
+        out = masked(p)
+        if not_kept:
+            out["secret_warning"] = NOT_REMEMBERED
+            out["secret_not_remembered"] = not_kept
+        return out
 
 
 def delete(profile_id: str) -> bool:
