@@ -189,7 +189,7 @@ def test_path_analyzer_hands_its_result_over_without_the_log():
     assert "keepForAnimator(res);" in html and "delete slim.logs" in html
     assert "localStorage.setItem('zassess_path_last'" in html
     assert 'href="/report/motion#path"' in html
-    assert html.count("motion.update(") == 1
+    assert "motion.update(" not in html, "the DLP chain moved to the Live DLP feed"
 
 
 def test_page_is_served_and_listed(client=None):

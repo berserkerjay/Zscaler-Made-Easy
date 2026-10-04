@@ -246,23 +246,26 @@ def test_the_mitigation_recommendation_reasons_across_every_channel():
         "why": "The content is inspected but only logged; once the incidents look right, blocking stops the leak instead of recording it.", "severity": "medium"}]
 
 
-def test_the_page_draws_the_dlp_chain_live_and_honours_reduced_motion():
+def test_the_live_feed_draws_the_dlp_chain_live_and_honours_reduced_motion():
     """The live chain from the Data Security Architect reference (#chain)
-    sits above the result: inline SVG with bits on requestAnimationFrame,
-    a pause / play button, static arrows and no motion when the system
-    asks for reduced motion, a text summary for screen readers, and the
-    page's own colour tokens so it reads in both themes."""
+    sits under the Live DLP feed (it moved there from the Path analyzer):
+    inline SVG with bits on requestAnimationFrame, a pause / play button,
+    static arrows and no motion when the system asks for reduced motion, a
+    text summary for screen readers, and the page's own colour tokens so
+    it reads in both themes."""
     import os
     import dlp_api_server as srv
     from fastapi.testclient import TestClient
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     t = TestClient(srv.app)
-    html = t.get("/report/path").text
-    for needle in ('<script src="/static/path_motion.js"></script>', 'id="paMotion"', 'id="paMotionBody"', 'href="/reference/data-security-architect#chain"',
-                   "renderPathMotion(document.getElementById('paMotionBody'))", "showMotion(null);", "showMotion(res);"):
+    html = t.get("/report/live").text
+    for needle in ('<script src="/static/path_motion.js"></script>', 'id="lfMotion"', 'id="lfMotionBody"', 'href="/reference/data-security-architect#chain"',
+                   "The DLP chain, live", "renderPathMotion(document.getElementById('lfMotionBody'))", "showMotion();"):
         assert needle in html, needle
     assert html.index("data_flow.js") < html.index("path_motion.js")
-    assert "<h3" not in html
+    assert html.index('id="lfCoverage"') < html.index('id="lfMotion"') < html.index('id="lfBody"'), "under the feed's coverage note, above the incidents"
+    path = t.get("/report/path").text
+    assert "path_motion.js" not in path and "paMotion" not in path and "<h3" not in path
     r = t.get("/static/path_motion.js")
     assert r.status_code == 200
     js = r.text
@@ -592,12 +595,12 @@ def test_a_browser_without_flatmap_still_gets_the_result_and_the_motion_never_si
     out = _pm_run("const w=H.load(PM,{noFlatMap:true});const ok=w.run('typeof [].flatMap');const c=w.container();const m=w.ctx.renderPathMotion(c).update(D);"
                   "process.stdout.write(JSON.stringify({ok,mode:m.mode,routes:m.routes.length}));", res)
     assert out["ok"] == "undefined" and out["mode"] == "result" and out["routes"] > 3
-    html = TestClient(srv.app).get("/report/path").text
-    guard = re.search(r"function showMotion\(res\) \{\s*try \{ motion\.update\(res\); \} catch \(e\) \{ document\.getElementById\('paMotion'\)\.hidden = true; \}", html)
+    html = TestClient(srv.app).get("/report/live").text
+    guard = re.search(r"function showMotion\(\) \{\s*try \{ motion\.update\(rows\.length \? \{ live: rows \} : null\); \} catch \(e\) \{ document\.getElementById\('lfMotion'\)\.hidden = true; \}", html)
     assert guard, "motion.update runs inside its own try/catch"
     assert html.count("motion.update(") == 1, "every call goes through showMotion"
-    run = html[html.index("async function run()"):html.index("function fail(")]
-    assert run.index("render(res, snap.logs || []);") < run.index("showMotion(res);") < run.index("say(`Verdict:")
+    poll = html[html.index("async function poll(my)"):html.index("function schedule(my)")]
+    assert poll.index("render(freshIds);") < poll.index("showMotion();"), "the table first; the picture never holds it up"
 
 
 def test_the_blocked_mark_is_explained_and_not_drawn_in_a_lane_colour():
@@ -744,3 +747,37 @@ def test_bits_at_a_policy_block_pop_in_the_block_tone_and_amber_is_explained():
     assert pops and all("tone-blocked" in b for b in pops), out["bits"]
     assert "assumed, not confirmed" in out["legend"]
 
+
+
+@_needs_node
+def test_the_live_chain_follows_the_session_incidents_without_user_or_file_names():
+    """{live: incidents}: each channel that raised one carries bits through
+    its rule and the evidence lane to Workflow Automation (an incident is
+    there only because its rule forwards evidence), faster the more it
+    raised; a rule with any monitor-only incident is tagged MONITOR; the
+    channels with none idle; and no user or file name reaches the summary."""
+    inc = [
+        {"channel": "web", "enforcement": "enforced", "rules": ["PCI - Block"], "dictionaries": [{"name": "Credit cards", "count": 14}], "user": "alice@corp.example", "file": "cards.csv"},
+        {"channel": "web", "enforcement": "enforced", "rules": ["PCI - Block"], "dictionaries": [{"name": "Credit cards", "count": 3}], "user": "bob@corp.example"},
+        {"channel": "endpoint", "enforcement": "monitor", "rules": ["EP - PII"], "dictionaries": [{"name": "US SSN", "count": 2}], "user_name": "Carol"},
+        {"channel": "other", "enforcement": "unknown"},
+    ]
+    out = _pm_run("const w=H.load(PM);const m=w.ctx.pmModel({live:D});"
+                  "process.stdout.write(JSON.stringify({mode:m.mode,routes:m.routes.map(r=>({edges:r.edges,rate:r.rate,stop:r.stop})),extra:m.extra,summary:m.summary,stops:m.stops}));", inc)
+    assert out["mode"] == "live" and out["stops"] == []
+    ev = ["evid>storage", "storage>event", "event>waint", "waint>wa"]
+    web = [r for r in out["routes"] if r["edges"][0] == "cap_web>dict"]
+    assert any(r["edges"][-4:] == ev and "r_web>evid" in r["edges"] for r in web)
+    ep = [r for r in out["routes"] if r["edges"][0] == "cap_ep>dict" and "r_ep>evid" in r["edges"]][0]
+    assert max(r["rate"] for r in web) > ep["rate"], "two incidents move faster than one"
+    idle = [r for r in out["routes"] if r["edges"][0] in ("cap_mail>dict", "cap_saas>dict")]
+    assert len(idle) == 2 and all(len(r["edges"]) == 3 and r["rate"] < 0.1 for r in idle)
+    assert out["extra"] == {"r_web": "enforce", "r_ep": "monitor"}
+    text = " ".join(out["summary"])
+    assert "3 incidents this session (and 1 on a channel the chain does not draw)" in text
+    assert "Inline Web DLP: 2 incidents, 2 enforced, 0 monitor-only. Rules: PCI - Block (2). Dictionaries: Credit cards (17 matches)." in text
+    assert "Endpoint DLP: 1 incident, 0 enforced, 1 monitor-only." in text and "Email DLP: no incident this session." in text
+    for leak in ("alice", "bob", "Carol", "cards.csv"):
+        assert leak not in text
+    empty = _pm_run("const w=H.load(PM);process.stdout.write(JSON.stringify(w.ctx.pmModel({live:[]}).mode));", [])
+    assert empty == "reference", "no incident yet: the reference chain idles"
