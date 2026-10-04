@@ -334,15 +334,26 @@ def _render_endpoint(endpoint_tpl: str, criteria: Dict[str, Any]) -> str:
     """Endpoints can have {field} placeholders too (e.g. /zia/{rule_type}/{rule_id})."""
     import re as _re
     out = endpoint_tpl
+    from urllib.parse import quote as _quote
     for m in _re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", endpoint_tpl):
-        val = str(criteria.get(m, ""))
+        # Encoded as one path segment: a value can never add "/", "..",
+        # "?" or "#" and so never retarget the write (validated as well).
+        val = _quote(str(criteria.get(m, "")), safe="")
         out = out.replace(f"{{{m}}}", val)
     return out
+
+
+_PATH_PARAM = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def _validate_criteria(recipe: Dict[str, Any], criteria: Dict[str, Any]) -> List[str]:
     """Return a list of validation errors. Empty list = valid."""
     errors: List[str] = []
+    import re as _re
+    for name in _re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", str(recipe.get("endpoint") or "")):
+        val = criteria.get(name)
+        if val not in (None, "") and not _PATH_PARAM.match(str(val)):
+            errors.append(f"{name}: only letters, digits, '_' and '-' are allowed (it becomes part of the API path).")
     for f in recipe.get("fields", []):
         key = f["key"]
         val = criteria.get(key)

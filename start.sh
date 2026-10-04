@@ -27,6 +27,8 @@ if [ "${1:-}" = "--background" ]; then
   rm -f ui_token.txt
   # -u: line-buffered output, so the address and the token land in server.log
   # at once instead of waiting in Python's buffer while the file looks empty.
+  # The log carries the UI token: owner-only before anything is written to it.
+  : > server.log; chmod 600 server.log
   nohup .venv/bin/python -u dlp_api_server.py > server.log 2>&1 &
   echo $! > server.pid
   # Wait for this run's address (a first start can take a while), at most 20 s.

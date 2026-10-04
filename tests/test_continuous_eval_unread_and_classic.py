@@ -24,6 +24,13 @@ import tenant_profiles as tp
 from test_continuous_eval import _env
 
 
+@pytest.fixture(autouse=True)
+def _remember_secrets_in_the_profile_file(monkeypatch):
+    # No credential store in the tests: remembering a secret in the profile
+    # file is the explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+
+
 RULES = [{"id": 1, "name": "PCI block", "channel": "endpoint", "state": "ENABLED", "action": "BLOCK", "engines": ["PCI"]},
          {"id": 2, "name": "PII monitor", "channel": "endpoint", "state": "ENABLED", "action": "ALLOW", "engines": ["PII"]}]
 

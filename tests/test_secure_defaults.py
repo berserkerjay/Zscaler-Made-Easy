@@ -198,10 +198,13 @@ def test_server_calls_require_safe_bind_at_startup():
     assert src.index("_security.require_safe_bind()") > src.index("_sso.require_configured()")
 
 
-def test_same_origin_requests_pass_on_any_port_cross_origin_is_refused():
+def test_same_origin_requests_pass_on_any_port_cross_origin_is_refused(monkeypatch):
     """The CSRF check trusts the allowlist and the page the server itself
     served (Origin == scheme://Host), so a spare port or a machine name
-    works; a page on another local port is still refused."""
+    works; a page on another local port is still refused. (With the UI
+    token gate on: with it off, only loopback Host names are served, the
+    DNS-rebinding guard.)"""
+    monkeypatch.setenv("ZSCALER_UI_AUTH", "1")
     from fastapi.testclient import TestClient
     import dlp_api_server as srv
     c = TestClient(srv.app, base_url="http://127.0.0.1:8013")

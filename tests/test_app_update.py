@@ -29,6 +29,7 @@ def repos(tmp_path):
     _git(tmp_path, "clone", "-q", str(origin), str(work))
     (work / "dlp_api_server.py").write_text("print('v1')\n")
     (work / "requirements.txt").write_text("requests>=2.28.0\n")
+    (work / "requirements.lock").write_text("requests==2.32.3 \\\n    --hash=sha256:" + "0" * 64 + "\n")   # only hash-pinned installs
     _git(work, "add", "."); _git(work, "commit", "-q", "-m", "v1"); _git(work, "push", "-q", "origin", "HEAD:main")
     app = tmp_path / "app"
     _git(tmp_path, "clone", "-q", "-b", "main", str(origin), str(app))
@@ -195,7 +196,8 @@ def test_update_switches_back_to_main_and_installs_deps(repos, monkeypatch):
     res = au.update(app, python="/fake/python")
     assert res["ok"] and res["updated"] and res["after"] == v2 and res["deps_ok"] is True
     assert [s["name"] for s in res["steps"]] == ["Check this folder", "Fetch from GitHub", "Switch to main", "Pull latest code", "Verify against GitHub: skipped", "Install Python dependencies"]
-    assert calls and calls[0][:4] == ["/fake/python", "-m", "pip", "install"] and calls[0][-1].endswith("requirements.txt")
+    assert calls and calls[0][:4] == ["/fake/python", "-m", "pip", "install"] and calls[0][-1].endswith("requirements.lock")
+    assert "--require-hashes" in calls[0], "the update only ever installs hash-verified"
     assert _git(app, "rev-parse", "--abbrev-ref", "HEAD") == "main"
 
 
