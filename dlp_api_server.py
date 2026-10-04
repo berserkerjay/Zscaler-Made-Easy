@@ -169,7 +169,7 @@ async def _no_stale_static(request, call_next):
     browsers revalidate every static file so an update shows up on the next
     load instead of after a hard refresh."""
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow"):
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/app.css", "/report/view", "/report/bypass", "/report/sslflow", "/report/flow", "/report/dataflow", "/report/advanced", "/report/health", "/report/compliance", "/report/evalall", "/report/path", "/report/live", "/report/vendor", "/report/beacon", "/report/deploy-flow", "/report/motion"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 app.add_middleware(
@@ -5503,6 +5503,19 @@ async def report_data_flow(req: DataFlowRequest):
 async def report_live_page():
     """Standalone tab for the Live DLP Feed (static/report_live.html)."""
     page = os.path.join(STATIC_DIR, "report_live.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="report page missing")
+    with open(page, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read(), headers={"Cache-Control": "no-cache, must-revalidate, max-age=0"})
+
+
+# ── Flow animator ─────────────────────────────────────────────────────
+@app.get("/report/motion")
+async def report_motion_page():
+    """Flow animator (static/report_motion.html): the path, DLP decision,
+    deployment, live-incident and reference-architecture flows animated
+    from results the other pages produce. Reads nothing on its own."""
+    page = os.path.join(STATIC_DIR, "report_motion.html")
     if not os.path.exists(page):
         raise HTTPException(status_code=404, detail="report page missing")
     with open(page, "r", encoding="utf-8") as f:
