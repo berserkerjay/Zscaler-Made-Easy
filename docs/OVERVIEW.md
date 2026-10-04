@@ -94,8 +94,11 @@ what you get, what to do next.
   marked. Samples, labelled as such, until you have results. Read-only.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
   15 seconds: who, what triggered, where it was going, enforced or
-  monitor-only, with a running tally. It covers DLP incidents only, not
-  the whole traffic log, and says so.
+  monitor-only, with a running tally. Above the table, the DLP chain from
+  the reference architecture, live: each channel that raised an incident
+  carries bits through its rule and the evidence lane to Workflow
+  Automation, its rule tagged enforce or monitor. It covers DLP incidents
+  only, not the whole traffic log, and says so.
 - **Bypass & non-inspected traffic** — every SSL exemption, allow rule,
   Client Connector bypass and PAC exception that lets traffic skip
   inspection, with exports. Where: opened from Traffic flow & gaps.
