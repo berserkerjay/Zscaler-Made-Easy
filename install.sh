@@ -51,8 +51,8 @@ if [ -f requirements.lock ]; then
   "$VPY" -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r requirements.lock \
     || fail "Dependency install failed. If you are behind a corporate proxy, set HTTPS_PROXY (and REQUESTS_CA_BUNDLE for TLS inspection) and run this again."
 else
-  say "requirements.lock not found; installing from requirements.txt…"
-  "$VPY" -m pip install --quiet --disable-pip-version-check -r requirements.txt || fail "Dependency install failed."
+  # Never an unhashed install: without the lock nothing pins what pip downloads.
+  fail "requirements.lock is missing from this folder, so the dependencies cannot be installed hash-verified. Get a complete copy of the app (git clone, or a fresh ZIP) and run this again."
 fi
 
 # 4. The app itself, editable, so the dlp-check command runs this folder's code.
@@ -63,6 +63,7 @@ say "Installing the dlp-check command…"
 # 5. Machine-specific settings file (proxy, CA bundle, credentials), never overwritten.
 if [ ! -f local_settings.env ] && [ -f local_settings.env.example ]; then
   cp local_settings.env.example local_settings.env
+  chmod 600 local_settings.env   # it may hold ZSCALER_CLIENT_SECRET and the like: owner-only
   say "Created local_settings.env from the example (git-ignored; edit it for a proxy or credentials)."
 fi
 chmod +x start.sh stop.sh 2>/dev/null || true

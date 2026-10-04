@@ -26,3 +26,17 @@ terraform/**/*.tfstate*
 terraform/**/terraform.tfvars
 user_packs/
 update_container.log
+# Local customer data and state (git-ignored too): never baked into the image.
+server.log
+launcher.log
+server.pid
+proposals.json
+proposals.json.tmp
+digests/
+guidance_state.json
+guidance_state.json.tmp
+saas_apps.local.json
+checks_config.json.tmp
+zia_rate_state.json*
+.zia_rate-*
+updater_backup/

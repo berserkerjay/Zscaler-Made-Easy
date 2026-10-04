@@ -201,10 +201,15 @@ jobs:
           # Published on the host's loopback only (see -p below); the container's
           # own internal bind is 0.0.0.0 (baked in by the Dockerfile) and
           # DLP_CHECK_HOST_BIND defaults to loopback, so it starts without SSO.
-          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_AUTH=0 dlp-check:ci)
+          # The UI token gate stays on (a container cannot tell a loopback
+          # caller from one on its network, so ZSCALER_UI_AUTH=0 is refused):
+          # a fixed CI token proves the gate admits it and refuses no token.
+          id=$(docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 -e ZSCALER_UI_TOKEN=ci-smoke-token dlp-check:ci)
           sleep 8
           docker exec "$id" id -u | grep -qv '^0$'
           curl -fsS http://127.0.0.1:8000/api/ping
+          curl -fsS -H "X-DLP-Check-Token: ci-smoke-token" http://127.0.0.1:8000/api/health >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/health)" = "401"
           docker rm -f "$id" >/dev/null
 
       - name: Scan the image for known vulnerabilities (Trivy)
