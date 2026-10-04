@@ -5,9 +5,11 @@
 // 6 hours while it stays open. "Later" hides the notice for that build;
 // a newer build shows it again. Works for a local install and for the
 // container (whose notice points at update_container).
-// A second bar, on the same schedule, shows Beacon's upstream drift (SDK,
-// API, Terraform) from /api/beacon/status, which only reads what Beacon's
-// own timer found; its Later hides that set of findings until it changes.
+// A second bar, on the same schedule, shows Beacon's persistent upstream
+// drift (SDK, API, Terraform) from /api/beacon/status: a finding must be in
+// two consecutive comparable runs before it appears. The endpoint only
+// reads what Beacon's own timer found; Later hides that confirmed set until
+// it changes.
 (function () {
   const FIRST_CHECK_MS = 60 * 1000;
   const EVERY_MS = 6 * 60 * 60 * 1000;
