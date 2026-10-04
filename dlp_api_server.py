@@ -3477,8 +3477,10 @@ async def beacon_get():
 
 @app.get("/api/beacon/status")
 async def beacon_status(refresh: bool = False):
-    """Short form for a notice: the current SDK / API / Terraform drift, the
-    count of changes since the previous run and where the details are.
+    """Short form for a notice: SDK / API / Terraform drift confirmed by two
+    consecutive comparable runs, the current count, changes since the
+    previous run and where the details are. A first detection stays on the
+    Beacon details page but does not raise the global banner.
     Reads the kept snapshot only; `refresh` starts an online run in the
     background when the newest online one is over an hour old."""
     import beacon
@@ -3491,10 +3493,15 @@ async def beacon_status(refresh: bool = False):
     latest = history[-1] if history else None
     online = next((s for s in reversed(history) if s.get("online")), None)
     diff = (latest or {}).get("diff") or {}
-    drift = (online or latest or {}).get("drift") or []
+    source = online or latest or {}
+    current = source.get("drift") or []
+    # Snapshots written before persistence gating have no such field. Do not
+    # resurrect their one-run findings as banners after an upgrade.
+    drift = source.get("persistent_drift") or []
     import hashlib
     key = hashlib.sha256("\n".join(sorted(f"{d.get('watcher')}|{d.get('text')}" for d in drift)).encode("utf-8")).hexdigest()[:16] if drift else ""
     return {"at": (latest or {}).get("at"), "online_at": (online or {}).get("at"), "drift": drift, "drift_key": key,
+            "current_drift": len(current), "pending_confirmation": max(0, len(current) - len(drift)),
             "changes": len(diff.get("changes") or []), "summary": (diff.get("summary") or [None])[0],
             "running": _BEACON_STATE["running"] or beacon.RUN_LOCK.locked(), "started": started, "details": "/report/beacon",
             "next_run_at": _BEACON_STATE.get("next_run_at")}
