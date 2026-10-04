@@ -20,6 +20,13 @@ import tenant_profiles as tp
 from test_continuous_eval import _Recorder, _client, _env, _http, _profile, _state
 
 
+@pytest.fixture(autouse=True)
+def _remember_secrets_in_the_profile_file(monkeypatch):
+    # No credential store in the tests: remembering a secret in the profile
+    # file is the explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+
+
 class _Reads:
     """A client that answers every SDK call with an empty list and records
     the call's path (zia.dlp_web_rules.list_rules, zwa.dlp_incidents...)."""

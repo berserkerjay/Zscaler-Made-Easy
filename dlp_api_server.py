@@ -139,10 +139,12 @@ app = FastAPI(
     description="Full-auto assessment engine via OneAPI.",
 )
 
-# Order matters: outermost first → body-size → rate-limit → origin → headers → gzip → CORS.
-# Body size and rate limit reject early before doing any real work.
-app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
-app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
+# Starlette runs the middleware added LAST as the outermost. The body-size
+# cap is added at the very end of this block (after CORS) so it wraps
+# everything: no other layer, the audit log included, buffers a body before
+# the cap has been applied to it. The rate limiter is added just before it,
+# so it runs ahead of the UI token check: a flood of unauthenticated calls is
+# throttled before each one can write an "auth_denied" audit line.
 app.add_middleware(OriginCheckMiddleware)
 import security as _security
 import audit as _audit
@@ -180,6 +182,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept"],
     max_age=3600,
 )
+app.add_middleware(RateLimitMiddleware, rps=20, burst=60)
+# Outermost: caps declared and streamed (chunked) request bodies before any
+# other layer reads them (see BodySizeLimitMiddleware).
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=get_max_body_bytes())
 
 
 # ── Generic exception handler — never leak stack traces ────────────

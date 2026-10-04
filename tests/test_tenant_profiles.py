@@ -18,6 +18,9 @@ import tenant_profiles as tp
 def store(tmp_path, monkeypatch):
     p = tmp_path / "profiles.json"
     monkeypatch.setenv("DLP_CHECK_PROFILES", str(p))
+    # No credential store in the test environment: remembering a secret in
+    # the profile file is an explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
     return p
 
 
@@ -63,7 +66,10 @@ def test_snapshot_keeps_score_and_journey_only():
     assert "journey" not in tp.snapshot({"score": 1, "journey": {"status": "error", "error": "boom"}})
 
 
-def test_api_roundtrip_and_credential_fill():
+def test_api_roundtrip_and_credential_fill(monkeypatch):
+    # No credential store in the test environment: remembering a secret in
+    # the profile file is an explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
     from fastapi.testclient import TestClient
     import dlp_api_server as srv
 

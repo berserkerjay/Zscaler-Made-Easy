@@ -91,7 +91,7 @@ distribution links in the SBOM.
 
 ## Container image
 
-The container image is built on `python:3.11-slim-trixie` (Debian 13 with CPython 3.11).
+The container image is built on `python:3.11-slim-trixie@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e` (Debian 13 with CPython 3.11).
 The components of that base image are not in the SBOM above, which covers
 the Python packages and the Terraform provider only; CI builds a CycloneDX
 SBOM of the built image (every Debian package and its licence) as the

@@ -820,7 +820,12 @@ async function _gdProfileSave(asNew) {
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
     GD.profile = data.id; _gdSave();
-    if (typeof setStatus === 'function') setStatus(`Profile "${data.name}" saved${data.has_secret ? ' with the secret remembered on this laptop' : ' (secret not stored)'}.`, 'success');
+    if (data.secret_warning) {
+      // Remember was ticked but this machine has no credential store: the
+      // secret was NOT written to disk. Say so plainly instead of a success.
+      if (typeof setStatus === 'function') setStatus(`Profile "${data.name}" saved. ${data.secret_warning}`, 'error');
+      if (typeof announce === 'function') announce('Profile saved; the secret was not remembered on this machine.');
+    } else if (typeof setStatus === 'function') setStatus(`Profile "${data.name}" saved${data.has_secret ? ' with the secret remembered on this laptop' : ' (secret not stored)'}.`, 'success');
   } catch (e) { alert(`Could not save the profile: ${e.message}`); }
   GD.profileBusy = false;
   await _gdProfilesLoad(); _gdRender();
@@ -877,7 +882,7 @@ function _gdProfilesRender() {
         <div class="gd-prof-packs"><span class="lbl">Policy packs that apply to this customer</span>${packs || '<span class="gd-need">No policy packs installed.</span>'}<span class="gd-need">The assessment's journey is measured only against the ticked policy packs, and only on their channels marked Zscaler on the Scope page, when DLP is in scope. Leave all unticked and the assessment measures no journey (it reads nothing for it).</span></div>
         <label class="gd-prof-wide">Notes<textarea id="gdProfNotes" rows="2" placeholder="Kickoff 12 May; admin contact: Pat Lee; PHI pack agreed, enable SSL rule after change window.">${_gdE(det.notes || '')}</textarea></label>
         <label class="gd-prof-remember"><input type="checkbox" id="gdProfRemember" ${det.has_secret ? 'checked' : ''}> Remember the client secret on this laptop
-          <span class="gd-need">Also the admin password and API key for the classic sign-in. Goes to this laptop's credential store (Windows Credential Manager or the macOS Keychain, through the <code>keyring</code> package the installer pins with the app); on Linux and in the container, or if the store refuses it, into <code>tenant_profiles.json</code> next to the app (owner-only file); never sent back to the browser. Unticked, nothing secret is written and the form's values live only in this browser tab. Leave unticked on a shared machine.</span></label>
+          <span class="gd-need">Also the admin password and API key for the classic sign-in. Goes to this laptop's credential store (Windows Credential Manager or the macOS Keychain, through the <code>keyring</code> package the installer pins with the app). On Linux and in the container, or if the store refuses it, it is not remembered, unless the app was started with <code>DLP_CHECK_SECRET_STORE=file</code>, which keeps it in <code>tenant_profiles.json</code> next to the app (owner-only file). Never sent back to the browser. Unticked, nothing secret is written and the form's values live only in this browser tab. Leave unticked on a shared machine.</span></label>
       </div>
       ${sel ? `<div class="gd-prof-hist"><span class="lbl">History${last ? ` · last assessed ${_gdE(new Date(last.at).toLocaleString())}, ${last.score ?? '?'}%${last.journey ? `, journey stage ${last.journey.stage || 0} of 5` : ''}` : ''}</span>${_gdHistoryHtml(det)}</div>` : ''}
     </details>`;

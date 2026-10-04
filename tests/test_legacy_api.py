@@ -181,6 +181,9 @@ def test_the_oneapi_client_is_unchanged(monkeypatch):
 def store(tmp_path, monkeypatch):
     monkeypatch.setenv("DLP_CHECK_PROFILES", str(tmp_path / "profiles.json"))
     monkeypatch.setattr("tenant_profiles._keyring", lambda: None)
+    # No credential store in the test environment: remembering a secret in
+    # the profile file is an explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
     for var in ta.ENV.values():
         monkeypatch.delenv(var, raising=False)
     return tmp_path

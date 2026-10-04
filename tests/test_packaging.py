@@ -302,7 +302,7 @@ def test_the_image_is_debian_13_and_carries_only_what_python_needs():
     systemd, sqlite, tar ...). The image is Debian 13 and removes every OS
     package the app never uses, and the build fails if one survives."""
     df = _read("Dockerfile").replace("\r\n", "\n")
-    assert "FROM python:3.11-slim-trixie AS base" in df and "bookworm AS base" not in df
+    assert "FROM python:3.11-slim-trixie@sha256:" in df and " AS base" in df and "bookworm" not in df.split("AS base")[0].split("FROM python")[-1]
     purge = df[df.index("dpkg --purge"):df.index("still load')")]
     for pkg in ("apt", "perl-base", "tar", "util-linux", "mount", "login", "passwd", "libsystemd0", "libudev1", "libsqlite3-0", "openssl "):
         assert pkg in purge, pkg
