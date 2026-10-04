@@ -5,6 +5,15 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-04
+
+### Upstream check: a preview SDK that does not cover an API yet is a note, not drift
+- **What you asked for.** "Fix the upstream drift."
+- **What it reported.** Two drift items, both from `zscaler-sdk-python` 2.0.0b2 (a beta): no create operation for `/endPointDlpRules` or `/casbDlpRules` in its ZIA service definition.
+- **Why that was not drift.** The beta's definition does not describe those two resources at all (no list, read, update or delete either), so it is an incomplete preview, not a changed API. The stable SDK the app runs (1.9.44) and the newest release (1.11.0) both still have them, and 1.11.0 changes none of the 25 modules the app calls.
+- **Now** a resource a prerelease does not describe at all is a note that names the gap and says to re-check before moving to 2.x. It is still drift in a stable release, when a described resource has lost its create operation, and when a field the app sends is not listed. The live check now reports no drift.
+- **Verified.** Run against the live upstreams (PyPI, the 2.0.0b2 package): OK, no drift. New tests for the prerelease note, the stable-release drift and a described resource without its create operation. Full suite green.
+
 ## 2026-10-02
 
 ### The sidebar can be rearranged
