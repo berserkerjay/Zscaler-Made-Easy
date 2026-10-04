@@ -35,11 +35,6 @@
         <div class="df-hint">Every analysis below walks this exact order — Zscaler's own documented policy-enforcement sequence — starting from the destination's <strong>assigned Client Connector app profile</strong> and <strong>forwarding profile</strong> for the network you chose, then Cloud App Control, URL Filtering, SSL Inspection, File Type Control and Web DLP, with Endpoint DLP, SaaS Security API and Email DLP evaluated in parallel on the same data. Nothing here is specific to one destination; it is the reference every result is measured against.</div>
         <div id="paFrameworkBody"></div>
       </details>
-      <section class="pa-motion" id="paMotion" aria-labelledby="paMotionH">
-        <h2 id="paMotionH">The DLP chain, live: where this path's data goes after it is captured</h2>
-        <div class="df-hint">Content captured on a channel → dictionaries (typed, carry the confidence, report match counts) → the DLP engine (Boolean expression, match counts, the Channels gate; at most four engines per rule) → the channel rule acts → it forwards on its own: the evidence lane to Workflow Automation, the telemetry lane to your SIEM, auditor email and third-party ICAP beside them. Until you analyze a destination every lane idles; then the bits follow this path and stop where it breaks. From the <a href="/reference/data-security-architect#chain" target="_blank" rel="noopener">reference architecture's chain ↗</a>.</div>
-        <div id="paMotionBody"></div>
-      </section>
       <div id="paBody">
         <div class="pa-intro" id="paHow">
           <div class="pa-intro-t">How it works</div>
@@ -59,7 +54,6 @@
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
   <script src="/static/data_flow.js"></script>
-  <script src="/static/path_motion.js"></script>
   <script>
   (function () {
     const E = _dfE;
@@ -92,15 +86,6 @@
     // is shown before any destination is analyzed, so the page always
     // represents the framework every result is measured against.
     renderPolicyEnforcementFlow(document.getElementById('paFrameworkBody'));
-    // The chain end to end, idling until a result says which way the bits go.
-    // If it cannot draw (an old browser), the rest of the page still works.
-    let motion = { update() {} };
-    try { motion = renderPathMotion(document.getElementById('paMotionBody')); } catch (e) { document.getElementById('paMotion').hidden = true; }
-    // The picture never decides whether the analysis worked: if it cannot
-    // draw a result it is hidden, and the result and its verdict stand.
-    function showMotion(res) {
-      try { motion.update(res); } catch (e) { document.getElementById('paMotion').hidden = true; }
-    }
 
     // Credentials: the assessment tab that opened this page holds them;
     // otherwise a saved tenant profile, or what the server has in its
@@ -218,7 +203,6 @@
       const btn = document.getElementById('paRun');
       running = true; stopAsked = false; startToken = newStartToken(); btn.disabled = true; btn.textContent = 'Analyzing…';
       body.innerHTML = liveHtml(dest);
-      showMotion(null);
       document.getElementById('paStop').addEventListener('click', stop);
       say(`Analyzing ${dest}.`);
       const t0 = Date.now();
@@ -238,7 +222,6 @@
         if (res.report_id) lastReport = res.report_id;
         setFresh(false);
         render(res, snap.logs || []);
-        showMotion(res);
         keepForAnimator(res);
         say(`Verdict: ${res.verdict.headline}`);
       } catch (e) {
