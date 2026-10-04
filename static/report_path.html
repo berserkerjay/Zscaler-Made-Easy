@@ -18,6 +18,7 @@
     <nav class="rp-bar" aria-label="Page actions">
       <a class="rp-btn" href="/">← Back to the assessment</a>
       <a class="rp-btn" href="/reference/data-security-architect#inline" target="_blank" rel="noopener" title="Data Security Architect: the reference architecture this flow is measured against (inline web module; opens in a new tab)">Reference architecture ↗</a>
+      <a class="rp-btn" href="/report/motion#path" target="_blank" rel="noopener" title="Flow animator: replay this result hop by hop, with what happens inside DLP (opens in a new tab)">Animate ↗</a>
       <span class="sep"></span>
       <label class="df-ctl"><span class="lbl">Destination</span><input type="text" id="paDest" placeholder="https://drive.google.com/…, dropbox.com or 203.0.113.10" aria-label="Destination: a URL, hostname or IP address" aria-describedby="paHow" autocomplete="off" spellcheck="false"></label>
       <label class="df-ctl"><span class="lbl">Network</span><select id="paNet" aria-label="Network the device is on"></select></label>
@@ -238,6 +239,7 @@
         setFresh(false);
         render(res, snap.logs || []);
         showMotion(res);
+        keepForAnimator(res);
         say(`Verdict: ${res.verdict.headline}`);
       } catch (e) {
         fail('The analysis could not run', e.message);
@@ -265,6 +267,16 @@
         </li>`).join('')}</ol>`;
     }
     function yesno(b, yes, no) { return `<span class="v ${b ? 'ok' : 'no'}">${b ? yes : no}</span>`; }
+    // The Flow animator (/report/motion) replays the last result. It is
+    // kept in this browser only, without the run log, and only when small.
+    function keepForAnimator(res) {
+      try {
+        const slim = Object.assign({}, res); delete slim.logs;
+        const raw = JSON.stringify({ at: new Date().toISOString(), result: slim });
+        if (raw.length < 900000) localStorage.setItem('zassess_path_last', raw);
+      } catch (e) { /* storage full or blocked: the animator shows its sample */ }
+    }
+
     function render(res, logs) {
       const v = res.verdict, t = res.trace, d = res.destination, lk = res.lookup || {};
       const [olab, ocls] = DF_OUTCOME[v.outcome] || [v.outcome, 'dim'];
