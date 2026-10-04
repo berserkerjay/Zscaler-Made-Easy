@@ -26,6 +26,14 @@ import tenant_profiles as tp
 from test_continuous_eval import _env
 from test_continuous_eval_unread_and_classic import _fake_inventory, _legacy_profile
 
+import pytest
+
+@pytest.fixture(autouse=True)
+def _remember_secrets_in_the_profile_file(monkeypatch):
+    # No credential store in the tests: remembering a secret in the profile
+    # file is the explicit opt-in (DLP_CHECK_SECRET_STORE=file).
+    monkeypatch.setenv("DLP_CHECK_SECRET_STORE", "file")
+
 
 def _loop_env(tmp_path, monkeypatch):
     _env(tmp_path, monkeypatch)
