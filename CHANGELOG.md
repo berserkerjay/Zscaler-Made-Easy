@@ -7,6 +7,11 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-04
 
+### An upstream warning must be confirmed by two Beacon runs
+- **What you saw.** Any drift detected once could immediately raise the global *Upstream change* banner, including a transient or incomplete upstream response.
+- **Now.** A first detection is recorded in Beacon details as pending confirmation. The banner appears only when the exact watcher and finding persist in the next comparable run (online-to-online or offline-to-offline), and disappears immediately when a later run clears it.
+- **Verified.** Tests cover the first-run hold, second-run confirmation, immediate clear, and the status endpoint exposing only confirmed drift to the banner.
+
 ### Upstream check: a preview SDK that does not cover an API yet is a note, not drift
 - **What you asked for.** "Fix the upstream drift."
 - **What it reported.** Two drift items, both from `zscaler-sdk-python` 2.0.0b2 (a beta): no create operation for `/endPointDlpRules` or `/casbDlpRules` in its ZIA service definition.
