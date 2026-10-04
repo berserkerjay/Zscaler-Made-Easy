@@ -5,7 +5,20 @@ The app shows its build (git commit) in the guide's *Build* badge and at
 on — `main` unless it was switched from the Update app card; this file
 lists what each batch of changes did, newest first.
 
+## 2026-10-04
+
+### Upstream check: a preview SDK that does not cover an API yet is a note, not drift
+- **What you asked for.** "Fix the upstream drift."
+- **What it reported.** Two drift items, both from `zscaler-sdk-python` 2.0.0b2 (a beta): no create operation for `/endPointDlpRules` or `/casbDlpRules` in its ZIA service definition.
+- **Why that was not drift.** The beta's definition does not describe those two resources at all (no list, read, update or delete either), so it is an incomplete preview, not a changed API. The stable SDK the app runs (1.9.44) and the newest release (1.11.0) both still have them, and 1.11.0 changes none of the 25 modules the app calls.
+- **Now** a resource a prerelease does not describe at all is a note that names the gap and says to re-check before moving to 2.x. It is still drift in a stable release, when a described resource has lost its create operation, and when a field the app sends is not listed. The live check now reports no drift.
+- **Verified.** Run against the live upstreams (PyPI, the 2.0.0b2 package): OK, no drift. New tests for the prerelease note, the stable-release drift and a described resource without its create operation. Full suite green.
+
 ## 2026-10-02
+
+### The sidebar can be rearranged
+- **What you saw.** The sidebar's items and sections (Workflow, Start, Find the gaps, Close the gaps, Reference, Troubleshoot) were in a fixed order.
+- **Now.** Drag an item to another place in its section or into another section, or drag a section heading to move the whole section; a line shows where it will land, and a grip appears on hover. A click still opens the item; only a real drag moves it. From the keyboard, focus an item and press Alt+↑/↓ to move it one place through the sidebar, or Alt+Shift+↑/↓ to move its section; each move is announced and the focus stays on the item. The order is kept in this browser by each item's id, so items the app adds later appear in their usual place and removed ones are forgotten; a damaged saved order is ignored. *Sidebar order → Reset sidebar order* at the bottom of the sidebar puts the default back. On narrow screens dragging is off and the keys still work. The ① ② ③ numbers on the step strip are workflow steps and do not change.
 
 ### ZIA's hourly limit stops the assessment's reads and writes, and one 429 holds every job on the tenant
 - **What you saw.** When ZIA refused a request for its hourly limit (429, *Retry-After: 3300 seconds*), the assessment client used by assessments, Beacon, path analysis, the live feed, remediation and the rule migrator waited only 30 seconds and tried each request four times, and every later check did the same, so a run sent hundreds of refused requests. A 429 seen by an assessment did not hold an export or a deploy's plan reads on the same tenant, and the export's hold after a refused read held no reads at all.
