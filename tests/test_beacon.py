@@ -145,9 +145,22 @@ def test_one_snapshot_has_the_three_watchers_and_is_the_baseline():
     assert len(api["pages"]) == len(HTML_SOURCES) and all(p["hash"] and p["ok"] for p in api["pages"])
     assert (tf["pinned"], tf["latest"], tf["pin_allows_latest"], tf["status"]) == ("~> 4.8", "4.8.9", True, "ok")
     assert tf["docs_undocumented"] == {"zia_dlp_web_rules": ["rank"]} and tf["changelog_head"].startswith("4.8.9")
-    assert [d["watcher"] for d in s["drift"]] == ["api", "api"] and s["tenant"] is None
+    assert [d["watcher"] for d in s["drift"]] == ["api", "api"] and s["persistent_drift"] == [] and s["tenant"] is None
     assert s["diff"]["first_run"] is True and s["diff"]["changes"] == [] and "baseline" in s["diff"]["summary"][0]
     assert beacon.load_history()[-1]["id"] == s["id"]
+
+
+def test_a_banner_finding_must_persist_across_two_comparable_runs():
+    drifting = upstream_report()
+    first = beacon.run(online=True, fetch=fake_fetch(), upstream=fake_upstream(drifting))
+    assert len(first["drift"]) == 2
+    assert first["persistent_drift"] == [], "a first detection stays in details and does not raise the banner"
+
+    second = beacon.run(online=True, fetch=fake_fetch(), upstream=fake_upstream(drifting))
+    assert second["persistent_drift"] == second["drift"], "the next comparable run confirms it"
+
+    clean = beacon.run(online=True, fetch=fake_fetch(), upstream=fake_upstream(upstream_report(missing_ops=())))
+    assert clean["drift"] == [] and clean["persistent_drift"] == [], "cleared drift removes the banner immediately"
 
 
 def test_beacon_keeps_its_own_page_hashes_and_leaves_the_update_check_cache_alone(tmp_path, monkeypatch):
@@ -371,7 +384,21 @@ def test_run_then_read_the_snapshot_diff_history_and_timer(fake_run):
     assert fake_run[0]["online"] is True and fake_run[0]["tenant_client"] is None and fake_run[0]["trigger"] == "manual"
     assert d["latest"]["sdk"]["latest"] == "1.11.0" and d["diff"]["first_run"] is True and len(d["history"]) == 1
     st = c.get("/api/beacon/status").json()
-    assert len(st["drift"]) == 2 and st["drift_key"] and st["details"] == "/report/beacon" and st["started"] is False
+    assert st["drift"] == [] and st["drift_key"] == "" and st["current_drift"] == 2 and st["pending_confirmation"] == 2
+    assert st["details"] == "/report/beacon" and st["started"] is False
+
+
+def test_status_exposes_only_drift_confirmed_by_the_next_run():
+    drifting = upstream_report()
+    beacon.run(online=True, fetch=fake_fetch(), upstream=fake_upstream(drifting))
+    c = _client()
+    first = c.get("/api/beacon/status").json()
+    assert first["drift"] == [] and first["current_drift"] == 2 and first["pending_confirmation"] == 2
+
+    beacon.run(online=True, fetch=fake_fetch(), upstream=fake_upstream(drifting))
+    confirmed = c.get("/api/beacon/status").json()
+    assert len(confirmed["drift"]) == 2 and confirmed["drift_key"]
+    assert confirmed["current_drift"] == 2 and confirmed["pending_confirmation"] == 0
 
 
 def test_status_refresh_runs_online_at_most_once_an_hour(fake_run):
