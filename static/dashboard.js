@@ -29,13 +29,14 @@
   aside.setAttribute('aria-label', 'Navigation');
   aside.innerHTML = `
     <div class="db-brand"><span class="db-mark" aria-hidden="true">Z</span><div><div class="db-brand-t">Zscaler Assessment</div><div class="db-brand-s">DLP-Check</div></div></div>
-    <nav class="db-nav" aria-label="Workflow">
+    <div id="dbTools" class="db-sections" role="navigation" aria-label="Workflow and tools">
+    <div class="db-nav" role="group" aria-label="Workflow" data-sb-id="workflow">
       <div class="db-nav-l">Workflow</div>
       <button type="button" class="db-item" data-db="configure"><span class="db-ico" aria-hidden="true">🔐</span>Connect to the tenant</button>
       <button type="button" class="db-item" data-db="scope"><span class="db-ico" aria-hidden="true">🎯</span>Scope assessment</button>
       <button type="button" class="db-item" data-db="dashboard" aria-current="page"><span class="db-ico" aria-hidden="true">📊</span>Dashboard</button>
-    </nav>
-    <div id="dbTools" role="navigation" aria-label="Tools"></div>
+    </div>
+    </div>
     <div class="db-current" id="dbCurrent" aria-label="Current implementation">
       <div class="db-current-l">Current implementation</div>
       <div class="db-current-row"><span class="k">Tenant</span><span class="v" id="dbCurTenant">—</span></div>
@@ -47,6 +48,12 @@
   const tools = $('dbTools');
   [...toolbar.querySelectorAll('.tool-group')].forEach(g => tools.appendChild(g));
   toolbar.hidden = true;
+  // The Workflow section and the tool groups share #dbTools, so each item
+  // and each whole section can be dragged (or moved with Alt+arrows) to
+  // anywhere in the sidebar; the order is kept per browser by stable ids
+  // (sidebar_order.js). Routes, aria-current and the step strip's ① ② ③
+  // do not depend on where an item sits.
+  if (window.SidebarOrder) { try { window.__dbSidebarOrder = window.SidebarOrder.init({ root: aside, container: tools, menuHost: $('dbFoot') }); } catch (e) { /* the sidebar keeps its default order */ } }
   // The theme toggle (rendered by the inline script) and the backdrop
   // control (rendered only with branding files) live in the sidebar foot.
   // The floating "? Help" button (guide.js) docks here too, so nothing
