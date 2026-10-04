@@ -7,6 +7,17 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-04
 
+### Flow animator: the path, DLP, deployment, live and reference flows, animated
+- **What you asked for.** An animated, live analysis of traffic, deployment and DLP rules, covering all the flows of the Data Security Architect reference.
+- **New page, *Flow animator*** (toolbar, dashboard tile, `/report/motion`), five views:
+  - **Traffic path.** The last Path analyzer result, hop by hop: the dot stops where the traffic stops (a PAC DIRECT, a URL block) and everything after it greys out. When it reaches Web DLP, a drill-down shows the rules on the path and their engines.
+  - **DLP decision.** Paste sample content and test it against the tenant (the existing local corpus test: matched on this computer, never sent to Zscaler). Content → dictionaries with match counts → engines, each term against its threshold → rules. An engine that does not fire says why: a near miss ("3 found, needs more than 4") or nothing to match.
+  - **Deployment.** The plan from Deploy policy packs streams templates → dictionaries → engines → rules, with results coloured after a deploy, dependency tracing on hover or focus, and the deploy order replayed.
+  - **Live traffic.** Workflow Automation DLP incidents as they land, each one moving through channel → dictionaries → engine → rule → enforced or monitor-only → Workflow Automation. User and file names are not shown.
+  - **Architecture flows.** All ten flows of the reference (the chain, dictionaries, engines, inline web, endpoint, email, SaaS API, EDM/IDM, AI security, Workflow Automation) step by step, with the steps people miss marked; the inline flow can be coloured with your last path.
+- **Read-only.** The page reads only what the app already reads (the corpus test, the live feed) and results this browser holds (the last path, the last plan). The Path analyzer now keeps its last result, without the run log, for this page and has an *Animate* button.
+- **Verified.** New tests run the models under node (term parsing, near-miss wording, path stop, deploy columns and folding, no user names in live data, reference anchors) and check the page conventions. Every view was driven in a headless browser, light and dark, with no script errors.
+
 ### An upstream warning must be confirmed by two Beacon runs
 - **What you saw.** Any drift detected once could immediately raise the global *Upstream change* banner, including a transient or incomplete upstream response.
 - **Now.** A first detection is recorded in Beacon details as pending confirmation. The banner appears only when the exact watcher and finding persist in the next comparable run (online-to-online or offline-to-offline), and disappears immediately when a later run clears it.
