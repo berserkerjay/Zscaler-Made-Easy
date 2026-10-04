@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow animator — Zscaler Assessment</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%233b82f6'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3EZ%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/static/reports.css">
+<link rel="stylesheet" href="/static/flow_anim.css">
+</head>
+<body class="report-page fa-page">
+  <div class="rp-page">
+    <header class="hero rp-hero">
+      <h1><span class="accent">Flow</span> animator</h1>
+      <p>The flows this app analyses, animated from your own results: a user's traffic hop by hop, what happens inside DLP (dictionaries, engines, rules, and why an engine does not fire), a policy-pack deployment, DLP incidents as they land, and every flow of the Data Security Architect reference. Read-only: nothing is written to the tenant.</p>
+      <span class="badge" id="rpMeta"></span>
+    </header>
+    <nav class="rp-bar" aria-label="Page actions">
+      <a class="rp-btn" href="/">← Back to the assessment</a>
+      <a class="rp-btn" href="/reference/data-security-architect" target="_blank" rel="noopener" title="Data Security Architect: the reference architecture these flows come from (opens in a new tab)">Reference architecture ↗</a>
+      <span class="sep"></span>
+      <div class="fa-tabs" role="tablist" aria-label="Flow to animate">
+        <button type="button" role="tab" id="tab-path" aria-controls="v-path" data-v="path">Traffic path</button>
+        <button type="button" role="tab" id="tab-dlp" aria-controls="v-dlp" data-v="dlp">DLP decision</button>
+        <button type="button" role="tab" id="tab-deploy" aria-controls="v-deploy" data-v="deploy">Deployment</button>
+        <button type="button" role="tab" id="tab-live" aria-controls="v-live" data-v="live">Live traffic</button>
+        <button type="button" role="tab" id="tab-arch" aria-controls="v-arch" data-v="arch">Architecture flows</button>
+      </div>
+      <label class="df-ctl" id="faTenantWrap" hidden><span class="lbl">Tenant</span><select id="faTenant" aria-label="Tenant to read"></select></label>
+    </nav>
+    <main class="rp-card">
+      <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+
+      <section class="fa-view" id="v-path" role="tabpanel" aria-labelledby="tab-path" hidden>
+        <h2>Traffic path, hop by hop</h2>
+        <div class="fa-src" id="pathSrc"></div>
+        <div class="fa-ctl">
+          <button type="button" class="rp-btn primary" id="pathPlay">▶ Play</button>
+          <button type="button" class="rp-btn" id="pathStep">Step</button>
+          <label class="chk"><input type="checkbox" id="pathSlow"> Slow</label>
+          <button type="button" class="rp-btn" id="pathSample">Show sample</button>
+          <a class="rp-btn" href="/report/path" target="_blank" rel="noopener" title="Analyze a destination in the Path analyzer; its result appears here">Open Path analyzer ↗</a>
+        </div>
+        <div class="fa-stage" id="pathHost"></div>
+        <div id="pathDrillWrap" hidden>
+          <div class="fa-sub">Inside Web DLP: content → dictionaries → engines → rules</div>
+          <div class="fa-stage" id="pathDrill"></div>
+        </div>
+        <div class="fa-verdict" id="pathVerdict" aria-live="polite">Press Play to send the transaction down the path.</div>
+        <ol class="fa-log" id="pathLog" aria-label="Hops so far"></ol>
+        <div class="fa-legend"><span><i class="k-on"></i>evaluating</span><span><i class="k-pass"></i>passes</span><span><i class="k-warn"></i>weak point</span><span><i class="k-stop"></i>stops here</span><span><i class="k-idle"></i>nothing decided here</span></div>
+      </section>
+
+      <section class="fa-view" id="v-dlp" role="tabpanel" aria-labelledby="tab-dlp" hidden>
+        <h2>DLP decision: which engines fire, and why one does not</h2>
+        <div class="fa-src" id="dlpSrc"></div>
+        <div class="fa-ctl">
+          <label class="sr-only" for="dlpText">Sample content to test</label>
+          <textarea id="dlpText" maxlength="200000" placeholder="Paste sample content (test data, not real customer records). It is matched on this computer against the tenant's dictionaries and engines; the text is never sent to Zscaler." spellcheck="false"></textarea>
+          <button type="button" class="rp-btn primary" id="dlpRun">Test against the tenant</button>
+          <button type="button" class="rp-btn" id="dlpReplay" disabled>↺ Replay</button>
+          <button type="button" class="rp-btn" id="dlpSample">Show sample</button>
+        </div>
+        <div class="fa-stage" id="dlpHost"></div>
+        <div class="fa-verdict" id="dlpVerdict" aria-live="polite">Paste sample content and test it, or show the sample.</div>
+        <ol class="fa-log" id="dlpLog" aria-label="Engines and their terms"></ol>
+      </section>
+
+      <section class="fa-view" id="v-deploy" role="tabpanel" aria-labelledby="tab-deploy" hidden>
+        <h2>Deployment: templates → dictionaries → engines → rules</h2>
+        <div class="fa-src" id="deploySrc"></div>
+        <div class="fa-ctl">
+          <button type="button" class="rp-btn" id="deployPause">⏸ Pause</button>
+          <button type="button" class="rp-btn primary" id="deployReplay">▶ Replay deploy order</button>
+          <button type="button" class="rp-btn" id="deployRefresh" title="Read the plan currently shown in Deploy policy packs">↻ Refresh</button>
+          <button type="button" class="rp-btn" id="deploySample">Show sample</button>
+        </div>
+        <div class="fa-stage" id="deployHost"></div>
+        <div class="fa-side" id="deploySide" aria-live="polite">Hover or focus a box to trace what feeds it and what it feeds.</div>
+        <div class="fa-legend"><span><i class="k-on"></i>planned / writing</span><span><i class="k-pass"></i>created or changed</span><span><i class="k-warn"></i>reused from the tenant</span><span><i class="k-stop"></i>failed, blocked or missing</span><span><i class="k-idle"></i>skipped</span></div>
+      </section>
+
+      <section class="fa-view" id="v-live" role="tabpanel" aria-labelledby="tab-live" hidden>
+        <h2>Live traffic: DLP incidents as they land</h2>
+        <div class="fa-src" id="liveSrc">Workflow Automation's DLP incidents only, polled every 15 seconds; URL Filtering, Cloud App Control and firewall decisions that never trip a DLP rule are not in this feed. User and file names are not shown here.</div>
+        <div class="fa-ctl">
+          <button type="button" class="rp-btn primary" id="liveStart">▶ Start</button>
+          <button type="button" class="rp-btn" id="liveStop" hidden>■ Stop</button>
+          <button type="button" class="rp-btn" id="liveSample">Show sample</button>
+        </div>
+        <div class="fa-stage" id="liveHost"></div>
+        <div class="fa-verdict" id="liveVerdict" aria-live="polite">Start the feed, then act on the tenant to watch an incident move through.</div>
+        <ul class="fa-feed" id="liveFeed" aria-label="Incidents, newest first"></ul>
+      </section>
+
+      <section class="fa-view" id="v-arch" role="tabpanel" aria-labelledby="tab-arch" hidden>
+        <h2>Architecture flows</h2>
+        <div class="fa-src">From the Data Security Architect reference. Dashed boxes are the steps people miss. <a id="archRef" href="/reference/data-security-architect" target="_blank" rel="noopener">Read this flow in the reference ↗</a></div>
+        <div class="fa-ctl">
+          <label class="df-ctl"><span class="lbl">Flow</span><select id="archFlow" aria-label="Flow to animate"></select></label>
+          <button type="button" class="rp-btn primary" id="archPlay">▶ Play</button>
+          <button type="button" class="rp-btn" id="archStep">Step</button>
+          <label class="chk"><input type="checkbox" id="archSlow"> Slow</label>
+          <label class="chk" id="archOverlayWrap" hidden><input type="checkbox" id="archOverlay" checked> Colour with my last Path analyzer result</label>
+        </div>
+        <div class="fa-stage" id="archHost"></div>
+        <div class="fa-verdict" id="archStepText" aria-live="polite">Press Play.</div>
+        <ol class="fa-log" id="archList" aria-label="Steps of this flow"></ol>
+      </section>
+    </main>
+  </div>
+  <script src="/static/icons.js"></script>
+  <script src="/static/ui_auth.js"></script>
+  <script src="/static/report_theme.js"></script>
+  <script src="/static/safety_banner.js"></script>
+  <script src="/static/explain.js"></script>
+  <script src="/static/flow_anim.js"></script>
+  <script>
+  (function () {
+    const E = FA.E;
+    const $ = id => document.getElementById(id);
+    const live = $('liveRegion');
+    const say = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+    const when = at => { try { return at ? new Date(at).toLocaleString() : ''; } catch (e) { return ''; } };
+    const SAMPLE_TAG = '<span class="sample">Sample</span>';
+    function readJson(key, fallback) {
+      try { const raw = localStorage.getItem(key); const v = raw ? JSON.parse(raw) : fallback; return v == null ? fallback : v; } catch (e) { return fallback; }
+    }
+
+    // ── Tenant and scope (the same rules as the Live DLP feed) ──────
+    async function tenantChoices() {
+      const wrap = $('faTenantWrap'), sel = $('faTenant');
+      const fromOpener = !!(window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function');
+      let profiles = [];
+      try { const r = await fetch('/api/tenant-profiles', { cache: 'no-store' }); if (r.ok) profiles = ((await r.json()).profiles || []); } catch (e) { /* no profiles */ }
+      const opts = [];
+      if (fromOpener) opts.push(['opener', 'Signed in on the assessment tab']);
+      profiles.forEach(p => opts.push([`profile:${p.id}`, `${p.name || p.vanity_domain || p.id}${p.has_secret === false ? ' (no remembered secret)' : ''}`]));
+      opts.push(['server', 'Saved on this computer (environment or tenant_config.json)']);
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${E(v)}">${E(l)}</option>`).join('');
+      wrap.hidden = opts.length < 2;
+    }
+    function credBody() {
+      const v = ($('faTenant') || {}).value || 'server';
+      if (v === 'opener' && window.opener && !window.opener.closed && typeof window.opener.migrateCredBody === 'function') return window.opener.migrateCredBody();
+      if (v.startsWith('profile:')) return { profile_id: v.slice(8) };
+      return {};
+    }
+    function declared(state) {
+      const out = {};
+      Object.entries(state || {}).forEach(([id, v]) => {
+        const choice = v && typeof v === 'object' ? v.choice : v;
+        if (choice === 'zscaler' || choice === 'alternative') out[id] = choice;
+      });
+      return out;
+    }
+    function scopeSelection() {
+      let scopes = null, channels = null;
+      const op = window.opener && !window.opener.closed ? window.opener : null;
+      try { if (op && typeof op.getSelectedScopes === 'function') scopes = op.getSelectedScopes(); } catch (e) { scopes = null; }
+      try { if (op && typeof op.__dbChannelScope === 'function') channels = declared(op.__dbChannelScope()); } catch (e) { channels = null; }
+      if (!Array.isArray(scopes)) {
+        const lv = readJson('zassess_scopes_live_v1', null);
+        scopes = lv && Array.isArray(lv.scopes) ? lv.scopes : null;
+      }
+      if (!Array.isArray(scopes)) return { scopes: [], channels: {}, from_page: false };
+      if (!channels) channels = declared(readJson('zassess_channels_v1', {}));
+      return { scopes: scopes.map(String), channels, from_page: true };
+    }
+    const errText = (d, r) => (d && d.detail && (d.detail.cause || d.detail)) || `HTTP ${r.status}`;
+
+    // ── Views ───────────────────────────────────────────────────────
+    const VIEWS = ['path', 'dlp', 'deploy', 'live', 'arch'];
+    const shown = {};
+    function show(v) {
+      if (VIEWS.indexOf(v) < 0) v = 'path';
+      VIEWS.forEach(x => {
+        $('v-' + x).hidden = x !== v;
+        const t = $('tab-' + x); t.setAttribute('aria-selected', String(x === v)); t.tabIndex = x === v ? 0 : -1;
+      });
+      if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v);
+      if (!shown[v]) { shown[v] = true; INIT[v](); }
+    }
+    document.querySelectorAll('.fa-tabs [role="tab"]').forEach((t, i, all) => {
+      t.addEventListener('click', () => show(t.dataset.v));
+      t.addEventListener('keydown', ev => {
+        const k = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+        if (!k) return;
+        ev.preventDefault();
+        const n = all[(i + k + all.length) % all.length]; n.focus(); show(n.dataset.v);
+      });
+    });
+
+    // ── Traffic path ────────────────────────────────────────────────
+    // The Path analyzer saves its last result in this browser
+    // (zassess_path_last); a new analysis there shows up here at once.
+    let corpusLast = null;     // the last DLP decision run on this page (memory only)
+    const P = { player: null, drill: null, model: null, sample: false };
+    function pathData() {
+      const saved = readJson('zassess_path_last', null);
+      return saved && saved.result && saved.result.trace ? saved : null;
+    }
+    function loadPath(sample) {
+      const saved = sample ? null : pathData();
+      const res = saved ? saved.result : FA.SAMPLE.path;
+      P.sample = !saved;
+      P.model = FA.pathModel(res);
+      $('pathSrc').innerHTML = saved
+        ? `From the Path analyzer: <strong>${E(P.model.dest)}</strong>${saved.result.tenant_label ? ' on ' + E(saved.result.tenant_label) : ''}, ${E(when(saved.at))}.`
+        : `${SAMPLE_TAG}No Path analyzer result in this browser yet: this is sample data. Analyze a destination in the Path analyzer and it appears here.`;
+      if (P.player) P.player.destroy();
+      if (P.drill) P.drill.destroy();
+      $('pathDrillWrap').hidden = true;
+      $('pathLog').innerHTML = '';
+      $('pathVerdict').className = 'fa-verdict';
+      $('pathVerdict').textContent = 'Press Play to send the transaction down the path.';
+      const dm = FA.pathDrillModel(P.model, P.sample ? FA.corpusModel(FA.SAMPLE.corpus, { rules: P.model.dlp ? P.model.dlp.rules : [] }) : corpusLast);
+      P.player = FA.hopPlayer($('pathHost'), P.model, {
+        slow: () => $('pathSlow').checked,
+        onReset() { $('pathLog').innerHTML = ''; $('pathDrillWrap').hidden = true; $('pathVerdict').className = 'fa-verdict'; $('pathVerdict').textContent = 'Running…'; },
+        beforeLand(hop) {
+          if (hop.key !== 'dlp' || !dm) return Promise.resolve();
+          $('pathDrillWrap').hidden = false;
+          if (P.drill) P.drill.destroy();
+          P.drill = FA.drill($('pathDrill'), dm);
+          return P.drill.play();
+        },
+        onHop(hop) {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${E(hop.label)}</strong>${hop.by ? ' (' + E(hop.by) + ')' : ''}: ${E(hop.note || hop.sub)}`;
+          $('pathLog').querySelectorAll('li.cur').forEach(x => x.classList.remove('cur'));
+          li.className = 'cur'; $('pathLog').appendChild(li);
+        },
+        onDone() {
+          const v = P.model.verdict;
+          $('pathVerdict').className = 'fa-verdict ' + v.tone;
+          const extra = dm && P.model.hops.some(h => h.key === 'dlp' && h.tone !== 'after') ? ' ' + FA.drillSummary(dm) : '';
+          $('pathVerdict').textContent = (v.text || '') + extra;
+          say(v.text || 'Done.');
+        },
+      });
+    }
+    function initPath() {
+      loadPath(false);
+      $('pathPlay').addEventListener('click', () => P.player && P.player.play());
+      $('pathStep').addEventListener('click', () => P.player && P.player.step());
+      $('pathSample').addEventListener('click', () => { loadPath(true); P.player.play(); });
+    }
+
+    // ── DLP decision ────────────────────────────────────────────────
+    const D = { drill: null, model: null };
+    function showDrill(model, srcHtml) {
+      D.model = model;
+      $('dlpSrc').innerHTML = srcHtml;
+      if (D.drill) D.drill.destroy();
+      $('dlpLog').innerHTML = model.engines.map(e => `<li><strong>${E(e.name)}</strong> — ${E(e.why.text)}${e.expr ? ` <code>${E(e.expr)}</code>` : ''}${e.terms.length ? '<br>' + e.terms.map(t => E(t.text)).join('<br>') : ''}${e.rules.length ? '<br>Rules: ' + E(e.rules.join(', ')) : ''}</li>`).join('');
+      D.drill = FA.drill($('dlpHost'), model);
+      $('dlpReplay').disabled = false;
+      const s = FA.drillSummary(model);
+      const near = model.engines.some(e => e.why.kind === 'near');
+      $('dlpVerdict').className = 'fa-verdict ' + (near ? 'warn' : model.engines.some(e => e.why.kind === 'fires') ? 'ok' : '');
+      $('dlpVerdict').textContent = 'Running…';
+      D.drill.play().then(() => { $('dlpVerdict').textContent = s; say(s); });
+    }
+    // The corpus test names the rules but not their actions; the last Path
+    // analyzer result has them for the Web DLP rules on its path.
+    function knownRules() {
+      const saved = pathData();
+      const m = saved ? FA.pathModel(saved.result) : null;
+      return m && m.dlp ? m.dlp.rules : [];
+    }
+    async function runDlp() {
+      const corpus = $('dlpText').value || '';
+      if (!corpus.trim()) { $('dlpVerdict').textContent = 'Paste some sample content first.'; return; }
+      const btn = $('dlpRun'); btn.disabled = true;
+      $('dlpVerdict').className = 'fa-verdict'; $('dlpVerdict').textContent = `Reading the tenant's dictionaries and engines and matching ${corpus.length} characters on this computer…`;
+      try {
+        const r = await fetch('/api/dlp/efficacy/test', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({}, credBody(), scopeSelection(), { corpus, max_dicts: 200 })) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(errText(d, r));
+        const m = FA.corpusModel(d, { label: 'Your sample', sub: `${d.corpus_length} characters`, rules: knownRules() });
+        if (!m || !m.engines.length) { $('dlpVerdict').textContent = 'The tenant has no DLP engine this test can evaluate.'; return; }
+        corpusLast = m;
+        showDrill(m, `From the tenant: ${d.dicts_tested} custom dictionar${d.dicts_tested === 1 ? 'y' : 'ies'} and ${d.predefined_simulated || 0} predefined approximation(s) matched against your sample on this computer; ${d.engines_firing || 0} engine(s) fire.`);
+        if (shown.path) loadPath(false);   // the path's DLP step now has counts
+      } catch (e) {
+        $('dlpVerdict').className = 'fa-verdict bad'; $('dlpVerdict').textContent = 'Test failed: ' + e.message;
+      } finally { btn.disabled = false; }
+    }
+    function initDlp() {
+      $('dlpSrc').innerHTML = 'Paste sample content and test it against the tenant, or show the sample.';
+      $('dlpRun').addEventListener('click', runDlp);
+      $('dlpReplay').addEventListener('click', () => { if (D.drill) D.drill.play(); });
+      $('dlpSample').addEventListener('click', () => showDrill(FA.corpusModel(FA.SAMPLE.corpus, { label: 'Q3-refunds.xlsx', sub: 'sample file', rules: FA.pathModel(FA.SAMPLE.path).dlp.rules }), `${SAMPLE_TAG}A file with 3 card numbers and 2 SSNs against three sample engines.`));
+    }
+
+    // ── Deployment ──────────────────────────────────────────────────
+    const G = { graph: null };
+    function loadDeploy(sample) {
+      const p = sample ? null : (function () {
+        try { if (window.opener && !window.opener.closed && typeof window.opener.__flowCurrent === 'function') { const x = window.opener.__flowCurrent(); if (x && x.items) return x; } } catch (e) { /* cross-tab hiccup */ }
+        const s = readJson('zassess_flow_last', null); return s && s.items ? s : null;
+      })();
+      const m = FA.deployModel(p || FA.SAMPLE.deploy);
+      const counts = Object.keys(m.counts).map(k => `${m.counts[k]} ${k.replace(/_/g, ' ')}`).join(', ');
+      $('deploySrc').innerHTML = p
+        ? `From Deploy policy packs: ${E(m.packs.join(', ') || 'plan')} on ${E(m.tenant || 'tenant')}, ${m.stage === 'deployed' ? 'deployed' : 'preflight plan (nothing written)'}${m.at ? ', ' + E(when(m.at)) : ''}. ${E(counts)}.`
+        : `${SAMPLE_TAG}No plan in this browser yet: this is sample data. Run preflight in Deploy policy packs and click Refresh.`;
+      if (G.graph) G.graph.destroy();
+      G.graph = FA.graph($('deployHost'), m, {
+        onTrace(n, keep) {
+          if (!n) { $('deploySide').textContent = 'Hover or focus a box to trace what feeds it and what it feeds.'; return; }
+          $('deploySide').innerHTML = `<strong>${E(n.name)}</strong> · ${E(n.kind)} · ${E(String(n.status || '').replace(/_/g, ' '))}${n.reason ? ' — ' + E(n.reason) : ''}${n.error ? ' — ' + E(n.error) : ''} · ${keep.size - 1} connected`;
+        },
+      });
+      $('deployPause').textContent = G.graph.running() ? '⏸ Pause' : '▶ Stream';
+    }
+    function initDeploy() {
+      loadDeploy(false);
+      $('deployPause').addEventListener('click', () => { if (G.graph.running()) G.graph.pause(); else G.graph.play(); $('deployPause').textContent = G.graph.running() ? '⏸ Pause' : '▶ Stream'; });
+      $('deployReplay').addEventListener('click', () => G.graph.replay());
+      $('deployRefresh').addEventListener('click', () => loadDeploy(false));
+      $('deploySample').addEventListener('click', () => { loadDeploy(true); G.graph.replay(); });
+    }
+
+    // ── Live traffic ────────────────────────────────────────────────
+    const L = { lanes: null, running: false, gen: 0, timer: null, since: '', stats: {}, n: 0, c: { enforced: 0, monitor: 0, unknown: 0, web: 0, endpoint: 0, email: 0, saas: 0 } };
+    function feedRow(m, sample) {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="${m.enforcement === 'enforced' ? 'enf' : 'mon'}">${m.enforcement === 'enforced' ? 'Enforced' : m.enforcement === 'monitor' ? 'Monitor' : 'Action ?'}</span>
+        <strong>${E(m.channel)}</strong><span>${E(m.rule || 'rule not named')}</span><span>${m.dicts[0] ? E(m.dicts[0].name) + ': ' + m.dicts[0].count : ''}</span><span>→ ${E(m.dest || '?')}</span>${sample ? '<span>(sample)</span>' : ''}`;
+      const feed = $('liveFeed'); feed.insertBefore(li, feed.firstChild);
+      while (feed.children.length > 200) feed.removeChild(feed.lastChild);
+    }
+    function liveTake(incs, sample) {
+      incs.forEach(i => { const m = FA.liveModel(i); if (!m) return; L.n++; L.c[m.enforcement]++; L.c[m.channel]++; feedRow(m, sample); L.lanes.push(m); });
+      const c = L.c;
+      $('liveVerdict').className = 'fa-verdict ' + (c.monitor > c.enforced ? 'warn' : 'ok');
+      $('liveVerdict').textContent = `${L.n} incident${L.n === 1 ? '' : 's'} this session: ${c.enforced} enforced, ${c.monitor} monitor-only${c.unknown ? `, ${c.unknown} with the action not read` : ''}. Web ${c.web}, endpoint ${c.endpoint}, email ${c.email}, SaaS ${c.saas}.`;
+    }
+    const isCurrent = my => L.running && L.gen === my;
+    async function poll(my) {
+      if (!isCurrent(my)) return;
+      try {
+        const r = await fetch('/api/live-feed', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({}, credBody(), scopeSelection(), { since: L.since, stats: L.stats })) });
+        const d = await r.json().catch(() => ({}));
+        if (!isCurrent(my)) return;
+        if (r.status === 400) { stopLive(); $('liveVerdict').className = 'fa-verdict bad'; $('liveVerdict').textContent = String(errText(d, r)); return; }
+        if (!r.ok) throw new Error(errText(d, r));
+        L.since = d.next_since; L.stats = d.stats;
+        $('rpMeta').textContent = `${d.tenant_label || ''} · read ${when(d.read_at)}`;
+        liveTake((d.incidents || []).slice().reverse(), false);
+        if ((d.incidents || []).length) say(`${d.incidents.length} new incident${d.incidents.length === 1 ? '' : 's'}.`);
+      } catch (e) {
+        if (isCurrent(my)) $('liveVerdict').textContent = 'Poll failed, retrying: ' + e.message;
+      }
+    }
+    function schedule(my) { L.timer = setTimeout(async () => { if (!isCurrent(my)) return; await poll(my); if (isCurrent(my)) schedule(my); }, 15000); }
+    async function startLive() {
+      if (L.running) return;
+      L.running = true; const my = ++L.gen;
+      $('liveStart').hidden = true; $('liveStop').hidden = false;
+      $('liveVerdict').className = 'fa-verdict'; $('liveVerdict').textContent = 'Live: polling every 15 seconds.';
+      say('Live feed started.');
+      await poll(my);
+      if (isCurrent(my)) schedule(my);
+    }
+    function stopLive() {
+      L.running = false; L.gen++; clearTimeout(L.timer); L.timer = null;
+      $('liveStart').hidden = false; $('liveStop').hidden = true;
+      say('Live feed stopped.');
+    }
+    function initLive() {
+      L.lanes = FA.live($('liveHost'));
+      $('liveStart').addEventListener('click', startLive);
+      $('liveStop').addEventListener('click', stopLive);
+      $('liveSample').addEventListener('click', () => liveTake(FA.SAMPLE.incidents, true));
+    }
+
+    // ── Architecture flows ──────────────────────────────────────────
+    const A = { steps: null };
+    function loadArch() {
+      const flow = FA.ARCH.filter(f => f.id === $('archFlow').value)[0] || FA.ARCH[0];
+      $('archRef').href = '/reference/data-security-architect#' + flow.anchor;
+      const saved = flow.overlay ? pathData() : null;
+      $('archOverlayWrap').hidden = !saved;
+      let overlay = null;
+      if (saved && $('archOverlay').checked) {
+        const m = FA.pathModel(saved.result); overlay = {};
+        m.hops.forEach(h => { overlay[h.key] = h.tone; });
+      }
+      $('archList').innerHTML = flow.steps.map(s => `<li>${s.gate ? '<strong>Often missed:</strong> ' : ''}<strong>${E(s.t)}</strong> — ${E(s.s)}</li>`).join('');
+      $('archStepText').className = 'fa-verdict'; $('archStepText').textContent = overlay ? `Coloured with the Path analyzer result for ${FA.pathModel(saved.result).dest}. Press Play.` : 'Press Play.';
+      if (A.steps) A.steps.destroy();
+      A.steps = FA.steps($('archHost'), flow, overlay, {
+        slow: () => $('archSlow').checked,
+        onStep(s, k, tone) {
+          $('archStepText').className = 'fa-verdict ' + (tone === 'stop' ? 'bad' : tone === 'warn' || s.gate ? 'warn' : tone === 'pass' ? 'ok' : '');
+          $('archStepText').textContent = `${k + 1}. ${s.t}: ${s.s}${tone === 'stop' ? ' Your traffic stops here.' : tone === 'warn' ? ' Your path has a weak point here.' : tone === 'after' ? ' Your traffic never gets here.' : ''}`;
+          $('archList').querySelectorAll('li').forEach((li, j) => li.classList.toggle('cur', j === k));
+        },
+      });
+    }
+    function initArch() {
+      $('archFlow').innerHTML = FA.ARCH.map(f => `<option value="${E(f.id)}">${E(f.title)}</option>`).join('');
+      $('archFlow').addEventListener('change', loadArch);
+      $('archOverlay').addEventListener('change', loadArch);
+      $('archPlay').addEventListener('click', () => A.steps && A.steps.play());
+      $('archStep').addEventListener('click', () => A.steps && A.steps.step());
+      loadArch();
+    }
+
+    const INIT = { path: initPath, dlp: initDlp, deploy: initDeploy, live: initLive, arch: initArch };
+    // Another tab saved a new path result or plan: redraw what is shown.
+    window.addEventListener('storage', ev => {
+      if (ev.key === 'zassess_path_last') { if (shown.path) loadPath(false); if (shown.arch) loadArch(); }
+      if (ev.key === 'zassess_flow_last' && shown.deploy) loadDeploy(false);
+    });
+    window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+    tenantChoices();
+    show(location.hash.slice(1) || 'path');
+  })();
+  </script>
+</body>
+</html>

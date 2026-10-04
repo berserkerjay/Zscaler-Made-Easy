@@ -83,6 +83,15 @@ what you get, what to do next.
   or impacts it, each with a fix. It reads only what is in scope on the
   Scope page (a part out of scope says "not in scope"), and Stop ends the
   read at once.
+- **Flow animator** — the flows the app analyses, animated from your own
+  results: the last Path analyzer result hop by hop; inside DLP, the
+  dictionary match counts, each engine term against its threshold and the
+  rules that act, with an engine that does not fire named as a near miss
+  ("3 found, needs more than 4") or as having nothing to match; a policy
+  pack plan or deployment with the deploy order replayed; DLP incidents
+  as they land, enforced versus monitor-only per channel; and every flow
+  of the Data Security Architect reference, with the steps people miss
+  marked. Samples, labelled as such, until you have results. Read-only.
 - **Live DLP feed** — Workflow Automation's DLP incidents polled every
   15 seconds: who, what triggered, where it was going, enforced or
   monitor-only, with a running tally. It covers DLP incidents only, not

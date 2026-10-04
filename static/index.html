@@ -601,6 +601,11 @@
                 title="Type a URL, a hostname or an IP address. Reads the tenant as it is right now and shows the path a user's traffic takes to that destination, hop by hop, with one verdict in plain words and every rule or profile that blocks or impacts it named. Read-only. Opens in a new tab.">
           <span aria-hidden="true">🧭</span> Path analyzer
         </button>
+        <button class="btn btn-ghost" onclick="openFlowAnimatorTab()"
+                aria-label="Open Flow animator: the traffic path, DLP decision, deployment, live incidents and reference-architecture flows animated from your results (opens in a new tab)"
+                title="Animates your Path analyzer result hop by hop, what happens inside DLP (match counts, engine thresholds, near misses), a policy-pack deployment, live DLP incidents and every Data Security Architect flow. Read-only. Opens in a new tab.">
+          <span aria-hidden="true">🎞️</span> Flow animator
+        </button>
         <button class="btn btn-ghost" onclick="openLiveFeedTab()"
                 aria-label="Open Live DLP feed: Workflow Automation incidents polling live, who was transacting, what triggered, where it was going, enforced or monitor-only, with a running FP to TP tally (opens in a new tab)"
                 title="Polls Workflow Automation's DLP incidents live: who, the rule and dictionaries that matched, the destination, and whether the rule enforced it or only logged it, with a running seen / enforced / monitor / FP:TP tally. Covers DLP-matched traffic only, not every ZIA transaction — the page says so. Read-only. Opens in a new tab.">
@@ -4984,6 +4989,12 @@ function openLiveFeedTab() {
   // The tab reads the credentials from this page through window.opener
   // when it runs, so nothing is sent until Start live feed is clicked.
   const w = window.open('/report/live', '_blank');
+  if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
+}
+function openFlowAnimatorTab() {
+  // The tab reads results this browser already holds (the last path and
+  // plan) and, when asked, the tenant through window.opener.
+  const w = window.open('/report/motion', '_blank');
   if (!w) alert('Your browser blocked the new tab. Allow pop-ups for this page and try again.');
 }
 function openPathAnalyzerTab() {
