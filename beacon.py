@@ -766,6 +766,23 @@ def headline(snap: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def persistent_headline(snap: Dict[str, Any], history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Current drift confirmed by the immediately preceding comparable run.
+
+    Online and offline runs are separate sequences: an offline run cannot
+    confirm or clear facts that require the network. Exact watcher/text
+    matching makes a new or materially changed finding wait for one more run
+    before the global banner appears. Full current drift stays in
+    ``snap["drift"]`` and therefore remains visible on the Beacon page.
+    """
+    current = snap.get("drift") or []
+    previous = _baseline(history, lambda s: bool(s.get("online")) == bool(snap.get("online")))
+    if not previous:
+        return []
+    prior = {(d.get("watcher"), d.get("text")) for d in (previous.get("drift") or [])}
+    return [d for d in current if (d.get("watcher"), d.get("text")) in prior]
+
+
 def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any = None, tenant_label: str = "", *,
         upstream: Optional[Callable[..., Dict[str, Any]]] = None, trigger: str = "manual", path: Optional[str] = None,
         save: bool = True, probe: Optional[Callable[..., Dict[str, Any]]] = None,
@@ -813,6 +830,7 @@ def run(online: bool = True, fetch: Optional[Fetch] = None, tenant_client: Any =
     snap["drift"] = headline(snap)
     snap["seconds"] = round(time.time() - started, 1)
     history = load_history(path)
+    snap["persistent_drift"] = persistent_headline(snap, history)
     snap["diff"] = diff(snap, history)
     if save:
         try:
