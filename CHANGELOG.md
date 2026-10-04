@@ -7,6 +7,12 @@ lists what each batch of changes did, newest first.
 
 ## 2026-10-04
 
+### The DLP chain, live moved under the Live DLP feed
+- **What you asked for.** "The DLP chain, live" should sit under the Live DLP feed, not the Path analyzer.
+- **Now** the chain is on the Live DLP feed, under its coverage note and above the incidents. Until the first incident lands every lane idles. Then each channel that raised an incident carries bits through dictionaries, the engine, its channel rule and the evidence lane to Workflow Automation, faster the more it raised. Each channel rule is tagged ENFORCE when every incident on it was enforced, MONITOR when any was only logged; channels with none stay idle. The text under it gives each channel's counts, rules and dictionaries, never a user or file name.
+- **Path analyzer** no longer draws the chain. Its result still animates hop by hop, with the DLP drill-down, through *Animate ↗* (Flow animator).
+- **Verified.** A new test for the live model (routes, rates, ENFORCE/MONITOR tags, idle channels, no user or file names). The page tests now check the chain on the Live DLP feed and its absence from the Path analyzer. The feed was driven in a headless browser with three incidents: no script errors.
+
 ### Flow animator: the path, DLP, deployment, live and reference flows, animated
 - **What you asked for.** An animated, live analysis of traffic, deployment and DLP rules, covering all the flows of the Data Security Architect reference.
 - **New page, *Flow animator*** (toolbar, dashboard tile, `/report/motion`), five views:
