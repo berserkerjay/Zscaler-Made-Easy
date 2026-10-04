@@ -689,6 +689,7 @@
       ['📄', 'Generate report', 'Word document for the customer', () => typeof downloadDocx === 'function' && downloadDocx()],
       ['📦', 'Deploy a policy pack', 'close the gaps, preflight first', () => typeof openDlpPacksModal === 'function' && openDlpPacksModal()],
       ['🧭', 'Path analyzer', 'what blocks one destination', () => typeof openPathAnalyzerTab === 'function' && openPathAnalyzerTab()],
+      ['🎞️', 'Flow animator', 'watch the path, DLP and deploy flows', () => typeof openFlowAnimatorTab === 'function' && openFlowAnimatorTab()],
       ['🔁', 'Start a new assessment', 'clears these results, then run again', () => typeof resetForm === 'function' && resetForm()],
     ];
     host.innerHTML = A.map(([ico, t, s], i) => `<button type="button" class="db-action" data-i="${i}"><span class="db-ico" aria-hidden="true">${ico}</span><strong>${E(t)}</strong><span class="s">${E(s)}</span></button>`).join('');
