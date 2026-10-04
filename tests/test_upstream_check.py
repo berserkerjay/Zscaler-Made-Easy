@@ -231,3 +231,39 @@ def test_the_daily_workflow_runs_the_check_and_files_the_drift():
     assert "upstream_check.py --offline" in mk and "\nupstream:" in mk
     from zscaler_update_check import ALLOWED_HOSTS
     assert {"pypi.org", "registry.terraform.io", "raw.githubusercontent.com", "automate.zscaler.com"} <= ALLOWED_HOSTS
+
+
+def test_a_prerelease_that_does_not_describe_a_resource_at_all_is_a_note_not_drift():
+    # zscaler-sdk-python 2.0.0b2: its ZIA definition has no operation of any
+    # kind on /casbDlpRules or /endPointDlpRules (an incomplete preview), while
+    # the stable 1.x SDK the app runs still has both. Not something to act on.
+    keys = uc.app_payload_keys()
+    d = _defn(with_saas=False)
+    del d["operations"]["CreateEndpointDlpRule"]
+    findings, detail = uc.check_service_definition(d, keys, "sdk 2.0.0b2", prerelease=True)
+    assert [f for f in findings if f["level"] == "drift"] == [], findings
+    notes = [f["text"] for f in findings if f["level"] == "note"]
+    assert any("/casbDlpRules" in t and "does not describe" in t for t in notes)
+    assert any("/endPointDlpRules" in t for t in notes)
+    assert detail["endpoints"]["saas"] == {"operation": None, "resource_described": False}
+    # The same gap in a stable release is drift: the app could not move to it.
+    findings, _ = uc.check_service_definition(d, keys, "sdk 2.0.0", prerelease=False)
+    assert sum(f["level"] == "drift" for f in findings) == 2
+
+
+def test_a_described_resource_without_its_create_operation_is_drift_even_in_a_prerelease():
+    keys = uc.app_payload_keys()
+    d = _defn(with_saas=False)
+    d["operations"]["ListCasbDlpRules"] = {"http": {"method": "GET", "requestUri": "/zia/api/v1/casbDlpRules"}, "input": {"shape": "ListRequest"}}
+    findings, detail = uc.check_service_definition(d, keys, "sdk 2.0.0b3", prerelease=True)
+    drift = [f for f in findings if f["level"] == "drift"]
+    assert len(drift) == 1 and "/casbDlpRules" in drift[0]["text"] and detail["endpoints"]["saas"]["resource_described"] is True
+    # A field the app sends that a prerelease does not list is still drift.
+    keys["engine"] = set(keys["engine"]) | {"engine_channels_x"}
+    findings, _ = uc.check_service_definition(_defn(), keys, "sdk 2.0.0b3", prerelease=True)
+    assert any("engineChannelsX" in f["text"] and f["level"] == "drift" for f in findings)
+
+
+def test_the_prerelease_service_definition_is_checked_as_a_prerelease():
+    src = open(uc.__file__, encoding="utf-8").read()
+    assert 'check_service_definition(defn, keys, f"{SDK_PACKAGE} {pre}", prerelease=True)' in src

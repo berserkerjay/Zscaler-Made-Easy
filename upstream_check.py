@@ -379,19 +379,42 @@ def body_members(defn: Dict[str, Any], op: Dict[str, Any]) -> Set[str]:
     return set(members.keys())
 
 
-def check_service_definition(defn: Dict[str, Any], keys: Dict[str, Set[str]], label: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def resource_covered(defn: Dict[str, Any], path: str) -> bool:
+    """True when the definition has any operation (any method) on `path`
+    or below it: the resource is described, whatever it offers."""
+    for op in (defn.get("operations") or {}).values():
+        uri = str((op.get("http") or {}).get("requestUri") or "").split("?", 1)[0]
+        if uri.endswith(path) or (path + "/") in uri:
+            return True
+    return False
+
+
+def check_service_definition(defn: Dict[str, Any], keys: Dict[str, Set[str]], label: str,
+                             prerelease: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """The app's payloads against a machine-readable service definition:
     an operation must exist for every endpoint the app writes to, and
-    every field the app sends must be a member of its request body."""
+    every field the app sends must be a member of its request body.
+
+    A prerelease whose definition does not describe a resource at all (no
+    operation of any method on it) is incomplete, not a changed API: the
+    stable SDK the app runs still carries it, so that is a note naming the
+    gap. It stays drift for a stable release, and in any release where the
+    resource is described but its create operation or a field has gone."""
     findings: List[Dict[str, Any]] = []
     meta = defn.get("metadata") or {}
     detail: Dict[str, Any] = {"api_version": meta.get("apiVersion"), "operations": len(defn.get("operations") or {}), "endpoints": {}}
     for kind, spec in ENDPOINTS.items():
         found = operation_for(defn, spec["path"])
         if not found:
-            detail["endpoints"][kind] = {"operation": None}
-            findings.append(_f("drift", "sdk", f"{label}: no POST operation for {spec['path']} in its ZIA service definition "
-                                              f"(apiVersion {meta.get('apiVersion')}) — the app's {kind} writes have no counterpart there."))
+            covered = resource_covered(defn, spec["path"])
+            detail["endpoints"][kind] = {"operation": None, "resource_described": covered}
+            if prerelease and not covered:
+                findings.append(_f("note", "sdk", f"{label}: its ZIA service definition (apiVersion {meta.get('apiVersion')}) does not describe "
+                                                 f"{spec['path']} at all yet (no operation of any kind), so the app's {kind} writes could not be "
+                                                 "checked against it. The stable SDK the app runs still has them; re-check before moving to 2.x."))
+            else:
+                findings.append(_f("drift", "sdk", f"{label}: no POST operation for {spec['path']} in its ZIA service definition "
+                                                  f"(apiVersion {meta.get('apiVersion')}) — the app's {kind} writes have no counterpart there."))
             continue
         name, op = found
         members = body_members(defn, op)
@@ -660,7 +683,7 @@ def run(offline: bool = False, fetch: Optional[Fetch] = None, workdir: Optional[
                         report["sdk"]["prerelease"] = {"version": pre, "service_definition": False, "changed": changed, "missing": missing}
                         findings.append(_f("note", "sdk", f"{SDK_PACKAGE} prerelease {pre}: {len(changed)} watched module(s) changed, {len(missing)} missing."))
                     else:
-                        f, d = check_service_definition(defn, keys, f"{SDK_PACKAGE} {pre}")
+                        f, d = check_service_definition(defn, keys, f"{SDK_PACKAGE} {pre}", prerelease=True)
                         d["version"] = pre
                         report["sdk"]["prerelease"] = d
                         findings.extend(f)
