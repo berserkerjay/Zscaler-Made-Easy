@@ -57,6 +57,14 @@
     get: 'A live-updating table (when, who, trigger, destination, channel, enforced or monitor-only, verdict) and a running tally, with an explicit note on what this feed covers (Workflow Automation DLP incidents) and what it does not (URL Filtering, Cloud App Control and Firewall & DNS Control decisions that never trip a DLP rule — that is Web Insights / Cloud NSS, a feed to your own log store this app does not read).',
     next: 'Start the feed before reproducing the issue, watch the incident land with its rule and dictionaries named, then open Path analyzer for that same destination for the full policy trace.',
   };
+  X.motion = {
+    group: 'Find the gaps', name: 'Flow animator', href: '/report/motion',
+    what: 'Animates the flows this app analyses from your own results: a Path analyzer result hop by hop, what happens inside DLP (dictionary match counts, each engine term against its threshold, the rules that act), a policy-pack plan or deployment, Workflow Automation DLP incidents as they land, and every flow of the Data Security Architect reference.',
+    why: 'A moving picture shows where traffic stops and why an engine did not fire ("3 found, needs more than 4") faster than a table does, and it is the clearest way to walk a customer or a new engineer through the chain from content to incident.',
+    when: 'After a Path analyzer run or a preflight, while testing sample content against the engines, during a live reproduction with the incident feed running, or when teaching the reference architecture.',
+    get: 'Five animated views with a text alternative under each: Traffic path, DLP decision (with near misses named), Deployment (with the deploy order replayed and dependency tracing), Live traffic (enforced versus monitor-only, per channel) and Architecture flows (the steps people miss marked, optionally coloured with your last path).',
+    next: 'Fix what the animation shows: the hop that stops the traffic, the engine threshold that is a near miss, the rule that is monitor-only, or the setup gate the reference says is missed; then run the source page again and replay.',
+  };
   X.bypass = {
     group: 'Find the gaps', name: 'Bypass & non-inspected traffic', href: '/report/bypass',
     what: 'Every SSL exemption, allow rule, Client Connector bypass and PAC exception that lets traffic skip inspection, in one list with exports.',
@@ -287,7 +295,7 @@
     const p = (loc || window.location).pathname.replace(/\/+$/, '') || '/';
     const tool = new URLSearchParams((loc || window.location).search).get('tool');
     if (p === '/report/view') return tool && X[tool] ? tool : 'results';
-    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
+    const map = { '/': 'assessment', '/report/dataflow': 'dataflow', '/report/path': 'path', '/report/motion': 'motion', '/report/live': 'live', '/report/bypass': 'bypass', '/report/sslflow': 'sslflow',
       '/report/flow': 'flow', '/report/deploy-flow': 'deployflow', '/report/advanced': 'advanced', '/report/health': 'health', '/report/compliance': 'compliance', '/report/evalall': 'evalall', '/report/vendor': 'vendormigrate',
       '/report/logs': 'logs', '/report/digest': 'digest', '/report/beacon': 'beacon', '/permissions': 'permissions', '/help': 'help' };
     return map[p] || '';
@@ -338,7 +346,7 @@
   }
 
   window.DLP_EXPLAIN = X;
-  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
+  window.DLP_EXPLAIN_ORDER = ['assessment', 'connect', 'results', 'help', 'dataflow', 'path', 'motion', 'live', 'bypass', 'sslflow', 'efficacy', 'health', 'compliance',
     'digest', 'packs', 'flow', 'remediate', 'terraform', 'vendormigrate', 'migration', 'evalall', 'bestpractices', 'advanced', 'updates', 'updateapp', 'logs', 'zcc', 'permissions'];
   window.DLP_EXPLAIN_GROUPS = ['Start', 'Find the gaps', 'Close the gaps', 'Reference', 'Troubleshoot'];
   window.DLP_FIRST_DAY = [
