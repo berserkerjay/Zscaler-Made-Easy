@@ -28,6 +28,11 @@
       <div class="lf-coverage" id="lfCoverage">
         <strong>What this does and does not cover.</strong> This feed shows Workflow Automation's DLP-matched incidents only — the user, the rule and dictionaries that matched, and the destination, live as they land. It does not cover URL Filtering, Cloud App Control or Firewall &amp; DNS Control decisions that never trip a DLP rule; that wider transaction log is Web Insights / Cloud NSS, a feed to your own log store (Splunk, S3, a syslog receiver) that this app does not read. Nothing is written to the tenant.
       </div>
+      <section class="pa-motion" id="lfMotion" aria-labelledby="lfMotionH">
+        <h2 id="lfMotionH">The DLP chain, live: where this session's incidents went</h2>
+        <div class="df-hint">Content captured on a channel → dictionaries (typed, carry the confidence, report match counts) → the DLP engine (Boolean expression, match counts, the Channels gate; at most four engines per rule) → the channel rule acts → it forwards on its own: the evidence lane to Workflow Automation, the telemetry lane to your SIEM, auditor email and third-party ICAP beside them. Until the first incident lands every lane idles; then each channel that raised one carries bits through its rule and the evidence lane to Workflow Automation, faster the more it raised, with its rule tagged enforce or monitor. From the <a href="/reference/data-security-architect#chain" target="_blank" rel="noopener">reference architecture's chain ↗</a>.</div>
+        <div id="lfMotionBody"></div>
+      </section>
       <div id="lfBody">
         <div class="pa-intro" id="lfHow">
           <div class="pa-intro-t">How it works</div>
@@ -45,6 +50,8 @@
   <script src="/static/report_theme.js"></script>
   <script src="/static/safety_banner.js"></script>
   <script src="/static/explain.js"></script>
+  <script src="/static/data_flow.js"></script>
+  <script src="/static/path_motion.js"></script>
   <script>
   (function () {
     const E = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -60,6 +67,15 @@
     // one chain, and none after Stop.
     let gen = 0;
     const isCurrent = my => running && gen === my;
+
+    // The chain end to end, idling until the first incident lands. If it
+    // cannot draw (an old browser), the feed itself still works, and the
+    // picture never decides whether a poll worked.
+    let motion = { update() {} };
+    try { motion = renderPathMotion(document.getElementById('lfMotionBody')); } catch (e) { document.getElementById('lfMotion').hidden = true; }
+    function showMotion() {
+      try { motion.update(rows.length ? { live: rows } : null); } catch (e) { document.getElementById('lfMotion').hidden = true; }
+    }
 
     document.getElementById('lfLive').hidden = !(window.opener && !window.opener.closed);
 
@@ -177,6 +193,7 @@
       const freshIds = new Set(d.incidents.map(i => i.id));
       rows = d.incidents.slice().reverse().concat(rows).slice(0, 500);   // newest first, bounded
       render(freshIds);
+      if (d.incidents.length) showMotion();
       if (d.incidents.length) say(`${d.incidents.length} new incident${d.incidents.length === 1 ? '' : 's'}.`);
     }
     function schedule(my) { timer = setTimeout(async () => { if (!isCurrent(my)) return; await poll(my); if (isCurrent(my)) schedule(my); }, POLL_MS); }
@@ -201,6 +218,7 @@
     function reset() {
       stop(); since = ''; stats = {}; rows = []; errShown = false;
       render();
+      showMotion();
       say('Session cleared.');
     }
     document.getElementById('lfStart').addEventListener('click', start);
